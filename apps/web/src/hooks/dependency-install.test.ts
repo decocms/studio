@@ -12,6 +12,23 @@ const SETUP_TS = `import { autoconfigApps } from "@decocms/blocks-admin/apps";
 
 const APP_REGISTRY = [];
 `;
+const MANIFEST_GEN = `import * as $$$$$$$$$$$0 from "./apps/site.ts";
+
+const manifest = {
+  "apps": {
+    "site/apps/site.ts": $$$$$$$$$$$0,
+  },
+};
+
+export default manifest;
+`;
+
+const deno = () =>
+  makeInstallAppPatches({
+    technology: "deno",
+    entry: findSiteApp("deno", "deco-vtex")!,
+    manifestGenTs: MANIFEST_GEN,
+  });
 
 const tanstack = (packageJson: string) =>
   makeInstallAppPatches({
@@ -24,11 +41,7 @@ const tanstack = (packageJson: string) =>
 
 describe("dependencyInstallFor", () => {
   it("asks for nothing on Deno", () => {
-    const patches = makeInstallAppPatches({
-      technology: "deno",
-      entry: findSiteApp("deno", "deco-vtex")!,
-    });
-    expect(dependencyInstallFor(patches)).toBeNull();
+    expect(dependencyInstallFor(deno())).toBeNull();
   });
 
   it("forces when the patches rewrite package.json", () => {
@@ -54,12 +67,6 @@ describe("dependencyInstallFor", () => {
 });
 
 describe("needsDevRestart", () => {
-  const deno = () =>
-    makeInstallAppPatches({
-      technology: "deno",
-      entry: findSiteApp("deno", "deco-vtex")!,
-    });
-
   it("restarts on Deno, where no install step runs at all", () => {
     // The app's schema comes from its module: without a restart the runtime
     // never re-reads the manifest and the form stays empty.

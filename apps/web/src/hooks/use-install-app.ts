@@ -211,6 +211,10 @@ export function useInstallApp({
           detected.technology === "tanstack"
             ? await readSource(ref, packagePath, "src/setup.ts")
             : null,
+        manifestGenTs:
+          detected.technology === "deno"
+            ? await readSource(ref, packagePath, "manifest.gen.ts")
+            : null,
       });
 
       // Shares the editor's pending state: an install writes for seconds, and

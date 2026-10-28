@@ -45,14 +45,24 @@ export interface MakeInstallAppPatchesInput {
   packageJson?: string | null;
   /** TanStack: current `src/setup.ts` text. */
   setupTs?: string | null;
+  /** Deno: current `manifest.gen.ts` text. */
+  manifestGenTs?: string | null;
+}
+
+/** `linx-impulse` -> `linxImpulse`, a name safe to declare in generated source. */
+function identifier(app: string): string {
+  const camel = app.replace(/[-_.]+(.)/g, (_, c: string) => c.toUpperCase());
+  const safe = camel.replace(/[^A-Za-z0-9$_]/g, "");
+  return /^[0-9]/.test(safe) ? `app${safe}` : safe;
 }
 
 /** `linx-impulse` -> `linxImpulseMod`, the alias the registry entry overrides with. */
 function moduleAlias(app: string): string {
-  const camel = app.replace(/[-_.]+(.)/g, (_, c: string) => c.toUpperCase());
-  const safe = camel.replace(/[^A-Za-z0-9$_]/g, "");
-  return `${/^[0-9]/.test(safe) ? `app${safe}` : safe}Mod`;
+  return `${identifier(app)}Mod`;
 }
+
+/** The `apps` map's opening brace in `manifest.gen.ts`. */
+const APPS_MAP_OPEN = /"apps"\s*:\s*\{/;
 
 function denoAppFile(entry: SiteAppRegistryEntry): SiteAppFilePatch {
   const specifier = `apps/${entry.app}/mod.ts`;
@@ -81,6 +91,61 @@ function tanstackAppFile(
   return {
     path: `src/apps/${entry.vendor}/${entry.app}.ts`,
     content: `export { default } from "${specifier}";\nexport * from "${specifier}";\n`,
+  };
+}
+
+/**
+ * Wire the app into `manifest.gen.ts`, the map a Deno site's runtime reads to
+ * know which modules are apps.
+ *
+ * The file says "DO NOT EDIT" because `deno task dev` regenerates it — but
+ * waiting for that is what leaves an installed app invisible. The runtime
+ * imports the manifest, installs the decofile's apps from it, and only THEN
+ * does codegen rewrite the file, so the app it adds first appears one boot
+ * later. The admin writes this entry at install time for the same reason.
+ *
+ * Minimal insert rather than a faithful regeneration: the alias is arbitrary,
+ * the generator renumbers everything into its own canonical order on the next
+ * run, and reproducing that numbering here would be a second generator to keep
+ * in sync.
+ */
+function denoManifestPatch(
+  entry: SiteAppRegistryEntry,
+  manifestGenTs: string,
+): SiteAppFilePatch | null {
+  const modulePath = `./apps/${entry.vendor}/${entry.app}.ts`;
+  const resolveType = siteAppResolveType(entry.vendor, entry.app);
+  // Already wired (a reinstall, or codegen got there first).
+  if (manifestGenTs.includes(`"${resolveType}"`)) return null;
+
+  const appsAt = APPS_MAP_OPEN.exec(manifestGenTs);
+  if (!appsAt) {
+    throw new SiteAppInstallError(
+      "manifest.gen.ts declares no `apps` map, so this site's runtime has no place to register the app. Run `deno task dev` once and reinstall.",
+    );
+  }
+  const alias = `${identifier(entry.app)}App`;
+  if (new RegExp(`\\b${alias}\\b`).test(manifestGenTs)) {
+    throw new SiteAppInstallError(
+      `manifest.gen.ts already declares \`${alias}\`, which this install needs as its own name`,
+    );
+  }
+
+  const lastImport = [...manifestGenTs.matchAll(IMPORT_END)].pop();
+  if (!lastImport) {
+    throw new SiteAppInstallError("manifest.gen.ts has no imports to extend");
+  }
+  const importsAt = lastImport.index + lastImport[0].length;
+  const openAt = appsAt.index + appsAt[0].length;
+  return {
+    path: "manifest.gen.ts",
+    content: [
+      manifestGenTs.slice(0, importsAt),
+      `\nimport * as ${alias} from "${modulePath}";`,
+      manifestGenTs.slice(importsAt, openAt),
+      `\n    "${resolveType}": ${alias},`,
+      manifestGenTs.slice(openAt),
+    ].join(""),
   };
 }
 
@@ -274,7 +339,18 @@ export function makeInstallAppPatches(
   };
 
   if (technology === "deno") {
-    return { files: [denoAppFile(entry)], block, dependency: null };
+    const manifestGenTs = input.manifestGenTs;
+    if (manifestGenTs == null) {
+      throw new SiteAppInstallError(
+        "Could not read the site's manifest.gen.ts, which is where a Deno site registers its apps",
+      );
+    }
+    const manifest = denoManifestPatch(entry, manifestGenTs);
+    return {
+      files: manifest ? [denoAppFile(entry), manifest] : [denoAppFile(entry)],
+      block,
+      dependency: null,
+    };
   }
 
   const pkg = entry.npm;
