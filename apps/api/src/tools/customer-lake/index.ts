@@ -22,7 +22,7 @@ Database customer_lake:
 - order_events: status changes (order_id, status, source_status, changed_at).
 - connections: one row per store: timezone (IANA) and currency. toTimeZone needs a constant zone: read the store's timezone first, then write it as a literal, e.g. toTimeZone(created_at, 'America/Sao_Paulo').
 - raw_records: redacted source payloads as JSON (payload), 180-day retention.
-- site_traffic_hourly: per site_id, hour (UTC), device and country: visitors (a uniq state — read uniqMerge(visitors), never sum it), pageviews, events, errors, conversions, revenue. Read with FINAL; the current hour fills in over ~5 minutes. analytics_sites maps each site_id to the org. No rows means none of the org's sites sends Deco Analytics yet; ANALYTICS_INSTALL adds it.
+- site_traffic_hourly: per site_id, hour (UTC), device and country: visitors (a uniq state — read uniqMerge(visitors), never sum it), pageviews, events, errors, conversions, revenue. Read with FINAL; the current hour fills in within about a minute. analytics_sites maps each site_id to the org. No rows means none of the org's sites sends Deco Analytics yet; ANALYTICS_INSTALL adds it.
 - site_dims_hourly: the same sites per hour, broken down by one dimension at a time (dim: path, sourceDomain, channel, country, browser, os, device, name, utmCampaign, utmSource, utmMedium; value): visitors (uniq state), pageviews, events. Read with FINAL; dimensions don't combine.
 Every store table has org_id, connection_id, source and store; the site tables have org_id and site_id. Run DESCRIBE TABLE customer_lake.<table> for all columns. Don't add a FORMAT clause.`,
   annotations: {

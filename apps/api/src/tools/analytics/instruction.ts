@@ -10,6 +10,11 @@ export function buildInstruction(registration: {
   const tag = registration.key
     ? `<script async src="${COLLECTOR}/_dq/a.js?k=${registration.key}"></script>`
     : `<script async src="/_dq/a.js"></script>`;
+  // A same-origin tag is already covered by 'self'.
+  const csp = registration.key
+    ? `- If the site sets a Content-Security-Policy (a response header in server or edge code, a \`<meta http-equiv>\`, or hosting config such as \`_headers\`), add \`${COLLECTOR}/_dq/\` to both \`script-src\` and \`connect-src\`: the tag loads from there and posts its events back there. Without it browsers block the tag and nothing is counted.
+`
+    : "";
   const purchases = registration.modules.includes("deco")
     ? `- Purchases: if the site emits commerce events on \`window.DECO.events\` (deco storefronts do), stop here — the collector already maps them. Otherwise follow the next point.
 `
@@ -29,7 +34,7 @@ Rules:
 - Don't add an analytics package or copy the runtime into the bundle; the tag loads it.
 - Pageviews, client-side navigations, web vitals and errors are collected automatically. Don't add pageview calls.
 - Leave every other analytics tag (Google Analytics, GTM, OneDollarStats, pixels) untouched.
-${purchases}- Find where the order confirmation renders and call, once per order:
+${csp}${purchases}- Find where the order confirmation renders and call, once per order:
   \`window.__dq?.purchase({ value, currency, transactionId, itemIds })\`
   with \`transactionId\` set to the order id, so a reload of the page doesn't count the order twice. If checkout isn't rendered by this repo (it's hosted by the commerce platform), skip this and say so in the PR.
 - Don't touch unrelated code.
