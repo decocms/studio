@@ -1,7 +1,7 @@
 /**
  * The org's brand at a glance: its voice, its look and the sections of its
- * bible. Read from the brand folders agents write (`home/brands/<name>/`);
- * editing opens the Library's brand editor.
+ * bible. Read from the brand folders agents write (`home/brands/<name>/`)
+ * and edited in place, section by section.
  */
 
 import type { ComponentType } from "react";
@@ -14,6 +14,7 @@ import {
   Check,
   CheckCircle,
   ChevronRight,
+  Columns03,
   Heart,
   Lock01,
   MessageChatSquare,
@@ -59,20 +60,21 @@ import { basename } from "@/layouts/library/location";
 import { parseSkillMd } from "@/layouts/library/skill";
 import { useProjectContext } from "@/sdk";
 import {
+  BRANDS_DIR,
   type BrandGroupId,
   type BrandItemId,
   brandDoDont,
   brandQuote,
   brandSections,
   fontName,
+  formatsFrom,
   groupBrandSections,
+  pickBrandDir,
   sectionMarkdown,
   withFontName,
   writeQuote,
   writeSection,
-} from "./brand-md";
-
-const BRANDS_DIR = "brands";
+} from "@decocms/shared/brand";
 
 /** The colors a brand is recognised by, in the order a person names them. */
 const SWATCHES = ["primary", "secondary", "accent", "bg", "fg"] as const;
@@ -92,6 +94,7 @@ const GROUP_LABELS = {
   rules: "library.context.groupRules",
   guardrails: "library.context.groupGuardrails",
   extra: "library.context.groupExtra",
+  content: "library.context.groupContent",
 } as const satisfies Record<BrandGroupId, TranslationKey>;
 
 const ITEMS = {
@@ -109,10 +112,18 @@ const ITEMS = {
   keywords: { labelKey: "library.context.itemKeywords", Icon: SearchMd },
   dates: { labelKey: "library.context.itemDates", Icon: Calendar },
   policies: { labelKey: "library.context.itemPolicies", Icon: Lock01 },
+  formats: { labelKey: "library.context.itemFormats", Icon: Columns03 },
 } as const satisfies Record<
   BrandItemId,
   { labelKey: TranslationKey; Icon: Icon }
 >;
+
+/** A formats section's summary: the names of the formats it defines. */
+function formatNames(md: string, title: string): string {
+  return formatsFrom(sectionMarkdown(md, title) ?? "")
+    .map((format) => format.name)
+    .join(", ");
+}
 
 function titleCase(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
@@ -125,8 +136,14 @@ export function BrandOverview() {
   const listing = useOrgFsList(HOME_MOUNT_PATH, BRANDS_DIR);
   const brands = (listing.data ?? []).filter((entry) => entry.kind === "dir");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const defaultDir = pickBrandDir(
+    org.slug,
+    brands.map((brand) => basename(brand.path)),
+  );
   const selected =
-    brands.find((brand) => brand.path === selectedPath) ?? brands[0] ?? null;
+    brands.find((brand) => brand.path === selectedPath) ??
+    brands.find((brand) => basename(brand.path) === defaultDir) ??
+    null;
 
   if (listing.isLoading) {
     return (
@@ -612,7 +629,14 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
               return row(t(labelKey), t(labelKey), ItemIcon);
             }
             return item.sections.map((section) =>
-              row(section.title, section.title, ItemIcon, section.summary),
+              row(
+                section.title,
+                section.title,
+                ItemIcon,
+                item.id === "formats"
+                  ? formatNames(raw, section.title) || section.summary
+                  : section.summary,
+              ),
             );
           })}
         </section>

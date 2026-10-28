@@ -5,8 +5,10 @@ import {
   brandSections,
   fontName,
   groupBrandSections,
+  pickBrandDir,
   withFontName,
   sectionMarkdown,
+  writeFrontmatter,
   writeQuote,
   writeSection,
 } from "./brand-md";
@@ -165,4 +167,116 @@ describe("writeQuote", () => {
 test("withFontName keeps the fallbacks", () => {
   expect(withFontName(`"Fraunces", serif`, "Lora")).toBe(`"Lora", serif`);
   expect(withFontName("Inter", "Lora")).toBe(`"Lora"`);
+});
+
+describe("code fences", () => {
+  const md =
+    "## Voice\n\nShort.\n\n```md\n## Not a section\n```\n\n## Rules\n\n- One.\n";
+
+  test("a heading quoted in a fence is text, not a section", () => {
+    expect(brandSections(md).map((s) => s.title)).toEqual(["Voice", "Rules"]);
+    expect(sectionMarkdown(md, "Voice")).toBe(
+      "Short.\n\n```md\n## Not a section\n```",
+    );
+  });
+
+  test("writing around a fence leaves it whole", () => {
+    expect(writeSection(md, "Rules", "- Two.")).toBe(
+      "## Voice\n\nShort.\n\n```md\n## Not a section\n```\n\n## Rules\n\n- Two.\n",
+    );
+  });
+});
+
+describe("formats", () => {
+  test("a formats section lands in the content group, before anything else", () => {
+    const grouped = groupBrandSections([
+      { title: "Formatos de post", summary: "" },
+      { title: "Datas especiais", summary: "" },
+    ]);
+    const items = grouped.groups.flatMap((g) => g.items);
+    expect(items.find((i) => i.id === "formats")?.sections).toHaveLength(1);
+    expect(items.find((i) => i.id === "dates")?.sections).toHaveLength(1);
+    expect(grouped.groups.at(-1)?.id).toBe("content");
+  });
+
+  test("a campaign heading is no longer read as special dates", () => {
+    const grouped = groupBrandSections([{ title: "Campanhas", summary: "" }]);
+    expect(grouped.more.map((s) => s.title)).toEqual(["Campanhas"]);
+  });
+});
+
+describe("writeFrontmatter", () => {
+  const body = "# Acme\n\n> Quote.\n\n## Voice\n\nShort.\n";
+
+  test("adds a key and keeps the body byte for byte", () => {
+    const md = `---\nname: Acme\n---\n\n${body}`;
+    expect(writeFrontmatter(md, "site", "https://acme.com")).toBe(
+      `---\nname: Acme\nsite: https://acme.com\n---\n\n${body}`,
+    );
+  });
+
+  test("replaces a key in place", () => {
+    const md = `---\nname: Acme\nlanguage: en\ndescription: x\n---\n${body}`;
+    expect(writeFrontmatter(md, "language", "pt-BR")).toBe(
+      `---\nname: Acme\nlanguage: pt-BR\ndescription: x\n---\n${body}`,
+    );
+  });
+
+  test("an empty value removes the key", () => {
+    const md = `---\nname: Acme\nsite: https://acme.com\n---\n${body}`;
+    expect(writeFrontmatter(md, "site", "  ")).toBe(
+      `---\nname: Acme\n---\n${body}`,
+    );
+    expect(writeFrontmatter(body, "site", "")).toBe(body);
+  });
+
+  test("creates the frontmatter when the file has none", () => {
+    expect(writeFrontmatter(body, "language", "pt-BR")).toBe(
+      `---\nlanguage: pt-BR\n---\n\n${body}`,
+    );
+  });
+
+  test("a value is one line", () => {
+    expect(writeFrontmatter("", "site", "https://a.com\n\nb")).toBe(
+      "---\nsite: https://a.com b\n---\n\n",
+    );
+  });
+});
+
+describe("pickBrandDir", () => {
+  test("the org's own folder wins", () => {
+    expect(pickBrandDir("acme", ["zeta", "acme", "beta"])).toBe("acme");
+  });
+
+  test("otherwise the first in order, then the org's name", () => {
+    expect(pickBrandDir("acme", ["zeta", "beta"])).toBe("beta");
+    expect(pickBrandDir("acme", [])).toBe("acme");
+  });
+});
+
+/** The labels the brand page writes as headings when someone fills an empty row. */
+test("every row's own label finds its row again, in both languages", () => {
+  const labels: Record<string, string[]> = {
+    voice: ["Voice & tone", "Tom de voz"],
+    audience: ["Audience", "Público"],
+    examples: ["Example phrases", "Frases de exemplo"],
+    rules: ["Rules", "Regras"],
+    vocabulary: ["Vocabulary", "Vocabulário"],
+    donts: ["Don'ts", "O que evitar"],
+    values: ["Values", "Valores"],
+    competitors: ["Competitors", "Concorrentes"],
+    keywords: ["Keywords", "Palavras-chave"],
+    dates: ["Special dates", "Datas especiais"],
+    policies: ["Commercial policies", "Políticas comerciais"],
+    formats: ["Formats", "Formatos"],
+  };
+  for (const [id, titles] of Object.entries(labels)) {
+    const grouped = groupBrandSections(
+      titles.map((title) => ({ title, summary: "" })),
+    );
+    const item = grouped.groups
+      .flatMap((g) => g.items)
+      .find((i) => i.id === id);
+    expect(item?.sections.map((s) => s.title)).toEqual(titles);
+  }
 });

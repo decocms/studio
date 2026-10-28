@@ -14,6 +14,7 @@ export const library = {
   "library.context.groupRules": "Generation rules",
   "library.context.groupGuardrails": "Guardrails",
   "library.context.groupExtra": "Extra context",
+  "library.context.groupContent": "Content",
   "library.context.groupMore": "More",
   "library.context.itemVoice": "Voice & tone",
   "library.context.itemAudience": "Audience",
@@ -26,6 +27,7 @@ export const library = {
   "library.context.itemKeywords": "Keywords",
   "library.context.itemDates": "Special dates",
   "library.context.itemPolicies": "Commercial policies",
+  "library.context.itemFormats": "Formats",
   "library.context.fillBrandPrompt":
     "Read our site and write our brand guide at {path}, one ## section each: voice and tone, audience, example phrases that sound like us and that don't, writing rules, vocabulary, don'ts, values with their evidence, competitors, keywords, special dates and commercial policies. Keep anything already written.",
   "library.context.fillSectionPrompt":

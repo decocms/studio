@@ -16,6 +16,7 @@ export const library = {
   "library.context.groupRules": "Regras de escrita",
   "library.context.groupGuardrails": "Limites",
   "library.context.groupExtra": "Contexto extra",
+  "library.context.groupContent": "Conteúdo",
   "library.context.groupMore": "Mais",
   "library.context.itemVoice": "Tom de voz",
   "library.context.itemAudience": "Público",
@@ -28,6 +29,7 @@ export const library = {
   "library.context.itemKeywords": "Palavras-chave",
   "library.context.itemDates": "Datas especiais",
   "library.context.itemPolicies": "Políticas comerciais",
+  "library.context.itemFormats": "Formatos",
   "library.context.fillBrandPrompt":
     "Leia nosso site e escreva o guia da nossa marca em {path}, uma seção ## para cada: tom de voz, público, frases de exemplo que soam como a gente e que não soam, regras de escrita, vocabulário, o que evitar, valores com a evidência de cada um, concorrentes, palavras-chave, datas especiais e políticas comerciais. Mantenha o que já estiver escrito.",
   "library.context.fillSectionPrompt":
