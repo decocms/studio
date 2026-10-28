@@ -15,13 +15,6 @@ import {
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
 import { resolveAnalyticsSiteSlug } from "@decocms/shared/site-slug";
@@ -46,6 +39,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { weightedMean } from "./aggregate";
 import { Ranked } from "./audience-view";
+import { TopbarSelect } from "./topbar-select";
 import type { SiteProject } from "./org-insights";
 import { Spread, Trend } from "./parts";
 
@@ -59,10 +53,6 @@ const RANGE_DAYS: Record<Range, number> = {
   "90d": 90,
 };
 const COLOR_REQUESTS = "var(--chart-1)";
-
-function isRange(value: string): value is Range {
-  return (RANGES as readonly string[]).includes(value);
-}
 
 function rangeLabel(range: Range, t: TFunction): string {
   switch (range) {
@@ -134,21 +124,15 @@ function RangeAction({
   const t = useT();
   return (
     <Page.Actions>
-      <Select
+      <TopbarSelect
+        label={t("monitor.audience.range")}
         value={value}
-        onValueChange={(next) => isRange(next) && onChange(next)}
-      >
-        <SelectTrigger size="sm" aria-label={t("monitor.audience.range")}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          {RANGES.map((range) => (
-            <SelectItem key={range} value={range}>
-              {rangeLabel(range, t)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={RANGES.map((range) => ({
+          value: range,
+          label: rangeLabel(range, t),
+        }))}
+        onChange={onChange}
+      />
     </Page.Actions>
   );
 }

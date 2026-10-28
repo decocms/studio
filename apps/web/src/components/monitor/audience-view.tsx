@@ -28,13 +28,6 @@ import {
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
@@ -47,6 +40,7 @@ import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
+import { TopbarSelect } from "./topbar-select";
 import type { SiteProject } from "./org-insights";
 import { weightedMean } from "./aggregate";
 import { projectLink, Spread, Trend } from "./parts";
@@ -117,10 +111,6 @@ function rangeLabel(range: AudienceRange, t: TFunction): string {
   }
 }
 
-function isRange(value: string): value is AudienceRange {
-  return (AUDIENCE_RANGES as readonly string[]).includes(value);
-}
-
 /** The period, in the panel's top bar beside the Monitor's other controls. */
 function RangeAction({
   value,
@@ -132,21 +122,15 @@ function RangeAction({
   const t = useT();
   return (
     <Page.Actions>
-      <Select
+      <TopbarSelect
+        label={t("monitor.audience.range")}
         value={value}
-        onValueChange={(next) => isRange(next) && onChange(next)}
-      >
-        <SelectTrigger size="sm" aria-label={t("monitor.audience.range")}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          {AUDIENCE_RANGES.map((range) => (
-            <SelectItem key={range} value={range}>
-              {rangeLabel(range, t)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={AUDIENCE_RANGES.map((range) => ({
+          value: range,
+          label: rangeLabel(range, t),
+        }))}
+        onChange={onChange}
+      />
     </Page.Actions>
   );
 }

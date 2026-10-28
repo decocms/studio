@@ -5,16 +5,10 @@
  * choose and it isn't drawn.
  */
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
 import { Page } from "@/components/page";
 import { useT } from "@/i18n/use-t.ts";
 import type { SiteProject } from "./org-insights";
+import { TopbarSelect } from "./topbar-select";
 
 const ALL = "__all";
 
@@ -30,22 +24,15 @@ export function ProjectFilter({
   const t = useT();
   return (
     <Page.Actions>
-      <Select
+      <TopbarSelect
+        label={t("monitor.projectFilter.label")}
         value={value ?? ALL}
-        onValueChange={(next) => onChange(next === ALL ? null : next)}
-      >
-        <SelectTrigger size="sm" aria-label={t("monitor.projectFilter.label")}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          <SelectItem value={ALL}>{t("monitor.projectFilter.all")}</SelectItem>
-          {projects.map((p) => (
-            <SelectItem key={p.id} value={p.id}>
-              {p.title}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={[
+          { value: ALL, label: t("monitor.projectFilter.all") },
+          ...projects.map((p) => ({ value: p.id, label: p.title })),
+        ]}
+        onChange={(next) => onChange(next === ALL ? null : next)}
+      />
     </Page.Actions>
   );
 }
