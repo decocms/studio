@@ -7,6 +7,7 @@
 
 import type { ReactNode } from "react";
 import {
+  isValidSiteSlug,
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
@@ -140,7 +141,9 @@ function useSiteProjects(): SiteProject[] {
   return useVirtualMCPsNonBlocking().flatMap((p) => {
     const site = isStudioPackAgent(p.id) ? null : resolveAgentSiteSlug(p);
     const analyticsSite = resolveAnalyticsSiteSlug(p);
-    return site && analyticsSite
+    // Agents with no site of their own fall back to their title ("Deco Score
+    // Agent"), which no site can be named.
+    return site && isValidSiteSlug(site) && analyticsSite
       ? [
           {
             id: p.id,
