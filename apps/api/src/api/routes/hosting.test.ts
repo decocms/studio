@@ -94,9 +94,12 @@ describe("toTenantAnalyticsPayload", () => {
     // Anchored on `payload as` so it reads PANEL keys only — the same shape
     // also narrows a row (`first as { visitors?: unknown }`) and the BFF
     // envelope, and neither of those is an allow-list entry.
+    // `flatMap` rather than `map`: under `noUncheckedIndexedAccess` a capture
+    // group is `string | undefined`, and dropping the empty case here keeps the
+    // assertions below reading as plain string work.
     const read = [
       ...globe.matchAll(/payload as \{\s*(\w+)\?:\s*unknown\s*\}/g),
-    ].map((m) => m[1]);
+    ].flatMap((m) => m[1] ?? []);
     // Asserted by name first: a regex that silently stops matching would make
     // the filter below trivially empty, and the test would pass forever.
     expect(read).toContain("liveGeo");
@@ -117,8 +120,8 @@ describe("ANALYTICS_VIEWS", () => {
       "utf8",
     );
     const block = tab.match(/const DATA_VIEWS[^=]*=\s*\[([\s\S]*?)\n\];/)?.[1];
-    const views = [...(block ?? "").matchAll(/view:\s*"(\w+)"/g)].map(
-      (m) => m[1],
+    const views = [...(block ?? "").matchAll(/view:\s*"(\w+)"/g)].flatMap(
+      (m) => m[1] ?? [],
     );
     expect(views).toContain("globe");
     expect(views.filter((v) => !ANALYTICS_VIEWS.has(v))).toEqual([]);
