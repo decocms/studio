@@ -74,4 +74,11 @@ export const home = {
   "home.brief.working": "Os agentes estão trabalhando.",
   "home.brief.overnightShipped": "Esta noite os agentes entregaram {changes}.",
   "home.brief.todayShipped": "Hoje os agentes entregaram {changes}.",
+  "home.dailyBrief.title": "Resumo do dia",
+  "home.dailyBrief.today": "Hoje",
+  "home.dailyBrief.yesterday": "Ontem",
+  "home.dailyBrief.daysAgo": "Há {count} dias",
+  "home.dailyBrief.personal": "Para você",
+  "home.dailyBrief.org": "Organização",
+  "home.dailyBrief.fullscreen": "Abrir em tela cheia",
 } satisfies Record<keyof typeof homeEn, string>;

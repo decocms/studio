@@ -70,4 +70,11 @@ export const home = {
   "home.brief.working": "The agents are working.",
   "home.brief.overnightShipped": "Overnight the agents shipped {changes}.",
   "home.brief.todayShipped": "Today the agents shipped {changes}.",
+  "home.dailyBrief.title": "Daily brief",
+  "home.dailyBrief.today": "Today",
+  "home.dailyBrief.yesterday": "Yesterday",
+  "home.dailyBrief.daysAgo": "{count} days ago",
+  "home.dailyBrief.personal": "For you",
+  "home.dailyBrief.org": "Organization",
+  "home.dailyBrief.fullscreen": "Open full screen",
 } as const;
