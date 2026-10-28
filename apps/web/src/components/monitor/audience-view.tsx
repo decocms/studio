@@ -524,8 +524,13 @@ function StackedVisitors({
       buckets.set(key, row);
     }
   }
-  const data = [...buckets.values()].sort((a, b) =>
-    String(a.t).localeCompare(String(b.t)),
+  // Sources cut their windows differently (a rolling 7 days against 7 whole
+  // days), so only the buckets every site has stack without a gap.
+  const shared = [...buckets.values()].filter((row) =>
+    sites.every(({ project }) => project.id in row),
+  );
+  const data = (shared.length > 1 ? shared : [...buckets.values()]).sort(
+    (a, b) => String(a.t).localeCompare(String(b.t)),
   );
   const color = (i: number) => SITE_COLORS[i % SITE_COLORS.length];
   return (
