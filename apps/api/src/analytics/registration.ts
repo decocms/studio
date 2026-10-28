@@ -2,7 +2,9 @@
  * A site's Deco Analytics registration, on the control-plane. The warehouse
  * `site_id` (`config.id`, `s<id>`) only exists there, so the hosting BFF and
  * ANALYTICS_INSTALL both go through here. Callers must already have checked
- * that the org owns `site`: the control-plane answers for any slug.
+ * that the org owns `site`: the control-plane answers for any slug. A site the
+ * control-plane doesn't host registers by domain instead
+ * (`registerExternalAnalyticsSite`).
  */
 
 import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
@@ -23,33 +25,32 @@ export type AnalyticsRegistration =
   | { status: "error" };
 
 async function controlplane(
-  site: string,
-  sub: string,
+  path: string,
   init: { method?: string; body?: unknown } = {},
 ): Promise<Response | null> {
   const { controlplaneRestUrl, controlplaneServiceToken } = getSettings();
   if (!controlplaneRestUrl || !controlplaneServiceToken) return null;
-  return fetch(
-    `${controlplaneRestUrl}/sites/${encodeURIComponent(site)}/${sub}`,
-    {
-      method: init.method ?? "GET",
-      headers: {
-        Authorization: `Bearer ${controlplaneServiceToken}`,
-        Accept: "application/json",
-        ...(init.body !== undefined
-          ? { "Content-Type": "application/json" }
-          : {}),
-      },
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+  return fetch(`${controlplaneRestUrl}${path}`, {
+    method: init.method ?? "GET",
+    headers: {
+      Authorization: `Bearer ${controlplaneServiceToken}`,
+      Accept: "application/json",
+      ...(init.body !== undefined
+        ? { "Content-Type": "application/json" }
+        : {}),
     },
-  );
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+  });
 }
+
+const sitePath = (site: string, sub: string) =>
+  `/sites/${encodeURIComponent(site)}/${sub}`;
 
 export async function readAnalyticsRegistration(
   site: string,
 ): Promise<AnalyticsRegistration> {
   try {
-    const res = await controlplane(site, "analytics/status");
+    const res = await controlplane(sitePath(site, "analytics/status"));
     if (!res) return { status: "error" };
     if (!res.ok) {
       console.error(
@@ -97,24 +98,57 @@ export async function registerAnalyticsSite(
   site: string,
   body: { key: true; domains: string[]; modules: string[] },
 ): Promise<void> {
-  const res = await controlplane(site, "analytics/register", {
+  const res = await controlplane(sitePath(site, "analytics/register"), {
     method: "POST",
     body,
   });
   if (!res) throw new Error("Hosting integration is not configured");
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as {
-      error?: unknown;
-      message?: unknown;
-    } | null;
-    const code = typeof payload?.error === "string" ? payload.error : null;
-    throw new AnalyticsRegistrationError(
-      typeof payload?.message === "string"
-        ? payload.message
-        : (code ?? `Analytics registration failed (${res.status})`),
-      code,
-    );
+  if (!res.ok) throw await registrationError(res);
+}
+
+async function registrationError(
+  res: Response,
+): Promise<AnalyticsRegistrationError> {
+  const payload = (await res.json().catch(() => null)) as {
+    error?: unknown;
+    message?: unknown;
+  } | null;
+  const code = typeof payload?.error === "string" ? payload.error : null;
+  return new AnalyticsRegistrationError(
+    typeof payload?.message === "string"
+      ? payload.message
+      : (code ?? `Analytics registration failed (${res.status})`),
+    code,
+  );
+}
+
+/** Register a site the control-plane doesn't host, by the domains it's live
+ *  on. The warehouse id derives from the first domain, so a domain registered
+ *  before answers `created: false` and no key: the key is only ever returned
+ *  once, to whoever created it. */
+export async function registerExternalAnalyticsSite(body: {
+  domains: string[];
+  modules: string[];
+}): Promise<{ id: string; key: string | null; created: boolean }> {
+  const res = await controlplane("/analytics/external", {
+    method: "POST",
+    body,
+  });
+  if (!res) throw new Error("Hosting integration is not configured");
+  if (!res.ok) throw await registrationError(res);
+  const payload = (await res.json()) as {
+    id?: unknown;
+    key?: unknown;
+    created?: unknown;
+  };
+  if (typeof payload.id !== "string") {
+    throw new Error("Analytics registration answered without an id");
   }
+  return {
+    id: payload.id,
+    key: typeof payload.key === "string" ? payload.key : null,
+    created: payload.created === true,
+  };
 }
 
 /** The hosts a keyed site collects from: its domain with and without `www.`,
