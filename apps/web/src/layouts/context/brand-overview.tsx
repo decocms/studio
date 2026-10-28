@@ -209,6 +209,7 @@ export function BrandOverview() {
               ask(
                 t("library.context.fillBrandPrompt", {
                   path: `${HOME_MOUNT_PATH}/${BRANDS_DIR}/${org.slug}/brand.md`,
+                  site: t("library.context.siteUnknown"),
                 }),
               )
             }
@@ -281,6 +282,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   /** A frontmatter key as the page shows it: the draft while editing, else the file's. */
   const metaValue = (key: (typeof META_KEYS)[number]) =>
     draft?.meta[key] ?? frontmatter[key] ?? "";
+  const siteForPrompt = frontmatter.site || t("library.context.siteUnknown");
   const setMeta = (key: string, value: string) =>
     setDraft((d) => d && { ...d, meta: { ...d.meta, [key]: value } });
   const name = md.name ?? titleCase(basename(brand.path));
@@ -465,6 +467,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
               t("library.context.fillSectionPrompt", {
                 section: label,
                 path: guidePath,
+                site: siteForPrompt,
               }),
             )
           }
@@ -502,7 +505,12 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
               variant="secondary"
               size="sm"
               onClick={() =>
-                ask(t("library.context.fillBrandPrompt", { path: guidePath }))
+                ask(
+                  t("library.context.fillBrandPrompt", {
+                    path: guidePath,
+                    site: siteForPrompt,
+                  }),
+                )
               }
             >
               {t("library.context.fillFromSite")}

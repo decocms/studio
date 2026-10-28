@@ -40,9 +40,11 @@ export const library = {
   "library.context.sitePlaceholder": "https://www.sua-loja.com.br",
   "library.context.languagePlaceholder": "pt-BR",
   "library.context.fillBrandPrompt":
-    "Leia nosso site e escreva o guia da nossa marca em {path}, uma seção ## para cada: tom de voz, público, frases de exemplo que soam como a gente e que não soam, regras de escrita, vocabulário, o que evitar, valores com a evidência de cada um, concorrentes, palavras-chave, datas especiais e políticas comerciais. Mantenha o que já estiver escrito.",
+    "Use a skill brand e siga o fill.md dela para preencher o guia da nossa marca em {path} a partir do nosso site, {site}. Preencha só as seções que ainda estão vazias, inclusive os formatos de post, e mantenha exatamente o que já estiver escrito.",
   "library.context.fillSectionPrompt":
-    'Leia nosso site e adicione uma seção "{section}" ao guia da nossa marca em {path}. Mantenha o resto como está.',
+    'Use a skill brand e siga o fill.md dela para preencher a seção "{section}" do guia da nossa marca em {path} a partir do nosso site, {site}. Não mexa no resto.',
+  "library.context.siteUnknown":
+    "cujo endereço você encontra pela nossa conexão VTEX ou pelo nome da marca",
   "library.context.thisProject": "Este projeto",
   "library.context.allFiles": "Todos os arquivos",
   "library.context.brand": "Marca",

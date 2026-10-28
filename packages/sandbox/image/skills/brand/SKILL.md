@@ -12,6 +12,7 @@ everything that generates output consumes it.
 | --- | --- |
 | See a complete example | read `examples/tokens.css` and `examples/brand.md` (in this skill folder) |
 | Create a brand | write the files into `/app/org/home/brands/<name>/` (steps below) |
+| Fill the guide from the site | read `fill.md` (in this skill folder) and follow it |
 | Build a deck theme | `slides-create … --theme /app/org/home/brands/<name>/slides-theme.html` (see the `slides` skill) |
 | Edit later | the user edits it in Studio's Library → Brands (or you rewrite the files) |
 
@@ -65,7 +66,8 @@ greens/ambers/reds when not provided.
 Prose the agent follows when writing copy or designing. Structure (see
 `examples/brand.md` in this skill folder):
 
-- Optional frontmatter: `name` + `description`.
+- Frontmatter: `name` + `description`, and `site` (the store's public
+  address) + `language` (BCP-47, e.g. `pt-BR`) — the blog writes with both.
 - **Concept** — what the brand feels like, in 2–3 adjectives.
 - **Color** — each role and when to use it, plus rules (e.g. max N strong
   colors per view; never color without an icon/label).
@@ -74,6 +76,10 @@ Prose the agent follows when writing copy or designing. Structure (see
   (hero, primary/secondary CTA, error, empty state).
 - **Components** — recipes (button variants, card, input, badge, chip).
 - **Do / Don't** — a tight checklist.
+- **The sections the brand page shows and the blog writes with** — audience,
+  example phrases, rules, vocabulary, values, competitors, keywords, special
+  dates, commercial policies and post formats. `fill.md` lists their headings
+  and shapes; use those headings so the page and the blog find them.
 
 Be specific and opinionated — vague guidance ("be friendly") is useless;
 canonical example strings are gold.

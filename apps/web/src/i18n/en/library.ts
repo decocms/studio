@@ -38,9 +38,11 @@ export const library = {
   "library.context.sitePlaceholder": "https://www.your-store.com",
   "library.context.languagePlaceholder": "en-US",
   "library.context.fillBrandPrompt":
-    "Read our site and write our brand guide at {path}, one ## section each: voice and tone, audience, example phrases that sound like us and that don't, writing rules, vocabulary, don'ts, values with their evidence, competitors, keywords, special dates and commercial policies. Keep anything already written.",
+    "Use the brand skill and follow its fill.md to fill our brand guide at {path} from our site, {site}. Fill only the sections that are still empty, including the post formats, and keep everything already written exactly as it is.",
   "library.context.fillSectionPrompt":
-    'Read our site and add a "{section}" section to our brand guide at {path}. Keep everything else as it is.',
+    'Use the brand skill and follow its fill.md to fill the "{section}" section of our brand guide at {path} from our site, {site}. Leave everything else as it is.',
+  "library.context.siteUnknown":
+    "whose address you can find from our VTEX connection or the brand's name",
   "library.context.thisProject": "This project",
   "library.context.allFiles": "All files",
   "library.context.brand": "Brand",
