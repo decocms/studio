@@ -19,6 +19,7 @@
  */
 
 import { useState } from "react";
+import { Page } from "@/components/page";
 import { useQuery } from "@tanstack/react-query";
 import { Globe01 } from "@untitledui/icons";
 import {
@@ -1958,21 +1959,45 @@ function CdnMonitor({
     );
   }
 
+  const hostnames =
+    hosts.length > 0
+      ? `${hosts[0]}${
+          hosts.length > 1
+            ? ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
+                "{count}",
+                String(hosts.length - 1),
+              )}`
+            : ""
+        }`
+      : null;
+  // Inside the Monitor the tab names the screen and the period sits in the top bar.
+  if (performanceOnly && section === "performance") {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-auto">
+        <Page.Actions>
+          <RangePicker value={sel} onChange={setSel} />
+        </Page.Actions>
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+          {hostnames && <p className="text-meta">{hostnames}</p>}
+          <PerformanceSection
+            base={base}
+            range={sel.range}
+            rangeExtra={rangeExtra}
+            enabled={enabled}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">
           {t("mainPanelTabs.cdnTab.title")}
         </h2>
-        {hosts.length > 0 && (
-          <p className="font-mono text-xs text-muted-foreground">
-            {hosts[0]}
-            {hosts.length > 1 &&
-              ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
-                "{count}",
-                String(hosts.length - 1),
-              )}`}
-          </p>
+        {hostnames && (
+          <p className="font-mono text-xs text-muted-foreground">{hostnames}</p>
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
