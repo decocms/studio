@@ -3,6 +3,7 @@ import { getSettings, setGlobalSettings } from "../settings";
 import {
   AnalyticsRegistrationError,
   registerAnalyticsSite,
+  registerExternalAnalyticsSite,
   siteDomains,
   typedHost,
 } from "./registration";
@@ -54,6 +55,41 @@ test("a control-plane refusal carries its code and reads by its message", async 
     expect(err).toBeInstanceOf(AnalyticsRegistrationError);
     expect((err as AnalyticsRegistrationError).code).toBe("on_cdn");
     expect((err as Error).message).toBe("the collector answers on this host");
+  } finally {
+    fetchSpy.mockRestore();
+  }
+});
+
+test("an external site registers by domain and keeps the key only when it created it", async () => {
+  const fetchSpy = spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(
+      Response.json(
+        { id: "d-loja-example-com-1a2b3c4d", key: "dq_new", created: true },
+        { status: 201 },
+      ),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        id: "d-loja-example-com-1a2b3c4d",
+        key: null,
+        created: false,
+      }),
+    );
+  try {
+    const body = { domains: ["loja.example.com"], modules: ["core"] };
+    expect(await registerExternalAnalyticsSite(body)).toEqual({
+      id: "d-loja-example-com-1a2b3c4d",
+      key: "dq_new",
+      created: true,
+    });
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+      "https://cp.test/api/v1/analytics/external",
+    );
+    expect(await registerExternalAnalyticsSite(body)).toEqual({
+      id: "d-loja-example-com-1a2b3c4d",
+      key: null,
+      created: false,
+    });
   } finally {
     fetchSpy.mockRestore();
   }
