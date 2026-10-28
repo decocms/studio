@@ -2,8 +2,8 @@ import { z } from "zod";
 import { reactToSuperAgentDelegation } from "@/automations/fire-implementer";
 import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskKey } from "@decocms/shared/task-key";
-import { hasAdminRole } from "@decocms/shared/auth/roles";
 import {
+  AnalyticsRegistrationError,
   readAnalyticsRegistration,
   registerAnalyticsSite,
   siteDomains,
@@ -22,7 +22,7 @@ import { buildInstruction } from "./instruction";
 export const ANALYTICS_INSTALL = defineTool({
   name: "ANALYTICS_INSTALL",
   description:
-    "Delegate adding Deco Analytics to a site's code to the Super Agent: it puts the collector's tag in the site's <head>, tracks purchases where the repo renders the order confirmation, and opens a PR. Registers the site with the collector first when it isn't yet (admins only), and links it to the organization's data lake, so its traffic reaches CUSTOMER_LAKE_QUERY. Requires a linked GitHub repository.",
+    "Delegate adding Deco Analytics to a site's code to the Super Agent: it puts the collector's tag in the site's <head>, tracks purchases where the repo renders the order confirmation, and opens a PR. Registers the site with the collector by key first when it can't collect yet, and links it to the organization's data lake, so its traffic reaches CUSTOMER_LAKE_QUERY. Requires a linked GitHub repository.",
   annotations: {
     title: "Install Analytics On Site",
     readOnlyHint: false,
@@ -80,25 +80,30 @@ export const ANALYTICS_INSTALL = defineTool({
     }
 
     let registration = await readAnalyticsRegistration(site);
-    if (registration.status === "unregistered") {
-      // Same gate as registering from the site's Analytics tab.
-      if (!hasAdminRole(ctx.access.getRole())) {
-        throw new Error(
-          `${site} isn't registered with Deco Analytics yet — an admin has to install it.`,
-        );
-      }
+    // Keyed, because a keyed tag collects on any host; a host registration
+    // collects only where `/_dq/*` is routed to the collector, which the
+    // control-plane checks before converting one.
+    if (
+      registration.status === "unregistered" ||
+      (registration.status === "registered" && !registration.key)
+    ) {
       if (!registration.host) {
         throw new Error(
           `${site} has no production domain to register for analytics.`,
         );
       }
-      // Keyed, because a keyed tag collects on any host today; a
-      // host registration collects only where `_dq/*` is routed to the collector.
-      await registerAnalyticsSite(site, {
-        key: true,
-        domains: siteDomains(registration.host),
-        modules: ["core", "commerce", "vitals"],
-      });
+      try {
+        await registerAnalyticsSite(site, {
+          key: true,
+          domains: siteDomains(registration.host),
+          modules: ["core", "commerce", "vitals"],
+        });
+      } catch (err) {
+        if (
+          !(err instanceof AnalyticsRegistrationError && err.code === "on_cdn")
+        )
+          throw err;
+      }
       registration = await readAnalyticsRegistration(site);
     }
     if (registration.status !== "registered") {
