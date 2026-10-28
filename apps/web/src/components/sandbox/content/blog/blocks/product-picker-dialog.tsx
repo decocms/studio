@@ -11,17 +11,13 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { KEYS } from "@/lib/query-keys";
-import { type PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
-import {
-  buildProductRequests,
-  productOptionsFromPayload,
-  type CategoryOption,
-  type PickerLoaderRequest,
-  type ProductPickerMode,
-  type ProductPickerOption,
+import type {
+  CategoryOption,
+  ProductPickerMode,
+  ProductPickerOption,
 } from "./product-picker-source";
-import { CategoryTreeList, sandboxKey, StatusLine } from "./category-tree-list";
-import { invokeLoader } from "./use-product-lookup";
+import type { CatalogSource } from "./catalog-source";
+import { CategoryTreeList, StatusLine } from "./category-tree-list";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 
@@ -30,43 +26,6 @@ const MODES = [
   { id: "category", labelKey: "sandbox.productPickerDialog.modeCategory" },
   { id: "cluster", labelKey: "sandbox.productPickerDialog.modeClusterId" },
 ] as const satisfies { id: ProductPickerMode; labelKey: TranslationKey }[];
-
-/**
- * Fetch products for the current mode+term. A term can fan out to several
- * loader calls (numeric search tries ids + name query); they run in parallel
- * and merge in order, deduped by id. Tolerates partial failure as long as one
- * call succeeds.
- */
-async function fetchProducts(
-  ref: PreviewProxyRef,
-  requests: PickerLoaderRequest[],
-): Promise<ProductPickerOption[]> {
-  if (requests.length === 0) return [];
-  const settled = await Promise.allSettled(
-    requests.map((request) => invokeLoader(ref, request)),
-  );
-  const payloads = settled
-    .filter(
-      (s): s is PromiseFulfilledResult<unknown> => s.status === "fulfilled",
-    )
-    .map((s) => s.value);
-  if (payloads.length === 0) {
-    const failed = settled.find(
-      (s): s is PromiseRejectedResult => s.status === "rejected",
-    );
-    throw failed ? failed.reason : new Error("Failed to fetch products");
-  }
-  const merged: ProductPickerOption[] = [];
-  const seen = new Set<string>();
-  for (const payload of payloads) {
-    for (const option of productOptionsFromPayload(payload)) {
-      if (seen.has(option.id)) continue;
-      seen.add(option.id);
-      merged.push(option);
-    }
-  }
-  return merged;
-}
 
 /**
  * A text field whose committed value trails typing by `delay`. Debounces in
@@ -141,12 +100,12 @@ function ProductRow({
 
 /** The category picker pane — pick one to filter products by it. */
 function CategoryPane({
-  sandboxRef,
+  source,
   open,
   selected,
   onSelect,
 }: {
-  sandboxRef: PreviewProxyRef;
+  source: CatalogSource;
   open: boolean;
   selected: CategoryOption | null;
   onSelect: (category: CategoryOption | null) => void;
@@ -172,7 +131,7 @@ function CategoryPane({
 
   return (
     <CategoryTreeList
-      sandboxRef={sandboxRef}
+      source={source}
       enabled={open}
       onSelect={onSelect}
       className="h-48"
@@ -193,7 +152,7 @@ function CategoryPane({
 export function ProductPickerDialog({
   open,
   onOpenChange,
-  sandboxRef,
+  source,
   selectedIds,
   onChange,
   onPicked,
@@ -201,7 +160,7 @@ export function ProductPickerDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  sandboxRef: PreviewProxyRef;
+  source: CatalogSource;
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   /**
@@ -225,15 +184,10 @@ export function ProductPickerDialog({
       : mode === "cluster"
         ? cluster.debounced
         : (category?.path ?? "");
-  const requests = buildProductRequests(mode, term);
-
   const productsQuery = useQuery({
-    queryKey: KEYS.sandboxInvoke(
-      sandboxKey(sandboxRef),
-      `blog-product:${mode}:${term}`,
-    ),
-    queryFn: () => fetchProducts(sandboxRef, requests),
-    enabled: open && requests.length > 0,
+    queryKey: KEYS.sandboxInvoke(source.key, `blog-product:${mode}:${term}`),
+    queryFn: () => source.searchProducts(mode, term),
+    enabled: open && source.canSearch(mode, term),
     staleTime: 60_000,
     retry: 1,
   });
@@ -257,7 +211,7 @@ export function ProductPickerDialog({
   };
 
   const products = productsQuery.data ?? [];
-  const showEmptyPrompt = requests.length === 0;
+  const showEmptyPrompt = !source.canSearch(mode, term);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -313,7 +267,7 @@ export function ProductPickerDialog({
           )}
           {mode === "category" && (
             <CategoryPane
-              sandboxRef={sandboxRef}
+              source={source}
               open={open}
               selected={category}
               onSelect={setCategory}

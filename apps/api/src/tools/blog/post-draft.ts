@@ -7,9 +7,12 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
-import { requireBlogConnections } from "./connections";
+import {
+  blogGroundingConnections,
+  requireBlogConnections,
+} from "./connections";
 import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
-import { renderGrounding, VirtualMcpIdSchema } from "./site-tools";
+import { renderGrounding } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { ReducedContextSchema } from "./schema";
 import {
@@ -409,7 +412,6 @@ export const BLOG_POST_DRAFT = defineTool({
       .describe(
         "The organization's bucket, where a generated image is uploaded so a reader can load it. Omit and no image is made.",
       ),
-    virtualMcpId: VirtualMcpIdSchema,
     grounding: GroundingInputSchema,
   }),
 
@@ -463,7 +465,9 @@ export const BLOG_POST_DRAFT = defineTool({
       );
     }
     await requireBlogAi(ctx, organizationId);
-    await requireBlogConnections(ctx, organizationId);
+    const connections = blogGroundingConnections(
+      await requireBlogConnections(ctx, organizationId),
+    );
 
     const { brand, campaign } = input;
     const missing = [
@@ -494,7 +498,7 @@ export const BLOG_POST_DRAFT = defineTool({
       organizationId,
       input.grounding,
       {
-        virtualMcpId: input.virtualMcpId,
+        connections,
         language: brand.language,
         label: "BLOG_POST_DRAFT",
         maxSteps: GROUNDING_MAX_STEPS,

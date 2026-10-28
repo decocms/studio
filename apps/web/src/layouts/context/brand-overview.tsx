@@ -7,6 +7,7 @@
 import type { ComponentType } from "react";
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   BookOpen01,
@@ -17,6 +18,7 @@ import {
   Columns03,
   Heart,
   Lock01,
+  Announcement02,
   MessageChatSquare,
   MessageTextSquare01,
   SearchMd,
@@ -72,9 +74,14 @@ import {
   pickBrandDir,
   sectionMarkdown,
   withFontName,
+  writeFrontmatter,
   writeQuote,
   writeSection,
 } from "@decocms/shared/brand";
+import { parseFrontmatterDoc } from "@decocms/shared/harness/skill-md";
+import { useBlogAi } from "@/hooks/use-blog-ai";
+import { scanCampaigns } from "@/components/sandbox/content/blog/blog-data";
+import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
 
 /** The colors a brand is recognised by, in the order a person names them. */
 const SWATCHES = ["primary", "secondary", "accent", "bg", "fg"] as const;
@@ -117,6 +124,43 @@ const ITEMS = {
   BrandItemId,
   { labelKey: TranslationKey; Icon: Icon }
 >;
+
+/** The frontmatter keys the blog reads that the page edits. */
+const META_KEYS = ["site", "language"] as const;
+
+const META_LABELS = {
+  site: "library.context.siteLabel",
+  language: "library.context.languageLabel",
+} as const satisfies Record<(typeof META_KEYS)[number], TranslationKey>;
+
+const META_PLACEHOLDERS = {
+  site: "library.context.sitePlaceholder",
+  language: "library.context.languagePlaceholder",
+} as const satisfies Record<(typeof META_KEYS)[number], TranslationKey>;
+
+/** The brand's campaigns, as one row that opens them. */
+function CampaignsRow() {
+  const t = useT();
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const blog = useBlogState({ orgSlug: org.slug });
+  const live = scanCampaigns(blog.blocks).filter(
+    (campaign) => campaign.status !== "finished",
+  );
+  return (
+    <SectionRow
+      title={t("library.context.itemCampaigns")}
+      summary={
+        live.map((campaign) => campaign.name).join(", ") ||
+        t("library.context.noCampaigns")
+      }
+      Icon={Announcement02}
+      onOpen={() =>
+        void navigate({ to: ".", search: { section: "campaigns" } })
+      }
+    />
+  );
+}
 
 /** A formats section's summary: the names of the formats it defines. */
 function formatNames(md: string, title: string): string {
@@ -200,6 +244,7 @@ export function BrandOverview() {
 
 function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   const t = useT();
+  const blogAi = useBlogAi();
   const fileUrl = useOrgFsFileUrl();
   const queryClient = useQueryClient();
   const ask = useAskInChat();
@@ -211,6 +256,8 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     sections: Record<string, string>;
     tokens: Record<string, string>;
     quote: string | null;
+    /** Frontmatter keys the blog reads, by key. */
+    meta: Record<string, string>;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const editing = draft !== null;
@@ -230,6 +277,12 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     (!has("tokens.css") || typeof tokensCss.data === "string");
   const raw = brandMd.data ?? "";
   const md = parseSkillMd(raw);
+  const frontmatter = parseFrontmatterDoc(raw).fm;
+  /** A frontmatter key as the page shows it: the draft while editing, else the file's. */
+  const metaValue = (key: (typeof META_KEYS)[number]) =>
+    draft?.meta[key] ?? frontmatter[key] ?? "";
+  const setMeta = (key: string, value: string) =>
+    setDraft((d) => d && { ...d, meta: { ...d.meta, [key]: value } });
   const name = md.name ?? titleCase(basename(brand.path));
   const quote = brandQuote(md.body) ?? md.description;
   const { doLine, dontLine } = brandDoDont(md.body);
@@ -266,6 +319,11 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
       if (text.trim() === (before ?? "").trim()) continue;
       if (before === null && !text.trim()) continue;
       nextMd = writeSection(nextMd, title, text);
+    }
+    for (const [key, value] of Object.entries(draft.meta)) {
+      if (value.trim() !== (frontmatter[key] ?? "").trim()) {
+        nextMd = writeFrontmatter(nextMd, key, value);
+      }
     }
     if (draft.quote !== null && draft.quote.trim() !== (quote ?? "").trim()) {
       nextMd = writeQuote(nextMd, draft.quote);
@@ -319,6 +377,10 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           queryKey: KEYS.fileText(write.url),
         });
         invalidateOrgFsWrite(queryClient, org.id, HOME_MOUNT_PATH);
+        /* The blog reads this guide as its brand. */
+        void queryClient.invalidateQueries({
+          queryKey: KEYS.blogState(org.slug),
+        });
         if (outcome !== "saved") {
           toast.error(
             t(
@@ -414,7 +476,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
 
   function startEditing() {
     if (!loaded) return;
-    setDraft({ sections: {}, tokens: {}, quote: null });
+    setDraft({ sections: {}, tokens: {}, quote: null, meta: {} });
   }
 
   return (
@@ -488,8 +550,36 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
             )}
           </button>
         )}
-        <h1 className="min-w-0 text-2xl font-medium text-foreground">{name}</h1>
+        <div className="flex min-w-0 flex-col">
+          <h1 className="min-w-0 text-2xl font-medium text-foreground">
+            {name}
+          </h1>
+          {!editing && (metaValue("site") || metaValue("language")) && (
+            <span className="truncate text-xs text-muted-foreground">
+              {[metaValue("site"), metaValue("language")]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+        </div>
       </div>
+      {editing && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {META_KEYS.map((key) => (
+            <label
+              key={key}
+              className="flex flex-col gap-1.5 text-xs text-muted-foreground"
+            >
+              {t(META_LABELS[key])}
+              <Input
+                value={metaValue(key)}
+                placeholder={t(META_PLACEHOLDERS[key])}
+                onChange={(e) => setMeta(key, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <section
@@ -639,6 +729,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
               ),
             );
           })}
+          {group.id === "content" && blogAi && <CampaignsRow />}
         </section>
       ))}
       {more.length > 0 && (

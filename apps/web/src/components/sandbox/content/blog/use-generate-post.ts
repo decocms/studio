@@ -258,7 +258,6 @@ export function useGeneratePost({
        */
       const grounding = await studio
         .call("BLOG_SITE_GROUND", {
-          virtualMcpId,
           purpose: "post",
           focus: `${briefing.campaign.name}: ${briefing.campaign.trigger.note}`,
           language: brand.language,
@@ -269,7 +268,6 @@ export function useGeneratePost({
         });
 
       const result = await studio.call("BLOG_POST_DRAFT", {
-        virtualMcpId,
         grounding: grounding
           ? { report: grounding.report, outcome: grounding.outcome }
           : undefined,

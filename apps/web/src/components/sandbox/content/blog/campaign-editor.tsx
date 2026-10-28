@@ -47,15 +47,10 @@ import { RuleList, TermsInput } from "./blocks/rule-list";
 import { CategoryTreeList } from "./blocks/category-tree-list";
 import { reHome } from "@decocms/shared/store-url";
 import { ProductPickerDialog } from "./blocks/product-picker-dialog";
-import {
-  buildProductRequests,
-  productOptionsFromPayload,
-  type ProductPickerOption,
-} from "./blocks/product-picker-source";
-import { invokeLoader, useProductsByIds } from "./blocks/use-product-lookup";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { ProductPickerOption } from "./blocks/product-picker-source";
+import { useProductsByIds } from "./blocks/use-product-lookup";
+import type { CatalogSource } from "./blocks/catalog-source";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
-import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 import {
   buildCampaignBlock,
   CAMPAIGN_OBJECTIVES,
@@ -215,7 +210,7 @@ export function CampaignEditor({
   isSaving,
   onSeed,
   onEdit,
-  sandboxRef,
+  catalog,
   storeUrl,
 }: {
   blockKey: string;
@@ -233,8 +228,8 @@ export function CampaignEditor({
   onSeed?: () => void;
   /** An edit is made (see `useAutosave`'s `onEdit`). */
   onEdit?: () => HeldEdit | undefined;
-  /** Absent outside a sandbox session — the store pickers hide, typing stays. */
-  sandboxRef?: PreviewProxyRef;
+  /** The store's catalog; null while it cannot be asked — the pickers hide, typing stays. */
+  catalog: CatalogSource | null;
   /** The brand's storefront domain, so picked links are the public ones. */
   storeUrl: string;
 }) {
@@ -282,18 +277,17 @@ export function CampaignEditor({
   /**
    * Which of these ids the store actually answers for.
    *
-   * Read through the loader a published block uses, so the two cannot
-   * disagree. A campaign reads fine either way — the row shows the name and
+   * Read from the store itself. A campaign reads fine either way — the row shows the name and
    * image the catalogue transcribed — and an id that resolves to nothing only
    * surfaces as a placeholder on a published shelf, after the generation is
    * paid for. A whole campaign once shipped stored by `productGroupID`:
    * fourteen rows, fourteen nulls, and nothing on this screen said so.
    */
   const lookup = useProductsByIds(
-    sandboxRef,
+    catalog,
     products.map((product) => product.id),
   );
-  const checked = !!sandboxRef && !lookup.isLoading && !lookup.isError;
+  const checked = !!catalog && !lookup.isLoading && !lookup.isError;
   const unresolved = checked
     ? products.filter((product) => product.id && !lookup.byId.has(product.id))
     : [];
@@ -306,25 +300,20 @@ export function CampaignEditor({
    * than leaving the row empty — those stay flagged for a manual repick.
    */
   const repairByName = async () => {
-    if (!sandboxRef || unresolved.length === 0) return;
+    if (!catalog || unresolved.length === 0) return;
     setRepairing(true);
     try {
       const found = new Map<string, string>();
       for (const product of unresolved) {
         const name = product.name.trim();
         if (!name) continue;
-        for (const request of buildProductRequests("search", name)) {
-          const options = await invokeLoader(sandboxRef, request)
-            .then(productOptionsFromPayload)
-            .catch(() => []);
-          const match =
-            options.find((option) => option.groupId === product.id) ??
-            options.find((option) => option.label.trim() === name);
-          if (match) {
-            found.set(product.id, match.id);
-            break;
-          }
-        }
+        const options = await catalog
+          .searchProducts("search", name)
+          .catch(() => []);
+        const match =
+          options.find((option) => option.groupId === product.id) ??
+          options.find((option) => option.label.trim() === name);
+        if (match) found.set(product.id, match.id);
       }
       if (found.size === 0) {
         toast.warning(t("sandbox.campaigns.productsRepairNone"));
@@ -646,9 +635,9 @@ export function CampaignEditor({
           </CollapsibleList>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {sandboxRef && (
+          {catalog && (
             <CategoryTargetPicker
-              sandboxRef={sandboxRef}
+              source={catalog}
               storeUrl={storeUrl}
               onPick={(picked) => addTarget(picked)}
             />
@@ -759,7 +748,6 @@ export function CampaignEditor({
                   <ProductImages
                     images={product.images}
                     idPrefix={`${blockKey}-product-${index}`}
-                    sandbox={sandboxRef}
                     onChange={(images) => patchProduct(index, { images })}
                   />
                 </div>
@@ -768,7 +756,7 @@ export function CampaignEditor({
           </CollapsibleList>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {sandboxRef && (
+          {catalog && (
             <Button
               type="button"
               variant="outline"
@@ -784,11 +772,11 @@ export function CampaignEditor({
             onClick={() => addProduct()}
           />
         </div>
-        {sandboxRef && (
+        {catalog && (
           <ProductPickerDialog
             open={pickerOpen}
             onOpenChange={setPickerOpen}
-            sandboxRef={sandboxRef}
+            source={catalog}
             selectedIds={products.map((p) => p.id).filter(Boolean)}
             onChange={() => {}}
             onPicked={togglePicked}
@@ -879,12 +867,10 @@ export function CampaignEditor({
 function ProductImages({
   images,
   idPrefix,
-  sandbox,
   onChange,
 }: {
   images: string[];
   idPrefix: string;
-  sandbox?: SandboxConfig | null;
   onChange: (images: string[]) => void;
 }) {
   const t = useT();
@@ -907,7 +893,6 @@ function ProductImages({
               }
               path={`${idPrefix}-image-${index}`}
               label=""
-              sandbox={sandbox}
               compact
             />
           </div>
@@ -933,11 +918,11 @@ function ProductImages({
  * collection (no storefront here lists them) or a store that is not up.
  */
 function CategoryTargetPicker({
-  sandboxRef,
+  source,
   storeUrl,
   onPick,
 }: {
-  sandboxRef: PreviewProxyRef;
+  source: CatalogSource;
   /** The brand's storefront domain; the tree reports the platform's. */
   storeUrl: string;
   onPick: (target: Partial<CampaignTarget>) => void;
@@ -954,7 +939,7 @@ function CategoryTargetPicker({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <CategoryTreeList
-          sandboxRef={sandboxRef}
+          source={source}
           enabled={open}
           className="h-56"
           onSelect={(category) => {

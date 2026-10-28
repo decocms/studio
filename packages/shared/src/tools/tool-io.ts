@@ -2291,7 +2291,6 @@ export interface StudioToolIO {
   BLOG_SITE_GROUND: {
     input: {
       purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
-      virtualMcpId?: string | undefined;
       focus?: string | undefined;
       language?: string | undefined;
     };
@@ -2622,7 +2621,6 @@ export interface StudioToolIO {
       extraInstructions?: string | undefined;
       count?: number | undefined;
       fileConfigId?: string | undefined;
-      virtualMcpId?: string | undefined;
       grounding?:
         | {
             report: string;
@@ -2736,7 +2734,6 @@ export interface StudioToolIO {
       };
       existingNames?: string[] | undefined;
       count?: number | undefined;
-      virtualMcpId?: string | undefined;
       grounding?:
         | {
             report: string;

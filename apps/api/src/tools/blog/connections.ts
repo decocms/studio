@@ -9,6 +9,7 @@ import type { ConnectionEntity } from "@decocms/shared/sdk/types";
 import type { StudioContext } from "../../core/studio-context";
 import { canRefresh } from "../../oauth/token-refresh";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
+import { type GroundingConnection, VTEX_GROUNDING_TOOLS } from "./site-tools";
 
 /**
  * The blog runs on the organization's VTEX and GA4 connections and refuses to
@@ -71,4 +72,18 @@ export async function requireBlogConnections(
     );
   }
   return { vtex: vtex.connectionId, ga4: ga4.connectionId };
+}
+
+/**
+ * The two connections as a grounding pass reads them: VTEX through the tools
+ * that answer a writer's questions, GA4 through all its read-only ones.
+ */
+export function blogGroundingConnections(ids: {
+  vtex: string;
+  ga4: string;
+}): GroundingConnection[] {
+  return [
+    { id: ids.vtex, label: "vtex", allow: VTEX_GROUNDING_TOOLS },
+    { id: ids.ga4, label: "ga4" },
+  ];
 }

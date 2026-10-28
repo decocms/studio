@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
-import { requireBlogConnections } from "./connections";
+import {
+  blogGroundingConnections,
+  requireBlogConnections,
+} from "./connections";
 
 /** Only what the guard reads: the org's connections. GA4 here signs in with a token. */
 function ctxWith(items: Record<string, unknown>[]): StudioContext {
@@ -50,4 +53,12 @@ describe("requireBlogConnections", () => {
       requireBlogConnections(ctxWith([VTEX, unpicked]), "org"),
     ).rejects.toThrow("blog-connections-missing: ga4");
   });
+});
+
+test("grounding reads VTEX through its allowlist and GA4 whole", () => {
+  const [vtex, ga4] = blogGroundingConnections({ vtex: "v", ga4: "g" });
+  expect(vtex?.id).toBe("v");
+  expect(vtex?.allow?.has("VTEX_IS_GET_PRODUCT_SEARCH")).toBe(true);
+  expect(vtex?.allow?.has("VTEX_UPDATE_PRICE")).toBe(false);
+  expect(ga4).toEqual({ id: "g", label: "ga4" });
 });

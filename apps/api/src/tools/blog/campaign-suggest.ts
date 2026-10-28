@@ -9,7 +9,10 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
-import { requireBlogConnections } from "./connections";
+import {
+  blogGroundingConnections,
+  requireBlogConnections,
+} from "./connections";
 import {
   CatalogueInputSchema,
   GroundingInputSchema,
@@ -20,7 +23,6 @@ import {
   extractCatalogue,
   type GroundingOutcome,
   renderGrounding,
-  VirtualMcpIdSchema,
 } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
 import { BlogContextSchema, boundedText, BrandRuleSchema } from "./schema";
@@ -552,7 +554,6 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       .max(3)
       .default(3)
       .describe("The most candidates to return. Fewer is a valid answer."),
-    virtualMcpId: VirtualMcpIdSchema,
     grounding: GroundingInputSchema,
     catalogue: CatalogueInputSchema,
   }),
@@ -595,7 +596,9 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       );
     }
     await requireBlogAi(ctx, organizationId);
-    await requireBlogConnections(ctx, organizationId);
+    const connections = blogGroundingConnections(
+      await requireBlogConnections(ctx, organizationId),
+    );
 
     const brandName = input.brand.companyName ?? "this brand";
     const report = await resolveGrounding(
@@ -603,7 +606,7 @@ export const BLOG_CAMPAIGN_SUGGEST = defineTool({
       organizationId,
       input.grounding,
       {
-        virtualMcpId: input.virtualMcpId,
+        connections,
         language: input.brand.language,
         label: "BLOG_CAMPAIGN_SUGGEST",
         maxSteps: GROUNDING_MAX_STEPS,

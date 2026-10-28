@@ -42,6 +42,7 @@ export const taskBoardSearchShape = {
 const CONTEXT_SECTIONS = [
   "files",
   "brand",
+  "campaigns",
   "connections",
   "repositories",
   "skills",

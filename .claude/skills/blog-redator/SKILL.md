@@ -27,7 +27,7 @@ t BLOG_POST_DRAFT "$(bun -e '
   const g = await Bun.file(process.env.RUN+"/grounding.json").json();
   const campaign = st.campaigns.find(c => c.id === process.env.CAMPAIGN) ?? st.campaigns[0];
   const format = (st.formats?.formats ?? [])[0];
-  console.log(JSON.stringify({ virtualMcpId: process.env.VMCP,
+  console.log(JSON.stringify({
     brand: { ...st.brand, ...st.context },
     campaign: { ...campaign.data, name: campaign.data.campaignName }, format,
     blocks: bl.blocks, categories: bl.categories, authors: bl.authors, count: 1,

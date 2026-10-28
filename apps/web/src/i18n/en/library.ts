@@ -15,6 +15,9 @@ export const library = {
   "library.context.groupGuardrails": "Guardrails",
   "library.context.groupExtra": "Extra context",
   "library.context.groupContent": "Content",
+  "library.context.campaignsOffTitle": "Campaigns are off",
+  "library.context.campaignsOffDescription":
+    "Agentic blog generation is off for this organization. An admin can turn it on under Settings.",
   "library.context.groupMore": "More",
   "library.context.itemVoice": "Voice & tone",
   "library.context.itemAudience": "Audience",
@@ -28,6 +31,12 @@ export const library = {
   "library.context.itemDates": "Special dates",
   "library.context.itemPolicies": "Commercial policies",
   "library.context.itemFormats": "Formats",
+  "library.context.itemCampaigns": "Campaigns",
+  "library.context.noCampaigns": "No campaigns yet",
+  "library.context.siteLabel": "Site",
+  "library.context.languageLabel": "Language",
+  "library.context.sitePlaceholder": "https://www.your-store.com",
+  "library.context.languagePlaceholder": "en-US",
   "library.context.fillBrandPrompt":
     "Read our site and write our brand guide at {path}, one ## section each: voice and tone, audience, example phrases that sound like us and that don't, writing rules, vocabulary, don'ts, values with their evidence, competitors, keywords, special dates and commercial policies. Keep anything already written.",
   "library.context.fillSectionPrompt":

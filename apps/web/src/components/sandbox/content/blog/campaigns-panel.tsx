@@ -1,7 +1,3 @@
-import {
-  copyScope,
-  useCopyEpochs,
-} from "@/components/sections-editor/held-copy";
 /**
  * Campaigns: the board and the list, behind one view toggle.
  *
@@ -48,7 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { CatalogSource } from "./blocks/catalog-source";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import {
   GenerateCampaignsDialog,
@@ -116,37 +112,18 @@ function periodLabel(campaign: CampaignEntry): string | null {
 }
 
 export function CampaignsPanel({
-  orgSlug,
-  virtualMcpId,
-  branch,
-  decofile,
   blog,
+  catalog,
 }: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  decofile: Record<string, unknown>;
+  /** The organization's blog state: its brand and its campaigns. */
   blog: BlogState;
+  /** The store's catalog, for the product and category pickers. */
+  catalog: CatalogSource | null;
 }) {
   const t = useT();
-  /**
-   * A campaign is a library record now, not a decofile block, so its writes go
-   * through the blog state rather than through `useSaveBlock`'s copy guard.
-   */
+  /** Campaigns are the organization's records, written through its blog state. */
   const { save, remove: deleteBlock } = blog;
-  // A reconcile replaced a campaign's copy: its form shows the draft's.
-  const copyEpochOf = useCopyEpochs(
-    copyScope({ orgSlug, virtualMcpId, branch }),
-  );
-
-  /** The store pickers address the site by these coordinates; campaigns are a
-   *  thread-less surface, which the contract allows. */
-  const sandboxRef: PreviewProxyRef = {
-    orgSlug,
-    virtualMcpId,
-    branch,
-    threadId: null,
-  };
+  const decofile = blog.blocks;
 
   const hasAi = useHostedAiProviderKeys().length > 0;
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -448,7 +425,7 @@ export function CampaignsPanel({
           <div className="min-w-0 flex-1 overflow-y-auto">
             {detailKey ? (
               <CampaignEditor
-                key={`${detailKey}:${copyEpochOf(detailKey)}`}
+                key={detailKey}
                 blockKey={detailKey}
                 block={decofile[detailKey] as Record<string, unknown>}
                 onSave={(data) => save.mutate({ blockKey: detailKey, data })}
@@ -457,7 +434,7 @@ export function CampaignsPanel({
                   if (campaign) setPendingDelete(campaign);
                 }}
                 isSaving={save.isPending}
-                sandboxRef={sandboxRef}
+                catalog={catalog}
                 storeUrl={storeUrl}
               />
             ) : (
@@ -507,7 +484,6 @@ export function CampaignsPanel({
         open={generateOpen}
         onOpenChange={setGenerateOpen}
         decofile={decofile}
-        virtualMcpId={virtualMcpId}
         hasAi={hasAi}
         onCreate={createFromSeed}
       />
@@ -528,7 +504,7 @@ export function CampaignsPanel({
           </DialogTitle>
           {boardKey && (
             <CampaignEditor
-              key={`${boardKey}:${copyEpochOf(boardKey)}`}
+              key={boardKey}
               blockKey={boardKey}
               block={decofile[boardKey] as Record<string, unknown>}
               onSave={(data) => save.mutate({ blockKey: boardKey, data })}
@@ -538,7 +514,7 @@ export function CampaignsPanel({
               }}
               onClose={() => setOpenKey(null)}
               isSaving={save.isPending}
-              sandboxRef={sandboxRef}
+              catalog={catalog}
               storeUrl={storeUrl}
             />
           )}

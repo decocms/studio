@@ -224,6 +224,79 @@ async function siteTools(
 }
 
 /**
+ * What the blog may read off the store's VTEX connection while grounding.
+ *
+ * The connection serves hundreds of tools — its tool list alone is close to a
+ * megabyte — and a grounding pass offered all of them spends its budget
+ * choosing. These answer the questions a post or a campaign asks: what sells,
+ * what is searched, how the catalog is organized.
+ */
+export const VTEX_GROUNDING_TOOLS: ReadonlySet<string> = new Set([
+  "VTEX_IS_GET_PRODUCT_SEARCH",
+  "VTEX_IS_GET_TOP_SEARCHES",
+  "VTEX_IS_GET_SEARCH_SUGGESTIONS",
+  "VTEX_IS_GET_FACETS",
+  "VTEX_LIST_CATEGORIES",
+  "VTEX_LIST_BRANDS",
+  "VTEX_LIST_COLLECTIONS",
+  "VTEX_SEARCH_COLLECTIONS",
+  "VTEX_GET_COLLECTION_PRODUCTS",
+  "VTEX_GET_PRODUCT",
+  "VTEX_GET_HOME_TOP_VIEWED_PRODUCTS",
+  "VTEX_GET_SALES_PERFORMANCE_SUMMARY",
+  "VTEX_GET_ORDERS_TREND",
+]);
+
+/** One organization connection a grounding pass may read. */
+export interface GroundingConnection {
+  id: string;
+  /** Prefixes its tools, so two systems' names never collide. */
+  label: string;
+  /** Absent: every read-only tool it declares. */
+  allow?: ReadonlySet<string>;
+}
+
+/** The connections' read-only tools, merged, each system under its label. */
+async function connectionTools(
+  ctx: StudioContext,
+  connections: readonly GroundingConnection[],
+  passTimeoutMs: number,
+  onCall: (call: GroundingCall) => void,
+  onResult: (name: string, raw: string) => void,
+): Promise<{ tools: ToolSet; systems: number }> {
+  const sets = await Promise.all(
+    connections.map(async (connection) => {
+      const client = await ctx.createMCPProxy(connection.id);
+      const { tools } = await toolsFromMCP(
+        client,
+        new Map(),
+        undefined,
+        "auto",
+        {
+          isToolVisible: (tool) =>
+            isGroundingTool(tool) &&
+            (!connection.allow || connection.allow.has(tool.name)),
+          disableOutputTruncation: false,
+          timeoutMs: Math.round(passTimeoutMs * TOOL_CALL_BUDGET),
+          onToolCalled: (event) =>
+            onCall({
+              tool: event.toolName,
+              ms: Math.round(event.latencyMs),
+              ok: !event.isError,
+            }),
+        },
+      );
+      return Object.entries(tools).map(([name, tool]) => {
+        const labelled = `${connection.label}_${name}`;
+        return [labelled, survivingFailure(tool, labelled, onResult)] as const;
+      });
+    }),
+  );
+  const reached = sets.filter((set) => set.length > 0);
+  return { tools: Object.fromEntries(reached.flat()), systems: reached.length };
+}
+
+/**
  * The site whose connected systems may be consulted.
  *
  * Optional throughout: a caller that omits it gets the same generation it got
@@ -238,8 +311,14 @@ export const VirtualMcpIdSchema = z
   );
 
 export interface GroundingRequest {
-  /** The site's virtual MCP. Absent means there is nothing to ask. */
+  /** The site's virtual MCP. */
   virtualMcpId?: string;
+  /**
+   * The organization's own connections, asked when there is no site — the
+   * blog's campaigns are the organization's and have none. With neither,
+   * there is nothing to ask.
+   */
+  connections?: readonly GroundingConnection[];
   /** What the caller is about to write, in one or two sentences. */
   task: string;
   /** Facts worth having, phrased for this caller. */
@@ -327,7 +406,10 @@ export async function groundSiteReport(
     calls: [],
     outcome,
   });
-  if (!request.virtualMcpId) return empty("no-site");
+  const connections = request.connections ?? [];
+  if (!request.virtualMcpId && connections.length === 0) {
+    return empty("no-site");
+  }
   const passTimeoutMs = request.timeoutMs ?? GROUNDING_TIMEOUT_MS;
   const calls: GroundingCall[] = [];
   const results: string[] = [];
@@ -342,13 +424,21 @@ export async function groundSiteReport(
     evidenceChars += entry.length;
   };
   try {
-    const { tools, systems } = await siteTools(
-      ctx,
-      request.virtualMcpId,
-      passTimeoutMs,
-      (call) => calls.push(call),
-      collect,
-    );
+    const { tools, systems } = request.virtualMcpId
+      ? await siteTools(
+          ctx,
+          request.virtualMcpId,
+          passTimeoutMs,
+          (call) => calls.push(call),
+          collect,
+        )
+      : await connectionTools(
+          ctx,
+          connections,
+          passTimeoutMs,
+          (call) => calls.push(call),
+          collect,
+        );
     const toolNames = Object.keys(tools);
     if (toolNames.length === 0) {
       console.info(

@@ -81,14 +81,18 @@ esteira.
 ### 3. Embasar
 
 ```bash
-t BLOG_SITE_GROUND "{\"virtualMcpId\":\"$VMCP\",\"purpose\":\"post\",\"focus\":\"<campanha>: <nota do gatilho>\",\"language\":\"pt-BR\"}" grounding.json
+t BLOG_SITE_GROUND "{\"purpose\":\"post\",\"focus\":\"<campanha>: <nota do gatilho>\",\"language\":\"pt-BR\"}" grounding.json
 ```
 
-Teto duro de **75s** (`GROUNDING_TIMEOUT_MS`, `site-ground.ts:41`).
+Lê a VTEX e o GA4 da org, sem projeto. Teto duro de **75s**
+(`GROUNDING_TIMEOUT_MS`).
 
-`outcome` pode voltar `no-site`, `no-tools`, `timeout` ou `failed`. **Não é
-falha da coluna** — o navegador trata embasamento ruim como *mais magro, não
-ausente* (`use-generate-post.ts:265`). Registre o `outcome` no card e siga.
+Se recusar com `blog-connections-missing`, falta conectar a VTEX ou o GA4 da
+org: **pare e diga qual**. É pré-requisito do blog, não algo pra contornar.
+
+`outcome` pode voltar `no-tools`, `timeout` ou `failed`. **Não é falha da
+coluna** — o navegador trata embasamento ruim como *mais magro, não ausente*.
+Registre o `outcome` no card e siga.
 
 ### 4. Mover o card e parar
 

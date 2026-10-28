@@ -16,19 +16,12 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { KEYS } from "@/lib/query-keys";
-import { type PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import {
-  buildCategoryTreeRequest,
-  categoryOptionsFromPayload,
   filterCategoryOptions,
   type CategoryOption,
 } from "./product-picker-source";
-import { invokeLoader } from "./use-product-lookup";
+import type { CatalogSource } from "./catalog-source";
 import { useT } from "@/i18n/use-t.ts";
-
-export function sandboxKey(ref: PreviewProxyRef): string {
-  return `${ref.orgSlug}/${ref.virtualMcpId}/${ref.branch}`;
-}
 
 /** Status line shared by the results and category panes. */
 export function StatusLine({
@@ -64,12 +57,12 @@ export function StatusLine({
 }
 
 export function CategoryTreeList({
-  sandboxRef,
+  source,
   enabled,
   onSelect,
   className,
 }: {
-  sandboxRef: PreviewProxyRef;
+  source: CatalogSource;
   /** The tree only loads once the surface holding it is actually open. */
   enabled: boolean;
   onSelect: (category: CategoryOption) => void;
@@ -79,11 +72,8 @@ export function CategoryTreeList({
   const t = useT();
   const [filter, setFilter] = useState("");
   const query = useQuery({
-    queryKey: KEYS.sandboxInvoke(sandboxKey(sandboxRef), "blog-category-tree"),
-    queryFn: () =>
-      invokeLoader(sandboxRef, buildCategoryTreeRequest()).then(
-        categoryOptionsFromPayload,
-      ),
+    queryKey: KEYS.sandboxInvoke(source.key, "blog-category-tree"),
+    queryFn: () => source.categoryTree(),
     enabled,
     staleTime: 60_000,
     retry: 1,

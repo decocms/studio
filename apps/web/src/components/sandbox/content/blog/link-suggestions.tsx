@@ -69,7 +69,7 @@ export function SuggestLinksButton({
       const body = postBodyText(sections);
       /** Reading the store is its own request; folded in, the pair ran long. */
       const grounding = await studio
-        .call("BLOG_SITE_GROUND", { virtualMcpId, purpose: "link" })
+        .call("BLOG_SITE_GROUND", { purpose: "link" })
         .catch((err) => {
           console.warn("[linkSuggest] grounding failed", err);
           return undefined;
