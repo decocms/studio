@@ -16,7 +16,7 @@ import type { AppCatalogEntry } from "./app-catalog";
 export function AppInstallPanel({
   entry,
   technology,
-  canInstall,
+  blocked,
   isInstalling,
   installError,
   onInstall,
@@ -24,17 +24,22 @@ export function AppInstallPanel({
   entry: AppCatalogEntry;
   /** The stack the writes are built for; null when it isn't known yet. */
   technology: SiteTechnology | null;
-  canInstall: boolean;
+  /**
+   * Why this session cannot install, when it cannot, and the way out when
+   * there is one. Saying it beats a button whose only effect is a toast.
+   */
+  blocked: {
+    reason: string;
+    action?: { label: string; onClick: () => void };
+  } | null;
   isInstalling: boolean;
   installError: string | null;
   onInstall: () => void;
 }) {
   const t = useT();
-  const blocked = !entry.installable
-    ? t("sandbox.appInstallPanel.notInstallable")
-    : !canInstall
-      ? t("sandbox.appInstallPanel.unavailable")
-      : null;
+  const stopped = !entry.installable
+    ? { reason: t("sandbox.appInstallPanel.notInstallable") }
+    : blocked;
 
   return (
     <div className="flex h-full flex-col">
@@ -72,8 +77,21 @@ export function AppInstallPanel({
               </p>
             )}
 
-            {blocked ? (
-              <p className="text-xs text-muted-foreground">{blocked}</p>
+            {stopped ? (
+              <div className="flex flex-col items-start gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {stopped.reason}
+                </p>
+                {stopped.action && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={stopped.action.onClick}
+                  >
+                    {stopped.action.label}
+                  </Button>
+                )}
+              </div>
             ) : (
               <>
                 <p className="text-xs text-muted-foreground">

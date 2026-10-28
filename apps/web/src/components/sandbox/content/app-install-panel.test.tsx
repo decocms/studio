@@ -30,14 +30,14 @@ const entry = {
 
 const panel = (overrides?: {
   installable?: boolean;
-  canInstall?: boolean;
+  blocked?: { reason: string; action?: { label: string; onClick: () => void } };
   onInstall?: () => void;
 }) =>
   render(
     <AppInstallPanel
       entry={{ ...entry, installable: overrides?.installable ?? true }}
       technology="deno"
-      canInstall={overrides?.canInstall ?? true}
+      blocked={overrides?.blocked ?? null}
       isInstalling={false}
       installError={null}
       onInstall={overrides?.onInstall ?? (() => {})}
@@ -60,12 +60,32 @@ describe("AppInstallPanel", () => {
   });
 
   test("says why instead of offering a button it cannot honour", () => {
-    const { getByText, queryByRole } = panel({ canInstall: false });
+    const { getByText, queryByRole } = panel({
+      blocked: { reason: en["sandbox.appInstallPanel.unavailable"] },
+    });
 
     expect(getByText(en["sandbox.appInstallPanel.unavailable"])).toBeTruthy();
     expect(
       queryByRole("button", { name: en["sandbox.appInstallPanel.install"] }),
     ).toBeNull();
+  });
+
+  test("a session that cannot write code offers the way out, not Install", () => {
+    // A Fast Preview session never writes code: the button there buys a toast
+    // and nothing else, so the panel offers the coding session instead.
+    const onClick = mock(() => {});
+    const { getByRole, queryByRole } = panel({
+      blocked: {
+        reason: en["sandbox.appEditor.installNeedsCodingSession"],
+        action: { label: "Start a coding session", onClick },
+      },
+    });
+
+    expect(
+      queryByRole("button", { name: en["sandbox.appInstallPanel.install"] }),
+    ).toBeNull();
+    getByRole("button", { name: "Start a coding session" }).click();
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   test("an app the site already carries has nothing to install", () => {

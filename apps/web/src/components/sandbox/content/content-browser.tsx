@@ -648,6 +648,22 @@ function ContentBrowserReady({
           (entry) => entry.blockKey === selection.key && entry.installable,
         )
       : undefined;
+  /**
+   * Why this session cannot install, when it cannot. A Fast Preview session
+   * never writes code, so offering the button there buys a toast and nothing
+   * else — the way out is a coding session, so that is what it offers.
+   */
+  const installBlocked = !canInstallApps
+    ? { reason: t("sandbox.appInstallPanel.unavailable") }
+    : session.resolved && session.runtime === "cms"
+      ? {
+          reason: t("sandbox.appEditor.installNeedsCodingSession"),
+          action: {
+            label: t("chat.fastPreview.startCodingSession"),
+            onClick: () => createTask({ runtime: "sandbox" }),
+          },
+        }
+      : null;
   const handleInstallApp = (entry: AppCatalogEntry) => {
     if (!session.resolved) return;
     if (session.runtime === "cms") {
@@ -1504,7 +1520,7 @@ function ContentBrowserReady({
                       key={`available-app:${entry.id}`}
                       entry={entry}
                       technology={siteTechnology}
-                      canInstall={canInstallApps}
+                      blocked={installBlocked}
                       isInstalling={
                         installApp.isPending &&
                         installApp.variables?.blockKey === entry.id
@@ -1544,7 +1560,7 @@ function ContentBrowserReady({
                         : undefined,
                     )}
                     onReinstall={
-                      selectedAppEntry && canInstallApps
+                      selectedAppEntry && !installBlocked
                         ? () => handleInstallApp(selectedAppEntry)
                         : undefined
                     }
