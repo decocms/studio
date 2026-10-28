@@ -347,3 +347,42 @@ export function measureDeploy(
     impact: [{ metric: "orders", change }],
   };
 }
+
+/** Id of the band that sums every channel past the busiest few. */
+export const OTHER_CHANNELS = "__others";
+
+/**
+ * The busiest `keep` channels by orders so far, busiest first, and the rest
+ * summed into one {@link OTHER_CHANNELS} band, so every band gets its own
+ * color and a channel with a handful of orders isn't a sliver on top.
+ */
+export function groupChannels(
+  channels: readonly OrderMonitorChannel[],
+  keep = 3,
+): OrderMonitorChannel[] {
+  const sorted = [...channels].sort((a, b) => b.soFar - a.soFar);
+  if (sorted.length <= keep + 1) return sorted;
+  const rest = sorted.slice(keep);
+  const hours = Math.max(...rest.map((c) => c.today.length));
+  return [
+    ...sorted.slice(0, keep),
+    {
+      id: OTHER_CHANNELS,
+      name: null,
+      today: Array.from({ length: hours }, (_, h) =>
+        rest.every((c) => c.today[h] === null || c.today[h] === undefined)
+          ? null
+          : rest.reduce((n, c) => n + (c.today[h] ?? 0), 0),
+      ),
+      d1: Array.from(
+        { length: Math.max(...rest.map((c) => c.d1.length)) },
+        (_, h) => rest.reduce((n, c) => n + (c.d1[h] ?? 0), 0),
+      ),
+      soFar: rest.reduce((n, c) => n + c.soFar, 0),
+      d1SoFar: rest.reduce((n, c) => n + c.d1SoFar, 0),
+    },
+  ];
+}
+
+/** Below this many orders on either day, a channel's change is noise, not news. */
+export const CHANNEL_CHANGE_MIN_ORDERS = 20;

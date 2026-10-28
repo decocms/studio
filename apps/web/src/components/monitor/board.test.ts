@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { measureDeploy, type StoreHours } from "./board";
+import {
+  groupChannels,
+  measureDeploy,
+  OTHER_CHANNELS,
+  type StoreHours,
+} from "./board";
 
 const HOUR = 3_600_000;
 const START = Date.parse("2026-10-20T03:00:00.000Z");
@@ -54,5 +59,41 @@ describe("measureDeploy", () => {
     expect(measureDeploy(at, [store(flat({ 9: 3 }))]).verdict).toBe(
       "unmeasured",
     );
+  });
+});
+
+describe("groupChannels", () => {
+  const channel = (id: string, soFar: number, today: (number | null)[]) => ({
+    id,
+    name: id.toUpperCase(),
+    today,
+    d1: today.map((v) => v ?? 0),
+    soFar,
+    d1SoFar: soFar,
+  });
+
+  it("keeps four or fewer channels as they are, busiest first", () => {
+    const out = groupChannels([channel("a", 1, [1]), channel("b", 9, [9])]);
+    expect(out.map((c) => c.id)).toEqual(["b", "a"]);
+  });
+
+  it("sums everything past the busiest three into one band", () => {
+    const out = groupChannels([
+      channel("app", 638, [10, 20]),
+      channel("main", 516, [5, 6]),
+      channel("soma", 4, [1, null]),
+      channel("preview", 7, [2, null]),
+      channel("tiktok", 2, [null, null]),
+    ]);
+    expect(out.map((c) => c.id)).toEqual([
+      "app",
+      "main",
+      "preview",
+      OTHER_CHANNELS,
+    ]);
+    const others = out[3];
+    expect(others?.soFar).toBe(6);
+    expect(others?.today).toEqual([1, null]);
+    expect(others?.name).toBeNull();
   });
 });

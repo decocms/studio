@@ -131,7 +131,9 @@ export const monitor = {
   "monitor.compare.vs": "vs {ref}",
   "monitor.chart.soFar": "{count} so far",
   "monitor.chart.historyLoading": "history {pct} loaded, projection firming up",
-  "monitor.channels.caption": "Dashed: all channels yesterday",
+  "monitor.channels.caption":
+    "Orders today so far, against yesterday at this time. Dashed: all channels yesterday.",
+  "monitor.channels.others": "Others",
   "monitor.signals.more": "Show {count} more",
   "monitor.signals.less": "Show less",
   "monitor.org.unreadable": "Couldn't read {names}",

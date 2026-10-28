@@ -26,7 +26,12 @@ import {
   relativeChange,
 } from "@/layouts/main-panel-tabs/monitor-v8";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
-import { BUCKET_MINUTES } from "./board";
+import {
+  BUCKET_MINUTES,
+  CHANNEL_CHANGE_MIN_ORDERS,
+  groupChannels,
+  OTHER_CHANNELS,
+} from "./board";
 import {
   bucketTime,
   domainEnd,
@@ -45,11 +50,14 @@ const COLORS = [
 const HOUR = 60 / BUCKET_MINUTES;
 
 export function ChannelsChart({
-  channels,
+  channels: all,
 }: {
   channels: readonly OrderMonitorChannel[];
 }) {
   const t = useT();
+  const channels = groupChannels(all);
+  const label = (c: OrderMonitorChannel) =>
+    c.id === OTHER_CHANNELS ? t("monitor.channels.others") : (c.name ?? c.id);
   const pointer = usePointer();
   const color = (i: number) => COLORS[i % COLORS.length] ?? COLORS[0];
   // The board leaves out the hour under way, so every hour in is a full one.
@@ -79,15 +87,17 @@ export function ChannelsChart({
                 className="size-2 shrink-0 rounded-full"
                 style={{ backgroundColor: color(i) }}
               />
-              <span className="text-sm text-foreground">{c.name ?? c.id}</span>
+              <span className="text-sm text-foreground">{label(c)}</span>
               <span className="tnum text-sm text-foreground">
                 {formatCount(c.soFar)}
               </span>
-              <Trend
-                change={relativeChange(c.soFar, c.d1SoFar)}
-                better="up"
-                reference=""
-              />
+              {Math.max(c.soFar, c.d1SoFar) >= CHANNEL_CHANGE_MIN_ORDERS && (
+                <Trend
+                  change={relativeChange(c.soFar, c.d1SoFar)}
+                  better="up"
+                  reference=""
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -99,7 +109,7 @@ export function ChannelsChart({
           config={Object.fromEntries(
             channels.map((c, i) => [
               `t${c.id}`,
-              { label: c.name ?? c.id, color: color(i) },
+              { label: label(c), color: color(i) },
             ]),
           )}
         >

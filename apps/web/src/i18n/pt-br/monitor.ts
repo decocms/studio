@@ -134,7 +134,9 @@ export const monitor = {
   "monitor.chart.soFar": "{count} até agora",
   "monitor.chart.historyLoading":
     "histórico {pct} carregado, projeção se ajustando",
-  "monitor.channels.caption": "Tracejado: todos os canais ontem",
+  "monitor.channels.caption":
+    "Pedidos de hoje até agora, contra ontem no mesmo horário. Tracejado: todos os canais ontem.",
+  "monitor.channels.others": "Outros",
   "monitor.signals.more": "Ver mais {count}",
   "monitor.signals.less": "Ver menos",
   "monitor.org.unreadable": "Não deu para ler {names}",
