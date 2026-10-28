@@ -284,6 +284,119 @@ type SiteIdResolution =
   | { status: "unregistered" }
   | { status: "error" };
 
+/** The read-surface payload keys the Analytics tab reads (analytics-tab.tsx,
+ *  analytics-heatmap-model.ts). The proxy forwards only these: a key the
+ *  upstream adds later stays server-side until the tab is taught to read it.
+ *  `pipeline`/`install`-only keys, `worker`, `panelErrors` and `meterCheck` are
+ *  left out on purpose. */
+export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  // context the tab reads or skips as non-panel (META_KEYS)
+  "range",
+  "site",
+  "view",
+  "filters",
+  "propKey",
+  "goal",
+  "goals",
+  "currency",
+  "currencies",
+  "dimensions",
+  "operators",
+  "siteKnown",
+  "usageExplained",
+  // overview
+  "kpis",
+  "kpisPrev",
+  "series",
+  "sources",
+  "funnel",
+  // live
+  "liveVisitors",
+  "livePages",
+  "liveFeed",
+  "liveByMinute",
+  // behaviour
+  "pages",
+  "entryPages",
+  "exitPages",
+  "devices",
+  "os",
+  "browser",
+  "countries",
+  "regions",
+  "cities",
+  "channels",
+  "channelConversion",
+  "attribution",
+  "campaigns",
+  "campaignNames",
+  "products",
+  // events, errors, experiments
+  "events",
+  "propKeys",
+  "propValues",
+  "scrollDepth",
+  "searches",
+  "outbound",
+  "downloads",
+  "errors",
+  "variants",
+  // vitals
+  "vitals",
+  "vitalsByPage",
+  "vitalsBands",
+  "vitalsByDevice",
+  "vitalsTrend",
+  "vitalsByVariant",
+  "conversionBySpeed",
+  // quality
+  "quality",
+  "trust",
+  "botShare",
+  "flagEvents",
+  "unregisteredEvents",
+  "unregisteredProps",
+  "propCardinality",
+  // usage
+  "usage",
+  "usageTrend",
+  "usageSites",
+  // heatmap
+  "heatmap",
+  "heatmapValue",
+  "hmPages",
+  "hmSummary",
+  "hmDevices",
+  "hmElements",
+  "hmGrid",
+  "hmScroll",
+  "hmAttention",
+  "hmSections",
+  "hmValueSummary",
+  "hmValue",
+  "hmValueLeaks",
+]);
+
+/** A read-surface payload reduced to what the Analytics tab reads: the keys in
+ *  {@link ANALYTICS_PAYLOAD_KEYS}, `sites` narrowed to this site's own entry,
+ *  and `usageScope` reduced to the one fact the client needs. */
+export function toTenantAnalyticsPayload(
+  payload: Record<string, unknown>,
+  siteId: string,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (ANALYTICS_PAYLOAD_KEYS.has(key)) out[key] = value;
+  }
+  if (Array.isArray(payload.sites)) {
+    out.sites = payload.sites.filter(
+      (s) => (s as { k?: unknown } | null)?.k === siteId,
+    );
+  }
+  out.usageScope = { site: siteId, tenantScoped: true };
+  return out;
+}
+
 async function resolveWarehouseSiteId(
   org: { id: string },
   site: string,
@@ -590,8 +703,8 @@ export const createHostingRoutes = () => {
   // view=heatmap) — the tenant-scoped
   // dashboard views, read straight from the Analytics read surface (NOT the
   // control-plane). Answers `{ registered, siteId, view, range, data }` where
-  // `data` is the read surface's per-view payload with delivery/bundle internals
-  // stripped. `{ registered:false }` when the site has no warehouse id yet, so
+  // `data` is the read surface's per-view payload reduced to the keys the tab
+  // reads (`toTenantAnalyticsPayload`). `{ registered:false }` when the site has no warehouse id yet, so
   // the tab shows the Configuration section instead of empty charts.
   app.get("/:site/analytics/data", async (c) => {
     const ctx = c.get("studioContext");
@@ -719,16 +832,13 @@ export const createHostingRoutes = () => {
       );
     }
 
-    // Strip delivery/caching/bundle internals: this tab ships in the open-source
-    // Studio and must expose only what a site owner needs, never how we deliver
-    // or meter. `worker` is the collector's live metrics; `install` carries
-    // bundle bytes and probe results. Reduce usageScope to the fact the client
-    // needs (it's scoped) without leaking the enforced-tables list.
-    delete payload.worker;
-    delete payload.install;
-    payload.usageScope = { site: siteId, tenantScoped: true };
-
-    return c.json({ registered: true, siteId, view, range, data: payload });
+    return c.json({
+      registered: true,
+      siteId,
+      view,
+      range,
+      data: toTenantAnalyticsPayload(payload, siteId),
+    });
   });
 
   return app;
