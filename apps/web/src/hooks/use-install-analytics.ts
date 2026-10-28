@@ -6,15 +6,18 @@ import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "../lib/studio-tools";
 
 /** Sends adding Deco Analytics to `site`'s code to the Super Agent, which
- *  opens a PR, and opens the card it works on. */
+ *  opens a PR, and opens the card it works on. A `needs_domain` answer is
+ *  left to the caller, which asks where the site is live. */
 export function useInstallAnalytics() {
   const t = useT();
   const studio = useStudioTools();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   return useMutation({
-    mutationFn: (site: string) => studio.call("ANALYTICS_INSTALL", { site }),
+    mutationFn: (input: { site: string; domain?: string }) =>
+      studio.call("ANALYTICS_INSTALL", input),
     onSuccess: (result) => {
+      if (result.status === "needs_domain") return;
       if (!result.taskKey) {
         toast.success(t("monitor.analyticsGuide.installSent"));
         return;

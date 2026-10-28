@@ -131,6 +131,10 @@ export const monitor = {
     "Adicione seu site ao Studio e instale o analytics nele com um clique.",
   "monitor.analyticsGuide.install": "Instalar",
   "monitor.analyticsGuide.installing": "Iniciando…",
+  "monitor.analyticsGuide.domain":
+    "Em qual domínio {site} está no ar? As visitas só contam nesse domínio e no www dele.",
+  "monitor.analyticsGuide.domainInvalid":
+    "Isso não é um domínio. Tente algo como www.exemplo.com.br.",
   "monitor.analyticsGuide.installSent":
     "Enviado ao Super Agente — ele vai abrir um pull request.",
   "monitor.analyticsGuide.manual":

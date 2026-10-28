@@ -7,6 +7,7 @@ import {
   readAnalyticsRegistration,
   registerAnalyticsSite,
   siteDomains,
+  typedHost,
 } from "../../analytics/registration";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -22,7 +23,7 @@ import { buildInstruction } from "./instruction";
 export const ANALYTICS_INSTALL = defineTool({
   name: "ANALYTICS_INSTALL",
   description:
-    "Delegate adding Deco Analytics to a site's code to the Super Agent: it puts the collector's tag in the site's <head>, tracks purchases where the repo renders the order confirmation, and opens a PR. Registers the site with the collector by key first when it can't collect yet, and links it to the organization's data lake, so its traffic reaches CUSTOMER_LAKE_QUERY. Requires a linked GitHub repository.",
+    "Delegate adding Deco Analytics to a site's code to the Super Agent: it puts the collector's tag in the site's <head>, tracks purchases where the repo renders the order confirmation, and opens a PR. Registers the site with the collector by key first when it can't collect yet, and links it to the organization's data lake, so its traffic reaches CUSTOMER_LAKE_QUERY. Requires a linked GitHub repository. Answers needs_domain when hosting knows no domain for the site; call again with the domain it is live on.",
   annotations: {
     title: "Install Analytics On Site",
     readOnlyHint: false,
@@ -32,12 +33,19 @@ export const ANALYTICS_INSTALL = defineTool({
   },
   inputSchema: z.object({
     site: z.string().min(1),
+    /** Where the site is live, for a site hosting doesn't know a domain for. */
+    domain: z.string().max(253).optional(),
   }),
-  outputSchema: z.object({
-    taskBoardItemId: z.string(),
-    /** The card's human key (`DECO-07`), for a deep link. Null when the org has no slug. */
-    taskKey: z.string().nullable(),
-  }),
+  outputSchema: z.discriminatedUnion("status", [
+    z.object({
+      status: z.literal("dispatched"),
+      taskBoardItemId: z.string(),
+      /** The card's human key (`DECO-07`), for a deep link. Null when the org has no slug. */
+      taskKey: z.string().nullable(),
+    }),
+    /** Hosting has no domain for the site: call again with `domain`. */
+    z.object({ status: z.literal("needs_domain") }),
+  ]),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -66,7 +74,13 @@ export const ANALYTICS_INSTALL = defineTool({
         item.status !== LANES.done &&
         item.status !== LANES.archive,
     );
-    if (open) return { taskBoardItemId: open.id, taskKey: keyOf(open.keySeq) };
+    if (open) {
+      return {
+        status: "dispatched" as const,
+        taskBoardItemId: open.id,
+        taskKey: keyOf(open.keySeq),
+      };
+    }
 
     const repository = await resolveRepositoryForProject(
       ctx,
@@ -87,15 +101,12 @@ export const ANALYTICS_INSTALL = defineTool({
       registration.status === "unregistered" ||
       (registration.status === "registered" && !registration.key)
     ) {
-      if (!registration.host) {
-        throw new Error(
-          `${site} has no production domain to register for analytics.`,
-        );
-      }
+      const host = registration.host ?? typedHost(input.domain);
+      if (!host) return { status: "needs_domain" as const };
       try {
         await registerAnalyticsSite(site, {
           key: true,
-          domains: siteDomains(registration.host),
+          domains: siteDomains(host),
           modules: ["core", "commerce", "vitals"],
         });
       } catch (err) {
@@ -137,6 +148,10 @@ export const ANALYTICS_INSTALL = defineTool({
 
     await reactToSuperAgentDelegation(ctx, item);
 
-    return { taskBoardItemId: item.id, taskKey: keyOf(item.keySeq) };
+    return {
+      status: "dispatched" as const,
+      taskBoardItemId: item.id,
+      taskKey: keyOf(item.keySeq),
+    };
   },
 });

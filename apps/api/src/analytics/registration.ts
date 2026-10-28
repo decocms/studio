@@ -5,6 +5,7 @@
  * that the org owns `site`: the control-plane answers for any slug.
  */
 
+import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { getSettings } from "../settings";
 
 export type AnalyticsRegistration =
@@ -121,4 +122,11 @@ export async function registerAnalyticsSite(
 export function siteDomains(host: string): string[] {
   const apex = host.toLowerCase().replace(/^www\./, "");
   return [apex, `www.${apex}`];
+}
+
+/** The host of a domain someone typed (`loja.com`, `https://www.loja.com/`). */
+export function typedHost(domain: string | undefined): string | null {
+  const url = productionUrlFromDomain(domain);
+  const host = url ? new URL(url).hostname : null;
+  return host?.includes(".") ? host : null;
 }
