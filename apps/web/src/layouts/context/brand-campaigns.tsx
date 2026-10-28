@@ -33,7 +33,7 @@ export function BrandCampaigns() {
   );
 }
 
-function Campaigns() {
+export function Campaigns() {
   const { org } = useProjectContext();
   const blog = useBlogState({ orgSlug: org.slug });
   const { vtex } = useBlogConnections();

@@ -1,0 +1,28 @@
+export const contentTrack = {
+  "contentTrack.title": "Content",
+  "contentTrack.trackCode": "Code",
+  "contentTrack.trackContent": "Content",
+  "contentTrack.viewBlogposts": "Blogposts",
+  "contentTrack.viewCampaigns": "Campaigns",
+  "contentTrack.blogpostsEmptyTitle": "No blogposts yet",
+  "contentTrack.blogpostsEmptyDescription":
+    "Start one from a campaign: the newsroom brings a hypothesis from your store's data, and writes the post once you approve it.",
+  "contentTrack.setup.eyebrow": "Content track · not set up yet",
+  "contentTrack.setup.title": "Activate your brand's autonomous newsroom",
+  "contentTrack.setup.description":
+    "Studio learns how your brand writes, once. Then it brings post ideas from your store's data, writes them on your own site and leaves each one for you to review.",
+  "contentTrack.setup.strategist": "Strategist",
+  "contentTrack.setup.strategistJob": "the bet",
+  "contentTrack.setup.researcher": "Researcher",
+  "contentTrack.setup.researcherJob": "the evidence",
+  "contentTrack.setup.writer": "Writer",
+  "contentTrack.setup.writerJob": "the copy",
+  "contentTrack.setup.creator": "Creator",
+  "contentTrack.setup.creatorJob": "the visuals",
+  "contentTrack.setup.loopContext": "Context",
+  "contentTrack.setup.loopHypothesis": "Hypothesis",
+  "contentTrack.setup.loopExecute": "Execute",
+  "contentTrack.setup.loopMonitor": "Monitor",
+  "contentTrack.setup.missing": "Your brand guide still needs: {fields}.",
+  "contentTrack.setup.activate": "Activate newsroom",
+} as const;

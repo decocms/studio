@@ -969,16 +969,17 @@ function AssigneeDisplay({
 
 /** The board, pointed at whichever org `?boardOrg=` names (normally your own).
  *  The swap has to wrap the board rather than live inside it: every hook below
- *  reads the org off `ProjectContext`. */
-export function TaskBoardPage() {
+ *  reads the org off `ProjectContext`. `trackTabs` are Execute's own tabs,
+ *  drawn ahead of the board's views. */
+export function TaskBoardPage({ trackTabs }: { trackTabs?: ReactNode }) {
   return (
     <BoardOrgProvider>
-      <TaskBoardBody />
+      <TaskBoardBody trackTabs={trackTabs} />
     </BoardOrgProvider>
   );
 }
 
-function TaskBoardBody() {
+function TaskBoardBody({ trackTabs }: { trackTabs?: ReactNode }) {
   const t = useT();
   const { org, locator } = useProjectContext();
   const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
@@ -1453,6 +1454,7 @@ function TaskBoardBody() {
   /** Board / List / Epics, and Feed behind the flag. */
   const layoutTabs = (
     <Page.Tabs>
+      {trackTabs}
       {feedEnabled && (
         <Page.Tab
           active={layout === "feed"}

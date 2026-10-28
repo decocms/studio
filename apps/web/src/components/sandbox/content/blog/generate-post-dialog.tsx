@@ -45,7 +45,7 @@ type StepId = (typeof STEPS)[number]["id"];
 const COUNTS = [1, 2, 3] as const;
 
 /** Which brand field each blocking requirement points at, for the message. */
-const REQUIREMENT_LABEL = {
+export const REQUIREMENT_LABEL = {
   companyName: "sandbox.blogBrand.companyNameLabel",
   language: "sandbox.blogBrand.languageLabel",
   description: "sandbox.blogBrand.descriptionLabel",

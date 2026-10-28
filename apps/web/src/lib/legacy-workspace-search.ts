@@ -37,6 +37,10 @@ export const taskBoardSearchShape = {
   /** Another tenant's board, shown WITHOUT leaving this org. Admin-org only;
    *  ignored when the caller cannot read it. See `board-org.tsx`. */
   boardOrg: z.string().optional(),
+  /** Which of Execute's tracks is open. See `execute-page.tsx`. */
+  track: z.enum(["code", "content"]).catch("code").optional(),
+  /** The blogpost card open on the content track. */
+  card: z.string().optional(),
 };
 
 const CONTEXT_SECTIONS = [
