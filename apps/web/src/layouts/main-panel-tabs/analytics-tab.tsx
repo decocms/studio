@@ -82,6 +82,8 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { toast } from "sonner";
+import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
@@ -2195,6 +2197,22 @@ function RegisteredView({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Views sit in the panel toolbar, under the breadcrumbs, in the page tab
+          style every other view switcher uses. */}
+      <Panel.Toolbar.Left.Portal>
+        <Page.Tabs>
+          {views.map((v) => (
+            <Page.Tab
+              key={v.view}
+              active={active === v.view}
+              onClick={() => setRequested(v.view)}
+            >
+              {t(v.labelKey)}
+            </Page.Tab>
+          ))}
+        </Page.Tabs>
+      </Panel.Toolbar.Left.Portal>
+
       {/* Status + collecting labels on the left, range pills + a small Configure
           button on the right — the dashboard is the focus; settings hide behind
           the gear. */}
@@ -2263,25 +2281,6 @@ function RegisteredView({
             {t("mainPanelTabs.analyticsTab.configSectionTitle")}
           </Button>
         </div>
-      </div>
-
-      {/* Horizontal view tab bar — one view at a time, like the admin monitor. */}
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-border">
-        {views.map((v) => (
-          <button
-            key={v.view}
-            type="button"
-            onClick={() => setRequested(v.view)}
-            className={cn(
-              "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              active === v.view
-                ? "border-[var(--chart-1)] text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t(v.labelKey)}
-          </button>
-        ))}
       </div>
 
       {active === "heatmap" ? (
@@ -2436,18 +2435,8 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <BarChartSquare02 className="size-[18px] text-muted-foreground" />
-            <h2 className="text-base font-semibold text-foreground">
-              {t("mainPanelTabs.analyticsTab.title")}
-            </h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t("mainPanelTabs.analyticsTab.subtitle", { site: siteSlug })}
-          </p>
-        </div>
-
+        {/* No page title here: the breadcrumbs already name the view, and the
+            site is named by the status row below. */}
         {registered && (
           <RegistrationResult
             result={registered}

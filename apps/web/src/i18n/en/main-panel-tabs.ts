@@ -294,8 +294,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.noArtifacts": "No artifacts for this run.",
   "mainPanelTabs.e2eTab.openArtifact": "Open",
   "mainPanelTabs.e2eTab.viewScreenshot": "View screenshot",
-  "mainPanelTabs.analyticsTab.title": "Analytics",
-  "mainPanelTabs.analyticsTab.subtitle": "Traffic and usage for {site}",
   "mainPanelTabs.analyticsTab.noSiteTitle": "No site linked",
   "mainPanelTabs.analyticsTab.noSiteDescription":
     "This project isn't linked to a hosted site yet.",
