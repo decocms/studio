@@ -5,7 +5,7 @@
  * registered in Deco Analytics has them; OneDollarStats has only the overview.
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Settings01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -47,11 +47,8 @@ function hostingBase(orgSlug: string, project: Pick<SiteProject, "site">) {
   return `/api/${orgSlug}/hosting/${encodeURIComponent(project.site)}`;
 }
 
-export function useAnalyticsStatus(
-  orgSlug: string,
-  project: Pick<SiteProject, "site">,
-) {
-  return useQuery({
+function statusQuery(orgSlug: string, project: Pick<SiteProject, "site">) {
+  return {
     queryKey: KEYS.analyticsStatus(orgSlug, project.site),
     queryFn: async () =>
       (await fetchJson(
@@ -59,6 +56,27 @@ export function useAnalyticsStatus(
       )) as AnalyticsStatus,
     retry: false,
     staleTime: 30_000,
+  };
+}
+
+export function useAnalyticsStatus(
+  orgSlug: string,
+  project: Pick<SiteProject, "site">,
+) {
+  return useQuery(statusQuery(orgSlug, project));
+}
+
+/** The projects registered in Deco Analytics, in the order given. */
+export function useRegisteredSites(
+  orgSlug: string,
+  projects: readonly SiteProject[],
+): { project: SiteProject; status: AnalyticsStatus }[] {
+  const statuses = useQueries({
+    queries: projects.map((p) => statusQuery(orgSlug, p)),
+  });
+  return projects.flatMap((project, i) => {
+    const status = statuses[i]?.data;
+    return status?.registered ? [{ project, status }] : [];
   });
 }
 
@@ -66,6 +84,14 @@ export function useAnalyticsStatus(
 export function analyticsSections(status: AnalyticsStatus | undefined) {
   if (!status?.registered) return [];
   return gateViews(SECTIONS, status.config?.modules ?? ["core"]);
+}
+
+/** Every view at least one of these sites is offered, in the usual order. */
+export function unionSections(statuses: readonly AnalyticsStatus[]) {
+  const offered = new Set(
+    statuses.flatMap((s) => analyticsSections(s).map((v) => v.view)),
+  );
+  return SECTIONS.filter((v) => offered.has(v.view));
 }
 
 export function SectionTabs({

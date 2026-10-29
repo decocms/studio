@@ -61,7 +61,9 @@ import {
   ownsRange,
   RegisterAnalytics,
   SectionTabs,
+  unionSections,
   useAnalyticsStatus,
+  useRegisteredSites,
 } from "./deco-analytics";
 
 const COLOR_VISITORS = "var(--chart-1)";
@@ -487,16 +489,19 @@ function ProjectAudience({
   project,
   range,
   onRange,
+  requested,
+  onSection,
 }: {
   project: SiteProject;
   range: AudienceRange;
   onRange: (range: AudienceRange) => void;
+  requested: string;
+  onSection: (section: string) => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const status = useAnalyticsStatus(org.slug, project);
   const sections = analyticsSections(status.data);
-  const [requested, setRequested] = useState("overview");
   const section = sections.some((s) => s.view === requested)
     ? requested
     : "overview";
@@ -551,11 +556,7 @@ function ProjectAudience({
         />
       )}
       {sections.length > 1 && (
-        <SectionTabs
-          sections={sections}
-          value={section}
-          onChange={setRequested}
-        />
+        <SectionTabs sections={sections} value={section} onChange={onSection} />
       )}
       {section === "overview" || !status.data ? (
         <AudienceOverview project={project} range={range} register={register} />
@@ -997,19 +998,33 @@ function OrgAudience({
   );
 }
 
-/** The Audience tab: one project in full, or every project at once. */
+/**
+ * The Analytics tab: one project in full, or every project at once. Across
+ * the org, Deco Analytics' other views stay one click away: each is a single
+ * site's, so picking one filters to the first site that has it.
+ */
+export interface AnalyticsTarget {
+  /** Kept as filtered when absent. */
+  project?: string;
+  section: string;
+}
+
 export function AudienceScreen({
   projects,
   scopeId,
-  onProject,
+  section,
+  onOpen,
 }: {
   projects: readonly SiteProject[];
   scopeId: string | null;
-  onProject: (projectId: string) => void;
+  section: string;
+  onOpen: (next: AnalyticsTarget) => void;
 }) {
   const t = useT();
+  const { org } = useProjectContext();
   const [range, setRange] = useState<AudienceRange>("7d");
   const project = projects.find((p) => p.id === scopeId);
+  const registered = useRegisteredSites(org.slug, project ? [] : projects);
   if (scopeId && !project) {
     return (
       <Frame>
@@ -1020,6 +1035,7 @@ export function AudienceScreen({
       </Frame>
     );
   }
+  const orgSections = unionSections(registered.map((r) => r.status));
   return (
     <Frame>
       {project ? (
@@ -1028,14 +1044,30 @@ export function AudienceScreen({
           project={project}
           range={range}
           onRange={setRange}
+          requested={section}
+          onSection={(next) => onOpen({ section: next })}
         />
       ) : (
-        <OrgAudience
-          projects={projects}
-          range={range}
-          onRange={setRange}
-          onProject={onProject}
-        />
+        <>
+          {orgSections.length > 1 && (
+            <SectionTabs
+              sections={orgSections}
+              value="overview"
+              onChange={(next) => {
+                const site = registered.find((r) =>
+                  analyticsSections(r.status).some((s) => s.view === next),
+                );
+                if (site) onOpen({ project: site.project.id, section: next });
+              }}
+            />
+          )}
+          <OrgAudience
+            projects={projects}
+            range={range}
+            onRange={setRange}
+            onProject={(id) => onOpen({ project: id, section: "overview" })}
+          />
+        </>
       )}
     </Frame>
   );

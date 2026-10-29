@@ -22,7 +22,7 @@ import {
   useProjectContext,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
-import { AudienceScreen } from "./audience-view";
+import { type AnalyticsTarget, AudienceScreen } from "./audience-view";
 import type { Deploy } from "./board";
 import { PerformanceScreen } from "./performance-view";
 import { DeployTimeline } from "./deploy-timeline";
@@ -283,10 +283,12 @@ export function PerformanceView({
 /** Who visits, from Deco Analytics or OneDollarStats, one shape for both. */
 export function AudienceView({
   scopeId,
-  onProject,
+  section,
+  onOpen,
 }: {
   scopeId: string | null;
-  onProject: (projectId: string) => void;
+  section: string;
+  onOpen: (next: AnalyticsTarget) => void;
 }) {
   const views = useControlPlaneViews();
   const projects = useSiteProjects();
@@ -294,7 +296,8 @@ export function AudienceView({
     <AudienceScreen
       projects={projects}
       scopeId={scopeId}
-      onProject={onProject}
+      section={section}
+      onOpen={onOpen}
     />
   );
   return (

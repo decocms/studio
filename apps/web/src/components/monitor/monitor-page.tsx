@@ -66,6 +66,8 @@ export interface MonitorSelection {
   view?: MonitorView;
   /** Across the org, the one project every tab shows (the filter's pick). */
   project?: string;
+  /** The Analytics tab's Deco Analytics view, when not its overview. */
+  section?: string;
   /** A past local day, `YYYY-MM-DD`; today when absent. */
   date?: string;
   store?: string;
@@ -342,7 +344,17 @@ export function MonitorPage({
     return (
       <>
         {tabs}
-        <AudienceView scopeId={scopeId} onProject={onProject} />
+        <AudienceView
+          scopeId={scopeId}
+          section={selection.section ?? "overview"}
+          onOpen={(next) =>
+            onSelect({
+              view: selection.view,
+              project: next.project ?? selection.project,
+              section: next.section === "overview" ? undefined : next.section,
+            })
+          }
+        />
       </>
     );
   }

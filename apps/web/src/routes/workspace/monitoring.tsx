@@ -48,6 +48,10 @@ function useMonitorSearch(): MonitorSelection {
       "project" in search && typeof search.project === "string"
         ? search.project
         : undefined,
+    section:
+      "section" in search && typeof search.section === "string"
+        ? search.section
+        : undefined,
   };
 }
 
