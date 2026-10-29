@@ -48,7 +48,7 @@ export interface ContentPublishState {
  * The editor's current blocks, read from the cache the editor fills (no
  * request of its own): names and kinds for the cards before any side loads.
  */
-function useCurrentBlocks(
+export function useCurrentBlocks(
   cacheKey: string,
 ): Record<string, unknown> | undefined {
   const { data } = useQuery({
