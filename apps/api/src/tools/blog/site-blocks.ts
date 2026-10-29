@@ -51,7 +51,7 @@ const BlockSchema = z.object({
 export const BLOG_SITE_BLOCKS = defineTool({
   name: "BLOG_SITE_BLOCKS",
   description:
-    "The blocks this site can actually render a post out of, each with its own JSON Schema and an example of how the site already stores it, narrowed to the ones a format cites. Returns the blog's categories and authors with them. Pass `blocks` straight into BLOG_POST_DRAFT.",
+    "The blocks this site can actually render a post out of, each with its own JSON Schema and an example of how the site already stores it: the ones a format cites, then the basic text and product blocks. Returns the blog's categories and authors with them. Pass `blocks` straight into BLOG_POST_DRAFT.",
   annotations: {
     title: "Read the Site's Post Blocks",
     readOnlyHint: true,
@@ -73,7 +73,7 @@ export const BLOG_SITE_BLOCKS = defineTool({
         value: z.string().max(MAX_BODY_CHARS),
       })
       .describe(
-        "The format this post will follow. Its `@Name` citations pick which of the site's blocks come back; a format citing none gets all of them.",
+        "The format this post will follow. The blocks its `@Name` citations name come back first, with the basic text and product blocks after them; a format citing none gets all of them.",
       ),
     branch: z
       .string()

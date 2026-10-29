@@ -29,8 +29,7 @@ import { painterFor } from "./cover-image";
  *
  * The campaign is what the post is for — a moment, a shelf of products, a slice
  * of the catalogue, a tone the brand takes while it runs. The format is how
- * this brand builds a post of that kind, and the blocks it cites are the only
- * ones this post may be made of.
+ * this brand builds a post of that kind, and the blocks it cites come first.
  *
  * The blocks arrive with their own JSON Schema, which is the whole point: a
  * site that overrides a section with different props used to get the props this

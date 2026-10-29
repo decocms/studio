@@ -156,13 +156,16 @@ export function blockExample(
   return undefined;
 }
 
+/** The text every post needs, whatever its format cites. */
+const BASIC_TEXT_BLOCKS: ReadonlySet<string> = new Set([
+  "Heading",
+  "Paragraph",
+]);
+
 /**
  * The blocks a format admits, each carrying the schema its props must match.
  *
- * The format's brief already cites what this brand reaches for — that citation
- * is what picks the set, so a format is a contract rather than a suggestion.
- * A brief that cites nothing falls back to every block the site exposes: a
- * loosely written format must not leave a post with nothing to be made of.
+ * Cited blocks first, then the basic text and the product blocks the site fills; a brief citing nothing admits all.
  *
  * Several blocks can share a component name (a site's override of an app
  * block). The writer only ever sees the name, so the first wins here the same
@@ -179,7 +182,19 @@ export function blocksForFormat(
   const byName = sectionResolveTypes(meta, options);
   const cited = new Set(citedSections(format.value, byName));
   const wanted = available.filter((section) => cited.has(section.resolveType));
-  const chosen = wanted.length > 0 ? wanted : available;
+  const chosen =
+    wanted.length > 0
+      ? [
+          ...wanted,
+          ...available.filter(
+            (section) =>
+              !cited.has(section.resolveType) &&
+              (BASIC_TEXT_BLOCKS.has(section.name) ||
+                productSlotOf(blockExample(section.resolveType, decofile)) !==
+                  null),
+          ),
+        ]
+      : available;
 
   const seen = new Set<string>();
   const blocks: GenerationBlock[] = [];

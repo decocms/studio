@@ -3,7 +3,7 @@
  * that cites blocks as `@Name`.
  *
  * The citations are the link between an editorial decision and a technical
- * one: they decide which of the site's blocks a draft is allowed to reach for.
+ * one: they pick the blocks a draft reaches for, on top of the basic ones.
  */
 import {
   type BlogBlockDiscoveryOptions,

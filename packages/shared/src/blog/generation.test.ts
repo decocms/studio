@@ -42,7 +42,7 @@ const SITE = [
 ];
 
 describe("blocksForFormat", () => {
-  test("a format's @citations pick which blocks a writer may reach for", () => {
+  test("a format's @citations pick the blocks, and a product block the site never filled stays out", () => {
     const blocks = blocksForFormat(
       { value: "Open with @Heading, then @Paragraph." },
       metaWith(SITE),
@@ -73,7 +73,54 @@ describe("blocksForFormat", () => {
       metaWith(SITE),
       {},
     );
-    expect(blocks.map((block) => block.name)).toEqual(["Heading"]);
+    expect(blocks.map((block) => block.name)).toEqual(["Heading", "Paragraph"]);
+  });
+
+  test("the basic text comes along whatever the format cites, after what it cites", () => {
+    const names = blocksForFormat(
+      { value: "Decide with @Steps, then a @Callout." },
+      metaWith([
+        ...SITE,
+        "site/sections/Blog/Post/Steps.tsx",
+        "site/sections/Blog/Post/Callout.tsx",
+        "site/sections/Blog/Post/Quote.tsx",
+      ]),
+      {},
+    ).map((block) => block.name);
+    expect(names.slice(0, 2).sort()).toEqual(["Callout", "Steps"]);
+    expect(names.slice(2)).toEqual(["Heading", "Paragraph"]);
+  });
+
+  test("a cited basic block appears once, where the citation put it", () => {
+    const names = blocksForFormat(
+      { value: "Mostly @Paragraph." },
+      metaWith(SITE),
+      {},
+    ).map((block) => block.name);
+    expect(names).toEqual(["Paragraph", "Heading"]);
+  });
+
+  test("a product block the site already fills comes along, whatever its name", () => {
+    const decofile = {
+      "collections/blog/posts/a": {
+        __resolveType: "blog/loaders/Blogpost.ts",
+        post: {
+          sections: [
+            {
+              __resolveType: "site/sections/Blog/Post/Vitrine.tsx",
+              products: ["123"],
+            },
+          ],
+        },
+      },
+    };
+    const names = blocksForFormat(
+      { value: "Open with @Heading." },
+      metaWith([...SITE, "site/sections/Blog/Post/Vitrine.tsx"]),
+      decofile,
+    ).map((block) => block.name);
+    expect(names).toContain("Vitrine");
+    expect(names).not.toContain("ProductShelf");
   });
 
   test("a site with no post sections offers none", () => {
