@@ -16,26 +16,29 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { gateViews } from "@/layouts/main-panel-tabs/analytics-heatmap-model";
 import { HeatmapView } from "@/layouts/main-panel-tabs/analytics-heatmap-tab";
 import {
   ActiveView,
   type AnalyticsRegisterResult,
   type AnalyticsStatus,
   ConfigurationPanel,
+  CustomEventsHelp,
   DATA_VIEWS,
+  Funnel,
   fetchJson,
   RegisterCard,
 } from "@/layouts/main-panel-tabs/analytics-tab";
 import { KEYS } from "@/lib/query-keys";
+import { MetricCard } from "@/layouts/task-board/analytics-sections";
 import type { SiteProject } from "./org-insights";
 
-/** Overview first, as the tab opens on it; experiments have their own Monitor tab. */
+/**
+ * Overview first, as the tab opens on it. Heatmap is listed even without its
+ * module, where it explains how to turn it on.
+ */
 const SECTIONS = [
   ...DATA_VIEWS.filter((v) => v.view === "overview"),
-  ...DATA_VIEWS.filter(
-    (v) => v.view !== "overview" && v.view !== "experiments",
-  ),
+  ...DATA_VIEWS.filter((v) => v.view !== "overview"),
 ];
 
 /** Realtime is always "now" and the heatmap picks its own period. */
@@ -80,10 +83,9 @@ export function useRegisteredSites(
   });
 }
 
-/** The views this site is offered, overview first; none until it registers. */
+/** The views a site has, overview first; none until it registers. */
 export function analyticsSections(status: AnalyticsStatus | undefined) {
-  if (!status?.registered) return [];
-  return gateViews(SECTIONS, status.config?.modules ?? ["core"]);
+  return status?.registered ? SECTIONS : [];
 }
 
 /** Every view at least one of these sites is offered, in the usual order. */
@@ -146,15 +148,48 @@ export function AnalyticsSection({
     );
   }
   return (
-    <ActiveView
-      key={section}
-      base={base}
-      orgSlug={orgSlug}
-      site={project.site}
-      view={section}
-      range={range}
-      quota={status.config?.quota}
-    />
+    <>
+      <ActiveView
+        key={section}
+        base={base}
+        orgSlug={orgSlug}
+        site={project.site}
+        view={section}
+        range={range}
+        quota={status.config?.quota}
+      />
+      {section === "events" && <CustomEventsHelp />}
+    </>
+  );
+}
+
+/** The commerce funnel from Deco Analytics' own overview; nothing elsewhere. */
+export function DecoFunnel({
+  orgSlug,
+  project,
+  range,
+}: {
+  orgSlug: string;
+  project: SiteProject;
+  range: string;
+}) {
+  const t = useT();
+  const query = useQuery({
+    queryKey: KEYS.analyticsData(orgSlug, project.site, "overview", range),
+    queryFn: async () =>
+      (await fetchJson(
+        `${hostingBase(orgSlug, project)}/analytics/data?view=overview&range=${encodeURIComponent(range)}`,
+      )) as { data?: { funnel?: unknown } },
+    retry: false,
+    staleTime: 30_000,
+  });
+  const rows = query.data?.data?.funnel;
+  const row = Array.isArray(rows) ? rows[0] : undefined;
+  if (!row || typeof row !== "object") return null;
+  return (
+    <MetricCard title={t("mainPanelTabs.analyticsTab.cardFunnel")}>
+      <Funnel row={row as Record<string, unknown>} />
+    </MetricCard>
   );
 }
 

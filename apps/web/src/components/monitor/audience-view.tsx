@@ -34,6 +34,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Page } from "@/components/page";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import {
@@ -43,6 +44,7 @@ import {
 } from "@/layouts/main-panel-tabs/cdn-tab";
 import {
   type AnalyticsRegisterResult,
+  RANGE_PILLS,
   RegistrationResult,
 } from "@/layouts/main-panel-tabs/analytics-tab";
 import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
@@ -58,6 +60,7 @@ import {
   analyticsSections,
   ConfigureButton,
   ConfigureDialog,
+  DecoFunnel,
   ownsRange,
   RegisterAnalytics,
   SectionTabs,
@@ -132,6 +135,29 @@ function rangeLabel(range: AudienceRange, t: TFunction): string {
   }
 }
 
+type SectionRange = (typeof RANGE_PILLS)[number];
+
+function sectionRangeLabel(range: SectionRange, t: TFunction): string {
+  switch (range) {
+    case "5m":
+      return t("monitor.audience.range.5m");
+    case "15m":
+      return t("monitor.audience.range.15m");
+    case "30m":
+      return t("monitor.audience.range.30m");
+    case "1h":
+      return t("monitor.audience.range.1h");
+    case "24h":
+    case "7d":
+    case "30d":
+      return rangeLabel(range, t);
+    default: {
+      const unhandled: never = range;
+      return unhandled;
+    }
+  }
+}
+
 /** The period, in the panel's top bar beside the Monitor's other controls. */
 function RangeAction({
   value,
@@ -173,12 +199,17 @@ function delta(current: number, previous: number | null | undefined) {
   return previous ? relativeChange(current, previous) : null;
 }
 
+type ChartMetric = "visitors" | "pageviews";
+
 function SummaryCards({
   summary,
   previous,
+  onChart,
 }: {
   summary: AudienceSummary;
   previous: AudienceSummary | null;
+  /** Visitors and pageviews pick what the chart below draws. */
+  onChart: (metric: ChartMetric) => void;
 }) {
   const t = useT();
   const cards: {
@@ -187,6 +218,7 @@ function SummaryCards({
     value: string;
     change: number | null;
     better: "up" | "down";
+    chart?: ChartMetric;
   }[] = [
     {
       key: "visitors",
@@ -194,6 +226,7 @@ function SummaryCards({
       value: formatNumber(summary.visitors),
       change: delta(summary.visitors, previous?.visitors),
       better: "up",
+      chart: "visitors",
     },
     {
       key: "pageviews",
@@ -201,8 +234,18 @@ function SummaryCards({
       value: formatNumber(summary.pageviews),
       change: delta(summary.pageviews, previous?.pageviews),
       better: "up",
+      chart: "pageviews",
     },
   ];
+  if (summary.sessions !== null) {
+    cards.push({
+      key: "sessions",
+      title: t("monitor.audience.sessions"),
+      value: formatNumber(summary.sessions),
+      change: delta(summary.sessions, previous?.sessions),
+      better: "up",
+    });
+  }
   if (summary.bounceRate !== null) {
     cards.push({
       key: "bounce",
@@ -222,8 +265,13 @@ function SummaryCards({
     });
   }
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {cards.map((card) => (
+    <div
+      className={cn(
+        "grid grid-cols-2 gap-4",
+        cards.length > 4 ? "lg:grid-cols-5" : "lg:grid-cols-4",
+      )}
+    >
+      {cards.map(({ chart, ...card }) => (
         <MetricCard
           key={card.key}
           title={card.title}
@@ -231,6 +279,7 @@ function SummaryCards({
           caption={
             <Trend change={card.change} better={card.better} reference="" />
           }
+          onClick={chart ? () => onChart(chart) : undefined}
         />
       ))}
     </div>
@@ -239,16 +288,27 @@ function SummaryCards({
 
 function VisitorsChart({
   points,
+  metric = "visitors",
 }: {
-  points: { t: string; visitors: number }[];
+  points: AudiencePoint[];
+  metric?: ChartMetric;
 }) {
   const t = useT();
   return (
-    <MetricCard title={t("monitor.audience.overTime")}>
+    <MetricCard
+      title={
+        metric === "visitors"
+          ? t("monitor.audience.overTime")
+          : t("monitor.audience.pageviewsOverTime")
+      }
+    >
       <ChartContainer
         config={{
-          visitors: {
-            label: t("monitor.audience.visitors"),
+          [metric]: {
+            label:
+              metric === "visitors"
+                ? t("monitor.audience.visitors")
+                : t("monitor.audience.pageviews"),
             color: COLOR_VISITORS,
           },
         }}
@@ -284,7 +344,7 @@ function VisitorsChart({
           />
           <ChartTooltip content={<ChartTooltipContent />} />
           <Area
-            dataKey="visitors"
+            dataKey={metric}
             type="monotone"
             fill={COLOR_VISITORS}
             fillOpacity={0.15}
@@ -394,6 +454,7 @@ function AudienceOverview({
   const { org } = useProjectContext();
   const summary = useAudience(org.slug, project, "summary", range);
   const timeline = useAudience(org.slug, project, "timeline", range);
+  const [chart, setChart] = useState<ChartMetric>("visitors");
 
   if (summary.isLoading) {
     return (
@@ -440,12 +501,16 @@ function AudienceOverview({
         <SummaryCards
           summary={body.data.summary}
           previous={body.data.previous}
+          onChart={setChart}
         />
       )}
       {timeline.isLoading ? (
         <Skeleton className="h-64" />
       ) : (
-        points.length > 1 && <VisitorsChart points={points} />
+        points.length > 1 && <VisitorsChart points={points} metric={chart} />
+      )}
+      {body.source === "deco-analytics" && (
+        <DecoFunnel orgSlug={org.slug} project={project} range={range} />
       )}
       <div className="grid gap-4 md:grid-cols-2">
         <RankedPanel
@@ -506,6 +571,9 @@ function ProjectAudience({
     ? requested
     : "overview";
   const [dialog, setDialog] = useState<"configure" | "register" | null>(null);
+  // Deco Analytics' own views also read the last minutes and hours.
+  const [sectionRange, setSectionRange] = useState<SectionRange>("24h");
+  const inSection = section !== "overview";
   const [registered, setRegistered] = useState<AnalyticsRegisterResult | null>(
     null,
   );
@@ -530,11 +598,21 @@ function ProjectAudience({
 
   return (
     <>
-      <RangeAction
-        value={range}
-        onChange={onRange}
-        hideRange={ownsRange(section)}
-      >
+      <RangeAction value={range} onChange={onRange} hideRange={inSection}>
+        {inSection && !ownsRange(section) && (
+          <TopbarSelect
+            label={t("monitor.audience.range")}
+            value={sectionRange}
+            options={RANGE_PILLS.map((r) => ({
+              value: r,
+              label: sectionRangeLabel(r, t),
+            }))}
+            onChange={setSectionRange}
+          />
+        )}
+        {status.data?.config?.enabled === false && (
+          <Badge variant="outline">{t("monitor.audience.paused")}</Badge>
+        )}
         {status.data?.registered && (
           <ConfigureButton onClick={() => setDialog("configure")} />
         )}
@@ -566,7 +644,7 @@ function ProjectAudience({
           project={project}
           status={status.data}
           section={section}
-          range={range}
+          range={sectionRange}
           onConfigure={() => setDialog("configure")}
         />
       )}

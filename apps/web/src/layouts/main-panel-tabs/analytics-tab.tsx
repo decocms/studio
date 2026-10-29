@@ -194,7 +194,15 @@ export const DATA_VIEWS: ReadonlyArray<{
 ];
 
 // Range pills, shortest first — the admin's 5m…30d selector.
-const RANGE_PILLS = ["5m", "15m", "30m", "1h", "24h", "7d", "30d"] as const;
+export const RANGE_PILLS = [
+  "5m",
+  "15m",
+  "30m",
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+] as const;
 
 // Keys in a view payload that are context, not panels — never rendered as data.
 const META_KEYS = new Set([
@@ -639,7 +647,7 @@ function BarList({
 
 /** The commerce funnel: steps as bars scaled to the first step, each labelled
  *  with its conversion off the top. */
-function Funnel({ row }: { row: Record<string, unknown> }) {
+export function Funnel({ row }: { row: Record<string, unknown> }) {
   const order = [
     ["viewed", "Viewed"],
     ["view_item", "View item"],
@@ -2096,58 +2104,7 @@ function RegisteredView({
         />
       )}
 
-      {/* A naturally-closed row documenting the client API, mirroring the admin
-          UI's install text — collapsed by default so it doesn't crowd the data. */}
-      <details className="group surface">
-        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-accent">
-          <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
-          Send custom events from your code
-        </summary>
-        <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-sm text-muted-foreground">
-          <p>
-            Analytics is active automatically — pageviews are collected with no
-            code. For custom events, call the public client API on{" "}
-            <span className="font-mono text-foreground">window.__dq</span>:
-          </p>
-          <dl className="flex flex-col gap-2">
-            <div className="flex flex-col gap-0.5">
-              <dt className="font-mono text-xs text-foreground">pageview()</dt>
-              <dd className="text-xs">
-                Record a pageview manually (SPA route change).
-              </dd>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <dt className="font-mono text-xs text-foreground">
-                track(name, props?)
-              </dt>
-              <dd className="text-xs">
-                A custom event. <span className="font-mono">name</span> is
-                lowercase a–z, digits and underscore, up to 40 characters;{" "}
-                <span className="font-mono">props</span> is an optional flat
-                object.
-              </dd>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <dt className="font-mono text-xs text-foreground">
-                purchase(&#123; transactionId, value, currency, items, itemIds
-                &#125;)
-              </dt>
-              <dd className="text-xs">
-                A purchase. <span className="font-mono">transactionId</span>{" "}
-                dedupes a reloaded confirmation page so a sale isn't counted
-                twice.
-              </dd>
-            </div>
-          </dl>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-            <code className="whitespace-pre-wrap break-all text-xs text-muted-foreground">
-              {
-                'window.__dq.track("newsletter_signup", { plan: "pro" })\nwindow.__dq.purchase({ transactionId: "A123", value: 99.9, currency: "BRL" })'
-              }
-            </code>
-          </div>
-        </div>
-      </details>
+      <CustomEventsHelp />
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
@@ -2165,6 +2122,63 @@ function RegisteredView({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** A naturally-closed row documenting the client API, mirroring the admin
+ *  UI's install text — collapsed by default so it doesn't crowd the data. */
+export function CustomEventsHelp() {
+  return (
+    <details className="group surface">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-accent">
+        <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
+        Send custom events from your code
+      </summary>
+      <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-sm text-muted-foreground">
+        <p>
+          Analytics is active automatically — pageviews are collected with no
+          code. For custom events, call the public client API on{" "}
+          <span className="font-mono text-foreground">window.__dq</span>:
+        </p>
+        <dl className="flex flex-col gap-2">
+          <div className="flex flex-col gap-0.5">
+            <dt className="font-mono text-xs text-foreground">pageview()</dt>
+            <dd className="text-xs">
+              Record a pageview manually (SPA route change).
+            </dd>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <dt className="font-mono text-xs text-foreground">
+              track(name, props?)
+            </dt>
+            <dd className="text-xs">
+              A custom event. <span className="font-mono">name</span> is
+              lowercase a–z, digits and underscore, up to 40 characters;{" "}
+              <span className="font-mono">props</span> is an optional flat
+              object.
+            </dd>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <dt className="font-mono text-xs text-foreground">
+              purchase(&#123; transactionId, value, currency, items, itemIds
+              &#125;)
+            </dt>
+            <dd className="text-xs">
+              A purchase. <span className="font-mono">transactionId</span>{" "}
+              dedupes a reloaded confirmation page so a sale isn't counted
+              twice.
+            </dd>
+          </div>
+        </dl>
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+          <code className="whitespace-pre-wrap break-all text-xs text-muted-foreground">
+            {
+              'window.__dq.track("newsletter_signup", { plan: "pro" })\nwindow.__dq.purchase({ transactionId: "A123", value: 99.9, currency: "BRL" })'
+            }
+          </code>
+        </div>
+      </div>
+    </details>
   );
 }
 
