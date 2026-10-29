@@ -25,7 +25,6 @@ import {
 import { globalSectionLabel } from "@/components/sections-editor/page-list";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -107,9 +106,6 @@ export function SavedSectionEditor({
     ? resolveSchema(seed.resolveType, meta)
     : null;
 
-  const backend = useContentBackend(virtualMcpId, branch);
-  const hosted = backend.kind === "protocol" && backend.source === "github";
-
   const blockData = decofile[blockKey] as Record<string, unknown> | undefined;
   const title = blockData ? globalSectionLabel(blockKey, blockData) : blockKey;
 
@@ -178,16 +174,14 @@ export function SavedSectionEditor({
               style={{ backgroundColor: GLOBAL_SECTION_ICON_COLOR }}
               aria-hidden
             />
-            {/* Hosted v8: the section's name beside its dot (the form also
-                opens where no page header shows the breadcrumbs). */}
-            {hosted ? (
-              <span
-                className="min-w-0 truncate text-sm font-medium"
-                data-testid="saved-section-title"
-              >
-                {title}
-              </span>
-            ) : null}
+            {/* The section's name beside its dot: the form also opens where
+                no page header shows the breadcrumbs, on every backend. */}
+            <span
+              className="min-w-0 truncate text-sm font-medium"
+              data-testid="saved-section-title"
+            >
+              {title}
+            </span>
             <div className="flex-1" />
             <Tooltip>
               <TooltipTrigger asChild>
