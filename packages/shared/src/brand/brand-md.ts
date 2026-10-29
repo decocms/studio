@@ -149,7 +149,7 @@ const BRAND_GROUPS = [
       { id: "values", match: /\bvalues?\b|valores/i },
       { id: "competitors", match: /competitor|rival|concorrent/i },
       { id: "keywords", match: /keyword|palavras-chave|\bseo\b/i },
-      { id: "dates", match: /date|calendar|datas/i },
+      { id: "dates", match: /date|calend[aá]r|datas|sazonal/i },
       {
         id: "policies",
         match: /polic|pol[ií]tic|shipping|returns?\b|frete|troca/i,

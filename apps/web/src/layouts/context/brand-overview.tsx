@@ -283,6 +283,8 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     /** Frontmatter keys the blog reads, by key. */
     meta: Record<string, string>;
   } | null>(null);
+  /** The section whose row opened the form, focused once it mounts. */
+  const [focus, setFocus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const editing = draft !== null;
   const listing = useOrgFsList(HOME_MOUNT_PATH, brand.path);
@@ -462,6 +464,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
         Icon={Icon}
         value={sectionText(title)}
         onChange={(text) => setSection(title, text)}
+        focused={focus === title}
       />
     ) : summary !== undefined ? (
       <SectionRow
@@ -469,7 +472,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
         title={label}
         summary={summary}
         Icon={Icon}
-        onOpen={startEditing}
+        onOpen={() => startEditing(title)}
       />
     ) : (
       <div
@@ -501,8 +504,10 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
       </div>
     );
 
-  function startEditing() {
+  /** `title`: the row that was clicked, which the form opens on. */
+  function startEditing(title?: string) {
     if (!loaded) return;
+    setFocus(title ?? null);
     setDraft({ sections: {}, tokens: {}, quote: null, meta: {} });
   }
 
@@ -546,7 +551,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button size="sm" disabled={!loaded} onClick={startEditing}>
+            <Button size="sm" disabled={!loaded} onClick={() => startEditing()}>
               {t("library.context.editBrand")}
             </Button>
           </>
@@ -840,11 +845,14 @@ function SectionField({
   Icon: SectionIcon,
   value,
   onChange,
+  focused,
 }: {
   label: string;
   Icon: Icon;
   value: string;
   onChange: (text: string) => void;
+  /** The row that opened the form: focusing it on mount scrolls it into view. */
+  focused: boolean;
 }) {
   return (
     <label className="flex flex-col gap-2 border-b border-border/70 px-1 py-4">
@@ -854,8 +862,9 @@ function SectionField({
       </span>
       <Textarea
         value={value}
+        autoFocus={focused}
         onChange={(e) => onChange(e.target.value)}
-        className="field-sizing-content min-h-20"
+        className="field-sizing-content max-h-64 min-h-20"
       />
     </label>
   );

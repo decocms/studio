@@ -199,6 +199,23 @@ describe("formats", () => {
     expect(grouped.groups.at(-1)?.id).toBe("content");
   });
 
+  test("a calendar or seasonality heading, accented or not, is special dates", () => {
+    const titles = [
+      "Calendário",
+      "Calendário comercial",
+      "Calendar",
+      "Sazonalidade",
+    ];
+    const grouped = groupBrandSections(
+      titles.map((title) => ({ title, summary: "" })),
+    );
+    const dates = grouped.groups
+      .flatMap((g) => g.items)
+      .find((i) => i.id === "dates");
+    expect(dates?.sections.map((s) => s.title)).toEqual(titles);
+    expect(grouped.more).toEqual([]);
+  });
+
   test("a campaign heading is no longer read as special dates", () => {
     const grouped = groupBrandSections([{ title: "Campanhas", summary: "" }]);
     expect(grouped.more.map((s) => s.title)).toEqual(["Campanhas"]);
