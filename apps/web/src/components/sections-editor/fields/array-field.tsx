@@ -50,10 +50,12 @@ import {
   withItemCrumbLabel,
 } from "../schema-form-breadcrumb";
 import { isSectionArrayField } from "../section-array-field";
+import { defaultSectionInsertIndex } from "../section-insert-position";
 import {
   type ArrayEntry,
   createArrayEntries,
   insertEntryAfter,
+  insertEntryAt,
   isNonArrayStoredValue,
   remapEntryIndices,
   removeEntryAt,
@@ -294,10 +296,15 @@ export function ArrayField({
     });
   };
 
-  const appendItem = (item: unknown) => {
-    const next = [...items, item];
+  // Places a picked section at `nextIndex` and drills into it.
+  const insertItem = (nextIndex: number, item: unknown) => {
+    const next = [
+      ...items.slice(0, nextIndex),
+      item,
+      ...items.slice(nextIndex),
+    ];
     onChange(next);
-    const nextIndex = next.length - 1;
+    setEntries((current) => insertEntryAt(current, nextIndex));
     setOpenIndex(nextIndex);
     const labelText = itemLabel(item, nextIndex);
     onBreadcrumbChange?.(
@@ -358,17 +365,22 @@ export function ArrayField({
     );
   };
 
+  // Opens the section picker; the picked section lands at `index`.
+  const requestSectionAt = (index: number) => {
+    if (!previewBaseUrl) {
+      toast.error(t("sectionsEditor.arrayField.startPreviewServer"));
+      return;
+    }
+    if (onRequestAddSection) {
+      onRequestAddSection({ append: (item) => insertItem(index, item) });
+      return;
+    }
+    toast.error(t("sectionsEditor.arrayField.sectionPickerNotAvailable"));
+  };
+
   const handleAddClick = () => {
     if (usesSectionPicker) {
-      if (!previewBaseUrl) {
-        toast.error(t("sectionsEditor.arrayField.startPreviewServer"));
-        return;
-      }
-      if (onRequestAddSection) {
-        onRequestAddSection({ append: appendItem });
-        return;
-      }
-      toast.error(t("sectionsEditor.arrayField.sectionPickerNotAvailable"));
+      requestSectionAt(defaultSectionInsertIndex(items, decofile ?? {}));
       return;
     }
     addItem();
@@ -734,6 +746,16 @@ export function ArrayField({
                           }
                           onDuplicate={() => duplicateItem(entry.index)}
                           onRemove={() => removeItem(entry.index)}
+                          onAddSectionAbove={
+                            usesSectionPicker
+                              ? () => requestSectionAt(entry.index)
+                              : undefined
+                          }
+                          onAddSectionBelow={
+                            usesSectionPicker
+                              ? () => requestSectionAt(entry.index + 1)
+                              : undefined
+                          }
                         >
                           {inline &&
                             expandedEntryIds.has(entry.id) &&

@@ -36,28 +36,30 @@ export function resizeArrayEntries(
   return [...current, ...extra];
 }
 
-/** Insert a new entry right after the item at `itemIndex`, shifting the
- * indices of entries after it. Used for duplicate, which inserts mid-array —
- * unlike append, `resizeArrayEntries` can't place it (it only grows/shrinks
- * from the end, which desyncs every entry after the insertion point). */
+/** Insert a new entry for an item placed at `itemIndex`, shifting the indices
+ * of entries at or after it. Used for mid-array inserts (duplicate, "Add
+ * section above/below") — `resizeArrayEntries` can't place those (it only
+ * grows/shrinks from the end, which desyncs every entry after the insertion
+ * point). */
+export function insertEntryAt(
+  entries: ArrayEntry[],
+  itemIndex: number,
+): ArrayEntry[] {
+  const insertAt = entries.findIndex((entry) => entry.index >= itemIndex);
+  const shifted = entries.map((entry) =>
+    entry.index >= itemIndex ? { ...entry, index: entry.index + 1 } : entry,
+  );
+  const newEntry: ArrayEntry = { id: crypto.randomUUID(), index: itemIndex };
+  if (insertAt === -1) return [...shifted, newEntry];
+  return [...shifted.slice(0, insertAt), newEntry, ...shifted.slice(insertAt)];
+}
+
+/** Insert a new entry right after the item at `itemIndex` (duplicate). */
 export function insertEntryAfter(
   entries: ArrayEntry[],
   itemIndex: number,
 ): ArrayEntry[] {
-  const insertAt = entries.findIndex((entry) => entry.index === itemIndex);
-  const shifted = entries.map((entry) =>
-    entry.index > itemIndex ? { ...entry, index: entry.index + 1 } : entry,
-  );
-  const newEntry: ArrayEntry = {
-    id: crypto.randomUUID(),
-    index: itemIndex + 1,
-  };
-  if (insertAt === -1) return [...shifted, newEntry];
-  return [
-    ...shifted.slice(0, insertAt + 1),
-    newEntry,
-    ...shifted.slice(insertAt + 1),
-  ];
+  return insertEntryAt(entries, itemIndex + 1);
 }
 
 /** Drop the entry for the item at `itemIndex`, shifting indices of entries

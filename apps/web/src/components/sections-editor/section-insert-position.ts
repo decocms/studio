@@ -10,9 +10,11 @@ const FOOTER_PATTERN = /(^|[/\s_-])footer/i;
 const MAX_SAVED_BLOCK_HOPS = 5;
 
 function isFooterSection(
-  section: RawSection,
+  value: unknown,
   decofile: Record<string, unknown>,
 ): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const section = value as RawSection;
   let rt = section.__resolveType ?? "";
   if (isLazyResolveType(rt)) rt = section.section?.__resolveType ?? "";
 
@@ -34,13 +36,12 @@ function isFooterSection(
  * A page that doesn't end in a footer gets it appended, as before.
  */
 export function defaultSectionInsertIndex(
-  rawSections: RawSection[],
+  rawSections: readonly unknown[],
   decofile: Record<string, unknown>,
 ): number {
   let index = rawSections.length;
   while (index > 0) {
-    const previous = rawSections[index - 1];
-    if (!previous || !isFooterSection(previous, decofile)) break;
+    if (!isFooterSection(rawSections[index - 1], decofile)) break;
     index--;
   }
   return index;
