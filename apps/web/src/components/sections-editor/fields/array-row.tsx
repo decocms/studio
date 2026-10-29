@@ -3,6 +3,8 @@ import { GripVertical } from "lucide-react";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { EditorRowActionsTrigger, EditorRowToggle } from "../editor-list-row";
 import {
+  ArrowNarrowDown,
+  ArrowNarrowUp,
   ChevronDown,
   ChevronRight,
   Copy01,
@@ -114,6 +116,8 @@ export function SortableArrayRow({
   onOpen,
   onDuplicate,
   onRemove,
+  onAddSectionAbove,
+  onAddSectionBelow,
 }: {
   sortableId: string;
   labelText: string;
@@ -128,6 +132,9 @@ export function SortableArrayRow({
   onOpen: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
+  /** Section lists only: open the picker to insert next to this row. */
+  onAddSectionAbove?: () => void;
+  onAddSectionBelow?: () => void;
 }) {
   const t = useT();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -232,6 +239,28 @@ export function SortableArrayRow({
               <Copy01 size={14} />
               {t("sectionsEditor.arrayField.duplicate")}
             </DropdownMenuItem>
+            {onAddSectionAbove && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddSectionAbove();
+                }}
+              >
+                <ArrowNarrowUp size={14} />
+                {t("sectionsEditor.sectionList.addSectionAboveMenuItem")}
+              </DropdownMenuItem>
+            )}
+            {onAddSectionBelow && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddSectionBelow();
+                }}
+              >
+                <ArrowNarrowDown size={14} />
+                {t("sectionsEditor.sectionList.addSectionBelowMenuItem")}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               variant="destructive"
               onClick={(e) => {

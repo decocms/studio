@@ -36,6 +36,7 @@ import {
 } from "./use-save-block";
 import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { AddSectionButton, SectionList, parseSections } from "./section-list";
+import { defaultSectionInsertIndex } from "./section-insert-position";
 import { isLazyResolveType } from "./section-lazy";
 import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { protocolBlockVersion } from "./content-protocol-api";
@@ -478,6 +479,9 @@ export function SectionsEditor({
   // than the page's section list), the field hands us an `append` callback here.
   // A non-null ref routes the modal selection to that field instead of the page.
   const pendingAppendRef = useRef<((item: unknown) => void) | null>(null);
+  // Where the page's section list asked the picker to insert ("Add section
+  // above/below" on a row). Null drops it before the page's footer.
+  const pendingInsertIndexRef = useRef<number | null>(null);
 
   /** Which panel accordion item is open when no drill-down owns the panel.
    *  SEO is not tracked here — `editingSeo` already is that item's open state,
@@ -2172,11 +2176,16 @@ export function SectionsEditor({
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
-    const updatedSections = [
-      ...rawSections,
-      { __resolveType: entry.resolveType } as RawSection,
-    ];
-    const newIndex = updatedSections.length - 1;
+    const newIndex = Math.min(
+      pendingInsertIndexRef.current ??
+        defaultSectionInsertIndex(rawSections, decofile),
+      rawSections.length,
+    );
+    pendingInsertIndexRef.current = null;
+    const updatedSections = [...rawSections];
+    updatedSections.splice(newIndex, 0, {
+      __resolveType: entry.resolveType,
+    } as RawSection);
 
     // The save updates the decofile cache optimistically; no need to await it.
     savePageSections(updatedSections, {
@@ -4585,6 +4594,10 @@ export function SectionsEditor({
         onAddVariant={handleAddSectionVariant}
         onDetach={handleDetachSection}
         onAddSection={() => setAddSectionOpen(true)}
+        onAddSectionAt={(index) => {
+          pendingInsertIndexRef.current = index;
+          setAddSectionOpen(true);
+        }}
         canAddSection={canAddSection}
       />
     </div>
@@ -5077,7 +5090,10 @@ export function SectionsEditor({
               open={addSectionOpen}
               onOpenChange={(open) => {
                 setAddSectionOpen(open);
-                if (!open) pendingAppendRef.current = null;
+                if (!open) {
+                  pendingAppendRef.current = null;
+                  pendingInsertIndexRef.current = null;
+                }
               }}
               meta={meta}
               decofile={decofile}
