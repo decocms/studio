@@ -236,6 +236,30 @@ export function listSavedRunnables(
 }
 
 /**
+ * Where a runnable sits in the Loaders/Actions folder browser, as one label:
+ * `site/loaders/Layouts/X.ts` → `site › Layouts`.
+ */
+export function runnableLocationLabel(resolveType: string): string {
+  const [root = "", ...rest] = runnableFolderPath(resolveType);
+  return [runnableGroupTitle(root), ...rest].join(" › ");
+}
+
+/** Saved runnables whose title, key or resolveType contains the query. */
+export function filterSavedRunnables(
+  entries: SavedRunnableEntry[],
+  query: string,
+): SavedRunnableEntry[] {
+  const q = query.toLowerCase();
+  if (!q) return entries;
+  return entries.filter(
+    (e) =>
+      e.title.toLowerCase().includes(q) ||
+      e.key.toLowerCase().includes(q) ||
+      e.resolveType.toLowerCase().includes(q),
+  );
+}
+
+/**
  * The editor seed for a saved runnable block: its resolveType, form props
  * (the block minus `__resolveType`), and display title (`name` or the key).
  * `resolveType` is `""` when the block is missing or malformed — callers that

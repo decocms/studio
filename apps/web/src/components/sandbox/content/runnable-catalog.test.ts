@@ -1,12 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
+  filterSavedRunnables,
   isManifestRunnableResolveType,
   listAvailableRunnables,
   listSavedRunnables,
   readSavedRunnableBlock,
   runnableFolderPath,
   runnableGroupKey,
+  runnableLocationLabel,
 } from "./runnable-catalog";
 
 const meta: LiveMeta = {
@@ -257,5 +259,38 @@ describe("runnable-catalog", () => {
     expect(
       listSavedRunnables(redirectMeta, decofile, "loaders").map((e) => e.key),
     ).toEqual(["MyProducts"]);
+  });
+
+  it("runnableLocationLabel names the folder a saved block lives under", () => {
+    expect(runnableLocationLabel("site/loaders/Layouts/Banners.ts")).toBe(
+      "site › Layouts",
+    );
+    expect(
+      runnableLocationLabel("deco-sites/mysite/loaders/product/detail.ts"),
+    ).toBe("mysite › product");
+    expect(runnableLocationLabel("site/loaders/products.ts")).toBe("site");
+    expect(runnableLocationLabel("$live/loaders/state.ts")).toBe("Deco");
+  });
+
+  it("filterSavedRunnables matches title, key or resolveType", () => {
+    const decofile: Record<string, unknown> = {
+      "Prints / Flags": { __resolveType: "site/loaders/products.ts" },
+      "shared-kits": {
+        __resolveType: "site/loaders/products.ts",
+        name: "Shared kits",
+      },
+      Legacy: { __resolveType: "vtex/loaders/legacy/productList.ts" },
+    };
+    const saved = listSavedRunnables(meta, decofile, "loaders");
+    const keys = (q: string) =>
+      filterSavedRunnables(saved, q).map((e) => e.key);
+
+    expect(keys("")).toEqual(["Legacy", "Prints / Flags", "shared-kits"]);
+    expect(keys("prints / f")).toEqual(["Prints / Flags"]);
+    // Only the key carries the hyphen; the title is "Shared kits".
+    expect(keys("shared-")).toEqual(["shared-kits"]);
+    expect(keys("vtex/")).toEqual(["Legacy"]);
+    expect(keys("nothing like this")).toEqual([]);
+    expect(filterSavedRunnables([], "kits")).toEqual([]);
   });
 });

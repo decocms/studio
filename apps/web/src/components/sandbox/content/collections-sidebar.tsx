@@ -1,5 +1,6 @@
 import {
   BookOpen01,
+  Bookmark,
   Calendar,
   CalendarDate,
   ChevronDown,
@@ -71,6 +72,13 @@ export function CollectionsSidebar({
           count={counts.redirects}
           active={active === "redirects"}
           onClick={() => onSelect("redirects")}
+        />
+        <CollectionRow
+          icon={Bookmark}
+          label={t("sandbox.collectionsSidebar.savedBlocks")}
+          count={counts.savedBlocks}
+          active={active === "saved-blocks"}
+          onClick={() => onSelect("saved-blocks")}
         />
         {shown("site") && (
           <CollectionRow

@@ -490,6 +490,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.postSchedule": "Scheduling",
   "sandbox.collectionsSidebar.posts": "Posts",
   "sandbox.collectionsSidebar.redirects": "Redirects",
+  "sandbox.collectionsSidebar.savedBlocks": "Saved blocks",
   "sandbox.collectionsSidebar.sections": "Sections",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.settings": "Settings",
@@ -512,6 +513,16 @@ export const sandbox = {
   "sandbox.contentBrowser.duplicateFailed": "Duplicate failed",
   "sandbox.contentBrowser.duplicatedSection": 'Duplicated "{name}"',
   "sandbox.contentBrowser.renameFailed": "Rename failed",
+  "sandbox.contentBrowser.savedBlocks.empty": "No saved blocks yet.",
+  "sandbox.contentBrowser.savedBlocks.emptyHint":
+    "Save a section or loader to reuse it across pages.",
+  "sandbox.contentBrowser.savedBlocks.loaders": "Saved loaders",
+  "sandbox.contentBrowser.savedBlocks.search": "Search saved blocks…",
+  "sandbox.contentBrowser.savedBlocks.sections": "Saved sections",
+  "sandbox.contentBrowser.savedBlocks.selectDescription":
+    "Pick a saved section or loader from the list to edit it.",
+  "sandbox.contentBrowser.savedBlocks.selectTitle":
+    "Select a saved block to edit",
   "sandbox.contentBrowser.sectionNotFound": "Section not found.",
   "sandbox.contentBrowser.sectionRenamed": "Section renamed",
   "sandbox.drawer.failedToRestart": "Failed to restart {name}",
