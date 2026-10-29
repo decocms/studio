@@ -369,7 +369,6 @@ export const mainPanelTabs = {
   // Dashboard (tenant-scoped /data views), rendered as collapsible sections.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuration",
   "mainPanelTabs.analyticsTab.viewOverview": "Overview",
-  "mainPanelTabs.analyticsTab.viewLive": "Realtime",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Pages & sources",
   "mainPanelTabs.analyticsTab.viewEvents": "Events & props",
   "mainPanelTabs.analyticsTab.viewErrors": "Errors",
@@ -561,6 +560,8 @@ export const mainPanelTabs = {
     "country level: no city coordinate",
   "mainPanelTabs.analyticsTab.globe.caption":
     "{places} places on the map · {approximate} at country level · {unplaced} not located",
+  "mainPanelTabs.analyticsTab.globe.replaying":
+    "Nobody on the site right now — replaying the selected period ({range}).",
   "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globe",
   "mainPanelTabs.analyticsTab.globe.modeMap": "Map",
   "mainPanelTabs.analyticsTab.globe.loadError":
