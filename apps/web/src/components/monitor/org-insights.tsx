@@ -8,6 +8,7 @@
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
+import { z } from "zod";
 import { Card } from "@decocms/ui/components/card.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { DayInput } from "@/components/order-monitor/order-monitor-day";
@@ -202,12 +203,50 @@ const asSummary = (data: unknown) => (data ?? null) as CdnSummary | null;
 const asTimeline = (data: unknown) =>
   Array.isArray(data) ? (data as TimelinePoint[]) : [];
 
+/** The Deco Analytics tag reports to its own collector, not the CDN warehouse,
+ *  so a tagged site's pageviews come from the read the project's Analytics tab
+ *  makes (same key, shared cache). */
+// ponytail: the collector only reads rolling windows, so a day older than 7d
+// shows no tag pageviews; ask it for a since/until window if that matters.
+function collectorQuery(orgSlug: string, site: string) {
+  return {
+    queryKey: KEYS.analyticsData(orgSlug, site, "overview", "7d"),
+    queryFn: () =>
+      fetchJson(
+        `/api/${orgSlug}/hosting/${encodeURIComponent(site)}/analytics/data?view=overview&range=7d`,
+      ),
+    retry: false,
+    staleTime: 30_000,
+  };
+}
+
+const CollectorOverview = z.object({
+  data: z.object({
+    // `t` is the UTC hour as ClickHouse prints it, the CDN buckets' format.
+    series: z.array(z.object({ t: z.string(), pageviews: z.coerce.number() })),
+  }),
+});
+
+/** The tag's hourly pageviews on one UTC day, as timeline points. */
+function collectorDay(data: unknown, date: string): TimelinePoint[] {
+  const parsed = CollectorOverview.safeParse(data);
+  if (!parsed.success) return [];
+  return parsed.data.data.series
+    .filter((row) => row.t.startsWith(date))
+    .map((row) => ({
+      bucket: row.t,
+      requests: 0,
+      bandwidth_bytes: 0,
+      pageviews: row.pageviews,
+      cache_hit_ratio: 0,
+    }));
+}
+
 /**
  * Every site's Monitor at once, laid out like the Metrics board: the same
  * Performance numbers summed, for the day Metrics is on, against the same
- * day a week before. Only sites the CDN
- * reports for count; a project that is not a deco site simply has none, so it
- * never shows as a gap.
+ * day a week before. Only sites the CDN or the analytics tag report for
+ * count; a project with neither simply has none, so it never shows as a gap.
  */
 export function OrgAnalytics({
   projects,
@@ -237,21 +276,30 @@ export function OrgAnalytics({
   const timelines = useQueries({ queries: read("timeline", false) });
   const previousSummaries = useQueries({ queries: read("summary", true) });
   const previousTimelines = useQueries({ queries: read("timeline", true) });
+  const collectors = useQueries({
+    queries: projects.map((p) => collectorQuery(org.slug, p.site)),
+  });
 
-  const loading = summaries.some((r) => r.isLoading);
+  const loading =
+    summaries.some((r) => r.isLoading) || collectors.some((r) => r.isLoading);
   const sites = projects
     .flatMap((project, i) => {
-      const summary = asSummary(summaries[i]?.data);
-      // A tagged site off the deco CDN counts pageviews with no requests.
-      if (!summary || (summary.total_requests <= 0 && summary.pageviews <= 0))
-        return [];
+      const cdn = asSummary(summaries[i]?.data);
+      const tag = collectorDay(collectors[i]?.data, date);
+      const tagged = tag.reduce((n, p) => n + p.pageviews, 0);
+      // The higher of the two, so a site counted by both isn't counted twice.
+      const pageviews = Math.max(cdn?.pageviews ?? 0, tagged);
+      if ((cdn?.total_requests ?? 0) <= 0 && pageviews <= 0) return [];
       return [
         {
           project,
-          summary,
-          previous: asSummary(previousSummaries[i]?.data),
-          timeline: asTimeline(timelines[i]?.data),
-          previousTimeline: asTimeline(previousTimelines[i]?.data),
+          summary: { ...(cdn ?? sumSummaries([])), pageviews },
+          // The tag's 7-day window has no week-before day to compare against.
+          previous: tagged ? null : asSummary(previousSummaries[i]?.data),
+          timeline: sumTimelines([asTimeline(timelines[i]?.data), tag]),
+          previousTimeline: tagged
+            ? []
+            : asTimeline(previousTimelines[i]?.data),
         },
       ];
     })
