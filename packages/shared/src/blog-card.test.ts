@@ -58,6 +58,22 @@ describe("BlogCardSchema", () => {
     });
   });
 
+  test("carries the post's objective beside the metric that measures it", () => {
+    const objective =
+      "Trazer 1.500 sessões orgânicas por mês para mochilas, parte dos +20% da campanha.";
+    const parsed = BlogCardSchema.parse({
+      ...CARD,
+      hypothesis: { objective, metric: "Sessões orgânicas em /mochilas" },
+    });
+    expect(parsed.hypothesis?.objective).toBe(objective);
+    expect(
+      BlogCardSchema.safeParse({
+        ...CARD,
+        hypothesis: { objective: "x".repeat(601) },
+      }).success,
+    ).toBe(false);
+  });
+
   test("refuses an unknown status or evidence source", () => {
     expect(BlogCardSchema.safeParse({ ...CARD, status: "done" }).success).toBe(
       false,

@@ -2406,6 +2406,7 @@ export interface StudioToolIO {
                     origin: "brand" | "campaign";
                   }[]
                 | undefined;
+              objective?: string | undefined;
               metric?: string | undefined;
               groundingOutcome?: string | undefined;
             }
@@ -2527,6 +2528,7 @@ export interface StudioToolIO {
                     origin: "brand" | "campaign";
                   }[]
                 | undefined;
+              objective?: string | undefined;
               metric?: string | undefined;
               groundingOutcome?: string | undefined;
             }
@@ -2654,6 +2656,7 @@ export interface StudioToolIO {
                     origin: "brand" | "campaign";
                   }[]
                 | undefined;
+              objective?: string | undefined;
               metric?: string | undefined;
               groundingOutcome?: string | undefined;
             }
@@ -2770,6 +2773,7 @@ export interface StudioToolIO {
                     origin: "brand" | "campaign";
                   }[]
                 | undefined;
+              objective?: string | undefined;
               metric?: string | undefined;
               groundingOutcome?: string | undefined;
             }
@@ -2883,6 +2887,7 @@ export interface StudioToolIO {
                     origin: "brand" | "campaign";
                   }[]
                 | undefined;
+              objective?: string | undefined;
               metric?: string | undefined;
               groundingOutcome?: string | undefined;
             }
@@ -3011,6 +3016,7 @@ export interface StudioToolIO {
                     origin: "brand" | "campaign";
                   }[]
                 | undefined;
+              objective?: string | undefined;
               metric?: string | undefined;
               groundingOutcome?: string | undefined;
             }

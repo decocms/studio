@@ -13,12 +13,15 @@ escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
 
 1. **A marca preenchida**, em Contexto → Marca. Sem ela o Content mostra o
    setup e nada mais é possível.
-2. **Uma campanha**, em Content → Campanhas, lida da conexão VTEX da org.
+2. **Uma campanha**, em Content → Campanhas, lida da conexão VTEX da org. A
+   meta dela (`goal`: o texto, a métrica e o alvo, até o fim do período) é
+   posta por uma pessoa; nenhum modelo propõe alvo.
 3. **Novo blogpost.** `BLOG_CARD_CREATE` cria o card em Ideas, para um site e
    uma campanha, e `BLOG_CARD_RUN` com `phase: "hypothesis"` começa o agente.
-   Ele pergunta à VTEX, ao GA4 e ao Search Console (`CONNECTION_TOOL_CALL`),
-   grava a evidência no card, depois a hipótese, apresenta no chat do card e
-   espera.
+   O post é da campanha: o agente parte dela e da meta, pergunta à VTEX, ao GA4
+   e ao Search Console (`CONNECTION_TOOL_CALL`), grava a evidência no card,
+   depois a hipótese, com o `objective` do post como a parte dele na meta,
+   apresenta no chat do card e espera.
 4. **A hipótese aprovada.** A pessoa ajusta no chat ou aprova no card, que
    chama `BLOG_CARD_RUN` com `phase: "execute"`. O card vai pra Generating, na
    branch `blog-<id>` do site, e passa por cinco etapas — `grounding`,

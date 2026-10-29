@@ -1,9 +1,10 @@
 # Bringing a card's hypothesis
 
-A hypothesis is the case for one post: what it argues, for whom, why now, and
-the figures that say so. A person reads it on the card and approves it,
-adjusts it with you in the chat, or drops it. It is the post's reason to
-exist, and it becomes the draft's brief.
+A hypothesis is the case for one post of a campaign: what it argues, for
+whom, why now, what it moves toward the campaign's goal, and the figures that
+say so. A person reads it on the card and approves it, adjusts it with you in
+the chat, or drops it. It is the post's reason to exist, and it becomes the
+draft's brief.
 
 ## 1. Read
 
@@ -11,8 +12,13 @@ exist, and it becomes the draft's brief.
   person asked to explore (`prompt`).
 - The brand, with `BLOG_STATE_GET`: `brand` (who it is, its language),
   `context` (tone, rules, don'ts, special dates), `formats`, and the card's
-  campaign among `campaigns`, by id. The campaign is the frame: its brief, its
-  products and its own guardrails.
+  campaign among `campaigns`, by id.
+
+The campaign is where the post starts, not where it lands. Its `goal` (what
+the campaign is for, counted in `goal.metric`, as far as `goal.target`, by the
+end of its period), its brief (`trigger.note`), its targets, its products and
+its guardrails frame everything below: the post is one step toward that goal.
+Never pick another campaign, and never argue a post this one would not want.
 
 ## 2. Gather the evidence
 
@@ -30,6 +36,11 @@ asked, through `CONNECTION_TOOL_CALL` (see "The store's systems" in
   (`VTEX_GET_SALES_PERFORMANCE_SUMMARY`, `VTEX_GET_ORDERS_TREND`), and searches
   that find nothing.
 - **Calendar**: the campaign's period, and the brand's special dates near it.
+- **The goal's baseline**, when the campaign has a goal: where its metric
+  stands today on the campaign's targets, from the system that counts it
+  (sessions and conversions in GA4, clicks and impressions in Search Console,
+  revenue in GA4 or VTEX), over the last 90 days. The post's objective moves
+  it.
 
 Keep what each answered, with the tool's name. A system that errors or
 answers nothing is left out; the others carry the hypothesis.
@@ -75,12 +86,14 @@ ground the hypothesis stands on:
     "format": { "name": "<one of the brand's formats>", "value": "<its brief, verbatim>" },
     "keywords": [{ "term": "sofá para sala pequena", "volume": 1240 }],
     "guardrails": [{ "text": "<what the post must not do>", "origin": "brand" }],
+    "objective": "<what this post moves, toward the campaign's goal>",
     "metric": "<what would show it worked>"
   }
 }
 ```
 
-- **The statement argues from the evidence.** Name the figure it rests on.
+- **The statement argues from the evidence**, for the campaign. Name the
+  figure it rests on.
 - **Format**: pick one of `formats` and copy its `name` and `value`. Do not
   invent one.
 - **Keywords**: three to eight terms readers search. `volume` only when a tool
@@ -88,13 +101,22 @@ ground the hypothesis stands on:
 - **Guardrails**: from the brand's don'ts and rules (`origin: "brand"`) and
   the campaign's own (`origin: "campaign"`), only the ones this post could
   break.
-- **Metric**: one, measurable in the systems you read, such as clicks from
-  search for the keywords or sessions that reach a campaign product.
+- **Objective**: what this post moves, as its share of the campaign's goal:
+  the figure it aims at and how that adds up to the goal ("1.500 sessões
+  orgânicas por mês em mochilas, parte dos +20% em acessórios"). A number only
+  when the evidence gives a baseline to aim from. When the campaign has no
+  goal, never invent one: write the objective from the campaign's
+  `intent.objective` (awareness, conversion…) and say in the chat that the
+  campaign has no goal yet.
+- **Metric**: one, measurable in the systems you read: how the objective will
+  be checked, such as clicks from search for the keywords or sessions that
+  reach a campaign product.
 
 ## 5. Present it and wait
 
-In the chat, in the brand's language: the title, the statement, and the two
-or three figures that carry it. Then stop. The person approves it from the
+In the chat, in the brand's language: the campaign and its goal first, then
+the title, the statement, the post's objective, and the two or three figures
+that carry it. Then stop. The person approves it from the
 card, or tells you what to change.
 
 When they ask for a change, change the card (`BLOG_CARD_UPDATE`) and present

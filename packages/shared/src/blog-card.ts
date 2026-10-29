@@ -132,6 +132,12 @@ export const BlogCardHypothesisSchema = z
       .array(GuardrailSchema)
       .max(20)
       .describe("What this post must not do, from the brand and the campaign."),
+    objective: z
+      .string()
+      .max(600)
+      .describe(
+        "What this post moves, as its share of the campaign's goal: the figure it aims at, and how that adds up to the goal.",
+      ),
     metric: z
       .string()
       .max(300)

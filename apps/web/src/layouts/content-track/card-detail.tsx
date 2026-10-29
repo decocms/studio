@@ -16,6 +16,7 @@ import {
   Check,
   CheckCircle,
   Clock,
+  CornerDownRight,
   Flag05,
   GitBranch01,
   Globe01,
@@ -51,6 +52,10 @@ import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
+import {
+  goalMeasure,
+  hasGoal,
+} from "@/components/sandbox/content/blog/campaign-goal";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
@@ -409,17 +414,7 @@ function HypothesisPhase({
             {hypothesis.angle}
           </p>
         )}
-        {hypothesis.metric && (
-          <div className="mt-1 flex items-start gap-2 rounded-[10px] border border-border bg-muted px-3 py-2.5 text-[12.5px] leading-[1.45] text-muted-foreground">
-            <Target04 size={14} className="mt-px shrink-0 text-success" />
-            <span>
-              <span className="font-semibold text-foreground">
-                {t("contentTrack.card.measuredIn")}
-              </span>{" "}
-              {hypothesis.metric}
-            </span>
-          </div>
-        )}
+        <CampaignFrame campaign={campaign} hypothesis={hypothesis} />
       </section>
 
       <Section title={t("contentTrack.card.signals")}>
@@ -489,37 +484,6 @@ function HypothesisPhase({
         </div>
       </Section>
 
-      {campaign && (
-        <Section title={t("contentTrack.card.whereItSits")}>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-[11px] rounded-[11px] border border-border bg-card px-[13px] py-[11px]">
-              <span className="grid size-[30px] shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                <Flag05 size={14} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13.5px] font-semibold text-foreground">
-                  {campaign.name || t("sandbox.campaigns.untitled")}
-                </div>
-                <div className="mt-px text-xs text-muted-foreground tabular-nums">
-                  {[
-                    t("contentTrack.card.campaign"),
-                    [campaign.period.start, campaign.period.end]
-                      .filter(Boolean)
-                      .join(" → "),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pl-4 text-xs text-muted-foreground">
-              <span className="size-2 rounded-sm bg-muted-foreground/50" />
-              {t("contentTrack.card.thisTask")}
-            </div>
-          </div>
-        </Section>
-      )}
-
       {(hypothesis.keywords?.length ?? 0) > 0 && (
         <Section title={t("contentTrack.card.keywords")}>
           <div className="flex flex-wrap gap-[7px]">
@@ -567,6 +531,109 @@ function HypothesisPhase({
           </ul>
         </Section>
       )}
+    </div>
+  );
+}
+
+/** The campaign the post belongs to: its goal, this post's share of it, and how that is checked. */
+function CampaignFrame({
+  campaign,
+  hypothesis,
+}: {
+  campaign: CampaignEntry | undefined;
+  hypothesis: NonNullable<BlogCard["hypothesis"]>;
+}) {
+  const t = useT();
+  if (!campaign && !hypothesis.objective && !hypothesis.metric) return null;
+  const period = campaign
+    ? [campaign.period.start, campaign.period.end].filter(Boolean).join(" → ")
+    : "";
+  const measure = campaign ? goalMeasure(campaign.goal, t) : "";
+
+  return (
+    <div className="mt-1 flex flex-col gap-2.5 rounded-[11px] border border-border bg-card px-[13px] py-3">
+      {campaign && (
+        <div className="flex items-center gap-[11px]">
+          <span className="grid size-[30px] shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+            <Flag05 size={14} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13.5px] font-semibold text-foreground">
+              {campaign.name || t("sandbox.campaigns.untitled")}
+            </div>
+            <div className="mt-px text-xs text-muted-foreground tabular-nums">
+              {[t("contentTrack.card.campaign"), period]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+          </div>
+        </div>
+      )}
+      <div
+        className={cn(
+          "flex flex-col gap-2 text-[12.5px] leading-[1.45]",
+          campaign && "border-t border-border pt-2.5",
+        )}
+      >
+        {campaign && (
+          <FrameLine
+            icon={<Target04 size={14} className="text-success" />}
+            label={t("contentTrack.card.campaignGoal")}
+          >
+            {hasGoal(campaign.goal) ? (
+              <>
+                {campaign.goal.text.trim()}
+                {measure && (
+                  <span className="font-semibold text-foreground">
+                    {" "}
+                    · {measure}
+                  </span>
+                )}
+              </>
+            ) : (
+              t("contentTrack.card.noGoal")
+            )}
+          </FrameLine>
+        )}
+        {hypothesis.objective && (
+          <FrameLine
+            icon={<CornerDownRight size={14} />}
+            label={t("contentTrack.card.thisPost")}
+          >
+            {hypothesis.objective}
+          </FrameLine>
+        )}
+        {hypothesis.metric && (
+          <FrameLine
+            icon={<BarChart07 size={14} />}
+            label={t("contentTrack.card.measuredIn")}
+          >
+            {hypothesis.metric}
+          </FrameLine>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FrameLine({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="mt-px grid w-3.5 shrink-0 place-items-center text-muted-foreground">
+        {icon}
+      </span>
+      <p className="min-w-0 flex-1 text-muted-foreground">
+        <span className="font-semibold text-foreground">{label}</span>{" "}
+        {children}
+      </p>
     </div>
   );
 }

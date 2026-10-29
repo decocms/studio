@@ -5,8 +5,8 @@ description: Work a blogpost card of an organization's content track — bring t
 
 # blogpost — work a card of the content track
 
-A card is one blog post on its way, from the hypothesis that argues for it to
-the draft a person reviews. It lives in the brand folder,
+A card is one blog post of one campaign, on its way from the hypothesis that
+argues for it to the draft a person reviews. It lives in the brand folder,
 `/app/org/home/brands/<brand>/cards/<id>.json`, and the board shows it as you
 save it. Your chat's instructions name the card, its site and its branch.
 
