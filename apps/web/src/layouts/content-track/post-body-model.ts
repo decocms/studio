@@ -45,7 +45,15 @@ export type BodyBlock =
   | { kind: "quote"; text: string }
   /** `url` is null while the illustrator has not drawn it yet. */
   | { kind: "image"; url: string | null; alt: string }
-  | { kind: "component"; name: string; productIds: string[] };
+  | {
+      kind: "component";
+      name: string;
+      /** What a reader reads in a block the card has no drawing of its own for. */
+      title: InlineNode[];
+      lines: InlineNode[][];
+      items: InlineNode[][];
+      productIds: string[];
+    };
 
 /** Elements whose content is code, never text. */
 const DROPPED = /^(script|style|template|iframe|object|embed|noscript)$/;
@@ -110,6 +118,80 @@ function listItems(value: unknown): string[] {
     .filter(Boolean);
 }
 
+/** Props that hold settings or addresses, never what a reader reads. */
+const NOT_TEXT =
+  /^(__resolveType|href|url|link|src|image|images|icon|alt|variant|style|level|size|align|color|theme|layout|language|code|id|slug|product|products|productIds)$/i;
+
+/** Where a block keeps its own heading. */
+const TITLE_KEYS = ["title", "heading", "label"] as const;
+
+/** Past this many entries the card shows the start of the list. */
+const MAX_ITEMS = 12;
+
+/** A string prop as the value it encodes: Steps and Checklist keep their lists as JSON. */
+function decoded(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+/** A string a reader reads, or nothing for an address or an image still to be drawn. */
+function prose(value: unknown): string {
+  const text = str(value).trim();
+  if (!text || text.startsWith(IMAGE_SENTINEL)) return "";
+  return /^(https?:|\/|#|mailto:|tel:|data:)/i.test(text) ? "" : text;
+}
+
+/** One list entry as one line: a step's own texts joined, "title — description". */
+function entryText(entry: unknown): string {
+  if (Array.isArray(entry)) {
+    return entry.map(entryText).filter(Boolean).join(" · ");
+  }
+  if (entry && typeof entry === "object") {
+    return Object.entries(entry as Record<string, unknown>)
+      .filter(([key]) => !NOT_TEXT.test(key))
+      .map(([, value]) => entryText(decoded(value)))
+      .filter(Boolean)
+      .join(" — ");
+  }
+  return prose(entry);
+}
+
+/** The text of a block the card has no drawing for: its heading, its lines, its list. */
+export function componentText(props: Record<string, unknown>): {
+  title: InlineNode[];
+  lines: InlineNode[][];
+  items: InlineNode[][];
+} {
+  const titleKey = TITLE_KEYS.find((key) => prose(props[key]));
+  const lines: string[] = [];
+  const items: string[] = [];
+  for (const [key, raw] of Object.entries(props)) {
+    if (key === titleKey || NOT_TEXT.test(key)) continue;
+    const value = decoded(raw);
+    if (Array.isArray(value)) {
+      items.push(...value.map(entryText).filter(Boolean));
+      continue;
+    }
+    const text =
+      value && typeof value === "object" ? entryText(value) : prose(value);
+    if (text) lines.push(text);
+  }
+  return {
+    title: titleKey ? inlineNodes(str(props[titleKey])) : [],
+    lines: lines.map(inlineNodes).filter((line) => line.length > 0),
+    items: items
+      .slice(0, MAX_ITEMS)
+      .map(inlineNodes)
+      .filter((item) => item.length > 0),
+  };
+}
+
 /** One drafted section as a block, or null when it has nothing to show. */
 function bodyBlock(section: unknown): BodyBlock | null {
   const record = (section ?? {}) as Record<string, unknown>;
@@ -151,7 +233,12 @@ function bodyBlock(section: unknown): BodyBlock | null {
       const ids = Array.isArray(record.productIds)
         ? record.productIds.filter((id): id is string => typeof id === "string")
         : [];
-      return { kind: "component", name: type, productIds: ids };
+      return {
+        kind: "component",
+        name: type,
+        ...componentText(props),
+        productIds: ids,
+      };
     }
   }
 }

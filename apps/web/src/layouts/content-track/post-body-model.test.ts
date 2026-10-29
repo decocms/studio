@@ -1,7 +1,12 @@
 import { setupComponentTest } from "../../../test/setup"; // happy-dom (DOMParser)
 setupComponentTest();
 import { describe, expect, test } from "bun:test";
-import { bodyBlocks, inlineNodes } from "./post-body-model";
+import {
+  bodyBlocks,
+  componentText,
+  type InlineNode,
+  inlineNodes,
+} from "./post-body-model";
 
 describe("inlineNodes", () => {
   test("keeps the inline tags a paragraph may have", () => {
@@ -110,7 +115,70 @@ describe("bodyBlocks", () => {
         { props: {} },
       ]),
     ).toEqual([
-      { kind: "component", name: "ProductShelf", productIds: ["1", "3"] },
+      {
+        kind: "component",
+        name: "ProductShelf",
+        title: [],
+        lines: [],
+        items: [],
+        productIds: ["1", "3"],
+      },
+    ]);
+  });
+});
+
+describe("componentText", () => {
+  const text = (value: string): InlineNode[] => [{ kind: "text", text: value }];
+
+  test("a callout reads as its title and its body", () => {
+    expect(
+      componentText({ title: "A resposta curta", body: "Leve 8 kg." }),
+    ).toEqual({
+      title: text("A resposta curta"),
+      lines: [text("Leve 8 kg.")],
+      items: [],
+    });
+  });
+
+  test("steps and checklists kept as JSON read as their entries", () => {
+    expect(
+      componentText({
+        title: "Em dois passos",
+        steps:
+          '[{"title": "Confira a regra", "description": "peso e medidas"}, {"title": "Pese a mala"}]',
+      }).items,
+    ).toEqual([text("Confira a regra — peso e medidas"), text("Pese a mala")]);
+    expect(
+      componentText({ items: '["Conferi o limite", "Somei o peso"]' }).items,
+    ).toEqual([text("Conferi o limite"), text("Somei o peso")]);
+  });
+
+  test("a call to action shows its words, not its address", () => {
+    expect(
+      componentText({ text: "Ver malas", href: "https://loja.example/malas" }),
+    ).toEqual({ title: [], lines: [text("Ver malas")], items: [] });
+  });
+
+  test("addresses, image notes and settings are not text; broken JSON is", () => {
+    expect(
+      componentText({
+        caption: "https://cdn.example/a.webp",
+        note: "generate:uma mala aberta",
+        variant: "tip",
+        body: "[oops",
+      }).lines,
+    ).toEqual([text("[oops")]);
+  });
+
+  test("code in a body is dropped and its inline tags kept", () => {
+    expect(
+      componentText({ body: "Leve <script>alert(1)</script><b>pouco</b>" })
+        .lines,
+    ).toEqual([
+      [
+        { kind: "text", text: "Leve " },
+        { kind: "element", tag: "b", children: text("pouco") },
+      ],
     ]);
   });
 });

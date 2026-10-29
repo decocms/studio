@@ -109,12 +109,40 @@ function Block({ block }: { block: BodyBlock }) {
           </span>
         </div>
       );
-    case "component":
-      return (
-        <Badge variant="muted" className="max-w-full truncate">
+    case "component": {
+      const name = (
+        <Badge variant="muted" className="w-fit max-w-full truncate">
           {block.name}
         </Badge>
       );
+      if (!block.title.length && !block.lines.length && !block.items.length) {
+        return name;
+      }
+      return (
+        <div className="flex flex-col gap-2 rounded-xl bg-card p-3 shadow-edge">
+          {name}
+          {block.title.length > 0 && (
+            <p className="text-sm font-semibold text-foreground">
+              <Inline nodes={block.title} />
+            </p>
+          )}
+          {block.lines.map((line, index) => (
+            <p key={index} className="text-sm leading-relaxed text-foreground">
+              <Inline nodes={line} />
+            </p>
+          ))}
+          {block.items.length > 0 && (
+            <ul className="list-disc space-y-1 pl-5 text-sm">
+              {block.items.map((item, index) => (
+                <li key={index}>
+                  <Inline nodes={item} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
   }
 }
 
