@@ -161,6 +161,16 @@ export const routes = {
   "routes.reportsOnboarding.companionSection.retry": "Try again",
   "routes.reportsOnboarding.companionSection.statusUnavailable":
     "We couldn't verify your Google connections right now — sources you already connected may show as disconnected. You can still continue.",
+  "routes.oauthConsent.allow": "Allow",
+  "routes.oauthConsent.deny": "Deny",
+  "routes.oauthConsent.description":
+    "{client} wants to act as you in Studio. Only allow apps you set up yourself.",
+  "routes.oauthConsent.redirectLabel": "Access will be sent to",
+  "routes.oauthConsent.scopesLabel": "Requested access",
+  "routes.oauthConsent.title": "Allow access to your account?",
+  "routes.oauthConsent.unknownClient": "An unnamed app",
+  "routes.oauthConsent.unavailable":
+    "This authorization request is invalid or has expired.",
   "routes.oauthCallback.authenticationComplete": "Authentication complete.",
   "routes.oauthCallback.authenticationFailed": "MCP authentication failed",
   "routes.oauthCallback.authenticationFailedTitle": "Authentication Failed",

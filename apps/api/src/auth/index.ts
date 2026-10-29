@@ -26,6 +26,7 @@ import {
 } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { APIError } from "better-auth/api";
+import { mcpOAuthBeforeHook } from "./mcp-consent";
 import {
   adminAc as systemAdminAc,
   defaultRoles as systemDefaultRoles,
@@ -545,6 +546,8 @@ export const auth = betterAuth({
   },
 
   plugins,
+
+  hooks: { before: mcpOAuthBeforeHook },
 
   // Database hooks for automatic organization creation on signup
   databaseHooks: {
