@@ -22,6 +22,7 @@ import {
 import { BlogConnectionsGate } from "@/components/sandbox/content/blog/blog-connections-gate";
 import { useBlogCards } from "@/components/sandbox/content/blog/use-blog-cards";
 import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
+import { useBrandLiveSync } from "@/hooks/use-brand-events";
 import { scopableProjects, useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
 import { Campaigns } from "@/layouts/context/brand-campaigns";
@@ -46,6 +47,7 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const blog = useBlogState({ orgSlug: org.slug });
+  useBrandLiveSync();
   const search = useSearch({ strict: false }) as {
     view?: string;
     card?: string;

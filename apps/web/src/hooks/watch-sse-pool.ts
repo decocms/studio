@@ -19,6 +19,7 @@ import {
   BLOG_CARD_DELETED_EVENT,
   BLOG_CARD_UPDATED_EVENT,
 } from "@decocms/shared/blog-card";
+import { BRAND_UPDATED_EVENT } from "@decocms/shared/brand";
 import {
   createSSESubscription,
   filterEventTypes,
@@ -38,6 +39,7 @@ const WATCH_TYPES = [
   ORDER_MONITOR_EVALUATED_EVENT,
   BLOG_CARD_UPDATED_EVENT,
   BLOG_CARD_DELETED_EVENT,
+  BRAND_UPDATED_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -112,6 +114,11 @@ export const orderMonitorWatchView: SSESubscription = filterEventTypes(
 export const blogCardWatchView: SSESubscription = filterEventTypes(watchSSE, [
   BLOG_CARD_UPDATED_EVENT,
   BLOG_CARD_DELETED_EVENT,
+]);
+
+/** A brand's files changed (`brand.updated`), by a person or an agent. */
+export const brandWatchView: SSESubscription = filterEventTypes(watchSSE, [
+  BRAND_UPDATED_EVENT,
 ]);
 
 /**

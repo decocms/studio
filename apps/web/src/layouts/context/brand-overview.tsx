@@ -42,6 +42,7 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
+import { useBrandLiveSync } from "@/hooks/use-brand-events";
 import { useAskInChat } from "@/hooks/use-ask-in-chat";
 import {
   fetchOrgFsStat,
@@ -197,6 +198,7 @@ function titleCase(id: string): string {
 export function BrandOverview() {
   const t = useT();
   const { org } = useProjectContext();
+  useBrandLiveSync();
   const ask = useAskInChat();
   const listing = useOrgFsList(HOME_MOUNT_PATH, BRANDS_DIR);
   const brands = (listing.data ?? []).filter((entry) => entry.kind === "dir");
