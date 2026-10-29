@@ -416,7 +416,12 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-function cdnQuery<T>(base: string, view: string, range: string, extra = "") {
+export function cdnQuery<T>(
+  base: string,
+  view: string,
+  range: string,
+  extra = "",
+) {
   return {
     queryKey: KEYS.cdnData(base, `cdn:${view}${extra}`, range),
     queryFn: async () => {
@@ -779,7 +784,7 @@ function OrgPerformance({
   );
 }
 
-function shareOf(part: number, whole: number): string {
+export function shareOf(part: number, whole: number): string {
   if (whole <= 0) return "—";
   const pct = (part / whole) * 100;
   return pct > 0 && pct < 0.1

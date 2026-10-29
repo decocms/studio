@@ -50,6 +50,7 @@ import {
   useSiteProjects,
 } from "./monitor-views";
 import { AudienceGlance } from "./audience-view";
+import { SiteGlance } from "./site-glance";
 import { monitorScope, ProjectFilter } from "./project-filter";
 import { connectLink, localDay } from "./parts";
 import { Locked } from "./locked";
@@ -490,10 +491,22 @@ export function MonitorPage({
         preview={preview}
         audience={
           scopeProject && (
-            <AudienceGlance
-              project={scopeProject}
-              onOpen={(section) => onSelect({ view: "audience", section })}
-            />
+            <>
+              <AudienceGlance
+                project={scopeProject}
+                onOpen={(section) =>
+                  onSelect({
+                    view: "audience",
+                    section,
+                    project: selection.project,
+                  })
+                }
+              />
+              <SiteGlance
+                project={scopeProject}
+                onOpen={(to) => onSelect({ ...to, project: selection.project })}
+              />
+            </>
           )
         }
       />
