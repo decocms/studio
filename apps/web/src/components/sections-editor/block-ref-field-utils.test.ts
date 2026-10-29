@@ -171,6 +171,15 @@ describe("blockRefOptionLabel", () => {
     ).toBe("Estampas");
   });
 
+  test("falls back to the path-derived label when the title is the module path", () => {
+    expect(
+      blockRefOptionLabel({
+        resolveType: "site/sections/Content/Alert.tsx",
+        title: "site/sections/Content/Alert.tsx",
+      }),
+    ).toBe("Alert");
+  });
+
   test("falls back to the path-derived label when there is no title", () => {
     expect(
       blockRefOptionLabel({ resolveType: "site/loaders/products.ts" }),

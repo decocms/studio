@@ -189,6 +189,52 @@ describe("section-catalog", () => {
     expect(resolveTypes).not.toContain("Preview /sections/Footer.tsx");
   });
 
+  it("extractSectionCatalog labels a section titled with its own path by file name", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          pages: {
+            "website/pages/Page.tsx": { $ref: "#/definitions/Page" },
+          },
+          sections: {
+            "site/sections/Content/DoubleCardImage.tsx": {
+              $ref: "#/definitions/DoubleCardImage",
+            },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Page: {
+            type: "object",
+            properties: {
+              sections: {
+                type: "array",
+                items: { anyOf: [{ $ref: "#/definitions/DoubleCardImage" }] },
+              },
+            },
+          },
+          DoubleCardImage: {
+            title: "site/sections/Content/DoubleCardImage.tsx",
+            allOf: [
+              {
+                properties: {
+                  __resolveType: {
+                    enum: ["site/sections/Content/DoubleCardImage.tsx"],
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    expect(extractSectionCatalog(meta, {}).map((e) => e.title)).toEqual([
+      "DoubleCardImage",
+    ]);
+  });
+
   it("extractSectionCatalog includes saved multivariate section blocks", () => {
     const meta: LiveMeta = {
       manifest: {
