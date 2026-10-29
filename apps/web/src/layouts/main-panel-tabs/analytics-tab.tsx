@@ -26,7 +26,7 @@
  * read surface's `worker`/`install` internals before they reach here).
  */
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -647,7 +647,7 @@ function BarList({
 
 /** The commerce funnel: steps as bars scaled to the first step, each labelled
  *  with its conversion off the top. */
-export function Funnel({ row }: { row: Record<string, unknown> }) {
+function Funnel({ row }: { row: Record<string, unknown> }) {
   const order = [
     ["viewed", "Viewed"],
     ["view_item", "View item"],
@@ -1087,7 +1087,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
 
 // --- the active view (one at a time, driven by the tab bar) ------------------
 
-export function ActiveView({
+function ActiveView({
   base,
   orgSlug,
   site,
@@ -2128,46 +2128,38 @@ function RegisteredView({
 /** A naturally-closed row documenting the client API, mirroring the admin
  *  UI's install text — collapsed by default so it doesn't crowd the data. */
 export function CustomEventsHelp() {
+  const t = useT();
+  const H = "mainPanelTabs.analyticsTab.eventsHelp";
+  const mono = (chunk: ReactNode) => (
+    <span className="font-mono text-foreground">{chunk}</span>
+  );
   return (
     <details className="group surface">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground hover:bg-accent">
         <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
-        Send custom events from your code
+        {t(`${H}.title`)}
       </summary>
       <div className="flex flex-col gap-3 border-t border-border px-4 py-4 text-sm text-muted-foreground">
         <p>
-          Analytics is active automatically — pageviews are collected with no
-          code. For custom events, call the public client API on{" "}
-          <span className="font-mono text-foreground">window.__dq</span>:
+          {t(`${H}.intro`)} {mono("window.__dq")}:
         </p>
         <dl className="flex flex-col gap-2">
           <div className="flex flex-col gap-0.5">
             <dt className="font-mono text-xs text-foreground">pageview()</dt>
-            <dd className="text-xs">
-              Record a pageview manually (SPA route change).
-            </dd>
+            <dd className="text-xs">{t(`${H}.pageview`)}</dd>
           </div>
           <div className="flex flex-col gap-0.5">
             <dt className="font-mono text-xs text-foreground">
               track(name, props?)
             </dt>
-            <dd className="text-xs">
-              A custom event. <span className="font-mono">name</span> is
-              lowercase a–z, digits and underscore, up to 40 characters;{" "}
-              <span className="font-mono">props</span> is an optional flat
-              object.
-            </dd>
+            <dd className="text-xs">{t(`${H}.track`)}</dd>
           </div>
           <div className="flex flex-col gap-0.5">
             <dt className="font-mono text-xs text-foreground">
               purchase(&#123; transactionId, value, currency, items, itemIds
               &#125;)
             </dt>
-            <dd className="text-xs">
-              A purchase. <span className="font-mono">transactionId</span>{" "}
-              dedupes a reloaded confirmation page so a sale isn't counted
-              twice.
-            </dd>
+            <dd className="text-xs">{t(`${H}.purchase`)}</dd>
           </div>
         </dl>
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">

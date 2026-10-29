@@ -10,6 +10,7 @@ import {
   MonitorPage,
   type MonitorSelection,
 } from "@/components/monitor/monitor-page";
+import { SEGMENT_SEARCH_KEYS } from "@/components/monitor/analytics/segment";
 import { MONITOR_VIEWS } from "@/components/monitor/monitor-views";
 import { useLiveBoard } from "@/components/monitor/use-live-board";
 import {
@@ -55,6 +56,16 @@ function useMonitorSearch(): MonitorSelection {
   };
 }
 
+/** The Analytics segment's search keys, as they are. */
+function useSegmentSearch(): Record<string, unknown> {
+  const search = useSearch({ strict: false }) as Record<string, unknown>;
+  return Object.fromEntries(
+    SEGMENT_SEARCH_KEYS.flatMap((k) =>
+      search[k] === undefined ? [] : [[k, search[k]]],
+    ),
+  );
+}
+
 function LiveMonitoring({
   orgSlug,
   scopeId,
@@ -90,12 +101,20 @@ function MonitoringContent() {
   const navigate = useNavigate();
   const projectFirstNav = useProjectFirstNav();
   const selection = useMonitorSearch();
+  const segment = useSegmentSearch();
 
   if (!projectFirstNav) {
     return <Navigate to="/$org/home" params={{ org: org.slug }} replace />;
   }
 
-  const onSelect = (next: MonitorSelection) => {
+  const onSelect = (selected: MonitorSelection) => {
+    // Filters only make sense within one project's Analytics sections.
+    const next =
+      selected.view === "audience" &&
+      selection.view === "audience" &&
+      selected.project === selection.project
+        ? { ...selected, ...segment }
+        : selected;
     if (scopeId) {
       void navigate({
         to: PROJECT_ROUTE.monitoring,

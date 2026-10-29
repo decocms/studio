@@ -1,9 +1,4 @@
-/**
- * The Deco Analytics views beyond the Analytics tab's overview (realtime,
- * pages, events, errors, vitals, heatmap, quality, usage) and the site's
- * registration, reusing the per-site Analytics app's screens. Only a site
- * registered in Deco Analytics has them; OneDollarStats has only the overview.
- */
+/** Which Deco Analytics sections a site has (drawn in `./analytics`), and its registration and settings. */
 
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Settings01 } from "@untitledui/icons";
@@ -16,20 +11,15 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { HeatmapView } from "@/layouts/main-panel-tabs/analytics-heatmap-tab";
 import {
-  ActiveView,
   type AnalyticsRegisterResult,
   type AnalyticsStatus,
   ConfigurationPanel,
-  CustomEventsHelp,
   DATA_VIEWS,
-  Funnel,
   fetchJson,
   RegisterCard,
 } from "@/layouts/main-panel-tabs/analytics-tab";
 import { KEYS } from "@/lib/query-keys";
-import { MetricCard } from "@/layouts/task-board/analytics-sections";
 import type { SiteProject } from "./org-insights";
 
 /**
@@ -40,11 +30,6 @@ const SECTIONS = [
   ...DATA_VIEWS.filter((v) => v.view === "overview"),
   ...DATA_VIEWS.filter((v) => v.view !== "overview"),
 ];
-
-/** Realtime is always "now" and the heatmap picks its own period. */
-export function ownsRange(section: string): boolean {
-  return section === "live" || section === "heatmap";
-}
 
 function hostingBase(orgSlug: string, project: Pick<SiteProject, "site">) {
   return `/api/${orgSlug}/hosting/${encodeURIComponent(project.site)}`;
@@ -116,80 +101,6 @@ export function SectionTabs({
         ))}
       </TabsList>
     </Tabs>
-  );
-}
-
-export function AnalyticsSection({
-  orgSlug,
-  project,
-  status,
-  section,
-  range,
-  onConfigure,
-}: {
-  orgSlug: string;
-  project: SiteProject;
-  status: AnalyticsStatus;
-  section: string;
-  range: string;
-  onConfigure: () => void;
-}) {
-  const base = hostingBase(orgSlug, project);
-  if (section === "heatmap") {
-    return (
-      <HeatmapView
-        base={base}
-        orgSlug={orgSlug}
-        site={project.site}
-        modules={status.config?.modules ?? ["core"]}
-        domain={status.config?.domains?.[0] ?? status.host ?? null}
-        onConfigure={onConfigure}
-      />
-    );
-  }
-  return (
-    <>
-      <ActiveView
-        key={section}
-        base={base}
-        orgSlug={orgSlug}
-        site={project.site}
-        view={section}
-        range={range}
-        quota={status.config?.quota}
-      />
-      {section === "events" && <CustomEventsHelp />}
-    </>
-  );
-}
-
-/** The commerce funnel from Deco Analytics' own overview; nothing elsewhere. */
-export function DecoFunnel({
-  orgSlug,
-  project,
-  range,
-}: {
-  orgSlug: string;
-  project: SiteProject;
-  range: string;
-}) {
-  const t = useT();
-  const query = useQuery({
-    queryKey: KEYS.analyticsData(orgSlug, project.site, "overview", range),
-    queryFn: async () =>
-      (await fetchJson(
-        `${hostingBase(orgSlug, project)}/analytics/data?view=overview&range=${encodeURIComponent(range)}`,
-      )) as { data?: { funnel?: unknown } },
-    retry: false,
-    staleTime: 30_000,
-  });
-  const rows = query.data?.data?.funnel;
-  const row = Array.isArray(rows) ? rows[0] : undefined;
-  if (!row || typeof row !== "object") return null;
-  return (
-    <MetricCard title={t("mainPanelTabs.analyticsTab.cardFunnel")}>
-      <Funnel row={row as Record<string, unknown>} />
-    </MetricCard>
   );
 }
 

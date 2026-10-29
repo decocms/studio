@@ -1235,6 +1235,11 @@ const monitoringSearch = z.object({
   at: z.string().optional(),
   project: z.string().optional(),
   section: z.string().optional(),
+  // The Analytics segment (components/monitor/analytics/segment.ts).
+  f: z.array(z.string()).optional().catch(undefined),
+  goal: z.string().optional(),
+  currency: z.string().optional(),
+  prop: z.string().optional(),
 });
 const orgMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,

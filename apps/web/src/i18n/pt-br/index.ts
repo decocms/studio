@@ -15,6 +15,9 @@ import { orgs } from "./orgs.ts";
 import { monitoring } from "./monitoring.ts";
 import { orderMonitor } from "./order-monitor.ts";
 import { monitor } from "./monitor.ts";
+import { monitorAnalyticsLive } from "./monitor-analytics-live.ts";
+import { monitorAnalyticsFilters } from "./monitor-analytics-filters.ts";
+import { monitorAnalyticsPanels } from "./monitor-analytics-panels.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
 import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
@@ -65,6 +68,9 @@ export const ptBR = {
   ...monitoring,
   ...orderMonitor,
   ...monitor,
+  ...monitorAnalyticsLive,
+  ...monitorAnalyticsFilters,
+  ...monitorAnalyticsPanels,
   ...mainPanelTabs,
   ...experiments,
   ...releases,

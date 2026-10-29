@@ -492,7 +492,7 @@ export function MonitorPage({
           scopeProject && (
             <AudienceGlance
               project={scopeProject}
-              onOpen={() => onSelect({ view: "audience" })}
+              onOpen={(section) => onSelect({ view: "audience", section })}
             />
           )
         }

@@ -10,18 +10,20 @@
  */
 
 export type HeatDevice = "desktop" | "tablet" | "mobile";
-export type HeatMode = "clicks" | "scroll" | "attention" | "sections";
+export type HeatMode = "clicks" | "scroll" | "attention" | "sections" | "value";
 export type ClickType = "all" | "rage" | "dead" | "error" | "first";
 export type HeatRange = "24h" | "7d" | "30d";
 export type HeatRamp = "thermal" | "inferno";
 
 export const HEAT_DEVICES: HeatDevice[] = ["desktop", "tablet", "mobile"];
 export const HEAT_RANGES: HeatRange[] = ["24h", "7d", "30d"];
+/** `value` is offered only where the read surface answers the money panels. */
 export const HEAT_MODES: HeatMode[] = [
   "clicks",
   "scroll",
   "attention",
   "sections",
+  "value",
 ];
 export const CLICK_TYPES: ClickType[] = [
   "all",
@@ -70,6 +72,55 @@ interface HeatSection {
   clicks: number;
 }
 
+/** What the visitors who clicked one element went on to buy, against the page. */
+export interface HeatValue {
+  key: string;
+  root: string;
+  el: string;
+  clicks: number;
+  clickVisitors: number;
+  convVisitors: number;
+  orders: number;
+  /** Sampled, and associative: one order counts under every element its
+   *  visitor clicked, so these never add up to the page. */
+  revenue: number;
+  cvrPct: number;
+  revPerVisitor: number;
+  /** 1 when the element converts exactly like its page. */
+  cvrIndex: number | null;
+  rpvIndex: number | null;
+  smallSample: boolean;
+  /** Revenue its clicks would have made at the page's average, minus what
+   *  they made; only on the leaks list. */
+  revGap: number | null;
+}
+
+/** Where the visitors who clicked went next; `key` "" is the page itself. */
+export interface HeatAfterClick {
+  key: string;
+  visitors: number;
+  viewed: number;
+  carted: number;
+  checkout: number;
+  bought: number;
+}
+
+export interface HeatValueModel {
+  currency: string | null;
+  page: {
+    visitors: number;
+    convVisitors: number;
+    orders: number;
+    revenue: number;
+    cvrPct: number;
+    revPerVisitor: number;
+    smallSample: boolean;
+  };
+  elements: HeatValue[];
+  leaks: HeatValue[];
+  afterClick: HeatAfterClick[];
+}
+
 export interface HeatmapModel {
   views: number;
   /** Sampled → estimated counts. */
@@ -91,10 +142,72 @@ export interface HeatmapModel {
   scroll: { depth: number; views: number; reachPct: number }[];
   attention: { band: number; ds: number }[];
   sections: HeatSection[];
+  /** Null where the read surface has no money panels, or the goal is not
+   *  purchase (the facts hold purchases only). */
+  value: HeatValueModel | null;
 }
 
 const isDevice = (v: unknown): v is HeatDevice =>
   v === "desktop" || v === "tablet" || v === "mobile";
+
+const nullableNum = (v: unknown): number | null =>
+  v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+
+function parseValueRow(r: Row): HeatValue {
+  const root = str(r.root);
+  const el = str(r.el);
+  return {
+    key: `${root}|${el}`,
+    root,
+    el,
+    clicks: num(r.clicks),
+    clickVisitors: num(r.click_visitors),
+    convVisitors: num(r.conv_visitors),
+    orders: num(r.orders),
+    revenue: num(r.revenue),
+    cvrPct: num(r.cvr_pct),
+    revPerVisitor: num(r.rev_per_visitor),
+    cvrIndex: nullableNum(r.cvr_index),
+    rpvIndex: nullableNum(r.rpv_index),
+    smallSample: num(r.small_sample) === 1,
+    revGap: nullableNum(r.rev_gap),
+  };
+}
+
+function parseValue(data: Row): HeatValueModel | null {
+  const meta =
+    data.heatmapValue && typeof data.heatmapValue === "object"
+      ? (data.heatmapValue as Row)
+      : null;
+  const page = rows(data.hmValueSummary)[0];
+  if (!page || meta?.supported === false) return null;
+  return {
+    currency: typeof meta?.currency === "string" ? meta.currency : null,
+    page: {
+      visitors: num(page.visitors),
+      convVisitors: num(page.conv_visitors),
+      orders: num(page.orders),
+      revenue: num(page.revenue),
+      cvrPct: num(page.cvr_pct),
+      revPerVisitor: num(page.rev_per_visitor),
+      smallSample: num(page.small_sample) === 1,
+    },
+    elements: rows(data.hmValue).map(parseValueRow),
+    leaks: rows(data.hmValueLeaks).map(parseValueRow),
+    afterClick: rows(data.hmFunnel).map((r) => {
+      const root = str(r.root);
+      const el = str(r.el);
+      return {
+        key: root === "" && (el === "0" || el === "") ? "" : `${root}|${el}`,
+        visitors: num(r.visitors),
+        viewed: num(r.viewed),
+        carted: num(r.carted),
+        checkout: num(r.checkout),
+        bought: num(r.bought),
+      };
+    }),
+  };
+}
 
 /** Normalise the `view=heatmap` payload; absent panels read as empty. */
 export function parseHeatmap(data: Row): HeatmapModel {
@@ -173,6 +286,7 @@ export function parseHeatmap(data: Row): HeatmapModel {
       ctrPct: num(r.ctr_pct),
       clicks: num(r.clicks),
     })),
+    value: parseValue(data),
   };
 }
 
@@ -357,16 +471,21 @@ export function viewData(
     device: HeatDevice;
   },
 ) {
+  // The overlay has no value mode; revenue-weighted click heat draws the same spots.
+  const value = o.mode === "value";
+  const revenue = new Map(
+    (m.value?.elements ?? []).map((e) => [e.key, e.revenue]),
+  );
   return {
-    mode: o.mode,
+    mode: value ? "clicks" : o.mode,
     elements: m.elements.flatMap((e) => {
-      const clicks = weightOf(e, o.type);
+      const clicks = value ? (revenue.get(e.key) ?? 0) : weightOf(e, o.type);
       return clicks > 0
         ? [{ root: e.root, el: e.el, clicks, cells: e.cells }]
         : [];
     }),
     // The coordinate grid holds every click, not one type: only the "all" map uses it.
-    grid: o.type === "all" ? m.grid : [],
+    grid: o.type === "all" && !value ? m.grid : [],
     depth: m.scroll.map((r) => ({ depth: r.depth, views: r.views })),
     attention: m.attention,
     sections: m.sections.map((s) => ({

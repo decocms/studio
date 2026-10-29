@@ -370,6 +370,16 @@ export const mainPanelTabs = {
     "Send custom events from your code via ",
   // Dashboard (tenant-scoped /data views), rendered as collapsible sections.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuration",
+  "mainPanelTabs.analyticsTab.eventsHelp.title":
+    "Send custom events from your code",
+  "mainPanelTabs.analyticsTab.eventsHelp.intro":
+    "Analytics is active automatically: pageviews are collected with no code. For custom events, call the public client API on",
+  "mainPanelTabs.analyticsTab.eventsHelp.pageview":
+    "Record a pageview manually (SPA route change).",
+  "mainPanelTabs.analyticsTab.eventsHelp.track":
+    "A custom event. name is lowercase a–z, digits and underscore, up to 40 characters; props is an optional flat object.",
+  "mainPanelTabs.analyticsTab.eventsHelp.purchase":
+    "A purchase. transactionId dedupes a reloaded confirmation page so a sale isn't counted twice.",
   "mainPanelTabs.analyticsTab.viewOverview": "Overview",
   "mainPanelTabs.analyticsTab.viewLive": "Realtime",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Pages & sources",
@@ -402,6 +412,38 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.scrollHint": "How far people get",
   "mainPanelTabs.analyticsTab.heatmap.attention": "Attention",
   "mainPanelTabs.analyticsTab.heatmap.attentionHint": "Where people spend time",
+  "mainPanelTabs.analyticsTab.heatmap.value": "Revenue",
+  "mainPanelTabs.analyticsTab.heatmap.valueHint":
+    "Where the visitors who bought clicked, from the page's orders within 30 minutes of the view. Sampled and not causal: an element on the way to checkout scores high by being on the path.",
+  "mainPanelTabs.analyticsTab.heatmap.legendLessValue": "less revenue",
+  "mainPanelTabs.analyticsTab.heatmap.legendMoreValue": "more revenue",
+  "mainPanelTabs.analyticsTab.heatmap.statConversion": "Page conversion",
+  "mainPanelTabs.analyticsTab.heatmap.statRevPerVisitor": "Revenue per visitor",
+  "mainPanelTabs.analyticsTab.heatmap.statOrders": "Orders",
+  "mainPanelTabs.analyticsTab.heatmap.statRevenue": "Revenue (sample)",
+  "mainPanelTabs.analyticsTab.heatmap.valueTop": "Elements by revenue",
+  "mainPanelTabs.analyticsTab.heatmap.valueRowSub":
+    "{pct} bought, {index} the page",
+  "mainPanelTabs.analyticsTab.heatmap.valueIndex": "{n}×",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmall": "Few visitors",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmallHint":
+    "Under 30 visitors clicked it, too few to rank by conversion.",
+  "mainPanelTabs.analyticsTab.heatmap.leaksTitle": "Costing revenue",
+  "mainPanelTabs.analyticsTab.heatmap.leaksAside": "vs the page's average",
+  "mainPanelTabs.analyticsTab.heatmap.leakSub":
+    "{n} visitors clicked, converting below the page",
+  "mainPanelTabs.analyticsTab.heatmap.afterTitle": "After the click",
+  "mainPanelTabs.analyticsTab.heatmap.afterPage": "Page",
+  "mainPanelTabs.analyticsTab.heatmap.afterElement": "Clicked it",
+  "mainPanelTabs.analyticsTab.heatmap.afterViewed": "Viewed a product",
+  "mainPanelTabs.analyticsTab.heatmap.afterCarted": "Added to cart",
+  "mainPanelTabs.analyticsTab.heatmap.afterCheckout": "Checkout",
+  "mainPanelTabs.analyticsTab.heatmap.afterBought": "Bought",
+  "mainPanelTabs.analyticsTab.heatmap.tipRevenue": "Revenue",
+  "mainPanelTabs.analyticsTab.heatmap.tipConversion": "Bought",
+  "mainPanelTabs.analyticsTab.heatmap.tipIndex": "vs the page",
+  "mainPanelTabs.analyticsTab.heatmap.valueNone":
+    "No element was followed by an order in this period.",
   "mainPanelTabs.analyticsTab.heatmap.sections": "Sections",
   "mainPanelTabs.analyticsTab.heatmap.sectionsHint":
     "Each section of the page with its numbers",

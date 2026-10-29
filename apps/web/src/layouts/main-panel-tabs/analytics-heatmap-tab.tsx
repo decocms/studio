@@ -49,6 +49,7 @@ import {
   weightOf,
   type ClickType,
   type HeatDevice,
+  type HeatAfterClick,
   type HeatElement,
   type HeatMode,
   type HeatRamp,
@@ -495,6 +496,28 @@ function Viewer({
     ? placed.stats.matched / placed.stats.total
     : null;
   const activeKey = rowHover ?? pinned;
+  const value = model.value;
+  const valueBy = new Map((value?.elements ?? []).map((e) => [e.key, e]));
+  const valueRanked = (value?.elements ?? []).filter((e) => e.revenue > 0);
+  const valueMax = Math.max(1e-9, ...valueRanked.map((e) => e.revenue));
+  const money = (n: number) =>
+    value?.currency
+      ? n.toLocaleString(locale, {
+          style: "currency",
+          currency: value.currency,
+          maximumFractionDigits: 0,
+        })
+      : n.toLocaleString(locale, { maximumFractionDigits: 0 });
+  const times = (n: number | null) =>
+    n == null
+      ? "—"
+      : t(k("valueIndex"), {
+          n: n.toLocaleString(locale, { maximumFractionDigits: 1 }),
+        });
+  const afterPage = value?.afterClick.find((r) => r.key === "");
+  const afterPinned = pinned
+    ? value?.afterClick.find((r) => r.key === pinned)
+    : undefined;
   const labelOf = (e: HeatElement) =>
     itemBy.get(e.key)?.label || t(k("noText"));
   const hoveredEl = hover?.key ? elBy.get(hover.key) : undefined;
@@ -502,27 +525,31 @@ function Viewer({
     ? placed?.blocks.find((b) => `blk:${b.key}` === hover.key)
     : undefined;
   const legend =
-    mode === "clicks"
-      ? [
-          t(k("legendFewer")),
-          placed?.legend[2]
-            ? t(k("legendClicks"), {
-                n: fmtInt(placed.legend[2] * est, locale),
-              })
-            : t(k("legendMore")),
-        ]
-      : mode === "scroll"
-        ? [t(k("legendNobody")), t(k("legendEveryone"))]
-        : mode === "attention"
-          ? [t(k("legendLittle")), t(k("legendMoreTime"))]
-          : [t(k("legendFewer")), t(k("legendMore"))];
+    mode === "value"
+      ? [t(k("legendLessValue")), t(k("legendMoreValue"))]
+      : mode === "clicks"
+        ? [
+            t(k("legendFewer")),
+            placed?.legend[2]
+              ? t(k("legendClicks"), {
+                  n: fmtInt(placed.legend[2] * est, locale),
+                })
+              : t(k("legendMore")),
+          ]
+        : mode === "scroll"
+          ? [t(k("legendNobody")), t(k("legendEveryone"))]
+          : mode === "attention"
+            ? [t(k("legendLittle")), t(k("legendMoreTime"))]
+            : [t(k("legendFewer")), t(k("legendMore"))];
   const gradient = `linear-gradient(90deg, ${Array.from(
     { length: 11 },
     (_, i) =>
       rampCss(
         ramp,
         i / 10,
-        mode === "clicks" ? undefined : 0.35 + 0.65 * (i / 10),
+        mode === "clicks" || mode === "value"
+          ? undefined
+          : 0.35 + 0.65 * (i / 10),
       ),
   ).join(",")})`;
   const blocks = [...(placed?.blocks ?? [])].sort((a, b) =>
@@ -543,7 +570,7 @@ function Viewer({
           aria-label={t(k("map"))}
           className="flex gap-1 overflow-x-auto"
         >
-          {HEAT_MODES.map((m) => (
+          {HEAT_MODES.filter((m) => m !== "value" || value).map((m) => (
             <button
               key={m}
               role="tab"
@@ -752,6 +779,30 @@ function Viewer({
                           1,
                         )}
                       />
+                      {mode === "value" && valueBy.get(hoveredEl.key) && (
+                        <>
+                          <TipRow
+                            label={t(k("tipRevenue"))}
+                            value={money(
+                              valueBy.get(hoveredEl.key)?.revenue ?? 0,
+                            )}
+                          />
+                          <TipRow
+                            label={t(k("tipConversion"))}
+                            value={fmtPct(
+                              (valueBy.get(hoveredEl.key)?.cvrPct ?? 0) / 100,
+                              locale,
+                              1,
+                            )}
+                          />
+                          <TipRow
+                            label={t(k("tipIndex"))}
+                            value={times(
+                              valueBy.get(hoveredEl.key)?.cvrIndex ?? null,
+                            )}
+                          />
+                        </>
+                      )}
                       {hoveredEl.rage > 0 && (
                         <TipRow
                           label={t(k("type_rage"))}
@@ -875,39 +926,62 @@ function Viewer({
         </div>
 
         <aside className="flex min-h-0 flex-col border-border bg-background @max-5xl:border-t @5xl:h-[clamp(520px,78vh,980px)] @5xl:border-l">
-          <div className="grid grid-cols-2 gap-px border-b border-border bg-border">
-            <Stat
-              label={t(k("statClicks"))}
-              value={fmtInt(model.clicks * est, locale)}
-            />
-            <Stat
-              label={t(k("statDepth"))}
-              value={fmtPct(
-                model.avgDepth == null ? null : model.avgDepth / 100,
-                locale,
-              )}
-              sub={
-                model.avgFold != null
-                  ? t(k("statFold"), {
-                      pct: fmtPct(model.avgFold / 100, locale),
-                    })
-                  : null
-              }
-            />
-            <Stat
-              label={t(k("statActive"))}
-              value={fmtSec(model.activeS, locale)}
-            />
-            <Stat
-              label={t(k("statRageDead"))}
-              value={`${fmtInt(model.rage * est, locale)} / ${fmtInt(model.dead * est, locale)}`}
-              sub={
-                model.error
-                  ? t(k("statErrors"), { n: fmtInt(model.error * est, locale) })
-                  : null
-              }
-            />
-          </div>
+          {mode === "value" && value ? (
+            <div className="grid grid-cols-2 gap-px border-b border-border bg-border">
+              <Stat
+                label={t(k("statConversion"))}
+                value={fmtPct(value.page.cvrPct / 100, locale, 1)}
+              />
+              <Stat
+                label={t(k("statRevPerVisitor"))}
+                value={money(value.page.revPerVisitor)}
+              />
+              <Stat
+                label={t(k("statOrders"))}
+                value={fmtInt(value.page.orders, locale)}
+              />
+              <Stat
+                label={t(k("statRevenue"))}
+                value={money(value.page.revenue)}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-px border-b border-border bg-border">
+              <Stat
+                label={t(k("statClicks"))}
+                value={fmtInt(model.clicks * est, locale)}
+              />
+              <Stat
+                label={t(k("statDepth"))}
+                value={fmtPct(
+                  model.avgDepth == null ? null : model.avgDepth / 100,
+                  locale,
+                )}
+                sub={
+                  model.avgFold != null
+                    ? t(k("statFold"), {
+                        pct: fmtPct(model.avgFold / 100, locale),
+                      })
+                    : null
+                }
+              />
+              <Stat
+                label={t(k("statActive"))}
+                value={fmtSec(model.activeS, locale)}
+              />
+              <Stat
+                label={t(k("statRageDead"))}
+                value={`${fmtInt(model.rage * est, locale)} / ${fmtInt(model.dead * est, locale)}`}
+                sub={
+                  model.error
+                    ? t(k("statErrors"), {
+                        n: fmtInt(model.error * est, locale),
+                      })
+                    : null
+                }
+              />
+            </div>
+          )}
           <button
             type="button"
             className="border-b border-border px-4 py-3 text-left text-sm font-semibold text-[var(--chart-1)] @5xl:hidden"
@@ -1043,6 +1117,100 @@ function Viewer({
                   )}
                 </div>
               </>
+            )}
+            {mode === "value" && value && (
+              <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+                {afterPage && (
+                  <AfterClick
+                    t={t}
+                    locale={locale}
+                    page={afterPage}
+                    element={afterPinned}
+                  />
+                )}
+                <ListHead
+                  title={t(k("valueTop"))}
+                  aside={t(k("nElements"), {
+                    n: fmtInt(valueRanked.length, locale),
+                  })}
+                />
+                <div className="px-2">
+                  {valueRanked.slice(0, 60).map((e, i) => (
+                    <Row
+                      key={e.key}
+                      id={e.key}
+                      rank={i + 1}
+                      label={
+                        itemBy.get(e.key)?.label ||
+                        rootName(e.root) ||
+                        t(k("noText"))
+                      }
+                      value={money(e.revenue)}
+                      meter={Math.max(0.02, e.revenue / valueMax)}
+                      color={rampCss(
+                        ramp,
+                        0.25 + 0.75 * (e.revenue / valueMax),
+                        1,
+                      )}
+                      active={activeKey === e.key}
+                      onEnter={() => enter(e.key)}
+                      onLeave={leave}
+                      onPick={() => pick(e.key)}
+                      sub={t(k("valueRowSub"), {
+                        pct: fmtPct(e.cvrPct / 100, locale, 1),
+                        index: times(e.cvrIndex),
+                      })}
+                    >
+                      {e.smallSample && (
+                        <Badge title={t(k("valueSmallHint"))}>
+                          {t(k("valueSmall"))}
+                        </Badge>
+                      )}
+                    </Row>
+                  ))}
+                  {!valueRanked.length && (
+                    <p className="px-2 py-3 text-xs text-muted-foreground">
+                      {t(k("valueNone"))}
+                    </p>
+                  )}
+                </div>
+                {value.leaks.length > 0 && (
+                  <>
+                    <ListHead
+                      title={t(k("leaksTitle"))}
+                      aside={t(k("leaksAside"))}
+                    />
+                    <div className="px-2">
+                      {value.leaks.map((e, i) => (
+                        <Row
+                          key={e.key}
+                          id={e.key}
+                          rank={i + 1}
+                          label={
+                            itemBy.get(e.key)?.label ||
+                            rootName(e.root) ||
+                            t(k("noText"))
+                          }
+                          value={`−${money(e.revGap ?? 0)}`}
+                          meter={Math.min(
+                            1,
+                            (e.revGap ?? 0) /
+                              Math.max(1e-9, value.leaks[0]?.revGap ?? 0),
+                          )}
+                          color="var(--destructive)"
+                          active={activeKey === e.key}
+                          onEnter={() => enter(e.key)}
+                          onLeave={leave}
+                          onPick={() => pick(e.key)}
+                          sub={t(k("leakSub"), {
+                            n: fmtInt(e.clickVisitors, locale),
+                          })}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {mode === "scroll" && (
               <>
@@ -1274,6 +1442,62 @@ function Row(p: {
         {p.children}
       </span>
     </button>
+  );
+}
+
+/** The page's own funnel beside the pinned element's: where visitors went
+ *  next, as a share of those who saw the page or clicked the element. */
+function AfterClick({
+  t,
+  locale,
+  page,
+  element,
+}: {
+  t: TFunction;
+  locale: string;
+  page: HeatAfterClick;
+  element: HeatAfterClick | undefined;
+}) {
+  const steps = [
+    ["afterViewed", "viewed"],
+    ["afterCarted", "carted"],
+    ["afterCheckout", "checkout"],
+    ["afterBought", "bought"],
+  ] as const;
+  const share = (r: HeatAfterClick, key: (typeof steps)[number][1]) =>
+    r.visitors ? r[key] / r.visitors : null;
+  return (
+    <div className="border-b border-border px-4 pt-3.5 pb-3">
+      <h3 className="pb-2 text-sm font-semibold">{t(k("afterTitle"))}</h3>
+      <table className="w-full text-xs tabular-nums">
+        <thead className="text-muted-foreground">
+          <tr>
+            <th />
+            <th className="py-1 text-right font-normal">{t(k("afterPage"))}</th>
+            {element && (
+              <th className="py-1 text-right font-normal">
+                {t(k("afterElement"))}
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {steps.map(([label, key]) => (
+            <tr key={key} className="border-t border-border">
+              <td className="py-1.5">{t(k(label))}</td>
+              <td className="py-1.5 text-right">
+                {fmtPct(share(page, key), locale, 1)}
+              </td>
+              {element && (
+                <td className="py-1.5 text-right font-semibold">
+                  {fmtPct(share(element, key), locale, 1)}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

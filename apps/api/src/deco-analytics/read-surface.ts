@@ -93,7 +93,7 @@ export type AnalyticsViewRead =
 /**
  * One view from the read surface for a resolved warehouse site id, with
  * delivery and metering internals stripped. `params` carries view-specific
- * query values (the heatmap's page and device).
+ * query values (heatmap page and device, segment filters, goal, currency, prop).
  */
 export async function readAnalyticsView(opts: {
   analyticsDataUrl: string;
@@ -101,7 +101,7 @@ export async function readAnalyticsView(opts: {
   siteId: string;
   view: string;
   range: string;
-  params?: Record<string, string>;
+  params?: Record<string, string | readonly string[]>;
   /** For log lines only. */
   site: string;
 }): Promise<AnalyticsViewRead> {
@@ -110,7 +110,8 @@ export async function readAnalyticsView(opts: {
   upstream.searchParams.set("range", opts.range);
   upstream.searchParams.set("site", opts.siteId);
   for (const [key, value] of Object.entries(opts.params ?? {})) {
-    upstream.searchParams.set(key, value);
+    if (typeof value === "string") upstream.searchParams.set(key, value);
+    else for (const v of value) upstream.searchParams.append(key, v);
   }
 
   let payload: Record<string, unknown> | null;
@@ -190,4 +191,71 @@ export async function readAnalyticsView(opts: {
   delete payload.install;
   payload.usageScope = { site: opts.siteId, tenantScoped: true };
   return { ok: true, payload };
+}
+
+/** The read surface's suggestions for one filter dimension: the values it has
+ *  in the range, by traffic. Read as the tenant upstream, like every view. */
+export async function readAnalyticsValues(opts: {
+  analyticsDataUrl: string;
+  analyticsMasterToken: string;
+  siteId: string;
+  dim: string;
+  range: string;
+  site: string;
+}): Promise<AnalyticsViewRead> {
+  const upstream = new URL(`${opts.analyticsDataUrl}/values`);
+  upstream.searchParams.set("dim", opts.dim);
+  upstream.searchParams.set("range", opts.range);
+  upstream.searchParams.set("site", opts.siteId);
+  try {
+    const res = await fetch(upstream, {
+      headers: {
+        Authorization: `Bearer ${opts.analyticsMasterToken}`,
+        Accept: "application/json",
+      },
+    });
+    const payload = (await res.json().catch(() => null)) as {
+      values?: unknown;
+    } | null;
+    if (!res.ok || !payload) {
+      return {
+        ok: false,
+        status: 502,
+        error: `Analytics values failed (${res.status})`,
+      };
+    }
+    return {
+      ok: true,
+      payload: { values: Array.isArray(payload.values) ? payload.values : [] },
+    };
+  } catch (err) {
+    console.error(
+      `[analytics] values proxy error for site="${opts.site}":`,
+      err,
+    );
+    return {
+      ok: false,
+      status: 502,
+      error: "Failed to reach analytics service",
+    };
+  }
+}
+
+/** The live map's renderer, which the read surface builds and serves behind
+ *  the same master token as the data, so the browser never holds it. */
+export async function readGlobeBundle(opts: {
+  analyticsDataUrl: string;
+  analyticsMasterToken: string;
+}): Promise<{ ok: true; body: string } | { ok: false; status: 404 | 502 }> {
+  try {
+    const res = await fetch(`${opts.analyticsDataUrl}/globe.js`, {
+      headers: { Authorization: `Bearer ${opts.analyticsMasterToken}` },
+    });
+    if (res.status === 404) return { ok: false, status: 404 };
+    if (!res.ok) return { ok: false, status: 502 };
+    return { ok: true, body: await res.text() };
+  } catch (err) {
+    console.error("[analytics] globe bundle proxy error:", err);
+    return { ok: false, status: 502 };
+  }
 }

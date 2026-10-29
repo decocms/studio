@@ -258,3 +258,113 @@ describe("heatmap tab gating", () => {
     expect(pickView("heatmap", gateViews(views, ["heatmap"]))).toBe("heatmap");
   });
 });
+
+const money = {
+  ...payload,
+  heatmapValue: { currency: "BRL", supported: true },
+  hmValueSummary: [
+    {
+      conv_visitors: "12",
+      conv_views: "14",
+      orders: "13",
+      revenue: 2400.5,
+      visitors: "400",
+      cvr_pct: 3,
+      rev_per_visitor: 6,
+      small_sample: 1,
+    },
+  ],
+  hmValue: [
+    {
+      root: "fs:hero#0",
+      el: "123",
+      clicks: "10",
+      click_views: "8",
+      click_visitors: "7",
+      conv_visitors: "2",
+      conv_views: "2",
+      orders: "2",
+      revenue: 380,
+      cvr_pct: 28.57,
+      rev_per_visitor: 54.29,
+      cvr_index: 9.5,
+      rpv_index: 9.05,
+      small_sample: 1,
+    },
+  ],
+  hmValueLeaks: [
+    {
+      root: "",
+      el: "456",
+      clicks: "40",
+      click_visitors: "35",
+      revenue: 0,
+      cvr_index: 0,
+      rpv_index: 0,
+      small_sample: 0,
+      rev_gap: 210,
+    },
+  ],
+  hmFunnel: [
+    {
+      root: "",
+      el: "0",
+      visitors: "400",
+      viewed: "200",
+      carted: "40",
+      checkout: "20",
+      bought: "12",
+    },
+    {
+      root: "fs:hero#0",
+      el: "123",
+      visitors: "7",
+      viewed: "6",
+      carted: "3",
+      checkout: "2",
+      bought: "2",
+    },
+  ],
+};
+
+describe("parseHeatmap value", () => {
+  it("is null without the money panels or when the goal cannot be answered", () => {
+    expect(parseHeatmap(payload).value).toBeNull();
+    expect(
+      parseHeatmap({ ...money, heatmapValue: { supported: false } }).value,
+    ).toBeNull();
+  });
+
+  it("reads the page, elements, leaks and the page row of the after-click funnel", () => {
+    const value = parseHeatmap(money).value;
+    expect(value?.currency).toBe("BRL");
+    expect(value?.page).toMatchObject({
+      visitors: 400,
+      orders: 13,
+      smallSample: true,
+    });
+    expect(value?.elements[0]).toMatchObject({
+      key: "fs:hero#0|123",
+      clickVisitors: 7,
+      rpvIndex: 9.05,
+      revGap: null,
+    });
+    expect(value?.leaks[0]).toMatchObject({ key: "|456", revGap: 210 });
+    expect(value?.afterClick.map((r) => r.key)).toEqual(["", "fs:hero#0|123"]);
+  });
+
+  it("paints value as click heat weighted by revenue", () => {
+    const d = viewData(parseHeatmap(money), {
+      mode: "value",
+      type: "all",
+      ramp: "thermal",
+      opacity: 0.8,
+      device: "desktop",
+    });
+    expect(d.mode).toBe("clicks");
+    expect(d.elements).toEqual([
+      { root: "fs:hero#0", el: "123", clicks: 380, cells: { "9": 6, "10": 4 } },
+    ]);
+    expect(d.grid).toEqual([]);
+  });
+});

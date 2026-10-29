@@ -389,6 +389,16 @@ export const mainPanelTabs = {
     "Envie eventos personalizados do seu código via ",
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
+  "mainPanelTabs.analyticsTab.eventsHelp.title":
+    "Enviar eventos personalizados pelo código",
+  "mainPanelTabs.analyticsTab.eventsHelp.intro":
+    "O Analytics já vem ativo: as visualizações são coletadas sem código. Para eventos personalizados, use a API pública em",
+  "mainPanelTabs.analyticsTab.eventsHelp.pageview":
+    "Registra uma visualização manualmente (troca de rota em SPA).",
+  "mainPanelTabs.analyticsTab.eventsHelp.track":
+    "Um evento personalizado. name usa a–z minúsculas, dígitos e sublinhado, até 40 caracteres; props é um objeto simples opcional.",
+  "mainPanelTabs.analyticsTab.eventsHelp.purchase":
+    "Uma compra. transactionId evita contar duas vezes a mesma venda quando a página de confirmação é recarregada.",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
   "mainPanelTabs.analyticsTab.viewLive": "Tempo real",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
@@ -423,6 +433,39 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.attention": "Atenção",
   "mainPanelTabs.analyticsTab.heatmap.attentionHint":
     "Onde as pessoas passam tempo",
+  "mainPanelTabs.analyticsTab.heatmap.value": "Receita",
+  "mainPanelTabs.analyticsTab.heatmap.valueHint":
+    "Onde clicaram os visitantes que compraram, pelos pedidos feitos até 30 minutos depois da visita. É amostrado e não indica causa: um elemento no caminho do checkout pontua alto só por estar no caminho.",
+  "mainPanelTabs.analyticsTab.heatmap.legendLessValue": "menos receita",
+  "mainPanelTabs.analyticsTab.heatmap.legendMoreValue": "mais receita",
+  "mainPanelTabs.analyticsTab.heatmap.statConversion": "Conversão da página",
+  "mainPanelTabs.analyticsTab.heatmap.statRevPerVisitor":
+    "Receita por visitante",
+  "mainPanelTabs.analyticsTab.heatmap.statOrders": "Pedidos",
+  "mainPanelTabs.analyticsTab.heatmap.statRevenue": "Receita (amostra)",
+  "mainPanelTabs.analyticsTab.heatmap.valueTop": "Elementos por receita",
+  "mainPanelTabs.analyticsTab.heatmap.valueRowSub":
+    "{pct} compraram, {index} a página",
+  "mainPanelTabs.analyticsTab.heatmap.valueIndex": "{n}×",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmall": "Poucos visitantes",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmallHint":
+    "Menos de 30 visitantes clicaram, pouco para ranquear por conversão.",
+  "mainPanelTabs.analyticsTab.heatmap.leaksTitle": "Custando receita",
+  "mainPanelTabs.analyticsTab.heatmap.leaksAside": "vs a média da página",
+  "mainPanelTabs.analyticsTab.heatmap.leakSub":
+    "{n} visitantes clicaram, convertendo abaixo da página",
+  "mainPanelTabs.analyticsTab.heatmap.afterTitle": "Depois do clique",
+  "mainPanelTabs.analyticsTab.heatmap.afterPage": "Página",
+  "mainPanelTabs.analyticsTab.heatmap.afterElement": "Clicou",
+  "mainPanelTabs.analyticsTab.heatmap.afterViewed": "Viu produto",
+  "mainPanelTabs.analyticsTab.heatmap.afterCarted": "Carrinho",
+  "mainPanelTabs.analyticsTab.heatmap.afterCheckout": "Checkout",
+  "mainPanelTabs.analyticsTab.heatmap.afterBought": "Comprou",
+  "mainPanelTabs.analyticsTab.heatmap.tipRevenue": "Receita",
+  "mainPanelTabs.analyticsTab.heatmap.tipConversion": "Compraram",
+  "mainPanelTabs.analyticsTab.heatmap.tipIndex": "vs a página",
+  "mainPanelTabs.analyticsTab.heatmap.valueNone":
+    "Nenhum elemento foi seguido de pedido neste período.",
   "mainPanelTabs.analyticsTab.heatmap.sections": "Seções",
   "mainPanelTabs.analyticsTab.heatmap.sectionsHint":
     "Cada seção da página com seus números",

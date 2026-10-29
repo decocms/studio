@@ -777,6 +777,12 @@ export const KEYS = {
   // collapsible section caches independently and refetches on range change.
   analyticsData: (org: string, site: string, view: string, range: string) =>
     ["hosting", org, site, "analytics-data", view, range] as const,
+  // Monitor → Analytics: one view keyed by its full query string, so segments cache apart.
+  analyticsView: (org: string, site: string, query: string) =>
+    ["hosting", org, site, "analytics-view", query] as const,
+  // Monitor → Analytics: the filter builder's suggestions for one dimension.
+  analyticsValues: (org: string, site: string, dim: string, range: string) =>
+    ["hosting", org, site, "analytics-values", dim, range] as const,
   // Deco Analytics → Heatmap: one page × device bucket of `view=heatmap`.
   analyticsHeatmap: (
     org: string,
