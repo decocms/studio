@@ -239,6 +239,22 @@ export const sandbox = {
   "sandbox.campaigns.objectiveHint":
     "O que um post escrito para esta campanha quer alcançar.",
   "sandbox.campaigns.objectiveLabel": "Objetivo",
+  "sandbox.campaigns.goalLabel": "Meta",
+  "sandbox.campaigns.goalHint":
+    "O número que diz se a campanha deu certo até o fim do período. Para este objetivo, em geral: {metric}",
+  "sandbox.campaigns.goalPlaceholder":
+    "ex: Crescer o tráfego orgânico em acessórios",
+  "sandbox.campaigns.goalTargetLabel": "Alvo",
+  "sandbox.campaigns.goalTargetPlaceholder": "+20%",
+  "sandbox.campaigns.goalMetricLabel": "Medida em",
+  "sandbox.campaigns.goalMetricNone": "Sem medida",
+  "sandbox.campaigns.goalMetricOrganicSessions": "sessões orgânicas",
+  "sandbox.campaigns.goalMetricSessions": "sessões",
+  "sandbox.campaigns.goalMetricSearchClicks": "cliques na busca",
+  "sandbox.campaigns.goalMetricSearchImpressions": "impressões na busca",
+  "sandbox.campaigns.goalMetricConversions": "conversões",
+  "sandbox.campaigns.goalMetricRevenue": "receita",
+  "sandbox.campaigns.goalLine": "Meta: {goal}",
   "sandbox.campaigns.objectiveRepositioning": "Reposicionamento",
   "sandbox.campaigns.objectiveRetention": "Retenção",
   "sandbox.campaigns.periodClear": "Limpar o período",

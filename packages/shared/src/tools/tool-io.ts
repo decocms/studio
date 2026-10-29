@@ -2298,6 +2298,20 @@ export interface StudioToolIO {
                 | undefined;
               campaignName?: string | undefined;
               seedKey?: string | undefined;
+              goal?:
+                | {
+                    text: string;
+                    metric:
+                      | "organic_sessions"
+                      | "sessions"
+                      | "search_clicks"
+                      | "search_impressions"
+                      | "conversions"
+                      | "revenue"
+                      | null;
+                    target: string;
+                  }
+                | undefined;
               status?: "active" | "draft" | "paused" | "finished" | undefined;
               createdAt?: string | undefined;
               updatedAt?: string | undefined;
@@ -3372,6 +3386,20 @@ export interface StudioToolIO {
           avoidComplements?: { name: string; value: string }[] | undefined;
           toneOverrides?: string | undefined;
         };
+        goal?:
+          | {
+              text: string;
+              metric:
+                | "organic_sessions"
+                | "sessions"
+                | "search_clicks"
+                | "search_impressions"
+                | "conversions"
+                | "revenue"
+                | null;
+              target: string;
+            }
+          | undefined;
       };
       format: { name: string; value: string };
       blocks: {
@@ -3483,6 +3511,20 @@ export interface StudioToolIO {
           avoidComplements?: { name: string; value: string }[] | undefined;
           toneOverrides?: string | undefined;
         };
+        goal?:
+          | {
+              text: string;
+              metric:
+                | "organic_sessions"
+                | "sessions"
+                | "search_clicks"
+                | "search_impressions"
+                | "conversions"
+                | "revenue"
+                | null;
+              target: string;
+            }
+          | undefined;
       };
       format: { name: string; value: string };
       blocks: {

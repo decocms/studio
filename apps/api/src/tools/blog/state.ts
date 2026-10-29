@@ -21,6 +21,7 @@ import {
 } from "../../file-storage/blog-state";
 import { CampaignDraftSchema } from "./campaign-suggest";
 import { requireBlogAi } from "./feature-flag";
+import { CampaignGoalSchema } from "./schema";
 
 /**
  * Reading and writing the blog's editorial state, for a caller with no browser.
@@ -55,6 +56,9 @@ const StoredCampaignSchema = CampaignDraftSchema.omit({ name: true })
       .describe(
         "The seed this campaign was generated from, as `blog-manager/campaign-seeds/<id>`. Empty when it was written by hand.",
       ),
+    goal: CampaignGoalSchema.describe(
+      "What the campaign is for, in a figure someone can check. Every post written for it is a step toward this.",
+    ),
     status: z.enum(CAMPAIGN_STATUSES),
     createdAt: z.string(),
     updatedAt: z.string(),

@@ -30,6 +30,7 @@ import {
   scanCampaigns,
 } from "./blog-data";
 import { BlogConnectionsGate } from "./blog-connections-gate";
+import { GoalLine } from "./campaign-goal";
 import { PickList } from "./blocks/primitives";
 import type { PostBriefing } from "./use-generate-post";
 
@@ -348,6 +349,7 @@ export function CampaignList({
                   : t("sandbox.generatePost.campaignNoProducts")}
               </Badge>
             </div>
+            <GoalLine goal={campaign.goal} className="mt-1" />
             {campaign.trigger.note && (
               <p className="line-clamp-2 text-xs text-muted-foreground">
                 {campaign.trigger.note}

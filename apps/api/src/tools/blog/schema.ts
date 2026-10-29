@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CAMPAIGN_GOAL_METRICS } from "@decocms/shared/blog-campaign";
 import { clampText } from "@decocms/shared/report-seo";
 
 /**
@@ -41,6 +42,25 @@ export const BrandRuleSchema = z.object({
     .describe(
       "The rule itself, as markdown. One or two paragraphs; use a bullet list only when there are genuinely several cases. No heading — the name is the heading.",
     ),
+});
+
+/**
+ * What a campaign is for, in a figure someone can check: the text says it, the
+ * metric names what counts it, the target says how far. The campaign's period
+ * is its deadline. A person sets it; no model proposes one.
+ */
+export const CampaignGoalSchema = z.object({
+  text: z
+    .string()
+    .max(200)
+    .describe(
+      "The goal in the brand's language: 'Grow organic traffic on accessories'. Empty when the campaign has none.",
+    ),
+  metric: z
+    .enum(CAMPAIGN_GOAL_METRICS)
+    .nullable()
+    .describe("What counts it, or null when nobody picked one."),
+  target: z.string().max(40).describe("How far, as a person wrote it: '+20%'."),
 });
 
 /** One example sentence, and whether it is one to imitate or one to avoid — a pair of opposites teaches a voice faster than either side alone, since "not like this" is what pins down how far "like this" goes. */

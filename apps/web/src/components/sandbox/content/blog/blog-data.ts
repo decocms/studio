@@ -78,11 +78,13 @@ import {
   WRAPPER_KEY,
 } from "@decocms/shared/blog";
 import {
+  CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
   CAMPAIGN_TRIGGERS,
   MAX_CAMPAIGN_PRODUCT_IMAGES,
+  type CampaignGoalMetric,
   type CampaignObjective,
   type CampaignStatus,
   type CampaignTargetKind,
@@ -866,11 +868,13 @@ export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
  * every call site in this folder keeps importing campaign things from one place.
  */
 export {
+  CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
   CAMPAIGN_TRIGGERS,
   MAX_CAMPAIGN_PRODUCT_IMAGES,
+  type CampaignGoalMetric,
   type CampaignObjective,
   type CampaignStatus,
   type CampaignTargetKind,
@@ -911,6 +915,16 @@ export interface CampaignProduct {
   description: string;
 }
 
+/** What a campaign is for, in a figure someone can check by its period's end. */
+export interface CampaignGoal {
+  /** The goal in the brand's words; "" when the campaign has none. */
+  text: string;
+  /** What counts it; null until someone picks it. */
+  metric: CampaignGoalMetric | null;
+  /** How far, as typed: "+20%". */
+  target: string;
+}
+
 export interface CampaignEntry {
   key: string;
   name: string;
@@ -920,6 +934,7 @@ export interface CampaignEntry {
   /** `YYYY-MM-DD`, both optional — not every campaign has dates pinned. */
   period: { start: string | null; end: string | null };
   trigger: { type: CampaignTrigger; note: string };
+  goal: CampaignGoal;
   intent: {
     objective: CampaignObjective;
     targets: CampaignTarget[];
@@ -1019,6 +1034,11 @@ export function buildCampaignBlock(
       end: campaign.period.end ?? "",
     },
     trigger: { type: campaign.trigger.type, note: campaign.trigger.note },
+    goal: {
+      text: campaign.goal.text,
+      metric: campaign.goal.metric,
+      target: campaign.goal.target,
+    },
     intent: {
       objective: campaign.intent.objective,
       targets: campaign.intent.targets,
@@ -1053,6 +1073,7 @@ export function scanCampaigns(
     const trigger = asRecord(record.trigger) ?? {};
     const intent = asRecord(record.intent) ?? {};
     const guardrails = asRecord(record.guardrails) ?? {};
+    const goal = asRecord(record.goal) ?? {};
     campaigns.push({
       key,
       name: str(record.campaignName),
@@ -1062,6 +1083,11 @@ export function scanCampaigns(
       trigger: {
         type: oneOf(CAMPAIGN_TRIGGERS, trigger.type, "seasonal"),
         note: str(trigger.note),
+      },
+      goal: {
+        text: str(goal.text),
+        metric: CAMPAIGN_GOAL_METRICS.find((m) => m === goal.metric) ?? null,
+        target: str(goal.target),
       },
       intent: {
         objective: oneOf(CAMPAIGN_OBJECTIVES, intent.objective, "awareness"),
@@ -1083,6 +1109,9 @@ export function scanCampaigns(
   );
 }
 
+/** A campaign with no goal yet: what one reads as before anyone sets it. */
+export const NO_GOAL: CampaignGoal = { text: "", metric: null, target: "" };
+
 /** A campaign as it is born: empty, in draft, nothing pinned. */
 export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
   const stamp = now.toISOString();
@@ -1092,6 +1121,7 @@ export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
     status: "draft",
     period: { start: null, end: null },
     trigger: { type: "seasonal", note: "" },
+    goal: { ...NO_GOAL },
     intent: { objective: "awareness", targets: [], products: [], keywords: [] },
     guardrails: { avoidComplements: [], toneOverrides: "" },
     createdAt: stamp,

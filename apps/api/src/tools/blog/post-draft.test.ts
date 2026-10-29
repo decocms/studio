@@ -121,6 +121,42 @@ describe("renderCampaign", () => {
     expect(rendered).toContain("on top of the brand's");
     expect(rendered).toContain("Nunca cite preço.");
   });
+
+  test("states the campaign's goal, with what counts it and how far", () => {
+    const rendered = renderCampaign({
+      ...campaign,
+      goal: {
+        text: "Crescer o tráfego orgânico em acessórios",
+        metric: "organic_sessions",
+        target: "+20%",
+      },
+    });
+    expect(rendered).toContain(
+      "Goal: Crescer o tráfego orgânico em acessórios (+20% organic sessions).",
+    );
+  });
+
+  test("a goal with no measure is still stated", () => {
+    const rendered = renderCampaign({
+      ...campaign,
+      goal: {
+        text: "Ser lembrada na volta às aulas",
+        metric: null,
+        target: "",
+      },
+    });
+    expect(rendered).toContain("Goal: Ser lembrada na volta às aulas.");
+  });
+
+  test("an empty goal, or none, says nothing about a goal", () => {
+    expect(renderCampaign(campaign)).not.toContain("Goal:");
+    expect(
+      renderCampaign({
+        ...campaign,
+        goal: { text: "  ", metric: "sessions", target: "+5%" },
+      }),
+    ).not.toContain("Goal:");
+  });
 });
 
 /**

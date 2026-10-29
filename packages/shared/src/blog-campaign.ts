@@ -43,6 +43,20 @@ export const CAMPAIGN_OBJECTIVES = [
 ] as const;
 export type CampaignObjective = (typeof CAMPAIGN_OBJECTIVES)[number];
 
+/**
+ * What a campaign's goal is counted in: a figure GA4, Search Console or VTEX
+ * reports, so the goal can be checked rather than argued about.
+ */
+export const CAMPAIGN_GOAL_METRICS = [
+  "organic_sessions",
+  "sessions",
+  "search_clicks",
+  "search_impressions",
+  "conversions",
+  "revenue",
+] as const;
+export type CampaignGoalMetric = (typeof CAMPAIGN_GOAL_METRICS)[number];
+
 /** A target is the slice a campaign argues for — never a single product. */
 export const CAMPAIGN_TARGET_KINDS = ["category", "collection"] as const;
 export type CampaignTargetKind = (typeof CAMPAIGN_TARGET_KINDS)[number];

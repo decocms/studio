@@ -57,6 +57,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { SaveStatus } from "./save-status";
 import { CampaignEditor } from "./campaign-editor";
+import { GoalLine } from "./campaign-goal";
 import {
   buildCampaignBlock,
   buildCampaignSeedBlock,
@@ -574,6 +575,7 @@ function CampaignCard({
             </span>
           )}
         </div>
+        <GoalLine goal={campaign.goal} className="mt-2" />
       </button>
     </div>
   );

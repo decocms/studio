@@ -287,6 +287,7 @@ export function useGeneratePost({
           name: briefing.campaign.name,
           period: briefing.campaign.period,
           trigger: briefing.campaign.trigger,
+          goal: briefing.campaign.goal,
           intent: {
             objective: briefing.campaign.intent.objective,
             targets: briefing.campaign.intent.targets,

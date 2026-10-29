@@ -14,7 +14,7 @@ import {
 import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
 import { renderGrounding } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
-import { ReducedContextSchema } from "./schema";
+import { CampaignGoalSchema, ReducedContextSchema } from "./schema";
 import {
   clearUnfilled,
   IMAGE_SENTINEL,
@@ -87,6 +87,7 @@ const CampaignSchema = z.object({
     type: z.enum(CAMPAIGN_TRIGGERS),
     note: z.string().max(MAX_BODY_CHARS),
   }),
+  goal: CampaignGoalSchema.optional(),
   intent: z.object({
     objective: z.enum(CAMPAIGN_OBJECTIVES),
     targets: z
@@ -268,13 +269,19 @@ function renderVoiceExamples(
 export function renderCampaign(
   campaign: z.infer<typeof CampaignSchema>,
 ): string {
-  const { intent, period, trigger, guardrails } = campaign;
+  const { intent, period, trigger, guardrails, goal } = campaign;
   const when =
     period.start || period.end
       ? `\nRuns ${period.start ?? "from whenever"} to ${period.end ?? "no fixed end"}.`
       : "";
+  const measure = [goal?.target.trim(), goal?.metric?.replaceAll("_", " ")]
+    .filter(Boolean)
+    .join(" ");
+  const aim = goal?.text.trim()
+    ? `\nGoal: ${goal.text.trim()}${measure ? ` (${measure})` : ""}. Every post in this campaign is a step toward it.`
+    : "";
   return [
-    `## The campaign: ${campaign.name}\nWhy now (${trigger.type}): ${trigger.note}\nObjective: ${intent.objective}.${when}`,
+    `## The campaign: ${campaign.name}\nWhy now (${trigger.type}): ${trigger.note}\nObjective: ${intent.objective}.${aim}${when}`,
     intent.targets.length > 0 &&
       `## What it argues for\n${intent.targets
         .map(

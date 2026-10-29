@@ -705,6 +705,11 @@ describe("scanCampaigns", () => {
         status: "active",
         period: { start: "2026-11-20", end: "2026-11-30" },
         trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
+        goal: {
+          text: "Vender mais ar condicionado na semana",
+          metric: "revenue",
+          target: "+30%",
+        },
         intent: {
           objective: "conversion",
           targets: [
@@ -743,6 +748,11 @@ describe("scanCampaigns", () => {
       status: "active",
       period: { start: "2026-11-20", end: "2026-11-30" },
       trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
+      goal: {
+        text: "Vender mais ar condicionado na semana",
+        metric: "revenue",
+        target: "+30%",
+      },
       intent: {
         objective: "conversion",
         targets: [
@@ -782,6 +792,44 @@ describe("scanCampaigns", () => {
     expect(campaign?.trigger.type).toBe("seasonal");
     expect(campaign?.intent.objective).toBe("awareness");
     expect(campaign?.period).toEqual({ start: null, end: null });
+    expect(campaign?.goal).toEqual({ text: "", metric: null, target: "" });
+  });
+
+  test("a goal counted in something unknown keeps its words, not the metric", () => {
+    const [campaign] = scanCampaigns({
+      [key]: { goal: { text: "Mais visitas", metric: "likes", target: "+5%" } },
+    });
+    expect(campaign?.goal).toEqual({
+      text: "Mais visitas",
+      metric: null,
+      target: "+5%",
+    });
+  });
+
+  test("the goal survives a rebuild that touches something else", () => {
+    const [before] = scanCampaigns({
+      [key]: {
+        campaignName: "Volta às aulas",
+        goal: {
+          text: "Tráfego em mochilas",
+          metric: "sessions",
+          target: "+20%",
+        },
+      },
+    });
+    if (!before) throw new Error("no campaign");
+    const { key: _key, ...rest } = before;
+    const [after] = scanCampaigns({
+      [key]: buildCampaignBlock({ ...rest, status: "active" }),
+    });
+    expect(after?.status).toBe("active");
+    expect(after?.goal).toEqual(before.goal);
+  });
+
+  test("a new campaign has an empty goal of its own", () => {
+    const one = emptyCampaign(new Date());
+    one.goal.text = "mutated";
+    expect(emptyCampaign(new Date()).goal.text).toBe("");
   });
 
   test("an unknown enum value reads as the default, never breaking the board", () => {

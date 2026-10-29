@@ -53,6 +53,7 @@ import type { CatalogSource } from "./blocks/catalog-source";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
 import {
   buildCampaignBlock,
+  CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
@@ -65,6 +66,7 @@ import {
   type CampaignTargetKind,
   type CampaignTrigger,
   MAX_CAMPAIGN_PRODUCT_IMAGES,
+  NO_GOAL,
   normalizeBrandRules,
   readCampaignProducts,
   readCampaignTargets,
@@ -74,6 +76,7 @@ import {
   CAMPAIGN_STATUS_LABEL,
   CAMPAIGN_TRIGGER_LABEL,
 } from "./campaigns-panel";
+import { GOAL_METRIC_LABEL } from "./campaign-goal";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 const OBJECTIVE_LABEL: Record<CampaignObjective, TranslationKey> = {
@@ -188,6 +191,7 @@ function readCampaign(
     status: "draft" as CampaignStatus,
     period: { start: null, end: null },
     trigger: { type: "seasonal" as CampaignTrigger, note: "" },
+    goal: { ...NO_GOAL },
     intent: {
       objective: "awareness" as CampaignObjective,
       targets: [],
@@ -540,6 +544,68 @@ export function CampaignEditor({
             }
           }}
         />
+      </section>
+
+      <section className="space-y-2">
+        <Label htmlFor="campaign-goal">
+          {t("sandbox.campaigns.goalLabel")}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {t("sandbox.campaigns.goalHint", {
+            metric: t(OBJECTIVE_FACETS[campaign.intent.objective].metric),
+          })}
+        </p>
+        <Input
+          id="campaign-goal"
+          value={campaign.goal.text}
+          maxLength={200}
+          placeholder={t("sandbox.campaigns.goalPlaceholder")}
+          onChange={(e) =>
+            patch({ goal: { ...campaign.goal, text: e.target.value } })
+          }
+        />
+        <div className="flex flex-wrap items-start gap-6 pt-1">
+          <div className="space-y-1.5">
+            <Label htmlFor="campaign-goal-target">
+              {t("sandbox.campaigns.goalTargetLabel")}
+            </Label>
+            <Input
+              id="campaign-goal-target"
+              value={campaign.goal.target}
+              maxLength={40}
+              className="w-28"
+              placeholder={t("sandbox.campaigns.goalTargetPlaceholder")}
+              onChange={(e) =>
+                patch({ goal: { ...campaign.goal, target: e.target.value } })
+              }
+            />
+          </div>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label>{t("sandbox.campaigns.goalMetricLabel")}</Label>
+            <PickList
+              options={CAMPAIGN_GOAL_METRICS.map((m) =>
+                t(GOAL_METRIC_LABEL[m]),
+              )}
+              value={
+                campaign.goal.metric
+                  ? t(GOAL_METRIC_LABEL[campaign.goal.metric])
+                  : ""
+              }
+              emptyLabel={t("sandbox.campaigns.goalMetricNone")}
+              onChange={(label) =>
+                commit({
+                  goal: {
+                    ...campaign.goal,
+                    metric:
+                      CAMPAIGN_GOAL_METRICS.find(
+                        (m) => t(GOAL_METRIC_LABEL[m]) === label,
+                      ) ?? null,
+                  },
+                })
+              }
+            />
+          </div>
+        </div>
       </section>
 
       <section className="space-y-2">
