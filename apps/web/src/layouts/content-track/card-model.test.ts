@@ -7,7 +7,7 @@ import {
   cardTitle,
   defaultPhase,
   imageReady,
-  shopTheLook,
+  shelfProducts,
   stageDone,
   upsertCard,
 } from "./card-model";
@@ -142,7 +142,7 @@ test("an illustrator's note is not an image", () => {
   expect(imageReady(undefined)).toBe(false);
 });
 
-test("shop the look follows the post's order and the campaign's products", () => {
+test("a shelf shows the campaign's products in the block's order, once each", () => {
   const product = (id: string): CampaignProduct => ({
     id,
     name: `P${id}`,
@@ -151,16 +151,8 @@ test("shop the look follows the post's order and the campaign's products", () =>
     category: "",
     description: "",
   });
-  const shown = shopTheLook(
-    card({
-      post: {
-        sections: [
-          { type: "ProductShelf", productIds: ["2", "9"] },
-          { type: "Paragraph" },
-          { type: "ProductCard", productIds: ["1", "2"] },
-        ],
-      },
-    }),
+  const shown = shelfProducts(
+    ["2", "9", "1", "2"],
     [product("1"), product("2")],
   );
   expect(shown.map((entry) => entry.id)).toEqual(["2", "1"]);

@@ -12,7 +12,6 @@ import {
   type BlogCard,
   type BlogCardStatus,
 } from "@decocms/shared/blog-card";
-import { Badge } from "@decocms/ui/components/badge.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
@@ -53,7 +52,7 @@ export function BlogpostsBoard({
   };
 
   return (
-    <div className="flex min-h-[28rem] gap-3 overflow-x-auto pb-2">
+    <div className="flex min-h-[28rem] gap-3.5 overflow-x-auto pb-2">
       {BLOG_CARD_STATUSES.map((status) => {
         const lane = cards.filter((card) => card.status === status);
         const droppable = canDropOn(status);
@@ -77,36 +76,31 @@ export function BlogpostsBoard({
               drop(e.dataTransfer.getData(DRAG_KEY), status);
             }}
             className={cn(
-              "flex w-72 shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",
-              dragOverLane === status && "border-primary bg-primary/5",
+              "flex w-[236px] shrink-0 flex-col rounded-xl transition-colors",
+              dragOverLane === status &&
+                "bg-primary/5 outline-dashed outline-1 outline-primary/40",
             )}
           >
-            <header className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
+            <header className="flex items-center gap-2 px-1 pb-2.5 text-[12.5px] font-semibold text-muted-foreground">
               <span className="truncate">{t(CARD_STATUS_LABEL[status])}</span>
-              <span className="text-xs tabular-nums text-muted-foreground">
+              <span className="rounded-md bg-muted px-1.5 text-[11px] tabular-nums">
                 {lane.length}
               </span>
             </header>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
-              {lane.length === 0 ? (
-                <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-                  {t("contentTrack.lane.empty")}
-                </p>
-              ) : (
-                lane.map((card) => (
-                  <CardFace
-                    key={card.id}
-                    card={card}
-                    working={cardAgentWorking(card, now)}
-                    campaignName={
-                      card.campaignId
-                        ? campaignNames.get(card.campaignId)
-                        : undefined
-                    }
-                    onOpen={() => onOpen(card)}
-                  />
-                ))
-              )}
+            <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pb-2">
+              {lane.map((card) => (
+                <CardFace
+                  key={card.id}
+                  card={card}
+                  working={cardAgentWorking(card, now)}
+                  campaignName={
+                    card.campaignId
+                      ? campaignNames.get(card.campaignId)
+                      : undefined
+                  }
+                  onOpen={() => onOpen(card)}
+                />
+              ))}
             </div>
           </section>
         );
@@ -136,44 +130,47 @@ function CardFace({
       onDragStart={(e) => e.dataTransfer.setData(DRAG_KEY, card.id)}
       onClick={onOpen}
       className={cn(
-        "block w-full rounded-lg bg-card p-3 text-left shadow-edge transition-shadow hover:shadow-lift",
-        working ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        "block w-full rounded-[11px] border border-border bg-card px-3 py-[11px] text-left shadow-[0_1px_1px_rgba(20,23,26,0.03)] transition-[border-color,box-shadow] hover:border-foreground/15 hover:shadow-[0_2px_10px_rgba(20,23,26,0.07)]",
+        working
+          ? "cursor-pointer border-success shadow-[0_2px_10px_rgba(22,128,61,0.16)] ring-1 ring-success"
+          : "cursor-grab active:cursor-grabbing",
       )}
     >
-      <div className="flex items-start gap-2">
-        <p
-          className={cn(
-            "line-clamp-2 min-w-0 flex-1 text-sm font-medium",
-            !title && "text-muted-foreground",
-          )}
-        >
-          {title || t("contentTrack.card.untitled")}
-        </p>
-        <SuperAgentIcon
-          size={18}
-          className={cn("shrink-0", working && "animate-pulse")}
-        />
+      <div className="mb-[7px] flex items-center gap-[7px]">
+        <span className="size-[7px] shrink-0 rounded-full bg-success" />
+        <span className="text-[11px] font-semibold tracking-[0.02em] text-muted-foreground">
+          {t("contentTrack.card.kind")}
+        </span>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <p
+        className={cn(
+          "mb-[9px] line-clamp-2 text-[13.5px] font-semibold leading-[1.35]",
+          !title && "text-muted-foreground",
+        )}
+      >
+        {title || t("contentTrack.card.untitled")}
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
         {format && (
-          <Badge variant="secondary" className="max-w-full truncate">
+          <span className="max-w-full truncate rounded-md border border-border bg-muted px-[7px] py-0.5 text-[11px] text-muted-foreground">
             {format}
-          </Badge>
+          </span>
         )}
         {campaignName && (
-          <Badge variant="outline" className="max-w-full truncate">
+          <span className="max-w-full truncate rounded-md border border-border bg-card px-[7px] py-0.5 text-[11px] text-muted-foreground">
             {campaignName}
-          </Badge>
-        )}
-        {working && (
-          <Badge variant="brand">{t("contentTrack.card.working")}</Badge>
+          </span>
         )}
         {card.error && (
-          <Badge variant="destructive">
-            <AlertCircle />
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-[7px] py-0.5 text-[11px] font-medium text-destructive">
+            <AlertCircle size={12} />
             {t("contentTrack.card.stopped")}
-          </Badge>
+          </span>
         )}
+        <SuperAgentIcon
+          size={18}
+          className={cn("ml-auto shrink-0", working && "animate-pulse")}
+        />
       </div>
     </button>
   );

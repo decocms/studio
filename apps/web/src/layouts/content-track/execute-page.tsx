@@ -36,12 +36,14 @@ function TrackTabs({
   return (
     <>
       <Page.Tab active={track === "code"} onClick={() => onSelect("code")}>
+        <span aria-hidden className="size-2 rounded-full bg-brand-blue" />
         {t("contentTrack.trackCode")}
       </Page.Tab>
       <Page.Tab
         active={track === "content"}
         onClick={() => onSelect("content")}
       >
+        <span aria-hidden className="size-2 rounded-full bg-success" />
         {t("contentTrack.trackContent")}
         <Badge variant="lime" size="sm">
           {t("common.new")}

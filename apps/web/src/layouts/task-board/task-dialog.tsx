@@ -325,7 +325,7 @@ function TaskCost({ threads }: { threads?: TaskBoardItemThread[] }) {
  * Project). The label is 74% muted so it reads as a section marker rather than
  * a value, and is inset to the same 12px as the buttons under it.
  */
-export function PropertyGroup({
+function PropertyGroup({
   label,
   children,
 }: {

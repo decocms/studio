@@ -4,7 +4,10 @@ import { Fragment } from "react";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import type { CampaignProduct } from "@/components/sandbox/content/blog/blog-data";
 import { useT } from "@/i18n/use-t.ts";
+import { shelfProducts } from "./card-model";
+import { RoleAtWork } from "./newsroom";
 import { type BodyBlock, bodyBlocks, type InlineNode } from "./post-body-model";
 
 function Inline({ nodes }: { nodes: InlineNode[] }) {
@@ -54,7 +57,61 @@ function Inline({ nodes }: { nodes: InlineNode[] }) {
   });
 }
 
-function Block({ block }: { block: BodyBlock }) {
+/** A product block as the shelf a reader sees: the campaign's products it names. */
+function Shelf({
+  block,
+  products,
+}: {
+  block: Extract<BodyBlock, { kind: "component" }>;
+  products: CampaignProduct[];
+}) {
+  const t = useT();
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className="mb-[11px] flex items-baseline justify-between gap-3">
+        <span className="text-[13.5px] font-semibold text-foreground">
+          {block.title.length > 0 ? (
+            <Inline nodes={block.title} />
+          ) : (
+            t("contentTrack.card.shopTheLook")
+          )}
+        </span>
+        <span className="shrink-0 text-[11.5px] text-muted-foreground">
+          {t("contentTrack.card.shelfCount", { count: products.length })}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+        {products.map((product) => (
+          <div
+            key={product.id}
+            className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-card"
+          >
+            {product.images[0] ? (
+              <img
+                src={product.images[0]}
+                alt={product.name}
+                className="aspect-square w-full object-cover"
+              />
+            ) : (
+              <div className="aspect-square w-full bg-muted" />
+            )}
+            <span className="line-clamp-2 px-[9px] pt-2 pb-[9px] text-xs font-medium text-foreground">
+              {product.name}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Block({
+  block,
+  products,
+}: {
+  block: BodyBlock;
+  products: readonly CampaignProduct[];
+}) {
   const t = useT();
   switch (block.kind) {
     case "heading": {
@@ -102,14 +159,19 @@ function Block({ block }: { block: BodyBlock }) {
           className="w-full rounded-xl object-cover"
         />
       ) : (
-        <div className="flex flex-col gap-1">
+        <div className="relative">
           <Skeleton className="aspect-video w-full rounded-xl" />
-          <span className="text-xs text-muted-foreground">
-            {t("contentTrack.card.creatorDrawing")}
+          <span className="absolute top-3 right-3">
+            <RoleAtWork
+              role="creator"
+              activity={t("contentTrack.card.activity.drawing")}
+            />
           </span>
         </div>
       );
     case "component": {
+      const shelf = shelfProducts(block.productIds, products);
+      if (shelf.length > 0) return <Shelf block={block} products={shelf} />;
       const name = (
         <Badge variant="muted" className="w-fit max-w-full truncate">
           {block.name}
@@ -146,11 +208,18 @@ function Block({ block }: { block: BodyBlock }) {
   }
 }
 
-export function PostBody({ sections }: { sections: readonly unknown[] }) {
+export function PostBody({
+  sections,
+  products,
+}: {
+  sections: readonly unknown[];
+  /** The campaign's products, which a product block's shelf is drawn from. */
+  products: readonly CampaignProduct[];
+}) {
   return (
     <div className="flex flex-col gap-4">
       {bodyBlocks(sections).map((block, index) => (
-        <Block key={index} block={block} />
+        <Block key={index} block={block} products={products} />
       ))}
     </div>
   );

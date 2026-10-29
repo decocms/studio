@@ -81,25 +81,16 @@ export function imageReady(url: string | undefined): url is string {
   return !!url?.trim() && !url.startsWith(IMAGE_SENTINEL);
 }
 
-/**
- * The campaign products the post shows, in the order its sections name them.
- * An id the campaign does not carry is left out: there is nothing to show
- * for it.
- */
-export function shopTheLook(
-  card: Pick<BlogCard, "post">,
+/** A product block's campaign products, in its order; an id the campaign lacks has nothing to show. */
+export function shelfProducts(
+  ids: readonly string[],
   products: readonly CampaignProduct[],
 ): CampaignProduct[] {
   const byId = new Map(products.map((product) => [product.id, product]));
-  const seen = new Set<string>();
-  const shown: CampaignProduct[] = [];
-  for (const section of card.post?.sections ?? []) {
-    for (const id of section.productIds ?? []) {
-      const product = byId.get(id);
-      if (!product || seen.has(id)) continue;
-      seen.add(id);
-      shown.push(product);
-    }
+  const shown = new Map<string, CampaignProduct>();
+  for (const id of ids) {
+    const product = byId.get(id);
+    if (product && !shown.has(id)) shown.set(id, product);
   }
-  return shown;
+  return [...shown.values()];
 }
