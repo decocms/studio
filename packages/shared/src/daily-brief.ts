@@ -73,14 +73,16 @@ export interface BriefSetup {
 /** The message a brief automation sends; the skill reads these lines. */
 export function briefMessage(setup: BriefSetup): string {
   const dir = setup.userId ? personalBriefDir(setup.userId) : ORG_BRIEF_DIR;
-  const focus = setup.focus.trim().replace(/\s+/g, " ");
+  // One line per field: a newline in a title could forge another field.
+  const line = (value: string) => value.trim().replace(/\s+/g, " ");
+  const connections = setup.connections.map(line).filter(Boolean);
   return [
     `Build today's daily brief. Read ${DAILY_BRIEF_SKILL} first and follow it.`,
     "",
     `Scope: ${setup.userId ? `personal (user ${setup.userId})` : "org"}`,
-    `Preset: ${setup.preset}`,
-    `Connections: ${setup.connections.length > 0 ? setup.connections.join(", ") : "all"}`,
-    `Focus: ${focus || "none"}`,
+    `Preset: ${line(setup.preset)}`,
+    `Connections: ${connections.length > 0 ? connections.join(", ") : "all"}`,
+    `Focus: ${line(setup.focus) || "none"}`,
     `Write to: /app/org/home/${dir}/`,
   ].join("\n");
 }
