@@ -306,6 +306,8 @@ export function MonitorPage({
   const stateOf = (id: SourceId) =>
     board.sources.find((s) => s.id === id)?.state ?? "off";
   const view = selection.view ?? "metrics";
+  const day = selection.date ?? localDay(new Date());
+  const today = day === localDay(new Date());
   const scopeProject = projects.find((p) => p.id === scopeId);
   // Everything the page can show is laid out from the start; what no source
   // feeds yet is drawn from the preview, faded, under its connect button.
@@ -492,19 +494,23 @@ export function MonitorPage({
         audience={
           scopeProject && (
             <>
-              <AudienceGlance
-                project={scopeProject}
-                withVisitors={!board.kpis.some((k) => k.id === "audience")}
-                onOpen={(section) =>
-                  onSelect({
-                    view: "audience",
-                    section,
-                    project: selection.project,
-                  })
-                }
-              />
+              {today && (
+                <AudienceGlance
+                  project={scopeProject}
+                  withVisitors={!board.kpis.some((k) => k.id === "audience")}
+                  onOpen={(section) =>
+                    onSelect({
+                      view: "audience",
+                      section,
+                      project: selection.project,
+                    })
+                  }
+                />
+              )}
               <SiteGlance
                 project={scopeProject}
+                date={day}
+                today={today}
                 onOpen={(to) => onSelect({ ...to, project: selection.project })}
               />
             </>

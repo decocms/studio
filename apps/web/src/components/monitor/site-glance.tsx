@@ -18,16 +18,25 @@ type Destination =
 const rowsOf = (data: Record<string, unknown> | undefined, key: string) =>
   (Array.isArray(data?.[key]) ? data[key] : []) as Record<string, unknown>[];
 
+/** The errors view lists only the most frequent fingerprints (queries.mjs). */
+const ERRORS_LISTED = 12;
+
 /**
- * The site's health today beside its audience: browser errors from Deco
- * Analytics, server errors and latency from the CDN. Each card opens
- * the screen it comes from; a card nothing feeds is left out.
+ * The site's health beside its audience: server errors and latency from the
+ * CDN for the board's day, and browser errors from Deco Analytics, which reads
+ * only rolling windows and so shows the last 24 hours and only on today's
+ * board. Each card opens the screen it comes from; one nothing feeds is left out.
  */
 export function SiteGlance({
   project,
+  date,
+  today,
   onOpen,
 }: {
   project: SiteProject;
+  /** The board's local day, `YYYY-MM-DD`. */
+  date: string;
+  today: boolean;
   onOpen: (to: Destination) => void;
 }) {
   const t = useT();
@@ -40,36 +49,49 @@ export function SiteGlance({
     view,
     range: "24h",
     segment: EMPTY_SEGMENT,
-    enabled: registered,
+    enabled: registered && today,
   });
   const errors = useDecoView(read("errors")).data?.data;
+  const events = useDecoView(read("events")).data?.data;
   const cdn = useQuery(
     cdnQuery<CdnSummary>(
       `/api/${org.slug}/monitor/${encodeURIComponent(project.analyticsSite)}`,
       "summary",
-      "today",
+      "custom",
+      `&since=${date}&until=${date}`,
     ),
   ).data;
-  // A CDN that served nothing today has no latency or error rate to show.
+  // A CDN that served nothing that day has no latency or error rate to show.
   const served = cdn && cdn.total_requests > 0 ? cdn : null;
 
   const errorRows = rowsOf(errors, "errors");
-  const occurrences = errorRows.reduce(
+  const listedAll = errorRows.length < ERRORS_LISTED;
+  // Every `$error`, from the events ranking; the fingerprints add up to the
+  // total only when none were cut off.
+  const counted = rowsOf(events, "events").find((r) => r.k === "$error");
+  const listed = errorRows.reduce(
     (n, r) => n + (Number(r.occurrences) || 0),
     0,
   );
+  const errorTotal = counted
+    ? formatNumber(Number(counted.n) || 0)
+    : listedAll
+      ? formatNumber(listed)
+      : `${formatNumber(listed)}+`;
 
   const cards = [
-    errors && (
+    today && errors && (
       <MetricCard
         key="js-errors"
         title={t("monitor.glance.jsErrors")}
-        value={formatNumber(occurrences)}
+        value={errorTotal}
         caption={
           errorRows.length > 0 && (
             <span className="text-meta">
               {t("monitor.glance.errorKinds", {
-                count: formatNumber(errorRows.length),
+                count: listedAll
+                  ? formatNumber(errorRows.length)
+                  : `${ERRORS_LISTED}+`,
               })}
             </span>
           )
