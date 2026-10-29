@@ -314,7 +314,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "The project's Context view — the brand profile, the writing rules, the post formats, the campaigns, the specialists that write from them — and agentic blogpost generation. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
+      "The content track: the brand guide the blog writes from, its campaigns, and blogpost cards an agent takes from a hypothesis to a draft on the site. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
     ),
   site_apps_install_enabled: z
     .boolean()
