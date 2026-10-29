@@ -13,12 +13,17 @@ import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { resolveOrCreateHead } from "@/decofile/read-decofile";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
-import { TASK_RUN_INSTRUCTIONS_KEY } from "@/harnesses/claude-code-env";
+import {
+  claudeSubscriptionChatModel,
+  TASK_RUN_INSTRUCTIONS_KEY,
+} from "@/harnesses/claude-code-env";
+import { userPlanCredentialId } from "@/harnesses/sandbox-only-chats";
 import { agentSandboxEnabled } from "@/settings";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { resolveTaskRunModel } from "@/tools/task-board/task-run-harness";
 import { defineTool } from "../../core/define-tool";
-import { getUserId } from "../../core/studio-context";
+import { TierUnavailableError } from "../../core/resolve-tier";
+import { getUserId, type StudioContext } from "../../core/studio-context";
 import {
   CARDS_DIR,
   readBlogRecord,
@@ -51,6 +56,9 @@ import { conflictOrRethrow, resolveBlogScope } from "./state";
 const RUN_START_WINDOW_MS = 2 * 60_000;
 
 const MAX_TITLE_CHARS = 120;
+
+/** What the card's `error` field holds at most. */
+const MAX_ERROR_CHARS = 2_000;
 
 /** The card's chat id. Fixed per card, so a retried start finds its chat. */
 export function blogCardThreadId(organizationId: string, cardId: string) {
@@ -179,6 +187,47 @@ export function blogCardRunPrompt(
   return said ? `${ask}\n\nFrom the person:\n${said}` : ask;
 }
 
+/**
+ * What a start that never reached the agent leaves on the card: its cause, so
+ * the card still says what to fix — a missing model, say — after the toast.
+ */
+export function dispatchFailure(err: unknown): string {
+  const said = (err instanceof Error ? err.message : String(err)).trim();
+  const reason = said || "The run could not start.";
+  return reason.length > MAX_ERROR_CHARS
+    ? `${reason.slice(0, MAX_ERROR_CHARS - 1)}…`
+    : reason;
+}
+
+/**
+ * The run's model: the organization's, or with none the person's own Claude
+ * plan, as a chat falls back to it. Dispatch bills the plan whenever there is
+ * one; only an organization with neither cannot start a card.
+ */
+async function cardRunModel(
+  ctx: StudioContext,
+  organizationId: string,
+  userId: string,
+): Promise<{ credentialId: string; thinking: { id: string; title?: string } }> {
+  try {
+    const tier = await resolveTaskRunModel(
+      ctx,
+      organizationId,
+      userId,
+      "claude-code",
+    );
+    return {
+      credentialId: tier.credentialId,
+      thinking: { id: tier.modelId, title: tier.modelMeta.title },
+    };
+  } catch (err) {
+    if (!(err instanceof TierUnavailableError)) throw err;
+    const planId = await userPlanCredentialId(ctx, organizationId, userId);
+    if (!planId) throw err;
+    return claudeSubscriptionChatModel(planId);
+  }
+}
+
 function threadTitle(card: BlogCard): string {
   const line =
     card.hypothesis?.title?.trim() ||
@@ -305,7 +354,7 @@ export const BLOG_CARD_RUN = defineTool({
 
     let createdThread = false;
     /** Undo the claim, and the chat when this call made it, keeping the reason. */
-    const rollBack = async () => {
+    const rollBack = async (reason: unknown) => {
       if (createdThread) {
         await ctx.storage.threads
           .delete(threadId)
@@ -318,7 +367,7 @@ export const BLOG_CARD_RUN = defineTool({
           parseCard(card.id, stored).run?.requestedAt === requestedAt
             ? {
                 ...card,
-                error: "The run could not start. Try again.",
+                error: dispatchFailure(reason),
                 updatedAt: new Date().toISOString(),
               }
             : stored,
@@ -353,12 +402,7 @@ export const BLOG_CARD_RUN = defineTool({
         createdThread = created.isNew;
       }
 
-      const model = await resolveTaskRunModel(
-        ctx,
-        organizationId,
-        userId,
-        "claude-code",
-      );
+      const model = await cardRunModel(ctx, organizationId, userId);
       const fence = `blog-card:${threadId}:${input.phase}:${requestedAt}`;
       const requestMessage = {
         id: `blog-card-${createHash("sha256").update(fence).digest("hex").slice(0, 32)}`,
@@ -392,7 +436,7 @@ export const BLOG_CARD_RUN = defineTool({
             messages: [requestMessage],
             models: {
               credentialId: model.credentialId,
-              thinking: { id: model.modelId, title: model.modelMeta.title },
+              thinking: model.thinking,
             },
             agent: {
               id: getDecopilotId(organizationId),
@@ -413,7 +457,7 @@ export const BLOG_CARD_RUN = defineTool({
         { workflowID: fence },
       );
     } catch (err) {
-      await rollBack();
+      await rollBack(err);
       throw err;
     }
 

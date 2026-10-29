@@ -4,6 +4,11 @@ O caminho de um blogpost pela aba Content do Executar: um card por post,
 trabalhado por um agente — o Super Agent, no Claude Code, dentro de um
 sandbox, com a skill `blogpost` —, e duas decisões de pessoa no meio.
 
+Quem pensa e escreve é o Claude Code: ele lê os sistemas da loja, argumenta a
+hipótese e escreve o post. As tools do Studio dão o que só o Studio tem (o
+card, a marca, os blocos do site, as imagens) e conferem e gravam o que ele
+escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
+
 ## O fluxo
 
 1. **A marca preenchida**, em Contexto → Marca. Sem ela o Content mostra o
@@ -11,14 +16,18 @@ sandbox, com a skill `blogpost` —, e duas decisões de pessoa no meio.
 2. **Uma campanha**, em Content → Campanhas, lida da conexão VTEX da org.
 3. **Novo blogpost.** `BLOG_CARD_CREATE` cria o card em Ideas, para um site e
    uma campanha, e `BLOG_CARD_RUN` com `phase: "hypothesis"` começa o agente.
-   Ele embasa (`BLOG_SITE_GROUND` com `purpose: "hypothesis"`), grava a
-   evidência no card, depois a hipótese, apresenta no chat do card e espera.
+   Ele pergunta à VTEX, ao GA4 e ao Search Console (`CONNECTION_TOOL_CALL`),
+   grava a evidência no card, depois a hipótese, apresenta no chat do card e
+   espera.
 4. **A hipótese aprovada.** A pessoa ajusta no chat ou aprova no card, que
    chama `BLOG_CARD_RUN` com `phase: "execute"`. O card vai pra Generating, na
    branch `blog-<id>` do site, e passa por cinco etapas — `grounding`,
    `drafting`, `illustrating`, `assembling` e `writing` —, cada uma gravando
-   `stage` e o que produziu. Termina em Awaiting review, com `postKey` e
-   `commit`.
+   `stage` e o que produziu. O post sai das instruções de `BLOG_POST_BRIEF` —
+   as mesmas regras e a mesma leitura de marca, campanha e blocos que o
+   `BLOG_POST_DRAFT` dá ao modelo dele —, e o `BLOG_POST_ASSEMBLE` confere cada
+   seção contra o schema do bloco, devolvendo o motivo do que cortou. Termina
+   em Awaiting review, com `postKey` e `commit`.
 5. **Revisão e publicação**, no Site Editor, por uma pessoa.
 6. **Monitor**: ainda não existe.
 
@@ -68,6 +77,14 @@ no card guardado e relê quando outra escrita cai no meio, até três vezes; com
 podem se sobrepor: o `OrgFs.write` confere a versão contra a linha do
 manifesto que leu, não de forma atômica com a própria escrita.
 
+## O modelo do run
+
+O run do card começa no modelo da org e, sem nenhum, no plano Claude de quem
+disparou, como o chat (`cardRunModel`). No despacho o plano tem prioridade
+sobre a chave da org de todo jeito. Imagem é a exceção: o Claude não gera
+imagem, então `BLOG_POST_ILLUSTRATE` precisa de um modelo de imagem da org, e
+sem ele o post sai sem imagens e com a lacuna `no-image-model`.
+
 ## O acesso às conexões
 
 A chave de um run de chat só alcança as conexões que o agente agrega, e o
@@ -79,10 +96,11 @@ Por isso `sandbox-dispatch-client.ts` dá à chave de um chat marcado com
 `metadata.blogCard`, com `blog_ai_enabled` ligado, as conexões do blog
 (`blogCardRunConnections`): a VTEX só com as tools de embasamento
 (`VTEX_GROUNDING_TOOLS`, via `narrowConnectionGrants`), o GA4 e o Search
-Console inteiros. Elas entram só na chave, sem montagem no Claude Code, e
-continuam limitadas ao que quem disparou pode chamar.
+Console inteiros. Elas entram só na chave, sem montagem no Claude Code: o
+agente as acha com `CONNECTION_TOOLS_SEARCH` e chama com
+`CONNECTION_TOOL_CALL`, sempre limitado ao que quem disparou pode chamar.
 
-O Search Console é opcional: entra no embasamento quando está pronto, e nunca
+O Search Console é opcional: entra na evidência quando está conectado, e nunca
 é motivo de recusa. VTEX e GA4 são obrigatórios.
 
 ## A branch
@@ -97,10 +115,8 @@ teste manual desta esteira já gravou um post direto na `main`.
 ## Os limites
 
 - **Cerca de 100 segundos por chamada.** Um proxy de borda desliga a conexão
-  depois disso, com o servidor ainda trabalhando e cobrando. A skill quebra o
-  trabalho em chamadas curtas: um embasamento repassado adiante, rascunho com
-  `count: 1` e sem bucket, uma imagem por chamada, e nunca
-  `BLOG_CAMPAIGN_SUGGEST`.
+  depois disso, com o servidor ainda trabalhando e cobrando. Com a escrita no
+  Claude Code, só a imagem chega perto: uma por chamada.
 - **O primeiro turno do card sobe um sandbox do zero.** O card é o registro
   durável, então perder a sessão custa tempo, não trabalho.
 - **As branches `blog-<id>` se acumulam** até alguém publicar ou limpar.

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BLOG_POST_ASSEMBLE } from "./post-assemble";
+import { BLOG_POST_BRIEF } from "./post-brief";
 import { BLOG_POST_DRAFT } from "./post-draft";
 import { BLOG_SITE_BLOCKS } from "./site-blocks";
 
@@ -46,6 +47,12 @@ describe("the site-reading tools stay free and read-only", () => {
     expect(shapeOf(BLOG_SITE_BLOCKS.inputSchema)).toHaveProperty("branch");
     expect(shapeOf(BLOG_POST_ASSEMBLE.inputSchema)).toHaveProperty("branch");
   });
+
+  test("briefing a post spends no model and persists nothing", () => {
+    expect(BLOG_POST_BRIEF.requiresAiBudget).toBeUndefined();
+    expect(BLOG_POST_BRIEF.annotations?.readOnlyHint).toBe(true);
+    expect(BLOG_POST_BRIEF.annotations?.openWorldHint).toBe(false);
+  });
 });
 
 describe("what one returns is what the next one takes", () => {
@@ -89,5 +96,20 @@ describe("what one returns is what the next one takes", () => {
 
   test("the payload is the one the writer takes", () => {
     expect(shapeOf(BLOG_POST_ASSEMBLE.outputSchema)).toHaveProperty("post");
+  });
+
+  test("the brief reads the post as drafting does, plus what was gathered", () => {
+    const brief = shapeOf(BLOG_POST_BRIEF.inputSchema);
+    for (const field of Object.keys(brief)) {
+      if (field === "grounding") continue;
+      expect(shapeOf(BLOG_POST_DRAFT.inputSchema)).toHaveProperty(field);
+    }
+    expect(brief).toHaveProperty("grounding");
+  });
+
+  test("assembling says why a section was dropped, so it can be fixed", () => {
+    expect(shapeOf(BLOG_POST_ASSEMBLE.outputSchema)).toHaveProperty(
+      "droppedReasons",
+    );
   });
 });

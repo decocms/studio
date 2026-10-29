@@ -20,6 +20,7 @@ export { BLOG_BRAND_ENRICH } from "./brand-enrich";
 export { BLOG_CONTEXT_EXTRACT } from "./context-extract";
 export { BLOG_FORMAT_SUGGEST } from "./format-suggest";
 export { BLOG_POST_DRAFT } from "./post-draft";
+export { BLOG_POST_BRIEF } from "./post-brief";
 export { BLOG_POST_WRITE } from "./post-write";
 export { BLOG_SITE_BLOCKS } from "./site-blocks";
 export { BLOG_POST_ASSEMBLE } from "./post-assemble";

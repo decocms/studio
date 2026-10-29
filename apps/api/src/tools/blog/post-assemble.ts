@@ -2,8 +2,10 @@ import { z } from "zod";
 import {
   applyLinksToBlocks,
   blockExample,
+  blocksForFormat,
   buildGeneratedPostPayload,
   type DraftSection,
+  type GenerationBlock,
   newPostId,
   postBodyText,
   postLinkTargets,
@@ -16,6 +18,7 @@ import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
+import { readProps } from "./block-props";
 import { requireBlogAi } from "./feature-flag";
 import { readSiteMeta } from "./site-blocks";
 import { requireBranch, resolveSiteRepo } from "./site-repo";
@@ -57,10 +60,43 @@ const SectionSchema = z.object({
     .describe("For a product block only, in order. Empty for every other."),
 });
 
+/** A format citing no block: every block the site exposes. */
+const ANY_FORMAT = { value: "" };
+
+type Section = z.infer<typeof SectionSchema>;
+
+/** The sections this site's blocks accept, and why each other one was dropped. */
+export function checkSections(
+  sections: readonly Section[],
+  blocks: readonly GenerationBlock[],
+): { sections: Section[]; reasons: string[] } {
+  const byName = new Map(blocks.map((block) => [block.name, block]));
+  const kept: Section[] = [];
+  const reasons: string[] = [];
+  for (const section of sections) {
+    const block = byName.get(section.type);
+    if (!block) {
+      reasons.push(`${section.type}: not a block this site renders`);
+      continue;
+    }
+    const read = readProps(
+      JSON.stringify(section.props),
+      block.schema,
+      block.example,
+    );
+    if (!read.props) {
+      reasons.push(`${section.type}: ${read.reason}`);
+      continue;
+    }
+    kept.push({ ...section, props: read.props });
+  }
+  return { sections: kept, reasons };
+}
+
 export const BLOG_POST_ASSEMBLE = defineTool({
   name: "BLOG_POST_ASSEMBLE",
   description:
-    "Turn a drafted post into the block this site stores: each section mapped onto the site's own `__resolveType`, product ids written in the shape that site uses, unresolved image placeholders cleared and a slug nothing has taken. Returns the payload for BLOG_POST_WRITE, the body as plain text for BLOG_LINK_SUGGEST, and the site's other posts as link targets. Persists nothing.",
+    "Turn a drafted post into the block this site stores: each section checked against its block's schema and mapped onto the site's own `__resolveType`, product ids written in the shape that site uses, unresolved image placeholders cleared and a slug nothing has taken. Returns the payload for BLOG_POST_WRITE, the body as plain text for choosing internal links, the site's other posts as link targets, and why any section was dropped. Persists nothing.",
   annotations: {
     title: "Assemble a Blog Post",
     readOnlyHint: true,
@@ -98,7 +134,7 @@ export const BLOG_POST_ASSEMBLE = defineTool({
         sections: z.array(SectionSchema).max(MAX_SECTIONS),
       })
       .describe(
-        "The post as BLOG_POST_DRAFT wrote it, with `cover.url` filled by whoever drew it.",
+        "The post as written, by BLOG_POST_DRAFT or by you from BLOG_POST_BRIEF, with `cover.url` filled by whoever drew it.",
       ),
     postId: z
       .string()
@@ -117,7 +153,7 @@ export const BLOG_POST_ASSEMBLE = defineTool({
       .max(MAX_LINKS)
       .default([])
       .describe(
-        "Accepted suggestions from BLOG_LINK_SUGGEST. A quote whose span crosses an inline tag is skipped rather than wrapped; `applied` says how many landed.",
+        "Internal links: an exact phrase from `bodyText` and the slug of one of `posts`. A quote whose span crosses an inline tag is skipped rather than wrapped; `applied` says how many landed.",
       ),
     planning: z
       .object({
@@ -150,16 +186,23 @@ export const BLOG_POST_ASSEMBLE = defineTool({
       .describe("Pass straight to BLOG_POST_WRITE as `post`."),
     bodyText: z
       .string()
-      .describe("The body as prose. Pass to BLOG_LINK_SUGGEST as `body`."),
+      .describe(
+        "The body as prose: where the link phrases are chosen from, and what BLOG_LINK_SUGGEST takes as `body`.",
+      ),
     posts: z
       .array(z.object({ title: z.string(), slug: z.string() }))
       .describe(
-        "The site's other posts. Pass to BLOG_LINK_SUGGEST as `posts`.",
+        "The site's other posts, the targets internal links may point at.",
       ),
     dropped: z
       .number()
       .describe(
-        "Sections dropped because this site exposes no block by that name. Not an error, but a shorter post than was written.",
+        "Sections dropped: no block by that name on this site, or props its schema rejects. Not an error, but a shorter post than was written.",
+      ),
+    droppedReasons: z
+      .array(z.string())
+      .describe(
+        "Why each dropped section was dropped, as `<block>: <reason>`. Fix those sections and assemble again.",
       ),
     applied: z.number().describe("How many of the given links were wrapped."),
     branch: z.string(),
@@ -195,10 +238,14 @@ export const BLOG_POST_ASSEMBLE = defineTool({
     const resolveTypes = sectionResolveTypes(meta, { hideDefaults });
     const posts = postLinkTargets(decofile);
 
+    const checked = checkSections(
+      input.draft.sections,
+      blocksForFormat(ANY_FORMAT, meta, decofile, { hideDefaults }),
+    );
     const payload = buildGeneratedPostPayload({
       draft: {
         ...input.draft,
-        sections: input.draft.sections as DraftSection[],
+        sections: checked.sections as DraftSection[],
       },
       resolveTypes,
       productShapes: Object.fromEntries(
@@ -235,6 +282,7 @@ export const BLOG_POST_ASSEMBLE = defineTool({
       bodyText: postBodyText(linked.blocks),
       posts,
       dropped: input.draft.sections.length - built.length,
+      droppedReasons: checked.reasons,
       applied: linked.applied,
       branch,
     };

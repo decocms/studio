@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { describeGaps, renderCampaign, resolveProductIds } from "./post-draft";
+import {
+  agentWritingBrief,
+  describeGaps,
+  renderCampaign,
+  resolveProductIds,
+} from "./post-draft";
 
 const RUN = {
   grounded: true,
@@ -173,5 +178,66 @@ describe("resolveProductIds", () => {
       "2001",
       "1948858",
     ]);
+  });
+});
+
+describe("agentWritingBrief", () => {
+  const input = {
+    brand: {
+      companyName: "Aurora",
+      description: "Malas de viagem.",
+      language: "pt-BR",
+      tone: "Direto, sem exagero.",
+      targetAudience: "Quem viaja de avião.",
+      dos: [{ name: "Fale com o leitor como você", value: "" }],
+      avoid: [{ name: "Promessas exageradas", value: "" }],
+    },
+    campaign: {
+      name: "Férias de verão",
+      period: { start: null, end: null },
+      trigger: { type: "seasonal" as const, note: "Dezembro a fevereiro." },
+      intent: {
+        objective: "conversion" as const,
+        targets: [],
+        products: [],
+        keywords: ["mala de bordo"],
+      },
+      guardrails: { avoidComplements: [], toneOverrides: "" },
+    },
+    format: { name: "Guia de escolha", value: "Abre com a dúvida do leitor." },
+    blocks: [
+      {
+        name: "Paragraph",
+        title: "Parágrafo",
+        description: "",
+        schema: { type: "object", properties: { html: { type: "string" } } },
+      },
+    ],
+    categories: [],
+    authors: [],
+  };
+
+  test("carries the drafting rules, the post's reading and the answer's shape", () => {
+    const brief = agentWritingBrief(
+      input,
+      "VTEX: 1.240 buscas por 'mala de bordo'.",
+    );
+    expect(brief).toContain("NEVER INVENT A VERIFIABLE FACT");
+    expect(brief).toContain("## The campaign: Férias de verão");
+    expect(brief).toContain("### Paragraph");
+    expect(brief).toContain("1.240 buscas");
+    expect(brief).toContain("`props` is an object here, not a string.");
+  });
+
+  test("leaves the store section out when nothing was gathered", () => {
+    expect(agentWritingBrief(input, "  ")).not.toContain(
+      "What this brand's own systems report",
+    );
+  });
+
+  test("refuses a brand a post would read generic from", () => {
+    expect(() =>
+      agentWritingBrief({ ...input, brand: { ...input.brand, tone: "" } }, ""),
+    ).toThrow("fill tone");
   });
 });

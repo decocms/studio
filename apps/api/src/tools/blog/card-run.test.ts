@@ -5,6 +5,7 @@ import {
   blogCardRunPrompt,
   blogCardThreadId,
   cardRunInFlight,
+  dispatchFailure,
   phaseClaim,
 } from "./card-run";
 
@@ -184,5 +185,24 @@ describe("blogCardRunPrompt", () => {
       "hypothesis.md",
     );
     expect(blogCardRunPrompt("execute", undefined)).toContain("execute.md");
+  });
+});
+
+describe("dispatchFailure", () => {
+  test("keeps the cause a start failed on", () => {
+    expect(
+      dispatchFailure(new Error('No model available for tier "smart".')),
+    ).toBe('No model available for tier "smart".');
+    expect(dispatchFailure("queue down")).toBe("queue down");
+  });
+
+  test("an empty cause still says the run did not start", () => {
+    expect(dispatchFailure(new Error("  "))).toBe("The run could not start.");
+  });
+
+  test("a long cause fits the card's error field", () => {
+    const reason = dispatchFailure(new Error("x".repeat(5_000)));
+    expect(reason).toHaveLength(2_000);
+    expect(reason).toEndWith("…");
   });
 });

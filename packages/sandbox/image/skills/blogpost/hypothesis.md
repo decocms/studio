@@ -10,24 +10,29 @@ exist, and it becomes the draft's brief.
 - The card, with `BLOG_CARD_GET`: its campaign (`campaignId`) and what the
   person asked to explore (`prompt`).
 - The brand, with `BLOG_STATE_GET`: `brand` (who it is, its language),
-  `context` (tone, rules, don'ts), `formats`, and the card's campaign among
-  `campaigns`, by id. The campaign is the frame: its brief, its products and
-  its own guardrails.
+  `context` (tone, rules, don'ts, special dates), `formats`, and the card's
+  campaign among `campaigns`, by id. The campaign is the frame: its brief, its
+  products and its own guardrails.
 
-## 2. Ground
+## 2. Gather the evidence
 
-One call to `BLOG_SITE_GROUND`, through a file:
+Ask each system for figures around the campaign's subject and what the person
+asked, through `CONNECTION_TOOL_CALL` (see "The store's systems" in
+`SKILL.md`). A handful of calls, ten at most:
 
-```json
-{
-  "purpose": "hypothesis",
-  "focus": "<campaign name>: <campaign brief>. <what the person asked, if anything>",
-  "language": "<brand.language>"
-}
-```
+- **Search Console**, when connected: the queries on the subject, with their
+  impressions, clicks, click-through rate and average position. Above all the
+  ones with many impressions and few clicks, or sitting on the second page.
+- **GA4**: the pages and content on the subject whose readers go on to buy —
+  sessions and conversions or revenue, over the last 90 days.
+- **VTEX**: what people search for (`VTEX_IS_GET_TOP_SEARCHES`), what the store
+  has for the campaign's terms (`VTEX_IS_GET_PRODUCT_SEARCH`), what sells
+  (`VTEX_GET_SALES_PERFORMANCE_SUMMARY`, `VTEX_GET_ORDERS_TREND`), and searches
+  that find nothing.
+- **Calendar**: the campaign's period, and the brand's special dates near it.
 
-It reads the store's VTEX and GA4, and its Search Console when connected, and
-answers with a `report` of figures and the `outcome`. Read the report.
+Keep what each answered, with the tool's name. A system that errors or
+answers nothing is left out; the others carry the hypothesis.
 
 ## 3. Save the evidence first
 
@@ -37,25 +42,26 @@ ground the hypothesis stands on:
 ```json
 {
   "hypothesis": {
-    "groundingOutcome": "<outcome>",
+    "groundingOutcome": "ok",
     "evidence": [
       {
         "source": "gsc",
         "figure": "1.240 impressões, CTR 0,8%",
         "fact": "Buscam 'sofá para sala pequena' e quase ninguém clica.",
-        "tool": "gsc_<tool name from the report>"
+        "tool": "<the tool's name>"
       }
     ]
   }
 }
 ```
 
+- `groundingOutcome`: `ok` when every system you asked answered, `partial`
+  when some did, `none` when none did.
 - One item per finding, three to eight in all, the strongest first.
 - `source` is the system: `gsc`, `ga4`, `vtex`, `calendar` (a date from the
   brand's special dates or the campaign's period) or `brand` (the guide).
-- `figure` is the number exactly as the report gave it. No figure, no
-  `figure`: a fact without a number is still evidence, an invented number is
-  not.
+- `figure` is the number exactly as the tool gave it. No figure, no `figure`:
+  a fact without a number is still evidence, an invented number is not.
 - A system that did not answer gets no item. The card shows it as missing.
 
 ## 4. Save the hypothesis
@@ -92,5 +98,5 @@ or three figures that carry it. Then stop. The person approves it from the
 card, or tells you what to change.
 
 When they ask for a change, change the card (`BLOG_CARD_UPDATE`) and present
-it again. Ground again only when they move the post somewhere the evidence
-does not reach.
+it again. Ask the systems again only when they move the post somewhere the
+evidence does not reach.

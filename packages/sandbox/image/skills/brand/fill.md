@@ -29,10 +29,12 @@ reads each one as a field.
 | Políticas comerciais / Commercial policies | Shipping, returns, payment, as customers see them | `- **Policy** — what it promises` |
 | Formatos / Formats | The shapes of blog post it publishes | One `### Name` per format, with its brief |
 
-Frontmatter: keep `name`, write `description` — the brand's one-line pitch,
-in its own words — when it is missing, and set `site:` (the store's
-public address, origin only) and `language:` (a BCP-47 tag such as `pt-BR`)
-when you know them. The blog needs both.
+Frontmatter: keep an existing `name`. A new guide's `name` is the brand as
+its customers know it (the store's name), never the folder's slug, which
+often names the organization instead. Write `description` — the brand's
+one-line pitch, in its own words — when it is missing, and set `site:` (the
+store's public address, origin only) and `language:` (a BCP-47 tag such as
+`pt-BR`) when you know them. The blog needs both.
 
 ## Evidence, in order of trust
 

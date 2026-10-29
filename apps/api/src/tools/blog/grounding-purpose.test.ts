@@ -32,13 +32,6 @@ describe("groundingRequestFor", () => {
     expect(wanted.wanted).toBe(groundingRequestFor("post").wanted);
   });
 
-  test("a hypothesis asks each system for its figures", () => {
-    const { wanted } = groundingRequestFor("hypothesis");
-    for (const system of ["Search Console", "GA4", "catalog"]) {
-      expect(wanted).toContain(system);
-    }
-  });
-
   test("two purposes ask for different things", () => {
     expect(groundingRequestFor("brand").wanted).not.toBe(
       groundingRequestFor("campaign").wanted,

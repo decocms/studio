@@ -336,6 +336,150 @@ function renderBlock(block: z.infer<typeof BlockSchema>): string {
   return `### ${block.name} — ${block.title}\n${block.description}\n\`\`\`json\n${schema}\n\`\`\`${example}`;
 }
 
+/** What writing a post reads, whoever writes it: this tool's model, or an agent. */
+export const WritingInputSchema = z.object({
+  brand: ReducedContextSchema.partial().describe(
+    "What writing needs: who the brand is, who reads it, how it sounds, its words and its guardrails. companyName, language, description, tone, targetAudience, dos and avoid are all required — a post written without them is generic.",
+  ),
+  campaign: CampaignSchema.describe(
+    "The campaign this post is written for — the brief, the products and the campaign-only guardrails.",
+  ),
+  format: z
+    .object({
+      name: z.string().max(MAX_NAME_CHARS),
+      value: z.string().max(MAX_BODY_CHARS),
+    })
+    .describe("How this brand builds a post of this kind."),
+  blocks: z
+    .array(BlockSchema)
+    .min(1)
+    .max(MAX_BLOCKS)
+    .describe(
+      "The only blocks this post may be built from, each with the schema its props must match.",
+    ),
+  categories: z
+    .array(
+      z.object({
+        name: z.string().max(MAX_NAME_CHARS),
+        slug: z.string().max(MAX_NAME_CHARS),
+      }),
+    )
+    .max(MAX_CATEGORIES)
+    .default([])
+    .describe("The blog's categories, to file these posts under."),
+  authors: z
+    .array(
+      z.object({
+        name: z.string().max(MAX_NAME_CHARS),
+        email: z.string().max(MAX_NAME_CHARS),
+        bio: z.string().max(MAX_BODY_CHARS).optional(),
+      }),
+    )
+    .max(MAX_AUTHORS)
+    .default([])
+    .describe("The blog's authors, to attribute these posts to."),
+  extraInstructions: z
+    .string()
+    .max(MAX_BODY_CHARS)
+    .optional()
+    .describe(
+      "What the operator asked for on top of everything else, in their own words.",
+    ),
+});
+
+type WritingInput = z.infer<typeof WritingInputSchema>;
+
+/** Refuses a brand a post would read generic from, naming what to fill. */
+function requireEditorialBrand(brand: WritingInput["brand"]): void {
+  const missing = [
+    !brand.companyName?.trim() && "companyName",
+    !brand.language?.trim() && "language",
+    !brand.description?.trim() && "description",
+    !brand.tone?.trim() && "tone",
+    !brand.targetAudience?.trim() && "targetAudience",
+    !brand.dos?.length && "dos",
+    !brand.avoid?.length && "avoid",
+  ].filter((field): field is string => typeof field === "string");
+  if (missing.length > 0) {
+    throw new Error(
+      `Editorial brand context is incomplete — fill ${missing.join(", ")} before generating. A post written without it reads like any other brand's.`,
+    );
+  }
+}
+
+/** Everything a writer reads about this post, in the order it reads it. */
+function writingContext(input: WritingInput, grounding: string): string {
+  const { brand, campaign } = input;
+  const tone = campaign.guardrails.toneOverrides.trim() || brand.tone;
+  return [
+    `## Brand\n${brand.companyName}`,
+    `## What it does\n${brand.description}`,
+    `## Language to write in\n${brand.language}`,
+    brand.storeUrl && `## The store's address\n${brand.storeUrl}`,
+    `## Tone of voice\n${tone}`,
+    `## Audience\n${brand.targetAudience}`,
+    renderRules("Editorial instructions — follow these", brand.dos),
+    renderRules("Guardrails — never do these", brand.avoid),
+    renderRules(
+      "The brand's own words — use these, not the words they displace",
+      brand.vocabulary,
+    ),
+    renderVoiceExamples(brand.voiceExamples),
+    renderCampaign(campaign),
+    `## Format: ${input.format.name}\n${input.format.value}`,
+    `## Blocks available — props must match these schemas\n\n${input.blocks
+      .map(renderBlock)
+      .join("\n\n")}`,
+    input.categories.length > 0 &&
+      `## Categories\n${input.categories.map((c) => `- ${c.name} (${c.slug})`).join("\n")}`,
+    input.authors.length > 0 &&
+      `## Authors\n${input.authors
+        .map((a) => `- ${a.name} (${a.email})${a.bio ? ` — ${a.bio}` : ""}`)
+        .join("\n")}`,
+    input.extraInstructions &&
+      `## What the operator asked for\n${input.extraInstructions}`,
+    renderGrounding(grounding),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** The shape an agent answers in: the draft's, with `props` as an object. */
+const AGENT_TASK = `## Your task
+Write the post, and answer with one JSON object in this shape:
+
+\`\`\`json
+{
+  "title": "the headline",
+  "excerpt": "one sentence that earns the click",
+  "seo": { "title": "~60 characters", "description": "~155 characters" },
+  "cover": {
+    "prompt": "what the cover shows, as a photographic brief: subject, setting, light, mood. No text, logos or brand name in the image",
+    "alt": "the cover's alt text"
+  },
+  "categorySlugs": ["chosen from the categories"],
+  "authorEmails": ["chosen from the authors"],
+  "sections": [
+    { "type": "a block's name", "props": { "…": "matching that block's schema" }, "productIds": [] }
+  ]
+}
+\`\`\`
+
+\`props\` is an object here, not a string. \`productIds\` holds campaign product ids for a product block and stays empty for every other. At most ${MAX_SECTIONS} sections.`;
+
+/**
+ * The brief for an agent that writes the post itself: the rules this tool's
+ * model writes under, the same reading of the brand, campaign and blocks, and
+ * the shape to answer in. One source for both writers, so they cannot drift.
+ */
+export function agentWritingBrief(
+  input: WritingInput,
+  grounding: string,
+): string {
+  requireEditorialBrand(input.brand);
+  return [SYSTEM, writingContext(input, grounding), AGENT_TASK].join("\n\n");
+}
+
 export const BLOG_POST_DRAFT = defineTool({
   name: "BLOG_POST_DRAFT",
   description:
@@ -350,54 +494,7 @@ export const BLOG_POST_DRAFT = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  inputSchema: z.object({
-    brand: ReducedContextSchema.partial().describe(
-      "What writing needs: who the brand is, who reads it, how it sounds, its words and its guardrails. companyName, language, description, tone, targetAudience, dos and avoid are all required — a post written without them is generic.",
-    ),
-    campaign: CampaignSchema.describe(
-      "The campaign this post is written for — the brief, the products and the campaign-only guardrails.",
-    ),
-    format: z
-      .object({
-        name: z.string().max(MAX_NAME_CHARS),
-        value: z.string().max(MAX_BODY_CHARS),
-      })
-      .describe("How this brand builds a post of this kind."),
-    blocks: z
-      .array(BlockSchema)
-      .min(1)
-      .max(MAX_BLOCKS)
-      .describe(
-        "The only blocks this post may be built from, each with the schema its props must match.",
-      ),
-    categories: z
-      .array(
-        z.object({
-          name: z.string().max(MAX_NAME_CHARS),
-          slug: z.string().max(MAX_NAME_CHARS),
-        }),
-      )
-      .max(MAX_CATEGORIES)
-      .default([])
-      .describe("The blog's categories, to file these posts under."),
-    authors: z
-      .array(
-        z.object({
-          name: z.string().max(MAX_NAME_CHARS),
-          email: z.string().max(MAX_NAME_CHARS),
-          bio: z.string().max(MAX_BODY_CHARS).optional(),
-        }),
-      )
-      .max(MAX_AUTHORS)
-      .default([])
-      .describe("The blog's authors, to attribute these posts to."),
-    extraInstructions: z
-      .string()
-      .max(MAX_BODY_CHARS)
-      .optional()
-      .describe(
-        "What the operator asked for on top of everything else, in their own words.",
-      ),
+  inputSchema: WritingInputSchema.extend({
     count: z
       .number()
       .int()
@@ -470,20 +567,7 @@ export const BLOG_POST_DRAFT = defineTool({
     );
 
     const { brand, campaign } = input;
-    const missing = [
-      !brand.companyName?.trim() && "companyName",
-      !brand.language?.trim() && "language",
-      !brand.description?.trim() && "description",
-      !brand.tone?.trim() && "tone",
-      !brand.targetAudience?.trim() && "targetAudience",
-      !brand.dos?.length && "dos",
-      !brand.avoid?.length && "avoid",
-    ].filter((field): field is string => typeof field === "string");
-    if (missing.length > 0) {
-      throw new Error(
-        `Editorial brand context is incomplete — fill ${missing.join(", ")} before generating. A post written without it reads like any other brand's.`,
-      );
-    }
+    requireEditorialBrand(brand);
 
     const tier = await resolveTier(ctx, "thinking");
     const provider = await ctx.aiProviders.activate(
@@ -513,38 +597,7 @@ export const BLOG_POST_DRAFT = defineTool({
       input.blocks.map(describeBlock),
     );
 
-    const tone = campaign.guardrails.toneOverrides.trim() || brand.tone;
-    const basePrompt = [
-      `## Brand\n${brand.companyName}`,
-      `## What it does\n${brand.description}`,
-      `## Language to write in\n${brand.language}`,
-      brand.storeUrl && `## The store's address\n${brand.storeUrl}`,
-      `## Tone of voice\n${tone}`,
-      `## Audience\n${brand.targetAudience}`,
-      renderRules("Editorial instructions — follow these", brand.dos),
-      renderRules("Guardrails — never do these", brand.avoid),
-      renderRules(
-        "The brand's own words — use these, not the words they displace",
-        brand.vocabulary,
-      ),
-      renderVoiceExamples(brand.voiceExamples),
-      renderCampaign(campaign),
-      `## Format: ${input.format.name}\n${input.format.value}`,
-      `## Blocks available — props must match these schemas\n\n${input.blocks
-        .map(renderBlock)
-        .join("\n\n")}`,
-      input.categories.length > 0 &&
-        `## Categories\n${input.categories.map((c) => `- ${c.name} (${c.slug})`).join("\n")}`,
-      input.authors.length > 0 &&
-        `## Authors\n${input.authors
-          .map((a) => `- ${a.name} (${a.email})${a.bio ? ` — ${a.bio}` : ""}`)
-          .join("\n")}`,
-      input.extraInstructions &&
-        `## What the operator asked for\n${input.extraInstructions}`,
-      renderGrounding(report.grounding),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const basePrompt = writingContext(input, report.grounding);
 
     const written = await Promise.allSettled(
       Array.from({ length: input.count }, (_, i) =>

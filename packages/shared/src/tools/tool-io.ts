@@ -3017,14 +3017,7 @@ export interface StudioToolIO {
   };
   BLOG_SITE_GROUND: {
     input: {
-      purpose:
-        | "format"
-        | "link"
-        | "context"
-        | "brand"
-        | "campaign"
-        | "hypothesis"
-        | "post";
+      purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
       focus?: string | undefined;
       language?: string | undefined;
     };
@@ -3128,6 +3121,7 @@ export interface StudioToolIO {
       bodyText: string;
       posts: { title: string; slug: string }[];
       dropped: number;
+      droppedReasons: string[];
       applied: number;
       branch: string;
     };
@@ -3395,6 +3389,78 @@ export interface StudioToolIO {
         count?: number | undefined;
       }[];
     };
+  };
+  BLOG_POST_BRIEF: {
+    input: {
+      brand: {
+        description?: string | undefined;
+        companyName?: string | undefined;
+        language?: string | undefined;
+        storeUrl?: string | undefined;
+        targetAudience?: string | undefined;
+        tone?: string | undefined;
+        dos?: { name: string; value: string }[] | undefined;
+        avoid?: { name: string; value: string }[] | undefined;
+        vocabulary?: { name: string; value: string }[] | undefined;
+        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+      };
+      campaign: {
+        name: string;
+        period: { start: string | null; end: string | null };
+        trigger: {
+          type:
+            | "launch"
+            | "seasonal"
+            | "trend"
+            | "seo_gap"
+            | "inventory"
+            | "partnership"
+            | "reputation";
+          note: string;
+        };
+        intent: {
+          objective:
+            | "awareness"
+            | "education"
+            | "conversion"
+            | "retention"
+            | "repositioning";
+          targets?:
+            | { kind: string; name: string; url: string; description: string }[]
+            | undefined;
+          products?:
+            | {
+                id: string;
+                name: string;
+                url: string;
+                category: string;
+                description: string;
+                images?: string[] | undefined;
+              }[]
+            | undefined;
+          keywords?: string[] | undefined;
+        };
+        guardrails: {
+          avoidComplements?: { name: string; value: string }[] | undefined;
+          toneOverrides?: string | undefined;
+        };
+      };
+      format: { name: string; value: string };
+      blocks: {
+        name: string;
+        title: string;
+        description: string;
+        schema: Record<string, unknown>;
+        example?: Record<string, unknown> | undefined;
+      }[];
+      categories?: { name: string; slug: string }[] | undefined;
+      authors?:
+        | { name: string; email: string; bio?: string | undefined }[]
+        | undefined;
+      extraInstructions?: string | undefined;
+      grounding?: string | undefined;
+    };
+    output: { brief: string };
   };
   BLOG_POST_WRITE: {
     input: {

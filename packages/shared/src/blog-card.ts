@@ -140,16 +140,13 @@ export const BlogCardHypothesisSchema = z
       .string()
       .max(40)
       .describe(
-        "The `outcome` BLOG_SITE_GROUND reported: ok, no-site, no-tools, timeout or failed.",
+        "How the store's systems answered while gathering the evidence: ok (all that were asked), partial (some) or none.",
       ),
   })
   .partial()
   .loose();
 
-/**
- * The post as it fills in: `posts[0]` of BLOG_POST_DRAFT, then the image
- * addresses BLOG_POST_ILLUSTRATE returns. Partial at every point of the run.
- */
+/** The post as it fills in: the agent's draft, then its image addresses. Partial throughout. */
 export const BlogCardPostSchema = z
   .object({
     title: z.string(),
