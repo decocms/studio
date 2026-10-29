@@ -1,3 +1,8 @@
+---
+name: brand
+description: Create and maintain an organization's brand as a folder the platform reads — colors, type, voice, logo and a deck theme — and fill its brand guide, brand.md, from the site, its repository and the store's systems by following fill.md. Use when asked to set up a brand or brand kit, apply brand colors or fonts, fill or update the brand guide, or before producing branded artifacts.
+---
+
 # brand — build an organization brand
 
 Create and maintain an org's brand as a folder the whole platform reads:
