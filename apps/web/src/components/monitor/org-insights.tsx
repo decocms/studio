@@ -242,7 +242,9 @@ export function OrgAnalytics({
   const sites = projects
     .flatMap((project, i) => {
       const summary = asSummary(summaries[i]?.data);
-      if (!summary || summary.total_requests <= 0) return [];
+      // A tagged site off the deco CDN counts pageviews with no requests.
+      if (!summary || (summary.total_requests <= 0 && summary.pageviews <= 0))
+        return [];
       return [
         {
           project,
@@ -276,14 +278,17 @@ export function OrgAnalytics({
   }
   if (sites.length === 0) {
     return (
-      <Locked
-        kind="analytics"
-        title={t("monitor.locked.analytics.title")}
-        guide={<AnalyticsGuide projects={projects} />}
-        link={connectLink(org.slug, null)}
-      >
-        <AnalyticsPreview />
-      </Locked>
+      <>
+        {actions}
+        <Locked
+          kind="analytics"
+          title={t("monitor.locked.analytics.title")}
+          guide={<AnalyticsGuide projects={projects} />}
+          link={connectLink(org.slug, null)}
+        >
+          <AnalyticsPreview />
+        </Locked>
+      </>
     );
   }
 

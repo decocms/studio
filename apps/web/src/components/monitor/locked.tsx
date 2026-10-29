@@ -426,15 +426,21 @@ export function Locked({
   // A VTEX connection without the order ingest still needs connecting here.
   const lead = steps.find((s) => s.state !== "live");
   return (
-    <div className="relative h-[calc(100dvh-11rem)] min-h-[520px] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
-      <div aria-hidden className={FADED}>
+    <div className="relative h-[calc(100dvh-11rem)] min-h-[520px] overflow-hidden">
+      <div
+        aria-hidden
+        className={cn(
+          FADED,
+          "[mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
+        )}
+      >
         {children}
       </div>
       {/* The design system's floating panel, frosted glass. No scrim: the
           page under it is already faded, and a scrim boxed to the content
           reads as a grey slab rather than a dimmed screen. */}
-      <div className="absolute inset-0 flex items-center justify-center pb-16">
-        <div className="glass flex w-full max-w-md flex-col gap-5 rounded-2xl p-6">
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="glass flex max-h-full w-full max-w-md flex-col gap-5 overflow-y-auto rounded-2xl p-6">
           <ConnectGlyph kind={kind} />
           <div className="flex flex-col gap-1">
             <p className="text-[1.375rem] leading-tight font-medium tracking-[-0.02em] text-foreground">
