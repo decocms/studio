@@ -384,6 +384,8 @@ export const sectionsEditor = {
   "sectionsEditor.secretField.secretValuePlaceholder": "Secret value",
   "sectionsEditor.secretField.storedSecretMessage": "A secret value is stored.",
   "sectionsEditor.sectionList.addSectionButton": "Add section",
+  "sectionsEditor.sectionList.addSectionAboveMenuItem": "Add section above",
+  "sectionsEditor.sectionList.addSectionBelowMenuItem": "Add section below",
   "sectionsEditor.sectionList.addVariantMenuItem": "Add variant",
   "sectionsEditor.sectionList.deleteMenuItem": "Delete",
   "sectionsEditor.sectionList.detachMenuItem": "Detach",
