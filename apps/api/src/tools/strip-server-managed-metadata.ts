@@ -1,12 +1,22 @@
 import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
 
+/** A site deco doesn't host: its Deco Analytics id and key, written by
+ *  ANALYTICS_INSTALL. The id is linked to the org's data lake, so a client
+ *  that could rewrite it could read another site's traffic. */
+export const DECO_ANALYTICS_METADATA_KEY = "decoAnalytics";
+
 /**
  * Metadata keys only the server writes. A client write (the settings form,
  * an agent's tool call) can neither set nor clobber them.
  * - `sandboxMap`: the per-user sandbox handles.
  * - `blocksMajor`: the Blocks v8 marker (hosted/blocks-major.ts).
+ * - `decoAnalytics`: see DECO_ANALYTICS_METADATA_KEY.
  */
-const SERVER_MANAGED_KEYS = ["sandboxMap", BLOCKS_MAJOR_METADATA_KEY] as const;
+const SERVER_MANAGED_KEYS = [
+  "sandboxMap",
+  BLOCKS_MAJOR_METADATA_KEY,
+  DECO_ANALYTICS_METADATA_KEY,
+] as const;
 
 type ServerManagedKey = (typeof SERVER_MANAGED_KEYS)[number];
 

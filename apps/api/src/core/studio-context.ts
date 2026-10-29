@@ -302,7 +302,6 @@ import type { OrganizationJoinRequestStorage } from "../storage/organization-joi
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
-import type { SubsidizedGatewayKeyStorage } from "@/storage/subsidized-gateway-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
@@ -317,6 +316,7 @@ import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
 import type { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
 import type { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import type { TaskBoardStorage } from "@/storage/task-board";
+import type { DemoBoardStorage } from "@/storage/demo-board";
 import type { NotificationStorage } from "@/storage/notifications";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
@@ -358,7 +358,6 @@ export interface StudioStorage {
   projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;
-  subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgSites: OrgSiteStorage;
@@ -370,6 +369,7 @@ export interface StudioStorage {
   repositories: RepositoryStorage;
   jiraIntegrations: JiraIntegrationStorage;
   taskBoard: TaskBoardStorage;
+  demoBoard: DemoBoardStorage;
   taskBoardPrompts: TaskBoardPromptStorage;
   taskBoardAnalytics: TaskBoardAnalyticsStorage;
   threadAnalytics: ThreadAnalyticsStorage;

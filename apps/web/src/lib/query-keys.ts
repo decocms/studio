@@ -777,6 +777,14 @@ export const KEYS = {
   // collapsible section caches independently and refetches on range change.
   analyticsData: (org: string, site: string, view: string, range: string) =>
     ["hosting", org, site, "analytics-data", view, range] as const,
+  // Deco Analytics → Live map: the renderer bundle, proxied through the BFF at
+  // /api/:org/hosting/:site/analytics/globe.js. A query rather than a loader of
+  // its own because the script is fetched once and then cached for the session
+  // — the same thing `staleTime: Infinity` already expresses everywhere else.
+  // Keyed by site because that is what the BFF authorizes, even though every
+  // site is served the same bytes.
+  analyticsGlobeBundle: (org: string, site: string) =>
+    ["hosting", org, site, "analytics-globe-bundle"] as const,
   // Deco Analytics → Heatmap: one page × device bucket of `view=heatmap`.
   analyticsHeatmap: (
     org: string,
@@ -813,6 +821,8 @@ export const KEYS = {
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>
     ["order-monitor", org, "day", connectionId, at] as const,
+  siteTraffic: (org: string, query: string) =>
+    ["order-monitor", org, "traffic", query] as const,
   orderMonitorPushes: (
     org: string,
     connectionId: string,
@@ -867,6 +877,11 @@ export const KEYS = {
   // per version of theirs.
   conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
     ["conflict-author", draftKey, blockKey, theirs] as const,
+  // The published copies of the blocks a draft deletes (`changes.get`), per
+  // set of deletions (names and base versions), so a save elsewhere in the
+  // draft doesn't read them again.
+  contentDeletedCopies: (cacheKey: string, deletions: string) =>
+    ["content-changes", cacheKey, "deleted", deletions] as const,
   // Both sides of the listed changes (`changes.get`), per changes revision.
   contentChangeSides: (cacheKey: string, revision: string) =>
     ["content-changes", cacheKey, "sides", revision] as const,

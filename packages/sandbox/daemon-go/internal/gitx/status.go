@@ -285,3 +285,33 @@ func UntrackedUnder(repoDir, pathspec string) []string {
 	}
 	return paths
 }
+
+// CommittedUnder lists repo-relative paths under `pathspec` in HEAD's tree.
+// ok is false while the checkout is still being written, when every file in it
+// lists as untracked: `git clone` resolves HEAD before it checks the tree out
+// and writes the index last, and `init` + `fetch` + `checkout -f` leaves HEAD
+// unborn until the checkout ends.
+func CommittedUnder(repoDir, pathspec string) (paths []string, ok bool) {
+	index, ok := tryReadGit(repoDir, []string{"rev-parse", "--git-path", "index"})
+	if !ok {
+		return nil, false
+	}
+	if !filepath.IsAbs(index) {
+		index = filepath.Join(repoDir, index)
+	}
+	if _, err := os.Stat(index); err != nil {
+		return nil, false
+	}
+	out, ok := tryReadGit(repoDir, []string{
+		"ls-tree", "-r", "-z", "--name-only", "HEAD", "--", pathspec,
+	})
+	if !ok {
+		return nil, false
+	}
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths, true
+}

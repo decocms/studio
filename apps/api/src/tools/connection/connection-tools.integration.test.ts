@@ -91,7 +91,6 @@ describe("Connection Tools", () => {
         connectionCredentialVault: new ConnectionCredentialVaultStorage(
           database.db,
         ),
-        subsidizedGatewayKeys: null as never,
         experiments: null as never,
         organizationSettings: {
           get: async () => null,
@@ -123,6 +122,7 @@ describe("Connection Tools", () => {
         repositories: null as never,
         jiraIntegrations: null as never,
         taskBoard: null as never,
+        demoBoard: null as never,
         taskBoardPrompts: null as never,
         taskBoardAnalytics: null as never,
         threadAnalytics: null as never,

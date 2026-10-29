@@ -96,15 +96,17 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_LIST",
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
   "ORGANIZATION_BILLING_CHECKOUT_START",
+  "ORGANIZATION_BILLING_GET",
   "ORGANIZATION_BILLING_PORTAL",
   "ORGANIZATION_BILLING_PLAN_PRICES",
-  "ORGANIZATION_TASK_QUOTA_GET",
   // Legacy deco.cx infra billing
   "INFRA_BILLING_SITES_LIST",
   "INFRA_BILLING_GET",
   "INFRA_BILLING_PORTAL",
   // Customer data lake
   "CUSTOMER_LAKE_QUERY",
+  // Site analytics
+  "ANALYTICS_INSTALL",
   // Connection tools
   "COLLECTION_CONNECTIONS_CREATE",
   "COLLECTION_CONNECTIONS_LIST",
@@ -349,6 +351,9 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_QUALITY",
   "TASK_BOARD_ERRORS",
   "TASK_BOARD_TENANTS",
+  "DEMO_BOARD_CAPTURE",
+  "DEMO_BOARD_RESET",
+  "DEMO_BOARD_STATUS",
   "THREAD_ANALYTICS_ORG_LIST",
   "THREAD_ANALYTICS_LIVE",
   "THREAD_ANALYTICS_USAGE",
@@ -633,6 +638,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "ORGANIZATION_BILLING_GET",
+    description: "Get the org's Stripe billing state",
+    category: "Organizations",
+  },
+  {
     name: "ORGANIZATION_BILLING_PORTAL",
     description: "Open the Stripe billing portal",
     category: "Organizations",
@@ -640,11 +650,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_BILLING_PLAN_PRICES",
     description: "Read each plan's monthly price from Stripe",
-    category: "Organizations",
-  },
-  {
-    name: "ORGANIZATION_TASK_QUOTA_GET",
-    description: "Get the org's auto-task quota usage",
     category: "Organizations",
   },
   // Legacy deco.cx infra billing
@@ -666,6 +671,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CUSTOMER_LAKE_QUERY",
     description: "Run read-only SQL over the organization's data lake",
+    category: "Monitoring",
+  },
+  {
+    name: "ANALYTICS_INSTALL",
+    description:
+      "Delegate adding Deco Analytics to a site's code to the Super Agent",
     category: "Monitoring",
   },
   {
@@ -1767,6 +1778,23 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "DEMO_BOARD_CAPTURE",
+    description: "Make the current board the demo org's daily starting point",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "DEMO_BOARD_RESET",
+    description: "Return the demo org's board to its capture now",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
+    name: "DEMO_BOARD_STATUS",
+    description: "When the demo board was captured and how its last reset went",
+    category: "Task Board",
+  },
+  {
     name: "THREAD_ANALYTICS_ORG_LIST",
     description:
       "Whether the caller may read every org's threads, and the orgs that have any",
@@ -1967,6 +1995,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_PREVIEW_PROBE",
+      // A card for the Super Agent like any other, on a site the org owns.
+      "ANALYTICS_INSTALL",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_RUN_REVIEWER",
       "TASK_BOARD_REVIEW_DECISION",
@@ -2052,8 +2082,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // The org's plan subscription and billing — the same trust tier as
       // adding/removing a member.
       "ORGANIZATION_BILLING_CHECKOUT_START",
+      "ORGANIZATION_BILLING_GET",
       "ORGANIZATION_BILLING_PORTAL",
-      "ORGANIZATION_TASK_QUOTA_GET",
       // Legacy deco.cx infra usage, invoices and Stripe portal for owned sites.
       "INFRA_BILLING_SITES_LIST",
       "INFRA_BILLING_GET",

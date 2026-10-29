@@ -1284,38 +1284,6 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
-/** Per-org subsidy gateway key (migration 160) — vault-encrypted; see
- *  storage/subsidized-gateway-keys.ts. */
-export interface SubsidizedGatewayKeyTable {
-  organization_id: string;
-  encrypted_key: string;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
-}
-
-/** Quota ledger for reports-pushed task executions (migration 160) — one
- *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
-/** `held` = charged (counts toward the period); `released` = refunded
- *  because the run produced nothing. A union, so a typo in a comparison is a
- *  compile error rather than a silent money decision. */
-export type TaskQuotaClaimState = "held" | "released";
-
-export interface TaskQuotaClaimTable {
-  task_board_item_id: string;
-  organization_id: string;
-  period_key: string;
-  /** Dispatches funded by this claim — capped at STUDIO_MAX_RUNS_PER_TASK so
-   *  one claim can't fund a re-delegation loop. Survives a release, so
-   *  releasing is never a free reset. */
-  run_count: ColumnType<number, number | undefined, number>;
-  /** Charge state — see TaskQuotaClaimState. */
-  state: ColumnType<
-    TaskQuotaClaimState,
-    TaskQuotaClaimState,
-    TaskQuotaClaimState
-  >;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
-}
-
 /** Per-org billing identity (migration 139). Platform-written only —
  *  never writable by org members. */
 export interface OrganizationBillingTable {
@@ -1344,20 +1312,6 @@ export interface OrganizationBillingTable {
     Date | null,
     Date | string | null | undefined,
     Date | string | null
-  >;
-  /** Per-org allowances (migration 164) overriding the deployment-wide
-   *  `STUDIO_FREE_TASKS` / `STUDIO_MONTHLY_TASKS`. NULL = use the default.
-   *  Operator-set only — never writable through a tool, or an org admin could
-   *  raise its own limit. */
-  free_task_executions: ColumnType<
-    number | null,
-    number | null | undefined,
-    number | null
-  >;
-  monthly_task_executions: ColumnType<
-    number | null,
-    number | null | undefined,
-    number | null
   >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
@@ -1983,6 +1937,27 @@ export interface TaskBoardImportRunTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+/** One per demo org; see `tools/demo-board/snapshot.ts` for `snapshot`. */
+export interface DemoBoardSnapshotTable {
+  organization_id: string;
+  snapshot: ColumnType<unknown, string, string>;
+  frozen_item_ids: ColumnType<unknown, string, string>;
+  pr_cards: ColumnType<unknown, string, string>;
+  captured_at: ColumnType<Date, Date | string, Date | string>;
+  captured_by: string;
+  last_reset_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  last_reset_error: string | null;
+  dead_preview_urls: ColumnType<
+    unknown,
+    string | null | undefined,
+    string | null
+  >;
+}
+
 /** Join row: a task board item ↔ an agent thread (many-to-many). */
 export interface TaskBoardItemThreadTable {
   task_board_item_id: string;
@@ -2532,8 +2507,6 @@ export interface Database {
 
   // Plan billing
   organization_billing: OrganizationBillingTable;
-  task_quota_claims: TaskQuotaClaimTable;
-  subsidized_gateway_keys: SubsidizedGatewayKeyTable;
 
   // Virtual MCP plugin configs
 
@@ -2611,6 +2584,7 @@ export interface Database {
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
+  demo_board_snapshots: DemoBoardSnapshotTable;
 
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;

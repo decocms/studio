@@ -1,9 +1,6 @@
 /**
  * Real-Postgres coverage for the reports-task guards in the board tools:
- * content immutability (UPDATE), delete-dismisses, and the delegation paywall.
- *
- * The paywall test drives `ensureTaskExecutionAllowed` directly with an
- * explicit config, since the tool reads frozen global settings.
+ * content immutability (UPDATE) and delete-dismisses.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -15,12 +12,7 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
-import { OrganizationBillingStorage } from "../../storage/organization-billing";
 import { TaskBoardStorage } from "../../storage/task-board";
-import {
-  claimTaskExecution,
-  ensureTaskExecutionAllowed,
-} from "../../billing/task-quota";
 import { TASK_BOARD_ITEM_DELETE } from "./delete";
 import { TASK_BOARD_ITEM_UPDATE } from "./update";
 
@@ -40,10 +32,6 @@ describe("reports-task guards", () => {
       .insertInto("organization")
       .values({ id: ORG, name: ORG, slug: "org-guards-1", createdAt: now })
       .execute();
-    await database.db
-      .insertInto("organization_billing")
-      .values({ organization_id: ORG })
-      .execute();
     // Raw SQL: real Postgres has BOOLEAN emailVerified, which the
     // (PGlite-era) typed table shape disagrees with.
     await sql`
@@ -57,10 +45,7 @@ describe("reports-task guards", () => {
       },
       auth: { user: { id: USER, email: "g1@guards.test", name: USER } },
       organization: { id: ORG, slug: "org-guards-1", name: ORG },
-      storage: {
-        taskBoard,
-        organizationBilling: new OrganizationBillingStorage(database.db),
-      },
+      storage: { taskBoard },
       access: {
         granted: () => true,
         check: async () => {},
@@ -151,58 +136,6 @@ describe("reports-task guards", () => {
       ctx,
     );
     expect(cleared.item.repo).toBeNull();
-  });
-
-  it("the paywall fires BEFORE the delegation write (no delegated-but-idle task)", async () => {
-    const config = {
-      enforced: true,
-      freeTaskExecutions: 1,
-      monthlyTaskExecutions: 1,
-      maxRunsPerTask: 5,
-    };
-    const first = await taskBoard.create({
-      organizationId: ORG,
-      title: "finding-a",
-      by: "system",
-    });
-    const second = await taskBoard.create({
-      organizationId: ORG,
-      title: "finding-b",
-      by: "system",
-    });
-
-    // The org's single trial slot goes to the first task.
-    await claimTaskExecution(ctx, first, config);
-
-    // Delegating the second must be refused BEFORE any write: the tool's
-    // pre-check is what keeps the card from looking delegated.
-    await expect(
-      ensureTaskExecutionAllowed(ctx, second, config),
-    ).rejects.toThrow(/^\[SUBSCRIPTION_REQUIRED\]/);
-    expect((await taskBoard.getById(second.id, ORG))?.assigneeId).toBeNull();
-  });
-
-  // Mirrors TASK_BOARD_ITEM_RERUN's userInitiatedTaskQuotaConfig() precheck.
-  it("a HUMAN re-delegating a runs-exhausted task is not blocked by the per-task cap", async () => {
-    const config = {
-      enforced: true,
-      freeTaskExecutions: 5,
-      monthlyTaskExecutions: 5,
-      maxRunsPerTask: 1,
-    };
-    const task = await taskBoard.create({
-      organizationId: ORG,
-      title: "finding-c",
-      by: "system",
-    });
-    await claimTaskExecution(ctx, task, config);
-    // The task already burned its one allowed run — the automatic config refuses it.
-    await expect(ensureTaskExecutionAllowed(ctx, task, config)).rejects.toThrow(
-      /execution limit/,
-    );
-    // Re-delegating it BY HAND must still be allowed.
-    const manual = { ...config, maxRunsPerTask: Number.POSITIVE_INFINITY };
-    await ensureTaskExecutionAllowed(ctx, task, manual);
   });
 
   // Inverts the old assertion: delete used to be refused for a reports task.

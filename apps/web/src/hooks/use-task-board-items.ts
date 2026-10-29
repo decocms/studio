@@ -17,6 +17,8 @@ type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
 /** What the board caches: the cards, as one `TASK_BOARD_ITEM_LIST` answer. */
 type TaskBoardData = {
   items: TaskBoardItem[];
+  /** Cards a demo org froze: past work to show, never to run. */
+  demoFrozenItemIds: string[];
 };
 
 /** The board list, as options rather than a hook, so a second reader can share
@@ -33,8 +35,11 @@ export function taskBoardItemsQueryOptions(
     // Backstop for a stream that died without an error; paused when unfocused.
     refetchInterval: 60_000,
     queryFn: async (): Promise<TaskBoardData> => {
-      const { items } = await studio.call("TASK_BOARD_ITEM_LIST", {});
-      return { items };
+      const { items, demoFrozenItemIds } = await studio.call(
+        "TASK_BOARD_ITEM_LIST",
+        {},
+      );
+      return { items, demoFrozenItemIds };
     },
   };
 }
@@ -134,7 +139,9 @@ export function useTaskBoardItems() {
 
   return {
     items: query.data?.items ?? [],
+    demoFrozenItemIds: query.data?.demoFrozenItemIds ?? [],
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error,
   };
 }

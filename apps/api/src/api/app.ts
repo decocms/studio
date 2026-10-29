@@ -27,6 +27,10 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerDemoBoardResetWorkflow,
+  setDemoBoardResetRuntime,
+} from "@/tools/demo-board/dbos-demo-board-reset";
+import {
   registerOrderMonitorWorkflow,
   setOrderMonitorRuntime,
 } from "@/monitoring/dbos-order-monitor";
@@ -204,7 +208,6 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
-import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { setBoardMoveListener, TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
@@ -1186,7 +1189,6 @@ export async function createApp(options: CreateAppOptions = {}) {
         new TaskBoardStorage(database.db),
         threadId,
         orgId,
-        new OrganizationBillingStorage(database.db),
       ),
   };
 
@@ -1655,6 +1657,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Daily: demo orgs' boards back to their capture.
+  setDemoBoardResetRuntime({ db: database.db });
+
   // Every 5 minutes: each ingest-installed store's order flow vs its baseline.
   setOrderMonitorRuntime({ db: database.db });
 
@@ -1745,9 +1750,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
   const projectorTaskBoard = new TaskBoardStorage(database.db);
-  // Quota bookkeeping for the projector's thread-finish reaction: a run that
-  // ended without a PR releases its held slot (billing/task-quota.ts).
-  const projectorBilling = new OrganizationBillingStorage(database.db);
   // Reconciles Super Agent tasks parked In Review: links the PR a sandboxed
   // `claude-code` run opened (nothing else does — see review-sweeper.ts) and
   // hands off to the enabled reviewers. It has to be a timer rather than part of
@@ -1759,7 +1761,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   const taskBoardReviewSweeper = new TaskBoardReviewSweeper(
     projectorTaskBoard,
     automationContextFactory,
-    projectorBilling,
   );
   if (getSettings().taskBoardReviewSweeperEnabled) {
     taskBoardReviewSweeper.start();
@@ -1831,7 +1832,6 @@ export async function createApp(options: CreateAppOptions = {}) {
           projectorTaskBoard,
           runId,
           orgId,
-          projectorBilling,
         );
         // The headless reviewer trigger used to be called here and could never
         // work: this callback runs inside a DBOS step, and the dispatch bottoms
@@ -1865,7 +1865,6 @@ export async function createApp(options: CreateAppOptions = {}) {
           projectorTaskBoard,
           runId,
           orgId,
-          projectorBilling,
         );
         // No reviewer trigger here either — see completeRunIfNotCompleted above
         // for why it cannot live in a step. `TaskBoardReviewSweeper` owns it.
@@ -1962,6 +1961,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerDemoBoardResetWorkflow();
   registerOrderMonitorWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();

@@ -1,8 +1,8 @@
-import { taskRunMetadata } from "../../billing/subsidized-runs";
 import {
   RUN_CLASS_METADATA_KEY,
   type RunClass,
 } from "@/dispatch-queue/run-priority";
+import { ForbiddenError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
 import { resolveTaskRunModel, taskRunHarness } from "./task-run-harness";
@@ -22,6 +22,19 @@ import {
   orgHasFeature,
 } from "@/core/plan-feature-gate";
 import { emitTaskBoardUpdated } from "./run-reactions";
+
+/** A demo org's frozen card is a picture of past work: nothing runs on it. */
+export async function assertNotFrozenDemoCard(
+  ctx: StudioContext,
+  task: TaskBoardItem,
+): Promise<void> {
+  const frozen = await ctx.storage.demoBoard.frozenItemIds(task.organizationId);
+  if (frozen.has(task.id)) {
+    throw new ForbiddenError(
+      "This card is frozen for the demo board, so no agent runs on it.",
+    );
+  }
+}
 
 /**
  * The system text one run appends to its agent's instructions: the caller's
@@ -162,6 +175,8 @@ export async function enqueueAgentRunForTask(
     );
   }
   await assertAiBudget(ctx, organizationId, "running a task agent");
+
+  await assertNotFrozenDemoCard(ctx, task);
 
   const model = await resolveTaskRunModel(
     ctx,
@@ -317,14 +332,12 @@ export async function enqueueAgentRunForTask(
         // recovered re-dispatch resolves the same pod.
         ...(opts.repo ? {} : { branch: sandboxBranch }),
         taskId: thread.id,
-        // Reports tasks carry the subscription-billing stamp: their AI usage
-        // is included in the org subscription (billing/subsidized-runs.ts).
         // `runClass` orders admission when the pod is at its cap — a reviewer or
         // a retry outranks a brand-new task (see dispatch-queue/run-priority.ts).
         // A free-form metadata string, so it changes no schema and no DBOS step
         // I/O. Defaults to a new task: the class that nothing is waiting on.
         runMetadata: {
-          ...taskRunMetadata(task),
+          taskBoardItemId: task.id,
           [RUN_CLASS_METADATA_KEY]: opts.runClass ?? "new_task",
           ...(opts.modelClass && opts.modelClass !== "default"
             ? { [MODEL_CLASS_METADATA_KEY]: opts.modelClass }

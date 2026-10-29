@@ -28,10 +28,7 @@
  * Each transition also pushes the updated item over SSE for a real-time board.
  */
 
-import { releaseTaskExecution, TaskQuotaError } from "@/billing/task-quota";
 import { captureOrgEvent } from "@/posthog";
-import type { OrganizationBillingStorage } from "@/storage/organization-billing";
-import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { findChangeRequestIn } from "./change-request-extract";
 import { emailReporterPrReady } from "./pr-ready-email";
@@ -266,9 +263,6 @@ export async function advanceTasksToReviewOnThreadFinish(
   taskBoard: TaskBoardStorage,
   threadId: string,
   orgId: string,
-  /** Quota bookkeeping (billing/task-quota.ts). Required on purpose: an
-   *  optional arg here is a silent way for a caller to stop refunding. */
-  billing: OrganizationBillingStorage,
 ): Promise<void> {
   try {
     const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
@@ -291,7 +285,6 @@ export async function advanceTasksToReviewOnThreadFinish(
     console.error("[task-board] thread-finish transition failed", err);
   }
   await reactToFailedTaskRun(taskBoard, threadId, orgId);
-  await refundUnproductiveTaskClaims(taskBoard, billing, threadId, orgId);
 }
 
 /**
@@ -448,53 +441,6 @@ export async function reactToFailedTaskRun(
 }
 
 /**
- * The ONE place a task-quota charge is refunded (billing/task-quota.ts): a
- * finished run whose task demonstrably produced nothing.
- *
- * All three conditions are DURABLE FACTS, never "did we observe an event":
- *  - no linked pull request — the immutable proof of output, whatever lane the
- *    card sits in (status is user-writable, so it can't be the discriminator);
- *  - the card never reached In Review — a repo-less task's answer IS its
- *    deliverable, and that transition is how the board records one;
- *  - no other used thread on the task is still running — a task gets a fresh
- *    thread per dispatch, so a sibling finishing must never refund a run
- *    that's still spending.
- *
- * Anything unproven leaves the claim charged, which is the safe direction: a
- * path that never reports its outcome (claude-code, a human dragging the card,
- * stall recovery) costs the customer their execution rather than costing us an
- * unbilled one.
- */
-export async function refundUnproductiveTaskClaims(
-  taskBoard: TaskBoardStorage,
-  billing: OrganizationBillingStorage,
-  threadId: string,
-  orgId: string,
-): Promise<void> {
-  try {
-    for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
-      const item = await taskBoard.getById(taskId, orgId);
-      if (!item) continue;
-      // Not a card the board manages — see `boardManagedIds`.
-      if (item.source) continue;
-      if (cardDelivered(item)) continue;
-      const stillRunning = item.threads.some(
-        (t) =>
-          t.hasMessages &&
-          (t.status === null || !TERMINAL_THREAD_STATUSES.has(t.status)),
-      );
-      if (stillRunning) continue;
-      if ((await taskBoard.listPrs(taskId, orgId)).length > 0) continue;
-      // task_quota_refunded is emitted inside releaseTaskExecution, gated on
-      // the release actually transitioning a held claim.
-      await releaseTaskExecution(billing, orgId, taskId);
-    }
-  } catch (err) {
-    console.error("[task-board] quota refund pass failed", err);
-  }
-}
-
-/**
  * The reviewer approved — move the card to QA, where a person checks it.
  *
  * A no-op unless the card is in its review phase, so it can neither drag a
@@ -616,41 +562,6 @@ async function parkInReview(
     })
     .catch(() => {});
   emitTaskBoardUpdated(item.organizationId, parked);
-}
-
-/**
- * The per-task run cap (`maxRunsPerTask`) refused an AUTOMATIC re-dispatch, so
- * nothing will run on this task again on its own. Hand it to a human saying so.
- *
- * Without this the refusal is invisible: `runs_exhausted` throws out of
- * `enqueueSuperAgentForTask` into a log line, and the state machine keeps
- * cycling on a PR that never gains a commit. Four prod cards sat like that —
- * reviewers re-reviewed an untouched PR five times over ninety minutes and the
- * board's only explanation was "the reviewer and the Super Agent are not
- * converging". They HAD converged; the agent was never dispatched.
- *
- * Narrow to `runs_exhausted` on purpose. The other quota reasons are org-wide
- * paywalls that existing callers deliberately surface to the user; only the
- * per-task cap is a dead end that a card can neither report nor escape (a human
- * Re-run is exempt from it, which is exactly the action this hand-off asks for).
- *
- * Returns true when it handled `err` — the caller must then stop treating the
- * dispatch as pending. False for any other error, which the caller still owns.
- */
-export async function parkOnRunsExhausted(
-  ctx: StudioContext,
-  item: TaskBoardItem,
-  err: unknown,
-): Promise<boolean> {
-  if (!(err instanceof TaskQuotaError)) return false;
-  if (err.reason !== "runs_exhausted") return false;
-  await handTaskToHuman(
-    ctx,
-    item,
-    "per-task run limit reached — the Super Agent can no longer re-dispatch " +
-      "itself on this task. Re-run it manually to continue.",
-  );
-  return true;
 }
 
 /**

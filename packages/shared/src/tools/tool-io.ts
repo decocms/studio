@@ -115,6 +115,7 @@ export interface StudioToolIO {
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
+            demo_board_reset?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
@@ -202,6 +203,7 @@ export interface StudioToolIO {
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
+            demo_board_reset?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
@@ -285,6 +287,7 @@ export interface StudioToolIO {
             voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
+            demo_board_reset?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
             qa_agent_enabled?: boolean | undefined;
@@ -555,6 +558,7 @@ export interface StudioToolIO {
       }[];
       repos: string[];
       columns: { key: string; title: string; position: number }[];
+      demoFrozenItemIds: string[];
     };
   };
   TASK_BOARD_ITEM_UPDATE: {
@@ -966,6 +970,40 @@ export interface StudioToolIO {
       repo?: string | undefined;
       cloned?: boolean | undefined;
       files?: string | undefined;
+    };
+  };
+  DEMO_BOARD_CAPTURE: {
+    input: { liveItemIds?: string[] | undefined };
+    output: {
+      capturedAt: string;
+      frozenItems: number;
+      liveItems: number;
+      archivedItems: number;
+      threads: number;
+    };
+  };
+  DEMO_BOARD_RESET: {
+    input: { [x: string]: never };
+    output: {
+      restoredItems: number;
+      deletedItems: number;
+      closedPrs: number;
+      problems: string[];
+      deadPreviewUrls: string[];
+    };
+  };
+  DEMO_BOARD_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      status: {
+        capturedAt: string;
+        capturedBy: string;
+        frozenItems: number;
+        liveItemIds: string[];
+        lastResetAt: string | null;
+        lastResetError: string | null;
+        deadPreviewUrls: string[];
+      } | null;
     };
   };
   generate_image: {
@@ -3782,6 +3820,10 @@ export interface StudioToolIO {
     input: { planId?: string | undefined };
     output: { url: string };
   };
+  ORGANIZATION_BILLING_GET: {
+    input: { [x: string]: never };
+    output: { subscribed: boolean; hasBillingAccount: boolean };
+  };
   ORGANIZATION_BILLING_PLAN_PRICES: {
     input: { [x: string]: never };
     output: {
@@ -3796,18 +3838,6 @@ export interface StudioToolIO {
   ORGANIZATION_BILLING_PORTAL: {
     input: { [x: string]: never };
     output: { url: string };
-  };
-  ORGANIZATION_TASK_QUOTA_GET: {
-    input: { [x: string]: never };
-    output: {
-      enforced: boolean;
-      billingStatus: string;
-      subscribed: boolean;
-      hasBillingAccount: boolean;
-      used: number;
-      limit: number;
-      currentPeriodEnd: string | null;
-    };
   };
   INFRA_BILLING_SITES_LIST: {
     input: { [x: string]: never };
@@ -3860,6 +3890,16 @@ export interface StudioToolIO {
       rowCount: number;
       truncated: boolean;
     };
+  };
+  ANALYTICS_INSTALL: {
+    input: { site: string; domain?: string | undefined };
+    output:
+      | {
+          status: "dispatched";
+          taskBoardItemId: string;
+          taskKey: string | null;
+        }
+      | { status: "needs_domain" };
   };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {
@@ -4657,7 +4697,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
@@ -4944,8 +4984,8 @@ export interface StudioToolIO {
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
                             | "off"
-                            | "manual"
                             | "on"
+                            | "manual"
                             | "auto"
                             | null
                             | undefined;
@@ -5161,7 +5201,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
@@ -5413,7 +5453,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
@@ -5656,7 +5696,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
@@ -5896,8 +5936,8 @@ export interface StudioToolIO {
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
                             | "off"
-                            | "manual"
                             | "on"
+                            | "manual"
                             | "auto"
                             | null
                             | undefined;
@@ -6121,7 +6161,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
@@ -6362,7 +6402,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
@@ -8019,7 +8059,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"

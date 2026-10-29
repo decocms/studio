@@ -138,10 +138,23 @@ const PREVIEW_EXPERIMENTS = monitorPreview(null).experiments;
 /** The org's own projects with a site, not Studio's built-in managers. */
 function useSiteProjects(): SiteProject[] {
   return useVirtualMCPsNonBlocking().flatMap((p) => {
-    const site = isStudioPackAgent(p.id) ? null : resolveAgentSiteSlug(p);
+    // The Deco Score Agent is built in, not a site, even when it's bound to the
+    // store's repository.
+    const builtIn =
+      isStudioPackAgent(p.id) || p.metadata?.type === "commerce-discovery";
+    const site = builtIn ? null : resolveAgentSiteSlug(p);
     const analyticsSite = resolveAnalyticsSiteSlug(p);
     return site && analyticsSite
-      ? [{ id: p.id, title: p.title, icon: p.icon, site, analyticsSite }]
+      ? [
+          {
+            id: p.id,
+            title: p.title,
+            icon: p.icon,
+            site,
+            analyticsSite,
+            repository: p.metadata?.repository ?? null,
+          },
+        ]
       : [];
   });
 }

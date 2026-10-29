@@ -20,6 +20,7 @@ import {
   tryResolveTier,
 } from "@/core/resolve-tier";
 import {
+  ChatTierSchema,
   orgFlagEnabled,
   type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
@@ -659,9 +660,13 @@ async function validate(
       chatHarness,
     );
     if (!planId) throw err;
-    return chatHarness === "codex"
-      ? codexSubscriptionChatModel()
-      : claudeSubscriptionChatModel(planId);
+    if (chatHarness === "codex") return codexSubscriptionChatModel();
+    const chatTier = ChatTierSchema.safeParse(tier ?? "smart");
+    const picked = chatTier.success
+      ? (await ctx.storage.userModelPreferences.get(userId, organization.id))
+          ?.tiers?.[chatTier.data]?.modelId
+      : undefined;
+    return claudeSubscriptionChatModel(planId, picked);
   });
   if (
     chatHarness === "codex" &&

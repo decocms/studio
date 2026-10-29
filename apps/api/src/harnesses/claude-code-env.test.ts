@@ -3,6 +3,7 @@ import {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS,
   CLAUDE_SUBSCRIPTION_PROVIDER_ID,
   claudeCodeEnvFromCredential,
+  claudeSubscriptionChatModel,
   copilotModelId,
   GITHUB_COPILOT_PROVIDER_ID,
   modelClassFromMetadata,
@@ -391,6 +392,36 @@ describe("tool search", () => {
             .ENABLE_TOOL_SEARCH,
         ).not.toBeNull();
       }
+    }
+  });
+});
+
+describe("claudeSubscriptionChatModel", () => {
+  test("runs the Claude model the user picked", () => {
+    expect(
+      claudeSubscriptionChatModel(
+        CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+        "claude-opus-5-5",
+      ).thinking,
+    ).toEqual({
+      id: "claude-opus-5-5",
+      title: "claude-opus-5-5",
+      provider: "anthropic",
+    });
+  });
+
+  test("falls back to the harness default without a Claude pick", () => {
+    const fallback = claudeSubscriptionChatModel().thinking.id;
+    for (const picked of [
+      undefined,
+      "",
+      "gpt-5",
+      "anthropic/claude-opus-5-5",
+    ]) {
+      expect(
+        claudeSubscriptionChatModel(CLAUDE_SUBSCRIPTION_PROVIDER_ID, picked)
+          .thinking.id,
+      ).toBe(fallback);
     }
   });
 });

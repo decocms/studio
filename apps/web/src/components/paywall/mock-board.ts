@@ -93,5 +93,6 @@ export function mockBoardAnswer(): BoardAnswer {
     ],
     repos: [],
     columns: [],
+    demoFrozenItemIds: [],
   };
 }

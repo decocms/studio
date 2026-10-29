@@ -1,6 +1,7 @@
 /** The org's Overview under the new navigation: the greeting with the apps
  *  you last had open, what wants you today, and how each project is moving.
- *  Built from the board, the inbox and this browser's app history. */
+ *  Built from the board, the inbox, this browser's app history and the
+ *  daily brief in the org filesystem. */
 
 import { usePreferences } from "@/hooks/use-preferences";
 import { ChatInput } from "@/components/chat/input";
@@ -12,6 +13,7 @@ import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { Suspense } from "react";
 import { Page } from "@/components/page";
 import { ConnectPill } from "./connect-pill";
+import { DailyBriefCard } from "./daily-brief-card";
 import { runningAgents, shippedSince, tasksNeedingMe } from "./daily-pulse";
 import {
   briefDate,
@@ -149,6 +151,7 @@ function OrgHomeBody({
           {greeting} {brief}
         </h1>
       </div>
+      <DailyBriefCard />
       <ForYou
         waiting={waiting}
         tasks={tasks}

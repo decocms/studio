@@ -259,6 +259,7 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
+      demoBoard: { isFrozenThread: async () => false },
       // Non-repo-scoped org connection: getRepoScope() returns null, so the
       // repo-scoped mint path in provisionSandbox is skipped and these tests
       // exercise the clone/token path unchanged. (Minting is covered by the
@@ -731,6 +732,44 @@ describe("SANDBOX_START", () => {
     );
     expect(mockEnsure).toHaveBeenCalledTimes(1);
     expect(entry.createdAt).toBe(1_000);
+  });
+
+  it("ensureSandbox hands a reused sandbox a fresh clone URL", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, {
+      ...BASE_METADATA,
+      sandboxMap: {
+        [USER_ID]: { [BRANCH]: { "agent-sandbox": CACHED_ENTRY } },
+      },
+    });
+    const proxied: { handle: string; path: string; body: unknown }[] = [];
+    const original = mockRunner.proxyDaemonRequest;
+    mockRunner.proxyDaemonRequest = async (handle, path, init) => {
+      proxied.push({ handle, path, body: JSON.parse(String(init?.body)) });
+      return new Response(null, { status: 204 });
+    };
+    try {
+      await ensureSandbox(
+        { virtualMcpId: VMCP_ID, branch: BRANCH },
+        makeCtx({ virtualMcp }),
+      );
+      expect(mockEnsure).not.toHaveBeenCalled();
+      expect(proxied).toEqual([
+        {
+          handle: CACHED_ENTRY.sandboxHandle,
+          path: "/_sandbox/config",
+          body: {
+            git: {
+              repository: {
+                cloneUrl:
+                  "https://x-access-token:ghu_test_token_123@github.com/acme/app.git",
+              },
+            },
+          },
+        },
+      ]);
+    } finally {
+      mockRunner.proxyDaemonRequest = original;
+    }
   });
 
   it("generates a <creator-slug>-<timestamp> branch when input.branch is omitted and threads it into the ref", async () => {

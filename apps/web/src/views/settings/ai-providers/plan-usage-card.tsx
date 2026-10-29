@@ -64,7 +64,7 @@ function ManageBillingButton() {
   const { data } = useQuery({
     queryKey: KEYS.orgBillingAccount(org.id),
     staleTime: 60_000,
-    queryFn: () => studio.call("ORGANIZATION_TASK_QUOTA_GET", {}),
+    queryFn: () => studio.call("ORGANIZATION_BILLING_GET", {}),
   });
   const { mutate: openPortal, isPending } = useOpenBillingUrl(
     "ORGANIZATION_BILLING_PORTAL",

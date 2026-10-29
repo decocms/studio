@@ -37,6 +37,15 @@ describe("queueRows", () => {
       ["running", "running"],
     ]);
   });
+
+  test("skips closed cards even when their last run failed", () => {
+    const done = { ...card("done", "failed"), status: "done" } as TaskBoardItem;
+    const archived = {
+      ...card("archived", "in_progress"),
+      status: "archived",
+    } as TaskBoardItem;
+    expect(queueRows([], [done, archived])).toEqual([]);
+  });
 });
 
 const update = (

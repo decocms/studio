@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
@@ -58,6 +60,7 @@ type Orchestrator struct {
 	mu                sync.Mutex
 	queue             []Step
 	running           bool
+	checkingOut       bool
 	currentBranchHead string
 	latestScripts     []string
 	hasScripts        bool
@@ -74,6 +77,9 @@ type Orchestrator struct {
 	// not block, or be blocked by, the primary's pipeline. Two concurrent sweeps
 	// would both pass the same HasGitRepo check and fork two clones into one dir.
 	secondaryMu sync.Mutex
+
+	// Bumped per chunk of setup output: WaitCheckout's progress signal.
+	outputSeq atomic.Int64
 
 	appsMu     sync.Mutex
 	apps       map[string]*extraApp
@@ -244,6 +250,49 @@ func (o *Orchestrator) PendingCount() int {
 	return len(o.queue)
 }
 
+// CheckoutInFlight reports a clone step queued or running: the primary
+// checkout is being written, and HEAD, the index and the files on disk can
+// disagree until it ends.
+func (o *Orchestrator) CheckoutInFlight() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.checkingOut || slices.Contains(o.queue, StepClone)
+}
+
+// Variable only so the test can shorten it.
+var checkoutPoll = 500 * time.Millisecond
+
+// WaitCheckout blocks while CheckoutInFlight and reports whether the checkout
+// settled. It gives up once the step has gone `stall` without progress: no
+// setup output and no bytes landing under `.git`. Git prints nothing about a
+// transfer into a pipe, so the bytes are the only sign a long clone is alive.
+func (o *Orchestrator) WaitCheckout(stall time.Duration) bool {
+	var mark int64 = -1
+	lastProgress := time.Now()
+	for o.CheckoutInFlight() {
+		if m := o.outputSeq.Load() + dirBytes(filepath.Join(o.deps.RepoDir, ".git")); m != mark {
+			mark, lastProgress = m, time.Now()
+		} else if time.Since(lastProgress) >= stall {
+			return false
+		}
+		time.Sleep(checkoutPoll)
+	}
+	return true
+}
+
+func dirBytes(root string) int64 {
+	var n int64
+	filepath.WalkDir(root, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, err := d.Info(); err == nil {
+				n += info.Size()
+			}
+		}
+		return nil
+	})
+	return n
+}
+
 func (o *Orchestrator) DiscoveredScripts() ([]string, bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -307,6 +356,11 @@ func (o *Orchestrator) drain() {
 		}
 		step := o.queue[0]
 		o.queue = o.queue[1:]
+		// Under the same lock as the dequeue, so CheckoutInFlight never sees
+		// the clone step neither queued nor running.
+		if step == StepClone {
+			o.checkingOut = true
+		}
 		o.mu.Unlock()
 
 		o.chunk(fmt.Sprintf("[orchestrator] running step: %s\r\n", step))
@@ -353,14 +407,21 @@ func (o *Orchestrator) runStep(step Step) {
 }
 
 func (o *Orchestrator) chunk(data string) {
+	o.outputSeq.Add(1)
 	o.deps.Broadcaster.BroadcastChunk("setup", data)
 }
 
 func (o *Orchestrator) rawChunk(data string) {
+	o.outputSeq.Add(1)
 	o.deps.Broadcaster.BroadcastChunk("setup", data, events.ChunkOpts{Tee: false})
 }
 
 func (o *Orchestrator) stepClone() bool {
+	defer func() {
+		o.mu.Lock()
+		o.checkingOut = false
+		o.mu.Unlock()
+	}()
 	return timedPhase("clone", o.stepCloneInner)
 }
 

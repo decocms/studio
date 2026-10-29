@@ -201,6 +201,9 @@ export const common = {
   "common.inviteMemberDialog.title": "Invite members",
   "common.keyboardShortcutsDialog.title": "Keyboard Shortcuts",
   "common.noAccessScreen.askAdminToInvite": "Ask an admin to invite you.",
+  "common.noAccessScreen.adminJoin": "Join as admin",
+  "common.noAccessScreen.adminJoinFailed": "Failed to join the organization",
+  "common.noAccessScreen.adminJoining": "Joining…",
   "common.noAccessScreen.couldNotFind":
     "We couldn't find an organization called",
   "common.noAccessScreen.noAccess": "No access",

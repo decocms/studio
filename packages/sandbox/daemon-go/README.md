@@ -79,6 +79,7 @@ Set by the sandbox template, not by the daemon:
 | `PROXY_PORT` (or `DAEMON_PORT`) | Listen port |
 | `ORGFS_SIDECAR_CONFIG_PATH` / `ORGFS_SIDECAR_STATUS_PATH` | Org-fs relay to the mounter sidecar; org-fs is inert without them |
 | `ORGFS_PRUNE_EMPTY_THREAD_DIRS` | `1` removes the previous thread's empty `.uploads`/`.outputs` dir when a run moves to another thread; off by default |
+| `DISPATCH_WAIT_FOR_CHECKOUT` | `1` holds a dispatched run until a queued or running clone step ends, giving up after two minutes without clone progress; off by default |
 
 `/health` is unauthenticated on purpose: Studio polls it and marks the sandbox
 **dead on a single miss**, so never block that path behind slow I/O or a held

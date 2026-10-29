@@ -15,6 +15,7 @@ import type {
   OrderMonitorDay,
   OrderMonitorPushes,
   OrderMonitorStore,
+  SiteTrafficDay,
 } from "@decocms/shared/order-monitor";
 import { KEYS } from "@/lib/query-keys";
 import { orderMonitorWatchView } from "./watch-sse-pool";
@@ -219,6 +220,29 @@ export function useOrderMonitorPushes(
         signal,
       ),
     refetchInterval: at ? false : FALLBACK_REFETCH_MS,
+    retry: false,
+  });
+}
+
+/** The org's sites' visitors for the local day of `at` (undefined = now) in
+ *  `tz`; `site` narrows to one site slug. Null until a linked site has synced. */
+export function useSiteTraffic(
+  orgSlug: string,
+  opts: { tz: string; at: string | undefined; site: string | null },
+  enabled: boolean,
+) {
+  const params = new URLSearchParams({ tz: opts.tz });
+  if (opts.at) params.set("at", opts.at);
+  if (opts.site) params.set("site", opts.site);
+  return useQuery({
+    queryKey: KEYS.siteTraffic(orgSlug, params.toString()),
+    queryFn: ({ signal }) =>
+      fetchJson<{ traffic: SiteTrafficDay | null }>(
+        `/api/${encodeURIComponent(orgSlug)}/order-monitor/traffic?${params}`,
+        signal,
+      ).then((body) => body.traffic),
+    enabled: enabled && !!orgSlug,
+    refetchInterval: opts.at ? false : FALLBACK_REFETCH_MS,
     retry: false,
   });
 }

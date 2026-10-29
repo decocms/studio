@@ -211,6 +211,10 @@ export const common = {
   "common.keyboardShortcutsDialog.title": "Atalhos de teclado",
   "common.noAccessScreen.askAdminToInvite":
     "Peça a um administrador que o convide.",
+  "common.noAccessScreen.adminJoin": "Entrar como admin",
+  "common.noAccessScreen.adminJoinFailed":
+    "Não foi possível entrar na organização",
+  "common.noAccessScreen.adminJoining": "Entrando…",
   "common.noAccessScreen.couldNotFind":
     "Não conseguimos encontrar uma organização chamada",
   "common.noAccessScreen.noAccess": "Sem acesso",

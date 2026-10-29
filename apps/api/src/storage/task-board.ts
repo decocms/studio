@@ -8,12 +8,10 @@
 import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
-// Shared with the quota gate, which charges the same class of task.
 import {
   IMPLEMENTER_SYSTEM_KEY,
   LINKED_CHATS_SYSTEM_KEY,
 } from "../automations/builtin";
-import { isReportsTask } from "../billing/task-quota";
 import { isBoardRunThread } from "../tools/task-board/task-run-context";
 import { createAutomationsStorage } from "./automations";
 import type {
@@ -32,6 +30,7 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   type TaskBoardHarnessId,
   DEFAULT_TASK_TYPE,
+  isReportsTask,
   isReviewerThreadTitle,
   LANES,
 } from "@decocms/shared/task-board";
@@ -47,6 +46,7 @@ import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
 import { NOTIFICATION_TYPES } from "@decocms/shared/notification-types";
 import type { NotificationType } from "@decocms/shared/notification-types";
 import { notify } from "../notifications/notify";
+import { isFrozenDemoCard } from "./demo-board";
 import { escapeLikePattern } from "./threads";
 
 /** Activity actions that also earn an inbox row and an email. */
@@ -660,14 +660,11 @@ export class TaskBoardStorage {
    * `external_key` instead of re-creating the card. A hard delete would
    * silently undo itself on the next scan — the import matches only OPEN items
    * by key, and a deleted row matches nothing. Keeping the row also keeps the
-   * card's comments, activity, threads and quota claim, so a restore brings
-   * back the same card, and deleting one can't refund a charged slot via
-   * `task_quota_claims`' ON DELETE CASCADE.
+   * card's comments, activity and threads, so a restore brings back the same
+   * card.
    *
-   * The predicate is `isReportsTask`, NOT "has an external_key" — the quota
-   * gate charges on `created_by = "system"`, and an imported item may omit its
-   * key. Keying dismissal on the key would leave keyless system cards
-   * hard-deletable, and therefore refundable.
+   * The predicate is `isReportsTask`, NOT "has an external_key": an imported
+   * item may omit its key.
    *
    * User-created cards are deleted outright.
    */
@@ -1091,7 +1088,8 @@ export class TaskBoardStorage {
           eb("status", "=", LANES.review),
         ]),
       )
-      .where("dismissed_at", "is", null);
+      .where("dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("task_board_items.id")}`);
     if (dueBefore) {
       // A never-swept card (NULL) is always due — `<` alone would exclude it.
       query = query.where((eb) =>
@@ -1180,6 +1178,7 @@ export class TaskBoardStorage {
       .where(moved)
       .where("i.organization_id", "in", params.organizationIds)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.source", "is", null)
       .where(sql<boolean>`i.status = a.data->>'to'`)
       .where((eb) =>
@@ -1232,6 +1231,7 @@ export class TaskBoardStorage {
       .select(["i.id", "i.organization_id as organizationId"])
       .where("i.status", "=", "done")
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.updated_at", "<", settledBefore)
       .where((eb) =>
         eb.exists(
@@ -1277,6 +1277,7 @@ export class TaskBoardStorage {
       // which is the whole reason this sweep is not the archive's.
       .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where((eb) =>
         eb.exists(
           eb
@@ -1624,6 +1625,7 @@ export class TaskBoardStorage {
       .where("i.status", "=", "in_progress")
       .where("i.assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.retry_at", "is", null)
       .where("t.status", "=", "failed")
       // Settled history: reacting would park a card whose retry is mid-dispatch.
@@ -1690,6 +1692,7 @@ export class TaskBoardStorage {
       .where("i.assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
       .where("i.review_cycle_started_at", "is", null)
       .where("i.dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("i.id")}`)
       .where("i.retry_at", "is", null)
       .where("i.source", "is", null)
       .where((eb) =>
@@ -1758,6 +1761,7 @@ export class TaskBoardStorage {
       .where("retry_at", "<=", now)
       .where("status", "=", "in_progress")
       .where("dismissed_at", "is", null)
+      .where(sql<boolean>`NOT ${isFrozenDemoCard("task_board_items.id")}`)
       .orderBy("retry_at", "asc")
       .limit(limit)
       .execute();

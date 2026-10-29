@@ -125,13 +125,24 @@ export const monitor = {
   "monitor.platform.deploys": "GitHub",
   "monitor.platform.analytics": "Google Analytics",
   "monitor.platform.search": "Search Console",
-  "monitor.analyticsGuide.deco": "Na hospedagem da deco",
-  "monitor.analyticsGuide.decoHow":
-    "Nada pra colar: ative na aba Analytics do site",
-  "monitor.analyticsGuide.other": "Qualquer outro site",
-  "monitor.analyticsGuide.otherHow":
-    "Cole esta linha no seu <head>, com o token do site",
+  "monitor.analyticsGuide.intro":
+    "O agente adiciona uma tag ao código do site e abre um pull request para você revisar. Visitantes e conversões aparecem aqui depois do merge.",
+  "monitor.analyticsGuide.introEmpty":
+    "O analytics entra no código do site, então precisa de um site com o repositório do GitHub conectado. Adicione um a partir do repositório e instale com um clique.",
+  "monitor.analyticsGuide.install": "Instalar",
+  "monitor.analyticsGuide.installing": "Iniciando…",
+  "monitor.analyticsGuide.domain":
+    "Em qual domínio {site} está no ar? As visitas só contam nesse domínio e no www dele.",
+  "monitor.analyticsGuide.domainInvalid":
+    "Isso não é um domínio. Tente algo como www.exemplo.com.br.",
+  "monitor.analyticsGuide.installSent":
+    "Enviado ao Super Agente — ele vai abrir um pull request.",
+  "monitor.analyticsGuide.manual":
+    "Prefere adicionar você mesmo? A aba Analytics de cada site mostra a tag dele.",
   "monitor.analyticsGuide.add": "Adicionar seu site",
+  "monitor.analyticsGuide.uncounted":
+    "Estes sites recebem tráfego, mas ainda não contam pageviews.",
+  "monitor.analyticsGuide.addAnother": "Adicionar outro site",
   "monitor.powers.orders": "Pedidos, cancelamentos e canais de venda",
   "monitor.powers.site": "Audiência, erros e tempo de resposta",
   "monitor.powers.deploys": "Cada deploy nos gráficos",

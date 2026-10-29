@@ -84,6 +84,7 @@ import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
 import { lookupRecordedSandbox } from "./recorded-sandbox";
+import { rotateReusedSandboxGitCredential } from "./sync-git-credentials";
 import {
   cloneInfoForRepository,
   findRepositoryForBinding,
@@ -172,6 +173,16 @@ export const SANDBOX_START = defineTool({
           "This chat is a CMS session and does not use a sandbox. Start a coding session to get one.",
         );
       }
+      if (
+        await ctx.storage.demoBoard.isFrozenThread(
+          organization.id,
+          askingThreadId,
+        )
+      ) {
+        throw new Error(
+          "This run is frozen for the demo board and does not use a sandbox. Open its pull request preview instead.",
+        );
+      }
     }
 
     const userId = getUserId(ctx);
@@ -235,6 +246,32 @@ export const SANDBOX_START = defineTool({
     };
   },
 });
+
+/**
+ * Reuse returns before `provider.ensure`, the only place a sandbox otherwise
+ * gets a fresh git token. Best-effort: the turn still runs on the old token.
+ */
+async function rotateGitCredentialOnReuse(
+  ctx: StudioContext,
+  runner: SandboxProvider,
+  handle: string,
+  threadId: string | undefined,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const repository =
+      (await getThreadRepository(ctx, threadId)) ??
+      (metadata as RepositoryMetadata).repository ??
+      null;
+    if (!repository) return;
+    await rotateReusedSandboxGitCredential(ctx, runner, handle, repository);
+  } catch (err) {
+    console.warn(
+      "[ensureSandbox] git credential rotation on reuse failed",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
 
 /**
  * Lazy provisioner for the always-on sandbox tools path. Mirrors SANDBOX_START's
@@ -304,7 +341,16 @@ export async function ensureSandbox(
     // the same way the events handler does. Reaping on a throttled control-plane
     // call would tear down a healthy sandbox and re-clone it from scratch.
     const alive = await runner.alive(existing.sandboxHandle).catch(() => true);
-    if (alive) return existing;
+    if (alive) {
+      await rotateGitCredentialOnReuse(
+        ctx,
+        runner,
+        existing.sandboxHandle,
+        recordThreadId,
+        metadata,
+      );
+      return existing;
+    }
     if (agentEntry) {
       await removeSandboxMapEntry(
         ctx.storage.virtualMcps,

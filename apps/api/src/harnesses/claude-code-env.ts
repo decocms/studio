@@ -51,15 +51,19 @@ export function isUserPlanCredential(credentialId: string): boolean {
 
 /**
  * The chat model of a run billed to the user's own plan when the org has no
- * model of its own: the harness's default Claude model.
+ * model of its own: the user's Claude pick, else the harness's default.
  */
 export function claudeSubscriptionChatModel(
   credentialId: string = CLAUDE_SUBSCRIPTION_PROVIDER_ID,
+  pickedModelId?: string,
 ): {
   credentialId: string;
   thinking: { id: string; title: string; provider: string };
 } {
-  const id = CLAUDE_CODE_MODEL.anthropic.chat;
+  const id =
+    pickedModelId && isClaudeCodeModel("anthropic", pickedModelId)
+      ? pickedModelId
+      : CLAUDE_CODE_MODEL.anthropic.chat;
   return {
     credentialId,
     thinking: { id, title: id, provider: "anthropic" },
