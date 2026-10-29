@@ -125,7 +125,7 @@ export const BLOG_POST_ASSEMBLE = defineTool({
             .string()
             .max(MAX_BODY_CHARS)
             .describe(
-              "The cover's address, from BLOG_POST_ILLUSTRATE. Empty is allowed; the post simply has no cover.",
+              "The cover's address: from BLOG_POST_ILLUSTRATE, or, when nothing was drawn, the first https photograph of the campaign's products. Empty is allowed; the post simply has no cover.",
             ),
           alt: z.string().max(MAX_BODY_CHARS),
         }),

@@ -47,13 +47,14 @@ Save the post on the card: `title`, `excerpt`, `seo`, `cover` (`alt` and
 
 ## 3. `illustrating` — the cover, then the body
 
-Find the bucket: the card's `fileConfigId`, or the only one `FILE_CONFIG_LIST`
-returns. With several and none on the card, ask the person which. With none,
-skip this stage and add `{ "code": "no-bucket" }` to the post's `gaps`.
-
 Offer the products' own photographs, so the images look like what the brand
 sells: from the campaign's products, one image of each product before a
 second of any, at most 12, as `productImages`.
+
+Find the bucket: the card's `fileConfigId`, or the only one `FILE_CONFIG_LIST`
+returns. With several and none on the card, ask the person which. With none,
+add `{ "code": "no-bucket" }` to the post's `gaps`, clear every `generate:`
+note, and go to "No cover drawn" below.
 
 **The cover**, one `BLOG_POST_ILLUSTRATE` call:
 
@@ -79,6 +80,13 @@ one gets an empty value, never the note.
 model: add `{ "code": "no-image-model" }` to the post's `gaps`, clear every
 `generate:` note, and go on; `failed` can be retried once, then add
 `{ "code": "images-failed" }` if no image was made at all.
+
+**No cover drawn.** When this stage ends without a cover address (no bucket,
+`no-model`, or `failed` after its retry), the cover is a product's own
+photograph: set `cover.url` to the first `https://` address in `productImages`
+and `cover.alt` to that product's name, save it on the card, and keep the gap
+you recorded. With no product photograph, the cover stays empty. Never use any
+other image.
 
 ## 4. `assembling` — the block this site stores
 

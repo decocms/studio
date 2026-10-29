@@ -102,4 +102,4 @@ the fields you need. A call that fails prints the error and leaves the output em
 | A system that errors or answers nothing | The store answered thinly | Not a failure: go on with what the others said |
 | `Agentic blog generation is off` | The blog is turned off for the organization | Save `error`, and stop |
 | `no blocks a post can be built from` | The site has no blog app or no committed block manifest | Save `error`: the site needs it, not a retry |
-| No bucket in `FILE_CONFIG_LIST` | Nowhere to put images | Go on without images and record the gap on the post |
+| No bucket in `FILE_CONFIG_LIST` | Nowhere to put images | Go on without drawing, with a product photograph as the cover (`execute.md`, "No cover drawn"), and record the gap on the post |
