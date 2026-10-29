@@ -1,4 +1,4 @@
-import { labelFromResolveType } from "./section-types";
+import { blockSchemaTitle, labelFromResolveType } from "./section-types";
 import { isLazyResolveType } from "./section-lazy";
 import {
   embeddedUnionBlockId,
@@ -64,10 +64,10 @@ export function blockRefOptionLabel(ref: BlockRefOption): string {
     ? parseSavedBlockSchemaTitle(ref.title)?.blockId
     : undefined;
   if (savedName) return savedName;
-  if (ref.title && !ref.title.includes("/")) return ref.title;
   return (
-    embeddedUnionBlockId(ref.resolveType) ??
-    labelFromResolveType(ref.resolveType)
+    blockSchemaTitle(ref.title) ||
+    (embeddedUnionBlockId(ref.resolveType) ??
+      labelFromResolveType(ref.resolveType))
   );
 }
 

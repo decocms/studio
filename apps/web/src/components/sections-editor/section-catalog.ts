@@ -16,6 +16,7 @@ import {
   type SchemaProperty,
 } from "./resolve-schema";
 import {
+  blockSchemaTitle,
   labelFromResolveType,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
 } from "./section-types";
@@ -290,7 +291,10 @@ function catalogEntryFromSchemaRef(
 
   return {
     resolveType: ref.resolveType,
-    title: ref.title || metadata.title || labelFromResolveType(ref.resolveType),
+    title:
+      blockSchemaTitle(ref.title) ||
+      metadata.title ||
+      labelFromResolveType(ref.resolveType),
     description: ref.description ?? metadata.description,
     // Saved blocks preview by block id so the runtime resolver loads `.deco/blocks/{id}.json`.
     previewBlock: ref.resolveType,

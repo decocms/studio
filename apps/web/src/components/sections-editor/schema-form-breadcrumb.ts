@@ -8,6 +8,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import { blockSchemaTitle } from "./section-types";
 import { unwrapBlockReference } from "./unwrap-section";
 
 /**
@@ -292,7 +293,7 @@ export function breadcrumbPathForActiveField(
 }
 
 export function fieldDisplayLabel(key: string, schema: SchemaProperty): string {
-  return schema.title ?? humanize(key);
+  return blockSchemaTitle(schema.title) ?? humanize(key);
 }
 
 /**
