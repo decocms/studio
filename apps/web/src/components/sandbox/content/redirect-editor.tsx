@@ -63,7 +63,11 @@ function RedirectEditorForm({
     (next) => {
       save.mutate({ blockKey, data: buildRedirectBlock(next, block) });
     },
-    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
+    {
+      isSaving: save.isPending,
+      onSeed: () => save.hold(blockKey),
+      content: { orgSlug, virtualMcpId },
+    },
   );
 
   const setField = (patch: Partial<RedirectPayload>) =>

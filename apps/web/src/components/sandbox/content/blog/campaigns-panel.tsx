@@ -463,6 +463,7 @@ export function CampaignsPanel({
                 isSaving={save.isPending}
                 sandboxRef={sandboxRef}
                 storeUrl={storeUrl}
+                content={{ orgSlug, virtualMcpId }}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
@@ -548,6 +549,7 @@ export function CampaignsPanel({
               isSaving={save.isPending}
               sandboxRef={sandboxRef}
               storeUrl={storeUrl}
+              content={{ orgSlug, virtualMcpId }}
             />
           )}
         </DialogContent>

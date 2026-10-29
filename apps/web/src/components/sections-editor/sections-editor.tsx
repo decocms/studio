@@ -119,7 +119,11 @@ import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import { useContentBackend } from "./use-content-backend";
 import { isProtocolProject } from "./content-backend";
-import { useContentDiscardListener, useContentSyncState } from "./content-sync";
+import {
+  useContentDiscardListener,
+  useContentFlushListener,
+  useContentSyncState,
+} from "./content-sync";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
@@ -595,6 +599,9 @@ export function SectionsEditor({
   const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  // What each rule timer writes when it fires, for a flush to write it now.
+  const pendingRuleSaveRef = useRef<(() => void) | null>(null);
+  const pendingSectionRuleSaveRef = useRef<(() => void) | null>(null);
   // Accumulates pending page header field changes to avoid losing edits
   const pendingPageFieldsRef = useRef<Record<string, string>>({});
   // What the open section form's edits are relative to (see trackFormChange).
@@ -651,6 +658,37 @@ export function SectionsEditor({
     if (activePageKey && keys.has(activePageKey)) {
       pendingPageFieldsRef.current = {};
     }
+  });
+
+  // Sends this form's armed saves when Review & Publish or a preview link settles the edits.
+  useContentFlushListener({ orgSlug, virtualMcpId }, () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+      const pending = pendingSectionSaveRef.current;
+      pendingSectionSaveRef.current = null;
+      pending?.write();
+    }
+    for (const [timer, run] of [
+      [ruleDebounceRef, pendingRuleSaveRef],
+      [sectionRuleDebounceRef, pendingSectionRuleSaveRef],
+    ] as const) {
+      if (!timer.current) continue;
+      clearTimeout(timer.current);
+      timer.current = null;
+      run.current?.();
+    }
+    // The saves that waited for one on the wire: it has landed.
+    if (!formSaveInFlightRef.current && !formSaveRetryPendingRef.current) {
+      const waiting = [...waitingFormSavesRef.current.values()];
+      waitingFormSavesRef.current.clear();
+      for (const write of waiting) write();
+    }
+    return (
+      formSaveInFlightRef.current ||
+      formSaveRetryPendingRef.current ||
+      waitingFormSavesRef.current.size > 0
+    );
   });
 
   // Keep a ref to the latest render-scope values so debounced callbacks
@@ -2649,7 +2687,7 @@ export function SectionsEditor({
 
   const scheduleRuleSave = (newRule: Record<string, unknown>) => {
     if (ruleDebounceRef.current) clearTimeout(ruleDebounceRef.current);
-    ruleDebounceRef.current = setTimeout(() => {
+    const run = () => {
       const {
         activePageKey: latestPageKey,
         decofile: latestDecofile,
@@ -2713,6 +2751,11 @@ export function SectionsEditor({
           onError: saveBlock.reportError,
         },
       );
+    };
+    pendingRuleSaveRef.current = run;
+    ruleDebounceRef.current = setTimeout(() => {
+      ruleDebounceRef.current = null;
+      run();
     }, AUTOSAVE_DELAY);
   };
 
@@ -2944,7 +2987,7 @@ export function SectionsEditor({
     } = latestRef.current;
     if (targetSectionIndex === null) return;
 
-    sectionRuleDebounceRef.current = setTimeout(() => {
+    const run = () => {
       const {
         rawSections: latestRawSections,
         parsedSections: latestParsedSections,
@@ -3026,6 +3069,11 @@ export function SectionsEditor({
           onError: saveBlock.reportError,
         },
       );
+    };
+    pendingSectionRuleSaveRef.current = run;
+    sectionRuleDebounceRef.current = setTimeout(() => {
+      sectionRuleDebounceRef.current = null;
+      run();
     }, AUTOSAVE_DELAY);
   };
 

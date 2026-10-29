@@ -16,6 +16,11 @@
 
 import { useSyncExternalStore } from "react";
 import {
+  type ContentEditsTarget,
+  flushContentEdits,
+  settleContentEdits,
+} from "./content-sync";
+import {
   isReleaseSha,
   type PreviewOptions,
   withPreviewOptions,
@@ -144,4 +149,30 @@ export function usePreviewDraftValue(
 ): string | null {
   const current = usePreviewDraft(scope);
   return previewDraftValue({ pointer, ...current });
+}
+
+/**
+ * Opens a draft link in a new tab with the edits made so far in it: their
+ * armed autosaves are sent and `buildUrl` runs once they landed, so the link
+ * carries their version (read it from the cache, not from a render). The tab
+ * opens at the click, as a popup opened later is blocked, and goes to the
+ * link once it is known; without one it closes.
+ */
+export function openDraftTab(
+  target: ContentEditsTarget,
+  buildUrl: () => string | null,
+): void {
+  if (!flushContentEdits(target)) {
+    const url = buildUrl();
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const tab = window.open("about:blank", "_blank");
+  if (tab) tab.opener = null;
+  void settleContentEdits(target).then(() => {
+    if (!tab) return;
+    const url = buildUrl();
+    if (url) tab.location.href = url;
+    else tab.close();
+  });
 }

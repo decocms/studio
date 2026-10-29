@@ -175,6 +175,18 @@ export function useDecofileDraft(
   return data ?? null;
 }
 
+/** {@link useDecofileDraft}'s grant as the cache holds it now. */
+export function readDecofileDraft(
+  queryClient: QueryClient,
+  params: DecofileScopeParams,
+): DecofileDraft | null {
+  return (
+    queryClient.getQueryData<DecofileDraft>(
+      KEYS.decofileDraft(decofileCacheKey(params)),
+    ) ?? null
+  );
+}
+
 /** GET the merged decofile; stashes the draft pointer as a side effect. */
 export async function fetchDecofile(
   queryClient: QueryClient,

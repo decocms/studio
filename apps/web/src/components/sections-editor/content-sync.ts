@@ -86,10 +86,18 @@ interface Store {
   timer: ReturnType<typeof setTimeout> | null;
   /** Editors' armed autosaves, dropped for the blocks a discard reverts. */
   discardListeners: Set<DiscardListener>;
+  /** Editors' armed autosaves, sent now by {@link settleContentEdits}. */
+  flushListeners: Set<FlushListener>;
 }
 
 /** Drops the caller's armed (not yet sent) autosaves of these blocks. */
 export type DiscardListener = (blockKeys: ReadonlySet<string>) => void;
+
+/**
+ * Sends the caller's armed autosaves now. True while it still holds a save
+ * that isn't in the write queue yet (one waiting for the save on the wire).
+ */
+export type FlushListener = () => boolean;
 
 const stores = new Map<string, Store>();
 
@@ -106,6 +114,7 @@ function storeOf(scope: string): Store {
       previews: 0,
       timer: null,
       discardListeners: new Set(),
+      flushListeners: new Set(),
     };
     stores.set(scope, store);
   }
@@ -446,6 +455,99 @@ export function useContentDiscardListener(
     };
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- the listener reads refs only (see above)
   }, [scope]);
+}
+
+/**
+ * Registers an editor's armed autosaves of project `project` with
+ * {@link settleContentEdits}; none while it is null. The listener is read
+ * once (at mount): it must read refs, not render values.
+ */
+export function useContentFlushListener(
+  project: { orgSlug: string; virtualMcpId: string } | null,
+  listener: FlushListener,
+) {
+  const scope = project
+    ? contentSyncScope(project.orgSlug, project.virtualMcpId)
+    : null;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- subscribes to an external store for the component's lifetime
+  useEffect(() => {
+    if (!scope) return;
+    const listeners = storeOf(scope).flushListeners;
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- the listener reads refs only (see above)
+  }, [scope]);
+}
+
+/** The draft whose edits {@link settleContentEdits} waits for. */
+export type ContentEditsTarget = Pick<
+  ContentSyncTarget,
+  "queryClient" | "orgSlug" | "virtualMcpId" | "branch"
+>;
+
+/** A write of the draft is queued, on the wire, or refreshing after it. */
+function writesPending(target: ContentEditsTarget): boolean {
+  const { queryClient, orgSlug, virtualMcpId, branch } = target;
+  const scope = contentSyncScope(orgSlug, virtualMcpId);
+  if (getContentSyncState(scope).inFlight > 0) return true;
+  return (
+    !!branch &&
+    queryClient.isMutating({
+      mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
+    }) > 0
+  );
+}
+
+/**
+ * Sends every editor's armed autosaves now. True while one of them, or a
+ * write already sent, hasn't landed: {@link settleContentEdits} waits for it.
+ */
+export function flushContentEdits(target: ContentEditsTarget): boolean {
+  const scope = contentSyncScope(target.orgSlug, target.virtualMcpId);
+  let held = false;
+  for (const listener of [...storeOf(scope).flushListeners]) {
+    if (listener()) held = true;
+  }
+  return held || writesPending(target);
+}
+
+function writesSettled(target: ContentEditsTarget): Promise<void> {
+  if (!writesPending(target)) return Promise.resolve();
+  const scope = contentSyncScope(target.orgSlug, target.virtualMcpId);
+  return new Promise((resolve) => {
+    const check = () => {
+      if (writesPending(target)) return;
+      unsubscribeStore();
+      unsubscribeMutations();
+      resolve();
+    };
+    const unsubscribeStore = subscribeContentSync(scope, check);
+    const unsubscribeMutations = target.queryClient
+      .getMutationCache()
+      .subscribe(check);
+  });
+}
+
+/** Rounds of a save waiting for another before the caller goes ahead anyway. */
+const SETTLE_ROUNDS = 5;
+
+/**
+ * Every edit made so far is in the draft: the armed autosaves are sent and
+ * every write of the draft has landed (a hosted save's answer moved the
+ * draft pointer and the changes). Read before anything that hands out the
+ * draft's current version (Review & Publish, a preview link), or an edit
+ * made just before would be missing from it. Never rejects: a failed save
+ * already said so, and the caller goes on with what the draft holds.
+ */
+export async function settleContentEdits(
+  target: ContentEditsTarget,
+): Promise<void> {
+  for (let round = 0; round < SETTLE_ROUNDS; round++) {
+    if (!flushContentEdits(target)) return;
+    await writesSettled(target);
+  }
 }
 
 /**
