@@ -26,7 +26,7 @@ describe("heatmapParams", () => {
 
 describe("analyticsQueryParams", () => {
   it("forwards nothing when nothing is asked", () => {
-    expect(analyticsQueryParams({ f: [] })).toEqual({});
+    expect(analyticsQueryParams({ f: [] })).toEqual({ f: [], single: {} });
   });
 
   it("forwards a segment, goal, currency and prop", () => {
@@ -39,9 +39,7 @@ describe("analyticsQueryParams", () => {
       }),
     ).toEqual({
       f: ["path:starts:/produtos", "exp:is:hero=video:b"],
-      goal: "lead_form",
-      currency: "BRL",
-      prop: "plan",
+      single: { goal: "lead_form", currency: "BRL", prop: "plan" },
     });
   });
 

@@ -1198,8 +1198,13 @@ interface OdPayload {
   previous?: OdResult[];
 }
 
-/** One OneDollarStats (Plausible) report for the current range + host. Returns
- *  the full payload (results, and for kpis the previous-period comparison). */
+/** Where the audience reports come from: OneDollarStats, or the site's own
+ *  Deco Analytics. Both answer the same report shapes. */
+const AUDIENCE_SOURCES = ["onedollar", "deco"] as const;
+type AudienceSource = (typeof AUDIENCE_SOURCES)[number];
+
+/** One audience report for the current range + host. Returns the full payload
+ *  (results, and for kpis the previous-period comparison). */
 function useOd(
   base: string,
   report: string,
@@ -1207,13 +1212,14 @@ function useOd(
   host: string,
   enabled: boolean,
   fp = "",
+  source: AudienceSource = "onedollar",
 ) {
   return useQuery({
-    queryKey: KEYS.cdnData(base, `od:${report}:${host}${fp}`, range),
+    queryKey: KEYS.cdnData(base, `${source}:${report}:${host}${fp}`, range),
     queryFn: async (): Promise<OdPayload | null> => {
       const hostQ = host ? `&host=${encodeURIComponent(host)}` : "";
       const body = (await fetchJson(
-        `${base}/onedollar?report=${report}&range=${range}${hostQ}${fp}`,
+        `${base}/${source}?report=${report}&range=${range}${hostQ}${fp}`,
       )) as {
         available?: boolean;
         results?: OdResult[];
@@ -1443,59 +1449,49 @@ function AudienceSection({
   const [countryView, setCountryView] = useState<"map" | "list">("map");
   const [selectedHost, setSelectedHost] = useState("");
   const [filters, setFilters] = useState<MonitorFilter[]>([]);
-  const fp = filtersParam(filters) + rangeExtra + (compare ? "&compare=1" : "");
+  const [pickedSource, setPickedSource] = useState<AudienceSource | null>(null);
+  const odFp =
+    filtersParam(filters) + rangeExtra + (compare ? "&compare=1" : "");
 
   const hostsQuery = useOdHosts(base, enabled);
   // Empty string ⇒ BFF picks the busiest host; once hosts load, default to the
   // first (production) unless the user picked one.
-  const host = selectedHost || hostsQuery.data?.[0] || "";
+  const odHost = selectedHost || hostsQuery.data?.[0] || "";
 
-  const kpis = useOd(base, "kpis", range, host, enabled, fp);
-  const timeseries = useOd(base, "timeseries", range, host, enabled, fp);
-  const pages = useOd(base, "pages", range, host, enabled, fp);
-  const sources = useOd(base, "sources", range, host, enabled, fp);
-  const countries = useOd(base, "countries", range, host, enabled, fp);
-  const deviceRows = useOd(base, deviceDim, range, host, enabled, fp);
-  const events = useOd(base, "events", range, host, enabled, fp);
-  const utm = useOd(base, utmDim, range, host, enabled, fp);
+  const odKpis = useOd(base, "kpis", range, odHost, enabled, odFp);
+  // A site OneDollarStats has nothing for opens on its Deco Analytics.
+  const odEmpty =
+    odKpis.data === null ||
+    (odKpis.data && Number(odKpis.data.results[0]?.metrics[2] ?? 0) === 0);
+  const source = pickedSource ?? (odEmpty ? "deco" : "onedollar");
+  const deco = source === "deco";
+  // Deco Analytics has no filters (each breakdown is its own aggregate) and no
+  // host (a registration covers all the site's domains); it buckets by the
+  // viewer's time zone.
+  const fp = deco
+    ? `${rangeExtra}${compare ? "&compare=1" : ""}&tz=${encodeURIComponent(
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      )}`
+    : odFp;
+  const host = deco ? "" : odHost;
 
-  const notConfigured = kpis.data === null && !kpis.isLoading && !kpis.isError;
-  if (notConfigured) {
-    return (
-      <EmptyState
-        icon={<Globe01 className="size-5" />}
-        title={t("mainPanelTabs.cdnTab.audienceUnconfiguredTitle")}
-        description={t("mainPanelTabs.cdnTab.audienceUnconfiguredBody")}
-      />
-    );
-  }
-  if (kpis.isError) {
-    return (
-      <EmptyState
-        icon={<Globe01 className="size-5" />}
-        title={t("mainPanelTabs.cdnTab.errorTitle")}
-        description={(kpis.error as Error)?.message ?? ""}
-      />
-    );
-  }
-
-  const k = kpis.data?.results?.[0]?.metrics ?? null;
-  const kPrev = kpis.data?.previous?.[0]?.metrics ?? null;
-  const totalVisitors = k ? Number(k[0]) : null;
-  const plottedDef = KPI_DEFS.find((d) => d.key === plotted) ?? KPI_DEFS[0];
-  // When Compare is on, align the previous period by index so it overlays as a
-  // muted line against the current one.
-  const prevRows = timeseries.data?.previous ?? [];
-  const chartData = (timeseries.data?.results ?? []).map((r, i) => ({
-    bucket: r.dimensions[0] ?? "",
-    value: Number(r.metrics[plottedDef.tsIdx] ?? 0),
-    prev:
-      compare && prevRows[i]
-        ? Number(prevRows[i]!.metrics[plottedDef.tsIdx] ?? 0)
-        : null,
-  }));
-
-  const hosts = hostsQuery.data ?? [];
+  const decoKpis = useOd(base, "kpis", range, "", enabled && deco, fp, "deco");
+  const kpis = deco ? decoKpis : odKpis;
+  const timeseries = useOd(
+    base,
+    "timeseries",
+    range,
+    host,
+    enabled,
+    fp,
+    source,
+  );
+  const pages = useOd(base, "pages", range, host, enabled, fp, source);
+  const sources = useOd(base, "sources", range, host, enabled, fp, source);
+  const countries = useOd(base, "countries", range, host, enabled, fp, source);
+  const deviceRows = useOd(base, deviceDim, range, host, enabled, fp, source);
+  const events = useOd(base, "events", range, host, enabled, fp, source);
+  const utm = useOd(base, utmDim, range, host, enabled, fp, source);
 
   const toggle = <T extends string>(
     dims: readonly T[],
@@ -1521,15 +1517,72 @@ function AudienceSection({
       ))}
     </div>
   );
+  const sourceToggle = toggle(AUDIENCE_SOURCES, source, setPickedSource, (s) =>
+    t(`mainPanelTabs.cdnTab.source_${s}`),
+  );
+
+  const notConfigured = kpis.data === null && !kpis.isLoading && !kpis.isError;
+  if (notConfigured || kpis.isError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="self-start">{sourceToggle}</div>
+        {kpis.isError ? (
+          <EmptyState
+            icon={<Globe01 className="size-5" />}
+            title={t("mainPanelTabs.cdnTab.errorTitle")}
+            description={(kpis.error as Error)?.message ?? ""}
+          />
+        ) : (
+          <EmptyState
+            icon={<Globe01 className="size-5" />}
+            title={t("mainPanelTabs.cdnTab.audienceUnconfiguredTitle")}
+            description={
+              deco
+                ? t("mainPanelTabs.cdnTab.audienceDecoUnconfiguredBody")
+                : t("mainPanelTabs.cdnTab.audienceUnconfiguredBody")
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  const k = kpis.data?.results?.[0]?.metrics ?? null;
+  const kPrev = kpis.data?.previous?.[0]?.metrics ?? null;
+  const totalVisitors = k ? Number(k[0]) : null;
+  // Deco Analytics has no visits, bounce rate or visit duration.
+  const kpiDefs = deco
+    ? KPI_DEFS.filter((d) => d.key === "pageviews" || d.key === "visitors")
+    : KPI_DEFS;
+  const utmDims = deco ? UTM_DIMS.slice(0, 3) : UTM_DIMS;
+  const plottedDef = kpiDefs.find((d) => d.key === plotted) ?? kpiDefs[0]!;
+  // When Compare is on, align the previous period by index so it overlays as a
+  // muted line against the current one.
+  const prevRows = timeseries.data?.previous ?? [];
+  const chartData = (timeseries.data?.results ?? []).map((r, i) => ({
+    bucket: r.dimensions[0] ?? "",
+    value: Number(r.metrics[plottedDef.tsIdx] ?? 0),
+    prev:
+      compare && prevRows[i]
+        ? Number(prevRows[i]!.metrics[plottedDef.tsIdx] ?? 0)
+        : null,
+  }));
+
+  const hosts = deco ? [] : (hostsQuery.data ?? []);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <FilterBar
-          fields={OD_FILTER_FIELDS}
-          filters={filters}
-          onChange={setFilters}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          {sourceToggle}
+          {!deco && (
+            <FilterBar
+              fields={OD_FILTER_FIELDS}
+              filters={filters}
+              onChange={setFilters}
+            />
+          )}
+        </div>
         {hosts.length > 1 && (
           <Select value={host} onValueChange={setSelectedHost}>
             <SelectTrigger size="sm" className="max-w-full">
@@ -1555,8 +1608,13 @@ function AudienceSection({
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {KPI_DEFS.map((d) => {
+        <div
+          className={cn(
+            "grid grid-cols-2 gap-3",
+            deco ? "sm:grid-cols-2" : "sm:grid-cols-5",
+          )}
+        >
+          {kpiDefs.map((d) => {
             const cur = Number(k[d.kpiIdx] ?? 0);
             const prev = kPrev ? Number(kPrev[d.kpiIdx] ?? 0) : null;
             const delta = prev && prev > 0 ? ((cur - prev) / prev) * 100 : null;
@@ -1757,7 +1815,7 @@ function AudienceSection({
         </Card>
         <Card
           title={t("mainPanelTabs.cdnTab.utm")}
-          action={toggle(UTM_DIMS, utmDim, setUtmDim, (d) =>
+          action={toggle(utmDims, utmDim, setUtmDim, (d) =>
             t(`mainPanelTabs.cdnTab.${d}` as never),
           )}
         >

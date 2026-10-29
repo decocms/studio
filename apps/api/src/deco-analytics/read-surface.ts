@@ -240,22 +240,3 @@ export async function readAnalyticsValues(opts: {
     };
   }
 }
-
-/** The live map's renderer, which the read surface builds and serves behind
- *  the same master token as the data, so the browser never holds it. */
-export async function readGlobeBundle(opts: {
-  analyticsDataUrl: string;
-  analyticsMasterToken: string;
-}): Promise<{ ok: true; body: string } | { ok: false; status: 404 | 502 }> {
-  try {
-    const res = await fetch(`${opts.analyticsDataUrl}/globe.js`, {
-      headers: { Authorization: `Bearer ${opts.analyticsMasterToken}` },
-    });
-    if (res.status === 404) return { ok: false, status: 404 };
-    if (!res.ok) return { ok: false, status: 502 };
-    return { ok: true, body: await res.text() };
-  } catch (err) {
-    console.error("[analytics] globe bundle proxy error:", err);
-    return { ok: false, status: 502 };
-  }
-}

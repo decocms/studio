@@ -5,6 +5,7 @@
  * the org's view of them.
  */
 
+import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Card } from "@decocms/ui/components/card.tsx";
@@ -28,6 +29,8 @@ export interface SiteProject {
   site: string;
   /** The site its traffic is reported under, which a migration may override. */
   analyticsSite: string;
+  /** Where its code lives, when the project has a repository linked. */
+  repository: RepositoryBinding | null;
 }
 
 function ProjectName({ project }: { project: SiteProject }) {

@@ -34,7 +34,7 @@
  * stay hidden (public-config `hostingEnabled` is false).
  */
 
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import type { StudioContext } from "../../core/studio-context";
@@ -42,13 +42,13 @@ import {
   isAuthenticated,
   requireOrganization,
 } from "../../core/studio-context";
-import { getSettings } from "../../settings";
+import { readAnalyticsRegistration } from "../../analytics/registration";
 import {
-  readAnalyticsValues,
-  readAnalyticsView,
-  readGlobeBundle,
-  resolveWarehouseSiteId,
-} from "../../deco-analytics/read-surface";
+  isCustomerLakeConfigured,
+  linkAnalyticsSite,
+} from "../../customer-lake/client";
+import { readAnalyticsValues } from "../../deco-analytics/read-surface";
+import { getSettings } from "../../settings";
 
 type Variables = { studioContext: StudioContext };
 
@@ -66,7 +66,7 @@ type Variables = { studioContext: StudioContext };
  *   - `body`         – JSON body to forward (send `Content-Type: application/json`)
  */
 async function proxyControlplane(
-  c: Context<{ Variables: Variables }>,
+  c: import("hono").Context<{ Variables: Variables }>,
   sub: string,
   opts: {
     method?: string;
@@ -191,7 +191,7 @@ const MALFORMED_BODY = Symbol("hosting.malformed-body");
  * so the write is rejected rather than fail-open.
  */
 async function readJsonBody(
-  c: Context<{ Variables: Variables }>,
+  c: import("hono").Context<{ Variables: Variables }>,
 ): Promise<unknown> {
   const raw = await c.req.text();
   if (raw.trim() === "") return {};
@@ -223,8 +223,11 @@ async function readJsonBody(
 /** Views the customer-facing tab may ask for. `pipeline` is deliberately absent:
  *  it reads `system.parts`, which cannot carry a tenant row policy, so it is an
  *  operator-only view and must never reach a customer screen. */
-const ANALYTICS_VIEWS = new Set([
+export const ANALYTICS_VIEWS = new Set([
   "live",
+  // The live map's own view. The tab now draws it inside `live`, which carries
+  // `liveGeo` too; kept so links and the read MCP that ask for it still work.
+  "globe",
   "overview",
   "behaviour",
   "events",
@@ -290,7 +293,7 @@ export function analyticsQueryParams(input: {
   goal?: string;
   currency?: string;
   prop?: string;
-}): Record<string, string | string[]> | null {
+}): { f: string[]; single: Record<string, string> } | null {
   if (input.f.length > MAX_ANALYTICS_FILTERS) return null;
   for (const raw of input.f) {
     const [dim, op, ...rest] = raw.split(":");
@@ -319,10 +322,12 @@ export function analyticsQueryParams(input: {
     return null;
   }
   return {
-    ...(input.f.length ? { f: [...input.f] } : {}),
-    ...(input.goal !== undefined ? { goal: input.goal } : {}),
-    ...(input.currency !== undefined ? { currency: input.currency } : {}),
-    ...(input.prop !== undefined ? { prop: input.prop } : {}),
+    f: [...input.f],
+    single: {
+      ...(input.goal !== undefined ? { goal: input.goal } : {}),
+      ...(input.currency !== undefined ? { currency: input.currency } : {}),
+      ...(input.prop !== undefined ? { prop: input.prop } : {}),
+    },
   };
 }
 
@@ -336,6 +341,179 @@ const ANALYTICS_RANGES = new Set([
   "7d",
   "30d",
 ]);
+
+/** slug → warehouse site_id (`s<id>`), memoised briefly. The mapping is stable
+ *  for the life of a registration, so a short TTL keeps a screenful of view
+ *  requests from each re-asking the control-plane while still noticing an
+ *  unregister within a few seconds. `null` (not-registered) is cached too, so an
+ *  unregistered site doesn't hammer the upstream on every expand — but a
+ *  transient resolve FAILURE is never cached (see the `error` result below). */
+const siteIdCache = new Map<string, { id: string | null; exp: number }>();
+const SITE_ID_TTL_MS = 30_000;
+
+/** Three distinct outcomes so a transient status failure is not mistaken for a
+ *  genuine "not registered": the caller renders Configuration only for
+ *  `unregistered`, and 502s for `error`. */
+type SiteIdResolution =
+  | { status: "registered"; id: string }
+  | { status: "unregistered" }
+  | { status: "error" };
+
+/** The read-surface payload keys the Analytics tab reads (analytics-tab.tsx,
+ *  analytics-heatmap-model.ts). The proxy forwards only these: a key the
+ *  upstream adds later stays server-side until the tab is taught to read it.
+ *  `pipeline`/`install`-only keys, `worker`, `panelErrors` and `meterCheck` are
+ *  left out on purpose. */
+export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  // context the tab reads or skips as non-panel (META_KEYS)
+  "range",
+  "site",
+  "view",
+  "filters",
+  "propKey",
+  "goal",
+  "goals",
+  "currency",
+  "currencies",
+  "dimensions",
+  "operators",
+  "siteKnown",
+  "usageExplained",
+  // overview
+  "kpis",
+  "kpisPrev",
+  "series",
+  "sources",
+  "funnel",
+  // live
+  "liveVisitors",
+  // The globe's only data. Omitting it is silent: this is an ALLOWLIST, so an
+  // absent key drops out of the payload without an error anywhere, and the map
+  // renders a world with no dots on it.
+  "liveGeo",
+  "livePages",
+  "liveFeed",
+  "liveByMinute",
+  // behaviour
+  "pages",
+  "entryPages",
+  "exitPages",
+  "devices",
+  "os",
+  "browser",
+  "countries",
+  "regions",
+  "cities",
+  "channels",
+  "channelConversion",
+  "attribution",
+  "campaigns",
+  "campaignNames",
+  "products",
+  // events, errors, experiments
+  "events",
+  "propKeys",
+  "propValues",
+  "scrollDepth",
+  "searches",
+  "outbound",
+  "downloads",
+  "errors",
+  "variants",
+  // vitals
+  "vitals",
+  "vitalsByPage",
+  "vitalsBands",
+  "vitalsByDevice",
+  "vitalsTrend",
+  "vitalsByVariant",
+  "conversionBySpeed",
+  // quality
+  "quality",
+  "trust",
+  "botShare",
+  "flagEvents",
+  "unregisteredEvents",
+  "unregisteredProps",
+  "propCardinality",
+  // usage
+  "usage",
+  "usageTrend",
+  "usageSites",
+  // heatmap
+  "heatmap",
+  "heatmapValue",
+  "hmPages",
+  "hmSummary",
+  "hmDevices",
+  "hmElements",
+  "hmGrid",
+  "hmScroll",
+  "hmAttention",
+  "hmSections",
+  "hmValueSummary",
+  "hmValue",
+  "hmValueLeaks",
+  // Where the people who clicked an element went next; its first row is the
+  // page's own baseline.
+  "hmFunnel",
+]);
+
+/** A read-surface payload reduced to what the Analytics tab reads: the keys in
+ *  {@link ANALYTICS_PAYLOAD_KEYS}, `sites` narrowed to this site's own entry,
+ *  and `usageScope` reduced to the one fact the client needs. */
+export function toTenantAnalyticsPayload(
+  payload: Record<string, unknown>,
+  siteId: string,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (ANALYTICS_PAYLOAD_KEYS.has(key)) out[key] = value;
+  }
+  if (Array.isArray(payload.sites)) {
+    out.sites = payload.sites.filter(
+      (s) => (s as { k?: unknown } | null)?.k === siteId,
+    );
+  }
+  out.usageScope = { site: siteId, tenantScoped: true };
+  return out;
+}
+
+async function resolveWarehouseSiteId(
+  org: { id: string },
+  site: string,
+): Promise<SiteIdResolution> {
+  const cacheKey = `${org.id}:${site.toLowerCase()}`;
+  const now = Date.now();
+  const hit = siteIdCache.get(cacheKey);
+  if (hit && hit.exp > now) {
+    return hit.id
+      ? { status: "registered", id: hit.id }
+      : { status: "unregistered" };
+  }
+
+  const registration = await readAnalyticsRegistration(site);
+  // Transient failure — do NOT cache, so the next request retries.
+  if (registration.status === "error") return { status: "error" };
+  const id = registration.status === "registered" ? registration.id : null;
+
+  // Sites registered before ANALYTICS_INSTALL existed reach the data lake
+  // the first time their owner opens the dashboard. The caller checked
+  // ownership, which is what makes this link safe to write.
+  if (id && isCustomerLakeConfigured()) {
+    linkAnalyticsSite(org.id, id).catch((err) =>
+      console.error(`[analytics] lake link failed for site="${site}":`, err),
+    );
+  }
+
+  // Evict expired entries on write so the map can't grow without bound on a
+  // long-lived multi-tenant process (the TTL previously only gated reads).
+  for (const [key, entry] of siteIdCache) {
+    if (entry.exp <= now) siteIdCache.delete(key);
+  }
+  siteIdCache.set(cacheKey, { id, exp: now + SITE_ID_TTL_MS });
+  return id ? { status: "registered", id } : { status: "unregistered" };
+}
 
 /**
  * Org-scoped routes mounted at `/api/:org/hosting`. Three peer surfaces
@@ -603,28 +781,32 @@ export const createHostingRoutes = () => {
     proxyControlplane(c, "analytics", { method: "DELETE" }),
   );
 
-  /** The org owns the slug and the read surface is wired. Ownership answers
-   *  404 (not 403) so an unowned slug looks like a non-existent one, the same
-   *  guard as proxyControlplane. */
-  async function analyticsAccess(c: Context<{ Variables: Variables }>) {
+  // GET /api/:org/hosting/:site/analytics/data?view=&range= (+ page, device for
+  // view=heatmap) — the tenant-scoped
+  // dashboard views, read straight from the Analytics read surface (NOT the
+  // control-plane). Answers `{ registered, siteId, view, range, data }` where
+  // `data` is the read surface's per-view payload reduced to the keys the tab
+  // reads (`toTenantAnalyticsPayload`). `{ registered:false }` when the site has no warehouse id yet, so
+  // the tab shows the Configuration section instead of empty charts.
+  app.get("/:site/analytics/data", async (c) => {
     const ctx = c.get("studioContext");
     if (!isAuthenticated(ctx)) {
-      return { error: c.json({ error: "Unauthorized" }, 401) } as const;
+      return c.json({ error: "Unauthorized" }, 401);
     }
     const org = requireOrganization(ctx);
     const site = c.req.param("site");
-    if (!site) {
-      return { error: c.json({ error: "site is required" }, 400) } as const;
-    }
+    if (!site) return c.json({ error: "site is required" }, 400);
+
+    // Same ownership guard as proxyControlplane: the org must own this slug.
+    // 404 (not 403) so an unowned slug looks like a non-existent one.
     const ownsSite = await ctx.storage.orgSites.isOwnedBy(
       site.toLowerCase(),
       org.id,
     );
     if (!ownsSite) {
-      return {
-        error: c.json({ error: "Site not found in organization" }, 404),
-      } as const;
+      return c.json({ error: "Site not found in organization" }, 404);
     }
+
     const {
       controlplaneRestUrl,
       controlplaneServiceToken,
@@ -632,33 +814,11 @@ export const createHostingRoutes = () => {
       analyticsMasterToken,
     } = getSettings();
     if (!controlplaneRestUrl || !controlplaneServiceToken) {
-      return {
-        error: c.json({ error: "Hosting integration is not configured" }, 503),
-      } as const;
+      return c.json({ error: "Hosting integration is not configured" }, 503);
     }
     if (!analyticsDataUrl || !analyticsMasterToken) {
-      return {
-        error: c.json(
-          { error: "Analytics data surface is not configured" },
-          503,
-        ),
-      } as const;
+      return c.json({ error: "Analytics data surface is not configured" }, 503);
     }
-    return {
-      org,
-      site,
-      controlplaneRestUrl,
-      controlplaneServiceToken,
-      analyticsDataUrl,
-      analyticsMasterToken,
-    } as const;
-  }
-
-  // GET /api/:org/hosting/:site/analytics/data?view=&range=[&page&device&f&goal&currency&prop]
-  app.get("/:site/analytics/data", async (c) => {
-    const access = await analyticsAccess(c);
-    if ("error" in access) return access.error;
-    const { org, site, analyticsDataUrl, analyticsMasterToken } = access;
 
     const view = c.req.query("view") ?? "overview";
     if (!ANALYTICS_VIEWS.has(view)) {
@@ -689,12 +849,7 @@ export const createHostingRoutes = () => {
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
     // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
     // tab reports a data-load failure instead of a misleading Configuration screen.
-    const resolution = await resolveWarehouseSiteId(
-      org,
-      site,
-      access.controlplaneRestUrl,
-      access.controlplaneServiceToken,
-    );
+    const resolution = await resolveWarehouseSiteId(org, site);
     if (resolution.status === "error") {
       return c.json({ error: "Failed to resolve analytics registration" }, 502);
     }
@@ -703,17 +858,73 @@ export const createHostingRoutes = () => {
     }
     const siteId = resolution.id;
 
-    const read = await readAnalyticsView({
-      analyticsDataUrl,
-      analyticsMasterToken,
-      siteId,
-      view,
-      range,
-      params: { ...heatmap, ...segment },
-      site,
-    });
-    if (!read.ok) {
-      return c.json({ error: read.error }, read.status);
+    const upstream = new URL(`${analyticsDataUrl}/data`);
+    upstream.searchParams.set("view", view);
+    upstream.searchParams.set("range", range);
+    upstream.searchParams.set("site", siteId);
+    for (const [key, value] of Object.entries({
+      ...heatmap,
+      ...segment.single,
+    })) {
+      upstream.searchParams.set(key, value);
+    }
+    for (const f of segment.f) upstream.searchParams.append("f", f);
+
+    let payload: Record<string, unknown> | null;
+    try {
+      const res = await fetch(upstream, {
+        headers: {
+          Authorization: `Bearer ${analyticsMasterToken}`,
+          Accept: "application/json",
+        },
+      });
+      payload = (await res.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      if (!res.ok) {
+        const error =
+          (payload && typeof payload === "object" && "error" in payload
+            ? String((payload as { error: unknown }).error)
+            : null) ?? `Analytics request failed (${res.status})`;
+        const status: ContentfulStatusCode =
+          res.status >= 400 && res.status <= 599
+            ? (res.status as ContentfulStatusCode)
+            : 502;
+        return c.json({ error }, status);
+      }
+    } catch (err) {
+      console.error(`[analytics] data proxy error for site="${site}":`, err);
+      return c.json({ error: "Failed to reach analytics service" }, 502);
+    }
+
+    if (!payload) {
+      return c.json({ error: "analytics returned an empty payload" }, 502);
+    }
+
+    // The read surface trusts our token to name any site, so verify it actually
+    // scoped to THIS tenant before returning. A payload that isn't tenant-scoped
+    // — or was scoped to a different site — could be someone else's numbers under
+    // this customer's name, which is the one outcome that must never render.
+    const scope = (payload.usageScope ?? null) as {
+      site?: string | null;
+      reader?: string;
+      tenantScoped?: boolean;
+    } | null;
+    if (
+      !scope ||
+      scope.tenantScoped !== true ||
+      scope.reader !== "stats_reader" ||
+      scope.site !== siteId
+    ) {
+      console.error(
+        `[analytics] refusing unscoped payload for site="${site}" (${siteId}):`,
+        scope,
+      );
+      return c.json(
+        { error: "analytics did not scope to this site; refusing to render" },
+        502,
+      );
     }
 
     return c.json({
@@ -721,14 +932,30 @@ export const createHostingRoutes = () => {
       siteId,
       view,
       range,
-      data: read.payload,
+      data: toTenantAnalyticsPayload(payload, siteId),
     });
   });
 
   // GET /api/:org/hosting/:site/analytics/values?dim=&range= — filter suggestions.
   app.get("/:site/analytics/values", async (c) => {
-    const access = await analyticsAccess(c);
-    if ("error" in access) return access.error;
+    const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
+      site.toLowerCase(),
+      org.id,
+    );
+    if (!ownsSite) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+    const { analyticsDataUrl, analyticsMasterToken } = getSettings();
+    if (!analyticsDataUrl || !analyticsMasterToken) {
+      return c.json({ error: "Analytics data surface is not configured" }, 503);
+    }
     const dim = c.req.query("dim") ?? "";
     if (!ANALYTICS_DIMENSIONS.has(dim)) {
       return c.json({ error: `unknown dimension: ${dim}` }, 400);
@@ -737,40 +964,90 @@ export const createHostingRoutes = () => {
     if (!ANALYTICS_RANGES.has(range)) {
       return c.json({ error: `unknown range: ${range}` }, 400);
     }
-    const resolution = await resolveWarehouseSiteId(
-      access.org,
-      access.site,
-      access.controlplaneRestUrl,
-      access.controlplaneServiceToken,
-    );
+    const resolution = await resolveWarehouseSiteId(org, site);
     if (resolution.status === "error") {
       return c.json({ error: "Failed to resolve analytics registration" }, 502);
     }
     if (resolution.status === "unregistered") return c.json({ values: [] });
     const read = await readAnalyticsValues({
-      analyticsDataUrl: access.analyticsDataUrl,
-      analyticsMasterToken: access.analyticsMasterToken,
+      analyticsDataUrl,
+      analyticsMasterToken,
       siteId: resolution.id,
       dim,
       range,
-      site: access.site,
+      site,
     });
     if (!read.ok) return c.json({ error: read.error }, read.status);
     return c.json(read.payload);
   });
 
-  // GET /api/:org/hosting/:site/analytics/globe.js — the live map renderer, behind the read token.
+  // GET /api/:org/hosting/:site/analytics/globe.js — the live map's renderer.
+  //
+  // The read surface serves this behind the same gate as `/data`, deliberately:
+  // its design is that no route is public, and "it is only code, not data" is
+  // that exception wearing a reason. So the browser cannot fetch it directly —
+  // it has no credential and must never be given one. We already hold the master
+  // token server-side for `/data`; this proxies the script the same way.
+  //
+  // Carries no tenant data, but keeps the auth and ownership guards anyway: a
+  // route that skips them is one more shape to remember, and the cost here is a
+  // lookup the tab has already done to render the tab at all.
   app.get("/:site/analytics/globe.js", async (c) => {
-    const access = await analyticsAccess(c);
-    if ("error" in access) return access.error;
-    const bundle = await readGlobeBundle(access);
-    if (!bundle.ok) {
-      return c.json({ error: "Live map is unavailable" }, bundle.status);
+    const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
     }
-    return c.body(bundle.body, 200, {
-      "Content-Type": "text/javascript; charset=utf-8",
-      "Cache-Control": "private, max-age=3600",
-    });
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+
+    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
+      site.toLowerCase(),
+      org.id,
+    );
+    if (!ownsSite) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+
+    const { analyticsDataUrl, analyticsMasterToken } = getSettings();
+    if (!analyticsDataUrl || !analyticsMasterToken) {
+      return c.json({ error: "Analytics data surface is not configured" }, 503);
+    }
+
+    try {
+      const res = await fetch(`${analyticsDataUrl}/globe.js`, {
+        headers: { Authorization: `Bearer ${analyticsMasterToken}` },
+      });
+      if (!res.ok) {
+        // Including 404, which is what a read surface built without the bundle
+        // answers. Passed through rather than flattened: "the map is missing
+        // upstream" and "analytics is down" are different incidents.
+        return c.json(
+          { error: `Analytics globe bundle unavailable (${res.status})` },
+          res.status >= 400 && res.status <= 599
+            ? (res.status as ContentfulStatusCode)
+            : 502,
+        );
+      }
+      // NOT the upstream's `immutable, max-age=31536000`. That is honest at the
+      // origin, where the bundle is rebuilt only when the image is; it is a trap
+      // here, because this URL carries no content hash — a browser that pinned it
+      // for a year would keep an old renderer across every analytics deploy, with
+      // no way to invalidate. Minutes are enough to stop the refetch-per-tab-open
+      // without outliving a release.
+      //
+      // `private`: the response went through a per-tenant authorization check, so
+      // it must not land in a shared cache keyed only by URL.
+      return new Response(res.body, {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "private, max-age=300",
+        },
+      });
+    } catch (err) {
+      console.error(`[analytics] globe proxy error for site="${site}":`, err);
+      return c.json({ error: "Failed to reach analytics service" }, 502);
+    }
   });
 
   return app;

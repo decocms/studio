@@ -2858,6 +2858,10 @@ export interface StudioToolIO {
     input: { planId?: string | undefined };
     output: { url: string };
   };
+  ORGANIZATION_BILLING_GET: {
+    input: { [x: string]: never };
+    output: { subscribed: boolean; hasBillingAccount: boolean };
+  };
   ORGANIZATION_BILLING_PLAN_PRICES: {
     input: { [x: string]: never };
     output: {
@@ -2872,18 +2876,6 @@ export interface StudioToolIO {
   ORGANIZATION_BILLING_PORTAL: {
     input: { [x: string]: never };
     output: { url: string };
-  };
-  ORGANIZATION_TASK_QUOTA_GET: {
-    input: { [x: string]: never };
-    output: {
-      enforced: boolean;
-      billingStatus: string;
-      subscribed: boolean;
-      hasBillingAccount: boolean;
-      used: number;
-      limit: number;
-      currentPeriodEnd: string | null;
-    };
   };
   INFRA_BILLING_SITES_LIST: {
     input: { [x: string]: never };
@@ -2936,6 +2928,16 @@ export interface StudioToolIO {
       rowCount: number;
       truncated: boolean;
     };
+  };
+  ANALYTICS_INSTALL: {
+    input: { site: string; domain?: string | undefined };
+    output:
+      | {
+          status: "dispatched";
+          taskBoardItemId: string;
+          taskKey: string | null;
+        }
+      | { status: "needs_domain" };
   };
   COLLECTION_CONNECTIONS_CREATE: {
     input: {

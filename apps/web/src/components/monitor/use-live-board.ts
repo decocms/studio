@@ -17,6 +17,7 @@ import {
 import {
   useOrderMonitorDays,
   useOrderMonitorStores,
+  useSiteTraffic,
 } from "@/hooks/use-order-monitor";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import {
@@ -81,6 +82,25 @@ export function useLiveBoard(
   );
   const days = [...dayOf.values()];
   const projects = useVirtualMCPsNonBlocking();
+  // Visitors in the first store's day, so the cards share one clock; the
+  // browser's when there is no store.
+  const timezone = stores[0]
+    ? storeTimezone(stores[0])
+    : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const scopedSite = scopeId
+    ? resolveAgentSiteSlug(projects.find((p) => p.id === scopeId))
+    : null;
+  // A failed read leaves the card as it was; it never fails the board.
+  const traffic =
+    useSiteTraffic(
+      orgSlug,
+      {
+        tz: timezone,
+        at: date ? localInstant(date, "23:59:59", timezone) : undefined,
+        site: scopedSite ?? null,
+      },
+      monitoring && (!scopeId || !!scopedSite),
+    ).data ?? null;
   const connections = useConnections();
   const repositories = useRepositories().data ?? [];
   const monitored = repositories.filter((r) => r.monitorDeploys);
@@ -277,6 +297,88 @@ export function useLiveBoard(
         : null,
     });
   }
+  // Purchases per hour and per day so far: what the sites report to the
+  // collector, else the stores' orders when no site reports any.
+  const hoursSoFar = (traffic?.visitors.today ?? []).flatMap((v, h) =>
+    v === null ? [] : [h],
+  );
+  const purchases: {
+    hour: (key: "today" | Comparison, h: number) => number | null;
+    day: (key: "today" | Comparison) => number;
+  } | null = !traffic
+    ? null
+    : Object.values(traffic.headline.conversions).some((n) => n > 0)
+      ? {
+          hour: (key, h) => traffic.conversions[key][h] ?? null,
+          day: (key) => traffic.headline.conversions[key],
+        }
+      : daysReady
+        ? {
+            hour: (key, h) => sum(days.map((d) => d.orders[key][h] ?? null)),
+            day: (key) =>
+              sum(
+                hoursSoFar.map((h) =>
+                  sum(days.map((d) => d.orders[key][h] ?? null)),
+                ),
+              ),
+          }
+        : null;
+  if (traffic) {
+    const { visitors, headline } = traffic;
+    kpis.push({
+      id: "audience",
+      source: "site",
+      value: headline.visitors.today,
+      references: {
+        d1: headline.visitors.d1,
+        w1: headline.visitors.w1,
+        y1: headline.visitors.y1,
+      },
+      points: hoursSoFar.map((h) => ({
+        bucket: h * 12 + 6,
+        value: visitors.today[h] ?? null,
+        d1: visitors.d1[h] ?? null,
+        w1: visitors.w1[h] ?? null,
+        y1: visitors.y1[h] ?? null,
+      })),
+    });
+  }
+  if (traffic && purchases) {
+    const { visitors, headline } = traffic;
+    const rate = (n: number | null, of: number | null) =>
+      n === null || !of ? null : n / of;
+    // The headline is a share; the plotted points are percentages.
+    const percent = (key: "today" | Comparison, h: number) => {
+      const r = rate(purchases.hour(key, h), visitors[key][h] ?? null);
+      return r === null ? null : r * 100;
+    };
+    kpis.push({
+      id: "conversion",
+      source: "site",
+      value: rate(purchases.day("today"), headline.visitors.today),
+      references: {
+        d1: rate(purchases.day("d1"), headline.visitors.d1),
+        w1: rate(purchases.day("w1"), headline.visitors.w1),
+        y1: rate(purchases.day("y1"), headline.visitors.y1),
+      },
+      points: hoursSoFar.map((h) => ({
+        bucket: h * 12 + 6,
+        value: percent("today", h),
+        d1: percent("d1", h),
+        w1: percent("w1", h),
+        y1: percent("y1", h),
+      })),
+    });
+  } else if (analytics.length === 0) {
+    kpis.push({
+      id: "conversion",
+      source: "analytics",
+      value: null,
+      references: { d1: null, w1: null, y1: null },
+      points: null,
+    });
+  }
+
   // Channels, summed by name across the stores in scope.
   const byChannel = new Map<string, OrderMonitorChannel>();
   for (const d of days) {

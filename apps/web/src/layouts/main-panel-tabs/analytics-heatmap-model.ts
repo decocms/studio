@@ -10,20 +10,21 @@
  */
 
 export type HeatDevice = "desktop" | "tablet" | "mobile";
-export type HeatMode = "clicks" | "scroll" | "attention" | "sections" | "value";
+export type HeatMode = "clicks" | "value" | "scroll" | "attention" | "sections";
 export type ClickType = "all" | "rage" | "dead" | "error" | "first";
 export type HeatRange = "24h" | "7d" | "30d";
 export type HeatRamp = "thermal" | "inferno";
 
 export const HEAT_DEVICES: HeatDevice[] = ["desktop", "tablet", "mobile"];
 export const HEAT_RANGES: HeatRange[] = ["24h", "7d", "30d"];
-/** `value` is offered only where the read surface answers the money panels. */
 export const HEAT_MODES: HeatMode[] = [
   "clicks",
+  // Second, next to the clicks it qualifies: "what gets clicked" and "what
+  // gets clicked AND bought" are the same question asked twice.
+  "value",
   "scroll",
   "attention",
   "sections",
-  "value",
 ];
 export const CLICK_TYPES: ClickType[] = [
   "all",
@@ -66,38 +67,49 @@ export interface HeatElement {
 
 interface HeatSection {
   root: string;
+  /** Views in which the section came on screen: the denominator of its CTR. */
+  seenViews: number;
   reachPct: number;
   avgS: number;
   ctrPct: number;
   clicks: number;
 }
 
-/** What the visitors who clicked one element went on to buy, against the page. */
-export interface HeatValue {
+/**
+ * What an element is WORTH, from `hmValue` — of the people who clicked it, how
+ * many bought and for how much.
+ *
+ * Read `HeatValueModel` before showing any of it. The short version: this is
+ * association, not cause; one order is credited to every element the visit
+ * clicked, so `revenue` DOES NOT SUM across elements; and the counts are a
+ * sample, so the indexes are the trustworthy part and the totals are not.
+ */
+export interface HeatElementValue {
+  /** `${root}|${el}` — joins to `HeatElement.key`. */
   key: string;
-  root: string;
-  el: string;
   clicks: number;
+  /** Distinct people who clicked it. The denominator of every rate here. */
   clickVisitors: number;
   convVisitors: number;
   orders: number;
-  /** Sampled, and associative: one order counts under every element its
-   *  visitor clicked, so these never add up to the page. */
   revenue: number;
+  /** convVisitors / clickVisitors, percent. */
   cvrPct: number;
   revPerVisitor: number;
-  /** 1 when the element converts exactly like its page. */
-  cvrIndex: number | null;
-  rpvIndex: number | null;
+  /** 1.0 = converts exactly like the page it sits on. 0 = the page sells nothing. */
+  cvrIndex: number;
+  /** Same, for revenue per visitor. */
+  rpvIndex: number;
+  /** Below the sample the ranking needs; the rate is noise, not news. */
   smallSample: boolean;
-  /** Revenue its clicks would have made at the page's average, minus what
-   *  they made; only on the leaks list. */
-  revGap: number | null;
 }
 
-/** Where the visitors who clicked went next; `key` "" is the page itself. */
-export interface HeatAfterClick {
-  key: string;
+/**
+ * Where the people who clicked an element went next (`hmFunnel`), each step
+ * inside the money facts' 30-minute window. People, not views; association,
+ * not cause; and not a strict sequence (a buyer need not have carted).
+ */
+export interface HeatFunnel {
   visitors: number;
   viewed: number;
   carted: number;
@@ -105,20 +117,41 @@ export interface HeatAfterClick {
   bought: number;
 }
 
+export const FUNNEL_STEPS = ["viewed", "carted", "checkout", "bought"] as const;
+
+/** The page's own money, which every element figure is read against. */
+export interface HeatValueSummary {
+  visitors: number;
+  convVisitors: number;
+  orders: number;
+  revenue: number;
+  cvrPct: number;
+  revPerVisitor: number;
+  smallSample: boolean;
+}
+
+/**
+ * The assumptions behind every number above, as the read surface states them
+ * (`heatmapValue`). They travel WITH the rows on purpose: three surfaces draw
+ * this data and any one of them could present an associative, sampled,
+ * non-summable figure as a total.
+ *
+ * `supported` is false when the site measures a goal these facts do not hold,
+ * and then the panels return no rows at all — which is not the same as zero.
+ */
 export interface HeatValueModel {
+  goal: string;
+  /** "visitor": every rate is per person, never per page view. */
+  unit: string;
+  /** "associative": not last-click, and not a split of revenue. */
+  attribution: string;
+  windowMinutes: number;
+  minSample: number;
+  summable: boolean;
+  sampled: boolean;
+  causal: boolean;
   currency: string | null;
-  page: {
-    visitors: number;
-    convVisitors: number;
-    orders: number;
-    revenue: number;
-    cvrPct: number;
-    revPerVisitor: number;
-    smallSample: boolean;
-  };
-  elements: HeatValue[];
-  leaks: HeatValue[];
-  afterClick: HeatAfterClick[];
+  supported: boolean;
 }
 
 export interface HeatmapModel {
@@ -142,72 +175,22 @@ export interface HeatmapModel {
   scroll: { depth: number; views: number; reachPct: number }[];
   attention: { band: number; ds: number }[];
   sections: HeatSection[];
-  /** Null where the read surface has no money panels, or the goal is not
-   *  purchase (the facts hold purchases only). */
-  value: HeatValueModel | null;
+  /** Per element, keyed by `HeatElement.key`. Empty when the site sells nothing. */
+  value: Map<string, HeatElementValue>;
+  /** The page's own conversion — the baseline, and null when there is none. */
+  valueSummary: HeatValueSummary | null;
+  /** Worst value for the attention they take, already gated on sample size. */
+  valueLeaks: HeatElementValue[];
+  /** What all of the above assumes. Null when the payload predates it. */
+  valueModel: HeatValueModel | null;
+  /** Post-click funnel per element, keyed by `HeatElement.key`. */
+  funnel: Map<string, HeatFunnel>;
+  /** The same steps for every view of the page — the baseline. Null when absent. */
+  pageFunnel: HeatFunnel | null;
 }
 
 const isDevice = (v: unknown): v is HeatDevice =>
   v === "desktop" || v === "tablet" || v === "mobile";
-
-const nullableNum = (v: unknown): number | null =>
-  v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
-
-function parseValueRow(r: Row): HeatValue {
-  const root = str(r.root);
-  const el = str(r.el);
-  return {
-    key: `${root}|${el}`,
-    root,
-    el,
-    clicks: num(r.clicks),
-    clickVisitors: num(r.click_visitors),
-    convVisitors: num(r.conv_visitors),
-    orders: num(r.orders),
-    revenue: num(r.revenue),
-    cvrPct: num(r.cvr_pct),
-    revPerVisitor: num(r.rev_per_visitor),
-    cvrIndex: nullableNum(r.cvr_index),
-    rpvIndex: nullableNum(r.rpv_index),
-    smallSample: num(r.small_sample) === 1,
-    revGap: nullableNum(r.rev_gap),
-  };
-}
-
-function parseValue(data: Row): HeatValueModel | null {
-  const meta =
-    data.heatmapValue && typeof data.heatmapValue === "object"
-      ? (data.heatmapValue as Row)
-      : null;
-  const page = rows(data.hmValueSummary)[0];
-  if (!page || meta?.supported === false) return null;
-  return {
-    currency: typeof meta?.currency === "string" ? meta.currency : null,
-    page: {
-      visitors: num(page.visitors),
-      convVisitors: num(page.conv_visitors),
-      orders: num(page.orders),
-      revenue: num(page.revenue),
-      cvrPct: num(page.cvr_pct),
-      revPerVisitor: num(page.rev_per_visitor),
-      smallSample: num(page.small_sample) === 1,
-    },
-    elements: rows(data.hmValue).map(parseValueRow),
-    leaks: rows(data.hmValueLeaks).map(parseValueRow),
-    afterClick: rows(data.hmFunnel).map((r) => {
-      const root = str(r.root);
-      const el = str(r.el);
-      return {
-        key: root === "" && (el === "0" || el === "") ? "" : `${root}|${el}`,
-        visitors: num(r.visitors),
-        viewed: num(r.viewed),
-        carted: num(r.carted),
-        checkout: num(r.checkout),
-        bought: num(r.bought),
-      };
-    }),
-  };
-}
 
 /** Normalise the `view=heatmap` payload; absent panels read as empty. */
 export function parseHeatmap(data: Row): HeatmapModel {
@@ -281,14 +264,115 @@ export function parseHeatmap(data: Row): HeatmapModel {
     })),
     sections: rows(data.hmSections).map((r) => ({
       root: str(r.root),
+      seenViews: num(r.seen_views),
       reachPct: num(r.reach_pct),
       avgS: num(r.avg_s),
       ctrPct: num(r.ctr_pct),
       clicks: num(r.clicks),
     })),
-    value: parseValue(data),
+    value: new Map(
+      rows(data.hmValue).map((r) => {
+        const v = elementValue(r);
+        return [v.key, v];
+      }),
+    ),
+    valueSummary: valueSummaryOf(rows(data.hmValueSummary)[0]),
+    valueLeaks: rows(data.hmValueLeaks).map(elementValue),
+    valueModel: valueModelOf(data.heatmapValue),
+    ...funnelOf(rows(data.hmFunnel)),
   };
 }
+
+/** The page row is `root = ''` and `el = "0"`; every other row is an element. */
+function funnelOf(rs: Row[]): {
+  funnel: Map<string, HeatFunnel>;
+  pageFunnel: HeatFunnel | null;
+} {
+  const funnel = new Map<string, HeatFunnel>();
+  let pageFunnel: HeatFunnel | null = null;
+  for (const r of rs) {
+    const f: HeatFunnel = {
+      visitors: num(r.visitors),
+      viewed: num(r.viewed),
+      carted: num(r.carted),
+      checkout: num(r.checkout),
+      bought: num(r.bought),
+    };
+    if (!str(r.root) && str(r.el) === "0") pageFunnel = f.visitors ? f : null;
+    else funnel.set(`${str(r.root)}|${str(r.el)}`, f);
+  }
+  return { funnel, pageFunnel };
+}
+
+/** Views of its section a CTR needs before it is ranked rather than shown:
+ *  below this a single curious visitor moves it by whole points. */
+export const CTR_MIN_SEEN = 100;
+
+/**
+ * Click rate of one element: views that clicked it over views in which its
+ * section came on screen — "of the people who SAW this banner, how many
+ * clicked", not "of everyone who opened the page". An element outside any
+ * section, or in one the payload has no exposure for, falls back to page views.
+ */
+export function elementCtr(
+  m: HeatmapModel,
+  e: HeatElement,
+): { ctr: number; seen: number } {
+  const seen =
+    (e.root && m.sections.find((s) => s.root === e.root)?.seenViews) || m.views;
+  return { ctr: seen ? Math.min(1, e.views / seen) : 0, seen };
+}
+
+const elementValue = (r: Row): HeatElementValue => ({
+  key: `${str(r.root)}|${str(r.el)}`,
+  clicks: num(r.clicks),
+  clickVisitors: num(r.click_visitors),
+  convVisitors: num(r.conv_visitors),
+  orders: num(r.orders),
+  revenue: num(r.revenue),
+  cvrPct: num(r.cvr_pct),
+  revPerVisitor: num(r.rev_per_visitor),
+  cvrIndex: num(r.cvr_index),
+  rpvIndex: num(r.rpv_index),
+  smallSample: num(r.small_sample) === 1,
+});
+
+/** Absent, or present with nobody in it, both read as "no baseline to compare
+ *  against" — the panels have nothing to say either way, and an all-zero card
+ *  reads as "this page converts nobody", which is a claim about the site. */
+const valueSummaryOf = (r: Row | undefined): HeatValueSummary | null => {
+  if (!r || !num(r.visitors)) return null;
+  return {
+    visitors: num(r.visitors),
+    convVisitors: num(r.conv_visitors),
+    orders: num(r.orders),
+    revenue: num(r.revenue),
+    cvrPct: num(r.cvr_pct),
+    revPerVisitor: num(r.rev_per_visitor),
+    smallSample: num(r.small_sample) === 1,
+  };
+};
+
+const valueModelOf = (v: unknown): HeatValueModel | null => {
+  if (!v || typeof v !== "object") return null;
+  const m = v as Row;
+  return {
+    goal: str(m.goal),
+    unit: str(m.unit),
+    attribution: str(m.attribution),
+    windowMinutes: num(m.windowMinutes),
+    minSample: num(m.minSample),
+    // Defaulting these to the SAFE reading, not to `false`. A payload that does
+    // not say is a payload we must assume the worst of: not summable, sampled,
+    // not causal. The opposite default would caption a total onto numbers that
+    // are not one.
+    summable: m.summable === true,
+    sampled: m.sampled !== false,
+    causal: m.causal === true,
+    currency: typeof m.currency === "string" && m.currency ? m.currency : null,
+    supported: m.supported !== false,
+  };
+};
 
 export function weightOf(e: HeatElement, type: ClickType): number {
   return type === "all" ? e.clicks : e[type];
@@ -471,21 +555,16 @@ export function viewData(
     device: HeatDevice;
   },
 ) {
-  // The overlay has no value mode; revenue-weighted click heat draws the same spots.
-  const value = o.mode === "value";
-  const revenue = new Map(
-    (m.value?.elements ?? []).map((e) => [e.key, e.revenue]),
-  );
   return {
-    mode: value ? "clicks" : o.mode,
+    mode: o.mode,
     elements: m.elements.flatMap((e) => {
-      const clicks = value ? (revenue.get(e.key) ?? 0) : weightOf(e, o.type);
+      const clicks = weightOf(e, o.type);
       return clicks > 0
         ? [{ root: e.root, el: e.el, clicks, cells: e.cells }]
         : [];
     }),
     // The coordinate grid holds every click, not one type: only the "all" map uses it.
-    grid: o.type === "all" && !value ? m.grid : [],
+    grid: o.type === "all" ? m.grid : [],
     depth: m.scroll.map((r) => ({ depth: r.depth, views: r.views })),
     attention: m.attention,
     sections: m.sections.map((s) => ({

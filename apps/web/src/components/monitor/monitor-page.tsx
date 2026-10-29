@@ -494,6 +494,7 @@ export function MonitorPage({
             <>
               <AudienceGlance
                 project={scopeProject}
+                withVisitors={!board.kpis.some((k) => k.id === "audience")}
                 onOpen={(section) =>
                   onSelect({
                     view: "audience",

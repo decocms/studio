@@ -1,38 +1,15 @@
 /**
- * The two terminals the review sweeper owns, kept as pure predicates so they're
+ * A terminal the review sweeper owns, kept as a pure predicate so it's
  * unit-testable without a running sweep. The reviewer hand-off gate itself
  * (`prReadyForReview`) lives in `pr-ready-for-review.test.ts` — reviewers now
  * dispatch without waiting on CI, so check status is not part of this contract.
  */
 
 import { describe, expect, it } from "bun:test";
-import { TaskQuotaError } from "@/billing/task-quota";
-import { isPermanentDispatchFailure, noPrHandoffDue } from "./review-sweeper";
+import { noPrHandoffDue } from "./review-sweeper";
 
 /**
- * The retry re-arm keeps `attempts` untouched, on purpose: a dispatch that
- * failed on infrastructure deserves the same recovery as the run it was going
- * to start. That makes the classification load-bearing — a failure that can
- * never clear would be re-armed forever, which is what a quota rejection did.
- */
-describe("isPermanentDispatchFailure", () => {
-  it("a quota rejection can never clear on a later tick", () => {
-    for (const reason of ["runs_exhausted", "trial_exhausted"] as const) {
-      expect(isPermanentDispatchFailure(new TaskQuotaError(reason))).toBe(true);
-    }
-  });
-
-  it("anything else is a blip worth re-arming for", () => {
-    expect(isPermanentDispatchFailure(new Error("connection reset"))).toBe(
-      false,
-    );
-    expect(isPermanentDispatchFailure("no model configured")).toBe(false);
-    expect(isPermanentDispatchFailure(undefined)).toBe(false);
-  });
-});
-
-/**
- * The other terminal the sweeper owns: a card parked In Review with no PR. No
+ * A card parked In Review with no PR. No
  * reviewer is ever dispatched at it, so without a handover it is swept forever
  * and reads like a card whose reviewers are still thinking.
  */

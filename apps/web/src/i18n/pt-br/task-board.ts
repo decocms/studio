@@ -61,6 +61,8 @@ export const taskBoard = {
   "taskBoard.taskBoard.needsInput": "Precisa de entrada",
   "taskBoard.taskBoard.needsYou": "Precisa de você",
   "taskBoard.taskBoard.changeStatusLabel": "Mudar status (atual: {status})",
+  "taskBoard.taskBoard.renameTaskLabel": "Título da tarefa",
+  "taskBoard.taskBoard.editTagsLabel": "Editar tags",
   "taskBoard.taskBoard.agentsRunningOne": "1 agente rodando agora",
   "taskBoard.taskBoard.agentsRunningMany": "{count} agentes rodando agora",
   "taskBoard.taskBoard.agentsRunningHeading": "Rodando agora",
@@ -405,28 +407,6 @@ export const taskBoard = {
     "O Super Agent vai iniciar uma nova execução em cada uma das {count} tarefas selecionadas. Qualquer execução ainda aberta nelas será interrompida.",
   "taskBoard.rerun.cancel": "Cancelar",
   "taskBoard.rerun.confirm": "Executar de novo",
-  "taskBoard.subscriptionPaywall.trialTitle":
-    "Assine para continuar com o auto-fix",
-  "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
-    "Deco Score sempre atualizado, detectando novos problemas automaticamente",
-  "taskBoard.subscriptionPaywall.trialBenefitAutoFix":
-    "O agente corrige o que encontra e abre um pull request para sua revisão",
-  "taskBoard.subscriptionPaywall.trialBenefitRuns":
-    "10 execuções de auto tasks por ciclo de cobrança",
-  "taskBoard.subscriptionPaywall.trialPrice": "R$ 250",
-  "taskBoard.subscriptionPaywall.trialPricePeriod": "/mês",
-  "taskBoard.subscriptionPaywall.previewAlt": "Prévia do seu quadro de tarefas",
-  "taskBoard.subscriptionPaywall.monthlyTitle": "Cota de auto tasks esgotada",
-  "taskBoard.subscriptionPaywall.monthlyDescription":
-    "Esta organização usou suas execuções de auto tasks deste ciclo de cobrança. Mais execuções ficam disponíveis no início do próximo ciclo.",
-  "taskBoard.subscriptionPaywall.runsTitle": "Esta tarefa atingiu o limite",
-  "taskBoard.subscriptionPaywall.runsDescription":
-    "Esta tarefa já foi re-executada o máximo de vezes permitido. Crie uma nova tarefa para continuar.",
-  "taskBoard.subscriptionPaywall.subscribeButton": "Assinar",
-  "taskBoard.subscriptionPaywall.notNowButton": "Agora não",
-  "taskBoard.subscriptionPaywall.dismissButton": "Fechar",
-  "taskBoard.subscriptionPaywall.checkoutError":
-    "Não foi possível iniciar o checkout: {message}",
   "taskBoard.config.typeBug": "Bug",
   "taskBoard.config.typeChore": "Manutenção",
   "taskBoard.config.typeFeature": "Funcionalidade",

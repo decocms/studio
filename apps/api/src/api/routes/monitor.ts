@@ -63,6 +63,10 @@ import {
 } from "../../deco-legacy/onedollarstats";
 import { readAudience } from "./monitor-audience";
 import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
+import { readAnalyticsRegistration } from "@/analytics/registration";
+import { isCustomerLakeConfigured } from "@/customer-lake/client";
+import { loadDecoAudience } from "@/monitoring/deco-audience";
+import { isTimezone } from "@/monitoring/timezone";
 
 function isAudienceView(value: string): value is AudienceView {
   return (AUDIENCE_VIEWS as readonly string[]).includes(value);
@@ -703,6 +707,32 @@ const OD_REPORTS: Record<
   },
 };
 
+interface OdResult {
+  dimensions: string[];
+  metrics: number[];
+}
+
+/** The window of equal length just before `since`, for trend deltas and the
+ *  Compare overlay. Windows are inclusive, so it ends the day BEFORE `since`
+ *  (ending at `since` would overlap the current period by one day). */
+function previousWindow(since: string, days: number): [string, string] {
+  const sinceMs = Date.parse(`${since}T00:00:00Z`);
+  const dayMs = 86400000;
+  return [
+    toIsoDate(new Date(sinceMs - days * dayMs)),
+    toIsoDate(new Date(sinceMs - dayMs)),
+  ];
+}
+
+/** KPIs always compare (the ↓/↑ deltas); timeseries only when the user turned
+ *  Compare on (the previous-period overlay). */
+function wantsPrevious(c: Context, report: string): boolean {
+  return (
+    report === "kpis" ||
+    (report === "timeseries" && c.req.query("compare") === "1")
+  );
+}
+
 /** The site's hostnames as OneDollarStats indexes them (`www.` variant), busiest
  *  first — the values the audience host picker offers and the site_id queries
  *  run against. From the warehouse domain set (no Supabase). Deduped, so two
@@ -1069,20 +1099,10 @@ export const createMonitorRoutes = () => {
       // the cards can show trend deltas (the ↓/↑ % the old admin shows).
       const results = await runOd([since, until]);
       let previous: PlausibleRows | undefined;
-      // KPIs always compare (the ↓/↑ deltas); timeseries only when the user
-      // turned Compare on (the previous-period overlay).
-      const wantsPrevious =
-        report === "kpis" ||
-        (report === "timeseries" && c.req.query("compare") === "1");
-      if (wantsPrevious) {
-        const sinceMs = Date.parse(`${since}T00:00:00Z`);
-        const dayMs = 86400000;
-        // Windows are inclusive, so the previous period must END the day BEFORE
-        // `since` (leaving prevUntil at `since` would overlap the current period
-        // by one day) while keeping its length equal to the current window.
-        const prevUntil = toIsoDate(new Date(sinceMs - dayMs));
-        const prevSince = toIsoDate(new Date(sinceMs - window.days * dayMs));
-        previous = await runOd([prevSince, prevUntil]).catch(() => undefined);
+      if (wantsPrevious(c, report)) {
+        previous = await runOd(previousWindow(since, window.days)).catch(
+          () => undefined,
+        );
       }
       return c.json({
         available: true,
@@ -1099,6 +1119,69 @@ export const createMonitorRoutes = () => {
         err,
       );
       return c.json({ error: "Failed to reach OneDollarStats" }, 502);
+    }
+  });
+
+  // GET /api/:org/monitor/:site/deco?report=&range=&tz= — the same audience
+  // reports from the site's Deco Analytics, read from the org's customer lake,
+  // so the dashboard offers it next to OneDollarStats. No filters or host:
+  // each breakdown is its own aggregate, and a registration covers all the
+  // site's domains.
+  app.get("/:site/deco", async (c) => {
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+    if (!isCustomerLakeConfigured()) return c.json({ available: false });
+
+    const report = c.req.query("report") ?? "kpis";
+    if (!OD_REPORTS[report]) {
+      return c.json({ error: `unknown report: ${report}` }, 400);
+    }
+    const range = c.req.query("range") ?? "7d";
+    const window = resolveWindow(
+      range,
+      c.req.query("since"),
+      c.req.query("until"),
+    );
+    if (!window) {
+      return c.json({ error: `unknown range: ${range}` }, 400);
+    }
+    const tz = c.req.query("tz") ?? "UTC";
+    if (!isTimezone(tz)) return c.json({ error: "unknown tz" }, 400);
+
+    const registration = await readAnalyticsRegistration(guard.slug);
+    if (registration.status === "error") {
+      return c.json({ error: "Failed to resolve analytics registration" }, 502);
+    }
+    if (registration.status === "unregistered") {
+      return c.json({ available: false });
+    }
+
+    const organizationId = requireOrganization(c.get("studioContext")).id;
+    const read = (w: { since: string; until: string }) =>
+      loadDecoAudience(
+        organizationId,
+        registration.id,
+        report,
+        { ...w, granularity: window.granularity },
+        tz,
+      );
+    try {
+      const results = await read(window);
+      let previous: OdResult[] | undefined;
+      if (wantsPrevious(c, report)) {
+        const [since, until] = previousWindow(window.since, window.days);
+        previous = await read({ since, until }).catch(() => undefined);
+      }
+      return c.json({
+        available: true,
+        report,
+        range,
+        results,
+        ...(previous ? { previous } : {}),
+      });
+    } catch (err) {
+      console.error(`[monitor] deco ${report} failed for ${guard.slug}:`, err);
+      return c.json({ error: "Failed to read Deco Analytics" }, 502);
     }
   });
 

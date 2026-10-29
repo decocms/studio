@@ -140,7 +140,6 @@ export async function runAutomationOnJira(
       instruction:
         automationInstruction(automation.messages) || DEFAULT_JIRA_INSTRUCTION,
       actorId,
-      userInitiated: target.manual !== undefined,
       automation: {
         name: automation.name,
         agentId: automation.virtual_mcp_id,
@@ -167,7 +166,6 @@ function batchTitle(keys: readonly string[]): string {
 interface JiraDispatch {
   instruction: string;
   actorId: string;
-  userInitiated: boolean;
   pr?: ContinuedPullRequest;
   /** The issues the run may act on, and what its message opens with. */
   issueKeys: string[];
@@ -201,7 +199,6 @@ async function dispatchJiraRun(
       instruction: opts.instruction,
       // The anchor sits In Progress, but its rule is the automation's, not a lane's.
       column: null,
-      ...(opts.userInitiated ? { userInitiated: true } : {}),
       ...(opts.pr ? { pr: opts.pr } : {}),
       source: {
         kind: "jira",

@@ -11,7 +11,6 @@
  * "already nudged" marker of its own.
  */
 
-import { taskRunMetadata } from "@/billing/subsidized-runs";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import {
   assertAiBudget,
@@ -118,7 +117,7 @@ export async function nudgeThreadTurn(
         ...(thread.branch ? { branch: thread.branch } : {}),
         taskId: thread.id,
         runMetadata: {
-          ...taskRunMetadata(item),
+          taskBoardItemId: item.id,
           ...(opts.runClass ? { [RUN_CLASS_METADATA_KEY]: opts.runClass } : {}),
         },
       },

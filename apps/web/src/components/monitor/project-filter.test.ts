@@ -7,6 +7,7 @@ const project = (id: string) => ({
   icon: null,
   site: id,
   analyticsSite: id,
+  repository: null,
 });
 
 describe("monitorScope", () => {

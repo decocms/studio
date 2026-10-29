@@ -54,7 +54,8 @@ import { useProjectContext } from "@/sdk";
 import { TopbarSelect } from "./topbar-select";
 import type { SiteProject } from "./org-insights";
 import { weightedMean } from "./aggregate";
-import { Spread, Trend } from "./parts";
+import { AnalyticsGuide, AnalyticsPreview, Locked } from "./locked";
+import { connectLink, Spread, Trend } from "./parts";
 import {
   analyticsSections,
   ConfigureButton,
@@ -918,11 +919,14 @@ function OrgAudience({
     return (
       <>
         {action}
-        <EmptyState
-          icon={<BarChart10 size={20} />}
-          title={t("monitor.audience.empty.title")}
-          description={t("monitor.audience.org.emptyDesc")}
-        />
+        <Locked
+          kind="analytics"
+          title={t("monitor.locked.analytics.title")}
+          guide={<AnalyticsGuide projects={projects} />}
+          link={connectLink(org.slug, null)}
+        >
+          <AnalyticsPreview />
+        </Locked>
       </>
     );
   }
@@ -1167,9 +1171,12 @@ export function AudienceScreen({
  */
 export function AudienceGlance({
   project,
+  withVisitors,
   onOpen,
 }: {
   project: SiteProject;
+  /** Off when the board already charts today's visitors. */
+  withVisitors: boolean;
   /** Opens the Analytics tab, on a section when given. */
   onOpen: (section?: string) => void;
 }) {
@@ -1181,18 +1188,20 @@ export function AudienceGlance({
   const { summary, previous } = body.data;
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(0,1fr))]">
-      <MetricCard
-        title={t("monitor.audience.glance.visitors")}
-        value={formatNumber(summary.visitors)}
-        caption={
-          <Trend
-            change={delta(summary.visitors, previous?.visitors)}
-            better="up"
-            reference=""
-          />
-        }
-        onClick={() => onOpen()}
-      />
+      {withVisitors && (
+        <MetricCard
+          title={t("monitor.audience.glance.visitors")}
+          value={formatNumber(summary.visitors)}
+          caption={
+            <Trend
+              change={delta(summary.visitors, previous?.visitors)}
+              better="up"
+              reference=""
+            />
+          }
+          onClick={() => onOpen()}
+        />
+      )}
       <MetricCard
         title={t("monitor.audience.glance.pageviews")}
         value={formatNumber(summary.pageviews)}

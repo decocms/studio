@@ -7,6 +7,7 @@
  *   GET /stores                          → each store's verdict per rule
  *   GET /stores/:connectionId/day?at=    → the chart's day, read from the lake
  *   GET /stores/:connectionId/pushes?at=&virtualMcpId= → push markers per repo
+ *   GET /traffic?at=&tz=&site=           → the sites' visitors (Deco Analytics), from the lake
  *
  * `:connectionId` must be an active ingest install of the org in the path; the
  * lake read runs as that org's own user regardless.
@@ -22,10 +23,13 @@ import type { Context } from "hono";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { StudioContext } from "@/core/studio-context";
 import { isAuthenticated, requireOrganization } from "@/core/studio-context";
+import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadStoreInfo } from "@/monitoring/order-incidents";
 import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
+import { loadSiteTraffic } from "@/monitoring/site-traffic";
+import { isTimezone } from "@/monitoring/timezone";
 import { buildDayView, RULES, type Rule } from "@/monitoring/order-rules";
 import { getSettings } from "@/settings";
 import { OrderMonitorStorage } from "@/storage/order-monitor";
@@ -151,6 +155,44 @@ export const createOrderMonitorRoutes = () => {
     } catch (err) {
       console.error("[order-monitor] day read failed", {
         connectionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return c.json({ error: "Failed to read the data lake" }, 502);
+    }
+  });
+
+  // `site`: one of the org's site slugs; absent = every site the org linked.
+  app.get("/traffic", async (c) => {
+    const g = await gate(c);
+    if (g instanceof Response) return g;
+    if (!isCustomerLakeConfigured()) return c.json({ traffic: null });
+    const at = parseAt(c.req.query("at"));
+    if (!at) return c.json({ error: "at must be an ISO timestamp" }, 400);
+    const tz = c.req.query("tz") ?? "UTC";
+    if (!isTimezone(tz)) return c.json({ error: "unknown tz" }, 400);
+    const site = c.req.query("site")?.toLowerCase();
+    let siteId = "";
+    if (site) {
+      if (!(await g.ctx.storage.orgSites.isOwnedBy(site, g.organizationId))) {
+        return c.json({ error: "Site not found in organization" }, 404);
+      }
+      const registration = await readAnalyticsRegistration(site);
+      if (registration.status === "error") {
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+      if (registration.status === "unregistered")
+        return c.json({ traffic: null });
+      siteId = registration.id;
+    }
+    try {
+      return c.json({
+        traffic: await loadSiteTraffic(g.organizationId, at, tz, siteId),
+      });
+    } catch (err) {
+      console.error("[order-monitor] traffic read failed", {
         error: err instanceof Error ? err.message : String(err),
       });
       return c.json({ error: "Failed to read the data lake" }, 502);

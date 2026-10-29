@@ -185,8 +185,8 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
     });
     emitTaskBoardUpdated(organization.id, item);
 
-    /** Linked BEFORE dispatch: a dispatch that throws (quota) still leaves the
-     *  card findable, and a retry then reuses it rather than forking a second. */
+    /** Linked BEFORE dispatch: a dispatch that throws still leaves the card
+     *  findable, and a retry then reuses it rather than forking a second. */
     await ctx.storage.experiments.linkTaskBoardItem(
       organization.id,
       input.site,
@@ -194,10 +194,7 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
       item.id,
     );
 
-    // Not best-effort: a swallowed `TaskQuotaError` here would leave the
-    // operator thinking implementation started when billing blocked it —
-    // same contract as the task-board rerun tool.
-    await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+    await reactToSuperAgentDelegation(ctx, item);
 
     return {
       taskBoardItemId: item.id,

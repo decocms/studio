@@ -783,6 +783,14 @@ export const KEYS = {
   // Monitor → Analytics: the filter builder's suggestions for one dimension.
   analyticsValues: (org: string, site: string, dim: string, range: string) =>
     ["hosting", org, site, "analytics-values", dim, range] as const,
+  // Deco Analytics → Live map: the renderer bundle, proxied through the BFF at
+  // /api/:org/hosting/:site/analytics/globe.js. A query rather than a loader of
+  // its own because the script is fetched once and then cached for the session
+  // — the same thing `staleTime: Infinity` already expresses everywhere else.
+  // Keyed by site because that is what the BFF authorizes, even though every
+  // site is served the same bytes.
+  analyticsGlobeBundle: (org: string, site: string) =>
+    ["hosting", org, site, "analytics-globe-bundle"] as const,
   // Deco Analytics → Heatmap: one page × device bucket of `view=heatmap`.
   analyticsHeatmap: (
     org: string,
@@ -830,6 +838,8 @@ export const KEYS = {
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>
     ["order-monitor", org, "day", connectionId, at] as const,
+  siteTraffic: (org: string, query: string) =>
+    ["order-monitor", org, "traffic", query] as const,
   orderMonitorPushes: (
     org: string,
     connectionId: string,

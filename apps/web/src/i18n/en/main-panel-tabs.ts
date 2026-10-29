@@ -294,8 +294,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.noArtifacts": "No artifacts for this run.",
   "mainPanelTabs.e2eTab.openArtifact": "Open",
   "mainPanelTabs.e2eTab.viewScreenshot": "View screenshot",
-  "mainPanelTabs.analyticsTab.title": "Analytics",
-  "mainPanelTabs.analyticsTab.subtitle": "Traffic and usage for {site}",
   "mainPanelTabs.analyticsTab.noSiteTitle": "No site linked",
   "mainPanelTabs.analyticsTab.noSiteDescription":
     "This project isn't linked to a hosted site yet.",
@@ -408,42 +406,36 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.map": "Map",
   "mainPanelTabs.analyticsTab.heatmap.clicks": "Clicks",
   "mainPanelTabs.analyticsTab.heatmap.clicksHint": "Where people click",
+  "mainPanelTabs.analyticsTab.heatmap.value": "Revenue",
+  "mainPanelTabs.analyticsTab.heatmap.valueHint":
+    "What each element is worth, not just how often it is clicked",
+  "mainPanelTabs.analyticsTab.heatmap.valueTitle": "Revenue by element",
+  "mainPanelTabs.analyticsTab.heatmap.valueBaseline":
+    "This page: {cvr} of {people} people bought",
+  "mainPanelTabs.analyticsTab.heatmap.valueRowSub":
+    "{conv} of {people} people bought · {cvr}",
+  "mainPanelTabs.analyticsTab.heatmap.valueIndex": "{x}x the page",
+  "mainPanelTabs.analyticsTab.heatmap.valueIndexHint":
+    "Revenue per person who clicked it, against this page's own average. 1x means it performs exactly like the page.",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmall": "Too few people",
+  "mainPanelTabs.analyticsTab.heatmap.valueSmallHint":
+    "Not enough people clicked this yet for its rate to mean anything, so it is left out of the ranking below.",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeaksTitle":
+    "Clicked a lot, sells the least",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeaksAside":
+    "worst value for the space they take",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeakSub":
+    "{people} people clicked, {conv} bought",
+  "mainPanelTabs.analyticsTab.heatmap.valueNone":
+    "No purchases recorded for this page in this period.",
+  "mainPanelTabs.analyticsTab.heatmap.valueOtherGoal":
+    "This site measures a different goal, which these numbers cannot answer. They only count purchases.",
+  "mainPanelTabs.analyticsTab.heatmap.valueCaveat":
+    "Counts the people who clicked an element and bought within {minutes} minutes. One purchase is credited to every element that visit clicked, so this shows association, not cause, and the figures do not add up to a page total.",
   "mainPanelTabs.analyticsTab.heatmap.scroll": "Scroll",
   "mainPanelTabs.analyticsTab.heatmap.scrollHint": "How far people get",
   "mainPanelTabs.analyticsTab.heatmap.attention": "Attention",
   "mainPanelTabs.analyticsTab.heatmap.attentionHint": "Where people spend time",
-  "mainPanelTabs.analyticsTab.heatmap.value": "Revenue",
-  "mainPanelTabs.analyticsTab.heatmap.valueHint":
-    "Where the visitors who bought clicked, from the page's orders within 30 minutes of the view. Sampled and not causal: an element on the way to checkout scores high by being on the path.",
-  "mainPanelTabs.analyticsTab.heatmap.legendLessValue": "less revenue",
-  "mainPanelTabs.analyticsTab.heatmap.legendMoreValue": "more revenue",
-  "mainPanelTabs.analyticsTab.heatmap.statConversion": "Page conversion",
-  "mainPanelTabs.analyticsTab.heatmap.statRevPerVisitor": "Revenue per visitor",
-  "mainPanelTabs.analyticsTab.heatmap.statOrders": "Orders",
-  "mainPanelTabs.analyticsTab.heatmap.statRevenue": "Revenue (sample)",
-  "mainPanelTabs.analyticsTab.heatmap.valueTop": "Elements by revenue",
-  "mainPanelTabs.analyticsTab.heatmap.valueRowSub":
-    "{pct} bought, {index} the page",
-  "mainPanelTabs.analyticsTab.heatmap.valueIndex": "{n}×",
-  "mainPanelTabs.analyticsTab.heatmap.valueSmall": "Few visitors",
-  "mainPanelTabs.analyticsTab.heatmap.valueSmallHint":
-    "Under 30 visitors clicked it, too few to rank by conversion.",
-  "mainPanelTabs.analyticsTab.heatmap.leaksTitle": "Costing revenue",
-  "mainPanelTabs.analyticsTab.heatmap.leaksAside": "vs the page's average",
-  "mainPanelTabs.analyticsTab.heatmap.leakSub":
-    "{n} visitors clicked, converting below the page",
-  "mainPanelTabs.analyticsTab.heatmap.afterTitle": "After the click",
-  "mainPanelTabs.analyticsTab.heatmap.afterPage": "Page",
-  "mainPanelTabs.analyticsTab.heatmap.afterElement": "Clicked it",
-  "mainPanelTabs.analyticsTab.heatmap.afterViewed": "Viewed a product",
-  "mainPanelTabs.analyticsTab.heatmap.afterCarted": "Added to cart",
-  "mainPanelTabs.analyticsTab.heatmap.afterCheckout": "Checkout",
-  "mainPanelTabs.analyticsTab.heatmap.afterBought": "Bought",
-  "mainPanelTabs.analyticsTab.heatmap.tipRevenue": "Revenue",
-  "mainPanelTabs.analyticsTab.heatmap.tipConversion": "Bought",
-  "mainPanelTabs.analyticsTab.heatmap.tipIndex": "vs the page",
-  "mainPanelTabs.analyticsTab.heatmap.valueNone":
-    "No element was followed by an order in this period.",
   "mainPanelTabs.analyticsTab.heatmap.sections": "Sections",
   "mainPanelTabs.analyticsTab.heatmap.sectionsHint":
     "Each section of the page with its numbers",
@@ -509,6 +501,24 @@ export const mainPanelTabs = {
     "See the most clicked elements",
   "mainPanelTabs.analyticsTab.heatmap.showReach": "See the scroll reach",
   "mainPanelTabs.analyticsTab.heatmap.showSections": "See the sections",
+  "mainPanelTabs.analyticsTab.heatmap.rankBy": "Rank by",
+  "mainPanelTabs.analyticsTab.heatmap.rankClicks": "Clicks",
+  "mainPanelTabs.analyticsTab.heatmap.rankCtr": "CTR",
+  "mainPanelTabs.analyticsTab.heatmap.topCtr": "Highest click rate",
+  "mainPanelTabs.analyticsTab.heatmap.ctrHint":
+    "Click rate: of the visits in which the section came on screen, how many clicked this element.",
+  "mainPanelTabs.analyticsTab.heatmap.ctrSub": "CTR {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.ctrSeen": "{n} saw the section",
+  "mainPanelTabs.analyticsTab.heatmap.ctrMinNote":
+    "Only elements in sections seen in {n}+ visits.",
+  "mainPanelTabs.analyticsTab.heatmap.funnelTitle": "After the click",
+  "mainPanelTabs.analyticsTab.heatmap.funnelPage": "Whole page",
+  "mainPanelTabs.analyticsTab.heatmap.funnelPeople": "{n} people",
+  "mainPanelTabs.analyticsTab.heatmap.funnelVsPage": "page {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_viewed": "Viewed a product",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_carted": "Added to cart",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_checkout": "Began checkout",
+  "mainPanelTabs.analyticsTab.heatmap.funnel_bought": "Bought",
   "mainPanelTabs.analyticsTab.heatmap.topElements": "Most clicked elements",
   "mainPanelTabs.analyticsTab.heatmap.topOfType": "Most clicks: {type}",
   "mainPanelTabs.analyticsTab.heatmap.nElements": "{n} elements",
@@ -545,6 +555,26 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
   "mainPanelTabs.analyticsTab.moduleHeatmapHint":
     "Clicks, scroll and attention per page",
+  // Live map. The four nouns are the ones the renderer prints inside its own
+  // hover card — it takes them as options rather than owning any English.
+  // Both forms are spelled out rather than derived. English appends an `s`;
+  // Portuguese turns "conversão" into "conversões", and a regex that knows that
+  // is a morphology engine hiding in a UI file — one that the next locale
+  // breaks. A dictionary already has a slot for every form.
+  "mainPanelTabs.analyticsTab.globe.visitor": "visitor",
+  "mainPanelTabs.analyticsTab.globe.visitorPlural": "visitors",
+  "mainPanelTabs.analyticsTab.globe.cart": "cart",
+  "mainPanelTabs.analyticsTab.globe.cartPlural": "carts",
+  "mainPanelTabs.analyticsTab.globe.conversion": "conversion",
+  "mainPanelTabs.analyticsTab.globe.conversionPlural": "conversions",
+  "mainPanelTabs.analyticsTab.globe.countryLevel":
+    "country level: no city coordinate",
+  "mainPanelTabs.analyticsTab.globe.caption":
+    "{places} places on the map · {approximate} at country level · {unplaced} not located",
+  "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globe",
+  "mainPanelTabs.analyticsTab.globe.modeMap": "Map",
+  "mainPanelTabs.analyticsTab.globe.loadError":
+    "Couldn't load the map renderer. The numbers above are still live.",
   "mainPanelTabs.analyticsTab.viewQuality": "Data quality",
   "mainPanelTabs.analyticsTab.viewUsage": "Usage & limits",
   "mainPanelTabs.analyticsTab.cardTopSources": "Top sources",
@@ -576,6 +606,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.copy": "Copy",
   "mainPanelTabs.analyticsTab.copied": "Copied",
   "mainPanelTabs.analyticsTab.dismiss": "Dismiss",
+  "mainPanelTabs.analyticsTab.errorsKinds": "{n} kinds of error",
+  "mainPanelTabs.analyticsTab.errorsNoMessage": "(no message)",
+  "mainPanelTabs.analyticsTab.errorsVisitor": "{n} visitor",
+  "mainPanelTabs.analyticsTab.errorsVisitors": "{n} visitors",
+  "mainPanelTabs.analyticsTab.errorsStack": "Stack trace",
   "mainPanelTabs.analyticsTab.liveHint": "Live · refreshes every 5s",
   "mainPanelTabs.analyticsTab.installHow":
     "The collector loads async and never blocks the page. A site is identified either by its host (billable) or by a public token (for sites off our CDN).",
@@ -589,6 +624,81 @@ export const mainPanelTabs = {
     "No visitors in the last few minutes.",
   "mainPanelTabs.analyticsTab.emptyView":
     "Nothing collected for this range yet.",
+  "mainPanelTabs.analyticsTab.metricVisitors": "Visitors",
+  "mainPanelTabs.analyticsTab.metricPageviews": "Pageviews",
+  "mainPanelTabs.analyticsTab.metricSessions": "Sessions",
+  "mainPanelTabs.analyticsTab.metricBounce": "Bounce rate",
+  "mainPanelTabs.analyticsTab.metricDuration": "Avg. duration",
+  "mainPanelTabs.analyticsTab.metricEvents": "Events",
+  "mainPanelTabs.analyticsTab.metricLastEvent": "Last event",
+  "mainPanelTabs.analyticsTab.seriesTitle": "{metric} over time",
+  "mainPanelTabs.analyticsTab.pointsSuffix": " pts",
+  "mainPanelTabs.analyticsTab.vsPrevious": "vs previous period",
+  "mainPanelTabs.analyticsTab.prevCoverage":
+    "Previous period {percent}% collected: grey changes are approximate",
+  "mainPanelTabs.analyticsTab.visitorDays":
+    "Visitor-days: identity resets daily",
+  "mainPanelTabs.analyticsTab.partialHint":
+    "Dashed: interval still in progress",
+  "mainPanelTabs.analyticsTab.funnelViewed": "Viewed a page",
+  "mainPanelTabs.analyticsTab.funnelViewItem": "Viewed an item",
+  "mainPanelTabs.analyticsTab.funnelViewList": "Viewed a list",
+  "mainPanelTabs.analyticsTab.funnelSelectItem": "Selected an item",
+  "mainPanelTabs.analyticsTab.funnelAddToCart": "Added to cart",
+  "mainPanelTabs.analyticsTab.funnelBeginCheckout": "Began checkout",
+  "mainPanelTabs.analyticsTab.funnelPurchase": "Purchased",
+  "mainPanelTabs.analyticsTab.noCap":
+    "No monthly cap is set: every accepted event is stored. Set one in Configuration to enforce a limit.",
+  "mainPanelTabs.analyticsTab.customEventsTitle":
+    "Send custom events from your code",
+  "mainPanelTabs.analyticsTab.panel.kpis": "Overview",
+  "mainPanelTabs.analyticsTab.panel.series": "Traffic over time",
+  "mainPanelTabs.analyticsTab.panel.funnel": "Funnel",
+  "mainPanelTabs.analyticsTab.panel.sources": "Top sources",
+  "mainPanelTabs.analyticsTab.panel.pages": "Top pages",
+  "mainPanelTabs.analyticsTab.panel.entryPages": "Entry pages",
+  "mainPanelTabs.analyticsTab.panel.exitPages": "Exit pages",
+  "mainPanelTabs.analyticsTab.panel.devices": "Devices",
+  "mainPanelTabs.analyticsTab.panel.os": "Operating systems",
+  "mainPanelTabs.analyticsTab.panel.browser": "Browsers",
+  "mainPanelTabs.analyticsTab.panel.countries": "Countries",
+  "mainPanelTabs.analyticsTab.panel.regions": "Regions",
+  "mainPanelTabs.analyticsTab.panel.cities": "Cities",
+  "mainPanelTabs.analyticsTab.panel.channels": "Channels",
+  "mainPanelTabs.analyticsTab.panel.channelConversion": "Channel conversion",
+  "mainPanelTabs.analyticsTab.panel.campaigns": "Campaigns",
+  "mainPanelTabs.analyticsTab.panel.campaignNames": "Campaign names",
+  "mainPanelTabs.analyticsTab.panel.attribution": "Attribution",
+  "mainPanelTabs.analyticsTab.panel.products": "Top products",
+  "mainPanelTabs.analyticsTab.panel.events": "Events",
+  "mainPanelTabs.analyticsTab.panel.errors": "Errors",
+  "mainPanelTabs.analyticsTab.panel.propKeys": "Property keys",
+  "mainPanelTabs.analyticsTab.panel.propValues": "Property values",
+  "mainPanelTabs.analyticsTab.panel.scrollDepth": "Scroll depth",
+  "mainPanelTabs.analyticsTab.panel.searches": "Site searches",
+  "mainPanelTabs.analyticsTab.panel.outbound": "Outbound links",
+  "mainPanelTabs.analyticsTab.panel.downloads": "Downloads",
+  "mainPanelTabs.analyticsTab.panel.variants": "Experiment variants",
+  "mainPanelTabs.analyticsTab.panel.vitals": "Web vitals",
+  "mainPanelTabs.analyticsTab.panel.vitalsByPage": "Vitals by page",
+  "mainPanelTabs.analyticsTab.panel.vitalsBands": "Vitals bands",
+  "mainPanelTabs.analyticsTab.panel.vitalsByDevice": "Vitals by device",
+  "mainPanelTabs.analyticsTab.panel.vitalsTrend": "LCP over time",
+  "mainPanelTabs.analyticsTab.panel.vitalsByVariant": "Vitals by variant",
+  "mainPanelTabs.analyticsTab.panel.conversionBySpeed": "Conversion by speed",
+  "mainPanelTabs.analyticsTab.panel.quality": "Collector normalizations",
+  "mainPanelTabs.analyticsTab.panel.trust": "Site id source",
+  "mainPanelTabs.analyticsTab.panel.unregisteredEvents": "Unregistered events",
+  "mainPanelTabs.analyticsTab.panel.unregisteredProps":
+    "Unregistered properties",
+  "mainPanelTabs.analyticsTab.panel.propCardinality": "Property cardinality",
+  "mainPanelTabs.analyticsTab.panel.liveVisitors": "Live visitors",
+  "mainPanelTabs.analyticsTab.panel.livePages": "Active pages",
+  "mainPanelTabs.analyticsTab.panel.liveFeed": "Live feed",
+  "mainPanelTabs.analyticsTab.panel.liveByMinute": "Visitors per minute",
+  "mainPanelTabs.analyticsTab.panel.usage": "Usage",
+  "mainPanelTabs.analyticsTab.panel.usageTrend": "Usage over time",
+  "mainPanelTabs.analyticsTab.panel.usageSites": "Usage by site",
   "mainPanelTabs.cdnTab.title": "Monitor",
   "mainPanelTabs.cdnTab.noSiteTitle": "No site linked",
   "mainPanelTabs.cdnTab.noSiteBody":
@@ -678,6 +788,10 @@ export const mainPanelTabs = {
     "Audience analytics unavailable",
   "mainPanelTabs.cdnTab.audienceUnconfiguredBody":
     "The audience source (OneDollarStats) isn't configured for this deployment.",
+  "mainPanelTabs.cdnTab.source_onedollar": "OneDollarStats",
+  "mainPanelTabs.cdnTab.source_deco": "Deco Analytics",
+  "mainPanelTabs.cdnTab.audienceDecoUnconfiguredBody":
+    "This site doesn't send Deco Analytics yet. Install it from Monitor → Analytics.",
   "mainPanelTabs.cdnTab.measureBy": "Measure by",
   "mainPanelTabs.cdnTab.showAll": "View all",
   "mainPanelTabs.cdnTab.showLess": "Show less",

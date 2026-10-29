@@ -23,6 +23,7 @@ import {
   it,
 } from "bun:test";
 import { Hono } from "hono";
+import { briefPath, personalBriefDir } from "@decocms/shared/daily-brief";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
 import type { StudioDatabase } from "../../database";
@@ -362,6 +363,28 @@ describe("org-fs HTTP routes (integration)", () => {
       const admin = as("user_fs_admin");
       expect((await admin.request(homeUrl("read", theirs))).status).toBe(403);
       expect((await putHome(admin, theirs)).status).toBe(403);
+    });
+
+    it("keeps a member's daily brief to that member", async () => {
+      const day = "2026-10-28";
+      const theirBrief = briefPath(personalBriefDir(OTHER), day);
+      const myBrief = briefPath(personalBriefDir(USER), day);
+      expect((await putHome(as(OTHER), theirBrief)).status).toBe(200);
+      expect((await putHome(app, myBrief)).status).toBe(200);
+
+      for (const op of ["list", "read", "stat"]) {
+        const path = op === "list" ? personalBriefDir(OTHER) : theirBrief;
+        expect((await app.request(homeUrl(op, path))).status).toBe(403);
+      }
+      const mine = await (
+        await app.request(homeUrl("list", personalBriefDir(USER)))
+      ).json();
+      expect(mine.entries.map((e: { path: string }) => e.path)).toEqual([
+        myBrief,
+      ]);
+      const read = await app.request(homeUrl("read", myBrief));
+      expect(read.status).toBe(200);
+      expect(await read.text()).toBe("note");
     });
 
     it("refuses to remove the users folder itself", async () => {

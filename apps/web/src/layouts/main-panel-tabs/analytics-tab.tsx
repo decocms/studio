@@ -22,8 +22,9 @@
  * "dashboard unavailable" while configuration still works.
  *
  * IMPORTANT: this tab ships in the open-source Studio. It shows only what a site
- * owner needs — never delivery/caching/billing internals (the BFF strips the
- * read surface's `worker`/`install` internals before they reach here).
+ * owner needs — never delivery/caching/billing internals (the BFF forwards
+ * only the payload keys this tab and the heatmap read; see
+ * `ANALYTICS_PAYLOAD_KEYS` in apps/api hosting.ts).
  */
 
 import { type ReactNode, useState } from "react";
@@ -81,11 +82,14 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { toast } from "sonner";
+import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import { LiveGlobe, type LiveGeoRow } from "./analytics-globe-tab.tsx";
 import { HeatmapView } from "./analytics-heatmap-tab.tsx";
 import { gateViews, pickView } from "./analytics-heatmap-model.ts";
 
@@ -203,6 +207,15 @@ export const RANGE_PILLS = [
   "7d",
   "30d",
 ] as const;
+const RANGE_MS: Record<string, number> = {
+  "5m": 3e5,
+  "15m": 9e5,
+  "30m": 18e5,
+  "1h": 36e5,
+  "24h": 864e5,
+  "7d": 6048e5,
+  "30d": 2592e6,
+};
 
 // Keys in a view payload that are context, not panels — never rendered as data.
 const META_KEYS = new Set([
@@ -219,6 +232,8 @@ const META_KEYS = new Set([
   "propKey",
   "filters",
   "usageExplained",
+  "kpisPrev",
+  "sites",
 ]);
 
 // A column name that reads as a time bucket → the panel is a series.
@@ -366,52 +381,68 @@ function fmtMetric(key: string, value: unknown): string {
     const m = Math.floor(n / 60);
     return m ? `${m}m ${Math.round(n % 60)}s` : `${Math.round(n)}s`;
   }
-  if (/(pct|rate|bounce|ratio)/i.test(key)) return `${Math.round(n)}%`;
+  // Only the columns the read surface computes as 0–100 percentages. A looser
+  // match printed counts like `events_rate_limited` as "0%" and fractions like
+  // `ratio` (0–1) as "0%".
+  if (/(^|_)pct$|^(cr|to_cart|to_buy)$/i.test(key)) return `${Math.round(n)}%`;
   return formatNumber(n);
 }
 
-/** Friendly, product titles for the payload's panel keys — so a breakdown reads
- *  as "Top pages" / "Referrers" rather than the raw column name. Falls back to a
- *  humanized key. */
-const PANEL_TITLES: Record<string, string> = {
-  kpis: "Overview",
-  series: "Traffic over time",
-  funnel: "Funnel",
-  sources: "Top sources",
-  pages: "Top pages",
-  entryPages: "Entry pages",
-  exitPages: "Exit pages",
-  devices: "Devices",
-  os: "Operating systems",
-  browser: "Browsers",
-  countries: "Countries",
-  regions: "Regions",
-  cities: "Cities",
-  channels: "Channels",
-  channelConversion: "Channel conversion",
-  campaigns: "Campaigns",
-  campaignNames: "Campaign names",
-  attribution: "Attribution",
-  products: "Top products",
-  events: "Events",
-  errors: "Errors",
-  propKeys: "Property keys",
-  propValues: "Property values",
-  scrollDepth: "Scroll depth",
-  searches: "Site searches",
-  outbound: "Outbound links",
-  downloads: "Downloads",
-  variants: "Experiment variants",
-  vitals: "Web vitals",
-  vitalsByPage: "Vitals by page",
-  liveVisitors: "Live visitors",
-  livePages: "Active pages",
-  liveFeed: "Live feed",
-  liveByMinute: "Visitors per minute",
-  usage: "Usage",
-  usageTrend: "Usage over time",
-  usageSites: "Usage by site",
-};
+/** Panels with a product title ("Top pages" rather than the raw key), each a
+ *  `mainPanelTabs.analyticsTab.panel.<name>` translation. Anything else falls
+ *  back to a humanized key. */
+const PANEL_NAMES = [
+  "kpis",
+  "series",
+  "funnel",
+  "sources",
+  "pages",
+  "entryPages",
+  "exitPages",
+  "devices",
+  "os",
+  "browser",
+  "countries",
+  "regions",
+  "cities",
+  "channels",
+  "channelConversion",
+  "campaigns",
+  "campaignNames",
+  "attribution",
+  "products",
+  "events",
+  "errors",
+  "propKeys",
+  "propValues",
+  "scrollDepth",
+  "searches",
+  "outbound",
+  "downloads",
+  "variants",
+  "vitals",
+  "vitalsByPage",
+  "vitalsBands",
+  "vitalsByDevice",
+  "vitalsTrend",
+  "vitalsByVariant",
+  "conversionBySpeed",
+  "quality",
+  "trust",
+  "unregisteredEvents",
+  "unregisteredProps",
+  "propCardinality",
+  "liveVisitors",
+  "livePages",
+  "liveFeed",
+  "liveByMinute",
+  "usage",
+  "usageTrend",
+  "usageSites",
+] as const;
+type PanelName = (typeof PANEL_NAMES)[number];
+const isPanelName = (name: string): name is PanelName =>
+  (PANEL_NAMES as readonly string[]).includes(name);
 
 /** Preferred order for the breakdown grid — the most useful first, then the rest
  *  in payload order. */
@@ -433,36 +464,59 @@ const PANEL_ORDER = [
   "errors",
 ];
 
-function panelTitle(name: string): string {
-  return PANEL_TITLES[name] ?? humanize(name);
+function panelTitle(name: string, t: TFunction): string {
+  return isPanelName(name)
+    ? t(`mainPanelTabs.analyticsTab.panel.${name}` as const)
+    : humanize(name);
 }
 
-/** Within-window trend for a metric's series: the recent half vs the earlier
- *  half, as a signed percentage. Null when there isn't enough to compare or the
- *  baseline is zero — a "+∞%" from a zero baseline is noise, not a trend. */
-function trendPct(values: number[]): number | null {
-  if (values.length < 4) return null;
-  const mid = Math.floor(values.length / 2);
-  const older = values.slice(0, mid).reduce((a, b) => a + b, 0);
-  const recent = values.slice(mid).reduce((a, b) => a + b, 0);
-  if (older === 0) return null;
-  return ((recent - older) / older) * 100;
+/** Change against the window of the same length just before this one (the
+ *  read surface's `kpisPrev`). Rates move in points, not percent of themselves.
+ *  Null without a baseline: no previous payload, or a zero to divide by. Never
+ *  the two halves of the current window, which compare night with evening. */
+function changeVsPrev(
+  cur: unknown,
+  prev: unknown,
+  points?: boolean,
+): number | null {
+  if (cur == null || prev == null) return null;
+  const c = Number(cur);
+  const p = Number(prev);
+  if (!Number.isFinite(c) || !Number.isFinite(p)) return null;
+  if (points) return c - p;
+  return p === 0 ? null : ((c - p) / p) * 100;
 }
 
 /** A small up/down trend pill. `goodDown` flips the color for metrics where a
- *  drop is good (bounce rate). */
-function Delta({ pct, goodDown }: { pct: number; goodDown?: boolean }) {
+ *  drop is good (bounce rate); `muted` drops the color when the baseline is
+ *  incomplete, so it does not read as a real gain or loss. */
+function Delta({
+  pct,
+  goodDown,
+  unit = "%",
+  muted,
+}: {
+  pct: number;
+  goodDown?: boolean;
+  unit?: string;
+  muted?: boolean;
+}) {
   const up = pct >= 0;
   const good = goodDown ? !up : up;
   return (
     <span
       className={cn(
         "text-xs font-medium tabular-nums",
-        good ? "text-success" : "text-destructive",
+        muted
+          ? "text-muted-foreground"
+          : good
+            ? "text-success"
+            : "text-destructive",
       )}
     >
       {up ? "↑" : "↓"}
-      {Math.abs(Math.round(pct))}%
+      {Math.abs(Math.round(pct))}
+      {unit}
     </span>
   );
 }
@@ -506,90 +560,188 @@ function formatAxisValue(value: number): string {
  *  monitor's KPIChart: `--chart-N` accents, gradient fills, dashed horizontal
  *  grid, a right-hand y-axis, muted 11px ticks, and a legend when there's more
  *  than one metric. */
+/** The warehouse answers bucket times as UTC strings (`YYYY-MM-DD hh:mm:ss`, or
+ *  `YYYY-MM-DD` for a day bucket). NaN for anything that is not a time. */
+function utcMs(t: unknown): number {
+  const s = String(t ?? "");
+  return Date.parse(
+    s.replace(" ", "T") + (s.length === 10 ? "T00:00:00Z" : "Z"),
+  );
+}
+
+/** A bucket in the viewer's own time zone: the raw strings are UTC, which put
+ *  "02:15" on the axis for a reader in Brazil at 23:15. */
+function bucketLabel(t: unknown): string {
+  const ms = utcMs(t);
+  if (!Number.isFinite(ms)) return String(t ?? "");
+  const s = String(t);
+  if (s.length === 10) {
+    return new Date(ms).toLocaleDateString(undefined, {
+      day: "2-digit",
+      month: "2-digit",
+    });
+  }
+  return new Date(ms).toLocaleString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(s.endsWith(":00") ? {} : { second: "2-digit" }),
+  });
+}
+
 function AreaTrend({
   rows,
   timeKey,
   metricKeys,
+  labels,
+  rangeMs,
+  asOf,
 }: {
   rows: Array<Record<string, unknown>>;
   timeKey: string;
   metricKeys: string[];
+  /** Translated series names; falls back to a humanized key. */
+  labels?: Record<string, string>;
+  /** The selected window, to tell a first bucket that starts before it. */
+  rangeMs?: number;
+  /** When the rows were read; without it no bucket is marked partial. */
+  asOf?: number;
 }) {
+  const t = useT();
   const keys = metricKeys.filter(Boolean).slice(0, 4);
   const colors = keys.map((_, i) => `var(--chart-${(i % 5) + 1})`);
-  const data = rows.map((r) => {
-    const o: Record<string, unknown> = { label: String(r[timeKey] ?? "") };
-    for (const k of keys) o[k] = Number(r[k]) || 0;
+  // The window opens mid-bucket and the last bucket is still filling, so both
+  // edges hold part of a bucket. Drawn solid, the last one reads as a collapse
+  // at "now"; dashed, it reads as "not finished".
+  const ms = rows.map((r) => utcMs(r[timeKey]));
+  const step = Math.min(...ms.slice(1).map((m, i) => m - (ms[i] ?? 0)));
+  const now = asOf ?? 0;
+  const last = rows.length - 1;
+  const partial = (i: number) =>
+    now > 0 &&
+    Number.isFinite(step) &&
+    step > 0 &&
+    ((i === last && (ms[i] ?? 0) + step > now) ||
+      (i === 0 && rangeMs !== undefined && (ms[0] ?? 0) < now - rangeMs));
+  const dashed = (i: number) =>
+    partial(i) || (i < last && partial(i + 1)) || (i > 0 && partial(i - 1));
+  const anyPartial = rows.some((_, i) => partial(i));
+  const data = rows.map((r, i) => {
+    const o: Record<string, unknown> = { label: bucketLabel(r[timeKey]) };
+    for (const k of keys) {
+      const v = Number(r[k]) || 0;
+      o[k] = partial(i) ? null : v;
+      if (dashed(i)) o[`${k}__partial`] = v;
+    }
     return o;
   });
   const config = Object.fromEntries(
-    keys.map((k, i) => [k, { label: humanize(k), color: colors[i] }]),
+    keys.flatMap((k, i) => {
+      const label = labels?.[k] ?? humanize(k);
+      return [
+        [k, { label, color: colors[i] }],
+        [`${k}__partial`, { label, color: colors[i] }],
+      ];
+    }),
   );
   return (
-    <ChartContainer config={config} className="h-64 w-full">
-      <AreaChart data={data} margin={{ top: 8, right: -8, bottom: 8, left: 0 }}>
-        <defs>
-          {keys.map((k, i) => (
-            <linearGradient
-              key={k}
-              id={`dq-grad-${k}`}
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="1"
-            >
-              <stop offset="0%" stopColor={colors[i]} stopOpacity={0.2} />
-              <stop offset="100%" stopColor={colors[i]} stopOpacity={0} />
-            </linearGradient>
-          ))}
-        </defs>
-        <CartesianGrid
-          strokeDasharray="4 4"
-          stroke="var(--border)"
-          strokeOpacity={0.5}
-          vertical={false}
-        />
-        <XAxis
-          dataKey="label"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 11, fill: "var(--muted-foreground)", opacity: 0.7 }}
-          tickMargin={8}
-          minTickGap={40}
-          interval="preserveStartEnd"
-          tickFormatter={(v: string) => v.replace("T", " ").slice(5, 16)}
-        />
-        <YAxis
-          orientation="right"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 11, fill: "var(--muted-foreground)", opacity: 0.7 }}
-          tickFormatter={formatAxisValue}
-          width={40}
-          tickCount={5}
-        />
-        <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
-        {keys.map((k, i) => (
-          <Area
-            key={k}
-            type="linear"
-            dataKey={k}
-            stroke={colors[i]}
-            strokeWidth={2}
-            fill={`url(#dq-grad-${k})`}
-            dot={false}
-            activeDot={{
-              r: 4,
-              fill: colors[i],
-              stroke: "var(--background)",
-              strokeWidth: 2,
-            }}
-            animationDuration={300}
+    <div className="flex flex-col gap-2">
+      <ChartContainer config={config} className="h-64 w-full">
+        <AreaChart
+          data={data}
+          margin={{ top: 8, right: -8, bottom: 8, left: 0 }}
+        >
+          <defs>
+            {keys.map((k, i) => (
+              <linearGradient
+                key={k}
+                id={`dq-grad-${k}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop offset="0%" stopColor={colors[i]} stopOpacity={0.2} />
+                <stop offset="100%" stopColor={colors[i]} stopOpacity={0} />
+              </linearGradient>
+            ))}
+          </defs>
+          <CartesianGrid
+            strokeDasharray="4 4"
+            stroke="var(--border)"
+            strokeOpacity={0.5}
+            vertical={false}
           />
-        ))}
-        {keys.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
-      </AreaChart>
-    </ChartContainer>
+          <XAxis
+            dataKey="label"
+            axisLine={false}
+            tickLine={false}
+            tick={{
+              fontSize: 11,
+              fill: "var(--muted-foreground)",
+              opacity: 0.7,
+            }}
+            tickMargin={8}
+            minTickGap={40}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            orientation="right"
+            axisLine={false}
+            tickLine={false}
+            tick={{
+              fontSize: 11,
+              fill: "var(--muted-foreground)",
+              opacity: 0.7,
+            }}
+            tickFormatter={formatAxisValue}
+            width={40}
+            tickCount={5}
+          />
+          <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
+          {keys.map((k, i) => (
+            <Area
+              key={k}
+              type="linear"
+              dataKey={k}
+              stroke={colors[i]}
+              strokeWidth={2}
+              fill={`url(#dq-grad-${k})`}
+              dot={false}
+              activeDot={{
+                r: 4,
+                fill: colors[i],
+                stroke: "var(--background)",
+                strokeWidth: 2,
+              }}
+              animationDuration={300}
+            />
+          ))}
+          {anyPartial &&
+            keys.map((k, i) => (
+              <Area
+                key={`${k}__partial`}
+                type="linear"
+                dataKey={`${k}__partial`}
+                stroke={colors[i]}
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                fill="none"
+                dot={false}
+                legendType="none"
+                isAnimationActive={false}
+              />
+            ))}
+          {keys.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
+        </AreaChart>
+      </ChartContainer>
+      {anyPartial && (
+        <p className="text-2xs text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.partialHint")}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -612,10 +764,12 @@ function BarList({
     rows.reduce((sum, r) => sum + (Number(r[valueKey]) || 0), 0) || 1;
   return (
     <div className="flex flex-col">
-      <div className="flex items-center justify-between px-2.5 pb-2 text-2xs font-medium text-muted-foreground">
-        <span>{humanize(labelKey)}</span>
-        <span>{humanize(valueKey)}</span>
-      </div>
+      {labelKey !== "k" && (
+        <div className="flex items-center justify-between px-2.5 pb-2 text-2xs font-medium text-muted-foreground">
+          <span>{humanize(labelKey)}</span>
+          <span>{humanize(valueKey)}</span>
+        </div>
+      )}
       <div className="flex flex-col gap-0.5">
         {top.map((r, i) => {
           const v = Number(r[valueKey]) || 0;
@@ -648,14 +802,15 @@ function BarList({
 /** The commerce funnel: steps as bars scaled to the first step, each labelled
  *  with its conversion off the top. */
 function Funnel({ row }: { row: Record<string, unknown> }) {
+  const t = useT();
   const order = [
-    ["viewed", "Viewed"],
-    ["view_item", "View item"],
-    ["view_item_list", "View list"],
-    ["select_item", "Select item"],
-    ["add_to_cart", "Add to cart"],
-    ["begin_checkout", "Begin checkout"],
-    ["purchase", "Purchase"],
+    ["viewed", "mainPanelTabs.analyticsTab.funnelViewed"],
+    ["view_item", "mainPanelTabs.analyticsTab.funnelViewItem"],
+    ["view_item_list", "mainPanelTabs.analyticsTab.funnelViewList"],
+    ["select_item", "mainPanelTabs.analyticsTab.funnelSelectItem"],
+    ["add_to_cart", "mainPanelTabs.analyticsTab.funnelAddToCart"],
+    ["begin_checkout", "mainPanelTabs.analyticsTab.funnelBeginCheckout"],
+    ["purchase", "mainPanelTabs.analyticsTab.funnelPurchase"],
   ] as const;
   const steps = order.filter(([k]) => k in row);
   const base = Number(row[steps[0]?.[0] ?? ""]) || 1;
@@ -673,7 +828,7 @@ function Funnel({ row }: { row: Record<string, unknown> }) {
               style={{ width: `${(v / base) * 100}%` }}
             />
             <span className="relative z-10 text-sm text-foreground">
-              {label}
+              {t(label)}
             </span>
             <span className="relative z-10 shrink-0 text-sm tabular-nums text-muted-foreground">
               {formatNumber(v)}
@@ -816,9 +971,11 @@ function classifyPanel(rows: Array<Record<string, unknown>>): {
 function PanelBody({
   rows,
   meta,
+  asOf,
 }: {
   rows: Array<Record<string, unknown>>;
   meta: NonNullable<ReturnType<typeof classifyPanel>>;
+  asOf?: number;
 }) {
   const first = rows[0] ?? {};
   switch (meta.kind) {
@@ -832,6 +989,7 @@ function PanelBody({
           rows={rows}
           timeKey={meta.timeKey ?? ""}
           metricKeys={meta.metricKeys ?? []}
+          asOf={asOf}
         />
       );
     case "bars":
@@ -854,9 +1012,11 @@ function PanelBody({
 function ViewPanels({
   payload,
   t,
+  asOf,
 }: {
   payload: Record<string, unknown>;
   t: TFunction;
+  asOf?: number;
 }) {
   const classified = (
     Object.entries(payload).filter(
@@ -894,15 +1054,15 @@ function ViewPanels({
         <PanelBody key={p.name} rows={p.rows} meta={p.meta} />
       ))}
       {wide.map((p) => (
-        <Card key={p.name} title={panelTitle(p.name)}>
-          <PanelBody rows={p.rows} meta={p.meta} />
+        <Card key={p.name} title={panelTitle(p.name, t)}>
+          <PanelBody rows={p.rows} meta={p.meta} asOf={asOf} />
         </Card>
       ))}
       {grid.length > 0 && (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {grid.map((p) => (
-            <Card key={p.name} title={panelTitle(p.name)}>
-              <PanelBody rows={p.rows} meta={p.meta} />
+            <Card key={p.name} title={panelTitle(p.name, t)}>
+              <PanelBody rows={p.rows} meta={p.meta} asOf={asOf} />
             </Card>
           ))}
         </div>
@@ -913,31 +1073,51 @@ function ViewPanels({
 
 // --- overview: the curated, GA4/OneDollar-style home ------------------------
 
-/** Headline metrics, in display order. Labels are analytics-standard names
- *  (kept literal rather than i18n for now). Only the ones the payload actually
+/** Headline metrics, in display order. Only the ones the payload actually
  *  carries are shown; the ones that also have a time series are clickable and
  *  drive the hero chart. */
-const OVERVIEW_METRICS: ReadonlyArray<[string, string]> = [
-  ["visitors", "Visitors"],
-  ["pageviews", "Pageviews"],
-  ["sessions", "Sessions"],
-  ["bounce_pct", "Bounce rate"],
-  ["duration_s", "Avg duration"],
-];
+const OVERVIEW_METRICS = [
+  ["visitors", "mainPanelTabs.analyticsTab.metricVisitors"],
+  ["pageviews", "mainPanelTabs.analyticsTab.metricPageviews"],
+  ["sessions", "mainPanelTabs.analyticsTab.metricSessions"],
+  ["bounce_pct", "mainPanelTabs.analyticsTab.metricBounce"],
+  ["duration_s", "mainPanelTabs.analyticsTab.metricDuration"],
+] as const;
 
 /** The Overview rendered as a real analytics home: clickable headline metrics
  *  driving one hero time-series, then the ranked breakdowns and the funnel —
  *  the GA4 / OneDollarStats shape, not a generic panel dump. */
-function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
+function OverviewDashboard({
+  payload,
+  range,
+  asOf,
+}: {
+  payload: Record<string, unknown>;
+  range: string;
+  asOf: number;
+}) {
   const t = useT();
   const rowsOf = (k: string) =>
     (Array.isArray(payload[k]) ? payload[k] : []) as Array<
       Record<string, unknown>
     >;
   const kpis = rowsOf("kpis")[0] ?? {};
+  const prev = rowsOf("kpisPrev")[0];
+  // Share of the previous window the warehouse actually holds (0..1). Below
+  // 0.9 the site was not collecting for all of it, so a change against it is
+  // not like for like. A null `covered` means nothing was collected; a payload
+  // without the field predates it and is taken as complete.
+  const covered = prev && "covered" in prev ? Number(prev.covered) || 0 : 1;
+  const prevPartial = covered < 0.9;
   const series = rowsOf("series");
   const sources = rowsOf("sources");
   const funnel = rowsOf("funnel")[0];
+  // fact_sessions refreshes every 15 minutes; empty means "not built yet",
+  // which a 0 would misreport as "nobody visited".
+  const sessionsBuilt = Number(kpis.sessions_built ?? 1) > 0;
+  const labels: Record<string, string> = Object.fromEntries(
+    OVERVIEW_METRICS.map(([k, key]) => [k, t(key)]),
+  );
 
   const seriesCols = series[0]
     ? Object.keys(series[0]).filter(
@@ -952,12 +1132,15 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {metrics.map(([k, label]) => {
+        {metrics.map(([k]) => {
           const canChart = seriesCols.includes(k);
           const active = selected === k;
-          const trend = canChart
-            ? trendPct(series.map((r) => Number(r[k]) || 0))
-            : null;
+          const fromSessions = k !== "visitors" && k !== "pageviews";
+          const blank = fromSessions && !sessionsBuilt;
+          const points = k === "bounce_pct";
+          const change = blank
+            ? null
+            : changeVsPrev(kpis[k], prev?.[k], points);
           return (
             <button
               key={k}
@@ -965,7 +1148,7 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
               disabled={!canChart}
               onClick={() => canChart && setSelected(k)}
               className={cn(
-                "flex flex-col gap-1.5 rounded-xl border p-4 text-left transition-colors",
+                "flex min-w-0 flex-col gap-1.5 rounded-xl border p-4 text-left transition-colors",
                 active
                   ? "border-[var(--chart-1)] bg-[var(--chart-1)]/5"
                   : "border-border bg-card",
@@ -975,24 +1158,57 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
               )}
             >
               <span className="text-2xs font-medium text-muted-foreground">
-                {label}
+                {labels[k]}
               </span>
-              <span className="flex items-baseline gap-2">
-                <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
-                  {fmtMetric(k, kpis[k])}
+              <span className="text-2xl font-semibold sm:text-3xl leading-none text-foreground tabular-nums">
+                {blank ? "—" : fmtMetric(k, kpis[k])}
+              </span>
+              {change !== null && (
+                <span className="flex flex-wrap items-baseline gap-x-1 text-2xs text-muted-foreground">
+                  <Delta
+                    pct={change}
+                    goodDown={points}
+                    muted={prevPartial}
+                    unit={
+                      points
+                        ? t("mainPanelTabs.analyticsTab.pointsSuffix")
+                        : "%"
+                    }
+                  />
+                  {t("mainPanelTabs.analyticsTab.vsPrevious")}
                 </span>
-                {trend !== null && (
-                  <Delta pct={trend} goodDown={k === "bounce_pct"} />
-                )}
-              </span>
+              )}
+              {k === "visitors" && (range === "7d" || range === "30d") && (
+                <span className="text-2xs text-muted-foreground">
+                  {t("mainPanelTabs.analyticsTab.visitorDays")}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
+      {prevPartial && prev && (
+        <p className="-mt-2 text-2xs text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.prevCoverage", {
+            percent: String(Math.floor(covered * 100)),
+          })}
+        </p>
+      )}
 
       {selected && series.length > 0 && (
-        <Card title={`${humanize(selected)} over time`}>
-          <AreaTrend rows={series} timeKey="t" metricKeys={[selected]} />
+        <Card
+          title={t("mainPanelTabs.analyticsTab.seriesTitle", {
+            metric: labels[selected] ?? humanize(selected),
+          })}
+        >
+          <AreaTrend
+            rows={series}
+            timeKey="t"
+            metricKeys={[selected]}
+            labels={labels}
+            rangeMs={RANGE_MS[range]}
+            asOf={asOf}
+          />
         </Card>
       )}
 
@@ -1014,18 +1230,22 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
 
 // --- realtime: the curated "now" view ---------------------------------------
 
-/** A timestamp as the time of day; anything unparseable as it came. */
-function formatClock(value: unknown): string {
-  const at = typeof value === "string" ? new Date(value) : null;
-  return at && !Number.isNaN(at.getTime())
-    ? at.toLocaleTimeString()
-    : formatCell(value);
-}
-
 /** The Realtime view, modelled on the admin monitor: Visitors / Pageviews /
- *  Events / Last event headline cards, then the live feed and the pages active
- *  right now. Fed by the `live` payload (a 5m window, auto-refreshed). */
-function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
+ *  Events / Last event headline cards, the globe of where they are, then the
+ *  live feed and the pages active right now. All of it is ONE `live` payload
+ *  (a 5m window, auto-refreshed), so the map can never disagree with the
+ *  numbers above it. */
+function RealtimeDashboard({
+  payload,
+  base,
+  orgSlug,
+  site,
+}: {
+  payload: Record<string, unknown>;
+  base: string;
+  orgSlug: string;
+  site: string;
+}) {
   const t = useT();
   const rowsOf = (k: string) =>
     (Array.isArray(payload[k]) ? payload[k] : []) as Array<
@@ -1034,12 +1254,13 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
   const kpi = rowsOf("liveVisitors")[0] ?? {};
   const feed = rowsOf("liveFeed");
   const pages = rowsOf("livePages");
-  const cards: ReadonlyArray<[string, string]> = [
-    ["visitors", "Visitors"],
-    ["pageviews", "Pageviews"],
-    ["events", "Events"],
-    ["last_event", "Last event"],
-  ];
+  const geo = rowsOf("liveGeo") as unknown as LiveGeoRow[];
+  const cards = [
+    ["visitors", "mainPanelTabs.analyticsTab.metricVisitors"],
+    ["pageviews", "mainPanelTabs.analyticsTab.metricPageviews"],
+    ["events", "mainPanelTabs.analyticsTab.metricEvents"],
+    ["last_event", "mainPanelTabs.analyticsTab.metricLastEvent"],
+  ] as const;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1053,14 +1274,15 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
         {cards.map(([k, label]) => (
           <div key={k} className="surface flex flex-col gap-1.5 p-4">
             <span className="text-2xs font-medium text-muted-foreground">
-              {label}
+              {t(label)}
             </span>
-            <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
-              {k === "last_event" ? formatClock(kpi[k]) : fmtMetric(k, kpi[k])}
+            <span className="text-2xl font-semibold sm:text-3xl leading-none text-foreground tabular-nums">
+              {k === "last_event" ? bucketLabel(kpi[k]) : fmtMetric(k, kpi[k])}
             </span>
           </div>
         ))}
       </div>
+      <LiveGlobe base={base} orgSlug={orgSlug} site={site} rows={geo} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title={t("mainPanelTabs.analyticsTab.cardLiveFeed")}>
           {feed.length > 0 ? (
@@ -1082,6 +1304,110 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
         </Card>
       </div>
     </div>
+  );
+}
+
+// --- errors: what broke, how often, for how many, and the stack ---------------
+
+/** The Errors view. The generic table put this in a third of a row, sorted by
+ *  `line` (its first numeric column) and cut every message at the column
+ *  edge — the one view where the text IS the data. Full width instead, ranked
+ *  by occurrences, the message wrapped, and the stack one click away. */
+function ErrorsDashboard({ payload }: { payload: Record<string, unknown> }) {
+  const t = useT();
+  const rows = (Array.isArray(payload.errors) ? payload.errors : []) as Array<
+    Record<string, unknown>
+  >;
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("mainPanelTabs.analyticsTab.emptyView")}
+      </p>
+    );
+  }
+  const ranked = [...rows].sort(
+    (a, b) => Number(b.occurrences ?? 0) - Number(a.occurrences ?? 0),
+  );
+  const top = Number(ranked[0]?.occurrences ?? 0) || 1;
+  return (
+    <section className="surface overflow-hidden">
+      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <h3 className="text-sm font-medium text-foreground">
+          {panelTitle("errors", t)}
+        </h3>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {t("mainPanelTabs.analyticsTab.errorsKinds", {
+            n: formatNumber(rows.length),
+          })}
+        </span>
+      </header>
+      <ul className="divide-y divide-border">
+        {ranked.map((r) => {
+          const n = Number(r.occurrences ?? 0);
+          const file = String(r.file ?? "");
+          const line = Number(r.line ?? 0);
+          const stack = String(r.stack ?? "");
+          return (
+            <li key={String(r.fp)} className="flex flex-col gap-2 px-4 py-3">
+              <div className="flex items-start gap-4">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className="font-mono">
+                      {String(r.type || "Error")}
+                    </Badge>
+                    <span className="font-mono text-2xs text-muted-foreground/70">
+                      {String(r.fp)}
+                    </span>
+                  </div>
+                  <p className="break-words text-sm text-foreground">
+                    {String(r.message || "") ||
+                      t("mainPanelTabs.analyticsTab.errorsNoMessage")}
+                  </p>
+                  {file && (
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      {line ? `${file}:${line}` : file}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+                  <span className="text-lg font-semibold leading-none tabular-nums text-foreground">
+                    {formatNumber(n)}
+                  </span>
+                  <span className="text-2xs text-muted-foreground">
+                    {t(
+                      Number(r.visitors) === 1
+                        ? "mainPanelTabs.analyticsTab.errorsVisitor"
+                        : "mainPanelTabs.analyticsTab.errorsVisitors",
+                      { n: formatNumber(Number(r.visitors ?? 0)) },
+                    )}
+                  </span>
+                  <span className="text-2xs text-muted-foreground">
+                    {bucketLabel(r.last_seen)}
+                  </span>
+                </div>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-destructive/70"
+                  style={{ width: `${Math.max(2, (n / top) * 100)}%` }}
+                />
+              </div>
+              {stack && (
+                <details className="group">
+                  <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
+                    {t("mainPanelTabs.analyticsTab.errorsStack")}
+                  </summary>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-2xs leading-relaxed text-muted-foreground">
+                    {stack}
+                  </pre>
+                </details>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -1147,19 +1473,37 @@ function ActiveView({
       </p>
     );
   }
-  if (isLive) return <RealtimeDashboard payload={response.data} />;
+  if (isLive) {
+    return (
+      <RealtimeDashboard
+        payload={response.data}
+        base={base}
+        orgSlug={orgSlug}
+        site={site}
+      />
+    );
+  }
+  if (view === "errors") return <ErrorsDashboard payload={response.data} />;
   if (view === "overview") {
-    return <OverviewDashboard payload={response.data} />;
+    return (
+      <OverviewDashboard
+        payload={response.data}
+        range={range}
+        asOf={query.dataUpdatedAt}
+      />
+    );
   }
   if (view === "usage") {
     return (
       <div className="flex flex-col gap-5">
         <QuotaBanner quota={quota} payload={response.data} />
-        <ViewPanels payload={response.data} t={t} />
+        <ViewPanels payload={response.data} t={t} asOf={query.dataUpdatedAt} />
       </div>
     );
   }
-  return <ViewPanels payload={response.data} t={t} />;
+  return (
+    <ViewPanels payload={response.data} t={t} asOf={query.dataUpdatedAt} />
+  );
 }
 
 /** The Usage & limits header: the monthly cap and, when the payload carries an
@@ -1217,8 +1561,7 @@ function QuotaBanner({
       )}
       {!capped && (
         <p className="text-xs text-muted-foreground">
-          No monthly cap is set — every accepted event is stored. Set one in
-          Configuration to enforce a limit.
+          {t("mainPanelTabs.analyticsTab.noCap")}
         </p>
       )}
     </div>
@@ -1302,7 +1645,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
 // --- register (not yet registered) ------------------------------------------
 
 /** Copy-to-clipboard button for the one-time snippet/token. */
-export function CopyButton({ text }: { text: string }) {
+function CopyButton({ text }: { text: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   return (
@@ -1979,7 +2322,10 @@ function RegisteredView({
     view?: string;
   };
   const [range, setRange] = useState("24h");
-  const [requested, setRequested] = useState(initialView ?? "overview");
+  // `?view=globe` links predate the map moving into Realtime.
+  const [requested, setRequested] = useState(
+    initialView === "globe" ? "live" : (initialView ?? "overview"),
+  );
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
   const enabled = cfg.enabled !== false;
@@ -1989,11 +2335,29 @@ function RegisteredView({
   const views = gateViews(DATA_VIEWS, modules);
   const active = pickView(requested, views);
   const isLive = active === "live";
-  // Heatmap reads daily facts with its own 24h/7d/30d choice.
+  // Heatmap reads daily facts with its own 24h/7d/30d choice; Realtime is
+  // always the last five minutes, so a 30d pill over it would be a control that
+  // changes nothing.
   const ownRange = isLive || active === "heatmap";
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Views sit in the panel toolbar, under the breadcrumbs, in the page tab
+          style every other view switcher uses. */}
+      <Panel.Toolbar.Left.Portal>
+        <Page.Tabs>
+          {views.map((v) => (
+            <Page.Tab
+              key={v.view}
+              active={active === v.view}
+              onClick={() => setRequested(v.view)}
+            >
+              {t(v.labelKey)}
+            </Page.Tab>
+          ))}
+        </Page.Tabs>
+      </Panel.Toolbar.Left.Portal>
+
       {/* Status + collecting labels on the left, range pills + a small Configure
           button on the right — the dashboard is the focus; settings hide behind
           the gear. */}
@@ -2031,7 +2395,7 @@ function RegisteredView({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Range pills — hidden on Realtime, which is always "now", and on
               Heatmap, which picks its own. */}
           {!ownRange && (
@@ -2062,25 +2426,6 @@ function RegisteredView({
             {t("mainPanelTabs.analyticsTab.configSectionTitle")}
           </Button>
         </div>
-      </div>
-
-      {/* Horizontal view tab bar — one view at a time, like the admin monitor. */}
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-border">
-        {views.map((v) => (
-          <button
-            key={v.view}
-            type="button"
-            onClick={() => setRequested(v.view)}
-            className={cn(
-              "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              active === v.view
-                ? "border-[var(--chart-1)] text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t(v.labelKey)}
-          </button>
-        ))}
       </div>
 
       {active === "heatmap" ? (
@@ -2232,18 +2577,8 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <BarChartSquare02 className="size-[18px] text-muted-foreground" />
-            <h2 className="text-base font-semibold text-foreground">
-              {t("mainPanelTabs.analyticsTab.title")}
-            </h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t("mainPanelTabs.analyticsTab.subtitle", { site: siteSlug })}
-          </p>
-        </div>
-
+        {/* No page title here: the breadcrumbs already name the view, and the
+            site is named by the status row below. */}
         {registered && (
           <RegistrationResult
             result={registered}

@@ -59,8 +59,6 @@ export const monitor = {
   "monitor.audience.glance.visitors": "Visitors today",
   "monitor.audience.glance.pageviews": "Pageviews today",
   "monitor.performance.overTime": "Requests over time",
-  "monitor.glance.conversion": "Conversion today",
-  "monitor.glance.purchases": "{count} purchases",
   "monitor.glance.jsErrors": "Browser errors today",
   "monitor.glance.errorKinds": "{count} distinct",
   "monitor.glance.serverErrors": "5xx errors today",
@@ -73,8 +71,6 @@ export const monitor = {
   "monitor.performance.org.noCdn": "No CDN traffic in this period",
   "monitor.projectFilter.label": "Project",
   "monitor.projectFilter.all": "All projects",
-  "monitor.audience.org.emptyDesc":
-    "None of these sites reports its audience yet. Open a site to turn on Deco Analytics.",
   "monitor.audience.range": "Period",
   "monitor.audience.source.decoAnalytics": "Deco Analytics",
   "monitor.audience.source.onedollar": "OneDollar (legacy)",
@@ -177,13 +173,24 @@ export const monitor = {
   "monitor.platform.deploys": "GitHub",
   "monitor.platform.analytics": "Google Analytics",
   "monitor.platform.search": "Search Console",
-  "monitor.analyticsGuide.deco": "On deco hosting",
-  "monitor.analyticsGuide.decoHow":
-    "Nothing to paste: turn it on in the site's Analytics tab",
-  "monitor.analyticsGuide.other": "Any other site",
-  "monitor.analyticsGuide.otherHow":
-    "Paste this line in your <head>, with the site's token",
+  "monitor.analyticsGuide.intro":
+    "The agent adds one tag to a site's code and opens a pull request for you to review. Visitors and conversions show up here once it's merged.",
+  "monitor.analyticsGuide.introEmpty":
+    "Analytics goes into a site's code, so it needs a site whose GitHub repository is connected. Add one from its repository, then install in one click.",
+  "monitor.analyticsGuide.install": "Install",
+  "monitor.analyticsGuide.installing": "Starting…",
+  "monitor.analyticsGuide.domain":
+    "Where is {site} live? Visits are counted only on this domain and its www.",
+  "monitor.analyticsGuide.domainInvalid":
+    "That isn't a domain. Try something like www.example.com.",
+  "monitor.analyticsGuide.installSent":
+    "Sent to the Super Agent — it will open a pull request.",
+  "monitor.analyticsGuide.manual":
+    "Prefer to add it yourself? Each site's Analytics tab has its tag.",
   "monitor.analyticsGuide.add": "Add your site",
+  "monitor.analyticsGuide.uncounted":
+    "These sites get traffic but don't count pageviews yet.",
+  "monitor.analyticsGuide.addAnother": "Add another site",
   "monitor.powers.orders": "Orders, cancellations and sales channels",
   "monitor.powers.site": "Audience, errors and response time",
   "monitor.powers.deploys": "Every deploy on the charts",

@@ -20,7 +20,7 @@ import type { Locale } from "@/i18n/locale.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { isNotConfigured } from "@/layouts/main-panel-tabs/analytics-tab";
 import { AXIS_TICK } from "@/layouts/task-board/analytics-sections";
-import { LiveMap, useGlobeBundle } from "./live-map";
+import { LiveGlobe } from "@/layouts/main-panel-tabs/analytics-globe-tab";
 import { useDecoView } from "./segment";
 import type { SectionProps } from "./types";
 
@@ -93,7 +93,6 @@ export function RealtimeSection({ orgSlug, site, segment }: SectionProps) {
     range: "5m",
     segment,
   });
-  const globe = useGlobeBundle(orgSlug, site);
 
   if (query.isLoading) {
     return (
@@ -171,28 +170,20 @@ export function RealtimeSection({ orgSlug, site, segment }: SectionProps) {
         ))}
       </div>
 
-      <div
-        className={cn(
-          "grid gap-4",
-          globe.state === "failed"
-            ? "items-start lg:grid-cols-2"
-            : "xl:grid-cols-3",
-        )}
-      >
-        {globe.state !== "failed" && (
-          <div className="h-[34rem] xl:col-span-2">
-            <LiveMap
-              load={globe}
-              rows={data.liveGeo}
-              stamp={query.dataUpdatedAt}
-            />
-          </div>
-        )}
-        <div
-          className={cn(
-            globe.state === "failed" ? "contents" : "flex flex-col gap-4",
-          )}
-        >
+      <div className="grid gap-4 xl:grid-cols-3">
+        <div className="xl:col-span-2">
+          <Panel title={t("monitor.analytics.live.title")}>
+            <div className="px-4 pb-4">
+              <LiveGlobe
+                base={`/api/${orgSlug}/hosting/${encodeURIComponent(site)}`}
+                orgSlug={orgSlug}
+                site={site}
+                rows={data.liveGeo}
+              />
+            </div>
+          </Panel>
+        </div>
+        <div className="flex flex-col gap-4">
           <Panel title={t("monitor.analytics.live.trendTitle")}>
             <ChartContainer
               config={{
