@@ -43,7 +43,7 @@ import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
 import { useBrandLiveSync } from "@/hooks/use-brand-events";
-import { useAskInChat } from "@/hooks/use-ask-in-chat";
+import { useBrandFill } from "@/hooks/use-brand-fill";
 import {
   fetchOrgFsStat,
   fetchOrgFsText,
@@ -199,7 +199,7 @@ export function BrandOverview() {
   const t = useT();
   const { org } = useProjectContext();
   useBrandLiveSync();
-  const ask = useAskInChat();
+  const fill = useBrandFill();
   const listing = useOrgFsList(HOME_MOUNT_PATH, BRANDS_DIR);
   const brands = (listing.data ?? []).filter((entry) => entry.kind === "dir");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -229,7 +229,7 @@ export function BrandOverview() {
           <Button
             size="sm"
             onClick={() =>
-              ask(
+              void fill(
                 t("library.context.fillBrandPrompt", {
                   path: `${HOME_MOUNT_PATH}/${BRANDS_DIR}/${org.slug}/brand.md`,
                   site: t("library.context.siteUnknown"),
@@ -271,7 +271,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   const blogAi = useBlogAi();
   const fileUrl = useOrgFsFileUrl();
   const queryClient = useQueryClient();
-  const ask = useAskInChat();
+  const fill = useBrandFill();
   const { org } = useProjectContext();
   const { upload, remove } = useOrgFsMutations(HOME_MOUNT_PATH);
   const logoInput = useRef<HTMLInputElement>(null);
@@ -487,7 +487,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           variant="ghost"
           size="sm"
           onClick={() =>
-            ask(
+            void fill(
               t("library.context.fillSectionPrompt", {
                 section: label,
                 path: guidePath,
@@ -536,7 +536,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
                   <DropdownMenuItem
                     key={promptKey}
                     onSelect={() =>
-                      ask(
+                      void fill(
                         t(promptKey, { path: guidePath, site: siteForPrompt }),
                       )
                     }

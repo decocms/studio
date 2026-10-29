@@ -57,10 +57,23 @@ store's public address, origin only) and `language:` (a BCP-47 tag such as
 2. **The live site, when it answers.** Fetch the same pages for what the
    blocks do not hold. If the site refuses automated requests (a Cloudflare
    challenge, 403), move on: do not try to get around the block.
-3. **The store's systems, read-only.** If the organization has a VTEX
-   connection, its categories and top searches say what is sold and what is
-   searched — the best source for keywords. If it has GA4, its top pages and
-   search terms say what readers come for.
+3. **The store's systems, read-only, for what a site never says about
+   itself.** Not optional when the organization has them: they are the only
+   source of what customers search for and buy. Listing the connections is
+   not reading them. Find each one's tools with `CONNECTION_TOOLS_SEARCH`
+   (`vtex top searches`, `vtex categories`, `analytics run report`,
+   `search console query`, with `withSchema: true`), then call them with
+   `CONNECTION_TOOL_CALL`. A handful of calls:
+   - **VTEX**: top searches and search suggestions for Palavras-chave; the
+     category, collection and brand names for Vocabulário and for what the
+     brand sells; the orders trend for the peaks behind Datas especiais.
+   - **GA4**: the most visited pages, and, when the property has them, the
+     audience's age, place and device for Público.
+   - **Search Console**, when connected: the queries with the most
+     impressions, for Palavras-chave.
+
+   A connection that is missing, or that answers "Connection not found" or
+   access denied, is a gap to report, not a reason to stop.
 4. **The web, for two sections only.** Competitors and special dates are what
    a site never states about itself. Search the brand's own market, in its
    language, and keep the URL behind every claim. Nothing else comes from the
@@ -122,5 +135,6 @@ With no `brand.md` yet, create it — and its folder — as `SKILL.md` describes
 frontmatter first. Otherwise edit `brand.md` in place. Change only the sections you are filling and the
 frontmatter keys you are setting; every other byte stays as it was, including
 section numbering, the opening quote and anything the page or a person wrote.
-Then say, briefly, what you filled, what you left empty and why, and which
-sources you used.
+Then say, briefly, what you filled, what you left empty and why, which
+sources you used, and which of the store's systems you read, or could not
+reach and why.

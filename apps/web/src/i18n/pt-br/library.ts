@@ -9,6 +9,8 @@ export const library = {
   "library.context.colorText": "Texto",
   "library.context.all": "Todos",
   "library.context.fillFromSite": "Preencher pelo site",
+  "library.context.fillFailed":
+    "Não foi possível começar o preenchimento: {error}",
   "library.context.editBrand": "Editar marca",
   "library.context.fill": "Preencher",
   "library.context.notWritten": "Ainda não escrito",

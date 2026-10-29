@@ -9,21 +9,12 @@ import {
 } from "@decocms/shared/blog-card";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import { z } from "zod";
-import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { resolveOrCreateHead } from "@/decofile/read-decofile";
-import { enqueueThreadRun } from "@/dispatch-queue";
-import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
-import {
-  claudeSubscriptionChatModel,
-  TASK_RUN_INSTRUCTIONS_KEY,
-} from "@/harnesses/claude-code-env";
-import { userPlanCredentialId } from "@/harnesses/sandbox-only-chats";
+import { TASK_RUN_INSTRUCTIONS_KEY } from "@/harnesses/claude-code-env";
 import { agentSandboxEnabled } from "@/settings";
 import { threadBranch } from "@/tools/sandbox/thread-repo";
-import { resolveTaskRunModel } from "@/tools/task-board/task-run-harness";
 import { defineTool } from "../../core/define-tool";
-import { TierUnavailableError } from "../../core/resolve-tier";
-import { getUserId, type StudioContext } from "../../core/studio-context";
+import { getUserId } from "../../core/studio-context";
 import {
   CARDS_DIR,
   readBlogRecord,
@@ -34,6 +25,7 @@ import { emitBlogCardUpdated } from "./card-events";
 import { callerRunThread, CardIdSchema, parseCard } from "./cards";
 import { resolveSiteProject, resolveSiteRepo } from "./site-repo";
 import { conflictOrRethrow, resolveBlogScope } from "./state";
+import { dispatchSuperAgentTurn } from "./super-agent-turn";
 
 /**
  * Starting a blogpost card's agent: the Super Agent, on Claude Code, in a chat
@@ -197,35 +189,6 @@ export function dispatchFailure(err: unknown): string {
   return reason.length > MAX_ERROR_CHARS
     ? `${reason.slice(0, MAX_ERROR_CHARS - 1)}…`
     : reason;
-}
-
-/**
- * The run's model: the organization's, or with none the person's own Claude
- * plan, as a chat falls back to it. Dispatch bills the plan whenever there is
- * one; only an organization with neither cannot start a card.
- */
-async function cardRunModel(
-  ctx: StudioContext,
-  organizationId: string,
-  userId: string,
-): Promise<{ credentialId: string; thinking: { id: string; title?: string } }> {
-  try {
-    const tier = await resolveTaskRunModel(
-      ctx,
-      organizationId,
-      userId,
-      "claude-code",
-    );
-    return {
-      credentialId: tier.credentialId,
-      thinking: { id: tier.modelId, title: tier.modelMeta.title },
-    };
-  } catch (err) {
-    if (!(err instanceof TierUnavailableError)) throw err;
-    const planId = await userPlanCredentialId(ctx, organizationId, userId);
-    if (!planId) throw err;
-    return claudeSubscriptionChatModel(planId);
-  }
 }
 
 function threadTitle(card: BlogCard): string {
@@ -402,60 +365,20 @@ export const BLOG_CARD_RUN = defineTool({
         createdThread = created.isNew;
       }
 
-      const model = await cardRunModel(ctx, organizationId, userId);
-      const fence = `blog-card:${threadId}:${input.phase}:${requestedAt}`;
-      const requestMessage = {
-        id: `blog-card-${createHash("sha256").update(fence).digest("hex").slice(0, 32)}`,
-        role: "user" as const,
-        parts: [
-          {
-            type: "text" as const,
-            text: blogCardRunPrompt(
-              input.phase,
-              input.message ??
-                (input.phase === "hypothesis" ? card.prompt : undefined),
-            ),
-          },
-        ],
-        // Stamped here: a turn without a timestamp sorts after its own reply.
-        metadata: { created_at: requestedAt },
-      };
-      // Written before the dispatch, so the reply cannot be projected ahead of it.
-      await new PartEmitter({
-        storage: ctx.storage.threads.messageParts(),
-        orgId: organizationId,
+      await dispatchSuperAgentTurn(ctx, {
+        organizationId,
+        userId,
         threadId,
-        runId: threadId,
-      }).emitRequestMessage(requestMessage);
-
-      await enqueueThreadRun(
-        {
-          threadId,
-          source: "background-tool",
-          request: {
-            messages: [requestMessage],
-            models: {
-              credentialId: model.credentialId,
-              thinking: model.thinking,
-            },
-            agent: {
-              id: getDecopilotId(organizationId),
-              appendInstructions: instructions,
-            },
-            temperature: 0.5,
-            toolApprovalLevel: "auto",
-            mode: "default",
-            organizationId,
-            userId,
-            harnessId: "claude-code",
-            // The bare `thread:<id>` key: the card's sandbox clones nothing.
-            branch: sandboxBranch,
-            taskId: threadId,
-            runMetadata: { [RUN_CLASS_METADATA_KEY]: "new_task" },
-          },
-        },
-        { workflowID: fence },
-      );
+        branch: sandboxBranch,
+        text: blogCardRunPrompt(
+          input.phase,
+          input.message ??
+            (input.phase === "hypothesis" ? card.prompt : undefined),
+        ),
+        instructions,
+        fence: `blog-card:${threadId}:${input.phase}:${requestedAt}`,
+        requestedAt,
+      });
     } catch (err) {
       await rollBack(err);
       throw err;

@@ -107,13 +107,17 @@ describe("resolveThreadToolNames", () => {
     for (const name of [...JIRA_RUN_TOOL_NAMES, "JIRA_BOARDS_LIST"] as const) {
       expect(THREAD_TOOL_NAMES).toContain(name);
     }
-    expect(THREAD_TOOL_NAMES.length).toBe(TOOL_BY_NAME.size - 6);
+    expect(THREAD_TOOL_NAMES.length).toBe(TOOL_BY_NAME.size - 7);
   });
 
   test("a card's agent works its card but never deletes one or starts a run", () => {
     expect(THREAD_TOOL_NAMES).toContain("BLOG_CARD_UPDATE");
     expect(THREAD_TOOL_NAMES).not.toContain("BLOG_CARD_DELETE");
     expect(THREAD_TOOL_NAMES).not.toContain("BLOG_CARD_RUN");
+  });
+
+  test("no chat starts a brand fill; a person does", () => {
+    expect(THREAD_TOOL_NAMES).not.toContain("BLOG_BRAND_FILL");
   });
 
   test("a chat's run-scoped tools are only its task-run ones", () => {

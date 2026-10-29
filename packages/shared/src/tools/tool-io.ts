@@ -3015,6 +3015,7 @@ export interface StudioToolIO {
       threadId: string;
     };
   };
+  BLOG_BRAND_FILL: { input: { prompt: string }; output: { threadId: string } };
   BLOG_SITE_GROUND: {
     input: {
       purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";

@@ -13,6 +13,7 @@ export {
   BLOG_CARD_UPDATE,
 } from "./cards";
 export { BLOG_CARD_RUN } from "./card-run";
+export { BLOG_BRAND_FILL } from "./brand-fill";
 export { BLOG_SITE_GROUND } from "./site-ground";
 export { BLOG_SITE_CATALOGUE } from "./site-catalogue";
 export { BLOG_BRAND_EXTRACT } from "./brand-extract";

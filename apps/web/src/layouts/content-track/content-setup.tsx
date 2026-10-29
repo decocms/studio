@@ -10,7 +10,7 @@ import { BRANDS_DIR, pickBrandDir } from "@decocms/shared/brand";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import type { BrandRequirement } from "@/components/sandbox/content/blog/blog-data";
 import { REQUIREMENT_LABEL } from "@/components/sandbox/content/blog/generate-post-dialog";
-import { useAskInChat } from "@/hooks/use-ask-in-chat";
+import { useBrandFill } from "@/hooks/use-brand-fill";
 import { useOrgFsList } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
 import { basename } from "@/layouts/library/location";
@@ -46,7 +46,7 @@ export function ContentSetup({ missing }: { missing: BrandRequirement[] }) {
   const t = useT();
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const ask = useAskInChat();
+  const brandFill = useBrandFill();
   const listing = useOrgFsList(HOME_MOUNT_PATH, BRANDS_DIR);
   /** The folder the blog reads its brand from, as the server picks it. */
   const brand = pickBrandDir(
@@ -56,7 +56,7 @@ export function ContentSetup({ missing }: { missing: BrandRequirement[] }) {
       .map((entry) => basename(entry.path)),
   );
   const fill = () =>
-    ask(
+    void brandFill(
       t("library.context.fillBrandPrompt", {
         path: `${HOME_MOUNT_PATH}/${BRANDS_DIR}/${brand}/brand.md`,
         site: t("library.context.siteUnknown"),

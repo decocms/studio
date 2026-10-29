@@ -7,6 +7,7 @@ export const library = {
   "library.context.colorText": "Text",
   "library.context.all": "All",
   "library.context.fillFromSite": "Fill from site",
+  "library.context.fillFailed": "Could not start the fill: {error}",
   "library.context.editBrand": "Edit brand",
   "library.context.fill": "Fill",
   "library.context.notWritten": "Not written yet",

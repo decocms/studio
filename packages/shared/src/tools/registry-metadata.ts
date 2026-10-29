@@ -68,6 +68,7 @@ const ALL_TOOL_NAMES = [
   "BLOG_CARD_UPDATE",
   "BLOG_CARD_DELETE",
   "BLOG_CARD_RUN",
+  "BLOG_BRAND_FILL",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
   "BLOG_SITE_BLOCKS",
@@ -473,6 +474,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_CARD_RUN",
     description:
       "Start a blogpost card's agent, to bring its hypothesis or write its post",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_BRAND_FILL",
+    description:
+      "Fill the brand guide in a chat of its own that reads the store's connections",
     category: "Blog",
   },
   {

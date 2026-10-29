@@ -131,6 +131,7 @@ const NOT_ON_A_CHAT: ReadonlySet<ToolName> = new Set<ToolName>([
   "TASK_BOARD_PROMPT_DELETE",
   "BLOG_CARD_DELETE",
   "BLOG_CARD_RUN",
+  "BLOG_BRAND_FILL",
 ]);
 
 /**
