@@ -17,6 +17,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { toPublicConnection } from "../connection/public-connection";
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
 import { fetchReportsAuth, resolveReportsMcpUrl } from "./auth-client";
@@ -301,7 +302,7 @@ export const REPORTS_SETUP = defineTool({
     }
 
     return {
-      connection,
+      connection: toPublicConnection(connection),
       virtualMcp,
       reportApp: {
         connectionId: connection.id,

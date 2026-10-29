@@ -26,6 +26,7 @@ import {
   isDevAssetsConnection,
   usesLocalObjectStorage,
 } from "./dev-assets";
+import { toPublicConnection } from "./public-connection";
 import { ConnectionEntitySchema } from "./schema";
 
 /**
@@ -109,7 +110,7 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
     }
 
     return {
-      item: connection,
+      item: toPublicConnection(connection),
     };
   },
 });

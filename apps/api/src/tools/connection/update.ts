@@ -24,6 +24,7 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { toPublicConnection } from "./public-connection";
 import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
 import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
 import {
@@ -467,7 +468,7 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     invalidateConnectionCaches(id);
 
     return {
-      item: connection,
+      item: toPublicConnection(connection),
     };
   },
 });
