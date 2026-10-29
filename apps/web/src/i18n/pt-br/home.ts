@@ -81,4 +81,33 @@ export const home = {
   "home.dailyBrief.personal": "Para você",
   "home.dailyBrief.org": "Organização",
   "home.dailyBrief.fullscreen": "Abrir em tela cheia",
+  "home.dailyBrief.empty":
+    "Uma página toda manhã com o que mudou e onde agir, a partir das connections que você escolher.",
+  "home.dailyBrief.setup.open": "Configurar brief",
+  "home.dailyBrief.setup.title": "Configure seu daily brief",
+  "home.dailyBrief.setup.subtitle":
+    "O Studio escreve o brief toda manhã a partir das connections que você escolher e mostra aqui.",
+  "home.dailyBrief.setup.scope": "Para",
+  "home.dailyBrief.setup.preset": "Ponto de partida",
+  "home.dailyBrief.setup.preset.storefront":
+    "Loja: vendas, tráfego, busca, saúde do site",
+  "home.dailyBrief.setup.preset.custom":
+    "Personalizado: montado a partir do seu foco",
+  "home.dailyBrief.setup.connections": "Connections",
+  "home.dailyBrief.setup.connectionsAll": "Todas as connections",
+  "home.dailyBrief.setup.focus": "O que importa pra você",
+  "home.dailyBrief.setup.focusPlaceholder":
+    "ex.: receita e conversão da loja principal; me avise de ruptura de estoque e erros no checkout",
+  "home.dailyBrief.setup.hour": "Todo dia às",
+  "home.dailyBrief.setup.cancel": "Cancelar",
+  "home.dailyBrief.setup.create": "Criar e rodar agora",
+  "home.dailyBrief.setup.creating": "Criando…",
+  "home.dailyBrief.setup.created":
+    "Daily brief criado. O primeiro já está sendo escrito.",
+  "home.dailyBrief.setup.createdNotRun":
+    "Daily brief criado; ele roda todo dia no horário escolhido. A primeira execução falhou: {message}",
+  "home.dailyBrief.setup.failed":
+    "Não foi possível criar o daily brief: {message}",
+  "home.dailyBrief.setup.nameOrg": "Daily brief",
+  "home.dailyBrief.setup.namePersonal": "Daily brief ({name})",
 } satisfies Record<keyof typeof homeEn, string>;

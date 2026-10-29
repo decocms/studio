@@ -77,4 +77,31 @@ export const home = {
   "home.dailyBrief.personal": "For you",
   "home.dailyBrief.org": "Organization",
   "home.dailyBrief.fullscreen": "Open full screen",
+  "home.dailyBrief.empty":
+    "A page every morning with what changed and where to act, from the connections you pick.",
+  "home.dailyBrief.setup.open": "Set up a brief",
+  "home.dailyBrief.setup.title": "Set up your daily brief",
+  "home.dailyBrief.setup.subtitle":
+    "Studio writes it every morning from the connections you pick and shows it here.",
+  "home.dailyBrief.setup.scope": "For",
+  "home.dailyBrief.setup.preset": "Starting point",
+  "home.dailyBrief.setup.preset.storefront":
+    "Store: sales, traffic, search, site health",
+  "home.dailyBrief.setup.preset.custom": "Custom: built from your focus",
+  "home.dailyBrief.setup.connections": "Connections",
+  "home.dailyBrief.setup.connectionsAll": "All connections",
+  "home.dailyBrief.setup.focus": "What matters to you",
+  "home.dailyBrief.setup.focusPlaceholder":
+    "e.g. revenue and conversion of the main store; warn me about stock-outs and checkout errors",
+  "home.dailyBrief.setup.hour": "Every day at",
+  "home.dailyBrief.setup.cancel": "Cancel",
+  "home.dailyBrief.setup.create": "Create and run now",
+  "home.dailyBrief.setup.creating": "Creating…",
+  "home.dailyBrief.setup.created":
+    "Daily brief created. The first one is being written now.",
+  "home.dailyBrief.setup.createdNotRun":
+    "Daily brief created; it runs every day at the time you picked. The first run failed: {message}",
+  "home.dailyBrief.setup.failed": "Could not create the daily brief: {message}",
+  "home.dailyBrief.setup.nameOrg": "Daily brief",
+  "home.dailyBrief.setup.namePersonal": "Daily brief ({name})",
 } as const;

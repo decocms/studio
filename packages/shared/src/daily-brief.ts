@@ -54,6 +54,46 @@ export function briefAgeDays(day: string, today: string): number {
   );
 }
 
+/** The public `core` skill every brief automation follows. */
+export const DAILY_BRIEF_SKILL = "/app/org/public/core/daily-brief/SKILL.md";
+
+/** Presets the skill ships; `custom` has no validated queries. An org adds
+ *  its own as `home/skills/daily-brief/<name>.md`. */
+export const BRIEF_PRESETS = ["storefront", "custom"] as const;
+
+export interface BriefSetup {
+  /** A member's personal brief; null for the org's. */
+  userId: string | null;
+  preset: string;
+  /** Connection titles the run may call; empty for all of them. */
+  connections: string[];
+  focus: string;
+}
+
+/** The message a brief automation sends; the skill reads these lines. */
+export function briefMessage(setup: BriefSetup): string {
+  const dir = setup.userId ? personalBriefDir(setup.userId) : ORG_BRIEF_DIR;
+  const focus = setup.focus.trim().replace(/\s+/g, " ");
+  return [
+    `Build today's daily brief. Read ${DAILY_BRIEF_SKILL} first and follow it.`,
+    "",
+    `Scope: ${setup.userId ? `personal (user ${setup.userId})` : "org"}`,
+    `Preset: ${setup.preset}`,
+    `Connections: ${setup.connections.length > 0 ? setup.connections.join(", ") : "all"}`,
+    `Focus: ${focus || "none"}`,
+    `Write to: /app/org/home/${dir}/`,
+  ].join("\n");
+}
+
+/** Daily cron, in the UTC the scheduler runs on, for `hour` o'clock in the
+ *  runtime's local time zone on `now`'s date. A later DST change shifts it
+ *  by an hour. */
+export function briefCron(hour: number, now: Date): string {
+  const at = new Date(now);
+  at.setHours(hour, 0, 0, 0);
+  return `${at.getUTCMinutes()} ${at.getUTCHours()} * * *`;
+}
+
 /** The newest brief dated between {@link MAX_BRIEF_AGE_DAYS} days ago
  *  (exclusive) and `today`. */
 export function pickBrief(names: string[], today: string): BriefPick | null {

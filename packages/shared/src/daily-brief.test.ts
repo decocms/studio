@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   briefAgeDays,
+  briefCron,
   briefDay,
+  briefMessage,
   briefPath,
   ORG_BRIEF_DIR,
   parseBriefFilename,
@@ -104,5 +106,53 @@ describe("briefAgeDays", () => {
     expect(briefAgeDays("2026-10-27", TODAY)).toBe(1);
     expect(briefAgeDays("2026-09-28", TODAY)).toBe(30);
     expect(briefAgeDays("2025-10-28", TODAY)).toBe(365);
+  });
+});
+
+describe("briefMessage", () => {
+  it("writes an org brief over every connection", () => {
+    const message = briefMessage({
+      userId: null,
+      preset: "storefront",
+      connections: [],
+      focus: "",
+    });
+    expect(message).toContain("Scope: org");
+    expect(message).toContain("Connections: all");
+    expect(message).toContain("Focus: none");
+    expect(message).toContain("Write to: /app/org/home/brief/");
+  });
+
+  it("writes a member's brief in their folder, focus on one line", () => {
+    const message = briefMessage({
+      userId: "user_a",
+      preset: "custom",
+      connections: ["GA4", "VTEX"],
+      focus: "  sales\n\nand stock  ",
+    });
+    expect(message).toContain("Scope: personal (user user_a)");
+    expect(message).toContain("Connections: GA4, VTEX");
+    expect(message).toContain("Focus: sales and stock\n");
+    expect(message).toContain("Write to: /app/org/home/users/user_a/brief/");
+  });
+});
+
+describe("briefCron", () => {
+  it("runs daily at the local hour, expressed in UTC", () => {
+    const now = new Date(2026, 9, 29, 15, 30);
+    const at = new Date(2026, 9, 29, 8, 0);
+    expect(briefCron(8, now)).toBe(
+      `${at.getUTCMinutes()} ${at.getUTCHours()} * * *`,
+    );
+  });
+
+  it("matches 8 BRT to 11 UTC", () => {
+    const old = process.env.TZ;
+    process.env.TZ = "America/Sao_Paulo";
+    try {
+      expect(briefCron(8, new Date(2026, 9, 29))).toBe("0 11 * * *");
+    } finally {
+      process.env.TZ = old;
+    }
   });
 });
