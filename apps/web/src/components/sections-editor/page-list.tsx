@@ -10,6 +10,7 @@ import {
   listSavedSectionBlocks,
   underlyingSectionResolveType,
 } from "./section-catalog";
+import { capitalizeWords } from "./section-types";
 import { extractRedirects } from "@/components/sandbox/content/redirect-data";
 
 export interface PageEntry {
@@ -261,7 +262,7 @@ export function globalSectionLabel(
     const trimmed = block.name.trim();
     if (trimmed) return trimmed;
   }
-  return blockId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return capitalizeWords(blockId.replace(/[-_]/g, " "));
 }
 
 export function appLabel(
@@ -279,9 +280,7 @@ export function appLabel(
     const trimmed = block.name.trim();
     if (trimmed) return trimmed;
   }
-  return blockKey
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return capitalizeWords(blockKey.replace(/[-_]/g, " "));
 }
 
 export function findSiteAppEntry(

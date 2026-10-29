@@ -5,6 +5,7 @@ import {
   extractPages,
   findPageForPath,
   findSiteAppEntry,
+  globalSectionLabel,
   hasEditableDecoContent,
   pagesShowingBlock,
   parsePageName,
@@ -499,5 +500,16 @@ describe("parsePageName (a page's name before its content is read)", () => {
     expect(parsePageName("pages-Search%20Page-514254")).toBe("Search Page");
     // A name that ends in a short number (a year) keeps it.
     expect(parsePageName("pages-Sale-2026")).toBe("Sale-2026");
+  });
+});
+
+describe("globalSectionLabel", () => {
+  it("keeps accented words whole in an unnamed block's key", () => {
+    expect(globalSectionLabel("benefícios app versão att", {})).toBe(
+      "Benefícios App Versão Att",
+    );
+    expect(globalSectionLabel("tarja-benefícios", { name: "  " })).toBe(
+      "Tarja Benefícios",
+    );
   });
 });
