@@ -89,6 +89,13 @@ interface PublishCompareProps {
    */
   v8?: { blocks: Record<string, unknown> | null };
   /**
+   * v7: the editor's current blocks, when it has read them. A saved section
+   * then compares on a page that shows it, as on v8: rendered alone, a
+   * section whose content depends on the page (matched by URL, or read from
+   * the page's data) shows nothing. Without them it renders on its own.
+   */
+  blocks?: Record<string, unknown> | null;
+  /**
    * Called once the pages this pane shows have loaded (or it has none), so
    * the panel can keep the previous pane on screen until then. v8 only.
    */
@@ -131,24 +138,28 @@ export function PublishCompare({
   draft,
   lastPage,
   v8,
+  blocks,
   onReady,
 }: PublishCompareProps) {
   const t = useT();
   const showsCode = use(PublishCodeTab);
   const savedSection = isolatedSectionKey(change);
-  /** Renders on its own (v7); on v8 it shows on a page, like any change. */
-  const sectionKey = v8 ? null : savedSection;
-  /** A v8 saved section: compared on a page that shows it. */
-  const v8Section = v8 ? savedSection : null;
-  /** That page; null when no page shows the block, undefined until known. */
-  const v8SectionPath = v8Section
-    ? blockComparePath(v8Section, v8?.blocks, lastPage)
+  /** The page a saved section compares on; null when no page shows it,
+   *  undefined until the blocks are known. */
+  const sectionPath = savedSection
+    ? blockComparePath(savedSection, v8 ? v8.blocks : blocks, lastPage)
     : undefined;
+  /** Renders on its own: only on v7 (v8 has no such route), when no page is
+   *  known to show it. */
+  const sectionKey =
+    !v8 && typeof sectionPath !== "string" ? savedSection : null;
+  /** A saved section compared on a page that shows it. */
+  const pageSection = sectionKey === null ? savedSection : null;
   /** A v8 saved section no page shows: nothing to preview, only the code. */
-  const onNoPage = v8Section !== null && v8SectionPath === null;
+  const onNoPage = pageSection !== null && sectionPath === null;
   const canRender =
     canRenderCompare(change.kind, previewServerUrl, draft) &&
-    (v8Section === null || typeof v8SectionPath === "string");
+    (pageSection === null || typeof sectionPath === "string");
   /** What the reviewer picked; until then both follow the change, whose path
    *  and kind can still arrive after the pane mounts. */
   const [pickedView, setView] = useState<CompareView | null>(null);
@@ -157,14 +168,14 @@ export function PublishCompare({
   const [typedPath, setPath] = useState<string | null>(null);
   const path =
     typedPath ??
-    (v8Section ? (v8SectionPath ?? "") : initialComparePath(change, lastPage));
+    (pageSection ? (sectionPath ?? "") : initialComparePath(change, lastPage));
   const pathEditable = isComparePathEditable(change);
 
   const url = !previewServerUrl
     ? null
     : compareUrl({
         previewServerUrl,
-        sectionKey: savedSection,
+        sectionKey,
         path,
         v8: !!v8,
       });
@@ -187,7 +198,7 @@ export function PublishCompare({
 
   const pathHint = (() => {
     if (sectionKey !== null) return null;
-    if (v8Section !== null) {
+    if (pageSection !== null) {
       const shown = path.trim();
       if (!shown) return null;
       return extractPathParams(shown).length > 0
@@ -358,7 +369,7 @@ export function PublishCompare({
       {view === "code" && !showsCode ? (
         // Without the Code tab, say why there is no page: still finding it,
         // no site address to show it on yet, or the change is on no page.
-        v8Section !== null && v8SectionPath === undefined ? (
+        pageSection !== null && sectionPath === undefined ? (
           <PublishGhost className="m-4 h-64 rounded" />
         ) : previewServerUrl === null ? (
           <ComparePlaceholder

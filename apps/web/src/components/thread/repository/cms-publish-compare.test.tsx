@@ -287,3 +287,94 @@ describe("the review frames (publish review)", () => {
     view.unmount();
   });
 });
+
+describe("a v7 saved section", () => {
+  const pointer = "drafts/x.json@v2";
+  const title: PublishChange = {
+    ...experiments,
+    blockKey: "Title",
+    name: "Title",
+    entry: undefined,
+    filepaths: [".deco/blocks/Title.json"],
+    fromJson: { __resolveType: "site/sections/Title.tsx", contents: ["a"] },
+    toJson: { __resolveType: "site/sections/Title.tsx", contents: ["b"] },
+  };
+  const PAGE = "website/pages/Page.tsx";
+  const blocks = {
+    Title: title.toJson,
+    Listing: {
+      __resolveType: "site/sections/Listing.tsx",
+      children: [{ __resolveType: "Title" }],
+    },
+    "pages-home": { __resolveType: PAGE, path: "/", sections: [] },
+    "pages-dresses": {
+      __resolveType: PAGE,
+      path: "/dresses",
+      sections: [{ __resolveType: "Listing" }],
+    },
+    "pages-news": {
+      __resolveType: PAGE,
+      path: "/news",
+      sections: [{ __resolveType: "Listing" }],
+    },
+  };
+  const pane = (props: {
+    blocks?: Record<string, unknown> | null;
+    lastPage?: { path: string; pageKey: string | null; params: {} } | null;
+  }) => (
+    <PublishCompare
+      change={title}
+      diff={null}
+      bodyPending={false}
+      previewServerUrl="https://site.example"
+      draft={{ kind: "pointer", pointer }}
+      lastPage={props.lastPage ?? null}
+      blocks={props.blocks}
+    />
+  );
+  const srcs = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLIFrameElement>("iframe")].map(
+      (frame) => new URL(frame.src),
+    );
+
+  test("compares on the page it was edited on, both sides, the path editable", () => {
+    const view = render(
+      pane({ blocks, lastPage: { path: "/news", pageKey: null, params: {} } }),
+    );
+    const [before, after] = srcs(view.container);
+    expect(before!.pathname).toBe("/news");
+    expect(before!.searchParams.get("__draft")).toBe("off");
+    expect(after!.pathname).toBe("/news");
+    expect(after!.searchParams.get("__draft")).toBe(pointer);
+    const input = within(view.container).getByRole("textbox");
+    expect((input as HTMLInputElement).value).toBe("/news");
+    view.unmount();
+  });
+
+  test("with no page previewed, the first page that shows it", () => {
+    const view = render(pane({ blocks }));
+    expect(srcs(view.container).map((u) => u.pathname)).toEqual([
+      "/dresses",
+      "/dresses",
+    ]);
+    view.unmount();
+  });
+
+  test("renders on its own until the editor's blocks are known", () => {
+    const view = render(pane({}));
+    for (const url of srcs(view.container)) {
+      expect(url.pathname.startsWith("/live/previews/")).toBe(true);
+    }
+    view.unmount();
+  });
+
+  test("renders on its own when no page shows it, instead of no preview", () => {
+    const view = render(pane({ blocks: { Title: title.toJson } }));
+    const body = within(view.container);
+    expect(body.getByRole("tab", { name: "Side by side" })).toBeTruthy();
+    for (const url of srcs(view.container)) {
+      expect(url.pathname.startsWith("/live/previews/")).toBe(true);
+    }
+    view.unmount();
+  });
+});
