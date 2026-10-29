@@ -101,7 +101,7 @@ interface SiteConfig {
   /** Accepted events per calendar month (uncapped when absent). */
   quota?: number;
 }
-interface AnalyticsStatus {
+export interface AnalyticsStatus {
   configured?: boolean;
   registered?: boolean;
   host?: string | null;
@@ -125,7 +125,7 @@ interface AnalyticsDataResponse {
  *  creation, and only for a token (key) registration; `notes` carries the
  *  collector's warnings (e.g. `deco` auto-added, or the `_dq` route not yet
  *  reachable). */
-interface AnalyticsRegisterResult {
+export interface AnalyticsRegisterResult {
   registered?: boolean;
   host?: string | null;
   key?: string | null;
@@ -174,7 +174,10 @@ const MODULES = [
 // module-level const, so it carries the key, not the translated string).
 // `pipeline` (operator-only, no tenant policy) and `install` (only stripped
 // internals) are omitted.
-const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
+export const DATA_VIEWS: ReadonlyArray<{
+  view: string;
+  labelKey: TranslationKey;
+}> = [
   { view: "live", labelKey: "mainPanelTabs.analyticsTab.viewLive" },
   { view: "overview", labelKey: "mainPanelTabs.analyticsTab.viewOverview" },
   { view: "behaviour", labelKey: "mainPanelTabs.analyticsTab.viewBehaviour" },
@@ -1003,6 +1006,14 @@ function OverviewDashboard({ payload }: { payload: Record<string, unknown> }) {
 
 // --- realtime: the curated "now" view ---------------------------------------
 
+/** A timestamp as the time of day; anything unparseable as it came. */
+function formatClock(value: unknown): string {
+  const at = typeof value === "string" ? new Date(value) : null;
+  return at && !Number.isNaN(at.getTime())
+    ? at.toLocaleTimeString()
+    : formatCell(value);
+}
+
 /** The Realtime view, modelled on the admin monitor: Visitors / Pageviews /
  *  Events / Last event headline cards, then the live feed and the pages active
  *  right now. Fed by the `live` payload (a 5m window, auto-refreshed). */
@@ -1037,7 +1048,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
               {label}
             </span>
             <span className="text-3xl font-semibold leading-none text-foreground tabular-nums">
-              {k === "last_event" ? formatCell(kpi[k]) : fmtMetric(k, kpi[k])}
+              {k === "last_event" ? formatClock(kpi[k]) : fmtMetric(k, kpi[k])}
             </span>
           </div>
         ))}
@@ -1068,7 +1079,7 @@ function RealtimeDashboard({ payload }: { payload: Record<string, unknown> }) {
 
 // --- the active view (one at a time, driven by the tab bar) ------------------
 
-function ActiveView({
+export function ActiveView({
   base,
   orgSlug,
   site,
@@ -1313,7 +1324,7 @@ export function CopyButton({ text }: { text: string }) {
 /** The one-time registration result: the server-built snippet, any notes, and —
  *  for a token registration only — the public token, shown ONCE. Rendered at the
  *  tab level so it survives the flip to the registered view. */
-function RegistrationResult({
+export function RegistrationResult({
   result,
   onDismiss,
 }: {
@@ -1365,7 +1376,7 @@ function RegistrationResult({
   );
 }
 
-function RegisterCard({
+export function RegisterCard({
   base,
   orgSlug,
   site,
@@ -1747,7 +1758,7 @@ function EditAnalyticsDialog({
 /** The lifecycle controls for a registered site: state badge + host + id +
  *  modules, pause/resume/edit/unregister, and the tracking summary. Rendered
  *  inside the collapsible Configuration section. */
-function ConfigurationPanel({
+export function ConfigurationPanel({
   base,
   orgSlug,
   site,

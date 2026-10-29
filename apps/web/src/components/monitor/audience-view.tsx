@@ -1,13 +1,12 @@
 /**
- * The Monitor's Audience tab: who visits the site, from whichever source the
+ * The Monitor's Analytics tab: who visits the site, from whichever source the
  * site reports to (Deco Analytics, or OneDollarStats until it retires). One
- * shape for both — the server normalizes (`/api/:org/monitor/:site/audience`)
- * and says which source answered, which the tab names once, as a caption.
+ * overview for both — the server normalizes (`/api/:org/monitor/:site/audience`);
+ * a site on Deco Analytics also gets its other views (`./deco-analytics`).
  */
 
 import { type ReactNode, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { BarChart10 } from "@untitledui/icons";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type {
@@ -27,6 +26,12 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
@@ -36,6 +41,10 @@ import {
   formatCountry,
   formatNumber,
 } from "@/layouts/main-panel-tabs/cdn-tab";
+import {
+  type AnalyticsRegisterResult,
+  RegistrationResult,
+} from "@/layouts/main-panel-tabs/analytics-tab";
 import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
@@ -43,7 +52,17 @@ import { useProjectContext } from "@/sdk";
 import { TopbarSelect } from "./topbar-select";
 import type { SiteProject } from "./org-insights";
 import { weightedMean } from "./aggregate";
-import { projectLink, Spread, Trend } from "./parts";
+import { Spread, Trend } from "./parts";
+import {
+  AnalyticsSection,
+  analyticsSections,
+  ConfigureButton,
+  ConfigureDialog,
+  ownsRange,
+  RegisterAnalytics,
+  SectionTabs,
+  useAnalyticsStatus,
+} from "./deco-analytics";
 
 const COLOR_VISITORS = "var(--chart-1)";
 
@@ -115,22 +134,29 @@ function rangeLabel(range: AudienceRange, t: TFunction): string {
 function RangeAction({
   value,
   onChange,
+  hideRange = false,
+  children,
 }: {
   value: AudienceRange;
   onChange: (range: AudienceRange) => void;
+  hideRange?: boolean;
+  children?: ReactNode;
 }) {
   const t = useT();
   return (
     <Page.Actions>
-      <TopbarSelect
-        label={t("monitor.audience.range")}
-        value={value}
-        options={AUDIENCE_RANGES.map((range) => ({
-          value: range,
-          label: rangeLabel(range, t),
-        }))}
-        onChange={onChange}
-      />
+      {!hideRange && (
+        <TopbarSelect
+          label={t("monitor.audience.range")}
+          value={value}
+          options={AUDIENCE_RANGES.map((range) => ({
+            value: range,
+            label: rangeLabel(range, t),
+          }))}
+          onChange={onChange}
+        />
+      )}
+      {children}
     </Page.Actions>
   );
 }
@@ -351,26 +377,25 @@ function displayKey(view: AudienceView, key: string): string {
   return key;
 }
 
-/** One project's audience, in full. */
-function ProjectAudience({
+/** One project's overview: the same cards and breakdowns from either source. */
+function AudienceOverview({
   project,
   range,
-  onRange,
+  register,
 }: {
   project: SiteProject;
   range: AudienceRange;
-  onRange: (range: AudienceRange) => void;
+  /** Shown instead of the empty state when the site can turn Deco Analytics on. */
+  register: ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const summary = useAudience(org.slug, project, "summary", range);
   const timeline = useAudience(org.slug, project, "timeline", range);
-  const action = <RangeAction value={range} onChange={onRange} />;
 
   if (summary.isLoading) {
     return (
       <>
-        {action}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-28" />
@@ -382,33 +407,23 @@ function ProjectAudience({
   }
   if (summary.error) {
     return (
-      <>
-        {action}
-        <EmptyState
-          icon={<BarChart10 size={20} />}
-          title={t("monitor.audience.error")}
-          description={summary.error.message}
-        />
-      </>
+      <EmptyState
+        icon={<BarChart10 size={20} />}
+        title={t("monitor.audience.error")}
+        description={summary.error.message}
+      />
     );
   }
   const body = summary.data;
   if (!body?.available) {
     return (
-      <>
+      register ?? (
         <EmptyState
           icon={<BarChart10 size={20} />}
           title={t("monitor.audience.empty.title")}
           description={t("monitor.audience.empty.desc")}
-          buttonComponent={
-            <Button asChild size="sm">
-              <Link {...projectLink(org.slug, project.id, "analytics")}>
-                {t("monitor.audience.empty.cta")}
-              </Link>
-            </Button>
-          }
         />
-      </>
+      )
     );
   }
 
@@ -419,14 +434,11 @@ function ProjectAudience({
 
   return (
     <>
-      {action}
       {body.data.view === "summary" && (
-        <div className="flex flex-col gap-2">
-          <SummaryCards
-            summary={body.data.summary}
-            previous={body.data.previous}
-          />
-        </div>
+        <SummaryCards
+          summary={body.data.summary}
+          previous={body.data.previous}
+        />
       )}
       {timeline.isLoading ? (
         <Skeleton className="h-64" />
@@ -463,6 +475,122 @@ function ProjectAudience({
           title={t("monitor.audience.devices")}
         />
       </div>
+    </>
+  );
+}
+
+/**
+ * One project's analytics in full: the overview from whichever source it
+ * reports to and, on Deco Analytics, every other view and its settings.
+ */
+function ProjectAudience({
+  project,
+  range,
+  onRange,
+}: {
+  project: SiteProject;
+  range: AudienceRange;
+  onRange: (range: AudienceRange) => void;
+}) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const status = useAnalyticsStatus(org.slug, project);
+  const sections = analyticsSections(status.data);
+  const [requested, setRequested] = useState("overview");
+  const section = sections.some((s) => s.view === requested)
+    ? requested
+    : "overview";
+  const [dialog, setDialog] = useState<"configure" | "register" | null>(null);
+  const [registered, setRegistered] = useState<AnalyticsRegisterResult | null>(
+    null,
+  );
+  const canRegister =
+    status.data !== undefined &&
+    status.data.configured !== false &&
+    !status.data.registered;
+  // A site already reporting to OneDollarStats can move to Deco Analytics.
+  const reporting = useAudience(org.slug, project, "summary", range).data
+    ?.available;
+  const register = status.data && canRegister && (
+    <RegisterAnalytics
+      orgSlug={org.slug}
+      project={project}
+      status={status.data}
+      onRegistered={(result) => {
+        setRegistered(result);
+        setDialog(null);
+      }}
+    />
+  );
+
+  return (
+    <>
+      <RangeAction
+        value={range}
+        onChange={onRange}
+        hideRange={ownsRange(section)}
+      >
+        {status.data?.registered && (
+          <ConfigureButton onClick={() => setDialog("configure")} />
+        )}
+        {canRegister && reporting && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="font-normal"
+            onClick={() => setDialog("register")}
+          >
+            {t("monitor.audience.activate")}
+          </Button>
+        )}
+      </RangeAction>
+      {registered && (
+        <RegistrationResult
+          result={registered}
+          onDismiss={() => setRegistered(null)}
+        />
+      )}
+      {sections.length > 1 && (
+        <SectionTabs
+          sections={sections}
+          value={section}
+          onChange={setRequested}
+        />
+      )}
+      {section === "overview" || !status.data ? (
+        <AudienceOverview project={project} range={range} register={register} />
+      ) : (
+        <AnalyticsSection
+          orgSlug={org.slug}
+          project={project}
+          status={status.data}
+          section={section}
+          range={range}
+          onConfigure={() => setDialog("configure")}
+        />
+      )}
+      {status.data?.registered && (
+        <ConfigureDialog
+          orgSlug={org.slug}
+          project={project}
+          status={status.data}
+          open={dialog === "configure"}
+          onOpenChange={(open) => setDialog(open ? "configure" : null)}
+        />
+      )}
+      {reporting && (
+        <Dialog
+          open={dialog === "register"}
+          onOpenChange={(open) => setDialog(open ? "register" : null)}
+        >
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{t("monitor.audience.activate")}</DialogTitle>
+            </DialogHeader>
+            {register}
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

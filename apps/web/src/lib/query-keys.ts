@@ -811,6 +811,9 @@ export const KEYS = {
     view: string,
     range: string,
   ) => ["monitor", org, "audience", site, trafficSite, view, range] as const,
+  /** Every Monitor audience read for one site, whichever source answers it. */
+  monitorAudienceSite: (org: string, site: string) =>
+    ["monitor", org, "audience", site] as const,
   // Order monitor: every key starts with this prefix, so one invalidation
   // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
   orderMonitor: (org: string) => ["order-monitor", org] as const,
