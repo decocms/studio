@@ -235,7 +235,7 @@ function Blogposts({
         campaign={
           card.campaignId ? campaignById.get(card.campaignId) : undefined
         }
-        siteTitle={projects.find((p) => p.id === card.virtualMcpId)?.title}
+        site={projects.find((p) => p.id === card.virtualMcpId)}
         executing={run.isPending}
         onClose={() => openCard(undefined)}
         onOpenChat={() => openChat(card)}

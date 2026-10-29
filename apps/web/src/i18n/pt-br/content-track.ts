@@ -69,7 +69,21 @@ export const contentTrack = {
   "contentTrack.card.untitled": "Blogpost sem título",
   "contentTrack.card.kind": "Blogpost",
   "contentTrack.card.sectionCount": "{count} bloco(s)",
-  "contentTrack.card.siteEditor": "Site Editor",
+  "contentTrack.card.seePreview": "Ver prévia",
+  "contentTrack.card.previewToggle": "Como mostrar o post",
+  "contentTrack.card.previewSite": "No site",
+  "contentTrack.card.previewContent": "Conteúdo",
+  "contentTrack.card.openInNewTab": "Abrir em nova aba",
+  "contentTrack.card.previewLoading": "Carregando a prévia do site…",
+  "contentTrack.card.previewFrameTitle": "O post como o site mostra",
+  "contentTrack.card.previewGap.noPreviewServer":
+    "O site não tem endereço de prévia, então o post aparece só como conteúdo.",
+  "contentTrack.card.previewGap.noCms":
+    "O plano da organização não inclui a prévia do CMS.",
+  "contentTrack.card.previewGap.noRoute":
+    "Ainda não há página para mostrá-lo: o post precisa de slug e categoria, e o site de uma página de post.",
+  "contentTrack.card.previewGap.unavailable":
+    "Não foi possível carregar a prévia do site.",
   "contentTrack.card.whyEyebrow": "Hipótese · por que este card existe",
   "contentTrack.card.proposed": "Estrategista propôs",
   "contentTrack.card.approved": "aprovada",

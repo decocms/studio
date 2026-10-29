@@ -67,7 +67,21 @@ export const contentTrack = {
   "contentTrack.card.untitled": "Untitled blogpost",
   "contentTrack.card.kind": "Blogpost",
   "contentTrack.card.sectionCount": "{count} block(s)",
-  "contentTrack.card.siteEditor": "Site Editor",
+  "contentTrack.card.seePreview": "See preview",
+  "contentTrack.card.previewToggle": "How to show the post",
+  "contentTrack.card.previewSite": "On the site",
+  "contentTrack.card.previewContent": "Content",
+  "contentTrack.card.openInNewTab": "Open in a new tab",
+  "contentTrack.card.previewLoading": "Loading the site's preview…",
+  "contentTrack.card.previewFrameTitle": "The post as the site shows it",
+  "contentTrack.card.previewGap.noPreviewServer":
+    "The site has no preview address, so the post shows as content only.",
+  "contentTrack.card.previewGap.noCms":
+    "The organization's plan does not include the CMS preview.",
+  "contentTrack.card.previewGap.noRoute":
+    "No page to show it on yet: the post needs a slug and a category, and the site a blog post page.",
+  "contentTrack.card.previewGap.unavailable":
+    "The site's preview could not be loaded.",
   "contentTrack.card.whyEyebrow": "Hypothesis · why this card exists",
   "contentTrack.card.proposed": "Strategist proposed",
   "contentTrack.card.approved": "approved",

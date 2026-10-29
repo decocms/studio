@@ -31,7 +31,11 @@ escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
    `BLOG_POST_DRAFT` dá ao modelo dele —, e o `BLOG_POST_ASSEMBLE` confere cada
    seção contra o schema do bloco, devolvendo o motivo do que cortou. Termina
    em Awaiting review, com `postKey` e `commit`.
-5. **Revisão e publicação**, no Site Editor, por uma pessoa.
+5. **Revisão**, no próprio card: o site renderiza o post a partir da branch do
+   card, pelo ponteiro de rascunho do Fast Preview (`?__draft=`), sem sandbox.
+   Pede o servidor de prévia do projeto e o CMS no plano; sem eles, o card
+   mostra o post como conteúdo. **Publicação**, no Site Editor, por uma
+   pessoa.
 6. **Monitor**: ainda não existe.
 
 ## Onde as coisas moram

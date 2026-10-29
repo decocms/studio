@@ -17,6 +17,8 @@ import {
   CheckCircle,
   Clock,
   CornerDownRight,
+  Eye,
+  File06,
   Flag05,
   GitBranch01,
   Globe01,
@@ -37,6 +39,7 @@ import {
   type BlogEvidenceSource,
 } from "@decocms/shared/blog-card";
 import { pickBlogConnection } from "@decocms/shared/blog-connections";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -47,6 +50,10 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
@@ -57,6 +64,7 @@ import {
   hasGoal,
 } from "@/components/sandbox/content/blog/campaign-goal";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { CompareFrame } from "@/components/thread/repository/cms-publish-compare";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
 import { useConnections, useProjectContext } from "@/sdk";
@@ -71,6 +79,11 @@ import {
 } from "./card-model";
 import { RoleAtWork, RoleAvatar } from "./newsroom";
 import { PostBody } from "./post-body";
+import {
+  type CardPreview,
+  type CardPreviewGap,
+  useCardPreview,
+} from "./use-card-preview";
 
 const PHASES = ["hypothesis", "execute", "monitor"] as const;
 
@@ -113,7 +126,7 @@ const SIGNALS = ["gsc", "ga4", "vtex", "calendar"] as const;
 export function CardDetail({
   card,
   campaign,
-  siteTitle,
+  site,
   executing,
   onClose,
   onOpenChat,
@@ -122,7 +135,8 @@ export function CardDetail({
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
-  siteTitle: string | undefined;
+  /** The site the post is written for; undefined while projects load. */
+  site: VirtualMCPEntity | undefined;
   /** A run start is in flight. */
   executing: boolean;
   onClose: () => void;
@@ -131,8 +145,8 @@ export function CardDetail({
   onMove: (status: BlogCardStatus) => void;
 }) {
   const t = useT();
-  const { org } = useProjectContext();
   const [phase, setPhase] = useState<CardPhase>(defaultPhase(card));
+  const preview = useCardPreview(card, site);
   const working = cardAgentWorking(card, useClockTick());
   const crumb = cardTitle(card) || t("contentTrack.card.untitled");
   const title =
@@ -209,22 +223,19 @@ export function CardDetail({
             </div>
             {card.postKey && (
               <Button
-                asChild
                 variant="outline"
                 size="sm"
                 className="mt-1 shrink-0"
+                disabled={!preview.url}
+                onClick={() => {
+                  if (preview.url) {
+                    window.open(preview.url, "_blank", "noopener,noreferrer");
+                  }
+                }}
               >
-                <Link
-                  to="/$org/projects/$agentId/site-editor/content"
-                  params={{ org: org.slug, agentId: card.virtualMcpId }}
-                  search={{
-                    contentCollection: "posts",
-                    contentItem: card.postKey,
-                  }}
-                >
-                  {t("contentTrack.card.siteEditor")}
-                  <LinkExternal01 size={14} />
-                </Link>
+                <Eye size={14} />
+                {t("contentTrack.card.seePreview")}
+                <LinkExternal01 size={14} />
               </Button>
             )}
           </header>
@@ -241,7 +252,12 @@ export function CardDetail({
               working={working}
             />
           ) : phase === "execute" ? (
-            <ExecutePhase card={card} campaign={campaign} working={working} />
+            <ExecutePhase
+              card={card}
+              campaign={campaign}
+              working={working}
+              preview={preview}
+            />
           ) : (
             <EmptyState
               image={null}
@@ -254,7 +270,7 @@ export function CardDetail({
           <Properties
             card={card}
             campaign={campaign}
-            siteTitle={siteTitle}
+            siteTitle={site?.title}
             working={working}
             onMove={onMove}
           />
@@ -638,16 +654,32 @@ function FrameLine({
   );
 }
 
+/** What a person can do about a missing preview, when there is anything. */
+const PREVIEW_GAP: Record<
+  Exclude<CardPreviewGap, "not-written">,
+  TranslationKey
+> = {
+  "no-preview-server": "contentTrack.card.previewGap.noPreviewServer",
+  "no-cms": "contentTrack.card.previewGap.noCms",
+  "no-route": "contentTrack.card.previewGap.noRoute",
+  unavailable: "contentTrack.card.previewGap.unavailable",
+};
+
 function ExecutePhase({
   card,
   campaign,
   working,
+  preview,
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
   working: boolean;
+  preview: CardPreview;
 }) {
   const t = useT();
+  /** The person's pick; until then the site's own render when there is one. */
+  const [view, setView] = useState<"site" | "content" | null>(null);
+  const shown = view ?? (preview.url ? "site" : "content");
   if (card.status === "ideas" && !card.post) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -679,6 +711,124 @@ function ExecutePhase({
         )}
       </ol>
 
+      {card.postKey && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <ToggleGroup
+            type="single"
+            size="sm"
+            value={shown}
+            onValueChange={(next) =>
+              next && setView(next as "site" | "content")
+            }
+            aria-label={t("contentTrack.card.previewToggle")}
+            className="gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
+          >
+            <ToggleGroupItem
+              value="site"
+              disabled={!preview.url}
+              className={PREVIEW_TOGGLE_ITEM}
+            >
+              <Globe01 size={12} />
+              {t("contentTrack.card.previewSite")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="content" className={PREVIEW_TOGGLE_ITEM}>
+              <File06 size={12} />
+              {t("contentTrack.card.previewContent")}
+            </ToggleGroupItem>
+          </ToggleGroup>
+          {preview.url ? (
+            <a
+              href={preview.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t("contentTrack.card.openInNewTab")}
+              <LinkExternal01 size={12} />
+            </a>
+          ) : preview.loading ? (
+            <span className="text-xs text-muted-foreground">
+              {t("contentTrack.card.previewLoading")}
+            </span>
+          ) : (
+            preview.gap &&
+            preview.gap !== "not-written" && (
+              <span className="text-xs text-muted-foreground">
+                {t(PREVIEW_GAP[preview.gap])}
+              </span>
+            )
+          )}
+        </div>
+      )}
+
+      {shown === "site" && preview.url ? (
+        <SitePreviewFrame url={preview.url} />
+      ) : (
+        <PostContent
+          card={card}
+          campaign={campaign}
+          working={working}
+          post={post}
+        />
+      )}
+
+      {card.status === "awaiting_review" && card.branch && (
+        <p className="text-sm text-muted-foreground">
+          {t("contentTrack.card.saved", { branch: card.branch })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const PREVIEW_TOGGLE_ITEM =
+  "h-6 gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-transparent data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-edge";
+
+/** The page the site serves for the post, as a desktop miniature like the publish compare's. */
+function SitePreviewFrame({ url }: { url: string }) {
+  const t = useT();
+  let address = url;
+  try {
+    const parsed = new URL(url);
+    address = `${parsed.host}${parsed.pathname}`;
+  } catch {
+    // The raw address is still worth showing.
+  }
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-edge">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5">
+        <Globe01 size={12} className="shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {address}
+        </span>
+      </div>
+      <div className="relative h-[720px] bg-background">
+        <CompareFrame
+          url={url}
+          device="desktop"
+          title={t("contentTrack.card.previewFrameTitle")}
+          missing=""
+        />
+      </div>
+    </div>
+  );
+}
+
+/** The post as the card holds it: cover, excerpt and body, filling in as the agent writes. */
+function PostContent({
+  card,
+  campaign,
+  working,
+  post,
+}: {
+  card: BlogCard;
+  campaign: CampaignEntry | undefined;
+  working: boolean;
+  post: NonNullable<BlogCard["post"]>;
+}) {
+  const t = useT();
+  return (
+    <>
       {imageReady(post.cover?.url) ? (
         <img
           src={post.cover.url}
@@ -719,13 +869,7 @@ function ExecutePhase({
           products={campaign?.intent.products ?? []}
         />
       )}
-
-      {card.status === "awaiting_review" && card.branch && (
-        <p className="text-sm text-muted-foreground">
-          {t("contentTrack.card.saved", { branch: card.branch })}
-        </p>
-      )}
-    </div>
+    </>
   );
 }
 
