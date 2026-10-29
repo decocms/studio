@@ -8,7 +8,6 @@
  */
 
 import { type ReactNode, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import {
   AlertCircle,
   BarChart07,
@@ -67,7 +66,7 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { CompareFrame } from "@/components/thread/repository/cms-publish-compare";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
-import { useConnections, useProjectContext } from "@/sdk";
+import { useConnections } from "@/sdk";
 import { CARD_STATUS_LABEL } from "./blogposts-board";
 import {
   type CardPhase,
@@ -84,6 +83,7 @@ import {
   type CardPreviewGap,
   useCardPreview,
 } from "./use-card-preview";
+import { useOpenCardEditor } from "./use-open-card-editor";
 
 const PHASES = ["hypothesis", "execute", "monitor"] as const;
 
@@ -929,7 +929,7 @@ function Properties({
   onMove: (status: BlogCardStatus) => void;
 }) {
   const t = useT();
-  const { org } = useProjectContext();
+  const editor = useOpenCardEditor();
   const none = t("contentTrack.props.none");
   const period = campaign
     ? [campaign.period.start, campaign.period.end].filter(Boolean).join(" → ")
@@ -987,17 +987,17 @@ function Properties({
       </Group>
       {card.postKey && (
         <Group caption={t("contentTrack.props.links")}>
-          <Link
-            to="/$org/projects/$agentId/site-editor/content"
-            params={{ org: org.slug, agentId: card.virtualMcpId }}
-            search={{ contentCollection: "posts", contentItem: card.postKey }}
-            className="flex min-h-7 items-center gap-2 text-[13px] text-foreground hover:underline"
+          <button
+            type="button"
+            disabled={!editor.ready || editor.opening || !card.branch}
+            onClick={() => void editor.open(card)}
+            className="flex min-h-7 items-center gap-2 text-left text-[13px] text-foreground hover:underline disabled:cursor-default disabled:no-underline disabled:opacity-60"
           >
             <span className="grid w-4 shrink-0 place-items-center text-muted-foreground">
               <LinkExternal01 size={14} />
             </span>
             {t("contentTrack.props.openInEditor")}
-          </Link>
+          </button>
           <Row
             icon={
               <span className="size-1.5 rounded-full bg-muted-foreground" />

@@ -35,7 +35,8 @@ escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
    card, pelo ponteiro de rascunho do Fast Preview (`?__draft=`), sem sandbox.
    Pede o servidor de prévia do projeto e o CMS no plano; sem eles, o card
    mostra o post como conteúdo. **Publicação**, no Site Editor, por uma
-   pessoa.
+   pessoa: o card abre o editor na branch do card, por um chat dele com id
+   fixo por card e pessoa (`cardEditorThreadId`).
 6. **Monitor**: ainda não existe.
 
 ## Onde as coisas moram
