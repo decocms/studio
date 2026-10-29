@@ -21,7 +21,12 @@ import {
 } from "@/components/sandbox/content/blog/blog-data";
 import { BlogConnectionsGate } from "@/components/sandbox/content/blog/blog-connections-gate";
 import { useBlogCards } from "@/components/sandbox/content/blog/use-blog-cards";
-import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
+import { useVtexCatalogSource } from "@/components/sandbox/content/blog/blocks/vtex-mcp-source";
+import { useBlogConnections } from "@/components/sandbox/content/blog/use-blog-connections";
+import {
+  type BlogState,
+  useBlogState,
+} from "@/components/sandbox/content/blog/use-blog-state";
 import { useBrandLiveSync } from "@/hooks/use-brand-events";
 import { scopableProjects, useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
@@ -107,7 +112,7 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
               {view === "campaigns" ? (
                 <Campaigns />
               ) : (
-                <Blogposts blocks={blog.blocks} cardId={search.card} />
+                <Blogposts blog={blog} cardId={search.card} />
               )}
             </BlogConnectionsGate>
           )}
@@ -118,10 +123,10 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
 }
 
 function Blogposts({
-  blocks,
+  blog,
   cardId,
 }: {
-  blocks: Record<string, unknown>;
+  blog: BlogState;
   cardId: string | undefined;
 }) {
   const t = useT();
@@ -135,7 +140,9 @@ function Blogposts({
   const openChat = useOpenCardChat();
   const [creating, setCreating] = useState(false);
 
-  const campaigns = scanCampaigns(blocks);
+  const { vtex } = useBlogConnections();
+  const catalog = useVtexCatalogSource(vtex.connectionId);
+  const campaigns = scanCampaigns(blog.blocks);
   const campaignById = new Map(
     campaigns.map((campaign) => [
       campaign.key.slice(CAMPAIGN_KEY_PREFIX.length),
@@ -280,7 +287,8 @@ function Blogposts({
       <NewBlogpostDialog
         open={creating}
         onOpenChange={setCreating}
-        campaigns={campaigns}
+        blog={blog}
+        catalog={catalog}
         sites={sites}
         siteId={scopeId}
         pending={create.isPending || run.isPending}

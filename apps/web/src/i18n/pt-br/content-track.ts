@@ -49,10 +49,10 @@ export const contentTrack = {
   "contentTrack.lane.published": "Publicado",
   "contentTrack.new.title": "Novo blogpost",
   "contentTrack.new.description":
-    "Escolha a campanha que ele serve. A redação lê os dados da loja e traz uma hipótese para você aprovar.",
+    "Escolha a campanha a que ele pertence, ou crie uma aqui. A redação lê os dados da loja e traz uma hipótese rumo à meta da campanha para você aprovar.",
   "contentTrack.new.campaign": "Campanha",
   "contentTrack.new.noCampaigns":
-    "Nenhuma campanha aberta ainda. Crie uma em Campanhas.",
+    "Nenhuma campanha aberta ainda. Crie uma aqui, à mão ou gerada.",
   "contentTrack.new.site": "Site",
   "contentTrack.new.sitePlaceholder": "Escolha o site",
   "contentTrack.new.noSites":

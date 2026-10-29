@@ -1,10 +1,12 @@
 /**
- * Starting a blogpost: which campaign it serves, which site it is written
+ * Starting a blogpost: which campaign it belongs to, which site it is written
  * for, and, if the person has one, what they want it to explore. The newsroom
- * brings the hypothesis from there.
+ * brings the hypothesis from there. A campaign can be started right here, by
+ * hand or generated, and comes back chosen.
  */
 
 import { useState } from "react";
+import { Plus, Stars02 } from "@untitledui/icons";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -24,11 +26,19 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import type { CatalogSource } from "@/components/sandbox/content/blog/blocks/catalog-source";
 import {
   CAMPAIGN_KEY_PREFIX,
-  type CampaignEntry,
+  scanCampaigns,
 } from "@/components/sandbox/content/blog/blog-data";
+import {
+  CampaignEditorSheet,
+  useCampaignCreate,
+} from "@/components/sandbox/content/blog/campaign-create";
+import { GenerateCampaignsDialog } from "@/components/sandbox/content/blog/generate-campaigns-dialog";
 import { CampaignList } from "@/components/sandbox/content/blog/generate-post-dialog";
+import type { BlogState } from "@/components/sandbox/content/blog/use-blog-state";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useT } from "@/i18n/use-t.ts";
 
 export interface NewBlogpost {
@@ -40,7 +50,8 @@ export interface NewBlogpost {
 export function NewBlogpostDialog({
   open,
   onOpenChange,
-  campaigns,
+  blog,
+  catalog,
   sites,
   siteId,
   pending,
@@ -48,7 +59,10 @@ export function NewBlogpostDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  campaigns: CampaignEntry[];
+  /** The organization's blog state: its campaigns, and where a new one is written. */
+  blog: BlogState;
+  /** The store's catalog, for a new campaign's product pickers. */
+  catalog: CatalogSource | null;
   /** The sites a post can be written for. */
   sites: VirtualMCPEntity[];
   /** The site already chosen by the page, in a project's Execute. */
@@ -57,16 +71,26 @@ export function NewBlogpostDialog({
   onCreate: (blogpost: NewBlogpost) => void;
 }) {
   const t = useT();
+  const hasAi = useHostedAiProviderKeys().length > 0;
+  const { addCampaign, createFromSeed } = useCampaignCreate(blog);
   const [campaignKey, setCampaignKey] = useState("");
   const [pickedSite, setPickedSite] = useState("");
   const [prompt, setPrompt] = useState("");
+  /** The campaign started here, open in its editor over the dialog. */
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
 
-  const openCampaigns = campaigns.filter(
+  const openCampaigns = scanCampaigns(blog.blocks).filter(
     (campaign) => campaign.status !== "finished",
   );
   const virtualMcpId =
     siteId ?? (sites.length === 1 ? (sites[0]?.id ?? "") : pickedSite);
-  const ready = !!campaignKey && !!virtualMcpId && !pending;
+  // The card reads its campaign from disk, so a campaign still being written waits.
+  const ready =
+    openCampaigns.some((campaign) => campaign.key === campaignKey) &&
+    !!virtualMcpId &&
+    !pending &&
+    !blog.save.isPending;
 
   const close = (next: boolean) => {
     onOpenChange(next);
@@ -74,7 +98,15 @@ export function NewBlogpostDialog({
       setCampaignKey("");
       setPickedSite("");
       setPrompt("");
+      setEditingKey(null);
+      setGenerating(false);
     }
+  };
+
+  const startCampaign = () => {
+    const key = addCampaign();
+    setCampaignKey(key);
+    setEditingKey(key);
   };
 
   return (
@@ -88,7 +120,30 @@ export function NewBlogpostDialog({
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-1">
           <div className="flex flex-col gap-2">
-            <Label>{t("contentTrack.new.campaign")}</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label>{t("contentTrack.new.campaign")}</Label>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!hasAi}
+                  onClick={() => setGenerating(true)}
+                >
+                  <Stars02 size={14} />
+                  {t("sandbox.campaignGen.open")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={startCampaign}
+                >
+                  <Plus size={14} />
+                  {t("sandbox.campaigns.add")}
+                </Button>
+              </div>
+            </div>
             {openCampaigns.length === 0 ? (
               <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
                 {t("contentTrack.new.noCampaigns")}
@@ -158,6 +213,27 @@ export function NewBlogpostDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      <CampaignEditorSheet
+        blockKey={editingKey}
+        blog={blog}
+        catalog={catalog}
+        onClose={() => setEditingKey(null)}
+        onRemove={(key) => {
+          blog.remove.mutate({ blockKey: key });
+          setEditingKey(null);
+          setCampaignKey((chosen) => (chosen === key ? "" : chosen));
+        }}
+      />
+      <GenerateCampaignsDialog
+        open={generating}
+        onOpenChange={setGenerating}
+        decofile={blog.blocks}
+        hasAi={hasAi}
+        onCreate={async (seed, chosen) => {
+          const [first] = await createFromSeed(seed, chosen);
+          if (first) setCampaignKey(first);
+        }}
+      />
     </Dialog>
   );
 }

@@ -46,28 +46,17 @@ import {
 } from "@decocms/ui/components/alert-dialog.tsx";
 import type { CatalogSource } from "./blocks/catalog-source";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
-import {
-  GenerateCampaignsDialog,
-  type SuggestedCampaign,
-} from "./generate-campaigns-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
+import { GenerateCampaignsDialog } from "./generate-campaigns-dialog";
 import { SaveStatus } from "./save-status";
 import { CampaignEditor } from "./campaign-editor";
+import { CampaignEditorSheet, useCampaignCreate } from "./campaign-create";
 import { GoalLine } from "./campaign-goal";
 import {
   buildCampaignBlock,
-  buildCampaignSeedBlock,
-  type CampaignSeedEntry,
   CAMPAIGN_STATUSES,
   type CampaignEntry,
   type CampaignStatus,
   type CampaignTrigger,
-  emptyCampaign,
-  newCampaignKey,
   readBlogContext,
   scanCampaigns,
 } from "./blog-data";
@@ -146,14 +135,7 @@ export function CampaignsPanel({
   const setLaneCollapsed = (lane: string, collapsed: boolean) =>
     setLaneOverrides((prev) => ({ ...prev, [lane]: collapsed }));
 
-  const addCampaign = () => {
-    const blockKey = newCampaignKey();
-    save.mutate({
-      blockKey,
-      data: buildCampaignBlock(emptyCampaign(new Date())),
-    });
-    setOpenKey(blockKey);
-  };
+  const { addCampaign, createFromSeed } = useCampaignCreate(blog);
 
   const moveTo = async (key: string, next: CampaignStatus) => {
     const campaign = campaigns.find((entry) => entry.key === key);
@@ -177,38 +159,6 @@ export function CampaignsPanel({
         const rest = new Set(keys);
         rest.delete(key);
         return rest;
-      });
-    }
-  };
-
-  /**
-   * Persist the seed and the chosen candidates together.
-   *
-   * Sequential rather than parallel: each write goes through the same decofile
-   * cache entry, and concurrent saves would race on it.
-   */
-  const createFromSeed = async (
-    seed: { key: string; entry: Omit<CampaignSeedEntry, "key"> },
-    chosen: SuggestedCampaign[],
-  ) => {
-    const now = new Date().toISOString();
-    await save.mutateAsync({
-      blockKey: seed.key,
-      data: buildCampaignSeedBlock({ ...seed.entry, updatedAt: now }),
-    });
-    for (const candidate of chosen) {
-      const blockKey = newCampaignKey();
-      await save.mutateAsync({
-        blockKey,
-        data: buildCampaignBlock({
-          ...emptyCampaign(new Date()),
-          name: candidate.name,
-          seedKey: seed.key,
-          period: candidate.period,
-          trigger: candidate.trigger,
-          intent: candidate.intent,
-          guardrails: candidate.guardrails,
-        }),
       });
     }
   };
@@ -268,7 +218,11 @@ export function CampaignsPanel({
             <Stars02 size={14} />
             {t("sandbox.campaignGen.open")}
           </Button>
-          <Button type="button" size="sm" onClick={addCampaign}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setOpenKey(addCampaign())}
+          >
             <Plus size={14} />
             {t("sandbox.campaigns.add")}
           </Button>
@@ -486,41 +440,21 @@ export function CampaignsPanel({
         onOpenChange={setGenerateOpen}
         decofile={decofile}
         hasAi={hasAi}
-        onCreate={createFromSeed}
+        onCreate={async (seed, chosen) => {
+          await createFromSeed(seed, chosen);
+        }}
       />
 
-      {/* The board edits in a docked sheet, the way the Posts board does. */}
-      <Dialog
-        open={view === "board" && Boolean(boardKey)}
-        onOpenChange={(next) => {
-          if (!next) setOpenKey(null);
+      <CampaignEditorSheet
+        blockKey={view === "board" ? boardKey : null}
+        blog={blog}
+        catalog={catalog}
+        onClose={() => setOpenKey(null)}
+        onRemove={(key) => {
+          const campaign = campaigns.find((c) => c.key === key);
+          if (campaign) setPendingDelete(campaign);
         }}
-      >
-        <DialogContent
-          closeButtonClassName="hidden"
-          className="left-auto right-4 top-4 bottom-4 flex h-auto translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl"
-        >
-          <DialogTitle className="sr-only">
-            {t("sandbox.blogContext.tabCampaigns")}
-          </DialogTitle>
-          {boardKey && (
-            <CampaignEditor
-              key={boardKey}
-              blockKey={boardKey}
-              block={decofile[boardKey] as Record<string, unknown>}
-              onSave={(data) => save.mutate({ blockKey: boardKey, data })}
-              onRemove={() => {
-                const campaign = campaigns.find((c) => c.key === boardKey);
-                if (campaign) setPendingDelete(campaign);
-              }}
-              onClose={() => setOpenKey(null)}
-              isSaving={save.isPending}
-              catalog={catalog}
-              storeUrl={storeUrl}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      />
     </div>
   );
 }
