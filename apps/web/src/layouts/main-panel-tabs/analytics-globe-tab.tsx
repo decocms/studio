@@ -1,6 +1,5 @@
 /**
- * Deco Analytics → Realtime: where the visitors, carts and conversions of the
- * last five minutes are, drawn on a globe inside the Realtime tab.
+ * Deco Analytics → the live map, drawn on a globe on the Analytics home.
  *
  * Studio does NOT draw the map. The renderer is a bundle built and shipped by
  * the analytics read surface (`decocms/analytics dashboard/globe`), proxied to
@@ -10,8 +9,7 @@
  * guessing a language. Studio owns the frame: the mode toggle, the caption, and
  * the stylesheet the renderer reads its palette from.
  *
- * The rows come from the Realtime tab's own `view=live` poll (`liveGeo` rides
- * on it), so the map and the numbers above it are always the same fetch.
+ * `rows` is the live poll's `liveGeo`; `history` replays the range under it.
  *
  * The split matters for debugging: an empty map with live numbers above it is
  * a RENDERER problem (bundle, canvas, CSS); a caption that stays at zero is a
@@ -34,9 +32,20 @@ type GlobeKey = TranslationKey extends infer K
   : never;
 const k = (s: GlobeKey): TranslationKey => `${P}.${s}`;
 
-/** How long the renderer spreads each frame's pulses over: the Realtime tab's
- *  poll interval, so one frame's rings finish as the next frame arrives. */
+/** How long the renderer spreads each frame's pulses over: the live poll's
+ *  interval, so one frame's rings finish as the next frame arrives. */
 const FRAME_MS = 5_000;
+
+/** Replay cadence, and how many of the range's places each replayed frame
+ *  carries. Shorter than a live frame because a replay has no fetch to wait
+ *  for, and a handful of places at a time so the map reads as traffic arriving
+ *  rather than as one static constellation blinking in place. */
+const REPLAY_MS = 2_000;
+const REPLAY_PLACES = 3;
+
+/** Shared empty arrays: a fresh `[]` from the caller on every render would
+ *  restart the replay interval (and its position) on every parent re-render. */
+const NO_ROWS: readonly LiveGeoRow[] = [];
 
 type ViewMode = "globe" | "map";
 
@@ -142,18 +151,28 @@ export function LiveGlobe({
   orgSlug,
   site,
   rows,
+  history = NO_ROWS,
+  rangeLabel,
 }: {
   base: string;
   orgSlug: string;
   site: string;
-  /** The `liveGeo` rows of the Realtime tab's current poll. */
+  /** The `liveGeo` rows of the home view's current live poll. */
   rows: readonly LiveGeoRow[];
+  /** The same rows over the selected range, replayed while nobody is on the
+   *  site right now. */
+  history?: readonly LiveGeoRow[];
+  /** The selected range, named in the replay caption. */
+  rangeLabel?: string;
 }) {
   const t = useT();
   const [preferences] = usePreferences();
   const locale = preferences.language;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<GlobeController | null>(null);
+  /** Where the replay is in `history`; a ref so a re-render that restarts the
+   *  interval resumes instead of jumping back to the first place. */
+  const replayAt = useRef(0);
   // `null` means "whatever the renderer picks for this device" — it drops to a
   // flat map on a low-end GPU or under `prefers-reduced-motion`, and overriding
   // that before the user asks would be deciding for them.
@@ -168,9 +187,15 @@ export function LiveGlobe({
   });
   const api = bundle.data ?? null;
 
+  // Normalised to the shared empty array: the sync effect is keyed on these.
+  const live = rows.length ? rows : NO_ROWS;
+  const past = history.length ? history : NO_ROWS;
+  const replaying = live.length === 0 && past.length > 0;
+  const drawn = replaying ? past : live;
+
   // Counted during render, from the same pure grouping the renderer uses, so
   // the caption never has to come back out of the canvas.
-  const stats = api && rows.length ? api.buildPoints(rows) : EMPTY_STATS;
+  const stats = api && drawn.length ? api.buildPoints(drawn) : EMPTY_STATS;
   const nf = new Intl.NumberFormat(locale);
 
   const labels = {
@@ -206,7 +231,7 @@ export function LiveGlobe({
     controllerRef.current = controller;
     // The rows already in hand: the poll that brought them resolved before the
     // bundle did, and the sync effect below will not fire again until the next.
-    controller.update(rows, FRAME_MS);
+    controller.update(live, FRAME_MS);
     return () => {
       controller.destroy();
       controllerRef.current = null;
@@ -218,14 +243,27 @@ export function LiveGlobe({
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [api, locale]);
 
-  // Push each poll into the canvas. Separate from the mount effect so new rows
-  // redraw rather than rebuild. `rows` is the payload's own array, which React
-  // Query hands back unchanged until the next poll resolves.
-  //
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs the canvas (an external system) with the latest liveGeo rows; the renderer owns the animation between frames
+  // Each poll, or — with nobody on the site — the range, a few places a frame.
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs the canvas (an external system) with the latest geo rows; the renderer owns the animation between frames
   useEffect(() => {
-    controllerRef.current?.update(rows, FRAME_MS);
-  }, [rows]);
+    if (!replaying) {
+      controllerRef.current?.update(live, FRAME_MS);
+      return;
+    }
+    const frame = () => {
+      const slice: LiveGeoRow[] = [];
+      for (let i = 0; i < Math.min(REPLAY_PLACES, past.length); i++) {
+        const row = past[(replayAt.current + i) % past.length];
+        if (row) slice.push(row);
+      }
+      replayAt.current = (replayAt.current + 1) % past.length;
+      controllerRef.current?.update(slice, REPLAY_MS);
+    };
+    frame();
+    const timer = setInterval(frame, REPLAY_MS);
+    return () => clearInterval(timer);
+  }, [api, live, past, replaying]);
 
   const show = (next: ViewMode) => {
     setMode(next);
@@ -262,13 +300,20 @@ export function LiveGlobe({
       {bundle.error ? (
         <p className="text-xs text-muted-foreground">{t(k("loadError"))}</p>
       ) : (
-        <p className="text-xs text-muted-foreground tabular-nums">
-          {t(k("caption"), {
-            places: nf.format(stats.places),
-            approximate: nf.format(stats.approximate),
-            unplaced: nf.format(stats.unplaced),
-          })}
-        </p>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          {replaying && (
+            <p className="text-xs text-muted-foreground">
+              {t(k("replaying"), { range: rangeLabel ?? "" })}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {t(k("caption"), {
+              places: nf.format(stats.places),
+              approximate: nf.format(stats.approximate),
+              unplaced: nf.format(stats.unplaced),
+            })}
+          </p>
+        </div>
       )}
     </div>
   );
