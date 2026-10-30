@@ -2494,7 +2494,7 @@ export interface StudioToolIO {
         run?:
           | {
               [x: string]: unknown;
-              phase: "hypothesis" | "execute";
+              phase: "campaign" | "hypothesis" | "execute";
               requestedAt: string;
               requestedBy: string;
             }
@@ -2616,7 +2616,7 @@ export interface StudioToolIO {
         run?:
           | {
               [x: string]: unknown;
-              phase: "hypothesis" | "execute";
+              phase: "campaign" | "hypothesis" | "execute";
               requestedAt: string;
               requestedBy: string;
             }
@@ -2628,7 +2628,7 @@ export interface StudioToolIO {
   BLOG_CARD_CREATE: {
     input: {
       virtualMcpId: string;
-      campaignId: string;
+      campaignId?: string | undefined;
       prompt?: string | undefined;
       id?: string | undefined;
     };
@@ -2744,7 +2744,7 @@ export interface StudioToolIO {
         run?:
           | {
               [x: string]: unknown;
-              phase: "hypothesis" | "execute";
+              phase: "campaign" | "hypothesis" | "execute";
               requestedAt: string;
               requestedBy: string;
             }
@@ -2975,7 +2975,7 @@ export interface StudioToolIO {
         run?:
           | {
               [x: string]: unknown;
-              phase: "hypothesis" | "execute";
+              phase: "campaign" | "hypothesis" | "execute";
               requestedAt: string;
               requestedBy: string;
             }
@@ -2988,9 +2988,12 @@ export interface StudioToolIO {
   BLOG_CARD_RUN: {
     input: {
       id: string;
-      phase: "hypothesis" | "execute";
+      phase: "campaign" | "hypothesis" | "execute";
       message?: string | undefined;
       fileConfigId?: string | undefined;
+      briefing?:
+        | { [x: string]: unknown; text: string; optionId?: string | undefined }
+        | undefined;
     };
     output: {
       card: {
@@ -3104,7 +3107,7 @@ export interface StudioToolIO {
         run?:
           | {
               [x: string]: unknown;
-              phase: "hypothesis" | "execute";
+              phase: "campaign" | "hypothesis" | "execute";
               requestedAt: string;
               requestedBy: string;
             }

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { runInFlight } from "./blog-job";
 import type { BlogCard } from "@decocms/shared/blog-card";
 import {
   blogCardRunInstructions,
   blogCardRunPrompt,
   blogCardThreadId,
-  cardRunInFlight,
   dispatchFailure,
   phaseClaim,
 } from "./card-run";
@@ -42,20 +42,16 @@ describe("blogCardThreadId", () => {
   });
 });
 
-describe("cardRunInFlight", () => {
+describe("runInFlight", () => {
   const run = { phase: "hypothesis" as const, ...CLAIM };
 
   test("a running chat is in flight", () => {
-    expect(cardRunInFlight(undefined, { status: "in_progress" }, NOW)).toBe(
-      true,
-    );
+    expect(runInFlight(undefined, { status: "in_progress" }, NOW)).toBe(true);
   });
 
   test("a run requested moments ago and not started yet is in flight", () => {
-    expect(cardRunInFlight(run, { status: "completed" }, NOW + 30_000)).toBe(
-      true,
-    );
-    expect(cardRunInFlight(run, null, NOW + 30_000)).toBe(true);
+    expect(runInFlight(run, { status: "completed" }, NOW + 30_000)).toBe(true);
+    expect(runInFlight(run, null, NOW + 30_000)).toBe(true);
   });
 
   test("once the requested run started, its chat decides", () => {
@@ -63,19 +59,19 @@ describe("cardRunInFlight", () => {
       status: "completed",
       run_started_at: "2026-10-28T11:00:05.000Z",
     };
-    expect(cardRunInFlight(run, finished, NOW + 30_000)).toBe(false);
+    expect(runInFlight(run, finished, NOW + 30_000)).toBe(false);
   });
 
   test("a request that never started stops counting after two minutes", () => {
-    expect(cardRunInFlight(run, { status: "failed" }, NOW + 120_000)).toBe(
-      false,
-    );
+    expect(runInFlight(run, { status: "failed" }, NOW + 120_000)).toBe(false);
   });
 
   test("a card that never ran is idle", () => {
-    expect(cardRunInFlight(undefined, null, NOW)).toBe(false);
+    expect(runInFlight(undefined, null, NOW)).toBe(false);
   });
 });
+
+const APPROVED = { status: "active" };
 
 describe("phaseClaim", () => {
   test("a hypothesis claims a card in ideas and clears its last error", () => {
@@ -83,6 +79,7 @@ describe("phaseClaim", () => {
       { ...CARD, error: "timeout" },
       "hypothesis",
       CLAIM,
+      APPROVED,
     );
     expect(claimed).toMatchObject({
       status: "ideas",
@@ -95,12 +92,73 @@ describe("phaseClaim", () => {
 
   test("a hypothesis is not brought again past ideas", () => {
     expect(() =>
-      phaseClaim({ ...CARD, status: "awaiting_review" }, "hypothesis", CLAIM),
+      phaseClaim(
+        { ...CARD, status: "awaiting_review" },
+        "hypothesis",
+        CLAIM,
+        APPROVED,
+      ),
+    ).toThrow("ideas");
+  });
+
+  test("a hypothesis needs the card's campaign approved", () => {
+    expect(() => phaseClaim(CARD, "hypothesis", CLAIM, null)).toThrow(
+      "Link a campaign",
+    );
+    expect(() =>
+      phaseClaim(CARD, "hypothesis", CLAIM, {
+        status: "draft",
+        threadId: "thrd_card",
+      }),
+    ).toThrow("Approve");
+  });
+
+  test("a campaign phase creates the card's draft when it links none", () => {
+    const claimed = phaseClaim(
+      { ...CARD, campaignId: undefined },
+      "campaign",
+      { ...CLAIM, shellId: "camp_new" },
+      null,
+    );
+    expect(claimed).toMatchObject({
+      campaignId: "camp_new",
+      threadId: "thrd_card",
+      run: { phase: "campaign" },
+    });
+  });
+
+  test("a campaign phase continues the draft this chat shapes", () => {
+    const claimed = phaseClaim(CARD, "campaign", CLAIM, {
+      status: "draft",
+      threadId: "thrd_card",
+    });
+    expect(claimed.campaignId).toBe(CARD.campaignId);
+  });
+
+  test("a campaign phase leaves an approved campaign, or another chat's draft, alone", () => {
+    expect(() => phaseClaim(CARD, "campaign", CLAIM, APPROVED)).toThrow(
+      "approved",
+    );
+    expect(() =>
+      phaseClaim(CARD, "campaign", CLAIM, {
+        status: "draft",
+        threadId: "thrd_other",
+      }),
+    ).toThrow("another chat");
+    expect(() =>
+      phaseClaim(
+        { ...CARD, status: "awaiting_review" },
+        "campaign",
+        CLAIM,
+        null,
+      ),
     ).toThrow("ideas");
   });
 
   test("an execution needs a campaign and a thesis", () => {
-    expect(() => phaseClaim(CARD, "execute", CLAIM)).toThrow("hypothesis");
+    expect(() => phaseClaim(CARD, "execute", CLAIM, APPROVED)).toThrow(
+      "hypothesis",
+    );
     expect(() =>
       phaseClaim(
         {
@@ -110,6 +168,7 @@ describe("phaseClaim", () => {
         },
         "execute",
         CLAIM,
+        null,
       ),
     ).toThrow("campaign");
   });
@@ -124,6 +183,7 @@ describe("phaseClaim", () => {
       },
       "execute",
       { ...CLAIM, fileConfigId: "fc_1" },
+      APPROVED,
     );
     expect(claimed).toMatchObject({
       status: "generating",
@@ -143,6 +203,7 @@ describe("phaseClaim", () => {
           { ...CARD, status, hypothesis: { statement: "Tese" } },
           "execute",
           CLAIM,
+          APPROVED,
         ),
       ).toThrow("awaiting review");
     }
@@ -167,6 +228,11 @@ describe("blogCardRunInstructions", () => {
   test("keeps publishing a person's", () => {
     expect(text).toContain("never publish");
     expect(text).toContain("mcp__studio__BLOG_CARD_UPDATE");
+  });
+  test("shapes the card's campaign, leaving its goal and status to a person", () => {
+    expect(text).toContain("`campaigns.md`");
+    expect(text).toContain("BLOG_CAMPAIGN_UPDATE");
+    expect(text).toContain("never `status` or `goal`");
   });
 });
 
@@ -204,5 +270,16 @@ describe("dispatchFailure", () => {
     const reason = dispatchFailure(new Error("x".repeat(5_000)));
     expect(reason).toHaveLength(2_000);
     expect(reason).toEndWith("…");
+  });
+});
+
+describe("blogCardRunPrompt — the campaign phase", () => {
+  test("suggests briefings first, then develops the chosen one", () => {
+    expect(blogCardRunPrompt("campaign", undefined, "suggest")).toContain(
+      "three briefings",
+    );
+    expect(blogCardRunPrompt("campaign", undefined, "develop")).toContain(
+      "chosen briefing",
+    );
   });
 });

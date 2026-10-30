@@ -20,6 +20,10 @@ end of its period), its brief (`trigger.note`), its targets, its products and
 its guardrails frame everything below: the post is one step toward that goal.
 Never pick another campaign, and never argue a post this one would not want.
 
+The campaign is approved by now; when it was shaped in this chat, it already
+carries `evidence`. Start from those figures and gather only what this post
+still needs.
+
 ## 2. Gather the evidence
 
 Ask each system for figures around the campaign's subject and what the person

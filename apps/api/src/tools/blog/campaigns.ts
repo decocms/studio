@@ -19,14 +19,13 @@ import {
 } from "../../file-storage/blog-state";
 import { type OrgFs, OrgFsNotFoundError } from "../../file-storage/org-fs";
 import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
-import { blogJobStarter, callerRunThread } from "./blog-job";
+import { blogJobStarter, callerRunThread, runInFlight } from "./blog-job";
 import {
   applyCampaignPatch,
   CampaignPatchSchema,
   campaignPatchRefusal,
   campaignShell,
 } from "./campaign-record";
-import { cardRunInFlight } from "./card-run";
 import { conflictOrRethrow, RecordIdSchema, resolveBlogScope } from "./state";
 import { dispatchSuperAgentTurn, openBlogJobChat } from "./super-agent-turn";
 
@@ -72,7 +71,7 @@ function nothingToStart(stored: Record<string, unknown>): string {
 }
 
 /** Put a campaign's run and briefing back as they were, unless a later run moved them. */
-async function restoreRun(
+export async function restoreCampaignRun(
   orgFs: OrgFs,
   actor: string,
   path: string,
@@ -298,7 +297,7 @@ export const BLOG_CAMPAIGN_RUN = defineTool({
         );
       }
       const lastRun = CampaignRunSchema.safeParse(stored.run).data;
-      if (cardRunInFlight(lastRun, thread, Date.now())) {
+      if (runInFlight(lastRun, thread, Date.now())) {
         throw new Error("This campaign's agent is already at work.");
       }
       if (!step) throw new Error(nothingToStart(stored));
@@ -316,7 +315,7 @@ export const BLOG_CAMPAIGN_RUN = defineTool({
           requestedAt: now,
         });
       } catch (err) {
-        await restoreRun(orgFs, actor, path, now, previous);
+        await restoreCampaignRun(orgFs, actor, path, now, previous);
         await announce(path);
         throw err;
       }
@@ -341,7 +340,7 @@ export const BLOG_CAMPAIGN_RUN = defineTool({
         step ?? "adjust",
       );
     } catch (err) {
-      await restoreRun(orgFs, actor, path, now, {
+      await restoreCampaignRun(orgFs, actor, path, now, {
         ...previous,
         threadId: undefined,
       });

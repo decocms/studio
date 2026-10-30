@@ -46,7 +46,7 @@ export const BLOG_CARD_STAGES = [
 export type BlogCardStage = (typeof BLOG_CARD_STAGES)[number];
 
 /** What a run on a card is for: bringing the hypothesis, or writing the post. */
-export const BLOG_CARD_PHASES = ["hypothesis", "execute"] as const;
+export const BLOG_CARD_PHASES = ["campaign", "hypothesis", "execute"] as const;
 export type BlogCardPhase = (typeof BLOG_CARD_PHASES)[number];
 
 /** The systems a hypothesis may cite. Each is one card on the hypothesis tab. */

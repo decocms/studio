@@ -7,6 +7,10 @@ import {
   blogCardBranch,
   BlogCardSchema,
 } from "@decocms/shared/blog-card";
+import {
+  CampaignBriefingSchema,
+  campaignNextStep,
+} from "@decocms/shared/blog-campaign";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { resolveOrCreateHead } from "@/decofile/read-decofile";
@@ -16,13 +20,20 @@ import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { defineTool } from "../../core/define-tool";
 import { getUserId } from "../../core/studio-context";
 import {
+  CAMPAIGNS_DIR,
   CARDS_DIR,
+  deleteBlogRecords,
   readBlogRecord,
   recordPath,
   updateBlogRecord,
+  writeBlogFiles,
 } from "../../file-storage/blog-state";
+import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
 import { emitBlogCardUpdated } from "./card-events";
-import { callerRunThread } from "./blog-job";
+import { callerRunThread, runInFlight } from "./blog-job";
+import { restoreCampaignRun } from "./campaigns";
+import { campaignShell } from "./campaign-record";
 import { CardIdSchema, parseCard } from "./cards";
 import { resolveSiteProject, resolveSiteRepo } from "./site-repo";
 import { conflictOrRethrow, resolveBlogScope } from "./state";
@@ -42,12 +53,6 @@ import { dispatchSuperAgentTurn } from "./super-agent-turn";
  * by writing to it. Only whoever started it may write to it, like any chat.
  */
 
-/**
- * How long a requested run counts as running before its chat says so: the
- * gap between the claim and the run starting is a queue, not an idle card.
- */
-const RUN_START_WINDOW_MS = 2 * 60_000;
-
 const MAX_TITLE_CHARS = 120;
 
 /** What the card's `error` field holds at most. */
@@ -63,24 +68,6 @@ export function blogCardThreadId(organizationId: string, cardId: string) {
 }
 
 /**
- * Whether the card's agent is already at work: its chat is running, or a run
- * was requested moments ago and has not started yet.
- */
-export function cardRunInFlight(
-  run: { requestedAt?: string } | undefined,
-  thread: { status?: string | null; run_started_at?: string | null } | null,
-  now: number,
-): boolean {
-  if (thread?.status === "in_progress") return true;
-  const requested = Date.parse(run?.requestedAt ?? "");
-  if (!Number.isFinite(requested) || now - requested >= RUN_START_WINDOW_MS) {
-    return false;
-  }
-  const started = Date.parse(thread?.run_started_at ?? "");
-  return !(Number.isFinite(started) && started >= requested);
-}
-
-/**
  * The card as a run of `phase` claims it, or a refusal. Clears what the last
  * run left: its error, and for an execution the post it wrote.
  */
@@ -92,7 +79,11 @@ export function phaseClaim(
     requestedAt: string;
     requestedBy: string;
     fileConfigId?: string;
+    /** The draft Studio creates for the card when it links none yet. */
+    shellId?: string;
   },
+  /** The card's campaign as stored, or null when it links none or the file is gone. */
+  linked: { status: string; threadId?: string } | null,
 ): BlogCard {
   const run = {
     phase,
@@ -100,10 +91,48 @@ export function phaseClaim(
     requestedBy: claim.requestedBy,
   };
   const { error: _error, ...rest } = card;
+  if (phase === "campaign") {
+    if (card.status !== "ideas") {
+      throw new Error(
+        `A campaign is shaped while the card is in ideas, and this one is ${card.status}.`,
+      );
+    }
+    if (linked && linked.status !== "draft") {
+      throw new Error(
+        "The card's campaign is approved: bring the hypothesis instead.",
+      );
+    }
+    if (linked && linked.threadId !== claim.threadId) {
+      throw new Error(
+        "The card's campaign is shaped in another chat. Link an approved campaign, or unlink it and let the card's agent shape a new one.",
+      );
+    }
+    const campaignId = linked ? card.campaignId : claim.shellId;
+    if (!campaignId) {
+      throw new Error("A campaign phase needs a campaign to shape.");
+    }
+    return {
+      ...rest,
+      campaignId,
+      threadId: claim.threadId,
+      run,
+      updatedAt: claim.requestedAt,
+    };
+  }
   if (phase === "hypothesis") {
     if (card.status !== "ideas") {
       throw new Error(
         `A hypothesis is brought while the card is in ideas, and this one is ${card.status}. Adjust it in the card's chat instead.`,
+      );
+    }
+    if (!linked) {
+      throw new Error(
+        "Link a campaign before bringing the hypothesis: an approved one, or one the card's agent shapes.",
+      );
+    }
+    if (linked.status === "draft") {
+      throw new Error(
+        "Approve the card's campaign before bringing its hypothesis.",
       );
     }
     return {
@@ -118,8 +147,10 @@ export function phaseClaim(
       `This card is ${card.status}. Move it back to awaiting review before writing it again.`,
     );
   }
-  if (!card.campaignId) {
-    throw new Error("Link the card to a campaign before writing its post.");
+  if (!linked) {
+    throw new Error(
+      "The card's campaign is gone. Link another one before writing its post.",
+    );
   }
   if (!card.hypothesis?.statement?.trim()) {
     throw new Error(
@@ -159,7 +190,8 @@ export function blogCardRunInstructions(card: {
     "",
     `- The card is \`${card.id}\`, kept in the brand folder \`home/brands/${card.brand}/\`. Read it with BLOG_CARD_GET at the start of every turn, and save what you produce with BLOG_CARD_UPDATE after every step, sending only what changed.`,
     `- The site is \`${card.virtualMcpId}\`: pass it as \`virtualMcpId\` wherever a tool asks for one.`,
-    "- Follow the `blogpost` skill: its `hypothesis.md` brings the hypothesis, its `execute.md` writes the post.",
+    "- Follow the `blogpost` skill: its `campaigns.md` shapes the card's campaign, its `hypothesis.md` brings the hypothesis, its `execute.md` writes the post.",
+    "- While the card's campaign is a draft shaped in this chat, save it with BLOG_CAMPAIGN_UPDATE on the card's `campaignId`, sending only what changed and never `status` or `goal`: approving it and setting its goal are a person's.",
     `- The post is written on the branch \`${branch}\`. Pass it as \`branch\` to every tool that takes one, and never write to the repository's default branch.`,
     "- Never move the card to scheduled or published, and never publish the post. A person does both.",
     "- Write in the brand's language, whatever language you are spoken to in.",
@@ -171,11 +203,25 @@ export function blogCardRunInstructions(card: {
 export function blogCardRunPrompt(
   phase: BlogCardPhase,
   message: string | undefined,
+  step?: "suggest" | "develop",
 ): string {
-  const ask =
-    phase === "hypothesis"
-      ? "Bring this card's hypothesis: follow `hypothesis.md` in the `blogpost` skill. When it is saved on the card, present it here and wait."
-      : "The hypothesis is approved. Write the post: follow `execute.md` in the `blogpost` skill, saving the card after every stage.";
+  let ask: string;
+  switch (phase) {
+    case "campaign":
+      ask =
+        step === "develop"
+          ? "Develop this card's campaign from its chosen briefing: follow `campaigns.md` in the `blogpost` skill. Save it as you go, present it here and wait."
+          : "Shape this card's campaign: follow `campaigns.md` in the `blogpost` skill. Save the evidence on the campaign, then three briefings, present them here and wait.";
+      break;
+    case "hypothesis":
+      ask =
+        "Bring this card's hypothesis: follow `hypothesis.md` in the `blogpost` skill. When it is saved on the card, present it here and wait.";
+      break;
+    case "execute":
+      ask =
+        "The hypothesis is approved. Write the post: follow `execute.md` in the `blogpost` skill, saving the card after every stage.";
+      break;
+  }
   const said = message?.trim();
   return said ? `${ask}\n\nFrom the person:\n${said}` : ask;
 }
@@ -206,7 +252,7 @@ function threadTitle(card: BlogCard): string {
 export const BLOG_CARD_RUN = defineTool({
   name: "BLOG_CARD_RUN",
   description:
-    "Start a blogpost card's agent and return the chat it works in. `hypothesis` brings the post's hypothesis from the store's systems, for a card in ideas. `execute` writes the post from the approved hypothesis on the card's own branch, moving the card to generating. Answers once the run is queued; the card fills in as the agent saves it.",
+    "Start a blogpost card's agent and return the chat it works in. `campaign` shapes the card's campaign, for a card in ideas without an approved one: the agent suggests briefings, then develops the `briefing` given or chosen. `hypothesis` brings the post's hypothesis from the store's systems once the card's campaign is approved. `execute` writes the post from the approved hypothesis on the card's own branch, moving the card to generating. Answers once the run is queued; the card fills in as the agent saves it.",
   annotations: {
     title: "Run a Blogpost Card",
     readOnlyHint: false,
@@ -233,6 +279,9 @@ export const BLOG_CARD_RUN = defineTool({
       .max(256)
       .optional()
       .describe("The bucket the post's images go to, kept on the card."),
+    briefing: CampaignBriefingSchema.optional().describe(
+      "For the campaign phase: the briefing to develop, one of the suggestions or the person's own words.",
+    ),
   }),
 
   outputSchema: z.object({
@@ -276,19 +325,60 @@ export const BLOG_CARD_RUN = defineTool({
         "This card's chat belongs to the person who started it, and only they can run it.",
       );
     }
-    if (cardRunInFlight(card.run, existing, Date.now())) {
+    if (runInFlight(card.run, existing, Date.now())) {
       throw new Error(
         "The card's agent is already working. Wait for it, or write to it in the card's chat.",
       );
     }
 
+    const campaignPath = card.campaignId
+      ? recordPath(brand, CAMPAIGNS_DIR, card.campaignId)
+      : null;
+    const campaign = campaignPath
+      ? await readBlogRecord(orgFs, campaignPath)
+      : null;
+    const linked = campaign
+      ? {
+          status:
+            typeof campaign.data.status === "string"
+              ? campaign.data.status
+              : "draft",
+          threadId:
+            typeof campaign.data.threadId === "string"
+              ? campaign.data.threadId
+              : undefined,
+        }
+      : null;
+
     const requestedAt = new Date().toISOString();
-    const claimed = phaseClaim(card, input.phase, {
-      threadId,
-      requestedAt,
-      requestedBy: userId,
-      fileConfigId: input.fileConfigId,
-    });
+    const shellId =
+      input.phase === "campaign" && !campaign ? crypto.randomUUID() : undefined;
+    const claimed = phaseClaim(
+      card,
+      input.phase,
+      {
+        threadId,
+        requestedAt,
+        requestedBy: userId,
+        fileConfigId: input.fileConfigId,
+        shellId,
+      },
+      linked,
+    );
+    const step =
+      input.phase === "campaign"
+        ? input.briefing
+          ? "develop"
+          : campaignNextStep(campaign?.data ?? { status: "draft" })
+        : null;
+    if (input.phase === "campaign" && !step) {
+      throw new Error(
+        Array.isArray(campaign?.data.briefings) &&
+          campaign.data.briefings.length > 0
+          ? "Choose one of the campaign's briefings, or write one, to develop it."
+          : "The card's campaign is developed: approve it, or ask the card's chat for changes.",
+      );
+    }
 
     if (input.phase === "execute") {
       const site = await resolveSiteRepo(
@@ -306,12 +396,64 @@ export const BLOG_CARD_RUN = defineTool({
       await resolveOrCreateHead(site.client, branch);
     }
 
+    // The campaign names this chat before the card claims it, so the agent's first write finds it.
+    const campaignRun = { requestedAt, requestedBy: userId };
+    const shapedPath = claimed.campaignId
+      ? recordPath(brand, CAMPAIGNS_DIR, claimed.campaignId)
+      : null;
+    const before = {
+      run: campaign?.data.run,
+      briefing: campaign?.data.briefing,
+    };
+    const announceCampaign = () =>
+      shapedPath
+        ? notifyOrgFsChangeFromServer(organizationId, HOME_MOUNT_PATH, [
+            shapedPath,
+          ])
+        : Promise.resolve();
+    const undoCampaign = async () => {
+      if (!shapedPath || !claimed.campaignId) return;
+      if (shellId) {
+        await deleteBlogRecords(orgFs, brand, actor, CAMPAIGNS_DIR, [
+          claimed.campaignId,
+        ]);
+      } else {
+        await restoreCampaignRun(orgFs, actor, shapedPath, requestedAt, before);
+      }
+      await announceCampaign();
+    };
+    if (input.phase === "campaign" && shapedPath) {
+      if (shellId) {
+        await writeBlogFiles(orgFs, actor, [
+          {
+            path: shapedPath,
+            data: campaignShell(
+              threadId,
+              campaignRun,
+              requestedAt,
+              input.briefing,
+            ),
+            expect: { absent: true },
+          },
+        ]);
+      } else {
+        await updateBlogRecord(orgFs, actor, shapedPath, (current) => ({
+          ...current,
+          run: campaignRun,
+          ...(input.briefing ? { briefing: input.briefing } : {}),
+          updatedAt: requestedAt,
+        }));
+      }
+      await announceCampaign();
+    }
+
     // Claimed before dispatch: a second start that read this version is refused.
     try {
       await updateBlogRecord(orgFs, actor, path, () => claimed, {
         expect: read.version,
       });
     } catch (err) {
+      if (input.phase === "campaign") await undoCampaign();
       throw conflictOrRethrow(err);
     }
     emitBlogCardUpdated(organizationId, claimed);
@@ -331,6 +473,9 @@ export const BLOG_CARD_RUN = defineTool({
           parseCard(card.id, stored).run?.requestedAt === requestedAt
             ? {
                 ...card,
+                ...(claimed.campaignId
+                  ? { campaignId: claimed.campaignId }
+                  : {}),
                 error: dispatchFailure(reason),
                 updatedAt: new Date().toISOString(),
               }
@@ -340,11 +485,25 @@ export const BLOG_CARD_RUN = defineTool({
       } catch (err) {
         console.error("[blog] card claim rollback failed", err);
       }
+      if (input.phase === "campaign" && shapedPath) {
+        // The draft stays linked, so a retry continues it; only its run stamp goes.
+        await restoreCampaignRun(orgFs, actor, shapedPath, requestedAt, {
+          run: before.run,
+        });
+        await announceCampaign();
+      }
     };
 
     try {
       const instructions = blogCardRunInstructions({ ...card, brand });
       const sandboxBranch = existing?.branch ?? threadBranch(threadId);
+      const stored = existing?.metadata as Record<string, unknown> | null;
+      if (existing && stored?.[TASK_RUN_INSTRUCTIONS_KEY] !== instructions) {
+        // A chat keeps the instructions it was created with for the turns a person types.
+        await ctx.storage.threads.update(threadId, {
+          metadata: { ...stored, [TASK_RUN_INSTRUCTIONS_KEY]: instructions },
+        });
+      }
       if (!existing) {
         const created = await ctx.storage.threads.create({
           id: threadId,
@@ -374,7 +533,8 @@ export const BLOG_CARD_RUN = defineTool({
         text: blogCardRunPrompt(
           input.phase,
           input.message ??
-            (input.phase === "hypothesis" ? card.prompt : undefined),
+            (input.phase === "execute" ? undefined : card.prompt),
+          step ?? undefined,
         ),
         instructions,
         fence: `blog-card:${threadId}:${input.phase}:${requestedAt}`,

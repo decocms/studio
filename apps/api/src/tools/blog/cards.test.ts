@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cardPatchRefusal, cardRunRefusal } from "./cards";
+import { bornCampaignRelease, cardPatchRefusal, cardRunRefusal } from "./cards";
 
 const CARD = {
   threadId: "thrd_card",
@@ -79,5 +79,38 @@ describe("cardRunRefusal", () => {
     expect(cardRunRefusal("thrd_card", { threadId: undefined })).toContain(
       "not the run",
     );
+  });
+});
+
+describe("a card's campaign", () => {
+  test("a run never changes it; repeating the same one is no change", () => {
+    const card = { ...CARD, campaignId: "camp_1" };
+    expect(
+      cardPatchRefusal(card, { campaignId: "camp_2" }, "thrd_card"),
+    ).toContain("never changes the card's campaign");
+    expect(cardPatchRefusal(card, { campaignId: null }, "thrd_card")).toContain(
+      "never changes the card's campaign",
+    );
+    expect(
+      cardPatchRefusal(card, { campaignId: "camp_1" }, "thrd_card"),
+    ).toBeNull();
+    expect(cardPatchRefusal(card, { campaignId: "camp_2" }, null)).toBeNull();
+  });
+
+  test("a draft born in the card goes with it; an approved one forgets the chat", () => {
+    const card = { threadId: "thrd_card" };
+    expect(
+      bornCampaignRelease(card, { status: "draft", threadId: "thrd_card" }),
+    ).toBe("discard");
+    expect(
+      bornCampaignRelease(card, { status: "active", threadId: "thrd_card" }),
+    ).toBe("detach");
+    expect(
+      bornCampaignRelease(card, { status: "draft", threadId: "thrd_other" }),
+    ).toBeNull();
+    expect(
+      bornCampaignRelease({ threadId: undefined }, { status: "draft" }),
+    ).toBeNull();
+    expect(bornCampaignRelease(card, null)).toBeNull();
   });
 });

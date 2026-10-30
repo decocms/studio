@@ -34,6 +34,7 @@ export function cardAgentWorking(card: BlogCard, now: number): boolean {
   if (!Number.isFinite(requested) || now - requested > RUN_STALE_MS) {
     return false;
   }
+  if (card.run.phase === "campaign") return false;
   if (card.run.phase === "execute") {
     return card.status === "generating" && card.stage !== "done";
   }

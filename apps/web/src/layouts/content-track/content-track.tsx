@@ -21,8 +21,6 @@ import {
 } from "@/components/sandbox/content/blog/blog-data";
 import { BlogConnectionsGate } from "@/components/sandbox/content/blog/blog-connections-gate";
 import { useBlogCards } from "@/components/sandbox/content/blog/use-blog-cards";
-import { useVtexCatalogSource } from "@/components/sandbox/content/blog/blocks/vtex-mcp-source";
-import { useBlogConnections } from "@/components/sandbox/content/blog/use-blog-connections";
 import {
   type BlogState,
   useBlogState,
@@ -140,8 +138,6 @@ function Blogposts({
   const openChat = useOpenCardChat();
   const [creating, setCreating] = useState(false);
 
-  const { vtex } = useBlogConnections();
-  const catalog = useVtexCatalogSource(vtex.connectionId);
   const campaigns = scanCampaigns(blog.blocks);
   const campaignById = new Map(
     campaigns.map((campaign) => [
@@ -288,7 +284,6 @@ function Blogposts({
         open={creating}
         onOpenChange={setCreating}
         blog={blog}
-        catalog={catalog}
         sites={sites}
         siteId={scopeId}
         pending={create.isPending || run.isPending}

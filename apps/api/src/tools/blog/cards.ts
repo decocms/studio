@@ -17,6 +17,7 @@ import type { StudioContext } from "../../core/studio-context";
 import {
   CAMPAIGNS_DIR,
   CARDS_DIR,
+  deleteBlogRecords,
   readBlogCards,
   readBlogRecord,
   recordPath,
@@ -67,12 +68,19 @@ const mintCardId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 12);
  * true.
  */
 export function cardPatchRefusal(
-  card: Pick<BlogCard, "threadId" | "branch" | "virtualMcpId">,
+  card: Pick<BlogCard, "threadId" | "branch" | "virtualMcpId" | "campaignId">,
   patch: BlogCardPatch,
   runThreadId: string | null,
 ): string | null {
   if (runThreadId && card.threadId !== runThreadId) {
     return "A run writes only its own card, and this one belongs to another chat.";
+  }
+  if (
+    runThreadId &&
+    "campaignId" in patch &&
+    patch.campaignId !== card.campaignId
+  ) {
+    return "A run never changes the card's campaign: Studio links the one this chat shapes, and a person links a ready one.";
   }
   if (patch.status === "generating") {
     return "A card starts generating only when BLOG_CARD_RUN starts its run.";
@@ -148,7 +156,8 @@ function requireCardSize(card: BlogCard): void {
   }
 }
 
-async function requireCampaign(
+/** A campaign a person may link to a card: one that exists and was approved. A draft belongs to the chat that shapes it. */
+async function requireLinkableCampaign(
   orgFs: OrgFs,
   brand: string,
   campaignId: string,
@@ -162,6 +171,45 @@ async function requireCampaign(
       `Campaign not found: ${campaignId}. BLOG_STATE_GET lists the brand's campaigns.`,
     );
   }
+  if ((campaign.data.status ?? "draft") === "draft") {
+    throw new Error(
+      `Campaign ${campaignId} is still a draft. Link an approved campaign, or let the card's agent shape a new one.`,
+    );
+  }
+}
+
+/** What happens to a campaign when its card lets go of it: a draft born in the card's chat goes, an approved one forgets that chat. */
+export function bornCampaignRelease(
+  card: Pick<BlogCard, "threadId">,
+  record: Record<string, unknown> | null,
+): "discard" | "detach" | null {
+  if (!record || !card.threadId || record.threadId !== card.threadId) {
+    return null;
+  }
+  return (record.status ?? "draft") === "draft" ? "discard" : "detach";
+}
+
+async function releaseCampaign(
+  orgFs: OrgFs,
+  brand: string,
+  actor: string,
+  organizationId: string,
+  card: Pick<BlogCard, "threadId">,
+  campaignId: string,
+): Promise<void> {
+  const path = recordPath(brand, CAMPAIGNS_DIR, campaignId);
+  const record = await readBlogRecord(orgFs, path);
+  const release = bornCampaignRelease(card, record?.data ?? null);
+  if (!release) return;
+  if (release === "discard") {
+    await deleteBlogRecords(orgFs, brand, actor, CAMPAIGNS_DIR, [campaignId]);
+  } else {
+    await updateBlogRecord(orgFs, actor, path, (current) => {
+      const { threadId: _chat, ...rest } = current;
+      return rest;
+    });
+  }
+  await notifyOrgFsChangeFromServer(organizationId, HOME_MOUNT_PATH, [path]);
 }
 
 /** Announce a written card to the mounts and to every open board. */
@@ -266,7 +314,10 @@ export const BLOG_CARD_CREATE = defineTool({
       .string()
       .min(1)
       .max(128)
-      .describe("The campaign it belongs to, as BLOG_STATE_GET lists them."),
+      .optional()
+      .describe(
+        "An approved campaign it belongs to, as BLOG_STATE_GET lists them. Without one, the card's agent shapes a new campaign in the card's first phase.",
+      ),
     prompt: z
       .string()
       .max(2_000)
@@ -284,7 +335,9 @@ export const BLOG_CARD_CREATE = defineTool({
   handler: async (input, ctx) => {
     const { organizationId, orgFs, brand, actor } = await resolveBlogScope(ctx);
     await resolveSiteProject(ctx, organizationId, input.virtualMcpId);
-    await requireCampaign(orgFs, brand, input.campaignId);
+    if (input.campaignId) {
+      await requireLinkableCampaign(orgFs, brand, input.campaignId);
+    }
 
     const id = input.id ?? mintCardId();
     const now = new Date().toISOString();
@@ -293,7 +346,7 @@ export const BLOG_CARD_CREATE = defineTool({
       kind: "blogpost",
       status: "ideas",
       virtualMcpId: input.virtualMcpId,
-      campaignId: input.campaignId,
+      ...(input.campaignId ? { campaignId: input.campaignId } : {}),
       ...(input.prompt?.trim() ? { prompt: input.prompt.trim() } : {}),
       createdBy: actor,
       createdAt: now,
@@ -354,10 +407,11 @@ export const BLOG_CARD_UPDATE = defineTool({
       await resolveSiteProject(ctx, organizationId, patch.virtualMcpId);
     }
     if (patch.campaignId) {
-      await requireCampaign(orgFs, brand, patch.campaignId);
+      await requireLinkableCampaign(orgFs, brand, patch.campaignId);
     }
     const runThreadId = callerRunThread(ctx);
 
+    let previous: BlogCard | null = null;
     let written;
     try {
       written = await updateBlogRecord(
@@ -366,6 +420,7 @@ export const BLOG_CARD_UPDATE = defineTool({
         recordPath(brand, CARDS_DIR, input.id),
         (stored) => {
           const card = parseCard(input.id, stored);
+          previous = card;
           const refusal = cardPatchRefusal(card, patch, runThreadId);
           if (refusal) throw new Error(refusal);
           const next = parseCard(
@@ -386,6 +441,17 @@ export const BLOG_CARD_UPDATE = defineTool({
 
     const card = written.data as BlogCard;
     await announce(organizationId, card);
+    const before = previous as BlogCard | null;
+    if (before?.campaignId && before.campaignId !== card.campaignId) {
+      await releaseCampaign(
+        orgFs,
+        brand,
+        actor,
+        organizationId,
+        before,
+        before.campaignId,
+      );
+    }
     return { card, version: written.entry.contentHash ?? "" };
   },
 });
@@ -410,6 +476,11 @@ export const BLOG_CARD_DELETE = defineTool({
 
   handler: async (input, ctx) => {
     const { organizationId, orgFs, brand, actor } = await resolveBlogScope(ctx);
+    const read = await readBlogRecord(
+      orgFs,
+      recordPath(brand, CARDS_DIR, input.id),
+    );
+    const doomed = read ? parseCard(input.id, read.data) : null;
     await orgFs.delete(
       HOME_MOUNT_PATH,
       recordPath(brand, CARDS_DIR, input.id),
@@ -419,6 +490,16 @@ export const BLOG_CARD_DELETE = defineTool({
     );
     emitBlogCardDeleted(organizationId, input.id);
     await notifyOrgFsChangeFromServer(organizationId, HOME_MOUNT_PATH);
+    if (doomed?.campaignId) {
+      await releaseCampaign(
+        orgFs,
+        brand,
+        actor,
+        organizationId,
+        doomed,
+        doomed.campaignId,
+      );
+    }
     return { id: input.id };
   },
 });

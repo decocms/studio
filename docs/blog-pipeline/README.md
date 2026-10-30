@@ -23,8 +23,15 @@ a de imagem, e só no run do próprio card.
    chat dele. O agente segue o `campaigns.md`: grava a evidência, sugere três
    briefings, e desenvolve o que a pessoa escolher ou escrever. Tudo chega ao
    vivo pelo `brand.updated`. Aprovar e pôr a meta continuam sendo da pessoa.
-3. **Novo blogpost.** `BLOG_CARD_CREATE` cria o card em Ideas, para um site e
-   uma campanha, e `BLOG_CARD_RUN` com `phase: "hypothesis"` começa o agente.
+3. **Novo blogpost.** `BLOG_CARD_CREATE` cria o card em Ideas, para um site e,
+   quando a pessoa escolhe, uma campanha aprovada. Sem campanha, o card começa
+   pela fase Campanha: `BLOG_CARD_RUN` com `phase: "campaign"` cria um rascunho
+   ligado ao card, que nomeia o chat do card, e o agente sugere briefings e
+   desenvolve o escolhido ali mesmo. Quando a pessoa aprova a campanha, ou
+   quando o card já nasce com uma, `BLOG_CARD_RUN` com `phase: "hypothesis"`
+   começa a hipótese. Uma pessoa só liga ao card campanha aprovada, e um run
+   nunca troca a campanha do card. Se o card larga a campanha nascida nele, o
+   rascunho é apagado, e uma campanha já aprovada só perde o chat.
    O post é da campanha: o agente parte dela e da meta, pergunta à VTEX, ao GA4
    e ao Search Console (`CONNECTION_TOOL_CALL`), grava a evidência no card,
    depois a hipótese, com o `objective` do post como a parte dele na meta,

@@ -21,3 +21,27 @@ export function blogJobStarter(ctx: StudioContext, what: string): string {
   if (!userId) throw new Error(`Starting ${what} needs a person.`);
   return userId;
 }
+
+/**
+ * How long a requested run counts as running before its chat says so: the
+ * gap between the claim and the run starting is a queue, not an idle card.
+ */
+const RUN_START_WINDOW_MS = 2 * 60_000;
+
+/**
+ * Whether an agent is already at work on a card or a campaign: its chat is running, or a run
+ * was requested moments ago and has not started yet.
+ */
+export function runInFlight(
+  run: { requestedAt?: string } | undefined,
+  thread: { status?: string | null; run_started_at?: string | null } | null,
+  now: number,
+): boolean {
+  if (thread?.status === "in_progress") return true;
+  const requested = Date.parse(run?.requestedAt ?? "");
+  if (!Number.isFinite(requested) || now - requested >= RUN_START_WINDOW_MS) {
+    return false;
+  }
+  const started = Date.parse(thread?.run_started_at ?? "");
+  return !(Number.isFinite(started) && started >= requested);
+}

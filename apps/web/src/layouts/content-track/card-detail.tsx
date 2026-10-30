@@ -153,7 +153,12 @@ export function CardDetail({
     (phase === "hypothesis" ? card.hypothesis?.title : card.post?.title) ||
     crumb;
   const hasThesis = !!card.hypothesis?.statement?.trim();
-  const canBring = card.status === "ideas" && !hasThesis && !working;
+  const canBring =
+    card.status === "ideas" &&
+    !hasThesis &&
+    !working &&
+    !!campaign &&
+    campaign.status !== "draft";
   const canApprove =
     card.status === "ideas" && hasThesis && !!card.campaignId && !working;
   const sections = card.post?.sections?.length ?? 0;
