@@ -40,6 +40,7 @@ export function ClaudeSubscriptionRow() {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
+  const [linking, setLinking] = useState(false);
 
   const status = useQuery({
     queryKey: KEYS.claudeSubscription(org.id, userId),
@@ -63,6 +64,7 @@ export function ClaudeSubscriptionRow() {
     mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_CONNECT", { token }),
     onSuccess: async () => {
       setToken("");
+      setLinking(false);
       await invalidate();
       toast.success(t("settings.claudeSubscription.connected"));
     },
@@ -82,7 +84,6 @@ export function ClaudeSubscriptionRow() {
   // A row that exists but is not `connected` is a token Anthropic has aged
   // out — the only state where "paste a new one" is the honest label.
   const expired = !connected && Boolean(status.data?.linkedAt);
-  const [linking, setLinking] = useState(false);
   const usage = useSubscriptionUsage({
     provider: "claude",
     orgId: org.id,

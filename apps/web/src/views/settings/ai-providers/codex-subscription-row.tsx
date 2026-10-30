@@ -36,6 +36,7 @@ export function CodexSubscriptionRow() {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
+  const [linking, setLinking] = useState(false);
 
   const status = useQuery({
     queryKey: KEYS.codexSubscription(org.id, userId),
@@ -60,6 +61,7 @@ export function CodexSubscriptionRow() {
       studio.call("CODEX_SUBSCRIPTION_CONNECT", { authJson: token }),
     onSuccess: async () => {
       setToken("");
+      setLinking(false);
       await invalidate();
       toast.success(t("settings.codexSubscription.connected"));
     },
@@ -76,7 +78,6 @@ export function CodexSubscriptionRow() {
   });
 
   const connected = status.data?.connected === true;
-  const [linking, setLinking] = useState(false);
   const usage = useSubscriptionUsage({
     provider: "codex",
     orgId: org.id,

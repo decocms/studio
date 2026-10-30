@@ -33,8 +33,8 @@ export function AccountRow({
 }) {
   const t = useT();
   return (
-    <div>
-      <div className="flex min-h-16 items-center gap-3 px-4 py-3">
+    <div role="group" aria-label={title}>
+      <div className="flex min-h-16 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/60">
           {icon}
         </div>
@@ -54,7 +54,12 @@ export function AccountRow({
           </div>
           {meta && <span className="truncate text-meta">{meta}</span>}
         </div>
-        {summary}
+        {summary && (
+          // Below `sm` the usage drops to its own line instead of disappearing.
+          <div className="order-last basis-full pl-11 sm:order-none sm:basis-auto sm:pl-0">
+            {summary}
+          </div>
+        )}
         <div className="flex shrink-0 items-center gap-1">{action}</div>
       </div>
       {children}

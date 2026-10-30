@@ -123,7 +123,7 @@ export function SubscriptionUsageSummary({
     }).format(new Date(value));
 
   return (
-    <div className="hidden shrink-0 items-center gap-4 sm:flex">
+    <div className="flex shrink-0 items-center gap-4">
       {usage.windows.slice(0, 2).map((window) => {
         const percent = Math.round(window.usedPercent);
         return (

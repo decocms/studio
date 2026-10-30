@@ -28,6 +28,7 @@ export function GithubCopilotRow() {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
+  const [linking, setLinking] = useState(false);
 
   const status = useQuery({
     queryKey: KEYS.githubCopilot(org.id),
@@ -41,6 +42,7 @@ export function GithubCopilotRow() {
     mutationFn: () => studio.call("GITHUB_COPILOT_CONNECT", { token }),
     onSuccess: async () => {
       setToken("");
+      setLinking(false);
       await invalidate();
       toast.success(t("settings.githubCopilot.connected"));
     },
@@ -65,7 +67,6 @@ export function GithubCopilotRow() {
 
   const connected = status.data?.connected === true;
   const orgShare = status.data?.orgShare ?? null;
-  const [linking, setLinking] = useState(false);
 
   return (
     <AccountRow

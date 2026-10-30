@@ -32,22 +32,24 @@ test("settings show quota windows, reset times, and exhausted limits", async ({
     ).ok(),
   ).toBe(true);
   await page.goto(`/${orgSlug}/settings/ai-providers`);
-  const codex = page
-    .getByText("Your ChatGPT subscription for Codex", { exact: true })
-    .locator("../../..");
-  const claude = page
-    .getByText("Your Claude subscription", { exact: true })
-    .locator("../../..");
-  await expect(codex.getByText("42% used")).toBeVisible();
-  await expect(codex.getByText("68% used")).toBeVisible();
-  await expect(
-    codex.getByRole("progressbar", { name: "5-hour window" }),
-  ).toHaveAttribute("aria-valuenow", "42");
+  const codex = page.getByRole("group", { name: "ChatGPT for Codex" });
+  const claude = page.getByRole("group", { name: "Claude Pro or Max" });
+  await expect(codex.getByText("42%", { exact: true })).toBeVisible();
+  await expect(codex.getByText("68%", { exact: true })).toBeVisible();
+  await expect(codex.getByRole("progressbar", { name: "5h" })).toHaveAttribute(
+    "aria-valuenow",
+    "42",
+  );
+  await expect(codex.getByRole("progressbar", { name: "7d" })).toHaveAttribute(
+    "aria-valuenow",
+    "68",
+  );
+  await codex.getByRole("progressbar", { name: "5h" }).hover();
+  await expect(page.getByRole("tooltip")).toContainText("Resets");
   await expect(
     claude.getByText("Limit reached", { exact: true }),
   ).toBeVisible();
-  await expect(claude.getByText("100% used")).toBeVisible();
-  await expect(claude.getByText("91% used")).toBeVisible();
+  await expect(claude.getByRole("progressbar")).toHaveCount(0);
   await codex.screenshot({
     path: testInfo.outputPath("codex-usage-desktop.png"),
   });
@@ -55,11 +57,12 @@ test("settings show quota windows, reset times, and exhausted limits", async ({
     path: testInfo.outputPath("claude-usage-desktop.png"),
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(codex.getByText("42% used")).toBeVisible();
+  await expect(codex.getByText("42%", { exact: true })).toBeVisible();
   await codex.screenshot({
     path: testInfo.outputPath("codex-usage-mobile.png"),
   });
-  await codex.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await codex.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Disconnect" }).click();
   await expect(codex.getByRole("progressbar")).toHaveCount(0);
 });
 
@@ -140,17 +143,17 @@ test("a Claude token without usage permission shows an explanation and provider 
       data: { token: `scope-${randomUUID()}` },
     });
   await page.goto(`/${orgSlug}/settings/ai-providers`);
-  const card = page
-    .getByText("Your Claude subscription", { exact: true })
-    .locator("../../..");
+  const row = page.getByRole("group", { name: "Claude Pro or Max" });
+  await row.getByText("Usage unavailable", { exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "This token cannot read usage limits",
+  );
+  await expect(row.getByRole("progressbar")).toHaveCount(0);
+  await row.getByRole("button", { name: "More actions" }).click();
   await expect(
-    card.getByText(/This token cannot read usage limits/),
-  ).toBeVisible();
-  await expect(
-    card.getByRole("link", { name: "View on provider" }),
+    page.getByRole("menuitem", { name: "View on provider" }),
   ).toHaveAttribute("href", "https://claude.ai/settings/usage");
-  await expect(card.getByRole("progressbar")).toHaveCount(0);
-  await card.screenshot({
+  await row.screenshot({
     path: testInfo.outputPath("claude-usage-unavailable.png"),
   });
 });
