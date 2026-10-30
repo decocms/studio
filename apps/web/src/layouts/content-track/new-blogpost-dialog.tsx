@@ -40,7 +40,7 @@ import {
   type CampaignsProposal,
   GenerateCampaignsDialog,
 } from "@/components/sandbox/content/blog/generate-campaigns-dialog";
-import { CampaignList } from "@/components/sandbox/content/blog/generate-post-dialog";
+import { CampaignList } from "@/components/sandbox/content/blog/campaign-list";
 import type { BlogState } from "@/components/sandbox/content/blog/use-blog-state";
 import { useOpenBlogChat } from "@/hooks/use-open-blog-chat";
 import { useT } from "@/i18n/use-t.ts";

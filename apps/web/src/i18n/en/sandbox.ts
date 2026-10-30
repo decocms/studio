@@ -16,8 +16,6 @@ export const sandbox = {
     "No editable fields for this section.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Save as global section",
-  "sandbox.autonomous.noAiProvider":
-    "This organization has no AI provider connected — connect one in Settings → AI Providers to use this",
   "sandbox.blockDocument.addBlock": "Add block",
   "sandbox.blockPicker.blocksLabel": "Blocks",
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
@@ -556,55 +554,8 @@ export const sandbox = {
   "sandbox.blogState.conflictTitle": "This changed somewhere else",
   "sandbox.blogState.keepMine": "Keep mine",
   "sandbox.blogState.reloadTheirs": "Reload theirs",
-  "sandbox.generatePost.stepCampaign": "Campaign",
-  "sandbox.generatePost.campaignHint":
-    "A post is written for a campaign: it carries the moment, the products it may name and the links to them.",
-  "sandbox.generatePost.noCampaigns":
-    "No campaign to write for yet. Create one under Context → Campaigns.",
   "sandbox.generatePost.campaignProducts": "{count} product(s)",
   "sandbox.generatePost.campaignNoProducts": "No products",
-  "sandbox.generatePost.formatBlocksHint":
-    "The blocks this format cites are the only ones a post may be built from, and each is filled to its own schema.",
-  "sandbox.generatePost.countLabel": "How many drafts",
-  "sandbox.generatePost.countHint":
-    "Each takes a different angle on the same campaign. They land as separate cards.",
-  "sandbox.generatePost.coverHint":
-    "Every draft gets a cover image, generated and uploaded to your bucket.",
-  "sandbox.generatePost.gapNoStoreData":
-    "No connected system answered, so nothing in these posts was checked against the store.",
-  "sandbox.generatePost.gapSectionsDropped":
-    "{count} section(s) were dropped: their props did not match the block that renders them.",
-  "sandbox.generatePost.gapNoBucket":
-    "No bucket to upload images to, so the posts have no cover. Configure one under Settings → Buckets.",
-  "sandbox.generatePost.gapNoImageModel":
-    "This organization has no image model configured, so the posts have no cover.",
-  "sandbox.generatePost.gapImagesFailed":
-    "The cover images could not be generated. The posts are otherwise complete.",
-  "sandbox.generatePost.gapDraftsFailed":
-    "{count} draft(s) could not be written and their cards were left empty.",
-  "sandbox.generatePost.back": "Back",
-  "sandbox.generatePost.blockedBrand":
-    "Fill in {fields} in Context → Brand first — a post written without them reads like any other brand's.",
-  "sandbox.generatePost.done": "Wrote {count} draft(s) — ready for review",
-  "sandbox.generatePost.extraLabel": "Anything else?",
-  "sandbox.generatePost.extraPlaceholder":
-    "What you want on top of everything else, in your words.",
-  "sandbox.generatePost.failed": "Could not write these posts",
-  "sandbox.generatePost.formatHint":
-    "Pick a format this brand already uses, or describe a new one.",
-  "sandbox.generatePost.formatNameLabel": "Format name",
-  "sandbox.generatePost.formatNamePlaceholder":
-    "The format, named by the job it does",
-  "sandbox.generatePost.formatValueLabel": "How a post like this is built",
-  "sandbox.generatePost.formatValuePlaceholder":
-    "How it opens, develops and closes.",
-  "sandbox.generatePost.generate": "Generate {count} draft(s)",
-  "sandbox.generatePost.next": "Next",
-  "sandbox.generatePost.stepExtra": "Instructions",
-  "sandbox.generatePost.stepFormat": "Format",
-  "sandbox.generatePost.subtitle":
-    "Pick the campaign and the format. The posts land on the board as drafts.",
-  "sandbox.generatePost.title": "Generate posts",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
   "sandbox.itemActions.duplicate": "Duplicate",
@@ -645,17 +596,6 @@ export const sandbox = {
   "sandbox.mediaBlocks.calloutTitle": "Callout title",
   "sandbox.mediaBlocks.destinationUrlPlaceholder":
     "https://destination-url.com",
-  "sandbox.linkSuggest.button": "Suggest links",
-  "sandbox.linkSuggest.hint":
-    "Find phrases to link to your other posts (uses AI credits)",
-  "sandbox.linkSuggest.noCandidates": "No other posts to link to yet",
-  "sandbox.linkSuggest.title": "Suggested internal links",
-  "sandbox.linkSuggest.description":
-    "Pick which phrases to link to your other posts. Nothing changes until you apply.",
-  "sandbox.linkSuggest.none": "No internal links to suggest.",
-  "sandbox.linkSuggest.apply": "Apply {count}",
-  "sandbox.linkSuggest.applied": "Applied {count} link(s)",
-  "sandbox.linkSuggest.failed": "Could not suggest links",
   "sandbox.linkPicker.tabPost": "Post",
   "sandbox.linkPicker.tabProduct": "Product",
   "sandbox.linkPicker.searchPosts": "Search your posts…",
@@ -743,9 +683,6 @@ export const sandbox = {
     "Generating is set by the generation run, not by hand.",
   "sandbox.postBoard.nIssues": "{count} to fix before scheduling",
   "sandbox.postBoard.newPost": "New post",
-  "sandbox.postBoard.newPostGenerate": "Generate",
-  "sandbox.postBoard.newPostGenerateHint":
-    "Write it with AI, from your context",
   "sandbox.postBoard.newPostWrite": "Write",
   "sandbox.postBoard.newPostWriteHint": "Start an empty draft yourself",
   "sandbox.postBoard.importContent": "Import content",

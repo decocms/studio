@@ -11,15 +11,12 @@
  * shared `useSaveBlock`/`useDeleteBlock`, whose `decoBlockFilePath` already
  * reproduces that encoding.
  */
-import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
 /** The block mapping, which `apps/api` also imports — it cannot import from here. */
 import {
   asRecord,
   authorEmailOf,
-  type AuthorRef,
   blockComponentName,
   blockExample,
-  blocksForFormat,
   BLOG_KINDS,
   BLOG_SINGULAR,
   type BlogBlockDiscoveryOptions,
@@ -703,40 +700,6 @@ export function readBlogContext(
 }
 
 /**
- * The editorial context as every generation tool takes it: one `brand` input
- * spanning both blocks, with blank rule rows dropped — those are editor state,
- * not something to spend a prompt on.
- *
- * Takes `merged` from {@link splitBlogContext}. The tools' schema is partial,
- * so a field the human never filled simply arrives empty.
- */
-export function contextForTools(merged: Record<string, unknown>) {
-  return {
-    companyName: str(merged.companyName),
-    description: str(merged.description),
-    language: str(merged.language),
-    // Normalised here so no tool ever receives an unusable address: a prompt
-    // that composes links from a half-typed host produces links nobody can open.
-    storeUrl: sanitizeSiteUrl(str(merged.storeUrl)) ?? "",
-    tone: str(merged.tone),
-    targetAudience: str(merged.targetAudience),
-    values: filledBrandRules(normalizeBrandRules(merged.values)),
-    competitors: filledBrandRules(normalizeBrandRules(merged.competitors)),
-    specialDates: filledBrandRules(normalizeBrandRules(merged.specialDates)),
-    dos: filledBrandRules(normalizeBrandRules(merged.dos)),
-    avoid: filledBrandRules(normalizeBrandRules(merged.avoid)),
-    keywords: filledTerms(normalizeTerms(merged.keywords)),
-    commercialPolicies: filledBrandRules(
-      normalizeBrandRules(merged.commercialPolicies),
-    ),
-    vocabulary: filledBrandRules(normalizeBrandRules(merged.vocabulary)),
-    voiceExamples: filledVoiceExamples(
-      normalizeVoiceExamples(merged.voiceExamples),
-    ),
-  };
-}
-
-/**
  * One editorial rule: a short name plus a markdown body. Replaces the flat
  * strings these fields used to hold — a rule worth writing down needs more
  * room than a single-line input, and a competitor is useless without the
@@ -1285,10 +1248,8 @@ export function duplicateTitleKeys(
 
 /** Re-exported so this module's thirty-odd callers keep one import. */
 export {
-  type AuthorRef,
   blockComponentName,
   blockExample,
-  blocksForFormat,
   BLOG_KINDS,
   BLOG_SINGULAR,
   type BlogBlockDiscoveryOptions,
@@ -1321,7 +1282,6 @@ export {
   missingPostFields,
   newPostId,
   PLANNING_POST_KEY_PREFIX,
-  type PlanningMeta,
   planningPostKey,
   POST_STATUSES,
   postIdOfKey,

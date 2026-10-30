@@ -60,7 +60,6 @@ import {
   BRAND_FIELDS,
   CONTEXT_FIELDS,
   readBlogContext,
-  contextForTools,
   BRAND_BLOCK_KEY,
   CONTEXT_BLOCK_KEY,
   sectionResolveTypes,
@@ -2201,67 +2200,6 @@ describe("splitBlogContext", () => {
       "site/pages/home": { path: "/" },
     });
     expect(merged).toEqual({ ...brandFields, ...contextFields });
-  });
-});
-
-describe("contextForTools", () => {
-  test("carries the fields the prompts actually render", () => {
-    const { merged } = splitBlogContext(
-      {
-        competitors: [{ name: "Rival", value: "Vende o mesmo mais barato" }],
-        specialDates: [
-          { name: "Volta às aulas", value: "Janeiro e fevereiro" },
-        ],
-      },
-      {},
-    );
-    const forTools = contextForTools(merged);
-    expect(forTools.competitors).toHaveLength(1);
-    expect(forTools.specialDates).toHaveLength(1);
-  });
-
-  test("normalises the store address, and blanks an unusable one", () => {
-    const usable = splitBlogContext({ storeUrl: " https://loja.com " }, {});
-    expect(contextForTools(usable.merged).storeUrl).toBe("https://loja.com/");
-    const junk = splitBlogContext({ storeUrl: "javascript:alert(1)" }, {});
-    expect(contextForTools(junk.merged).storeUrl).toBe("");
-  });
-
-  test("spans both halves and drops the blank editor rows", () => {
-    const { merged } = splitBlogContext(
-      { companyName: "Marca", values: [{ name: "", value: "" }] },
-      { tone: "Seco", dos: [{ name: "Abertura", value: "Pelo leitor" }] },
-    );
-    expect(contextForTools(merged)).toEqual({
-      companyName: "Marca",
-      description: "",
-      language: "",
-      storeUrl: "",
-      tone: "Seco",
-      targetAudience: "",
-      values: [],
-      competitors: [],
-      specialDates: [],
-      dos: [{ name: "Abertura", value: "Pelo leitor" }],
-      avoid: [],
-      keywords: [],
-      commercialPolicies: [],
-      vocabulary: [],
-      voiceExamples: [],
-    });
-  });
-
-  test("hands keywords on as plain terms, including from the legacy rule shape", () => {
-    const { merged } = splitBlogContext(
-      {
-        keywords: [
-          { name: "linho crú", value: "quem procura tecido natural" },
-          { name: "", value: "" },
-        ],
-      },
-      {},
-    );
-    expect(contextForTools(merged).keywords).toEqual(["linho crú"]);
   });
 });
 

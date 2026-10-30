@@ -9,10 +9,9 @@ import { ArrowRight, CheckCircle, Stars02 } from "@untitledui/icons";
 import { BRANDS_DIR, pickBrandDir } from "@decocms/shared/brand";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import type { BrandRequirement } from "@/components/sandbox/content/blog/blog-data";
-import { REQUIREMENT_LABEL } from "@/components/sandbox/content/blog/generate-post-dialog";
 import { useBrandFill } from "@/hooks/use-brand-fill";
 import { useOrgFsList } from "@/hooks/use-org-fs";
-import { useT } from "@/i18n/use-t.ts";
+import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { basename } from "@/layouts/library/location";
 import { useProjectContext } from "@/sdk";
 import { NEWSROOM, RoleAvatar } from "./newsroom";
@@ -35,6 +34,17 @@ const LOOP = [
     job: "contentTrack.setup.loopMonitorJob",
   },
 ] as const;
+
+/** Which guide field each requirement points at, in the order the checklist lists them. */
+const REQUIREMENT_LABEL = {
+  companyName: "sandbox.blogBrand.companyNameLabel",
+  language: "sandbox.blogBrand.languageLabel",
+  description: "sandbox.blogBrand.descriptionLabel",
+  tone: "sandbox.blogBrand.toneLabel",
+  targetAudience: "sandbox.blogBrand.audienceLabel",
+  dos: "sandbox.blogBrand.tabDos",
+  avoid: "sandbox.blogBrand.tabGuardrails",
+} as const satisfies Record<BrandRequirement, TranslationKey>;
 
 const GUIDE = Object.keys(REQUIREMENT_LABEL) as BrandRequirement[];
 

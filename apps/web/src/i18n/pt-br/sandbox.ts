@@ -19,8 +19,6 @@ export const sandbox = {
     "Nenhum campo editável para esta seção.",
   "sandbox.availableSectionEditor.saveAsGlobalSection":
     "Salvar como seção global",
-  "sandbox.autonomous.noAiProvider":
-    "Esta organização não tem provedor de IA conectado — conecte um em Configurações → Provedores de IA para usar isto",
   "sandbox.blockDocument.addBlock": "Adicionar bloco",
   "sandbox.blockPicker.blocksLabel": "Blocos",
   "sandbox.blockPicker.customBlocksLabel": "Blocos personalizados",
@@ -568,56 +566,8 @@ export const sandbox = {
   "sandbox.blogState.conflictTitle": "Isso mudou em outro lugar",
   "sandbox.blogState.keepMine": "Manter o meu",
   "sandbox.blogState.reloadTheirs": "Recarregar o deles",
-  "sandbox.generatePost.stepCampaign": "Campanha",
-  "sandbox.generatePost.campaignHint":
-    "Um post é escrito para uma campanha: é ela que carrega o momento, os produtos que podem ser citados e os links deles.",
-  "sandbox.generatePost.noCampaigns":
-    "Nenhuma campanha para escrever ainda. Crie uma em Contexto → Campanhas.",
   "sandbox.generatePost.campaignProducts": "{count} produto(s)",
   "sandbox.generatePost.campaignNoProducts": "Sem produtos",
-  "sandbox.generatePost.formatBlocksHint":
-    "Os blocos que este formato cita são os únicos que o post pode usar, e cada um é preenchido conforme o schema dele.",
-  "sandbox.generatePost.countLabel": "Quantos rascunhos",
-  "sandbox.generatePost.countHint":
-    "Cada um pega um ângulo diferente da mesma campanha. Caem como cartões separados.",
-  "sandbox.generatePost.coverHint":
-    "Todo rascunho ganha uma imagem de capa, gerada e enviada para o seu bucket.",
-  "sandbox.generatePost.gapNoStoreData":
-    "Nenhum sistema conectado respondeu, então nada nestes posts foi conferido com a loja.",
-  "sandbox.generatePost.gapSectionsDropped":
-    "{count} seção(ões) foram descartadas: os props não bateram com o bloco que as renderiza.",
-  "sandbox.generatePost.gapNoBucket":
-    "Nenhum bucket para enviar imagens, então os posts estão sem capa. Configure um em Configurações → Buckets.",
-  "sandbox.generatePost.gapNoImageModel":
-    "Esta organização não tem modelo de imagem configurado, então os posts estão sem capa.",
-  "sandbox.generatePost.gapImagesFailed":
-    "As imagens de capa não puderam ser geradas. Os posts estão completos no resto.",
-  "sandbox.generatePost.gapDraftsFailed":
-    "{count} rascunho(s) não puderam ser escritos e os cartões ficaram vazios.",
-  "sandbox.generatePost.back": "Voltar",
-  "sandbox.generatePost.blockedBrand":
-    "Preencha {fields} em Contexto → Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
-  "sandbox.generatePost.done":
-    "Escrevi {count} rascunho(s) — prontos para revisão",
-  "sandbox.generatePost.extraLabel": "Mais alguma coisa?",
-  "sandbox.generatePost.extraPlaceholder":
-    "O que você quer além de tudo isso, nas suas palavras.",
-  "sandbox.generatePost.failed": "Não consegui escrever estes posts",
-  "sandbox.generatePost.formatHint":
-    "Escolha um formato que a marca já usa, ou descreva um novo.",
-  "sandbox.generatePost.formatNameLabel": "Nome do formato",
-  "sandbox.generatePost.formatNamePlaceholder":
-    "O formato, nomeado pelo trabalho que faz",
-  "sandbox.generatePost.formatValueLabel": "Como um post assim é construído",
-  "sandbox.generatePost.formatValuePlaceholder":
-    "Como ele abre, desenvolve e fecha.",
-  "sandbox.generatePost.generate": "Gerar {count} rascunho(s)",
-  "sandbox.generatePost.next": "Avançar",
-  "sandbox.generatePost.stepExtra": "Instruções",
-  "sandbox.generatePost.stepFormat": "Formato",
-  "sandbox.generatePost.subtitle":
-    "Escolha a campanha e o formato. Os posts caem no quadro como rascunhos.",
-  "sandbox.generatePost.title": "Gerar posts",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
   "sandbox.itemActions.duplicate": "Duplicar",
@@ -657,17 +607,6 @@ export const sandbox = {
   "sandbox.mediaBlocks.calloutText": "Texto do destaque…",
   "sandbox.mediaBlocks.calloutTitle": "Título do destaque",
   "sandbox.mediaBlocks.destinationUrlPlaceholder": "https://url-de-destino.com",
-  "sandbox.linkSuggest.button": "Sugerir links",
-  "sandbox.linkSuggest.hint":
-    "Encontrar trechos para linkar com seus outros posts (usa créditos de IA)",
-  "sandbox.linkSuggest.noCandidates": "Ainda não há outros posts para linkar",
-  "sandbox.linkSuggest.title": "Links internos sugeridos",
-  "sandbox.linkSuggest.description":
-    "Escolha quais trechos linkar com seus outros posts. Nada muda até você aplicar.",
-  "sandbox.linkSuggest.none": "Nenhum link interno para sugerir.",
-  "sandbox.linkSuggest.apply": "Aplicar {count}",
-  "sandbox.linkSuggest.applied": "{count} link(s) aplicado(s)",
-  "sandbox.linkSuggest.failed": "Não foi possível sugerir links",
   "sandbox.linkPicker.tabPost": "Post",
   "sandbox.linkPicker.tabProduct": "Produto",
   "sandbox.linkPicker.searchPosts": "Buscar seus posts…",
@@ -757,9 +696,6 @@ export const sandbox = {
     "Gerando é definido pela geração, não à mão.",
   "sandbox.postBoard.nIssues": "{count} a corrigir antes de agendar",
   "sandbox.postBoard.newPost": "Novo post",
-  "sandbox.postBoard.newPostGenerate": "Gerar",
-  "sandbox.postBoard.newPostGenerateHint":
-    "Escrever com IA, a partir do seu contexto",
   "sandbox.postBoard.newPostWrite": "Escrever",
   "sandbox.postBoard.newPostWriteHint": "Começar um rascunho vazio você mesmo",
   "sandbox.postBoard.importContent": "Importar conteúdo",
