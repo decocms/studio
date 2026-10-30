@@ -146,6 +146,44 @@ const SEG =
 const SEG_ON = "bg-background text-foreground shadow-xs";
 const SEG_OFF = "text-muted-foreground hover:text-foreground";
 
+/** The three kinds the map plots at once, in the order the CSS declares them. */
+type MarkKind = "visit" | "cart" | "goal";
+
+const LEGEND = [
+  { kind: "visit", label: "legendVisits" },
+  { kind: "cart", label: "legendCarts" },
+  { kind: "goal", label: "legendConversions" },
+] as const satisfies readonly { kind: MarkKind; label: GlobeKey }[];
+
+/**
+ * One legend mark, drawn to the shape the renderer paints: a dot, a diamond, a
+ * dot inside a ring. Shape is the map's second encoding — three colours plotted
+ * at once cannot separate under every colour-vision deficiency — so a legend of
+ * three swatches would key the wrong half of the mark.
+ */
+function LegendMark({ kind }: { kind: MarkKind }) {
+  const fill = `var(--globe-${kind})`;
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5 shrink-0">
+      {kind === "visit" && <circle cx="8" cy="8" r="3.6" fill={fill} />}
+      {kind === "cart" && <path d="M8 3.4 12.6 8 8 12.6 3.4 8Z" fill={fill} />}
+      {kind === "goal" && (
+        <>
+          <circle
+            cx="8"
+            cy="8"
+            r="6"
+            fill="none"
+            stroke={fill}
+            strokeWidth="1.4"
+          />
+          <circle cx="8" cy="8" r="2.8" fill={fill} />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function LiveGlobe({
   base,
   orgSlug,
@@ -300,19 +338,32 @@ export function LiveGlobe({
       {bundle.error ? (
         <p className="text-xs text-muted-foreground">{t(k("loadError"))}</p>
       ) : (
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          {replaying && (
-            <p className="text-xs text-muted-foreground">
-              {t(k("replaying"), { range: rangeLabel ?? "" })}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <ul
+            aria-label={t(k("legend"))}
+            className="flex flex-wrap items-center gap-x-4 gap-y-1"
+          >
+            {LEGEND.map(({ kind, label }) => (
+              <li key={kind} className="flex items-center gap-1.5 text-xs">
+                <LegendMark kind={kind} />
+                {t(k(label))}
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            {replaying && (
+              <p className="text-xs text-muted-foreground">
+                {t(k("replaying"), { range: rangeLabel ?? "" })}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {t(k("caption"), {
+                places: nf.format(stats.places),
+                approximate: nf.format(stats.approximate),
+                unplaced: nf.format(stats.unplaced),
+              })}
             </p>
-          )}
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {t(k("caption"), {
-              places: nf.format(stats.places),
-              approximate: nf.format(stats.approximate),
-              unplaced: nf.format(stats.unplaced),
-            })}
-          </p>
+          </div>
         </div>
       )}
     </div>

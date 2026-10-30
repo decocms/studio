@@ -564,6 +564,11 @@ export const mainPanelTabs = {
     "Nobody on the site right now — replaying the selected period ({range}).",
   "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globe",
   "mainPanelTabs.analyticsTab.globe.modeMap": "Map",
+  // Legend labels: capitalised, unlike the nouns the renderer prints mid-sentence.
+  "mainPanelTabs.analyticsTab.globe.legend": "What the map is showing",
+  "mainPanelTabs.analyticsTab.globe.legendVisits": "Visits",
+  "mainPanelTabs.analyticsTab.globe.legendCarts": "Carts",
+  "mainPanelTabs.analyticsTab.globe.legendConversions": "Conversions",
   "mainPanelTabs.analyticsTab.globe.loadError":
     "Couldn't load the map renderer. The numbers above are still live.",
   "mainPanelTabs.analyticsTab.viewQuality": "Data quality",
