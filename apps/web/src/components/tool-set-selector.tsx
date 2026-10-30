@@ -16,7 +16,7 @@ import {
 } from "@/sdk";
 import { collectionItemQueryOptions } from "@/sdk/hooks/use-collections";
 import { useSuspenseInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useDeferredValue, useRef, useState } from "react";
+import { type ReactNode, useDeferredValue, useRef, useState } from "react";
 import { CollectionSearch } from "@/components/collections/collection-search.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -97,9 +97,17 @@ interface ToolItemProps {
   tool: { name: string; description?: string };
   isSelected: boolean;
   onToggle: () => void;
+  /** Shown beside the name, e.g. a read-only marker. */
+  badge?: ReactNode;
 }
 
-function ToolItem({ connectionId, tool, isSelected, onToggle }: ToolItemProps) {
+export function ToolItem({
+  connectionId,
+  tool,
+  isSelected,
+  onToggle,
+  badge,
+}: ToolItemProps) {
   return (
     <label
       className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent cursor-pointer group will-change-auto"
@@ -115,6 +123,7 @@ function ToolItem({ connectionId, tool, isSelected, onToggle }: ToolItemProps) {
           >
             {tool.name}
           </span>
+          {badge}
         </div>
         {tool.description && (
           <p className="text-xs text-muted-foreground line-clamp-2">
