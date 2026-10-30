@@ -1,4 +1,15 @@
 import {
+  appManifestResolveTypeAliases,
+  type BlockSchemaMetadata,
+  type LiveMeta,
+  lookupManifestBlockSchema,
+  parseLegacyAppResolveType,
+  parseSiteAppResolveType,
+  type RawSchema,
+  resolveBlockSchemaMetadata,
+  toBase64,
+} from "@decocms/shared/blog";
+import {
   isEmbeddedUnionResolveType,
   isManifestAppResolveType,
   parseSavedBlockSchemaTitle,
@@ -107,22 +118,6 @@ export interface SchemaProperty {
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
 
-export interface LiveMeta {
-  /** The stack the site was built with; absent on Fresh/Deno, which predates it. */
-  framework?: string;
-  manifest: {
-    blocks: Record<
-      string,
-      Record<string, { $ref?: string; namespace?: string }>
-    >;
-  };
-  schema: Record<string, unknown>;
-  /** Content hash a deco runtime's `/live/_meta` sends with the schema. */
-  etag?: string;
-}
-
-type RawSchema = Record<string, unknown>;
-
 /** Max `$ref` / `allOf` hops while flattening top-level properties. */
 const MAX_COLLECT_PROPS_DEPTH = 12;
 
@@ -203,87 +198,6 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((k): k is string => typeof k === "string")
     : [];
-}
-
-/** Base64 encode resolveType keys — browser-safe (btoa), Node fallback in tests. */
-function toBase64(str: string): string {
-  if (typeof btoa === "function") return btoa(str);
-  return Buffer.from(str).toString("base64");
-}
-
-function parseSiteAppResolveType(
-  resolveType: string,
-): { vendor: string; app: string } | null {
-  const match = resolveType.match(/^site\/apps\/([^/]+)\/([^/.]+)\.tsx?$/);
-  if (!match) return null;
-  return { vendor: match[1]!, app: match[2]! };
-}
-
-function parseLegacyAppResolveType(
-  resolveType: string,
-): { vendor: string; app: string } | null {
-  const match = resolveType.match(/^([^/]+)\/apps\/([^/.]+)\.tsx?$/);
-  if (!match) return null;
-  return { vendor: match[1]!, app: match[2]! };
-}
-
-function appManifestResolveTypeAliases(vendor: string, app: string): string[] {
-  return [
-    `site/apps/${vendor}/${app}.ts`,
-    `site/apps/${vendor}/${app}.tsx`,
-    `${vendor}/apps/${app}.ts`,
-    `${vendor}/apps/${app}.tsx`,
-  ];
-}
-
-/** Manifest block schema entry, including legacy/modern app resolveType aliases. */
-function lookupManifestBlockSchema(
-  resolveType: string,
-  meta: LiveMeta,
-): RawSchema {
-  const allBlockTypes = meta.manifest?.blocks ?? {};
-
-  for (const blockTypeMap of Object.values(allBlockTypes)) {
-    if (blockTypeMap[resolveType]) {
-      return blockTypeMap[resolveType] as RawSchema;
-    }
-  }
-
-  const parsed =
-    parseSiteAppResolveType(resolveType) ??
-    parseLegacyAppResolveType(resolveType);
-  if (parsed) {
-    for (const alias of appManifestResolveTypeAliases(
-      parsed.vendor,
-      parsed.app,
-    )) {
-      for (const blockTypeMap of Object.values(allBlockTypes)) {
-        if (blockTypeMap[alias]) {
-          return blockTypeMap[alias] as RawSchema;
-        }
-      }
-    }
-  }
-
-  // Tanstack sites generate app schemas with base64-encoded resolveType keys
-  // (same convention as sections). Fall back when manifest.blocks.apps is empty.
-  const encodedResolveType = toBase64(resolveType);
-  for (const blockTypeMap of Object.values(allBlockTypes)) {
-    if (blockTypeMap[encodedResolveType]) {
-      return blockTypeMap[encodedResolveType] as RawSchema;
-    }
-  }
-
-  const globalSchema = meta.schema ?? {};
-  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
-    string,
-    unknown
-  >;
-  if (defs[encodedResolveType]) {
-    return { $ref: `#/definitions/${encodedResolveType}` };
-  }
-
-  return {};
 }
 
 /** Whether resolveType refers to a manifest `apps` block (legacy + site/apps aliases). */
@@ -1555,56 +1469,4 @@ export function inferSchemaFromValue(
   return { type: "object", properties };
 }
 
-export interface BlockSchemaMetadata {
-  title?: string;
-  description?: string;
-  icon?: string;
-  logo?: string;
-  /** Block marked hidden from pickers (deco `@ignore` / `hide` convention). */
-  hidden?: boolean;
-}
-
-/**
- * Read block schema metadata (title, description, icon) from live meta.
- * Mirrors admin's getSchemaIcon / getSchemaTitle / getSchemaDescription.
- */
-export function resolveBlockSchemaMetadata(
-  resolveType: string,
-  meta: LiveMeta,
-): BlockSchemaMetadata {
-  const globalSchema = meta.schema ?? {};
-  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
-  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
-    string,
-    RawSchema
-  >;
-
-  const resolved =
-    typeof blockSchema.$ref === "string"
-      ? (defs[blockSchema.$ref.split("/").pop() ?? ""] ?? {})
-      : Object.keys(blockSchema).length > 0
-        ? blockSchema
-        : { ...globalSchema, ...blockSchema };
-
-  const icon = (resolved as { icon?: string }).icon;
-  const logo = (resolved as { logo?: string }).logo;
-  const flags = resolved as {
-    hide?: unknown;
-    ignore?: unknown;
-    unlisted?: unknown;
-  };
-  const truthy = (v: unknown) => v === true || v === "true";
-  const hidden =
-    truthy(flags.hide) || truthy(flags.ignore) || truthy(flags.unlisted);
-
-  return {
-    title: typeof resolved.title === "string" ? resolved.title : undefined,
-    description:
-      typeof resolved.description === "string"
-        ? resolved.description
-        : undefined,
-    icon: typeof icon === "string" ? icon : undefined,
-    logo: typeof logo === "string" ? logo : undefined,
-    hidden: hidden || undefined,
-  };
-}
+export { type BlockSchemaMetadata, type LiveMeta, resolveBlockSchemaMetadata };

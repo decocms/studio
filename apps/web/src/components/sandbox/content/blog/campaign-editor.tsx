@@ -1,3 +1,4 @@
+import { AlertCircle } from "@untitledui/icons";
 import type { HeldEdit } from "@/components/sections-editor/held-copy";
 /**
  * One campaign's form, autosaved like every other Context editor.
@@ -15,6 +16,7 @@ import { useState } from "react";
 import { Calendar } from "@decocms/ui/components/calendar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { toast } from "sonner";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
@@ -46,11 +48,12 @@ import { CategoryTreeList } from "./blocks/category-tree-list";
 import { reHome } from "@decocms/shared/store-url";
 import { ProductPickerDialog } from "./blocks/product-picker-dialog";
 import type { ProductPickerOption } from "./blocks/product-picker-source";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { useProductsByIds } from "./blocks/use-product-lookup";
+import type { CatalogSource } from "./blocks/catalog-source";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
-import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 import {
   buildCampaignBlock,
+  CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
@@ -63,6 +66,7 @@ import {
   type CampaignTargetKind,
   type CampaignTrigger,
   MAX_CAMPAIGN_PRODUCT_IMAGES,
+  NO_GOAL,
   normalizeBrandRules,
   readCampaignProducts,
   readCampaignTargets,
@@ -72,6 +76,7 @@ import {
   CAMPAIGN_STATUS_LABEL,
   CAMPAIGN_TRIGGER_LABEL,
 } from "./campaigns-panel";
+import { GOAL_METRIC_LABEL } from "./campaign-goal";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 const OBJECTIVE_LABEL: Record<CampaignObjective, TranslationKey> = {
@@ -186,6 +191,7 @@ function readCampaign(
     status: "draft" as CampaignStatus,
     period: { start: null, end: null },
     trigger: { type: "seasonal" as CampaignTrigger, note: "" },
+    goal: { ...NO_GOAL },
     intent: {
       objective: "awareness" as CampaignObjective,
       targets: [],
@@ -208,7 +214,7 @@ export function CampaignEditor({
   isSaving,
   onSeed,
   onEdit,
-  sandboxRef,
+  catalog,
   storeUrl,
 }: {
   blockKey: string;
@@ -226,8 +232,8 @@ export function CampaignEditor({
   onSeed?: () => void;
   /** An edit is made (see `useAutosave`'s `onEdit`). */
   onEdit?: () => HeldEdit | undefined;
-  /** Absent outside a sandbox session — the store pickers hide, typing stays. */
-  sandboxRef?: PreviewProxyRef;
+  /** The store's catalog; null while it cannot be asked — the pickers hide, typing stays. */
+  catalog: CatalogSource | null;
   /** The brand's storefront domain, so picked links are the public ones. */
   storeUrl: string;
 }) {
@@ -244,7 +250,7 @@ export function CampaignEditor({
   const campaign = readCampaign(blockKey, draft);
   /** Every edit stamps `updatedAt`, so the list can sort by last touched. */
   const nextBlock = (next: Partial<Omit<CampaignEntry, "key">>) =>
-    buildCampaignBlock(blockKey, {
+    buildCampaignBlock({
       ...campaign,
       ...next,
       updatedAt: new Date().toISOString(),
@@ -271,6 +277,66 @@ export function CampaignEditor({
     commit({ intent: { ...campaign.intent, targets: next } });
   const setProducts = (next: CampaignProduct[]) =>
     commit({ intent: { ...campaign.intent, products: next } });
+
+  /**
+   * Which of these ids the store actually answers for.
+   *
+   * Read from the store itself. A campaign reads fine either way — the row shows the name and
+   * image the catalogue transcribed — and an id that resolves to nothing only
+   * surfaces as a placeholder on a published shelf, after the generation is
+   * paid for. A whole campaign once shipped stored by `productGroupID`:
+   * fourteen rows, fourteen nulls, and nothing on this screen said so.
+   */
+  const lookup = useProductsByIds(
+    catalog,
+    products.map((product) => product.id),
+  );
+  const checked = !!catalog && !lookup.isLoading && !lookup.isError;
+  const unresolved = checked
+    ? products.filter((product) => product.id && !lookup.byId.has(product.id))
+    : [];
+  const [repairing, setRepairing] = useState(false);
+
+  /**
+   * Re-read the dead ids from the store by name, keeping only exact matches.
+   *
+   * A near match is a different product, and pointing a card at one is worse
+   * than leaving the row empty — those stay flagged for a manual repick.
+   */
+  const repairByName = async () => {
+    if (!catalog || unresolved.length === 0) return;
+    setRepairing(true);
+    try {
+      const found = new Map<string, string>();
+      for (const product of unresolved) {
+        const name = product.name.trim();
+        if (!name) continue;
+        const options = await catalog
+          .searchProducts("search", name)
+          .catch(() => []);
+        const match =
+          options.find((option) => option.groupId === product.id) ??
+          options.find((option) => option.label.trim() === name);
+        if (match) found.set(product.id, match.id);
+      }
+      if (found.size === 0) {
+        toast.warning(t("sandbox.campaigns.productsRepairNone"));
+        return;
+      }
+      setProducts(
+        products.map((product) =>
+          found.has(product.id)
+            ? { ...product, id: found.get(product.id) as string }
+            : product,
+        ),
+      );
+      toast.success(
+        t("sandbox.campaigns.productsRepaired", { count: String(found.size) }),
+      );
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const withTarget = (index: number, change: Partial<CampaignTarget>) =>
     targets.map((target, i) =>
@@ -481,6 +547,68 @@ export function CampaignEditor({
       </section>
 
       <section className="space-y-2">
+        <Label htmlFor="campaign-goal">
+          {t("sandbox.campaigns.goalLabel")}
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          {t("sandbox.campaigns.goalHint", {
+            metric: t(OBJECTIVE_FACETS[campaign.intent.objective].metric),
+          })}
+        </p>
+        <Input
+          id="campaign-goal"
+          value={campaign.goal.text}
+          maxLength={200}
+          placeholder={t("sandbox.campaigns.goalPlaceholder")}
+          onChange={(e) =>
+            patch({ goal: { ...campaign.goal, text: e.target.value } })
+          }
+        />
+        <div className="flex flex-wrap items-start gap-6 pt-1">
+          <div className="space-y-1.5">
+            <Label htmlFor="campaign-goal-target">
+              {t("sandbox.campaigns.goalTargetLabel")}
+            </Label>
+            <Input
+              id="campaign-goal-target"
+              value={campaign.goal.target}
+              maxLength={40}
+              className="w-28"
+              placeholder={t("sandbox.campaigns.goalTargetPlaceholder")}
+              onChange={(e) =>
+                patch({ goal: { ...campaign.goal, target: e.target.value } })
+              }
+            />
+          </div>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Label>{t("sandbox.campaigns.goalMetricLabel")}</Label>
+            <PickList
+              options={CAMPAIGN_GOAL_METRICS.map((m) =>
+                t(GOAL_METRIC_LABEL[m]),
+              )}
+              value={
+                campaign.goal.metric
+                  ? t(GOAL_METRIC_LABEL[campaign.goal.metric])
+                  : ""
+              }
+              emptyLabel={t("sandbox.campaigns.goalMetricNone")}
+              onChange={(label) =>
+                commit({
+                  goal: {
+                    ...campaign.goal,
+                    metric:
+                      CAMPAIGN_GOAL_METRICS.find(
+                        (m) => t(GOAL_METRIC_LABEL[m]) === label,
+                      ) ?? null,
+                  },
+                })
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
         <Label>{t("sandbox.campaigns.targetsLabel")}</Label>
         <p className="text-xs text-muted-foreground">
           {t("sandbox.campaigns.targetsHint")}
@@ -573,9 +701,9 @@ export function CampaignEditor({
           </CollapsibleList>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {sandboxRef && (
+          {catalog && (
             <CategoryTargetPicker
-              sandboxRef={sandboxRef}
+              source={catalog}
               storeUrl={storeUrl}
               onPick={(picked) => addTarget(picked)}
             />
@@ -592,6 +720,25 @@ export function CampaignEditor({
         <p className="text-xs text-muted-foreground">
           {t("sandbox.campaigns.productsHint")}
         </p>
+        {unresolved.length > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+            <AlertCircle className="size-4 shrink-0 text-warning" />
+            <span className="flex-1">
+              {t("sandbox.campaigns.productsUnresolved", {
+                count: String(unresolved.length),
+                total: String(products.length),
+              })}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={repairing}
+              onClick={repairByName}
+            >
+              {t("sandbox.campaigns.productsRepair")}
+            </Button>
+          </div>
+        )}
         {products.length > 0 && (
           <CollapsibleList>
             {products.map((product, index) => (
@@ -667,7 +814,6 @@ export function CampaignEditor({
                   <ProductImages
                     images={product.images}
                     idPrefix={`${blockKey}-product-${index}`}
-                    sandbox={sandboxRef}
                     onChange={(images) => patchProduct(index, { images })}
                   />
                 </div>
@@ -676,7 +822,7 @@ export function CampaignEditor({
           </CollapsibleList>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {sandboxRef && (
+          {catalog && (
             <Button
               type="button"
               variant="outline"
@@ -692,11 +838,11 @@ export function CampaignEditor({
             onClick={() => addProduct()}
           />
         </div>
-        {sandboxRef && (
+        {catalog && (
           <ProductPickerDialog
             open={pickerOpen}
             onOpenChange={setPickerOpen}
-            sandboxRef={sandboxRef}
+            source={catalog}
             selectedIds={products.map((p) => p.id).filter(Boolean)}
             onChange={() => {}}
             onPicked={togglePicked}
@@ -787,12 +933,10 @@ export function CampaignEditor({
 function ProductImages({
   images,
   idPrefix,
-  sandbox,
   onChange,
 }: {
   images: string[];
   idPrefix: string;
-  sandbox?: SandboxConfig | null;
   onChange: (images: string[]) => void;
 }) {
   const t = useT();
@@ -815,7 +959,6 @@ function ProductImages({
               }
               path={`${idPrefix}-image-${index}`}
               label=""
-              sandbox={sandbox}
               compact
             />
           </div>
@@ -841,11 +984,11 @@ function ProductImages({
  * collection (no storefront here lists them) or a store that is not up.
  */
 function CategoryTargetPicker({
-  sandboxRef,
+  source,
   storeUrl,
   onPick,
 }: {
-  sandboxRef: PreviewProxyRef;
+  source: CatalogSource;
   /** The brand's storefront domain; the tree reports the platform's. */
   storeUrl: string;
   onPick: (target: Partial<CampaignTarget>) => void;
@@ -862,7 +1005,7 @@ function CategoryTargetPicker({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <CategoryTreeList
-          sandboxRef={sandboxRef}
+          source={source}
           enabled={open}
           className="h-56"
           onSelect={(category) => {

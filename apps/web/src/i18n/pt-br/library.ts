@@ -9,6 +9,8 @@ export const library = {
   "library.context.colorText": "Texto",
   "library.context.all": "Todos",
   "library.context.fillFromSite": "Preencher pelo site",
+  "library.context.fillFailed":
+    "Não foi possível começar o preenchimento: {error}",
   "library.context.editBrand": "Editar marca",
   "library.context.fill": "Preencher",
   "library.context.notWritten": "Ainda não escrito",
@@ -16,6 +18,10 @@ export const library = {
   "library.context.groupRules": "Regras de escrita",
   "library.context.groupGuardrails": "Limites",
   "library.context.groupExtra": "Contexto extra",
+  "library.context.groupContent": "Conteúdo",
+  "library.context.campaignsOffTitle": "Campanhas estão desligadas",
+  "library.context.campaignsOffDescription":
+    "A geração agêntica do blog está desligada nesta organização. Um admin pode ligar em Configurações.",
   "library.context.groupMore": "Mais",
   "library.context.itemVoice": "Tom de voz",
   "library.context.itemAudience": "Público",
@@ -28,10 +34,23 @@ export const library = {
   "library.context.itemKeywords": "Palavras-chave",
   "library.context.itemDates": "Datas especiais",
   "library.context.itemPolicies": "Políticas comerciais",
+  "library.context.itemFormats": "Formatos",
+  "library.context.itemCampaigns": "Campanhas",
+  "library.context.noCampaigns": "Nenhuma campanha ainda",
+  "library.context.siteLabel": "Site",
+  "library.context.languageLabel": "Idioma",
+  "library.context.sitePlaceholder": "https://www.sua-loja.com.br",
+  "library.context.languagePlaceholder": "pt-BR",
   "library.context.fillBrandPrompt":
-    "Leia nosso site e escreva o guia da nossa marca em {path}, uma seção ## para cada: tom de voz, público, frases de exemplo que soam como a gente e que não soam, regras de escrita, vocabulário, o que evitar, valores com a evidência de cada um, concorrentes, palavras-chave, datas especiais e políticas comerciais. Mantenha o que já estiver escrito.",
+    "Use a skill brand e siga o fill.md dela para preencher o guia da nossa marca em {path} a partir do nosso site, {site}, e do repositório dele. Preencha só as seções que ainda estão vazias, inclusive os formatos de post, e mantenha exatamente o que já estiver escrito.",
+  "library.context.fillBrandReplacePrompt":
+    "Use a skill brand e siga o fill.md dela no modo substituir para reescrever o guia da nossa marca em {path} a partir do nosso site, {site}, e do repositório dele. Reescreva toda seção para a qual encontrar evidência, inclusive os formatos de post; nunca apague uma seção para a qual não achou nada.",
+  "library.context.fillModeEmpty": "Preencher só o que está vazio",
+  "library.context.fillModeReplace": "Sobrescrever com o que o site diz",
   "library.context.fillSectionPrompt":
-    'Leia nosso site e adicione uma seção "{section}" ao guia da nossa marca em {path}. Mantenha o resto como está.',
+    'Use a skill brand e siga o fill.md dela para preencher a seção "{section}" do guia da nossa marca em {path} a partir do nosso site, {site}, e do repositório dele. Não mexa no resto.',
+  "library.context.siteUnknown":
+    "cujo endereço você encontra pela nossa conexão VTEX ou pelo nome da marca",
   "library.context.thisProject": "Este projeto",
   "library.context.allFiles": "Todos os arquivos",
   "library.context.brand": "Marca",

@@ -4,12 +4,11 @@ import {
   buildCatalogInvokePath,
   type PreviewProxyRef,
 } from "@/components/sections-editor/preview-fetch-url";
-import {
-  buildProductsByIdsRequest,
-  type PickerLoaderRequest,
-  productOptionsFromPayload,
-  type ProductPickerOption,
+import type {
+  PickerLoaderRequest,
+  ProductPickerOption,
 } from "./product-picker-source";
+import type { CatalogSource } from "./catalog-source";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -36,28 +35,22 @@ export interface ProductLookup {
 }
 
 /**
- * Resolve the shelf/card's stored SKU ids back to products so the editor can
- * render thumbnails + names. One batched `productList` invoke; the result is
- * keyed by id (the caller preserves the stored order). Disabled when there's
- * no running sandbox or no ids.
+ * Resolve stored SKU ids back to products so an editor can render thumbnails
+ * and names, keyed by id (the caller preserves the stored order). Disabled
+ * when there is no catalog to ask or no ids.
  */
 export function useProductsByIds(
-  sandboxRef: PreviewProxyRef | null | undefined,
+  source: CatalogSource | null | undefined,
   ids: string[],
 ): ProductLookup {
   const clean = [...new Set(ids.filter(Boolean))];
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(
-      sandboxRef
-        ? `${sandboxRef.orgSlug}/${sandboxRef.virtualMcpId}/${sandboxRef.branch}`
-        : "none",
+      source?.key ?? "none",
       `blog-products-by-ids:${clean.join(",")}`,
     ),
-    queryFn: () =>
-      invokeLoader(sandboxRef!, buildProductsByIdsRequest(clean)).then(
-        productOptionsFromPayload,
-      ),
-    enabled: !!sandboxRef && clean.length > 0,
+    queryFn: () => source!.productsByIds(clean),
+    enabled: !!source && clean.length > 0,
     staleTime: 60_000,
     retry: 1,
   });

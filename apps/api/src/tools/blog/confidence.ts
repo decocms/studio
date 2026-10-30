@@ -26,7 +26,7 @@
 
 import { z } from "zod";
 import { resolveTier } from "../../core/resolve-tier";
-import { retryGenerateObject } from "./generate-object";
+import { generationFailure, retryGenerateObject } from "./generate-object";
 
 /**
  * The two bars a claim must clear to be written.
@@ -403,7 +403,9 @@ export async function judgeClaims(
     });
     return object.verdicts;
   } catch (err) {
-    console.warn(`[${label}] confidence judge failed`, err);
+    console.warn(
+      `[${label}] confidence judge failed: ${generationFailure(err)}`,
+    );
     return null;
   }
 }

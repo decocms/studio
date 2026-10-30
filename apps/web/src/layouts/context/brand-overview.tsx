@@ -1,12 +1,13 @@
 /**
  * The org's brand at a glance: its voice, its look and the sections of its
- * bible. Read from the brand folders agents write (`home/brands/<name>/`);
- * editing opens the Library's brand editor.
+ * bible. Read from the brand folders agents write (`home/brands/<name>/`)
+ * and edited in place, section by section.
  */
 
 import type { ComponentType } from "react";
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   BookOpen01,
@@ -14,8 +15,10 @@ import {
   Check,
   CheckCircle,
   ChevronRight,
+  Columns03,
   Heart,
   Lock01,
+  Announcement02,
   MessageChatSquare,
   MessageTextSquare01,
   SearchMd,
@@ -28,12 +31,19 @@ import {
 } from "@untitledui/icons";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
-import { useAskInChat } from "@/hooks/use-ask-in-chat";
+import { useBrandLiveSync } from "@/hooks/use-brand-events";
+import { useBrandFill } from "@/hooks/use-brand-fill";
 import {
   fetchOrgFsStat,
   fetchOrgFsText,
@@ -59,20 +69,26 @@ import { basename } from "@/layouts/library/location";
 import { parseSkillMd } from "@/layouts/library/skill";
 import { useProjectContext } from "@/sdk";
 import {
+  BRANDS_DIR,
   type BrandGroupId,
   type BrandItemId,
   brandDoDont,
   brandQuote,
   brandSections,
   fontName,
+  formatsFrom,
   groupBrandSections,
+  pickBrandDir,
   sectionMarkdown,
   withFontName,
+  writeFrontmatter,
   writeQuote,
   writeSection,
-} from "./brand-md";
-
-const BRANDS_DIR = "brands";
+} from "@decocms/shared/brand";
+import { parseFrontmatterDoc } from "@decocms/shared/harness/skill-md";
+import { useBlogAi } from "@/hooks/use-blog-ai";
+import { scanCampaigns } from "@/components/sandbox/content/blog/blog-data";
+import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
 
 /** The colors a brand is recognised by, in the order a person names them. */
 const SWATCHES = ["primary", "secondary", "accent", "bg", "fg"] as const;
@@ -92,6 +108,7 @@ const GROUP_LABELS = {
   rules: "library.context.groupRules",
   guardrails: "library.context.groupGuardrails",
   extra: "library.context.groupExtra",
+  content: "library.context.groupContent",
 } as const satisfies Record<BrandGroupId, TranslationKey>;
 
 const ITEMS = {
@@ -109,10 +126,70 @@ const ITEMS = {
   keywords: { labelKey: "library.context.itemKeywords", Icon: SearchMd },
   dates: { labelKey: "library.context.itemDates", Icon: Calendar },
   policies: { labelKey: "library.context.itemPolicies", Icon: Lock01 },
+  formats: { labelKey: "library.context.itemFormats", Icon: Columns03 },
 } as const satisfies Record<
   BrandItemId,
   { labelKey: TranslationKey; Icon: Icon }
 >;
+
+/** How a fill treats what is already written; "only empty" never touches it. */
+const FILL_MODES = [
+  {
+    promptKey: "library.context.fillBrandPrompt",
+    labelKey: "library.context.fillModeEmpty",
+  },
+  {
+    promptKey: "library.context.fillBrandReplacePrompt",
+    labelKey: "library.context.fillModeReplace",
+  },
+] as const satisfies readonly {
+  promptKey: TranslationKey;
+  labelKey: TranslationKey;
+}[];
+
+/** The frontmatter keys the blog reads that the page edits. */
+const META_KEYS = ["site", "language"] as const;
+
+const META_LABELS = {
+  site: "library.context.siteLabel",
+  language: "library.context.languageLabel",
+} as const satisfies Record<(typeof META_KEYS)[number], TranslationKey>;
+
+const META_PLACEHOLDERS = {
+  site: "library.context.sitePlaceholder",
+  language: "library.context.languagePlaceholder",
+} as const satisfies Record<(typeof META_KEYS)[number], TranslationKey>;
+
+/** The brand's campaigns, as one row that opens them. */
+function CampaignsRow() {
+  const t = useT();
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const blog = useBlogState({ orgSlug: org.slug });
+  const live = scanCampaigns(blog.blocks).filter(
+    (campaign) => campaign.status !== "finished",
+  );
+  return (
+    <SectionRow
+      title={t("library.context.itemCampaigns")}
+      summary={
+        live.map((campaign) => campaign.name).join(", ") ||
+        t("library.context.noCampaigns")
+      }
+      Icon={Announcement02}
+      onOpen={() =>
+        void navigate({ to: ".", search: { section: "campaigns" } })
+      }
+    />
+  );
+}
+
+/** A formats section's summary: the names of the formats it defines. */
+function formatNames(md: string, title: string): string {
+  return formatsFrom(sectionMarkdown(md, title) ?? "")
+    .map((format) => format.name)
+    .join(", ");
+}
 
 function titleCase(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
@@ -121,12 +198,19 @@ function titleCase(id: string): string {
 export function BrandOverview() {
   const t = useT();
   const { org } = useProjectContext();
-  const ask = useAskInChat();
+  useBrandLiveSync();
+  const fill = useBrandFill();
   const listing = useOrgFsList(HOME_MOUNT_PATH, BRANDS_DIR);
   const brands = (listing.data ?? []).filter((entry) => entry.kind === "dir");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const defaultDir = pickBrandDir(
+    org.slug,
+    brands.map((brand) => basename(brand.path)),
+  );
   const selected =
-    brands.find((brand) => brand.path === selectedPath) ?? brands[0] ?? null;
+    brands.find((brand) => brand.path === selectedPath) ??
+    brands.find((brand) => basename(brand.path) === defaultDir) ??
+    null;
 
   if (listing.isLoading) {
     return (
@@ -145,9 +229,10 @@ export function BrandOverview() {
           <Button
             size="sm"
             onClick={() =>
-              ask(
+              void fill(
                 t("library.context.fillBrandPrompt", {
                   path: `${HOME_MOUNT_PATH}/${BRANDS_DIR}/${org.slug}/brand.md`,
+                  site: t("library.context.siteUnknown"),
                 }),
               )
             }
@@ -183,9 +268,10 @@ export function BrandOverview() {
 
 function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   const t = useT();
+  const blogAi = useBlogAi();
   const fileUrl = useOrgFsFileUrl();
   const queryClient = useQueryClient();
-  const ask = useAskInChat();
+  const fill = useBrandFill();
   const { org } = useProjectContext();
   const { upload, remove } = useOrgFsMutations(HOME_MOUNT_PATH);
   const logoInput = useRef<HTMLInputElement>(null);
@@ -194,7 +280,11 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     sections: Record<string, string>;
     tokens: Record<string, string>;
     quote: string | null;
+    /** Frontmatter keys the blog reads, by key. */
+    meta: Record<string, string>;
   } | null>(null);
+  /** The section whose row opened the form, focused once it mounts. */
+  const [focus, setFocus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const editing = draft !== null;
   const listing = useOrgFsList(HOME_MOUNT_PATH, brand.path);
@@ -213,8 +303,16 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     (!has("tokens.css") || typeof tokensCss.data === "string");
   const raw = brandMd.data ?? "";
   const md = parseSkillMd(raw);
+  const frontmatter = parseFrontmatterDoc(raw).fm;
+  /** A frontmatter key as the page shows it: the draft while editing, else the file's. */
+  const metaValue = (key: (typeof META_KEYS)[number]) =>
+    draft?.meta[key] ?? frontmatter[key] ?? "";
+  const siteForPrompt = frontmatter.site || t("library.context.siteUnknown");
+  const setMeta = (key: string, value: string) =>
+    setDraft((d) => d && { ...d, meta: { ...d.meta, [key]: value } });
   const name = md.name ?? titleCase(basename(brand.path));
-  const quote = brandQuote(md.body) ?? md.description;
+  /** The brand's own line: its quote, else the description it gave itself — never a section's text. */
+  const quote = brandQuote(md.body) ?? (frontmatter.description || null);
   const { doLine, dontLine } = brandDoDont(md.body);
   const { groups, more } = groupBrandSections(brandSections(md.body));
   const guidePath = `${HOME_MOUNT_PATH}/${brand.path}/brand.md`;
@@ -249,6 +347,11 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
       if (text.trim() === (before ?? "").trim()) continue;
       if (before === null && !text.trim()) continue;
       nextMd = writeSection(nextMd, title, text);
+    }
+    for (const [key, value] of Object.entries(draft.meta)) {
+      if (value.trim() !== (frontmatter[key] ?? "").trim()) {
+        nextMd = writeFrontmatter(nextMd, key, value);
+      }
     }
     if (draft.quote !== null && draft.quote.trim() !== (quote ?? "").trim()) {
       nextMd = writeQuote(nextMd, draft.quote);
@@ -302,6 +405,10 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           queryKey: KEYS.fileText(write.url),
         });
         invalidateOrgFsWrite(queryClient, org.id, HOME_MOUNT_PATH);
+        /* The blog reads this guide as its brand. */
+        void queryClient.invalidateQueries({
+          queryKey: KEYS.blogState(org.slug),
+        });
         if (outcome !== "saved") {
           toast.error(
             t(
@@ -357,6 +464,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
         Icon={Icon}
         value={sectionText(title)}
         onChange={(text) => setSection(title, text)}
+        focused={focus === title}
       />
     ) : summary !== undefined ? (
       <SectionRow
@@ -364,7 +472,7 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
         title={label}
         summary={summary}
         Icon={Icon}
-        onOpen={startEditing}
+        onOpen={() => startEditing(title)}
       />
     ) : (
       <div
@@ -382,10 +490,11 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           variant="ghost"
           size="sm"
           onClick={() =>
-            ask(
+            void fill(
               t("library.context.fillSectionPrompt", {
                 section: label,
                 path: guidePath,
+                site: siteForPrompt,
               }),
             )
           }
@@ -395,9 +504,11 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
       </div>
     );
 
-  function startEditing() {
+  /** `title`: the row that was clicked, which the form opens on. */
+  function startEditing(title?: string) {
     if (!loaded) return;
-    setDraft({ sections: {}, tokens: {}, quote: null });
+    setFocus(title ?? null);
+    setDraft({ sections: {}, tokens: {}, quote: null, meta: {} });
   }
 
   return (
@@ -419,16 +530,28 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           </>
         ) : (
           <>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                ask(t("library.context.fillBrandPrompt", { path: guidePath }))
-              }
-            >
-              {t("library.context.fillFromSite")}
-            </Button>
-            <Button size="sm" disabled={!loaded} onClick={startEditing}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm">
+                  {t("library.context.fillFromSite")}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {FILL_MODES.map(({ promptKey, labelKey }) => (
+                  <DropdownMenuItem
+                    key={promptKey}
+                    onSelect={() =>
+                      void fill(
+                        t(promptKey, { path: guidePath, site: siteForPrompt }),
+                      )
+                    }
+                  >
+                    {t(labelKey)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button size="sm" disabled={!loaded} onClick={() => startEditing()}>
               {t("library.context.editBrand")}
             </Button>
           </>
@@ -471,8 +594,36 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
             )}
           </button>
         )}
-        <h1 className="min-w-0 text-2xl font-medium text-foreground">{name}</h1>
+        <div className="flex min-w-0 flex-col">
+          <h1 className="min-w-0 text-2xl font-medium text-foreground">
+            {name}
+          </h1>
+          {!editing && (metaValue("site") || metaValue("language")) && (
+            <span className="truncate text-xs text-muted-foreground">
+              {[metaValue("site"), metaValue("language")]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          )}
+        </div>
       </div>
+      {editing && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {META_KEYS.map((key) => (
+            <label
+              key={key}
+              className="flex flex-col gap-1.5 text-xs text-muted-foreground"
+            >
+              {t(META_LABELS[key])}
+              <Input
+                value={metaValue(key)}
+                placeholder={t(META_PLACEHOLDERS[key])}
+                onChange={(e) => setMeta(key, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <section
@@ -612,9 +763,17 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
               return row(t(labelKey), t(labelKey), ItemIcon);
             }
             return item.sections.map((section) =>
-              row(section.title, section.title, ItemIcon, section.summary),
+              row(
+                section.title,
+                section.title,
+                ItemIcon,
+                item.id === "formats"
+                  ? formatNames(raw, section.title) || section.summary
+                  : section.summary,
+              ),
             );
           })}
+          {group.id === "content" && blogAi && <CampaignsRow />}
         </section>
       ))}
       {more.length > 0 && (
@@ -686,11 +845,14 @@ function SectionField({
   Icon: SectionIcon,
   value,
   onChange,
+  focused,
 }: {
   label: string;
   Icon: Icon;
   value: string;
   onChange: (text: string) => void;
+  /** The row that opened the form: focusing it on mount scrolls it into view. */
+  focused: boolean;
 }) {
   return (
     <label className="flex flex-col gap-2 border-b border-border/70 px-1 py-4">
@@ -700,8 +862,9 @@ function SectionField({
       </span>
       <Textarea
         value={value}
+        autoFocus={focused}
         onChange={(e) => onChange(e.target.value)}
-        className="field-sizing-content min-h-20"
+        className="field-sizing-content max-h-64 min-h-20"
       />
     </label>
   );

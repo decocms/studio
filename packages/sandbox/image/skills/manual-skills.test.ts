@@ -32,7 +32,28 @@ function meta(dir: string) {
   return parseSkillMd(readFileSync(join(SKILLS_DIR, dir, "SKILL.md"), "utf8"));
 }
 
+function skillDirs() {
+  return readdirSync(SKILLS_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith("_"))
+    .map((e) => e.name);
+}
+
 describe("core public skills", () => {
+  // Studio reads a SKILL.md without frontmatter, but Claude Code drops it from a run's skills without a word.
+  it("every skill opens with frontmatter naming and describing it", () => {
+    const dirs = skillDirs();
+    expect(dirs.length).toBeGreaterThan(0);
+    for (const dir of dirs) {
+      const raw = readFileSync(join(SKILLS_DIR, dir, "SKILL.md"), "utf8");
+      const head = /^---\n([\s\S]*?)\n---/.exec(raw)?.[1] ?? "";
+      expect({
+        dir,
+        name: /^name:\s*\S/m.test(head),
+        description: /^description:\s*\S/m.test(head),
+      }).toEqual({ dir, name: true, description: true });
+    }
+  });
+
   it.each(MANUAL_ONLY)("%s is not model-invocable", (dir) => {
     expect(meta(dir).disableModelInvocation).toBe(true);
   });

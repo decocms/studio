@@ -493,10 +493,18 @@ export function useOrgFsDownloadUrl(volume: string) {
 }
 
 /** Volume-late variant for cross-volume feeds (the Library recent grid). */
+/** Where a file is read from, which is also the key of its text query. */
+export function orgFsReadUrl(
+  orgSlug: string,
+  volume: string,
+  path: string,
+): string {
+  return fsUrl(orgSlug, volume, "read", { path });
+}
+
 export function useOrgFsFileUrl() {
   const { org } = useProjectContext();
-  return (volume: string, path: string) =>
-    fsUrl(org.slug, volume, "read", { path });
+  return (volume: string, path: string) => orgFsReadUrl(org.slug, volume, path);
 }
 
 /**

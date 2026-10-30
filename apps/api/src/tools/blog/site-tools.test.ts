@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   chunkEvidence,
   isGroundingTool,
+  collapseByName,
+  isWrongKindOfId,
   mergeById,
   renderGrounding,
   survivingFailure,
@@ -237,5 +239,102 @@ describe("mergeById", () => {
       1,
     );
     expect(merged).toHaveLength(1);
+  });
+});
+
+/**
+ * Three EANs reached a published shelf past a prompt that banned them by name,
+ * because a feed reports one right beside the product's own id and a
+ * transcriber asked to judge between them is guessing. It copies the key
+ * reliably, so the judgement is a lookup here instead.
+ */
+describe("isWrongKindOfId", () => {
+  test("rejects the keys that name a warehouse code", () => {
+    for (const field of [
+      "ean",
+      "EAN13",
+      "gtin",
+      "barcode",
+      "refId",
+      "referenceCode",
+      "partNumber",
+    ]) {
+      expect(isWrongKindOfId(field)).toBe(true);
+    }
+  });
+
+  /**
+   * The one that actually shipped: fourteen of fourteen products in a campaign
+   * stored by the id their variants share, and a product list asked for those
+   * answers fourteen nulls.
+   */
+  test("rejects the id of the group a product belongs to", () => {
+    for (const field of [
+      "productGroupID",
+      "product_group_id",
+      "groupId",
+      "clusterId",
+    ]) {
+      expect(isWrongKindOfId(field)).toBe(true);
+    }
+  });
+
+  test("keeps the keys a storefront resolves by", () => {
+    for (const field of ["productID", "product_id", "sku", "id", "itemId"]) {
+      expect(isWrongKindOfId(field)).toBe(false);
+    }
+  });
+
+  test("an id read from no key at all is not rejected on that basis", () => {
+    expect(isWrongKindOfId("")).toBe(false);
+  });
+});
+
+/**
+ * A shelf of sixteen that was eight products listed twice: the store reports
+ * the same one from several surfaces under several ids, and merging by id
+ * cannot see past that.
+ */
+describe("collapseByName", () => {
+  const p = (
+    name: string,
+    extra: Partial<{ id: string; price: string }> = {},
+  ) => ({
+    name,
+    id: extra.id ?? "",
+    price: extra.price ?? "",
+  });
+
+  test("one entry per product, whatever ids the copies came under", () => {
+    const out = collapseByName([
+      p("Estojo Escolar Hulk Verde", { id: "1" }),
+      p("Estojo Escolar Hulk Verde", { id: "2" }),
+      p("Estojo Escolar Thor Azul", { id: "3" }),
+    ]);
+    expect(out.map((entry) => entry.name)).toEqual([
+      "Estojo Escolar Hulk Verde",
+      "Estojo Escolar Thor Azul",
+    ]);
+  });
+
+  test("a later copy fills what the first had no answer for", () => {
+    const [only] = collapseByName([
+      p("Mochila Mickey", { id: "9" }),
+      p("Mochila Mickey", { id: "9", price: "R$ 199" }),
+    ]);
+    expect(only?.price).toBe("R$ 199");
+  });
+
+  test("matches past case, accents and doubled spaces", () => {
+    expect(
+      collapseByName([
+        p("Mochila  Rodinhas Mickey"),
+        p("mochila rodinhas mickey"),
+      ]),
+    ).toHaveLength(1);
+  });
+
+  test("keeps the nameless rather than folding them into one", () => {
+    expect(collapseByName([p(""), p("  ")])).toHaveLength(2);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * VTEX-only product discovery for the blog ProductShelf/ProductCard editors.
  *
- * These blocks store a flat list of SKU ids (see product-loader-utils). The
+ * These blocks store a flat list of SKU ids (see @decocms/shared/blog). The
  * picker is purely a *discovery* tool: whatever the user browses to — a free
  * search, a category, or a collection/cluster — is resolved to concrete
  * products via the VTEX intelligent-search loader, and only the ids the user
@@ -25,6 +25,15 @@ export type ProductPickerMode = "search" | "category" | "cluster";
 export interface ProductPickerOption {
   /** SKU id — the value stored in the block's `ids`. */
   id: string;
+  /**
+   * The id this product's variants share, when the payload reports one.
+   *
+   * Never stored: a product list asked for it answers null. Carried because a
+   * catalogue transcribed from the store's other APIs stores it by mistake,
+   * and this is the only value that maps such an id back to a real one
+   * without guessing from a name.
+   */
+  groupId?: string;
   label: string;
   image?: string;
   /** PDP path/URL, when the loader reports one — used to link to the product. */
@@ -168,6 +177,7 @@ export function productOptionsFromPayload(
       undefined;
     options.push({
       id,
+      groupId: idString(variant?.productGroupID) || undefined,
       label,
       image,
       images,

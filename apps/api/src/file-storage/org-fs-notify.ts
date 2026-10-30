@@ -12,6 +12,7 @@
  */
 
 import type { NatsConnection } from "@nats-io/nats-core";
+import { brandsWrittenTo, emitBrandUpdated } from "./brand-events";
 import { invalidateSkillCatalog } from "./skill-catalog-cache";
 
 const SUBJECT_PREFIXES = [
@@ -48,6 +49,8 @@ export async function notifyOrgFsChange(
   nc: NatsConnection | null,
   orgId: string,
   volume: string,
+  /** What was written, so a brand page showing it hears of the change. */
+  paths: readonly string[] = [],
 ): Promise<void> {
   if (nc) {
     try {
@@ -57,6 +60,13 @@ export async function notifyOrgFsChange(
     } catch {
       // best-effort
     }
+  }
+  try {
+    for (const brand of brandsWrittenTo(volume, paths)) {
+      emitBrandUpdated(orgId, brand);
+    }
+  } catch {
+    // best-effort
   }
   await invalidateSkillCatalog(orgId);
 }
@@ -75,6 +85,12 @@ export function setOrgFsNotifyConnection(
 export async function notifyOrgFsChangeFromServer(
   orgId: string,
   volume: string,
+  paths: readonly string[] = [],
 ): Promise<void> {
-  await notifyOrgFsChange(activeGetConnection?.() ?? null, orgId, volume);
+  await notifyOrgFsChange(
+    activeGetConnection?.() ?? null,
+    orgId,
+    volume,
+    paths,
+  );
 }

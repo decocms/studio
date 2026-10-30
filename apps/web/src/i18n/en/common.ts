@@ -5,6 +5,7 @@ export const common = {
   "common.hide": "Hide",
   "common.seeAll": "See all {count} {noun}",
   "common.soon": "Soon",
+  "common.new": "New",
   "common.goBack": "Go back",
   "common.goHome": "Go to home",
   "common.accountPopover.account": "Account",

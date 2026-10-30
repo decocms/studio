@@ -92,6 +92,22 @@ interface QueueState {
 const queues = new Map<string, QueueState>();
 
 /**
+ * The queue a branch's writes line up in.
+ *
+ * Every writer to one project's branch has to name the same queue or the
+ * coalescer serializes nothing: the editor and the site's agent would hold two
+ * heads of the same branch and one would lose. Shared rather than spelled out
+ * at each call site, because the bug it prevents is silent.
+ */
+export function decofileQueueKey(
+  organizationId: string,
+  virtualMcpId: string,
+  branch: string,
+): string {
+  return `${organizationId}/${virtualMcpId}/${branch}`;
+}
+
+/**
  * Enqueue a patch; resolves with the sha of the commit that carried it (the
  * branch head when the patch turned out to be a no-op, e.g. deleting an
  * already-absent block). Rejects with {@link BlockConflictError}, writing

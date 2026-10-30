@@ -80,8 +80,10 @@ export function writeProductListIds(
   loader: unknown,
   ids: string[],
 ): Record<string, unknown> | Record<string, unknown>[] | string | string[] {
-  // A plain reference stays plain: wrapping it in a loader ref hands the site
-  // a shape its own section cannot read.
+  /**
+   * A plain reference stays plain: wrapping it in a loader ref hands the site
+   * a shape its own section cannot read.
+   */
   if (typeof loader === "string") return ids[0] ?? "";
   if (Array.isArray(loader)) {
     if (loader.length > 0 && loader.every((item) => typeof item === "string")) {
@@ -99,8 +101,10 @@ export function writeProductListIds(
         };
       });
     }
-    // Empty/unrecognized array carries no loader to clone — fall through to
-    // the default list-loader shape below.
+    /**
+     * Empty/unrecognized array carries no loader to clone — fall through to
+     * the default list-loader shape below.
+     */
   }
 
   const existing = asRecord(loader);

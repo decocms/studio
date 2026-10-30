@@ -27,7 +27,23 @@ export interface SkillMeta {
   body: string;
 }
 
-/** Flat `key: value` frontmatter subset — skill files don't nest. */
+/** A markdown file's frontmatter keys and the body under them. */
+export interface FrontmatterDoc {
+  fm: Record<string, string>;
+  body: string;
+}
+
+/**
+ * Split a markdown file into its frontmatter and its body. Flat keys, a
+ * markdown body, everything optional: a file with no fence is all body.
+ */
+export function parseFrontmatterDoc(text: string): FrontmatterDoc {
+  const m = text.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!m || m[1] === undefined) return { fm: {}, body: text };
+  return { fm: parseFrontmatter(m[1]), body: text.slice(m[0].length) };
+}
+
+/** Flat `key: value` frontmatter subset — these files don't nest. */
 function parseFrontmatter(block: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of block.split("\n")) {
@@ -50,17 +66,7 @@ function firstParagraph(body: string): string | null {
 }
 
 export function parseSkillMd(text: string): SkillMeta {
-  const m = text.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!m || m[1] === undefined) {
-    return {
-      name: null,
-      description: firstParagraph(text),
-      disableModelInvocation: false,
-      body: text,
-    };
-  }
-  const fm = parseFrontmatter(m[1]);
-  const body = text.slice(m[0].length);
+  const { fm, body } = parseFrontmatterDoc(text);
   return {
     name: fm.name || null,
     description: fm.description || firstParagraph(body),

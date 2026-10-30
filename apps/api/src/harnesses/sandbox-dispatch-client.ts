@@ -76,8 +76,13 @@ import { fetchRolePermissions } from "@/core/context-factory";
 import type { OrganizationSettings, Permission } from "@/storage/types";
 import {
   connectionGrantsFor,
+  narrowConnectionGrants,
   selfToolGrantsFor,
 } from "@/harnesses/org-mcp-grants";
+import { blogCardOfThread } from "@decocms/shared/blog-card";
+import { brandFillOfThread } from "@decocms/shared/brand";
+import type { ThreadMetadata } from "@decocms/shared/entities";
+import { blogCardRunConnections } from "@/tools/blog/connections";
 import {
   resolveRunScopedToolNames,
   resolveThreadToolNames,
@@ -374,18 +379,22 @@ export class SandboxDispatchClient {
     const settingsRead = this.ctx.storage.organizationSettings.get(
       organization.id,
     );
-    const [candidates, authority, thread, ownAgent, settings] =
+    const threadRead = this.ctx.storage.threads.get(threadId);
+    const [{ candidates, limits }, authority, thread, ownAgent, settings] =
       await Promise.all([
-        this.orgMcpConnections(organization, agent, settingsRead),
+        this.orgMcpConnections(organization, agent, settingsRead, threadRead),
         this.dispatcherAuthority(organization.id, dispatcherUserId),
-        this.ctx.storage.threads.get(threadId),
+        threadRead,
         agent,
         settingsRead,
       ]);
-    const grants = connectionGrantsFor({
-      ...authority,
-      connectionIds: candidates.map((connection) => connection.id),
-    });
+    const grants = narrowConnectionGrants(
+      connectionGrantsFor({
+        ...authority,
+        connectionIds: candidates.map((connection) => connection.id),
+      }),
+      limits,
+    );
     const connections = candidates.filter(
       (connection) => connection.id in grants,
     );
@@ -523,6 +532,10 @@ export class SandboxDispatchClient {
    * (`coding_agent_org_mcps`). None without a slug, without which the
    * per-connection URL cannot be built.
    *
+   * A blogpost card's chat and a brand fill's chat also get the connections
+   * (`blogCardRunConnections`), granted with `limits` on the tools and never
+   * mounted.
+   *
    * The agent's own half is not flag-gated because it is not a fan-out: those
    * connections are exactly what someone attached to this agent, and they are
    * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
@@ -534,9 +547,17 @@ export class SandboxDispatchClient {
     organization: { id: string; slug?: string },
     agentRead: Promise<VirtualMCPEntity | null>,
     settingsRead: Promise<OrganizationSettings | null>,
-  ): Promise<ConnectionEntity[]> {
-    if (!organization.slug) return [];
-    const [settings, agent] = await Promise.all([settingsRead, agentRead]);
+    threadRead: Promise<{ metadata?: ThreadMetadata | null } | null>,
+  ): Promise<{
+    candidates: ConnectionEntity[];
+    limits: Record<string, string[]>;
+  }> {
+    if (!organization.slug) return { candidates: [], limits: {} };
+    const [settings, agent, thread] = await Promise.all([
+      settingsRead,
+      agentRead,
+      threadRead,
+    ]);
     const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
     const ownIds = new Set(
       (agent?.connections ?? []).map(
@@ -545,13 +566,23 @@ export class SandboxDispatchClient {
     );
     // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
     const { items } = await this.ctx.storage.connections.list(organization.id);
-    return selectRunConnections({
-      organizationId: organization.id,
-      orgWide,
-      ownIds,
-      excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
-      connections: items,
-    });
+    const blog =
+      (blogCardOfThread(thread?.metadata) ||
+        brandFillOfThread(thread?.metadata)) &&
+      orgFlagEnabled(settings?.flags, "blog_ai_enabled")
+        ? blogCardRunConnections(items)
+        : { ids: [], limits: {} };
+    return {
+      candidates: selectRunConnections({
+        organizationId: organization.id,
+        orgWide,
+        ownIds,
+        runIds: new Set(blog.ids),
+        excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
+        connections: items,
+      }),
+      limits: blog.limits,
+    };
   }
 
   private async *stream(
@@ -1525,6 +1556,13 @@ export function selectRunConnections<
   /** Connections aggregated on the agent itself; always mounted. */
   ownIds: ReadonlySet<string>;
   /**
+   * Connections granted for what the run is, whatever its agent aggregates: a
+   * blogpost card's run reads the store's systems through its blog tools. Not
+   * mounted for that, and not narrowed by the exclusion, which limits what a
+   * coding agent is handed rather than what this run exists to read.
+   */
+  runIds?: ReadonlySet<string>;
+  /**
    * Connections the org excluded from coding-agent runs
    * (`coding_agent_mcp_excluded`). Wins over BOTH other reasons to mount one:
    * the org-wide opt-in is what it exists to narrow, and an exclusion someone
@@ -1536,12 +1574,13 @@ export function selectRunConnections<
 }): T[] {
   return args.connections.filter(
     (connection) =>
-      // A sandbox sign-in server is the only way a run reaches it, so it is
-      // not left to the agent or the org-wide opt-in.
-      (args.orgWide ||
-        args.ownIds.has(connection.id) ||
-        signsInFromSandbox(connection.connection_url)) &&
-      !args.excludedIds?.has(connection.id) &&
+      (args.runIds?.has(connection.id) ||
+        // A sandbox sign-in server is the only way a run reaches it, so it
+        // is not left to the agent or the org-wide opt-in.
+        ((args.orgWide ||
+          args.ownIds.has(connection.id) ||
+          signsInFromSandbox(connection.connection_url)) &&
+          !args.excludedIds?.has(connection.id))) &&
       // A connection Studio already knows is erroring only costs the session
       // a failed connect at startup.
       connection.status === "active" &&

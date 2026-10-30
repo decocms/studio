@@ -1,7 +1,3 @@
-import {
-  copyScope,
-  useCopyEpochs,
-} from "@/components/sections-editor/held-copy";
 /**
  * Campaigns: the board and the list, behind one view toggle.
  *
@@ -36,8 +32,7 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import type { BlogState } from "./use-blog-state";
 import { str } from "./blocks/primitives";
 import {
   AlertDialog,
@@ -49,29 +44,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import type { CatalogSource } from "./blocks/catalog-source";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
-import {
-  GenerateCampaignsDialog,
-  type SuggestedCampaign,
-} from "./generate-campaigns-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
+import { GenerateCampaignsDialog } from "./generate-campaigns-dialog";
 import { SaveStatus } from "./save-status";
 import { CampaignEditor } from "./campaign-editor";
+import { CampaignEditorSheet, useCampaignCreate } from "./campaign-create";
+import { GoalLine } from "./campaign-goal";
 import {
   buildCampaignBlock,
-  buildCampaignSeedBlock,
-  type CampaignSeedEntry,
   CAMPAIGN_STATUSES,
   type CampaignEntry,
   type CampaignStatus,
   type CampaignTrigger,
-  emptyCampaign,
-  newCampaignKey,
   readBlogContext,
   scanCampaigns,
 } from "./blog-data";
@@ -117,36 +102,18 @@ function periodLabel(campaign: CampaignEntry): string | null {
 }
 
 export function CampaignsPanel({
-  orgSlug,
-  virtualMcpId,
-  branch,
-  decofile,
+  blog,
+  catalog,
 }: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  decofile: Record<string, unknown>;
+  /** The organization's blog state: its brand and its campaigns. */
+  blog: BlogState;
+  /** The store's catalog, for the product and category pickers. */
+  catalog: CatalogSource | null;
 }) {
   const t = useT();
-  // A campaign's form keeps its own copy: hosted saves are guarded by it.
-  const save = useSaveBlock(
-    { orgSlug, virtualMcpId, branch },
-    { holdsCopy: true },
-  );
-  // A reconcile replaced a campaign's copy: its form shows the draft's.
-  const copyEpochOf = useCopyEpochs(
-    copyScope({ orgSlug, virtualMcpId, branch }),
-  );
-  const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
-
-  /** The store pickers address the site by these coordinates; campaigns are a
-   *  thread-less surface, which the contract allows. */
-  const sandboxRef: PreviewProxyRef = {
-    orgSlug,
-    virtualMcpId,
-    branch,
-    threadId: null,
-  };
+  /** Campaigns are the organization's records, written through its blog state. */
+  const { save, remove: deleteBlock } = blog;
+  const decofile = blog.blocks;
 
   const hasAi = useHostedAiProviderKeys().length > 0;
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -168,14 +135,7 @@ export function CampaignsPanel({
   const setLaneCollapsed = (lane: string, collapsed: boolean) =>
     setLaneOverrides((prev) => ({ ...prev, [lane]: collapsed }));
 
-  const addCampaign = () => {
-    const blockKey = newCampaignKey();
-    save.mutate({
-      blockKey,
-      data: buildCampaignBlock(blockKey, emptyCampaign(new Date())),
-    });
-    setOpenKey(blockKey);
-  };
+  const { addCampaign, createFromSeed } = useCampaignCreate(blog);
 
   const moveTo = async (key: string, next: CampaignStatus) => {
     const campaign = campaigns.find((entry) => entry.key === key);
@@ -184,7 +144,7 @@ export function CampaignsPanel({
     try {
       await save.mutateAsync({
         blockKey: key,
-        data: buildCampaignBlock(key, {
+        data: buildCampaignBlock({
           ...campaign,
           status: next,
           updatedAt: new Date().toISOString(),
@@ -199,38 +159,6 @@ export function CampaignsPanel({
         const rest = new Set(keys);
         rest.delete(key);
         return rest;
-      });
-    }
-  };
-
-  /**
-   * Persist the seed and the chosen candidates together.
-   *
-   * Sequential rather than parallel: each write goes through the same decofile
-   * cache entry, and concurrent saves would race on it.
-   */
-  const createFromSeed = async (
-    seed: { key: string; entry: Omit<CampaignSeedEntry, "key"> },
-    chosen: SuggestedCampaign[],
-  ) => {
-    const now = new Date().toISOString();
-    await save.mutateAsync({
-      blockKey: seed.key,
-      data: buildCampaignSeedBlock(seed.key, { ...seed.entry, updatedAt: now }),
-    });
-    for (const candidate of chosen) {
-      const blockKey = newCampaignKey();
-      await save.mutateAsync({
-        blockKey,
-        data: buildCampaignBlock(blockKey, {
-          ...emptyCampaign(new Date()),
-          name: candidate.name,
-          seedKey: seed.key,
-          period: candidate.period,
-          trigger: candidate.trigger,
-          intent: candidate.intent,
-          guardrails: candidate.guardrails,
-        }),
       });
     }
   };
@@ -290,7 +218,11 @@ export function CampaignsPanel({
             <Stars02 size={14} />
             {t("sandbox.campaignGen.open")}
           </Button>
-          <Button type="button" size="sm" onClick={addCampaign}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setOpenKey(addCampaign())}
+          >
             <Plus size={14} />
             {t("sandbox.campaigns.add")}
           </Button>
@@ -448,20 +380,16 @@ export function CampaignsPanel({
           <div className="min-w-0 flex-1 overflow-y-auto">
             {detailKey ? (
               <CampaignEditor
-                key={`${detailKey}:${copyEpochOf(detailKey)}`}
+                key={detailKey}
                 blockKey={detailKey}
                 block={decofile[detailKey] as Record<string, unknown>}
-                onSave={(data, edit) =>
-                  save.mutate({ blockKey: detailKey, data, edit })
-                }
-                onSeed={() => save.hold(detailKey)}
-                onEdit={() => save.edited(detailKey)}
+                onSave={(data) => save.mutate({ blockKey: detailKey, data })}
                 onRemove={() => {
                   const campaign = campaigns.find((c) => c.key === detailKey);
                   if (campaign) setPendingDelete(campaign);
                 }}
                 isSaving={save.isPending}
-                sandboxRef={sandboxRef}
+                catalog={catalog}
                 storeUrl={storeUrl}
               />
             ) : (
@@ -511,47 +439,22 @@ export function CampaignsPanel({
         open={generateOpen}
         onOpenChange={setGenerateOpen}
         decofile={decofile}
-        virtualMcpId={virtualMcpId}
         hasAi={hasAi}
-        onCreate={createFromSeed}
+        onCreate={async (seed, chosen) => {
+          await createFromSeed(seed, chosen);
+        }}
       />
 
-      {/* The board edits in a docked sheet, the way the Posts board does. */}
-      <Dialog
-        open={view === "board" && Boolean(boardKey)}
-        onOpenChange={(next) => {
-          if (!next) setOpenKey(null);
+      <CampaignEditorSheet
+        blockKey={view === "board" ? boardKey : null}
+        blog={blog}
+        catalog={catalog}
+        onClose={() => setOpenKey(null)}
+        onRemove={(key) => {
+          const campaign = campaigns.find((c) => c.key === key);
+          if (campaign) setPendingDelete(campaign);
         }}
-      >
-        <DialogContent
-          closeButtonClassName="hidden"
-          className="left-auto right-4 top-4 bottom-4 flex h-auto translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl"
-        >
-          <DialogTitle className="sr-only">
-            {t("sandbox.blogContext.tabCampaigns")}
-          </DialogTitle>
-          {boardKey && (
-            <CampaignEditor
-              key={`${boardKey}:${copyEpochOf(boardKey)}`}
-              blockKey={boardKey}
-              block={decofile[boardKey] as Record<string, unknown>}
-              onSave={(data, edit) =>
-                save.mutate({ blockKey: boardKey, data, edit })
-              }
-              onSeed={() => save.hold(boardKey)}
-              onEdit={() => save.edited(boardKey)}
-              onRemove={() => {
-                const campaign = campaigns.find((c) => c.key === boardKey);
-                if (campaign) setPendingDelete(campaign);
-              }}
-              onClose={() => setOpenKey(null)}
-              isSaving={save.isPending}
-              sandboxRef={sandboxRef}
-              storeUrl={storeUrl}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      />
     </div>
   );
 }
@@ -606,6 +509,7 @@ function CampaignCard({
             </span>
           )}
         </div>
+        <GoalLine goal={campaign.goal} className="mt-2" />
       </button>
     </div>
   );

@@ -37,6 +37,7 @@ import {
 } from "./admin-controls";
 import { DemoBoardResetButton } from "./demo-reset-button";
 import { BoardOrgProvider } from "./board-org";
+import { TrackDivider } from "@/layouts/content-track/track-divider";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
 import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
@@ -984,16 +985,17 @@ function AssigneeDisplay({
 
 /** The board, pointed at whichever org `?boardOrg=` names (normally your own).
  *  The swap has to wrap the board rather than live inside it: every hook below
- *  reads the org off `ProjectContext`. */
-export function TaskBoardPage() {
+ *  reads the org off `ProjectContext`. `trackTabs` are Execute's own tabs,
+ *  drawn ahead of the board's views. */
+export function TaskBoardPage({ trackTabs }: { trackTabs?: ReactNode }) {
   return (
     <BoardOrgProvider>
-      <TaskBoardBody />
+      <TaskBoardBody trackTabs={trackTabs} />
     </BoardOrgProvider>
   );
 }
 
-function TaskBoardBody() {
+function TaskBoardBody({ trackTabs }: { trackTabs?: ReactNode }) {
   const t = useT();
   const { org, locator } = useProjectContext();
   const {
@@ -1463,6 +1465,12 @@ function TaskBoardBody() {
   /** Board / List / Epics, and Feed behind the flag. */
   const layoutTabs = (
     <Page.Tabs>
+      {trackTabs && (
+        <>
+          {trackTabs}
+          <TrackDivider />
+        </>
+      )}
       {feedEnabled && (
         <Page.Tab
           active={layout === "feed"}

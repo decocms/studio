@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  readProductListIds,
-  writeProductListIds,
-} from "./product-loader-utils";
+import { readProductListIds, writeProductListIds } from "./product-loader";
 
 describe("readProductListIds", () => {
   test("reads ids from vtex intelligentSearch loader", () => {

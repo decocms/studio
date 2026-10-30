@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   clearUnfilled,
   imageRequests,
+  sentinelRequests,
   pruneProps,
   readProps,
   withImageAt,
@@ -166,18 +167,65 @@ describe("withImageAt", () => {
 
 describe("clearUnfilled", () => {
   test("blanks a sentinel no image was generated for", () => {
-    expect(clearUnfilled({ image: "generate:x", heading: "Oi" }, HERO)).toEqual(
-      {
-        image: "",
-        heading: "Oi",
-      },
-    );
+    expect(clearUnfilled({ image: "generate:x", heading: "Oi" })).toEqual({
+      image: "",
+      heading: "Oi",
+    });
   });
 
   test("leaves a real address alone", () => {
-    expect(clearUnfilled({ image: "https://cdn/a.jpg" }, HERO)).toEqual({
+    expect(clearUnfilled({ image: "https://cdn/a.jpg" })).toEqual({
       image: "https://cdn/a.jpg",
     });
+  });
+
+  /**
+   * The bug this exists for. A site whose image prop is a plain string gets no
+   * `format: image-uri`, so the schema walk never saw it — the sentinel
+   * reached the decofile as an image address and rendered broken.
+   */
+  test("blanks one in a prop no schema declares as an image", () => {
+    expect(
+      clearUnfilled({ url: "generate:backpacks on a shelf", size: "full" }),
+    ).toEqual({ url: "", size: "full" });
+  });
+
+  test("reaches into nested objects and arrays", () => {
+    expect(
+      clearUnfilled({
+        slides: [{ image: "generate:a" }, { image: "https://cdn/b.jpg" }],
+      }),
+    ).toEqual({
+      slides: [{ image: "" }, { image: "https://cdn/b.jpg" }],
+    });
+  });
+
+  test("leaves prose that merely mentions the word alone", () => {
+    expect(clearUnfilled({ html: "<p>Vamos generate: nada</p>" })).toEqual({
+      html: "<p>Vamos generate: nada</p>",
+    });
+  });
+});
+
+describe("sentinelRequests", () => {
+  test("finds one the schema walk cannot see, with its prompt", () => {
+    expect(sentinelRequests({ url: "generate:backpacks on a shelf" })).toEqual([
+      { path: ["url"], prompt: "backpacks on a shelf" },
+    ]);
+  });
+
+  test("finds them inside arrays, with the index in the path", () => {
+    expect(sentinelRequests({ slides: [{ image: "generate:a" }] })).toEqual([
+      { path: ["slides", 0, "image"], prompt: "a" },
+    ]);
+  });
+
+  test("ignores a sentinel with nothing after it", () => {
+    expect(sentinelRequests({ url: "generate:" })).toEqual([]);
+  });
+
+  test("ignores a real address", () => {
+    expect(sentinelRequests({ url: "https://cdn/a.jpg" })).toEqual([]);
   });
 });
 

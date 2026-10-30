@@ -64,7 +64,7 @@ type CompareView = (typeof COMPARE_VIEWS)[number];
 function isCompareView(value: string): value is CompareView {
   return (COMPARE_VIEWS as readonly string[]).includes(value);
 }
-type CompareDevice = "desktop" | "mobile";
+export type CompareDevice = "desktop" | "mobile";
 
 /** Logical render widths — the frames scale down to fit, never reflow. */
 const DEVICE_WIDTH: Record<CompareDevice, number> = {
@@ -528,7 +528,12 @@ interface CompareFrameProps {
   missing: string;
 }
 
-function CompareFrame({ url, device, title, missing }: CompareFrameProps) {
+export function CompareFrame({
+  url,
+  device,
+  title,
+  missing,
+}: CompareFrameProps) {
   const [size, ref] = useElementSize();
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
 

@@ -15,12 +15,16 @@
  */
 
 import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
+import {
+  clearSentinels,
+  IMAGE_SENTINEL,
+  sentinelRequests,
+} from "@decocms/shared/blog-image-sentinel";
+
+export { clearSentinels, IMAGE_SENTINEL, sentinelRequests };
 
 /** Deco's marker for a prop holding an image address. */
 const IMAGE_FORMAT = "image-uri";
-
-/** What a model writes into an image prop when it wants one generated. */
-export const IMAGE_SENTINEL = "generate:";
 
 type Schema = Record<string, unknown>;
 
@@ -304,17 +308,7 @@ function setDeep(
   };
 }
 
-/**
- * An image prop the model left as a sentinel we never generated.
- *
- * Shipping `generate:a woman packing a suitcase` as an image address renders a
- * broken image on a published page, so an unfilled request is blanked. The
- * editor's picker is two clicks.
- */
-export function clearUnfilled(props: Schema, schema: Schema): Schema {
-  let cleared = props;
-  for (const request of imageRequests(props, schema)) {
-    cleared = withImageAt(cleared, request.path, "");
-  }
-  return cleared;
+/** {@link clearSentinels} over a block's props. */
+export function clearUnfilled(props: Schema): Schema {
+  return clearSentinels(props);
 }

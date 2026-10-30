@@ -10,10 +10,8 @@
  * the html, then wrap the matched html span. A quote whose span crosses an inline
  * tag is skipped rather than wrapped, so we never produce unbalanced markup.
  */
-import { blockComponentName } from "./blog-data";
-
-const str = (value: unknown): string =>
-  typeof value === "string" ? value : "";
+import { str } from "./fields";
+import { blockComponentName } from "./block-discovery";
 
 const ENTITIES: Record<string, string> = {
   "&nbsp;": " ",

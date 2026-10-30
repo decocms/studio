@@ -837,6 +837,24 @@ export const KEYS = {
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,
 
+  // The org's blog editorial state: its brand guide and campaigns.
+  blogState: (orgSlug: string) => ["blog-state", orgSlug] as const,
+
+  // The content track's blogpost cards, kept in the org's brand folder.
+  blogCards: (orgSlug: string) => ["blog-cards", orgSlug] as const,
+
+  // A card's post as its site renders it, per commit: a new commit is a new URL.
+  blogCardPreview: (
+    orgSlug: string,
+    virtualMcpId: string,
+    branch: string,
+    commit: string,
+  ) => ["blog-card-preview", orgSlug, virtualMcpId, branch, commit] as const,
+
+  // Whether the org's GA4 connection still has a usable sign-in.
+  blogConnectionToken: (orgId: string, connectionId: string) =>
+    ["blog-connection-token", orgId, connectionId] as const,
+
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current

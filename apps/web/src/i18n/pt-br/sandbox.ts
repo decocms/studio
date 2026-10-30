@@ -27,110 +27,15 @@ export const sandbox = {
   "sandbox.blockPicker.insertBlockButton": "Inserir bloco",
   "sandbox.blockPicker.noBlocksFound": "Nenhum bloco encontrado.",
   "sandbox.blockPicker.searchPlaceholder": "Pesquisar blocos…",
-  "sandbox.blogBrand.addCompetitor": "Adicionar concorrente",
-  "sandbox.blogBrand.addDo": "Adicionar orientação",
-  "sandbox.blogBrand.addDont": "Adicionar restrição",
-  "sandbox.blogBrand.addValue": "Adicionar valor",
   "sandbox.blogBrand.audienceLabel": "Público-alvo",
   "sandbox.blogBrand.companyNameLabel": "Nome da marca",
-  "sandbox.blogBrand.competitorsBodyPlaceholder":
-    "Como se posicionam, e onde esta marca se diferencia",
-  "sandbox.blogBrand.competitorsHint":
-    "Marca não cita concorrente na própria copy, então estes vêm de uma busca na web quando sua organização tem uma configurada.",
-  "sandbox.blogBrand.competitorsLabel": "Concorrentes",
-  "sandbox.blogBrand.competitorsNamePlaceholder": "Nome do concorrente",
   "sandbox.blogBrand.descriptionLabel": "O que a marca faz",
-  "sandbox.blogBrand.dontsBodyPlaceholder":
-    "O que não fazer, e por quê — ex.: nunca escreva preço em bloco de texto, use um ProductCard",
-  "sandbox.blogBrand.dontsHint":
-    "Palavras, afirmações, formatos e temas proibidos. Cada um tem um nome e a regra em si.",
-  "sandbox.blogBrand.dontsNamePlaceholder": "Sobre o que é esta restrição",
-  "sandbox.blogBrand.dosBodyPlaceholder":
-    "A instrução em si — ex.: abra com o problema do cliente, nunca com a empresa",
-  "sandbox.blogBrand.dosHint":
-    "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
-  "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
-  "sandbox.blogBrand.addPolicy": "Adicionar política",
-  "sandbox.blogBrand.addSpecialDate": "Adicionar data",
-  "sandbox.blogBrand.addVocabulary": "Adicionar palavra",
-  "sandbox.blogBrand.keywordsHint":
-    "Os termos pelos quais a marca quer ser encontrada — o que alguém digita procurando o que ela vende. Enter ou vírgula adiciona.",
-  "sandbox.blogBrand.keywordsLabel": "Palavras-chave da marca",
-  "sandbox.blogBrand.keywordsPlaceholder": "Escreva um termo e tecle Enter",
-  "sandbox.blogBrand.removeKeyword": "Remover termo",
-  "sandbox.blogBrand.phaseResearching": "Pesquisando a marca na web…",
-  "sandbox.blogBrand.policiesBodyPlaceholder":
-    "Os termos, com os números e condições reais",
-  "sandbox.blogBrand.policiesHint":
-    "Trocas, frete, garantia. Fatos que um post pode precisar afirmar — copie os números exatamente.",
-  "sandbox.blogBrand.policiesLabel": "Políticas comerciais",
-  "sandbox.blogBrand.policiesNamePlaceholder": "Qual política",
-  "sandbox.blogBrand.specialDatesBodyPlaceholder":
-    "O que esta data significa para esta marca — o que ela vende, o que ela diz",
-  "sandbox.blogBrand.specialDatesHint":
-    "Os momentos comerciais em torno dos quais o ano da marca gira — os próprios e o calendário do varejo. Não é um pin no calendário: as datas mudam a cada ano.",
-  "sandbox.blogBrand.specialDatesLabel": "Datas especiais",
-  "sandbox.blogBrand.specialDatesNamePlaceholder": "O nome da data",
-  "sandbox.blogBrand.vocabularyBodyPlaceholder":
-    "O que ela nomeia, e qual palavra ela substitui",
-  "sandbox.blogBrand.vocabularyHint":
-    "As palavras próprias da marca, e as comuns que elas substituem. Um post usando a palavra substituída soa como impostor.",
-  "sandbox.blogBrand.vocabularyLabel": "Vocabulário",
-  "sandbox.blogBrand.vocabularyNamePlaceholder": "A palavra a usar",
-  "sandbox.blogBrand.extractReplaced": "{count} campo(s) reescrito(s)",
-  "sandbox.blogBrand.fillDialogDescription":
-    "Parte disso já está escrita. Escolha no que o preenchimento pode mexer.",
-  "sandbox.blogBrand.fillDialogTitle": "Preencher o contexto",
-  "sandbox.blogBrand.fillOnlyEmpty": "Só o que está vazio",
-  "sandbox.blogBrand.fillOnlyEmptyHint":
-    "Mantém tudo o que você escreveu exatamente como está, e preenche os campos em branco ao redor.",
-  "sandbox.blogBrand.fillReplace": "Começar do zero",
-  "sandbox.blogBrand.fillReplaceHint":
-    "Reescreve todo campo para o qual o modelo tiver resposta. O que você escreveu ali se perde; um campo que ele não souber responder mantém o valor atual.",
-  "sandbox.blogBrand.addVoiceExample": "Adicionar frase",
-  "sandbox.blogBrand.voiceExamplesDoesNotSound": "Não soa como a marca",
-  "sandbox.blogBrand.voiceExamplesHint":
-    "Uma voz se mostra mais rápido do que se descreve. Cole frases reais e marque cada uma: as que soam como a marca são o que um post gerado deve acompanhar, e as que não soam são o que delimita até onde as primeiras vão.",
-  "sandbox.blogBrand.voiceExamplesLabel": "Frases-exemplo",
-  "sandbox.blogBrand.voiceExamplesPlaceholder": "Cole uma frase",
-  "sandbox.blogBrand.voiceExamplesSounds": "Soa como a marca",
-  "sandbox.blogBrand.extractButton": "Preencher",
-  "sandbox.blogBrand.extractFailed":
-    "Não foi possível ler a marca a partir do conteúdo deste site",
-  "sandbox.blogBrand.extractAllDiscarded":
-    "Nada foi preenchido — tudo o que foi encontrado ficou abaixo da barra de confiança. A evidência são as páginas do próprio site; páginas rasas dão respostas rasas.",
-  "sandbox.blogBrand.extractDiscarded":
-    "{count} informação(ões) descartada(s) por baixa confiança ou relevância",
-  "sandbox.blogBrand.extractFilled": "{count} campo(s) vazio(s) preenchido(s)",
-  "sandbox.blogBrand.extractHint":
-    "Lê {count} bloco(s) deste site — posts existentes primeiro, porque é a marca escrevendo post de verdade.",
-  "sandbox.blogBrand.extractNoContent":
-    "Ainda não há conteúdo para ler. Escreva um post, ou preencha os campos abaixo à mão.",
-  "sandbox.blogBrand.extractNothingEmpty":
-    "Nada a preencher — todos os campos já têm valor. Limpe um campo para preenchê-lo novamente.",
   "sandbox.blogBrand.languageLabel": "Idioma de escrita",
-  "sandbox.blogBrand.noCompetitorsFound":
-    "Nenhum concorrente encontrado. Adicione à mão, ou configure um modelo de busca na web para esta organização.",
-  "sandbox.blogBrand.phaseInferring": "Inferindo a voz e as regras…",
-  "sandbox.blogBrand.phaseReading": "Lendo o conteúdo deste site…",
   "sandbox.blogBrand.removeItem": "Remover item",
-  "sandbox.blogBrand.tabBasics": "Dados básicos",
   "sandbox.blogBrand.tabDos": "Instruções de geração",
-  "sandbox.blogBrand.tabExtra": "Contexto extra",
   "sandbox.blogBrand.tabGuardrails": "Guardrails",
   "sandbox.blogBrand.toneLabel": "Tom de voz",
-  "sandbox.blogBrand.toneHint":
-    "Como a marca escreve: como trata o leitor, ritmo das frases, humor, nível de jargão.",
-  "sandbox.blogBrand.storeUrlHint":
-    "O domínio público, como o leitor digitaria. É dele que saem os links de produto e categoria — sem ele, eles vêm com o endereço interno da plataforma.",
-  "sandbox.blogBrand.storeUrlInvalid":
-    "Endereço inválido. Precisa começar com http:// ou https://.",
-  "sandbox.blogBrand.storeUrlLabel": "Endereço da loja",
   "sandbox.blogBrand.untitledRule": "Sem título",
-  "sandbox.blogBrand.valuesBodyPlaceholder":
-    "O que a marca afirma, e a evidência disso",
-  "sandbox.blogBrand.valuesLabel": "Valores da marca",
-  "sandbox.blogBrand.valuesNamePlaceholder": "O valor",
   "sandbox.blockRegistry.backToFields": "Voltar para a lista de campos",
   "sandbox.blockRegistry.breadcrumbLabel": "Trilha de campos",
   "sandbox.blockRegistry.unknownBlockType":
@@ -155,6 +60,12 @@ export const sandbox = {
   "sandbox.campaigns.productUrlPlaceholder": "https://…",
   "sandbox.campaigns.productsHint":
     "Os produtos que o texto pode citar pelo nome. Valem para qualquer alvo — e ficam salvos aqui, não buscados na hora.",
+  "sandbox.campaigns.productsUnresolved":
+    "{count} de {total} produtos não resolvem na loja, e um bloco apontando pra um deles renderiza um espaço vazio.",
+  "sandbox.campaigns.productsRepair": "Corrigir pelos nomes",
+  "sandbox.campaigns.productsRepaired": "{count} id(s) relidos da loja.",
+  "sandbox.campaigns.productsRepairNone":
+    "Nenhum nome bateu exato na loja — escolha estes produtos de novo à mão.",
   "sandbox.campaigns.productsLabel": "Produtos em destaque",
   "sandbox.campaigns.removeProduct": "Remover produto",
   "sandbox.campaigns.targetDescriptionPlaceholder":
@@ -328,6 +239,22 @@ export const sandbox = {
   "sandbox.campaigns.objectiveHint":
     "O que um post escrito para esta campanha quer alcançar.",
   "sandbox.campaigns.objectiveLabel": "Objetivo",
+  "sandbox.campaigns.goalLabel": "Meta",
+  "sandbox.campaigns.goalHint":
+    "O número que diz se a campanha deu certo até o fim do período. Para este objetivo, em geral: {metric}",
+  "sandbox.campaigns.goalPlaceholder":
+    "ex: Crescer o tráfego orgânico em acessórios",
+  "sandbox.campaigns.goalTargetLabel": "Alvo",
+  "sandbox.campaigns.goalTargetPlaceholder": "+20%",
+  "sandbox.campaigns.goalMetricLabel": "Medida em",
+  "sandbox.campaigns.goalMetricNone": "Sem medida",
+  "sandbox.campaigns.goalMetricOrganicSessions": "sessões orgânicas",
+  "sandbox.campaigns.goalMetricSessions": "sessões",
+  "sandbox.campaigns.goalMetricSearchClicks": "cliques na busca",
+  "sandbox.campaigns.goalMetricSearchImpressions": "impressões na busca",
+  "sandbox.campaigns.goalMetricConversions": "conversões",
+  "sandbox.campaigns.goalMetricRevenue": "receita",
+  "sandbox.campaigns.goalLine": "Meta: {goal}",
   "sandbox.campaigns.objectiveRepositioning": "Reposicionamento",
   "sandbox.campaigns.objectiveRetention": "Retenção",
   "sandbox.campaigns.periodClear": "Limpar o período",
@@ -371,13 +298,7 @@ export const sandbox = {
   "sandbox.campaigns.untitled": "Campanha sem título",
   "sandbox.campaigns.viewBoard": "Quadro",
   "sandbox.campaigns.viewList": "Lista",
-  "sandbox.blogContext.subtitle":
-    "O contexto de marca do qual seu blog é escrito — voz, formatos e as campanhas para as quais ele escreve.",
-  "sandbox.blogContext.tabAutomations": "Automações",
-  "sandbox.blogContext.tabBrand": "Marca",
-  "sandbox.blogContext.tabFormats": "Formatos",
   "sandbox.blogContext.tabCampaigns": "Campanhas",
-  "sandbox.blogContext.title": "Contexto",
   "sandbox.blogField.title": "Título",
   "sandbox.blogField.slug": "Slug",
   "sandbox.blogField.category": "Categoria",
@@ -491,7 +412,6 @@ export const sandbox = {
   "sandbox.collectionsSidebar.calendar": "Calendário",
   "sandbox.collectionsSidebar.categories": "Categorias",
   "sandbox.collectionsSidebar.content": "Conteúdo",
-  "sandbox.collectionsSidebar.context": "Contexto",
   "sandbox.collectionsSidebar.loaders": "Carregadores",
   "sandbox.collectionsSidebar.pages": "Páginas",
   "sandbox.collectionsSidebar.postSchedule": "Agendamento",
@@ -670,41 +590,11 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "Novo arquivo",
   "sandbox.fileTreeRow.newFolder": "Nova pasta",
   "sandbox.fileTreeRow.rename": "Renomear",
-  "sandbox.formats.add": "Novo formato",
-  "sandbox.formats.bodyPlaceholder":
-    "Quando usar, como abre e fecha, mais ou menos o tamanho, e quais sections sustentam ele…",
-  "sandbox.formats.countLabel": "Quantos",
-  "sandbox.formats.guidanceHint":
-    "Opcional. O que estes formatos devem cobrir — uma campanha, uma época, um tipo de post que o blog vive precisando.",
-  "sandbox.formats.guidanceLabel": "Instruções extras",
-  "sandbox.formats.guidancePlaceholder":
-    "ex: um formato para lançamento de produto",
-  "sandbox.formats.hint":
-    "Um formato orienta a geração, não dita — descreva a intenção e deixe o modelo decidir a ordem. Digite @ para citar uma das suas sections.",
-  "sandbox.formats.mentionEmpty": "Nenhuma section corresponde",
-  "sandbox.formats.mentionHint": "Digite @ para citar uma section",
-  "sandbox.formats.namePlaceholder": "O formato, nomeado pelo trabalho que faz",
-  "sandbox.formats.noNewFormats":
-    "Nada novo voltou — todo formato proposto já estava na lista.",
-  "sandbox.formats.phaseReading": "Lendo como os seus posts são montados…",
-  "sandbox.formats.phaseWriting": "Nomeando os formatos…",
-  "sandbox.formats.starterButton": "Usar o formato padrão",
-  "sandbox.formats.starterHint":
-    "Adiciona um formato simples montado com as sections que este site tem — sem IA, sem créditos",
-  "sandbox.formats.starterAdded":
-    "Esta org não tem modelo de IA configurado, então adicionamos um formato inicial para você editar.",
-  "sandbox.formats.starterBody":
-    "Use para um post direto: abra com o assunto e por que ele importa para quem lê, desenvolva em algumas passagens curtas, e feche com o próximo passo.\n\nSections que sustentam ele: {sections}. Quantas de cada, e em que ordem, depende do tema.",
-  "sandbox.formats.starterBodyNoSections":
-    "Use para um post direto: abra com o assunto e por que ele importa para quem lê, desenvolva em algumas passagens curtas, e feche com o próximo passo.\n\nEste site ainda não reporta sections de post — quando reportar, cite elas aqui com @.",
-  "sandbox.formats.starterName": "Post padrão",
-  "sandbox.formats.suggestButton": "Sugerir formatos",
-  "sandbox.formats.suggestFailed": "Não foi possível sugerir formatos",
-  "sandbox.formats.suggestHint":
-    "Nomear os formatos em que este blog já escreve, a partir de como os posts são montados",
-  "sandbox.formats.suggested": "{count} formato(s) adicionado(s)",
-  "sandbox.formats.unknownCitations":
-    "Este formato cita sections que o site não tem: {names}",
+  "sandbox.blogState.conflictBody":
+    "Outra pessoa salvou isso enquanto você editava. Recarregar descarta o que você não salvou; manter o seu substitui o dela.",
+  "sandbox.blogState.conflictTitle": "Isso mudou em outro lugar",
+  "sandbox.blogState.keepMine": "Manter o meu",
+  "sandbox.blogState.reloadTheirs": "Recarregar o deles",
   "sandbox.generatePost.stepCampaign": "Campanha",
   "sandbox.generatePost.campaignHint":
     "Um post é escrito para uma campanha: é ela que carrega o momento, os produtos que podem ser citados e os links deles.",
@@ -733,7 +623,7 @@ export const sandbox = {
     "{count} rascunho(s) não puderam ser escritos e os cartões ficaram vazios.",
   "sandbox.generatePost.back": "Voltar",
   "sandbox.generatePost.blockedBrand":
-    "Preencha {fields} na aba Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
+    "Preencha {fields} em Contexto → Marca primeiro — um post escrito sem isso parece o de qualquer outra marca.",
   "sandbox.generatePost.done":
     "Escrevi {count} rascunho(s) — prontos para revisão",
   "sandbox.generatePost.extraLabel": "Mais alguma coisa?",
@@ -1464,4 +1354,17 @@ export const sandbox = {
   "sandbox.previewAs.off": "Desligado",
   "sandbox.previewAs.on": "Ligado",
   "sandbox.previewAs.reset": "Mostrar como está agora",
+  "sandbox.blogConnections.title": "Conecte a loja primeiro",
+  "sandbox.blogConnections.description":
+    "O blog lê os produtos da VTEX e o comportamento dos leitores do GA4. Ele não gera nada até os dois estarem conectados.",
+  "sandbox.blogConnections.vtex": "VTEX",
+  "sandbox.blogConnections.ga4": "GA4",
+  "sandbox.blogConnections.ready": "Conectado",
+  "sandbox.blogConnections.missing": "Não instalado",
+  "sandbox.blogConnections.inactive": "Instalado, mas desligado",
+  "sandbox.blogConnections.unconfigured":
+    "Instalado, mas sem a conta configurada",
+  "sandbox.blogConnections.unauthorized": "Instalado, mas sem login",
+  "sandbox.blogConnections.install": "Instalar",
+  "sandbox.blogConnections.fix": "Abrir",
 } satisfies Record<keyof typeof sandboxEn, string>;

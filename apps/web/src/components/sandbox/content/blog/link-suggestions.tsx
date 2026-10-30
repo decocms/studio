@@ -23,7 +23,7 @@ import { useStudioTools } from "@/lib/studio-tools";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { applyBlogPageSlug, findBlogPageSlug } from "./blog-preview-url";
 import { listPostsWithMeta } from "./blog-data";
-import { applyLinksToBlocks, postBodyText } from "./link-enrich";
+import { applyLinksToBlocks, postBodyText } from "@decocms/shared/blog";
 
 interface ResolvedSuggestion {
   quote: string;
@@ -69,7 +69,7 @@ export function SuggestLinksButton({
       const body = postBodyText(sections);
       /** Reading the store is its own request; folded in, the pair ran long. */
       const grounding = await studio
-        .call("BLOG_SITE_GROUND", { virtualMcpId, purpose: "link" })
+        .call("BLOG_SITE_GROUND", { purpose: "link" })
         .catch((err) => {
           console.warn("[linkSuggest] grounding failed", err);
           return undefined;

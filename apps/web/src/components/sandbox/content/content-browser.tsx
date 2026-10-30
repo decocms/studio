@@ -139,6 +139,7 @@ import {
   scheduledPostPayload,
 } from "./blog/post-calendar-data";
 import { usePostStatusMove } from "./blog/use-post-status-move";
+import { useBlogState, withoutBlogState } from "./blog/use-blog-state";
 import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
 import { SavedPageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
@@ -208,12 +209,6 @@ const RecordEditor = lazy(() =>
   import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
 );
 
-const BlogContext = lazy(() =>
-  import("./blog/context").then((m) => ({
-    default: m.BlogContext,
-  })),
-);
-
 const CategoryEditor = lazy(() =>
   import("./blog/category-editor").then((m) => ({ default: m.CategoryEditor })),
 );
@@ -256,25 +251,17 @@ export type CollectionId =
   | "loaders"
   | "actions"
   | "redirects"
-  | "context"
   | BlogKind;
 
 /**
- * The collection actually shown.
- *
- * `activeCollection` is local state and the context tab is reachable only by
- * clicking its row, so no link can land on it — but someone already there when
- * an admin turns the AI-blog flag off would be looking at a tab the menu no
- * longer lists. Normalising once at the source spares every reader downstream
- * a guard of its own.
+ * The collection actually shown. Normalising once at the source spares every
+ * reader downstream a guard of its own.
  */
 export function visibleCollection(
   active: CollectionId,
-  blogAi: boolean,
   /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
 ): CollectionId {
-  if (active === "context" && !blogAi) return "posts";
   if (blocksV8 && active === "calendar") return "pages";
   return active;
 }
@@ -508,7 +495,7 @@ function ContentBrowserReady({
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
-  const { data: decofile, isLoading: decofileLoading } = useDecofile(
+  const { data: rawDecofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
   );
@@ -525,11 +512,17 @@ function ContentBrowserReady({
       "pages",
   );
   const blogAi = useBlogAi();
-  const activeCollection = visibleCollection(
-    storedCollection,
-    blogAi,
-    !runsSiteCode,
-  );
+  const activeCollection = visibleCollection(storedCollection, !runsSiteCode);
+  /**
+   * The blog's brand, writing rules, formats and campaigns come from the org
+   * library, not from this site's blocks. Stripping before merging is what
+   * stops a site that still carries the old blocks from filling its forms with
+   * them — see `withoutBlogState`.
+   */
+  const blogState = useBlogState({ orgSlug, enabled: blogAi });
+  const decofile = rawDecofile
+    ? { ...withoutBlogState(rawDecofile), ...blogState.blocks }
+    : rawDecofile;
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
   // Calendar views. Both keep the open thread, so they work in this same draft.
@@ -1556,14 +1549,6 @@ function ContentBrowserReady({
               // draft; the defaults are saved with the first real change.
               persistDefaults={typesMode ? false : undefined}
             />
-          ) : activeCollection === "context" ? (
-            <BlogContext
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              decofile={decofile}
-              meta={meta}
-            />
           ) : activeCollection === "seo" ? (
             <SeoEditor
               orgSlug={orgSlug}
@@ -1794,7 +1779,6 @@ function ContentBrowserReady({
             counts={counts}
             hidden={hiddenCollections}
             showBlog={showBlog}
-            showContext={blogAi}
             onSelect={(id) => {
               setActiveCollection(id);
               setSelection(null);
@@ -1806,7 +1790,6 @@ function ContentBrowserReady({
           activeCollection !== "seo" &&
           activeCollection !== "site" &&
           activeCollection !== "settings" &&
-          activeCollection !== "context" &&
           activeCollection !== "calendar" &&
           activeCollection !== "post-schedule" &&
           activeCollection !== "posts" &&

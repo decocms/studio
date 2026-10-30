@@ -12,244 +12,85 @@
  * reproduces that encoding.
  */
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
+/** The block mapping, which `apps/api` also imports — it cannot import from here. */
 import {
+  asRecord,
+  authorEmailOf,
+  type AuthorRef,
+  blockComponentName,
+  blockExample,
+  blocksForFormat,
+  BLOG_KINDS,
+  BLOG_SINGULAR,
+  type BlogBlockDiscoveryOptions,
+  type BlogBlockSource,
+  type BlogBlockType,
+  blogBlockTypeFor,
+  type BlogEntry,
+  type BlogKind,
+  type BrandRule,
+  buildBlogBlock,
+  buildGeneratedPostPayload,
+  buildPostSections,
+  type CategoryRef,
+  categorySlugOf,
+  citedSections,
+  DEFAULT_SCHEDULE_HOUR,
+  defaultScheduledDatetime,
+  discoverBlogBlockTypes,
+  FORMATS_BLOCK_KEY,
+  type GenerationBlock,
+  getBlogPayload,
+  isBlogKind,
+  isBlogPostBlockResolveType,
+  isPlanningPostKey,
+  KNOWN_BLOG_BLOCK_EXAMPLES,
+  listAuthorRefs,
+  listBlogPayloads,
+  livePostKey,
+  maskSlugInput,
+  missingCategoryFields,
+  type MissingFieldKey,
+  missingPostFields,
+  newPostId,
+  normalizeTitleKey,
+  PLANNING_POST_KEY_PREFIX,
+  type PlanningMeta,
+  planningPostKey,
+  POST_STATUSES,
+  postIdOfKey,
+  type PostStatus,
+  postStatus,
+  productSlotOf,
+  randomHex,
+  rawBlockSchema,
+  reconciledSchema,
+  RESOLVE_TYPE_FOR_KIND,
+  scanBlogEntries,
+  sectionResolveTypes,
+  setPostStatus,
+  slugifyTitle,
+  str,
+  toArray,
+  uniqueCategorySlug,
+  uniquePostSlug,
+  uniqueSlug,
+  WRAPPER_KEY,
+} from "@decocms/shared/blog";
+import {
+  CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
   CAMPAIGN_TRIGGERS,
   MAX_CAMPAIGN_PRODUCT_IMAGES,
+  type CampaignGoalMetric,
   type CampaignObjective,
   type CampaignStatus,
   type CampaignTargetKind,
   type CampaignTrigger,
 } from "@decocms/shared/blog-campaign";
-import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
-import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
-import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
-import { writeProductListIds } from "./blocks/product-loader-utils";
-import type { PageEntry } from "@/components/sections-editor/page-list";
-import {
-  type PageRole,
-  pageRole,
-  type SeoEvidenceEntry,
-  selectSeoEvidence,
-} from "./seo-evidence";
-
-const BLOG_LOADER_RESOLVE_TYPES = {
-  post: "blog/loaders/Blogpost.ts",
-  author: "blog/loaders/Author.ts",
-  category: "blog/loaders/Category.ts",
-} as const;
-
-export type BlogKind = "posts" | "authors" | "categories";
-
-export const BLOG_KINDS: readonly BlogKind[] = [
-  "posts",
-  "authors",
-  "categories",
-];
-
-export const BLOG_SINGULAR: Record<BlogKind, string> = {
-  posts: "post",
-  authors: "author",
-  categories: "category",
-};
-
-export function isBlogKind(id: string): id is BlogKind {
-  return (BLOG_KINDS as readonly string[]).includes(id);
-}
-
-/** Wrapper field that holds the editable payload for each loader block. */
-export const WRAPPER_KEY: Record<BlogKind, "post" | "author" | "category"> = {
-  posts: "post",
-  authors: "author",
-  categories: "category",
-};
-
-export const RESOLVE_TYPE_FOR_KIND: Record<BlogKind, string> = {
-  posts: BLOG_LOADER_RESOLVE_TYPES.post,
-  authors: BLOG_LOADER_RESOLVE_TYPES.author,
-  categories: BLOG_LOADER_RESOLVE_TYPES.category,
-};
-
-const KIND_FOR_RESOLVE_TYPE: Record<string, BlogKind> = Object.fromEntries(
-  Object.entries(RESOLVE_TYPE_FOR_KIND).map(([kind, rt]) => [
-    rt,
-    kind as BlogKind,
-  ]),
-);
-
-export interface BlogEntry {
-  /** Decofile key (block id), e.g. `collections/blog/posts/abc`. */
-  key: string;
-  kind: BlogKind;
-  /** Human label derived from the payload (title / name). */
-  label: string;
-  /** Secondary line (slug, email, …). */
-  subtitle: string;
-  /** Categories only — the record's own slug, for nesting. */
-  slug?: string;
-  /** Categories only — the slug of the parent category, when nested. */
-  parentSlug?: string;
-  /** Required fields this record is missing; empty when it is complete. */
-  missing: MissingFieldKey[];
-  /** Another record of the same kind carries this same name/title. */
-  duplicateName?: boolean;
-}
-
-function kindOfResolveType(resolveType: unknown): BlogKind | null {
-  return typeof resolveType === "string"
-    ? (KIND_FOR_RESOLVE_TYPE[resolveType] ?? null)
-    : null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function str(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function entryLabelAndSubtitle(
-  kind: BlogKind,
-  payload: Record<string, unknown>,
-): Omit<BlogEntry, "key" | "kind" | "duplicateName"> {
-  switch (kind) {
-    case "posts":
-      return {
-        label: str(payload.title) || "Untitled post",
-        subtitle: str(payload.slug),
-        missing: missingPostFields(payload),
-      };
-    case "authors":
-      return {
-        label: str(payload.name) || "Unnamed author",
-        subtitle: str(payload.email),
-        missing: [],
-      };
-    case "categories":
-      return {
-        label: str(payload.name) || "Unnamed category",
-        subtitle: str(payload.slug),
-        slug: str(payload.slug),
-        parentSlug: str(payload.parentSlug),
-        missing: missingCategoryFields(payload),
-      };
-    default: {
-      const _exhaustive: never = kind;
-      throw new Error(`Unhandled blog kind: ${String(_exhaustive)}`);
-    }
-  }
-}
-
-/**
- * Single-pass scan that returns all blog entries grouped by kind.
- * Use this in hot render paths instead of calling extractBlogEntries per kind.
- */
-export function scanBlogEntries(
-  decofile: Record<string, unknown>,
-): Record<BlogKind, BlogEntry[]> {
-  const result: Record<BlogKind, BlogEntry[]> = {
-    posts: [],
-    authors: [],
-    categories: [],
-  };
-  const nameKeys: Array<{ entry: BlogEntry; key: string }> = [];
-  for (const [key, value] of Object.entries(decofile)) {
-    const obj = asRecord(value);
-    if (!obj) continue;
-    const kind = kindOfResolveType(obj.__resolveType);
-    if (!kind) continue;
-    const payload = asRecord(obj[WRAPPER_KEY[kind]]) ?? {};
-    const entry: BlogEntry = {
-      key,
-      kind,
-      ...entryLabelAndSubtitle(kind, payload),
-    };
-    result[kind].push(entry);
-    // The RAW name, not the label: two untitled records share its fallback.
-    nameKeys.push({
-      entry,
-      key: normalizeTitleKey(str(payload[kind === "posts" ? "title" : "name"])),
-    });
-  }
-  markDuplicateNames(nameKeys);
-  for (const kind of BLOG_KINDS) {
-    result[kind].sort((a, b) => a.label.localeCompare(b.label));
-  }
-  return result;
-}
-
-/** Flag every entry whose non-empty name key is shared within its own kind. */
-function markDuplicateNames(
-  entries: Array<{ entry: BlogEntry; key: string }>,
-): void {
-  const counts = new Map<string, number>();
-  for (const { entry, key } of entries) {
-    if (!key) continue;
-    const scoped = `${entry.kind}:${key}`;
-    counts.set(scoped, (counts.get(scoped) ?? 0) + 1);
-  }
-  for (const { entry, key } of entries) {
-    if (key && (counts.get(`${entry.kind}:${key}`) ?? 0) > 1) {
-      entry.duplicateName = true;
-    }
-  }
-}
-
-/** Extract all blog records of a given kind, sorted by label. */
-function extractBlogEntries(
-  decofile: Record<string, unknown>,
-  kind: BlogKind,
-): BlogEntry[] {
-  return scanBlogEntries(decofile)[kind];
-}
-
-/** All records of a kind paired with their editable payload. */
-export function listBlogPayloads(
-  decofile: Record<string, unknown>,
-  kind: BlogKind,
-): Array<{ key: string; payload: Record<string, unknown> }> {
-  return extractBlogEntries(decofile, kind).map((entry) => ({
-    key: entry.key,
-    payload: getBlogPayload(asRecord(decofile[entry.key]) ?? undefined, kind),
-  }));
-}
-
-// Shared, frozen empty payload so an absent block/payload yields a
-// referentially-stable value across renders — `useAutosave` compares `initial`
-// by reference to detect external changes, so a fresh `{}` each render would
-// loop. Frozen because consumers only ever spread/clone it, never mutate.
-const EMPTY_PAYLOAD: Record<string, unknown> = Object.freeze({});
-
-/** Read the editable payload (the `post`/`author`/`category` object). */
-export function getBlogPayload(
-  block: Record<string, unknown> | undefined,
-  kind: BlogKind,
-): Record<string, unknown> {
-  if (!block) return EMPTY_PAYLOAD;
-  return asRecord(block[WRAPPER_KEY[kind]]) ?? EMPTY_PAYLOAD;
-}
-
-/** Rebuild the full block from an edited payload, preserving id + type. */
-export function buildBlogBlock(
-  key: string,
-  kind: BlogKind,
-  payload: Record<string, unknown>,
-): Record<string, unknown> {
-  return {
-    name: key,
-    __resolveType: RESOLVE_TYPE_FOR_KIND[kind],
-    [WRAPPER_KEY[kind]]: payload,
-  };
-}
-
-// ------------------ Post relations (authors/categories picker) ------------------
 
 export interface RelationPickerState {
   /** One option per record, plus one per unresolvable selected ref. */
@@ -336,39 +177,6 @@ export function relationPickerState({
 
 // ------------------ Post metadata + category mutation ------------------
 
-/** A single category reference, denormalized on a post payload. */
-export interface CategoryRef {
-  name: string;
-  slug: string;
-}
-
-/**
- * An author denormalized on a post payload. The post carries the author's
- * FULL record — the blog app renders the author box (type, job title,
- * company, website, avatar) from the post, never from the Author block — so
- * extra fields ride along; `name`/`email` are only the identity.
- */
-export interface AuthorRef {
-  name: string;
-  email: string;
-  [field: string]: unknown;
-}
-
-/**
- * The site's authors as the refs a post stores — full record, identity
- * stringified. Authors without an email are dropped: nothing could reference
- * them.
- */
-export function listAuthorRefs(decofile: Record<string, unknown>): AuthorRef[] {
-  return listBlogPayloads(decofile, "authors")
-    .map(({ payload }) => ({
-      ...payload,
-      name: str(payload.name),
-      email: str(payload.email),
-    }))
-    .filter((author) => author.email);
-}
-
 /** Compact metadata for a post, used by the posts list filters/sort. */
 export interface PostMeta {
   /** Decofile key (block id). */
@@ -410,40 +218,6 @@ export interface PostMeta {
  */
 export type PostForm = "planning" | "live";
 
-function toArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-/**
- * A category on a post can be a plain slug string or a `{ name, slug }`
- * object (deco denormalizes the latter). Tolerate both.
- */
-function categorySlugOf(item: unknown): string {
-  if (typeof item === "string") return item;
-  const rec = asRecord(item);
-  return rec ? str(rec.slug) : "";
-}
-
-/** Authors are denormalized as `{ name, email }`; tolerate plain strings. */
-function authorEmailOf(item: unknown): string {
-  if (typeof item === "string") return item;
-  const rec = asRecord(item);
-  return rec ? str(rec.email) : "";
-}
-
-/**
- * A required field a blog record can be missing. Identifies the field, never
- * names it: the name shown to the reader is a translation, resolved by
- * {@link missingFieldsLabel} at render time.
- */
-export type MissingFieldKey =
-  | "title"
-  | "slug"
-  | "category"
-  | "excerpt"
-  | "image"
-  | "name";
-
 const MISSING_FIELD_LABEL_KEYS: Record<MissingFieldKey, TranslationKey> = {
   title: "sandbox.blogField.title",
   slug: "sandbox.blogField.slug",
@@ -459,95 +233,6 @@ export function missingFieldsLabel(
   t: TFunction,
 ): string {
   return missing.map((key) => t(MISSING_FIELD_LABEL_KEYS[key])).join(", ");
-}
-
-/**
- * Which required fields a post payload is missing (empty ⇒ valid). A post with
- * no title/slug/excerpt or zero categories is incomplete — the list marks it
- * and the editor blocks preview.
- */
-export function missingPostFields(
-  payload: Record<string, unknown>,
-): MissingFieldKey[] {
-  const missing: MissingFieldKey[] = [];
-  if (!str(payload.title).trim()) missing.push("title");
-  if (!str(payload.slug).trim()) missing.push("slug");
-  if (
-    toArray(payload.categories).map(categorySlugOf).filter(Boolean).length === 0
-  ) {
-    missing.push("category");
-  }
-  if (!str(payload.excerpt).trim()) missing.push("excerpt");
-  if (!str(payload.image).trim()) missing.push("image");
-  return missing;
-}
-
-/**
- * The lifecycle a post travels, in board order.
- *
- * These values are the blog app's own `PostStatus` union — Studio writes them
- * into `payload.status`, the app reads them, so the vocabulary has to be the
- * app's, not one invented here. Do not add a state the app cannot read.
- *
- * `draft` / `generating` / `awaiting_review` / `archived` are stored as
- * planning-only blocks the site never resolves (see
- * {@link PLANNING_POST_KEY_PREFIX}); `scheduled` / `published` are the live
- * states the site renders.
- */
-export type PostStatus =
-  | "draft"
-  | "generating"
-  | "awaiting_review"
-  | "scheduled"
-  | "published"
-  | "archived";
-
-/** The board lanes, left → right — the order the lifecycle advances. */
-export const POST_STATUSES: readonly PostStatus[] = [
-  "draft",
-  "generating",
-  "awaiting_review",
-  "scheduled",
-  "published",
-  "archived",
-];
-
-/** Local hour of day a newly scheduled post goes live. */
-export const DEFAULT_SCHEDULE_HOUR = 8;
-
-/**
- * Publication state from `status` alone. Planning posts always carry an
- * explicit non-live state; on a live post an unset/blank status still means
- * published (legacy: adding the field unpublished nothing).
- *
- * `idea` and `in_review` are read as `draft` / `awaiting_review`: a short-lived
- * Studio-only vocabulary that predates aligning on the blog app's union.
- */
-export function postStatus(payload: Record<string, unknown>): PostStatus {
-  switch (str(payload.status)) {
-    case "draft":
-    // Legacy Studio-only name for the first lane.
-    case "idea":
-      return "draft";
-    case "generating":
-      return "generating";
-    case "awaiting_review":
-    // Legacy Studio-only name for the review lane.
-    case "in_review":
-      return "awaiting_review";
-    case "scheduled":
-      return "scheduled";
-    case "published":
-      return "published";
-    case "archived":
-      return "archived";
-    // Legacy: an unset status field means published (adding it unpublishes nothing).
-    case "":
-      return "published";
-    // Any other value is unrecognized — the safest non-live state, not a live post.
-    default:
-      return "awaiting_review";
-  }
 }
 
 /**
@@ -575,36 +260,6 @@ export function blocksPostStatus(
   if (next !== "published" && next !== "scheduled") return false;
   if (postStatus(payload) === next) return false;
   return missingPostFields(payload).length > 0;
-}
-
-/** Go-live instant offered when none is set: tomorrow, local, at {@link DEFAULT_SCHEDULE_HOUR}. */
-export function defaultScheduledDatetime(now: Date): string {
-  const day = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-    DEFAULT_SCHEDULE_HOUR,
-  );
-  return day.toISOString();
-}
-
-/** Move a post to `next`: leaving `scheduled` clears the stale instant, entering it seeds one. */
-export function setPostStatus(
-  payload: Record<string, unknown>,
-  next: PostStatus,
-  now: Date,
-): Record<string, unknown> {
-  if (next !== "scheduled") {
-    return { ...payload, status: next, scheduledDatetime: "" };
-  }
-  const existing = str(payload.scheduledDatetime);
-  return {
-    ...payload,
-    status: "scheduled",
-    scheduledDatetime: Number.isNaN(new Date(existing).getTime())
-      ? defaultScheduledDatetime(now)
-      : existing,
-  };
 }
 
 /**
@@ -635,50 +290,6 @@ export function listPostsWithMeta(
 }
 
 // ------------------ Lifecycle posts (idea → published) -----------------------
-
-/**
- * Planning posts (draft / generating / awaiting_review / archived) live one
- * block each under this
- * prefix, carrying NO `__resolveType` — exactly like themes, so the site's blog
- * app never resolves an unfinished draft. Only when a post is scheduled is it
- * promoted to a real `collections/blog/posts/<id>` block the site renders.
- */
-export const PLANNING_POST_KEY_PREFIX = "blog-manager/posts/";
-
-/** True when a key points at a planning post — anything but scheduled/published. */
-function isPlanningPostKey(key: string): boolean {
-  return key.startsWith(PLANNING_POST_KEY_PREFIX);
-}
-
-/** The `<id>` shared by a post's planning and live forms — the last path segment. */
-export function postIdOfKey(key: string): string {
-  return key.split("/").pop() ?? key;
-}
-
-export function planningPostKey(id: string): string {
-  return `${PLANNING_POST_KEY_PREFIX}${id}`;
-}
-
-export function livePostKey(id: string): string {
-  return `collections/blog/posts/${id}`;
-}
-
-/** A fresh id for a new lifecycle post, unique enough for a per-site decofile. */
-export function newPostId(): string {
-  return randomHex(12);
-}
-
-/**
- * The planning brief a card carries before (and after) generation: the format
- * it should follow and the free-text angle. Stored under `payload.planning`;
- * consumed by generation and shown on the card.
- */
-export interface PlanningMeta {
-  /** The campaign this post was written for. */
-  campaignKey?: string;
-  format?: BrandRule;
-  brief?: string;
-}
 
 /** Read the planning brief off a post payload, tolerating a missing/legacy shape. */
 export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
@@ -890,21 +501,6 @@ export function renameCategoryOnPost(
 }
 
 /**
- * Which required fields a category payload is missing (empty ⇒ valid). A
- * category with no name or slug resolves to nothing on the site: the slug is
- * its URL and the name is what every post denormalizes. Mirrors
- * {@link missingPostFields}.
- */
-export function missingCategoryFields(
-  payload: Record<string, unknown>,
-): MissingFieldKey[] {
-  const missing: MissingFieldKey[] = [];
-  if (!str(payload.name).trim()) missing.push("name");
-  if (!str(payload.slug).trim()) missing.push("slug");
-  return missing;
-}
-
-/**
  * Drop every reference to `slug` from a post. Pure: returns the SAME object
  * when the post doesn't reference `slug`. Used by the category delete cascade.
  */
@@ -953,14 +549,6 @@ export function stampPostModified(
       ? { status: postStatus(payload) }
       : {};
   return { ...payload, ...normalized, dateModified: new Date().toISOString() };
-}
-
-function randomHex(length: number): string {
-  const bytes = new Uint8Array(Math.ceil(length / 2));
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, length);
 }
 
 /** Fresh `collections/blog/<kind>/<id>` key not present in the decofile. */
@@ -1012,277 +600,6 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
   }
 }
 
-export type BlogBlockSource = "app" | "site";
-
-export interface BlogBlockType {
-  resolveType: string;
-  title: string;
-  description?: string;
-  /** @untitledui/icons component name; resolved via getIconComponent. */
-  iconName: string;
-  /** URL when the section declares `@icon` as an image (http(s)/data/absolute). */
-  iconUrl?: string;
-  /** "app" = deco-cms/blog built-ins; "site" = section defined by this site. */
-  source: BlogBlockSource;
-}
-
-/** How a caller narrows the blocks a post may be written with. */
-export interface BlogBlockDiscoveryOptions {
-  /** Drop the `deco-cms/blog` built-ins — the `hide_default_blog_blocks` flag. */
-  hideDefaults?: boolean;
-}
-
-/**
- * Defaults for the well-known blog block component names. Used to give
- * the inserter pretty labels, descriptions and icons.
- *
- * For **app blocks** (`blog/sections/blocks/*`) the catalog overrides the
- * schema metadata — built-in schemas typically just echo the class name
- * (e.g. "BlockImage"), and we want the friendly label ("Image") instead.
- *
- * For **site blocks** (`site/sections/Blog/Post/*`) the schema's `@title`
- * / `@description` / `@icon` win — site authors should be in control of
- * their own block presentation. The catalog only fills in when the schema
- * omits a field.
- */
-const KNOWN_BLOG_BLOCK_CATALOG: Record<
-  string,
-  { title: string; description: string; iconName: string }
-> = {
-  Paragraph: {
-    title: "Paragraph",
-    description: "Rich text content",
-    iconName: "Pilcrow01",
-  },
-  Heading: {
-    title: "Heading",
-    description: "Section title (H1–H6)",
-    iconName: "HeadingSquare",
-  },
-  Quote: {
-    title: "Quote",
-    description: "Pull quote",
-    iconName: "MessageTextSquare02",
-  },
-  Code: {
-    title: "Code",
-    description: "Code block with syntax highlighting",
-    iconName: "Code02",
-  },
-  List: {
-    title: "List",
-    description: "Bulleted or numbered list",
-    iconName: "List",
-  },
-  BlockImage: {
-    title: "Image",
-    description: "Image with optional caption",
-    iconName: "Image01",
-  },
-  Video: {
-    title: "Video",
-    description: "Embedded video",
-    iconName: "PlayCircle",
-  },
-  Divider: {
-    title: "Divider",
-    description: "Horizontal divider",
-    iconName: "Divider",
-  },
-  Cta: {
-    title: "Call to action",
-    description: "Button linking to a URL",
-    iconName: "CursorClick01",
-  },
-  Callout: {
-    title: "Callout",
-    description: "Highlighted note, tip or warning",
-    iconName: "Lightbulb02",
-  },
-  Stat: {
-    title: "Stat",
-    description: "Single key metric",
-    iconName: "BarChartSquareUp",
-  },
-  StatGroup: {
-    title: "Stat group",
-    description: "Row of metrics",
-    iconName: "BarChartSquare02",
-  },
-  CardGroup: {
-    title: "Card group",
-    description: "Grid of cards",
-    iconName: "LayoutGrid01",
-  },
-  Checklist: {
-    title: "Checklist",
-    description: "List of check items",
-    iconName: "CheckSquare",
-  },
-  Steps: {
-    title: "Steps",
-    description: "Step-by-step guide",
-    iconName: "LayersThree01",
-  },
-  Comparison: {
-    title: "Comparison",
-    description: "Side-by-side comparison",
-    iconName: "Columns03",
-  },
-  Table: {
-    title: "Table",
-    description: "Rows and columns of structured data",
-    iconName: "Table",
-  },
-  ProductCard: {
-    title: "Product card",
-    description: "Single product",
-    iconName: "Tag01",
-  },
-  ProductShelf: {
-    title: "Product shelf",
-    description: "Row of products",
-    iconName: "ShoppingBag01",
-  },
-};
-
-const FALLBACK_BLOG_BLOCK_ICON = "Box";
-
-function blogBlockSource(resolveType: string): BlogBlockSource {
-  return resolveType.startsWith("site/") ? "site" : "app";
-}
-
-/**
- * Schema `icon` strings can be either an @untitledui/icons component name
- * (e.g. "Pilcrow01") or an image URL declared via `@icon`. URLs start
- * with a protocol, `data:`, or an absolute path.
- */
-function isImageUrl(icon: string): boolean {
-  return (
-    icon.startsWith("http://") ||
-    icon.startsWith("https://") ||
-    icon.startsWith("data:") ||
-    icon.startsWith("/")
-  );
-}
-
-/**
- * Pick the first defined value among the candidates. Used to express
- * precedence chains compactly without `??` ladders that obscure intent.
- */
-function pick<T>(...candidates: Array<T | undefined>): T | undefined {
-  for (const c of candidates) {
-    if (c !== undefined) return c;
-  }
-  return undefined;
-}
-
-/**
- * Some site schemas leave `@title`/`@description` as the raw resolveType (e.g.
- * "site/sections/Blog/Post/BlockImage.tsx"). That is a path, not a label — drop
- * it so the friendly catalog name shows instead.
- */
-function humanLabel(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  if (value.includes("/") || /\.(tsx?|jsx?)$/.test(value)) return undefined;
-  return value;
-}
-
-/** "BlockImage" -> "Block image", "ProductShelf" -> "Product shelf". */
-function humanizeComponentName(name: string): string {
-  const spaced = name
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[-_]+/g, " ")
-    .trim();
-  if (!spaced) return name;
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
-}
-
-/**
- * Title, description and icon for one blog block, with the precedence
- * described in KNOWN_BLOG_BLOCK_CATALOG. Callers that only hold a stored
- * block's `__resolveType` (the generic block editor) use this to name what is
- * being edited; the inserter builds its whole list from it.
- */
-export function blogBlockTypeFor(
-  resolveType: string,
-  meta: LiveMeta,
-): BlogBlockType {
-  const md = resolveBlockSchemaMetadata(resolveType, meta);
-  const name = blockComponentName(resolveType);
-  const catalog = KNOWN_BLOG_BLOCK_CATALOG[name];
-  const source = blogBlockSource(resolveType);
-
-  // Site schema label wins, but only a real one — never a path-like default.
-  const mdTitle = humanLabel(md.title);
-  const mdDescription = humanLabel(md.description);
-  const title =
-    (source === "site"
-      ? pick(mdTitle, catalog?.title)
-      : pick(catalog?.title, mdTitle)) ?? humanizeComponentName(name);
-  const description =
-    source === "site"
-      ? pick(mdDescription, catalog?.description)
-      : pick(catalog?.description, mdDescription);
-
-  // Only a site block's `@icon` is trusted: built-in schemas carry no icon hint.
-  const rawIcon = source === "site" ? md.icon : undefined;
-  const iconUrl = rawIcon && isImageUrl(rawIcon) ? rawIcon : undefined;
-  const iconName =
-    iconUrl !== undefined
-      ? (catalog?.iconName ?? FALLBACK_BLOG_BLOCK_ICON)
-      : (pick(rawIcon, catalog?.iconName) ?? FALLBACK_BLOG_BLOCK_ICON);
-
-  return { resolveType, title, description, iconName, iconUrl, source };
-}
-
-/**
- * Discover the content block types a post can contain from the live
- * manifest, with title/icon metadata for the inserter UI. Recognizes both
- * the `deco-cms/blog` app blocks (`blog/sections/blocks/*`) and
- * site-defined blog blocks (`site/sections/Blog/Post/*`), matching the
- * same set that `isBlogPostBlockResolveType` accepts everywhere else.
- */
-export function discoverBlogBlockTypes(
-  meta: LiveMeta,
-  { hideDefaults = false }: BlogBlockDiscoveryOptions = {},
-): BlogBlockType[] {
-  const seen = new Set<string>();
-  const out: BlogBlockType[] = [];
-  const groups = meta.manifest?.blocks ?? {};
-  for (const group of Object.values(groups)) {
-    for (const resolveType of Object.keys(group)) {
-      if (!isBlogPostBlockResolveType(resolveType) || seen.has(resolveType)) {
-        continue;
-      }
-      if (hideDefaults && blogBlockSource(resolveType) === "app") continue;
-      seen.add(resolveType);
-      out.push(blogBlockTypeFor(resolveType, meta));
-    }
-  }
-  return out.sort((a, b) => a.title.localeCompare(b.title));
-}
-
-/** "site/sections/Blog/Post/Paragraph.tsx" -> "Paragraph" */
-export function blockComponentName(resolveType: string): string {
-  const base = resolveType.split("/").pop() ?? resolveType;
-  return base.replace(/\.(tsx?|jsx?)$/, "");
-}
-
-const BLOG_POST_BLOCK_PREFIXES = [
-  "blog/sections/blocks/",
-  "site/sections/Blog/Post/",
-] as const;
-
-/** True when resolveType points at a blog post content block editor. */
-export function isBlogPostBlockResolveType(resolveType: string): boolean {
-  return BLOG_POST_BLOCK_PREFIXES.some((prefix) =>
-    resolveType.startsWith(prefix),
-  );
-}
-
-// ------------------ Brand rules (dos / guardrails / values / competitors) ----
-
 /** Where the editorial brand context lives, as Spire named it. */
 export const BRAND_BLOCK_KEY = "blog-manager-brand";
 
@@ -1320,17 +637,6 @@ export const CONTEXT_FIELDS = [
 ] as const;
 
 /**
- * A stored block as a record, or the shared empty one.
- *
- * The identity matters: {@link EMPTY_PAYLOAD}'s note applies here too — an
- * editor seeding a draft from an absent block must get the same reference every
- * render, or `useAutosave` re-seeds forever.
- */
-export function asBlock(value: unknown): Record<string, unknown> {
-  return asRecord(value) ?? EMPTY_PAYLOAD;
-}
-
-/**
  * A draft narrowed to the fields its block owns.
  *
  * The editor seeds each draft from a whole stored block — which, on a site
@@ -1347,31 +653,6 @@ export function pickBlogFields(
     if (field in source) picked[field] = source[field];
   }
   return picked;
-}
-
-/**
- * What the brand block must hold after a save.
- *
- * It sheds the writing rules once `blog-manager-context` exists to hold them —
- * and not one save before. Every site written before the split keeps its tone,
- * dos and guardrails inside the brand block, and the context block is created
- * only when someone edits a field on the Context tab; narrowing unconditionally
- * means a single character typed into Company name deletes a brand's voice
- * seven hundred milliseconds later, with the generation it gated going with it.
- *
- * Carrying the strays costs a few duplicated fields until the context block
- * appears, which {@link splitBlogContext} already ignores. That is the same
- * bargain the rest of this file takes: a read that copes beats a migration.
- */
-export function brandBlockToSave(
-  next: Record<string, unknown>,
-  storedBrand: unknown,
-  contextBlock: unknown,
-): Record<string, unknown> {
-  const brand = pickBlogFields(next, BRAND_FIELDS);
-  if (asRecord(contextBlock)) return brand;
-  const stored = asRecord(storedBrand) ?? {};
-  return { ...pickBlogFields(stored, CONTEXT_FIELDS), ...brand };
 }
 
 export interface BlogContextBlocks {
@@ -1459,10 +740,6 @@ export function contextForTools(merged: Record<string, unknown>) {
  * room than a single-line input, and a competitor is useless without the
  * context of why it matters.
  */
-export interface BrandRule {
-  name: string;
-  value: string;
-}
 
 /**
  * One example sentence, with the side of the line it sits on. Not a
@@ -1498,77 +775,6 @@ export function normalizeVoiceExamples(value: unknown): VoiceExample[] {
 /** Examples a reader would consider written — a blank row is editor state. */
 export function filledVoiceExamples(examples: VoiceExample[]): VoiceExample[] {
   return examples.filter((example) => example.text.trim());
-}
-
-/** Whether a fill may overwrite what a person already wrote. */
-export type FillMode = "empty" | "replace";
-
-/**
- * Write an extract's answer into a draft, returning the fields it touched.
- *
- * `empty` fills blanks only. `replace` overwrites a field the model answered —
- * but a field it left empty keeps its current value, because deleting someone's
- * sentence to put nothing in its place is never what "start over" is asking
- * for. Mutates `target`, which the caller owns as a fresh copy.
- */
-export function applyExtractResult(
-  target: Record<string, unknown>,
-  result: Record<string, unknown>,
-  options: {
-    mode: FillMode;
-    textFields: readonly string[];
-    ruleFields: readonly string[];
-    /** Fields holding {@link VoiceExample}s, which normalize differently. */
-    exampleFields?: readonly string[];
-    /** Fields holding a plain `string[]`, which normalize differently again. */
-    termFields?: readonly string[];
-  },
-): string[] {
-  const touched: string[] = [];
-  for (const field of options.textFields) {
-    const proposed = str(result[field]).trim();
-    if (!proposed) continue;
-    if (options.mode === "empty" && str(target[field]).trim()) continue;
-    target[field] = proposed;
-    touched.push(field);
-  }
-  for (const field of options.ruleFields) {
-    const proposed = filledBrandRules(normalizeBrandRules(result[field]));
-    if (proposed.length === 0) continue;
-    if (
-      options.mode === "empty" &&
-      filledBrandRules(normalizeBrandRules(target[field])).length > 0
-    ) {
-      continue;
-    }
-    target[field] = proposed;
-    touched.push(field);
-  }
-  for (const field of options.termFields ?? []) {
-    const proposed = filledTerms(normalizeTerms(result[field]));
-    if (proposed.length === 0) continue;
-    if (
-      options.mode === "empty" &&
-      filledTerms(normalizeTerms(target[field])).length > 0
-    ) {
-      continue;
-    }
-    target[field] = proposed;
-    touched.push(field);
-  }
-  for (const field of options.exampleFields ?? []) {
-    const proposed = filledVoiceExamples(normalizeVoiceExamples(result[field]));
-    if (proposed.length === 0) continue;
-    if (
-      options.mode === "empty" &&
-      filledVoiceExamples(normalizeVoiceExamples(target[field])).length > 0
-    ) {
-      continue;
-    }
-    target[field] = proposed;
-    touched.push(field);
-  }
-  return touched;
 }
 
 /**
@@ -1639,135 +845,6 @@ export function filledBrandRules(rules: BrandRule[]): BrandRule[] {
   return rules.filter((rule) => rule.name.trim() || rule.value.trim());
 }
 
-// ------------------ Brand-evidence sampling (tone of voice) ------------------
-
-/** Total serialized chars sent to the model; keeps one call affordable. */
-const BRAND_EVIDENCE_MAX_CHARS = 60_000;
-/**
- * Per-block cap. Deliberately small relative to the total: breadth beats depth
- * here. Voice repeats across a site, so 15 pages read shallowly characterize it
- * better than 5 read deeply — and a high cap lets the few biggest pages (which
- * are big from having many sections, not from having more voice) crowd out the
- * institutional ones that carry the values.
- */
-const BRAND_EVIDENCE_MAX_BLOCK_CHARS = 4_000;
-
-export interface BrandEvidenceBlock {
-  key: string;
-  content: string;
-}
-
-/**
- * Pull the human-written phrases out of a block as `prop: phrase` lines.
- *
- * Sending the block's JSON does not work: a real page is mostly asset URLs,
- * resolveTypes and loader config, so serialized size measures how many sections
- * a page has, not how much voice it carries. Ranking Farm Rio's 1018 pages by
- * JSON size surfaced product-listing stubs and buried the institutional pages
- * that hold the brand's values.
- *
- * A phrase is a string containing a space — enough to separate "do rio pro
- * mundo" and "92% de funcionárias" from "site/sections/Layout/Flex.tsx" and
- * "20px" without a prop allowlist. Prop names are kept because they say what
- * kind of copy it is, and exact duplicates are dropped: a site repeats the same
- * banner text across hundreds of pages, and paying for it once is enough.
- * Near-duplicates that differ only in casing survive on purpose — that
- * inconsistency is itself a fact about the brand.
- */
-export function extractBlockProse(block: unknown): string {
-  const lines: string[] = [];
-  const seen = new Set<string>();
-
-  const walk = (node: unknown, prop: string) => {
-    if (typeof node === "string") {
-      if (!node.includes(" ") || node.length < 4) return;
-      if (/^(https?:)?\/\//.test(node) || /^data:/.test(node)) return;
-      const line = `${prop}: ${node.trim()}`;
-      if (seen.has(line)) return;
-      seen.add(line);
-      lines.push(line);
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) walk(item, prop);
-      return;
-    }
-    if (node && typeof node === "object") {
-      for (const [key, value] of Object.entries(node)) {
-        if (key === "__resolveType") continue;
-        walk(value, key);
-      }
-    }
-  };
-
-  walk(block, "block");
-  return lines.join("\n");
-}
-
-export interface BrandEvidence {
-  blocks: BrandEvidenceBlock[];
-  seo: SeoEvidenceEntry[];
-}
-
-/**
- * Everything the extract reads, most telling first: posts, then categories, then pages — home, institutional, commerce. A PDP is a template with a product name substituted in, so the thousandth teaches nothing the first did not; an institutional page is written once, by hand, about the brand. SEO travels in its own array because folded into `blocks` it could trip `BRAND_EVIDENCE_MAX_BLOCKS`, which rejects the whole call.
- */
-export function selectBrandEvidence(
-  decofile: Record<string, unknown>,
-  pages: PageEntry[],
-): BrandEvidence {
-  const prose = new Map<string, string>();
-  const proseFor = (key: string) => {
-    const cached = prose.get(key);
-    if (cached !== undefined) return cached;
-    const extracted = extractBlockProse(decofile[key]).slice(
-      0,
-      BRAND_EVIDENCE_MAX_BLOCK_CHARS,
-    );
-    prose.set(key, extracted);
-    return extracted;
-  };
-  const byProseDesc = (a: string, b: string) =>
-    proseFor(b).length - proseFor(a).length;
-
-  const seo = selectSeoEvidence(decofile, pages);
-  const seoChars = seo.reduce((sum, entry) => sum + entry.content.length, 0);
-
-  const byRole: Record<PageRole, string[]> = {
-    home: [],
-    institutional: [],
-    commerce: [],
-  };
-  for (const page of pages) byRole[pageRole(decofile, page)].push(page.key);
-
-  const ordered = [
-    ...listBlogPayloads(decofile, "posts")
-      .map((p) => p.key)
-      .sort(byProseDesc),
-    ...listBlogPayloads(decofile, "categories").map((c) => c.key),
-    ...byRole.home,
-    ...byRole.institutional.sort(byProseDesc),
-    ...byRole.commerce.sort(byProseDesc),
-  ];
-
-  const selected: BrandEvidenceBlock[] = [];
-  const seen = new Set<string>();
-  let remaining = Math.max(0, BRAND_EVIDENCE_MAX_CHARS - seoChars);
-
-  for (const key of ordered) {
-    if (selected.length >= BRAND_EVIDENCE_MAX_BLOCKS) break;
-    if (seen.has(key)) continue;
-    if (!decofile[key]) continue;
-    seen.add(key);
-    const content = proseFor(key);
-    if (content.length > remaining) break;
-    selected.push({ key, content });
-    remaining -= content.length;
-  }
-
-  return { blocks: selected, seo };
-}
-
 // ------------------ Campaigns (temporary pillars) ----------------------------
 
 /**
@@ -1791,11 +868,13 @@ export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
  * every call site in this folder keeps importing campaign things from one place.
  */
 export {
+  CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
   CAMPAIGN_TRIGGERS,
   MAX_CAMPAIGN_PRODUCT_IMAGES,
+  type CampaignGoalMetric,
   type CampaignObjective,
   type CampaignStatus,
   type CampaignTargetKind,
@@ -1836,6 +915,16 @@ export interface CampaignProduct {
   description: string;
 }
 
+/** What a campaign is for, in a figure someone can check by its period's end. */
+export interface CampaignGoal {
+  /** The goal in the brand's words; "" when the campaign has none. */
+  text: string;
+  /** What counts it; null until someone picks it. */
+  metric: CampaignGoalMetric | null;
+  /** How far, as typed: "+20%". */
+  target: string;
+}
+
 export interface CampaignEntry {
   key: string;
   name: string;
@@ -1845,6 +934,7 @@ export interface CampaignEntry {
   /** `YYYY-MM-DD`, both optional — not every campaign has dates pinned. */
   period: { start: string | null; end: string | null };
   trigger: { type: CampaignTrigger; note: string };
+  goal: CampaignGoal;
   intent: {
     objective: CampaignObjective;
     targets: CampaignTarget[];
@@ -1930,15 +1020,12 @@ export function readCampaignProducts(value: unknown): CampaignProduct[] {
  * Rebuild a campaign block. Every optional is coalesced rather than omitted, so
  * the JSON on disk has one shape whatever the editor had filled in.
  *
- * `campaignName` rather than `name`, because `name` is the block-key field
- * every planning block carries.
+ * `campaignName` rather than `name`: the file is the key, so it is not stored.
  */
 export function buildCampaignBlock(
-  key: string,
   campaign: Omit<CampaignEntry, "key">,
 ): Record<string, unknown> {
   return {
-    name: key,
     campaignName: campaign.name,
     seedKey: campaign.seedKey,
     status: campaign.status,
@@ -1947,6 +1034,11 @@ export function buildCampaignBlock(
       end: campaign.period.end ?? "",
     },
     trigger: { type: campaign.trigger.type, note: campaign.trigger.note },
+    goal: {
+      text: campaign.goal.text,
+      metric: campaign.goal.metric,
+      target: campaign.goal.target,
+    },
     intent: {
       objective: campaign.intent.objective,
       targets: campaign.intent.targets,
@@ -1981,6 +1073,7 @@ export function scanCampaigns(
     const trigger = asRecord(record.trigger) ?? {};
     const intent = asRecord(record.intent) ?? {};
     const guardrails = asRecord(record.guardrails) ?? {};
+    const goal = asRecord(record.goal) ?? {};
     campaigns.push({
       key,
       name: str(record.campaignName),
@@ -1990,6 +1083,11 @@ export function scanCampaigns(
       trigger: {
         type: oneOf(CAMPAIGN_TRIGGERS, trigger.type, "seasonal"),
         note: str(trigger.note),
+      },
+      goal: {
+        text: str(goal.text),
+        metric: CAMPAIGN_GOAL_METRICS.find((m) => m === goal.metric) ?? null,
+        target: str(goal.target),
       },
       intent: {
         objective: oneOf(CAMPAIGN_OBJECTIVES, intent.objective, "awareness"),
@@ -2011,6 +1109,9 @@ export function scanCampaigns(
   );
 }
 
+/** A campaign with no goal yet: what one reads as before anyone sets it. */
+export const NO_GOAL: CampaignGoal = { text: "", metric: null, target: "" };
+
 /** A campaign as it is born: empty, in draft, nothing pinned. */
 export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
   const stamp = now.toISOString();
@@ -2020,6 +1121,7 @@ export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
     status: "draft",
     period: { start: null, end: null },
     trigger: { type: "seasonal", note: "" },
+    goal: { ...NO_GOAL },
     intent: { objective: "awareness", targets: [], products: [], keywords: [] },
     guardrails: { avoidComplements: [], toneOverrides: "" },
     createdAt: stamp,
@@ -2054,11 +1156,9 @@ export function newCampaignSeedKey(): string {
 }
 
 export function buildCampaignSeedBlock(
-  key: string,
   seed: Omit<CampaignSeedEntry, "key">,
 ): Record<string, unknown> {
   return {
-    name: key,
     seedName: seed.name,
     keywords: seed.keywords,
     prompt: seed.prompt,
@@ -2105,182 +1205,6 @@ export function emptyCampaignSeed(now: Date): Omit<CampaignSeedEntry, "key"> {
 // ------------------ Formats (loose post templates) ---------------------------
 
 /**
- * A format is a name plus a markdown brief, injected into the generation
- * prompt — deliberately loose, so it cites sections rather than sequencing
- * them. Same `{ name, value }` shape as a brand rule, so `normalizeBrandRules`
- * already reads the list.
- */
-export const FORMATS_BLOCK_KEY = "blog-manager-formats";
-
-/** How many posts the format suggestion reads. */
-const MAX_POST_STRUCTURES = 40;
-
-export interface PostStructure {
-  key: string;
-  title: string;
-  /** Component names of the post's sections, in document order. */
-  sections: string[];
-}
-
-/**
- * The shape of each existing post: which sections it uses, in order.
- *
- * This — not the prose — is what reveals the formats a blog already writes in.
- * Forty sequences of component names is a tiny input next to forty post bodies,
- * and it is the only part that answers "how is this post built".
- */
-export function postStructures(
-  decofile: Record<string, unknown>,
-): PostStructure[] {
-  return listBlogPayloads(decofile, "posts")
-    .slice(0, MAX_POST_STRUCTURES)
-    .map(({ key, payload }) => ({
-      key,
-      title: str(payload.title),
-      sections: toArray(payload.sections)
-        .map((section) => str(asRecord(section)?.__resolveType))
-        .filter(Boolean)
-        .map(blockComponentName),
-    }));
-}
-
-export interface MentionableSection {
-  /** The label a citation shows: `ProductShelf`. */
-  name: string;
-  /** What the citation actually points at — the block it resolves to. */
-  resolveType: string;
-  title: string;
-  description?: string;
-}
-
-/**
- * The sections a format's brief may cite.
- *
- * Every discovered block, not one per component name: a site that overrides an
- * app block has two `Heading`s, and they are different blocks. Collapsing them
- * was only tenable while a citation was the bare name, which could not tell
- * them apart; now that it carries the `resolveType` they are distinguishable,
- * and hiding one meant a brief could never cite it.
- */
-export function mentionableSections(
-  meta: LiveMeta,
-  options?: BlogBlockDiscoveryOptions,
-): MentionableSection[] {
-  return discoverBlogBlockTypes(meta, options).map((block) => ({
-    name: blockComponentName(block.resolveType),
-    resolveType: block.resolveType,
-    title: block.title,
-    description: block.description,
-  }));
-}
-
-/**
- * The blocks a brief cites, as resolveTypes.
- *
- * A citation is the markdown link `[@Heading](<resolveType>)` — the same shape
- * `@decocms/shared/mentions` uses for people, and for the same reason: a
- * component name repeats across an app block and a site's override of it, so
- * which block renders must not depend on the name.
- *
- * A bare `@Name` still reads, because briefs written before this and briefs a
- * model writes both use it. It resolves through `byName` when the site has that
- * component, and is returned as-is when it does not, so an unknown citation
- * stays visible as one.
- */
-export function citedSections(
-  markdown: string,
-  byName: Record<string, string> = {},
-): string[] {
-  const cited = new Set<string>();
-  const linked = /\[@[^\]]+\]\(([^)\s]+)\)/g;
-  for (const match of markdown.matchAll(linked)) {
-    if (match[1]) cited.add(match[1]);
-  }
-  const bare = /(?:^|[\s([{>])@([A-Za-z][\w-]*)/g;
-  for (const match of markdown.replace(linked, " ").matchAll(bare)) {
-    const name = match[1];
-    if (name) cited.add(byName[name] ?? name);
-  }
-  return [...cited];
-}
-
-/**
- * Cited blocks the site no longer has. Without surfacing these, a format keeps
- * pointing at a renamed section and only the generated post shows it.
- */
-export function unknownCitations(
-  markdown: string,
-  available: string[],
-  byName: Record<string, string> = {},
-): string[] {
-  const known = new Set(available);
-  return citedSections(markdown, byName).filter((ref) => !known.has(ref));
-}
-
-/**
- * Rewrite bare `@Name` citations into the linked form.
- *
- * Run over whatever a model proposes and over the starter format, so one shape
- * is persisted no matter who wrote the brief. A name this site has no block for
- * is left alone — turning it into a link would invent a target, and leaving it
- * bare is what keeps `unknownCitations` able to report it.
- */
-export function linkifyCitations(
-  markdown: string,
-  byName: Record<string, string>,
-): string {
-  const linked = /\[@[^\]]+\]\([^)\s]+\)/g;
-  const parts: string[] = [];
-  let last = 0;
-  for (const match of markdown.matchAll(linked)) {
-    const at = match.index ?? 0;
-    parts.push(linkifyBare(markdown.slice(last, at), byName), match[0]);
-    last = at + match[0].length;
-  }
-  parts.push(linkifyBare(markdown.slice(last), byName));
-  return parts.join("");
-}
-
-function linkifyBare(text: string, byName: Record<string, string>): string {
-  return text.replace(
-    /(^|[\s([{>])@([A-Za-z][\w-]*)/g,
-    (whole, before: string, name: string) => {
-      const resolveType = byName[name];
-      return resolveType ? `${before}[@${name}](${resolveType})` : whole;
-    },
-  );
-}
-
-/**
- * Sections for the starter format, in a sensible reading order, skipping
- * whatever this site doesn't have — so the brief never cites something
- * unrenderable. Its prose comes from the caller, to stay translated.
- */
-const DEFAULT_FORMAT_SECTIONS = [
-  "Heading",
-  "Paragraph",
-  "BlockImage",
-  "List",
-  "Cta",
-] as const;
-
-export function defaultFormatSections(
-  byName: Record<string, string>,
-): string[] {
-  return DEFAULT_FORMAT_SECTIONS.filter((name) => name in byName);
-}
-
-/** Casing, accents and spacing are presentation, not identity. */
-export function normalizeTitleKey(title: string): string {
-  return title
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
  * Whether another record of `kind` already carries `name`, comparing on
  * {@link normalizeTitleKey} so casing, accents and spacing don't hide a clash.
  * An empty name is never a duplicate — that is the "missing field" guard's job.
@@ -2301,49 +1225,6 @@ export function hasDuplicateName(
       record.key !== blockKey && normalizeTitleKey(record.name) === key,
   );
 }
-
-/**
- * Every record of `kind` paired with its RAW name — no "Untitled" fallback,
- * which would make two nameless records look like a collision.
- *
- * Posts come in two physical forms and both count: a planning draft carries no
- * `__resolveType`, so `listBlogPayloads` alone misses the whole board.
- */
-function namedRecords(
-  decofile: Record<string, unknown>,
-  kind: BlogKind,
-): Array<{ key: string; name: string }> {
-  if (kind !== "posts") {
-    return listBlogPayloads(decofile, kind).map(({ key, payload }) => ({
-      key,
-      name: str(payload.name),
-    }));
-  }
-  return listAllPostPayloads(decofile).map(({ key, payload }) => ({
-    key,
-    name: str(payload.title),
-  }));
-}
-
-/** Block keys of posts whose non-empty title collides with another post's. */
-export function duplicateTitleKeys(
-  decofile: Record<string, unknown>,
-): Set<string> {
-  const byKey = new Map<string, string[]>();
-  for (const { key, name } of namedRecords(decofile, "posts")) {
-    const normalized = normalizeTitleKey(name);
-    if (!normalized) continue;
-    const keys = byKey.get(normalized);
-    keys ? keys.push(key) : byKey.set(normalized, [key]);
-  }
-  const duplicates = new Set<string>();
-  for (const keys of byKey.values()) {
-    if (keys.length > 1) for (const key of keys) duplicates.add(key);
-  }
-  return duplicates;
-}
-
-// ------------------ Generation ----------------------------------------------
 
 /** Brand fields a generated post cannot be written without. */
 export type BrandRequirement =
@@ -2387,579 +1268,96 @@ export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
   return missing;
 }
 
-/**
- * The `required` names this schema still declares a property for.
- *
- * deco wraps a block's config as `{ properties: {__resolveType}, required:
- * ["__resolveType"], allOf: [{$ref: Props}] }`, and `resolveSchema` drops every
- * `__`-prefixed key from `properties` while keeping `required` whole. What
- * comes out demands a property it does not declare — and `__resolveType` is the
- * one thing the writer is never shown, so every section it wrote failed
- * validation on a field it could not have known to write.
- */
-function requiredOf(
-  source: Record<string, unknown>,
-  properties: unknown,
-): string[] | undefined {
-  const names = source.required;
-  if (!Array.isArray(names)) return undefined;
-  const declared = new Set(
-    properties && typeof properties === "object"
-      ? Object.keys(properties as Record<string, unknown>)
-      : [],
-  );
-  const kept = names.filter(
-    (name): name is string => typeof name === "string" && declared.has(name),
-  );
-  return kept.length > 0 ? kept : undefined;
-}
-
-/** How deep a `$ref` chain is followed before a branch is left unresolved. */
-const MAX_SCHEMA_DEPTH = 6;
-
-/** How much of one block's schema travels. A `Product` ref expands forever. */
-const MAX_BLOCK_SCHEMA_CHARS = 6_000;
-
-function definitionsOf(meta: LiveMeta): Record<string, unknown> {
-  const schema = (meta.schema ?? {}) as Record<string, unknown>;
-  const defs = schema.$defs ?? schema.definitions;
-  return defs && typeof defs === "object"
-    ? (defs as Record<string, unknown>)
-    : {};
-}
-
-function manifestEntry(resolveType: string, meta: LiveMeta): unknown {
-  for (const group of Object.values(meta.manifest?.blocks ?? {})) {
-    const entry = (group as Record<string, unknown>)[resolveType];
-    if (entry) return entry;
+/** Every record of `kind` with its RAW name — an "Untitled" fallback would read as a collision. */
+function namedRecords(
+  decofile: Record<string, unknown>,
+  kind: BlogKind,
+): Array<{ key: string; name: string }> {
+  if (kind !== "posts") {
+    return listBlogPayloads(decofile, kind).map(({ key, payload }) => ({
+      key,
+      name: str(payload.name),
+    }));
   }
-  return undefined;
+  // Both post forms count: a planning draft carries no `__resolveType`.
+  return listAllPostPayloads(decofile).map(({ key, payload }) => ({
+    key,
+    name: str(payload.title),
+  }));
 }
 
-/** Follow `$ref` through the live meta's own definitions, bounded. */
-function deref(
-  node: unknown,
-  defs: Record<string, unknown>,
-  depth: number,
-): unknown {
-  if (Array.isArray(node)) {
-    return node.map((entry) => deref(entry, defs, depth));
+/** Block keys of posts whose non-empty title collides with another post's. */
+export function duplicateTitleKeys(
+  decofile: Record<string, unknown>,
+): Set<string> {
+  const byKey = new Map<string, string[]>();
+  for (const { key, name } of namedRecords(decofile, "posts")) {
+    const normalized = normalizeTitleKey(name);
+    if (!normalized) continue;
+    const keys = byKey.get(normalized);
+    keys ? keys.push(key) : byKey.set(normalized, [key]);
   }
-  if (!node || typeof node !== "object") return node;
-  const record = node as Record<string, unknown>;
-
-  if (typeof record.$ref === "string") {
-    if (depth >= MAX_SCHEMA_DEPTH) return {};
-    const key = record.$ref.split("/").pop() ?? "";
-    const target = defs[key];
-    if (target === undefined) return {};
-    return deref(target, defs, depth + 1);
+  const duplicates = new Set<string>();
+  for (const keys of byKey.values()) {
+    if (keys.length > 1) for (const key of keys) duplicates.add(key);
   }
-
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    out[key] = deref(value, defs, depth);
-  }
-  return out;
+  return duplicates;
 }
 
-/**
- * A block's own JSON Schema, read from the live meta rather than rebuilt.
- *
- * `resolveSchema` is the editor's view: it exists to render a form, so it
- * flattens what a form cannot show. A `string | string[]` prop comes out of it
- * typed `object` — and a writer handed that writes an object, which is how a
- * list the site stores as one newline-joined string came back as a map.
- *
- * The meta carries the real thing. deco wraps a block as
- * `{ allOf: [{$ref: Props}], properties: {__resolveType}, required: [...] }`,
- * so the props schema is one hop in: its `anyOf`, its `format`, its `options`
- * loader and its descriptions all survive, which is everything the writer
- * needs and none of what the form needed.
- */
-export function rawBlockSchema(
-  resolveType: string,
-  meta: LiveMeta,
-): Record<string, unknown> {
-  const defs = definitionsOf(meta);
-  const wrapper = deref(manifestEntry(resolveType, meta), defs, 0);
-  if (!wrapper || typeof wrapper !== "object") return {};
-
-  const record = wrapper as Record<string, unknown>;
-  const allOf = record.allOf;
-  const props = Array.isArray(allOf) && allOf.length === 1 ? allOf[0] : record;
-  if (!props || typeof props !== "object") return {};
-
-  const { $schema: _schema, ...rest } = props as Record<string, unknown>;
-  const trimmed = withoutPlumbing(rest);
-  return JSON.stringify(trimmed).length > MAX_BLOCK_SCHEMA_CHARS
-    ? withoutPlumbing(rest, true)
-    : trimmed;
-}
-
-/** `__resolveType` is the caller's to stamp, so it never reaches the writer. */
-function withoutPlumbing(
-  schema: Record<string, unknown>,
-  shallow = false,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...schema };
-  const properties = out.properties;
-  if (properties && typeof properties === "object") {
-    const kept = Object.fromEntries(
-      Object.entries(properties as Record<string, unknown>)
-        .filter(([name]) => !name.startsWith("__"))
-        .map(([name, value]) => [name, shallow ? shallowProp(value) : value]),
-    );
-    out.properties = kept;
-    out.required = requiredOf(out, kept);
-    if (!out.required) delete out.required;
-  }
-  return out;
-}
-
-/** A prop stripped to what it is, for a schema too big to send whole. */
-function shallowProp(value: unknown): unknown {
-  if (!value || typeof value !== "object") return value;
-  const prop = value as Record<string, unknown>;
-  const kept: Record<string, unknown> = {};
-  for (const key of ["type", "description", "format", "options", "enum"]) {
-    if (key in prop) kept[key] = prop[key];
-  }
-  if (Array.isArray(prop.anyOf)) kept.anyOf = prop.anyOf.map(shallowProp);
-  return kept;
-}
-
-/** The JSON type of a stored value, as a schema would name it. */
-function jsonType(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  if (Array.isArray(value)) return "array";
-  const t = typeof value;
-  return t === "number" || t === "boolean" || t === "string" || t === "object"
-    ? t
-    : null;
-}
-
-/**
- * The schema, with the assertions a real block disproves taken out.
- *
- * Both halves are evidence and they do not always agree: a `List` whose `$ref`
- * did not resolve is typed `object` by `resolveSchema`'s last-resort branch,
- * while every one the site renders stores a newline-joined string. Telling the
- * writer to follow the example and then validating against the schema is a
- * contradiction that costs the section either way.
- *
- * So a stored block wins on its own properties: where the two disagree, the
- * schema's `type` and `enum` for that property come out and the rest stays. It
- * is narrow on purpose — the example disproves what it covers, nothing more.
- */
-export function reconciledSchema(
-  schema: Record<string, unknown>,
-  example: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  const properties = schema.properties;
-  if (!example || !properties || typeof properties !== "object") return schema;
-
-  const source = properties as Record<string, unknown>;
-  let changed = false;
-  const reconciled: Record<string, unknown> = {};
-  for (const [name, raw] of Object.entries(source)) {
-    const prop = raw && typeof raw === "object" ? { ...raw } : raw;
-    const declared = (prop as Record<string, unknown> | null)?.type;
-    const stored = jsonType(example[name]);
-    if (
-      prop &&
-      typeof prop === "object" &&
-      stored &&
-      typeof declared === "string" &&
-      declared !== stored
-    ) {
-      delete (prop as Record<string, unknown>).type;
-      delete (prop as Record<string, unknown>).enum;
-      changed = true;
-    }
-    reconciled[name] = prop;
-  }
-  return changed ? { ...schema, properties: reconciled } : schema;
-}
-
-/**
- * One correctly-filled example per block the CMS draws its own editor for.
- *
- * Where Studio ships a bespoke editor (`block-registry.tsx`), Studio knows the
- * shape — that editor is the contract, and several of these shapes are ones no
- * schema states plainly: a `List` keeps its items as one newline-joined string,
- * and `Table`, `Checklist`, `Steps`, `StatGroup`, `CardGroup` and `Comparison`
- * all keep theirs as JSON encoded inside a string. A writer handed only a
- * schema gets those wrong every time.
- *
- * Taken from blocks real sites already render, not invented. The floor only:
- * {@link blockExample} overrides any of these with one from the site's own
- * published post, because two sites legitimately store the same block
- * differently and the one that renders there wins.
- *
- * A product slot is deliberately absent — {@link writeProductListIds} fills it
- * in whatever shape the site already uses, so there is nothing here to copy.
- */
-export const KNOWN_BLOG_BLOCK_EXAMPLES: Record<
-  string,
-  Record<string, unknown>
-> = {
-  Paragraph: {
-    html: "<p>A dúvida entre 9000 ou 12000 BTUs é a mais comum na hora de escolher.</p>",
-  },
-  Heading: { text: "Antes de escolher: o resumo", level: "h2" },
-  Quote: {
-    quote: "Levei só a mala de bordo e não senti falta de nada.",
-    attribution: "Ana, leitora",
-  },
-  List: {
-    items:
-      "<strong>Tecnologia Inverter:</strong> temperatura mais estável;\n<strong>Gaveta HortiNatura:</strong> frescor por duas vezes mais tempo;",
-    style: "unordered",
-  },
-  BlockImage: {
-    url: "https://cdn.exemplo.com/2026/10/mochila.webp",
-    alt: "Mochila escolar azul apoiada em uma cadeira de sala de aula",
-    size: "full",
-  },
-  Video: {
-    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    caption: "Como medir a capacidade da mala",
-  },
-  Divider: {},
-  Cta: { text: "Ver toda a linha Escolar", href: "/escolar" },
-  Callout: {
-    title: "VOCÊ SABIA?",
-    body: "Pediatras recomendam que a mochila carregada não passe de 10% do peso da criança.",
-    variant: "tip",
-  },
-  Code: { code: "const total = itens.length;", language: "ts" },
-  Stat: {
-    value: "30%",
-    label: "menos desperdício",
-    description: "Comparado ao modelo anterior da mesma linha.",
-  },
-  StatGroup: {
-    stats:
-      '[{"value":"30%","label":"menos desperdício"},{"value":"2x","label":"mais frescor"}]',
-  },
-  CardGroup: {
-    cards:
-      '[{"title":"Pré-escola","body":"Pouco material, mochila pequena."},{"title":"Fundamental","body":"Cadernos e livros pesam; considere rodinhas."}]',
-  },
-  Checklist: {
-    title: "Antes de comprar, confira",
-    items:
-      '["Capacidade em litros","Alças acolchoadas","Compartimento para notebook"]',
-  },
-  Steps: {
-    title: "Como medir",
-    steps:
-      '[{"title":"Meça a altura","description":"Da base ao topo, sem as alças."},{"title":"Some a profundidade"}]',
-  },
-  Comparison: {
-    left: '{"title":"Com rodinhas","items":["Poupa a coluna","Mais pesada vazia"]}',
-    right:
-      '{"title":"De costas","items":["Mais leve","Exige ajuste das alças"]}',
-  },
-  Table: {
-    headers: '["Modelo","Capacidade","Preço"]',
-    rows: '[["Bordo","38L","R$ 399"],["Média","68L","R$ 599"]]',
-  },
+/** Re-exported so this module's thirty-odd callers keep one import. */
+export {
+  type AuthorRef,
+  blockComponentName,
+  blockExample,
+  blocksForFormat,
+  BLOG_KINDS,
+  BLOG_SINGULAR,
+  type BlogBlockDiscoveryOptions,
+  type BlogBlockSource,
+  type BlogBlockType,
+  blogBlockTypeFor,
+  type BlogEntry,
+  type BlogKind,
+  type BrandRule,
+  buildBlogBlock,
+  buildGeneratedPostPayload,
+  buildPostSections,
+  type CategoryRef,
+  citedSections,
+  DEFAULT_SCHEDULE_HOUR,
+  defaultScheduledDatetime,
+  discoverBlogBlockTypes,
+  FORMATS_BLOCK_KEY,
+  type GenerationBlock,
+  getBlogPayload,
+  isBlogKind,
+  isBlogPostBlockResolveType,
+  KNOWN_BLOG_BLOCK_EXAMPLES,
+  listAuthorRefs,
+  listBlogPayloads,
+  livePostKey,
+  maskSlugInput,
+  missingCategoryFields,
+  type MissingFieldKey,
+  missingPostFields,
+  newPostId,
+  PLANNING_POST_KEY_PREFIX,
+  type PlanningMeta,
+  planningPostKey,
+  POST_STATUSES,
+  postIdOfKey,
+  type PostStatus,
+  postStatus,
+  productSlotOf,
+  rawBlockSchema,
+  reconciledSchema,
+  RESOLVE_TYPE_FOR_KIND,
+  scanBlogEntries,
+  sectionResolveTypes,
+  setPostStatus,
+  slugifyTitle,
+  uniqueCategorySlug,
+  uniquePostSlug,
+  uniqueSlug,
+  WRAPPER_KEY,
 };
-
-/** One block the writer may build a section from, with its own typing. */
-export interface GenerationBlock {
-  name: string;
-  title: string;
-  description: string;
-  schema: Record<string, unknown>;
-  /** How this site already stores the block, when it has one to show. */
-  example?: Record<string, unknown>;
-}
-
-/** How long an example may be before it costs more prompt than it teaches. */
-const MAX_EXAMPLE_CHARS = 600;
-
-/**
- * One of this block as the site already stores it.
- *
- * The derived schema is not always the truth. A prop whose `$ref` did not
- * resolve comes out of `resolveSchema` typed `object` with no properties —
- * a guess, and one a writer acts on: a `List` that stores its items as one
- * newline-joined string was handed a schema saying "object" and dutifully
- * wrote a map. An existing post is what actually renders, so it settles the
- * shape where the schema only describes it.
- *
- * Live posts first: a planning post may itself have been generated wrong, and
- * copying our own mistake back in would make it permanent.
- */
-export function blockExample(
-  resolveType: string,
-  decofile: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  for (const { payload } of listBlogPayloads(decofile, "posts")) {
-    for (const raw of toArray(payload.sections)) {
-      const section = asRecord(raw);
-      if (!section || section.__resolveType !== resolveType) continue;
-      const { __resolveType: _type, ...props } = section;
-      if (Object.keys(props).length === 0) continue;
-      if (JSON.stringify(props).length > MAX_EXAMPLE_CHARS) continue;
-      return props;
-    }
-  }
-  return undefined;
-}
-
-/**
- * The blocks a format admits, each carrying the schema its props must match.
- *
- * The format's brief already cites what this brand reaches for — that citation
- * is what picks the set, so a format is a contract rather than a suggestion.
- * A brief that cites nothing falls back to every block the site exposes: a
- * loosely written format must not leave a post with nothing to be made of.
- *
- * Several blocks can share a component name (a site's override of an app
- * block). The writer only ever sees the name, so the first wins here the same
- * way it does in {@link sectionResolveTypes} — the two must agree, or a section
- * would be written against one schema and saved as another.
- */
-export function blocksForFormat(
-  format: { value: string },
-  meta: LiveMeta,
-  decofile: Record<string, unknown>,
-  options?: BlogBlockDiscoveryOptions,
-): GenerationBlock[] {
-  const available = mentionableSections(meta, options);
-  const byName = sectionResolveTypes(meta, options);
-  const cited = new Set(citedSections(format.value, byName));
-  const wanted = available.filter((section) => cited.has(section.resolveType));
-  const chosen = wanted.length > 0 ? wanted : available;
-
-  const seen = new Set<string>();
-  const blocks: GenerationBlock[] = [];
-  for (const section of chosen) {
-    if (seen.has(section.name)) continue;
-    if (byName[section.name] !== section.resolveType) continue;
-    seen.add(section.name);
-    const example =
-      blockExample(section.resolveType, decofile) ??
-      KNOWN_BLOG_BLOCK_EXAMPLES[section.name];
-    blocks.push({
-      name: section.name,
-      title: section.title,
-      description: section.description ?? "",
-      schema: reconciledSchema(
-        rawBlockSchema(section.resolveType, meta),
-        example,
-      ),
-      example,
-    });
-  }
-  return blocks;
-}
-
-/**
- * Component name → the resolveType this site actually exposes for it.
- *
- * A generated section names its kind (`Heading`); only the site knows whether
- * that is `blog/sections/blocks/Heading.tsx` or its own
- * `site/sections/Blog/Post/Heading.tsx`. Keeping the mapping here means the
- * model never sees a resolveType and so can never invent one.
- */
-export function sectionResolveTypes(
-  meta: LiveMeta,
-  options?: BlogBlockDiscoveryOptions,
-): Record<string, string> {
-  const byName: Record<string, string> = {};
-  for (const block of discoverBlogBlockTypes(meta, options)) {
-    const name = blockComponentName(block.resolveType);
-    if (!(name in byName)) byName[name] = block.resolveType;
-  }
-  return byName;
-}
-
-type DraftSection =
-  StudioToolIO["BLOG_POST_DRAFT"]["output"]["posts"][number]["sections"][number];
-
-/**
- * Turn generated sections into decofile blocks.
- *
- * The props arrive already checked against the block's own JSON Schema, which
- * is what lets this be a spread. It used to be a switch with one case per kind,
- * encoding each block's storage convention by hand — a `List` keeps its items
- * as one newline-joined string — and that was only ever right for the blocks
- * the blog app ships. A site with its own section got the app's assumptions,
- * and a block that saves fine and renders empty is the worst way to be wrong.
- *
- * A kind this site doesn't expose is dropped: better a shorter post than a
- * block the editor can't render.
- */
-export function buildPostSections(
-  sections: DraftSection[],
-  resolveTypes: Record<string, string>,
-  /** How each block already stores its product slot, by component name. */
-  productShapes: Record<string, unknown> = {},
-): Array<Record<string, unknown>> {
-  const blocks: Array<Record<string, unknown>> = [];
-  for (const section of sections) {
-    const __resolveType = resolveTypes[section.type];
-    if (!__resolveType) continue;
-    const props = withProducts(
-      section.props,
-      section.productIds ?? [],
-      productShapes[section.type],
-    );
-    blocks.push({ __resolveType, ...props });
-  }
-  return blocks;
-}
-
-/** The prop a product block points at, by the name its editor already assumes. */
-const PRODUCT_SLOTS = ["product", "products"] as const;
-
-/** Which of a block's props is its product slot, if any. */
-export function productSlotOf(shape: unknown): string | null {
-  const record = asRecord(shape);
-  if (!record) return null;
-  return PRODUCT_SLOTS.find((slot) => slot in record) ?? null;
-}
-
-/**
- * The chosen products, written into the block the way this site stores them.
- *
- * Not left to the writer: every shape but one carries a `__resolveType`, and a
- * writer that never sees one cannot compose one. `writeProductListIds` already
- * preserves whichever of the four forms the site uses, so the shape comes from
- * a block the site already renders and only the ids come from the campaign.
- *
- * With no such block to copy the shape from, the slot is left alone. Guessing
- * a loader ref for a site that stores plain ids hands it something its own
- * section cannot read.
- */
-function withProducts(
-  props: Record<string, unknown>,
-  ids: string[],
-  shape: unknown,
-): Record<string, unknown> {
-  const filled = ids.filter(Boolean);
-  const slot = productSlotOf(shape);
-  if (filled.length === 0 || !slot) return props;
-  const stored = (shape as Record<string, unknown>)[slot];
-  return { ...props, [slot]: writeProductListIds(stored, filled) };
-}
-
-/** Longest slug a post may carry, suffix included. */
-const SLUG_MAX_LENGTH = 80;
-
-/** URL-safe slug from a title: accents folded, punctuation dropped. */
-export function slugifyTitle(title: string): string {
-  return title
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, SLUG_MAX_LENGTH);
-}
-
-/** Slugify as the author types: keeps the trailing "-" `slugifyTitle` trims, or typing "meu-post" would eat the separator. */
-export function maskSlugInput(raw: string): string {
-  return raw
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+/, "")
-    .slice(0, SLUG_MAX_LENGTH);
-}
-
-/** `base-suffix`, shortening the base so the whole slug still fits the cap. */
-function suffixSlug(base: string, suffix: string): string {
-  const room = SLUG_MAX_LENGTH - suffix.length - 1;
-  return `${base.slice(0, room).replace(/-+$/, "")}-${suffix}`;
-}
-
-/**
- * `slugifyTitle(source)`, suffixed until it stops colliding with `taken`.
- * `fallbackPrefix` names the random slug minted when `source` slugifies to
- * nothing at all (`"!!!"`), so each collection gets its own readable shape.
- */
-export function uniqueSlug(
-  source: string,
-  taken: string[],
-  fallbackPrefix: string,
-): string {
-  const base = slugifyTitle(source) || `${fallbackPrefix}-${randomHex(6)}`;
-  const used = new Set(taken);
-  if (!used.has(base)) return base;
-  for (let n = 2; n < 100; n++) {
-    const candidate = suffixSlug(base, String(n));
-    if (!used.has(candidate)) return candidate;
-  }
-  return suffixSlug(base, randomHex(4));
-}
-
-/** {@link uniqueSlug} for a post title. */
-export function uniquePostSlug(title: string, taken: string[]): string {
-  return uniqueSlug(title, taken, "post");
-}
-
-/** {@link uniqueSlug} for a category name. */
-export function uniqueCategorySlug(source: string, taken: string[]): string {
-  return uniqueSlug(source, taken, "category");
-}
-
-/** A freshly generated post: lands in Awaiting review, cover and all. */
-export function buildGeneratedPostPayload({
-  draft,
-  resolveTypes,
-  productShapes,
-  categories,
-  authors,
-  planning,
-  takenSlugs,
-  now,
-}: {
-  /**
-   * The drafted post. `cover.url` is filled by whoever drew it — the drafting
-   * tool when it was given a bucket, BLOG_POST_ILLUSTRATE otherwise — so the
-   * brief that produced it is not this function's business.
-   */
-  draft: Omit<
-    StudioToolIO["BLOG_POST_DRAFT"]["output"]["posts"][number],
-    "cover"
-  > & { cover: { url: string; alt: string } };
-  resolveTypes: Record<string, string>;
-  /** How each block already stores its product slot, by component name. */
-  productShapes?: Record<string, unknown>;
-  /** The site's categories, to resolve the chosen slugs into stored refs. */
-  categories: CategoryRef[];
-  /** The site's authors, to resolve the chosen emails into stored refs. */
-  authors: AuthorRef[];
-  /** The briefing the card was generated from, kept for the board card. */
-  planning?: PlanningMeta;
-  takenSlugs: string[];
-  now: Date;
-}): Record<string, unknown> {
-  const chosenCategories = new Set(draft.categorySlugs);
-  const chosenAuthors = new Set(draft.authorEmails);
-  const payload: Record<string, unknown> = {
-    title: draft.title,
-    slug: uniquePostSlug(draft.title, takenSlugs),
-    date: now.toISOString().slice(0, 10),
-    excerpt: draft.excerpt,
-    image: draft.cover.url,
-    alt: draft.cover.alt,
-    authors: authors.filter((author) => chosenAuthors.has(author.email)),
-    categories: categories.filter((c) => chosenCategories.has(c.slug)),
-    seo: {
-      title: draft.seo.title,
-      description: draft.seo.description,
-      image: draft.cover.url,
-    },
-    sections: buildPostSections(draft.sections, resolveTypes, productShapes),
-    planning: (planning ?? {}) as Record<string, unknown>,
-  };
-  return setPostStatus(payload, "awaiting_review", now);
-}

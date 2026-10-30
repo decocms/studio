@@ -103,14 +103,12 @@ export function GenerateCampaignsDialog({
   open,
   onOpenChange,
   decofile,
-  virtualMcpId,
   hasAi,
   onCreate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   decofile: Record<string, unknown>;
-  virtualMcpId: string;
   hasAi: boolean;
   /** Persists the seed and the chosen candidates; the panel owns the writes. */
   onCreate: (
@@ -182,7 +180,6 @@ export function GenerateCampaignsDialog({
        * the behaviour for a brand with no connections at all.
        */
       const grounding = await call("BLOG_SITE_GROUND", {
-        virtualMcpId,
         purpose: "campaign",
         focus: prompt,
         language: brand.language,
@@ -212,7 +209,6 @@ export function GenerateCampaignsDialog({
         brand,
         existingNames,
         count,
-        virtualMcpId,
         grounding: grounding
           ? { report: grounding.report, outcome: grounding.outcome }
           : undefined,

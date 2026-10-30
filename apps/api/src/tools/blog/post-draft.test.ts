@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { describeGaps, renderCampaign, resolveProductIds } from "./post-draft";
+import {
+  agentWritingBrief,
+  describeGaps,
+  renderCampaign,
+  resolveProductIds,
+} from "./post-draft";
 
 const RUN = {
   grounded: true,
@@ -116,6 +121,42 @@ describe("renderCampaign", () => {
     expect(rendered).toContain("on top of the brand's");
     expect(rendered).toContain("Nunca cite preço.");
   });
+
+  test("states the campaign's goal, with what counts it and how far", () => {
+    const rendered = renderCampaign({
+      ...campaign,
+      goal: {
+        text: "Crescer o tráfego orgânico em acessórios",
+        metric: "organic_sessions",
+        target: "+20%",
+      },
+    });
+    expect(rendered).toContain(
+      "Goal: Crescer o tráfego orgânico em acessórios (+20% organic sessions).",
+    );
+  });
+
+  test("a goal with no measure is still stated", () => {
+    const rendered = renderCampaign({
+      ...campaign,
+      goal: {
+        text: "Ser lembrada na volta às aulas",
+        metric: null,
+        target: "",
+      },
+    });
+    expect(rendered).toContain("Goal: Ser lembrada na volta às aulas.");
+  });
+
+  test("an empty goal, or none, says nothing about a goal", () => {
+    expect(renderCampaign(campaign)).not.toContain("Goal:");
+    expect(
+      renderCampaign({
+        ...campaign,
+        goal: { text: "  ", metric: "sessions", target: "+5%" },
+      }),
+    ).not.toContain("Goal:");
+  });
 });
 
 /**
@@ -173,5 +214,66 @@ describe("resolveProductIds", () => {
       "2001",
       "1948858",
     ]);
+  });
+});
+
+describe("agentWritingBrief", () => {
+  const input = {
+    brand: {
+      companyName: "Aurora",
+      description: "Malas de viagem.",
+      language: "pt-BR",
+      tone: "Direto, sem exagero.",
+      targetAudience: "Quem viaja de avião.",
+      dos: [{ name: "Fale com o leitor como você", value: "" }],
+      avoid: [{ name: "Promessas exageradas", value: "" }],
+    },
+    campaign: {
+      name: "Férias de verão",
+      period: { start: null, end: null },
+      trigger: { type: "seasonal" as const, note: "Dezembro a fevereiro." },
+      intent: {
+        objective: "conversion" as const,
+        targets: [],
+        products: [],
+        keywords: ["mala de bordo"],
+      },
+      guardrails: { avoidComplements: [], toneOverrides: "" },
+    },
+    format: { name: "Guia de escolha", value: "Abre com a dúvida do leitor." },
+    blocks: [
+      {
+        name: "Paragraph",
+        title: "Parágrafo",
+        description: "",
+        schema: { type: "object", properties: { html: { type: "string" } } },
+      },
+    ],
+    categories: [],
+    authors: [],
+  };
+
+  test("carries the drafting rules, the post's reading and the answer's shape", () => {
+    const brief = agentWritingBrief(
+      input,
+      "VTEX: 1.240 buscas por 'mala de bordo'.",
+    );
+    expect(brief).toContain("NEVER INVENT A VERIFIABLE FACT");
+    expect(brief).toContain("## The campaign: Férias de verão");
+    expect(brief).toContain("### Paragraph");
+    expect(brief).toContain("1.240 buscas");
+    expect(brief).toContain("`props` is an object here, not a string.");
+  });
+
+  test("leaves the store section out when nothing was gathered", () => {
+    expect(agentWritingBrief(input, "  ")).not.toContain(
+      "What this brand's own systems report",
+    );
+  });
+
+  test("refuses a brand a post would read generic from", () => {
+    expect(() =>
+      agentWritingBrief({ ...input, brand: { ...input.brand, tone: "" } }, ""),
+    ).toThrow("fill tone");
   });
 });

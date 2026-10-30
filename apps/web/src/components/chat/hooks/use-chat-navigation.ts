@@ -46,7 +46,11 @@ export function useChatNavigation(): ChatNavigation {
   const virtualMcpId = useRouteVirtualMcpId();
   const routeAgentId = useRouteAgentId();
   const activeTabId = useActivePanelTabId();
-  const search = useSearch({ strict: false }) as { sidepanel?: boolean };
+  const search = useSearch({ strict: false }) as {
+    sidepanel?: boolean;
+    track?: string;
+    card?: string;
+  };
 
   const navigateToTask = (
     taskId: string,
@@ -95,12 +99,16 @@ export function useChatNavigation(): ChatNavigation {
       superAgentId,
       tabId,
     });
+    /** Staying on the same view keeps Execute's track and its open card. */
+    const sameView = tabId === carried;
     navigateToTabRouteTarget(navigate, target, {
       search: () => ({
         thread: taskId,
         ...(typeof search.sidepanel === "boolean"
           ? { sidepanel: search.sidepanel }
           : {}),
+        ...(sameView && search.track ? { track: search.track } : {}),
+        ...(sameView && search.card ? { card: search.card } : {}),
         ...(opts?.autosend ? { autosend: AUTOSEND_QUERY_VALUE } : {}),
       }),
       replace: false,

@@ -7,10 +7,14 @@ import {
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { requireBlogAi } from "./feature-flag";
+import {
+  blogGroundingConnections,
+  requireBlogConnections,
+} from "./connections";
 import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
-import { renderGrounding, VirtualMcpIdSchema } from "./site-tools";
+import { renderGrounding } from "./site-tools";
 import { resolveTier } from "../../core/resolve-tier";
-import { ReducedContextSchema } from "./schema";
+import { CampaignGoalSchema, ReducedContextSchema } from "./schema";
 import {
   clearUnfilled,
   IMAGE_SENTINEL,
@@ -25,8 +29,7 @@ import { painterFor } from "./cover-image";
  *
  * The campaign is what the post is for — a moment, a shelf of products, a slice
  * of the catalogue, a tone the brand takes while it runs. The format is how
- * this brand builds a post of that kind, and the blocks it cites are the only
- * ones this post may be made of.
+ * this brand builds a post of that kind, and the blocks it cites come first.
  *
  * The blocks arrive with their own JSON Schema, which is the whole point: a
  * site that overrides a section with different props used to get the props this
@@ -84,6 +87,7 @@ const CampaignSchema = z.object({
     type: z.enum(CAMPAIGN_TRIGGERS),
     note: z.string().max(MAX_BODY_CHARS),
   }),
+  goal: CampaignGoalSchema.optional(),
   intent: z.object({
     objective: z.enum(CAMPAIGN_OBJECTIVES),
     targets: z
@@ -214,7 +218,7 @@ THE CAMPAIGN'S PRODUCTS ARE THE ONLY PRODUCTS. Name them with the names given, l
 
 A PRODUCT SLOT IS NOT YOURS TO WRITE. A block that shows products has a prop for them — \`product\` or \`products\` — and you leave it OUT of \`props\` entirely. Put the campaign products' \`id\` values in \`productIds\` instead, in the order they should appear, and the slot is filled for you in whatever shape this site stores. Only ids the campaign listed; never one taken from a block's example, because that example points at a real product and a different one.
 
-IMAGES YOU WANT MADE. A block prop whose schema says \`"format": "image-uri"\` takes an image address. For an image that does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and it is generated and uploaded for you. Use this at most twice in a post, and only where the format's blocks ask for an image. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
+IMAGES YOU WANT MADE. Where a block prop takes an image address and the picture does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and the illustrator draws it after you. Use this at most twice in a post, and only where the format's blocks ask for an image. Never write it into a prop that holds prose — it is an image address, not a sentence. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
 
 WRITE SOMETHING WORTH READING. Open on the reader's problem or curiosity, never on the company. Make every section carry a specific claim, an example or a number rather than restating the heading. Vary section length. Close with one clear next step.
 
@@ -265,13 +269,19 @@ function renderVoiceExamples(
 export function renderCampaign(
   campaign: z.infer<typeof CampaignSchema>,
 ): string {
-  const { intent, period, trigger, guardrails } = campaign;
+  const { intent, period, trigger, guardrails, goal } = campaign;
   const when =
     period.start || period.end
       ? `\nRuns ${period.start ?? "from whenever"} to ${period.end ?? "no fixed end"}.`
       : "";
+  const measure = [goal?.target.trim(), goal?.metric?.replaceAll("_", " ")]
+    .filter(Boolean)
+    .join(" ");
+  const aim = goal?.text.trim()
+    ? `\nGoal: ${goal.text.trim()}${measure ? ` (${measure})` : ""}. Every post in this campaign is a step toward it.`
+    : "";
   return [
-    `## The campaign: ${campaign.name}\nWhy now (${trigger.type}): ${trigger.note}\nObjective: ${intent.objective}.${when}`,
+    `## The campaign: ${campaign.name}\nWhy now (${trigger.type}): ${trigger.note}\nObjective: ${intent.objective}.${aim}${when}`,
     intent.targets.length > 0 &&
       `## What it argues for\n${intent.targets
         .map(
@@ -332,6 +342,150 @@ function renderBlock(block: z.infer<typeof BlockSchema>): string {
   return `### ${block.name} — ${block.title}\n${block.description}\n\`\`\`json\n${schema}\n\`\`\`${example}`;
 }
 
+/** What writing a post reads, whoever writes it: this tool's model, or an agent. */
+export const WritingInputSchema = z.object({
+  brand: ReducedContextSchema.partial().describe(
+    "What writing needs: who the brand is, who reads it, how it sounds, its words and its guardrails. companyName, language, description, tone, targetAudience, dos and avoid are all required — a post written without them is generic.",
+  ),
+  campaign: CampaignSchema.describe(
+    "The campaign this post is written for — the brief, the products and the campaign-only guardrails.",
+  ),
+  format: z
+    .object({
+      name: z.string().max(MAX_NAME_CHARS),
+      value: z.string().max(MAX_BODY_CHARS),
+    })
+    .describe("How this brand builds a post of this kind."),
+  blocks: z
+    .array(BlockSchema)
+    .min(1)
+    .max(MAX_BLOCKS)
+    .describe(
+      "The only blocks this post may be built from, each with the schema its props must match.",
+    ),
+  categories: z
+    .array(
+      z.object({
+        name: z.string().max(MAX_NAME_CHARS),
+        slug: z.string().max(MAX_NAME_CHARS),
+      }),
+    )
+    .max(MAX_CATEGORIES)
+    .default([])
+    .describe("The blog's categories, to file these posts under."),
+  authors: z
+    .array(
+      z.object({
+        name: z.string().max(MAX_NAME_CHARS),
+        email: z.string().max(MAX_NAME_CHARS),
+        bio: z.string().max(MAX_BODY_CHARS).optional(),
+      }),
+    )
+    .max(MAX_AUTHORS)
+    .default([])
+    .describe("The blog's authors, to attribute these posts to."),
+  extraInstructions: z
+    .string()
+    .max(MAX_BODY_CHARS)
+    .optional()
+    .describe(
+      "What the operator asked for on top of everything else, in their own words.",
+    ),
+});
+
+type WritingInput = z.infer<typeof WritingInputSchema>;
+
+/** Refuses a brand a post would read generic from, naming what to fill. */
+function requireEditorialBrand(brand: WritingInput["brand"]): void {
+  const missing = [
+    !brand.companyName?.trim() && "companyName",
+    !brand.language?.trim() && "language",
+    !brand.description?.trim() && "description",
+    !brand.tone?.trim() && "tone",
+    !brand.targetAudience?.trim() && "targetAudience",
+    !brand.dos?.length && "dos",
+    !brand.avoid?.length && "avoid",
+  ].filter((field): field is string => typeof field === "string");
+  if (missing.length > 0) {
+    throw new Error(
+      `Editorial brand context is incomplete — fill ${missing.join(", ")} before generating. A post written without it reads like any other brand's.`,
+    );
+  }
+}
+
+/** Everything a writer reads about this post, in the order it reads it. */
+function writingContext(input: WritingInput, grounding: string): string {
+  const { brand, campaign } = input;
+  const tone = campaign.guardrails.toneOverrides.trim() || brand.tone;
+  return [
+    `## Brand\n${brand.companyName}`,
+    `## What it does\n${brand.description}`,
+    `## Language to write in\n${brand.language}`,
+    brand.storeUrl && `## The store's address\n${brand.storeUrl}`,
+    `## Tone of voice\n${tone}`,
+    `## Audience\n${brand.targetAudience}`,
+    renderRules("Editorial instructions — follow these", brand.dos),
+    renderRules("Guardrails — never do these", brand.avoid),
+    renderRules(
+      "The brand's own words — use these, not the words they displace",
+      brand.vocabulary,
+    ),
+    renderVoiceExamples(brand.voiceExamples),
+    renderCampaign(campaign),
+    `## Format: ${input.format.name}\n${input.format.value}`,
+    `## Blocks available — props must match these schemas\n\n${input.blocks
+      .map(renderBlock)
+      .join("\n\n")}`,
+    input.categories.length > 0 &&
+      `## Categories\n${input.categories.map((c) => `- ${c.name} (${c.slug})`).join("\n")}`,
+    input.authors.length > 0 &&
+      `## Authors\n${input.authors
+        .map((a) => `- ${a.name} (${a.email})${a.bio ? ` — ${a.bio}` : ""}`)
+        .join("\n")}`,
+    input.extraInstructions &&
+      `## What the operator asked for\n${input.extraInstructions}`,
+    renderGrounding(grounding),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** The shape an agent answers in: the draft's, with `props` as an object. */
+const AGENT_TASK = `## Your task
+Write the post, and answer with one JSON object in this shape:
+
+\`\`\`json
+{
+  "title": "the headline",
+  "excerpt": "one sentence that earns the click",
+  "seo": { "title": "~60 characters", "description": "~155 characters" },
+  "cover": {
+    "prompt": "what the cover shows, as a photographic brief: subject, setting, light, mood. No text, logos or brand name in the image",
+    "alt": "the cover's alt text"
+  },
+  "categorySlugs": ["chosen from the categories"],
+  "authorEmails": ["chosen from the authors"],
+  "sections": [
+    { "type": "a block's name", "props": { "…": "matching that block's schema" }, "productIds": [] }
+  ]
+}
+\`\`\`
+
+\`props\` is an object here, not a string. \`productIds\` holds campaign product ids for a product block and stays empty for every other. At most ${MAX_SECTIONS} sections.`;
+
+/**
+ * The brief for an agent that writes the post itself: the rules this tool's
+ * model writes under, the same reading of the brand, campaign and blocks, and
+ * the shape to answer in. One source for both writers, so they cannot drift.
+ */
+export function agentWritingBrief(
+  input: WritingInput,
+  grounding: string,
+): string {
+  requireEditorialBrand(input.brand);
+  return [SYSTEM, writingContext(input, grounding), AGENT_TASK].join("\n\n");
+}
+
 export const BLOG_POST_DRAFT = defineTool({
   name: "BLOG_POST_DRAFT",
   description:
@@ -346,54 +500,7 @@ export const BLOG_POST_DRAFT = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  inputSchema: z.object({
-    brand: ReducedContextSchema.partial().describe(
-      "What writing needs: who the brand is, who reads it, how it sounds, its words and its guardrails. companyName, language, description, tone, targetAudience, dos and avoid are all required — a post written without them is generic.",
-    ),
-    campaign: CampaignSchema.describe(
-      "The campaign this post is written for — the brief, the products and the campaign-only guardrails.",
-    ),
-    format: z
-      .object({
-        name: z.string().max(MAX_NAME_CHARS),
-        value: z.string().max(MAX_BODY_CHARS),
-      })
-      .describe("How this brand builds a post of this kind."),
-    blocks: z
-      .array(BlockSchema)
-      .min(1)
-      .max(MAX_BLOCKS)
-      .describe(
-        "The only blocks this post may be built from, each with the schema its props must match.",
-      ),
-    categories: z
-      .array(
-        z.object({
-          name: z.string().max(MAX_NAME_CHARS),
-          slug: z.string().max(MAX_NAME_CHARS),
-        }),
-      )
-      .max(MAX_CATEGORIES)
-      .default([])
-      .describe("The blog's categories, to file these posts under."),
-    authors: z
-      .array(
-        z.object({
-          name: z.string().max(MAX_NAME_CHARS),
-          email: z.string().max(MAX_NAME_CHARS),
-          bio: z.string().max(MAX_BODY_CHARS).optional(),
-        }),
-      )
-      .max(MAX_AUTHORS)
-      .default([])
-      .describe("The blog's authors, to attribute these posts to."),
-    extraInstructions: z
-      .string()
-      .max(MAX_BODY_CHARS)
-      .optional()
-      .describe(
-        "What the operator asked for on top of everything else, in their own words.",
-      ),
+  inputSchema: WritingInputSchema.extend({
     count: z
       .number()
       .int()
@@ -408,7 +515,6 @@ export const BLOG_POST_DRAFT = defineTool({
       .describe(
         "The organization's bucket, where a generated image is uploaded so a reader can load it. Omit and no image is made.",
       ),
-    virtualMcpId: VirtualMcpIdSchema,
     grounding: GroundingInputSchema,
   }),
 
@@ -462,22 +568,12 @@ export const BLOG_POST_DRAFT = defineTool({
       );
     }
     await requireBlogAi(ctx, organizationId);
+    const connections = blogGroundingConnections(
+      await requireBlogConnections(ctx, organizationId),
+    );
 
     const { brand, campaign } = input;
-    const missing = [
-      !brand.companyName?.trim() && "companyName",
-      !brand.language?.trim() && "language",
-      !brand.description?.trim() && "description",
-      !brand.tone?.trim() && "tone",
-      !brand.targetAudience?.trim() && "targetAudience",
-      !brand.dos?.length && "dos",
-      !brand.avoid?.length && "avoid",
-    ].filter((field): field is string => typeof field === "string");
-    if (missing.length > 0) {
-      throw new Error(
-        `Editorial brand context is incomplete — fill ${missing.join(", ")} before generating. A post written without it reads like any other brand's.`,
-      );
-    }
+    requireEditorialBrand(brand);
 
     const tier = await resolveTier(ctx, "thinking");
     const provider = await ctx.aiProviders.activate(
@@ -492,7 +588,7 @@ export const BLOG_POST_DRAFT = defineTool({
       organizationId,
       input.grounding,
       {
-        virtualMcpId: input.virtualMcpId,
+        connections,
         language: brand.language,
         label: "BLOG_POST_DRAFT",
         maxSteps: GROUNDING_MAX_STEPS,
@@ -507,38 +603,7 @@ export const BLOG_POST_DRAFT = defineTool({
       input.blocks.map(describeBlock),
     );
 
-    const tone = campaign.guardrails.toneOverrides.trim() || brand.tone;
-    const basePrompt = [
-      `## Brand\n${brand.companyName}`,
-      `## What it does\n${brand.description}`,
-      `## Language to write in\n${brand.language}`,
-      brand.storeUrl && `## The store's address\n${brand.storeUrl}`,
-      `## Tone of voice\n${tone}`,
-      `## Audience\n${brand.targetAudience}`,
-      renderRules("Editorial instructions — follow these", brand.dos),
-      renderRules("Guardrails — never do these", brand.avoid),
-      renderRules(
-        "The brand's own words — use these, not the words they displace",
-        brand.vocabulary,
-      ),
-      renderVoiceExamples(brand.voiceExamples),
-      renderCampaign(campaign),
-      `## Format: ${input.format.name}\n${input.format.value}`,
-      `## Blocks available — props must match these schemas\n\n${input.blocks
-        .map(renderBlock)
-        .join("\n\n")}`,
-      input.categories.length > 0 &&
-        `## Categories\n${input.categories.map((c) => `- ${c.name} (${c.slug})`).join("\n")}`,
-      input.authors.length > 0 &&
-        `## Authors\n${input.authors
-          .map((a) => `- ${a.name} (${a.email})${a.bio ? ` — ${a.bio}` : ""}`)
-          .join("\n")}`,
-      input.extraInstructions &&
-        `## What the operator asked for\n${input.extraInstructions}`,
-      renderGrounding(report.grounding),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const basePrompt = writingContext(input, report.grounding);
 
     const written = await Promise.allSettled(
       Array.from({ length: input.count }, (_, i) =>
@@ -606,7 +671,7 @@ export const BLOG_POST_DRAFT = defineTool({
             coverPrompt(draft, brand.companyName ?? ""),
             draft.cover.alt,
           ),
-          fillBodyImages(sections, byName, painter),
+          fillBodyImages(sections, byName, painter, !!input.fileConfigId),
         ]);
 
         return {
@@ -698,6 +763,14 @@ async function fillBodyImages<
   sections: T[],
   byName: Map<string, { schema: Record<string, unknown> }>,
   painter: { paint: (prompt: string, alt: string) => Promise<string> },
+  /**
+   * Whether this call was ever going to draw. Without a bucket it was not, and
+   * the sentinels are left standing on purpose: BLOG_POST_ILLUSTRATE is the
+   * next pass and they are its work order. Clearing them here would leave the
+   * illustrator nothing to find — the split between the two tools exists
+   * because drawing inside this request blows the edge's time budget.
+   */
+  drawing: boolean,
 ): Promise<T[]> {
   let budget = MAX_BODY_IMAGES;
   const filled: T[] = [];
@@ -714,7 +787,10 @@ async function fillBodyImages<
       const url = await painter.paint(request.prompt, request.prompt);
       if (url) props = withImageAt(props, request.path, url);
     }
-    filled.push({ ...section, props: clearUnfilled(props, schema) });
+    filled.push({
+      ...section,
+      props: drawing ? clearUnfilled(props) : props,
+    });
   }
   return filled;
 }

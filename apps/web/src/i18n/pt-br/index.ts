@@ -18,6 +18,7 @@ import { monitor } from "./monitor.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
 import { markdownEditor } from "./markdown-editor.ts";
 import { library } from "./library.ts";
+import { contentTrack } from "./content-track.ts";
 import { layouts } from "./layouts.ts";
 import { layoutTour } from "./layout-tour.ts";
 import { imageUpload } from "./image-upload.ts";
@@ -71,6 +72,7 @@ export const ptBR = {
   ...siteTokens,
   ...markdownEditor,
   ...library,
+  ...contentTrack,
   ...layouts,
   ...layoutTour,
   ...imageUpload,
