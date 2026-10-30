@@ -28,13 +28,21 @@ export function decodeRunFailureReason(reason: unknown): string {
 }
 
 /**
+ * Machine moves into To Do that carry a reason without being a failed run:
+ * the lanes migration (`board_lanes`) and a dispatch a newer one replaced.
+ */
+const BENIGN_TODO_REASONS = new Set(["board_lanes", "superseded"]);
+
+/**
  * A dead run lands in Backlog and says how many retries it spent: Backlog is
  * also where people put cards, so the lane alone is not a failure. The previous
- * board parked them in To Do, a lane nothing else moved a card to with a reason,
- * so a legacy entry needs no more than that.
+ * board parked them in To Do, and apart from the benign reasons above nothing
+ * else moved a card there with a reason, so a legacy entry needs no more.
  */
 function isFailureLanding(data: Record<string, unknown> | null): boolean {
-  if (data?.to === "todo") return true;
+  if (data?.to === "todo") {
+    return !BENIGN_TODO_REASONS.has(String(data.reason));
+  }
   return data?.to === "triage" && typeof data.retriesSpent === "number";
 }
 
