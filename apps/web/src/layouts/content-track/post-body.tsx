@@ -6,6 +6,7 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { CampaignProduct } from "@/components/sandbox/content/blog/blog-data";
 import { useT } from "@/i18n/use-t.ts";
+import { ProductShelf } from "./product-shelf";
 import { shelfProducts } from "./card-model";
 import { RoleAtWork } from "./newsroom";
 import { type BodyBlock, bodyBlocks, type InlineNode } from "./post-body-model";
@@ -67,41 +68,16 @@ function Shelf({
 }) {
   const t = useT();
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <div className="mb-[11px] flex items-baseline justify-between gap-3">
-        <span className="text-[13.5px] font-semibold text-foreground">
-          {block.title.length > 0 ? (
-            <Inline nodes={block.title} />
-          ) : (
-            t("contentTrack.card.shopTheLook")
-          )}
-        </span>
-        <span className="shrink-0 text-[11.5px] text-muted-foreground">
-          {t("contentTrack.card.shelfCount", { count: products.length })}
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-        {products.map((product) => (
-          <div
-            key={product.id}
-            className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-card"
-          >
-            {product.images[0] ? (
-              <img
-                src={product.images[0]}
-                alt={product.name}
-                className="aspect-square w-full object-cover"
-              />
-            ) : (
-              <div className="aspect-square w-full bg-muted" />
-            )}
-            <span className="line-clamp-2 px-[9px] pt-2 pb-[9px] text-xs font-medium text-foreground">
-              {product.name}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <ProductShelf
+      title={
+        block.title.length > 0 ? (
+          <Inline nodes={block.title} />
+        ) : (
+          t("contentTrack.card.shopTheLook")
+        )
+      }
+      products={products}
+    />
   );
 }
 

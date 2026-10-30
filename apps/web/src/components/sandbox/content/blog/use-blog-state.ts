@@ -3,18 +3,16 @@
  *
  * The organization's: brand, writing rules and formats are read off its brand
  * guide, and campaigns and seeds are files beside it. The guide is edited on
- * the brand page, so this hook writes only campaigns and seeds. Sites that
- * once kept this state as decofile blocks still have them on disk;
- * {@link withoutBlogState} keeps them from leaking back in.
+ * the brand page and a campaign changes through `BLOG_CAMPAIGN_UPDATE`, so this
+ * hook only removes. Sites that once kept this state as decofile blocks still
+ * have them on disk; {@link withoutBlogState} keeps them from leaking back in.
  *
  * `blocks` keeps the decofile's own shape, so every reader — `readBlogContext`,
- * `scanCampaigns`, `scanCampaignSeeds` — is untouched, and `save`/`remove` take
- * the same `{ blockKey, data }` the decofile mutations took.
+ * `scanCampaigns`, `scanCampaignSeeds` — is untouched, and `remove` takes the
+ * same `{ blockKey }` the decofile mutation took.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
-import { isBlogStateConflict } from "@decocms/shared/blog-state";
 import type {
   StudioToolInput,
   StudioToolOutput,
@@ -88,22 +86,6 @@ function idOf(blockKey: string): string {
   return blockKey.slice(prefix.length);
 }
 
-/**
- * The one file a `{ blockKey, data }` write lands in, as the tool takes it.
- * Null for the brand, writing rules and formats: those are the guide's.
- */
-function writeFor(
-  blockKey: string,
-  data: Record<string, unknown>,
-): Partial<SetInput> | null {
-  const record = { id: idOf(blockKey), data } as { id: string; data: never };
-  if (blockKey.startsWith(CAMPAIGN_KEY_PREFIX)) return { campaigns: [record] };
-  if (blockKey.startsWith(CAMPAIGN_SEED_KEY_PREFIX)) {
-    return { campaignSeeds: [record] };
-  }
-  return null;
-}
-
 /** The `remove` arguments for a key, or null when the key is not a record. */
 function removeFor(blockKey: string): Partial<SetInput> | null {
   if (blockKey.startsWith(CAMPAIGN_KEY_PREFIX)) {
@@ -115,48 +97,20 @@ function removeFor(blockKey: string): Partial<SetInput> | null {
   return null;
 }
 
-/**
- * The library file a record key lands in, as a path suffix. Matching on the
- * tail of the paths the read reported finds the version of the file about to
- * be replaced, without the browser choosing the brand folder.
- */
-function pathSuffix(blockKey: string): string {
-  const dir = blockKey.startsWith(CAMPAIGN_KEY_PREFIX)
-    ? "campaigns"
-    : "campaign-seeds";
-  return `/${dir}/${idOf(blockKey)}.json`;
-}
-
-export interface BlogStateWrite {
-  blockKey: string;
-  data: Record<string, unknown>;
-}
-
 export interface BlogState {
   /** The five families, shaped exactly like the decofile slice they replace. */
   blocks: Record<string, unknown>;
   /** False while the library is still being read. */
   ready: boolean;
-  save: {
-    mutate: (write: BlogStateWrite) => void;
-    mutateAsync: (write: BlogStateWrite) => Promise<unknown>;
-    isPending: boolean;
-    isError: boolean;
-  };
   remove: {
-    mutate: (args: { blockKey: string }) => void;
+    mutate: (
+      args: { blockKey: string },
+      options?: { onSuccess?: () => void },
+    ) => void;
     mutateAsync: (args: { blockKey: string }) => Promise<unknown>;
     isPending: boolean;
     isError: boolean;
   };
-  /**
-   * The key whose last write was refused because the file had changed, or
-   * null. The editor offers to reload or to overwrite; `keepMine` is the
-   * overwrite.
-   */
-  conflict: string | null;
-  keepMine: () => void;
-  reloadTheirs: () => void;
 }
 
 export function useBlogState({
@@ -177,74 +131,6 @@ export function useBlogState({
     queryFn: () => studio.call("BLOG_STATE_GET", {}),
   });
 
-  /**
-   * The versions this tab produced itself, over the ones the read reported.
-   * Without them a second edit would be refused against the version its own
-   * first edit replaced.
-   */
-  const written = useRef<Record<string, string>>({});
-  const versionsNow = () => ({
-    ...(queryClient.getQueryData<RemoteState>(queryKey)?.versions ?? {}),
-    ...written.current,
-  });
-
-  /** State, not a ref: the banner offering the choice has to render. */
-  const [conflict, setConflict] = useState<string | null>(null);
-  const pendingData = useRef<Record<string, Record<string, unknown>>>({});
-
-  const library = useMutation({
-    /** Serialized per organization: two autosaves must not land out of order. */
-    scope: { id: `blog-state:${orgSlug}` },
-    mutationFn: async ({
-      blockKey,
-      data,
-      force,
-    }: BlogStateWrite & { force?: boolean }) => {
-      const fields = writeFor(blockKey, data);
-      if (!fields) throw new Error(`Not blog state: ${blockKey}`);
-      const suffix = pathSuffix(blockKey);
-      const versions = versionsNow();
-      const path = Object.keys(versions).find((candidate) =>
-        candidate.endsWith(suffix),
-      );
-      const hash = force || !path ? undefined : versions[path];
-      const result = await studio.call("BLOG_STATE_SET", {
-        ...fields,
-        ...(hash && path ? { expect: { [path]: hash } } : {}),
-      });
-      return { blockKey, result };
-    },
-    onMutate: ({ blockKey, data }) => {
-      if (!writeFor(blockKey, data)) return;
-      pendingData.current[blockKey] = data;
-      queryClient.setQueryData(queryKey, (current: RemoteState | undefined) =>
-        current ? optimistic(current, blockKey, data) : current,
-      );
-    },
-    onSuccess: ({ blockKey, result }) => {
-      for (const { path, contentHash } of result.written) {
-        if (contentHash) written.current[path] = contentHash;
-      }
-      setConflict((current) => (current === blockKey ? null : current));
-      delete pendingData.current[blockKey];
-    },
-    onError: (error, { blockKey }) => {
-      if (isBlogStateConflict(error)) {
-        setConflict(blockKey);
-        return;
-      }
-      delete pendingData.current[blockKey];
-      void queryClient.invalidateQueries({ queryKey });
-    },
-  });
-
-  const save = {
-    mutate: (write: BlogStateWrite) => library.mutate(write),
-    mutateAsync: (write: BlogStateWrite) => library.mutateAsync(write),
-    isPending: library.isPending,
-    isError: library.isError,
-  };
-
   const remove = useMutation({
     scope: { id: `blog-state:${orgSlug}` },
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
@@ -255,42 +141,9 @@ export function useBlogState({
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
-  const keepMine = () => {
-    const data = conflict ? pendingData.current[conflict] : undefined;
-    if (!conflict || !data) return;
-    library.mutate({ blockKey: conflict, data, force: true });
-  };
-
-  const reloadTheirs = () => {
-    if (conflict) delete pendingData.current[conflict];
-    setConflict(null);
-    void queryClient.invalidateQueries({ queryKey });
-  };
-
   return {
     blocks: blocksOf(remote.data),
     ready: remote.isSuccess,
-    save,
     remove,
-    conflict,
-    keepMine,
-    reloadTheirs,
   };
-}
-
-/** The read's cache, with one block replaced, so the editor does not flicker. */
-function optimistic(
-  current: RemoteState,
-  blockKey: string,
-  data: Record<string, unknown>,
-): RemoteState {
-  const campaign = blockKey.startsWith(CAMPAIGN_KEY_PREFIX);
-  const id = idOf(blockKey);
-  const list = campaign ? current.campaigns : current.campaignSeeds;
-  const next = list.some((record) => record.id === id)
-    ? list.map((record) => (record.id === id ? { id, data } : record))
-    : [...list, { id, data }];
-  return campaign
-    ? { ...current, campaigns: next }
-    : { ...current, campaignSeeds: next };
 }

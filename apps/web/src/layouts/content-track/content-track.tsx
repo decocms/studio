@@ -32,6 +32,7 @@ import { Campaigns } from "@/layouts/context/brand-campaigns";
 import { projectRepo } from "@/lib/repository-binding";
 import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
 import { BlogpostsBoard } from "./blogposts-board";
+import { CampaignPage } from "./campaign-page";
 import { CardDetail } from "./card-detail";
 import { ContentSetup } from "./content-setup";
 import { TrackDivider } from "./track-divider";
@@ -54,13 +55,16 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
   const search = useSearch({ strict: false }) as {
     view?: string;
     card?: string;
+    campaign?: string;
   };
   const view: ContentView =
     search.view === "campaigns" ? "campaigns" : "blogposts";
   const state = contentTrackGate(blog);
-  /** An open card takes the header over, as a task does on the code board. */
+  /** An open card or campaign takes the header over, as a task does on the code board. */
   const cardOpen =
-    state.gate === "open" && view === "blogposts" && !!search.card;
+    state.gate === "open" &&
+    ((view === "blogposts" && !!search.card) ||
+      (view === "campaigns" && !!search.campaign));
 
   const open = (next: ContentView) =>
     navigate({
@@ -69,6 +73,27 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
         ...prev,
         view: next === "blogposts" ? undefined : next,
         card: undefined,
+        campaign: undefined,
+      }),
+    });
+  const openCampaign = (campaignId: string | undefined) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        view: "campaigns",
+        card: undefined,
+        campaign: campaignId,
+      }),
+    });
+  const openCardFromCampaign = (cardId: string) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        view: undefined,
+        card: cardId,
+        campaign: undefined,
       }),
     });
 
@@ -108,7 +133,12 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
           ) : (
             <BlogConnectionsGate>
               {view === "campaigns" ? (
-                <Campaigns />
+                <CampaignsView
+                  blog={blog}
+                  campaignId={search.campaign}
+                  onOpen={openCampaign}
+                  onOpenCard={openCardFromCampaign}
+                />
               ) : (
                 <Blogposts blog={blog} cardId={search.card} />
               )}
@@ -117,6 +147,62 @@ export function ContentTrack({ trackTabs }: { trackTabs: ReactNode }) {
         </Page.Container>
       </Page.Content>
     </Page>
+  );
+}
+
+function CampaignsView({
+  blog,
+  campaignId,
+  onOpen,
+  onOpenCard,
+}: {
+  blog: BlogState;
+  campaignId: string | undefined;
+  onOpen: (campaignId: string | undefined) => void;
+  onOpenCard: (cardId: string) => void;
+}) {
+  const t = useT();
+  const { cards } = useBlogCards();
+  if (!campaignId) return <Campaigns onOpen={onOpen} />;
+  const campaign = scanCampaigns(blog.blocks).find(
+    (entry) => entry.id === campaignId,
+  );
+  if (!campaign) {
+    return blog.ready ? (
+      <>
+        <Page.Breadcrumbs
+          after="page"
+          parent={{
+            label: t("contentTrack.title"),
+            onSelect: () => onOpen(undefined),
+          }}
+          items={[]}
+        />
+        <EmptyState
+          image={null}
+          title={t("contentTrack.campaign.missingTitle")}
+          description={t("contentTrack.campaign.missingDescription")}
+        />
+      </>
+    ) : (
+      <Skeleton className="h-64 w-full rounded-2xl" />
+    );
+  }
+  return (
+    <CampaignPage
+      key={campaign.id}
+      campaign={campaign}
+      cards={cards}
+      removing={blog.remove.isPending}
+      onClose={() => onOpen(undefined)}
+      onOpenCard={onOpenCard}
+      onRemove={() =>
+        blog.remove.mutate(
+          { blockKey: campaign.key },
+          { onSuccess: () => onOpen(undefined) },
+        )
+      }
+    />
   );
 }
 

@@ -27,9 +27,6 @@ import {
   setPostStatus,
   stampPostModified,
   scanCampaigns,
-  buildCampaignBlock,
-  emptyCampaign,
-  newCampaignKey,
   CAMPAIGN_KEY_PREFIX,
   PLANNING_POST_KEY_PREFIX,
   emptyDraftPostPayload,
@@ -695,10 +692,23 @@ describe("scanCampaigns", () => {
 
   test("reads a full campaign back", () => {
     const [campaign] = scanCampaigns({
-      [key]: buildCampaignBlock({
-        name: "Black Friday 2026",
+      [key]: {
+        campaignName: "Black Friday 2026",
         seedKey: "blog-manager/campaign-seeds/s1",
         status: "active",
+        threadId: "thrd_1",
+        evidence: [
+          { source: "ga4", figure: "R$ 1,2 mi", fact: "Ar lidera a receita." },
+        ],
+        briefings: [
+          {
+            id: "b1",
+            title: "A semana inteira",
+            idea: "Uma semana, não um dia.",
+          },
+        ],
+        briefing: { text: "A semana inteira", optionId: "b1" },
+        run: { requestedAt: "2026-01-02T00:00:00.000Z", requestedBy: "u1" },
         period: { start: "2026-11-20", end: "2026-11-30" },
         trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
         goal: {
@@ -735,13 +745,27 @@ describe("scanCampaigns", () => {
         },
         createdAt: "2026-01-01",
         updatedAt: "2026-01-02",
-      }),
+      },
     });
     expect(campaign).toEqual({
       key,
+      id: "a",
       name: "Black Friday 2026",
       seedKey: "blog-manager/campaign-seeds/s1",
       status: "active",
+      threadId: "thrd_1",
+      evidence: [
+        { source: "ga4", figure: "R$ 1,2 mi", fact: "Ar lidera a receita." },
+      ],
+      briefings: [
+        {
+          id: "b1",
+          title: "A semana inteira",
+          idea: "Uma semana, não um dia.",
+        },
+      ],
+      briefing: { text: "A semana inteira", optionId: "b1" },
+      run: { requestedAt: "2026-01-02T00:00:00.000Z", requestedBy: "u1" },
       period: { start: "2026-11-20", end: "2026-11-30" },
       trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
       goal: {
@@ -789,6 +813,24 @@ describe("scanCampaigns", () => {
     expect(campaign?.intent.objective).toBe("awareness");
     expect(campaign?.period).toEqual({ start: null, end: null });
     expect(campaign?.goal).toEqual({ text: "", metric: null, target: "" });
+    expect(campaign?.briefings).toEqual([]);
+    expect(campaign?.briefing).toBeNull();
+    expect(campaign?.run).toBeNull();
+  });
+
+  test("a malformed suggestion or fact is dropped, not the campaign", () => {
+    const [campaign] = scanCampaigns({
+      [key]: {
+        campaignName: "Rascunho",
+        evidence: [{ source: "tiktok", fact: "?" }, "corrupt"],
+        briefings: [{ id: "b1", title: "Sem ideia" }],
+        briefing: { text: "   " },
+      },
+    });
+    expect(campaign?.name).toBe("Rascunho");
+    expect(campaign?.evidence).toEqual([]);
+    expect(campaign?.briefings).toEqual([]);
+    expect(campaign?.briefing).toBeNull();
   });
 
   test("a goal counted in something unknown keeps its words, not the metric", () => {
@@ -800,32 +842,6 @@ describe("scanCampaigns", () => {
       metric: null,
       target: "+5%",
     });
-  });
-
-  test("the goal survives a rebuild that touches something else", () => {
-    const [before] = scanCampaigns({
-      [key]: {
-        campaignName: "Volta às aulas",
-        goal: {
-          text: "Tráfego em mochilas",
-          metric: "sessions",
-          target: "+20%",
-        },
-      },
-    });
-    if (!before) throw new Error("no campaign");
-    const { key: _key, ...rest } = before;
-    const [after] = scanCampaigns({
-      [key]: buildCampaignBlock({ ...rest, status: "active" }),
-    });
-    expect(after?.status).toBe("active");
-    expect(after?.goal).toEqual(before.goal);
-  });
-
-  test("a new campaign has an empty goal of its own", () => {
-    const one = emptyCampaign(new Date());
-    one.goal.text = "mutated";
-    expect(emptyCampaign(new Date()).goal.text).toBe("");
   });
 
   test("an unknown enum value reads as the default, never breaking the board", () => {
@@ -916,36 +932,6 @@ describe("scanCampaigns", () => {
 
   test("ignores a corrupt block rather than throwing", () => {
     expect(scanCampaigns({ [key]: "corrupt" })).toEqual([]);
-  });
-});
-
-describe("buildCampaignBlock", () => {
-  test("round-trips through scanCampaigns", () => {
-    const key = newCampaignKey();
-    const campaign = emptyCampaign(new Date("2026-03-04T05:06:07.000Z"));
-    const [read] = scanCampaigns({
-      [key]: buildCampaignBlock(campaign),
-    });
-    expect(read).toEqual({ key, ...campaign });
-  });
-
-  test("never writes the key into the record — the file is the key", () => {
-    const block = buildCampaignBlock(emptyCampaign(new Date()));
-    expect(block).not.toHaveProperty("name");
-  });
-
-  test("writes an absent date as an empty string, so the shape is stable", () => {
-    const block = buildCampaignBlock(emptyCampaign(new Date()));
-    expect(block.period).toEqual({ start: "", end: "" });
-  });
-});
-
-describe("newCampaignKey", () => {
-  test("is under the campaigns prefix and unique", () => {
-    const a = newCampaignKey();
-    const b = newCampaignKey();
-    expect(a.startsWith(CAMPAIGN_KEY_PREFIX)).toBe(true);
-    expect(a).not.toBe(b);
   });
 });
 

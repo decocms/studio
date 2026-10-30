@@ -18,7 +18,6 @@ import { Fragment, type ReactNode, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
-  Plus,
   Stars02,
   Trash01,
   SearchLg,
@@ -31,9 +30,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { BlogState } from "./use-blog-state";
-import { str } from "./blocks/primitives";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,53 +41,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import type { CatalogSource } from "./blocks/catalog-source";
 import { useOpenBlogChat } from "@/hooks/use-open-blog-chat";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useClockTick } from "@/lib/use-clock-tick";
+import { campaignProgress, type CampaignProgress } from "./campaign-model";
+import { useCampaignActions } from "./use-campaign-actions";
 import { SaveStatus } from "./save-status";
-import { CampaignEditor } from "./campaign-editor";
-import { CampaignEditorSheet, useCampaignCreate } from "./campaign-create";
 import { GoalLine } from "./campaign-goal";
 import {
-  buildCampaignBlock,
   CAMPAIGN_STATUSES,
   type CampaignEntry,
   type CampaignStatus,
-  type CampaignTrigger,
-  readBlogContext,
   scanCampaigns,
 } from "./blog-data";
+import {
+  CAMPAIGN_PROGRESS_LABEL,
+  CAMPAIGN_STATUS_LABEL,
+  CAMPAIGN_STATUS_VARIANT,
+  CAMPAIGN_TRIGGER_LABEL,
+} from "./campaign-labels";
 
 /** Drag payload — the dragged campaign's block key. */
 const DRAG_KEY = "application/x-campaign-key";
-
-/** One label map and one colour map, so board, list and editor cannot drift. */
-export const CAMPAIGN_STATUS_LABEL: Record<CampaignStatus, TranslationKey> = {
-  draft: "sandbox.campaigns.statusDraft",
-  active: "sandbox.campaigns.statusActive",
-  paused: "sandbox.campaigns.statusPaused",
-  finished: "sandbox.campaigns.statusFinished",
-};
-
-const STATUS_VARIANT: Record<
-  CampaignStatus,
-  "secondary" | "warning" | "success" | "outline"
-> = {
-  draft: "outline",
-  active: "success",
-  paused: "warning",
-  finished: "secondary",
-};
-
-export const CAMPAIGN_TRIGGER_LABEL: Record<CampaignTrigger, TranslationKey> = {
-  launch: "sandbox.campaigns.triggerLaunch",
-  seasonal: "sandbox.campaigns.triggerSeasonal",
-  trend: "sandbox.campaigns.triggerTrend",
-  seo_gap: "sandbox.campaigns.triggerSeoGap",
-  inventory: "sandbox.campaigns.triggerInventory",
-  partnership: "sandbox.campaigns.triggerPartnership",
-  reputation: "sandbox.campaigns.triggerReputation",
-};
 
 type CampaignView = "board" | "list";
 
@@ -103,16 +75,18 @@ function periodLabel(campaign: CampaignEntry): string | null {
 
 export function CampaignsPanel({
   blog,
-  catalog,
+  onOpen,
 }: {
   /** The organization's blog state: its brand and its campaigns. */
   blog: BlogState;
-  /** The store's catalog, for the product and category pickers. */
-  catalog: CatalogSource | null;
+  /** Open a campaign's page. */
+  onOpen: (campaignId: string) => void;
 }) {
   const t = useT();
   /** Campaigns are the organization's records, written through its blog state. */
-  const { save, remove: deleteBlock } = blog;
+  const { remove: deleteBlock } = blog;
+  const { update } = useCampaignActions();
+  const now = useClockTick();
   const decofile = blog.blocks;
 
   const openChat = useOpenBlogChat();
@@ -135,7 +109,6 @@ export function CampaignsPanel({
     }
   };
   const [view, setView] = useState<CampaignView>("board");
-  const [openKey, setOpenKey] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [dragOverLane, setDragOverLane] = useState<CampaignStatus | null>(null);
   const [laneOverrides, setLaneOverrides] = useState<Record<string, boolean>>(
@@ -145,31 +118,17 @@ export function CampaignsPanel({
   const [movingKeys, setMovingKeys] = useState<ReadonlySet<string>>(new Set());
 
   const campaigns = scanCampaigns(decofile);
-  /** Where the store actually lives, so picked links are not platform hosts. */
-  const storeUrl = str(readBlogContext(decofile).merged.storeUrl);
   const isLaneCollapsed = (lane: string, empty: boolean) =>
     laneOverrides[lane] ?? empty;
   const setLaneCollapsed = (lane: string, collapsed: boolean) =>
     setLaneOverrides((prev) => ({ ...prev, [lane]: collapsed }));
-
-  const { addCampaign } = useCampaignCreate(blog);
 
   const moveTo = async (key: string, next: CampaignStatus) => {
     const campaign = campaigns.find((entry) => entry.key === key);
     if (!campaign || campaign.status === next || movingKeys.has(key)) return;
     setMovingKeys((keys) => new Set(keys).add(key));
     try {
-      await save.mutateAsync({
-        blockKey: key,
-        data: {
-          ...(blog.blocks[key] as Record<string, unknown> | undefined),
-          ...buildCampaignBlock({
-            ...campaign,
-            status: next,
-            updatedAt: new Date().toISOString(),
-          }),
-        },
-      });
+      await update.mutateAsync({ id: campaign.id, patch: { status: next } });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("sandbox.campaigns.moveFailed"),
@@ -193,7 +152,6 @@ export function CampaignsPanel({
 
   const removeCampaign = (key: string) => {
     deleteBlock.mutate({ blockKey: key });
-    setOpenKey((open) => (open === key ? null : open));
   };
 
   const term = query.trim().toLowerCase();
@@ -202,13 +160,6 @@ export function CampaignsPanel({
         `${entry.name} ${entry.trigger.note}`.toLowerCase().includes(term),
       )
     : campaigns;
-  /** On the board only an explicitly opened card edits — never a default one. */
-  const boardKey = openKey && decofile[openKey] !== undefined ? openKey : null;
-  /** The list never shows an empty right pane while there is anything to show. */
-  const detailKey =
-    openKey && campaigns.some((entry) => entry.key === openKey)
-      ? openKey
-      : (listed[0]?.key ?? null);
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -238,17 +189,9 @@ export function CampaignsPanel({
             <Stars02 size={14} />
             {t("sandbox.campaigns.suggest")}
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setOpenKey(addCampaign())}
-          >
-            <Plus size={14} />
-            {t("sandbox.campaigns.add")}
-          </Button>
           <SaveStatus
-            isPending={save.isPending || deleteBlock.isPending}
-            isError={save.isError || deleteBlock.isError}
+            isPending={update.isPending || deleteBlock.isPending}
+            isError={update.isError || deleteBlock.isError}
           />
         </div>
       </div>
@@ -329,7 +272,8 @@ export function CampaignsPanel({
                               key={campaign.key}
                               campaign={campaign}
                               moving={movingKeys.has(campaign.key)}
-                              onOpen={() => setOpenKey(campaign.key)}
+                              progress={campaignProgress(campaign, now)}
+                              onOpen={() => onOpen(campaign.id)}
                               onDelete={() => setPendingDelete(campaign)}
                             />
                           ))
@@ -344,7 +288,7 @@ export function CampaignsPanel({
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 border-t">
-          <div className="flex w-80 shrink-0 flex-col border-r">
+          <div className="flex w-full max-w-xl flex-col">
             <div className="flex items-center gap-2 border-b px-3 py-2">
               <SearchLg size={14} className="shrink-0 text-muted-foreground" />
               <Input
@@ -371,19 +315,16 @@ export function CampaignsPanel({
                       />
                       <button
                         type="button"
-                        onClick={() => setOpenKey(campaign.key)}
-                        aria-current={campaign.key === detailKey}
-                        className={cn(
-                          "w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-accent",
-                          campaign.key === detailKey &&
-                            "bg-muted hover:bg-secondary-hover",
-                        )}
+                        onClick={() => onOpen(campaign.id)}
+                        className="w-full cursor-pointer px-4 py-3 text-left transition-colors hover:bg-accent"
                       >
                         <p className="truncate pr-6 text-sm font-medium">
                           {campaign.name || t("sandbox.campaigns.untitled")}
                         </p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <Badge variant={STATUS_VARIANT[campaign.status]}>
+                          <Badge
+                            variant={CAMPAIGN_STATUS_VARIANT[campaign.status]}
+                          >
                             {t(CAMPAIGN_STATUS_LABEL[campaign.status])}
                           </Badge>
                           <span className="truncate text-xs text-muted-foreground">
@@ -396,27 +337,6 @@ export function CampaignsPanel({
                 </ul>
               )}
             </div>
-          </div>
-          <div className="min-w-0 flex-1 overflow-y-auto">
-            {detailKey ? (
-              <CampaignEditor
-                key={detailKey}
-                blockKey={detailKey}
-                block={decofile[detailKey] as Record<string, unknown>}
-                onSave={(data) => save.mutate({ blockKey: detailKey, data })}
-                onRemove={() => {
-                  const campaign = campaigns.find((c) => c.key === detailKey);
-                  if (campaign) setPendingDelete(campaign);
-                }}
-                isSaving={save.isPending}
-                catalog={catalog}
-                storeUrl={storeUrl}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                {t("sandbox.campaigns.selectPrompt")}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -454,17 +374,6 @@ export function CampaignsPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <CampaignEditorSheet
-        blockKey={view === "board" ? boardKey : null}
-        blog={blog}
-        catalog={catalog}
-        onClose={() => setOpenKey(null)}
-        onRemove={(key) => {
-          const campaign = campaigns.find((c) => c.key === key);
-          if (campaign) setPendingDelete(campaign);
-        }}
-      />
     </div>
   );
 }
@@ -472,12 +381,14 @@ export function CampaignsPanel({
 function CampaignCard({
   campaign,
   moving,
+  progress,
   onOpen,
   onDelete,
 }: {
   campaign: CampaignEntry;
   /** A status write is in flight — freeze it so a second drop cannot race. */
   moving: boolean;
+  progress: CampaignProgress;
   onOpen: () => void;
   onDelete: () => void;
 }) {
@@ -509,6 +420,11 @@ function CampaignCard({
         <p className="line-clamp-2 pr-6 text-sm font-medium">
           {campaign.name || t("sandbox.campaigns.untitled")}
         </p>
+        {progress !== "approved" && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t(CAMPAIGN_PROGRESS_LABEL[progress])}
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <Badge variant="secondary" className="max-w-full truncate">
             {t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type])}

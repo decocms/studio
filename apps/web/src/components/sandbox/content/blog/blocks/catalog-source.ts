@@ -2,10 +2,8 @@
  * Where a picker reads the store's catalog from.
  *
  * The post editor reads through the running site's own loaders, so what it
- * shows is what the published block will render. The organization's campaigns
- * have no site to ask, and read through its VTEX connection instead
- * (`vtex-mcp-source.ts`). Both answer in the picker's own shapes, and both
- * store the SKU id a product block resolves.
+ * shows is what the published block will render. It answers in the picker's
+ * own shapes and stores the SKU id a product block resolves.
  */
 
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
@@ -40,7 +38,7 @@ export interface CatalogSource {
  * Run several reads for one term in parallel and merge them in order, deduped
  * by id. Tolerates partial failure as long as one read succeeds.
  */
-export async function mergeProductReads(
+async function mergeProductReads(
   reads: Promise<ProductPickerOption[]>[],
 ): Promise<ProductPickerOption[]> {
   if (reads.length === 0) return [];

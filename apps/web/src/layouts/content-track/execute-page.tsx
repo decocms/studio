@@ -120,6 +120,7 @@ export function ExecutePage() {
         // Each track reads `view` its own way, and a card is the content's.
         view: undefined,
         card: undefined,
+        campaign: undefined,
       }),
     });
   const trackTabs = contentAvailable ? (

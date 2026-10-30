@@ -29,6 +29,7 @@ import {
   scanCampaigns,
 } from "@/components/sandbox/content/blog/blog-data";
 import { CampaignList } from "@/components/sandbox/content/blog/campaign-list";
+import { readyCampaigns } from "@/components/sandbox/content/blog/campaign-model";
 import type { BlogState } from "@/components/sandbox/content/blog/use-blog-state";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -63,9 +64,7 @@ export function NewBlogpostDialog({
   const [pickedSite, setPickedSite] = useState("");
   const [prompt, setPrompt] = useState("");
 
-  const openCampaigns = scanCampaigns(blog.blocks).filter(
-    (campaign) => campaign.status === "active",
-  );
+  const openCampaigns = readyCampaigns(scanCampaigns(blog.blocks));
   const virtualMcpId =
     siteId ?? (sites.length === 1 ? (sites[0]?.id ?? "") : pickedSite);
   const ready =

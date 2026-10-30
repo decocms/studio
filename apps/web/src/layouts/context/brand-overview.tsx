@@ -173,8 +173,10 @@ function CampaignsRow() {
     <SectionRow
       title={t("library.context.itemCampaigns")}
       summary={
-        live.map((campaign) => campaign.name).join(", ") ||
-        t("library.context.noCampaigns")
+        live
+          .map((campaign) => campaign.name)
+          .filter(Boolean)
+          .join(", ") || t("library.context.noCampaigns")
       }
       Icon={Announcement02}
       onOpen={() =>

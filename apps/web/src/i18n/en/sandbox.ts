@@ -44,120 +44,8 @@ export const sandbox = {
   "sandbox.blogCustomFields.title": "Other fields",
   "sandbox.blogCustomFields.description":
     "Fields this site's own content type declares, beyond the ones above.",
-  "sandbox.campaigns.addProduct": "Add by hand",
-  "sandbox.campaigns.objectiveHelpLabel": "When to use each objective",
-  "sandbox.campaigns.pickCategory": "Browse the store",
-  "sandbox.campaigns.pickProducts": "Browse the store",
-  "sandbox.campaigns.productCategoryPlaceholder": "Main category",
-  "sandbox.campaigns.productDescriptionPlaceholder": "Short description",
-  "sandbox.campaigns.productIdPlaceholder": "ID",
-  "sandbox.campaigns.productNamePlaceholder": "Product name",
-  "sandbox.campaigns.productUrlPlaceholder": "https://…",
-  "sandbox.campaigns.productsHint":
-    "The products the copy may name. They apply to any target — and they are stored here, not fetched at write time.",
-  "sandbox.campaigns.productsUnresolved":
-    "{count} of {total} products do not resolve in the store, and a block pointing at one renders a placeholder.",
-  "sandbox.campaigns.productsRepair": "Repair by name",
-  "sandbox.campaigns.productsRepaired":
-    "{count} product id(s) read again from the store.",
-  "sandbox.campaigns.productsRepairNone":
-    "No exact name match in the store — pick these products again by hand.",
-  "sandbox.campaigns.productsLabel": "Highlighted products",
-  "sandbox.campaigns.removeProduct": "Remove product",
-  "sandbox.campaigns.targetDescriptionPlaceholder":
-    "What this slice covers, and who for",
-  "sandbox.campaigns.targetCollectionIdPlaceholder":
-    "Collection ID in the store — this is what identifies it",
-  "sandbox.campaigns.targetIdPlaceholder": "Store ID (optional)",
-  "sandbox.campaigns.targetNamePlaceholder": "Category or collection name",
-  "sandbox.campaigns.triggerHelpLabel": "When to use each trigger",
-  "sandbox.campaigns.triggerInventoryHelp":
-    "There is stock sitting still that needs to move.",
-  "sandbox.campaigns.triggerLaunchHelp":
-    "Something new landed in the catalog — a product, a line, a collection.",
-  "sandbox.campaigns.triggerPartnershipHelp":
-    "A collab, a co-marketing push or an ambassador to introduce.",
-  "sandbox.campaigns.triggerReputationHelp":
-    "There is a perception of the brand that needs an answer.",
-  "sandbox.campaigns.triggerSeasonalHelp":
-    "A date that comes back every year and that customers already expect.",
-  "sandbox.campaigns.triggerSeoGapHelp":
-    "People are searching for this and the brand does not show up.",
-  "sandbox.campaigns.triggerTrendHelp":
-    "Something is happening in the market or the culture right now, and it will pass.",
-  "sandbox.campaigns.addImage": "Add image",
-  "sandbox.campaigns.removeImage": "Remove image",
-  "sandbox.campaigns.untitledProduct": "Unnamed product",
-  "sandbox.campaigns.untitledTarget": "Unnamed target",
-  "sandbox.campaigns.facetContent": "Content",
-  "sandbox.campaigns.facetCta": "CTA",
-  "sandbox.campaigns.facetMetric": "Metric",
-  "sandbox.campaigns.facetProduct": "Product",
-  "sandbox.campaigns.objectiveAwarenessContent":
-    "Broad subjects, from the brand's world rather than its catalog. E.g. “Taking up running after 40”.",
-  "sandbox.campaigns.objectiveAwarenessCta":
-    "Light — read another post, subscribe, follow the brand.",
-  "sandbox.campaigns.objectiveAwarenessHelp":
-    "Get more people to know the brand. The reader is not thinking about buying yet — they may not know they need this.",
-  "sandbox.campaigns.objectiveAwarenessMetric": "Traffic, new visitors, reach.",
-  "sandbox.campaigns.objectiveAwarenessProduct":
-    "Barely there, as a natural mention.",
-  "sandbox.campaigns.objectiveConversionContent":
-    "Comparisons, “best X for Y”, answers to objections. E.g. “Glide 4 or Speed 3: which one for a half marathon”.",
-  "sandbox.campaigns.objectiveConversionCta":
-    "Strong and repeated, straight to the product or collection.",
-  "sandbox.campaigns.objectiveConversionHelp":
-    "Sell. The reader is already deciding and needs a push, or help choosing.",
-  "sandbox.campaigns.objectiveConversionMetric":
-    "Clicks to the product, conversions, attributed revenue.",
-  "sandbox.campaigns.objectiveConversionNote":
-    "The typical objective for seasonal and inventory campaigns.",
-  "sandbox.campaigns.objectiveConversionProduct":
-    "The centre of the piece, with concrete data — price, attributes, link.",
-  "sandbox.campaigns.objectiveEducationContent":
-    "Guides and explanations — how it works, how to choose. E.g. “Shoe drop: what it is and why it matters”.",
-  "sandbox.campaigns.objectiveEducationCta":
-    "Moderate — see the category, open the size guide.",
-  "sandbox.campaigns.objectiveEducationHelp":
-    "Teach something that leaves the reader readier to decide. They already have the interest and want to understand it.",
-  "sandbox.campaigns.objectiveEducationMetric":
-    "Time on page, posts per session, organic ranking.",
-  "sandbox.campaigns.objectiveEducationNote":
-    "The most common objective for SEO gap campaigns.",
-  "sandbox.campaigns.objectiveEducationProduct":
-    "Shows up as an example of what was explained.",
-  "sandbox.campaigns.objectiveRepositioningContent":
-    "Posts that demonstrate the new identity — opinion, behind the scenes, expertise.",
-  "sandbox.campaigns.objectiveRepositioningCta": "Light to moderate.",
-  "sandbox.campaigns.objectiveRepositioningHelp":
-    "Change how people see the brand: a new segment, a new price range, a new image. E.g. a store seen as cheap that wants to be seen as expert.",
-  "sandbox.campaigns.objectiveRepositioningMetric":
-    "Harder. Engagement, a shift in who arrives, mentions.",
-  "sandbox.campaigns.objectiveRepositioningProduct":
-    "Selective: only what reinforces the new image.",
-  "sandbox.campaigns.objectiveRetentionContent":
-    "Use, care and what comes after the purchase. E.g. “Washing your shoes without wrecking the midsole”.",
-  "sandbox.campaigns.objectiveRetentionCta":
-    "Light — repurchase, an accessory, support.",
-  "sandbox.campaigns.objectiveRetentionHelp":
-    "Get someone who already bought to make more of it and come back. The reader is a customer.",
-  "sandbox.campaigns.objectiveRetentionMetric":
-    "Repurchase, frequency, returning customers.",
-  "sandbox.campaigns.objectiveRetentionProduct":
-    "What they already own — and what pairs with it.",
-  "sandbox.campaigns.productImageLabel": "Product image",
-  "sandbox.campaigns.add": "New campaign",
   "sandbox.campaigns.suggest": "Suggest campaigns",
   "sandbox.campaigns.suggestFailed": "Could not start the suggestion: {error}",
-  "sandbox.campaigns.addAvoid": "Add guardrail",
-  "sandbox.campaigns.addTarget": "Add target",
-  "sandbox.campaigns.avoidBodyPlaceholder":
-    "What must not happen, and why this campaign in particular needs it said",
-  "sandbox.campaigns.avoidHint":
-    "Added to the brand's guardrails for this campaign only — it never replaces them.",
-  "sandbox.campaigns.avoidLabel": "Extra guardrails",
-  "sandbox.campaigns.avoidNamePlaceholder": "What this guardrail is about",
-  "sandbox.campaigns.close": "Close",
   "sandbox.campaigns.collapseLane": "Collapse {lane}",
   "sandbox.campaigns.deleteCancel": "Cancel",
   "sandbox.campaigns.deleteConfirm": "Delete",
@@ -167,28 +55,14 @@ export const sandbox = {
   "sandbox.campaigns.empty":
     "No campaigns yet. A campaign is a moment worth writing for — a launch, a date, a search you do not answer.",
   "sandbox.campaigns.expandLane": "Expand {lane}",
-  "sandbox.campaigns.keywordsHint":
-    "The terms this campaign should be found by. Enter or a comma adds one.",
-  "sandbox.campaigns.keywordsLabel": "Keywords",
-  "sandbox.campaigns.keywordsPlaceholder": "Add a term and press Enter",
   "sandbox.campaigns.laneEmpty": "Nothing here",
   "sandbox.campaigns.moveFailed": "Could not move the campaign",
-  "sandbox.campaigns.nameLabel": "Name",
-  "sandbox.campaigns.namePlaceholder": "e.g. Black Friday 2026",
   "sandbox.campaigns.noMatches": "No campaign matches that.",
   "sandbox.campaigns.objectiveAwareness": "Awareness",
   "sandbox.campaigns.objectiveConversion": "Conversion",
   "sandbox.campaigns.objectiveEducation": "Education",
-  "sandbox.campaigns.objectiveHint":
-    "What a post written for this campaign is trying to achieve.",
-  "sandbox.campaigns.objectiveLabel": "Objective",
   "sandbox.campaigns.goalLabel": "Goal",
-  "sandbox.campaigns.goalHint":
-    "The figure that says this campaign worked, by the end of its period. For this objective, usually: {metric}",
-  "sandbox.campaigns.goalPlaceholder":
-    "e.g. Grow organic traffic on accessories",
   "sandbox.campaigns.goalTargetLabel": "Target",
-  "sandbox.campaigns.goalTargetPlaceholder": "+20%",
   "sandbox.campaigns.goalMetricLabel": "Counted in",
   "sandbox.campaigns.goalMetricNone": "Not set",
   "sandbox.campaigns.goalMetricOrganicSessions": "organic sessions",
@@ -200,39 +74,16 @@ export const sandbox = {
   "sandbox.campaigns.goalLine": "Goal: {goal}",
   "sandbox.campaigns.objectiveRepositioning": "Repositioning",
   "sandbox.campaigns.objectiveRetention": "Retention",
-  "sandbox.campaigns.periodClear": "Clear the period",
-  "sandbox.campaigns.periodEmpty": "No dates",
-  "sandbox.campaigns.periodLabel": "Period",
   "sandbox.campaigns.remove": "Delete campaign",
-  "sandbox.campaigns.removeKeyword": "Remove term",
-  "sandbox.campaigns.removeTarget": "Remove target",
   "sandbox.campaigns.searchPlaceholder": "Search campaigns",
-  "sandbox.campaigns.selectPrompt": "Pick a campaign to edit it.",
   "sandbox.campaigns.statusActive": "Active",
   "sandbox.campaigns.statusDraft": "Drafts",
   "sandbox.campaigns.statusFinished": "Finished",
-  "sandbox.campaigns.statusLabel": "Status",
   "sandbox.campaigns.statusPaused": "Paused",
   "sandbox.campaigns.targetCategory": "Category",
   "sandbox.campaigns.targetCollection": "Collection",
-  "sandbox.campaigns.targetUrlPlaceholder": "https://…",
-  "sandbox.campaigns.targetUrlRequired":
-    "A target needs its URL — it is what a post links to.",
-  "sandbox.campaigns.targetsHint":
-    "What this campaign sells. Any storefront: the URL is what identifies it.",
-  "sandbox.campaigns.targetsLabel": "Targets",
-  "sandbox.campaigns.toneHint":
-    "Replaces the brand's tone while this campaign runs. Leave empty to keep it.",
-  "sandbox.campaigns.toneLabel": "Tone override",
-  "sandbox.campaigns.tonePlaceholder":
-    "e.g. shorter sentences, more urgency, no jokes",
-  "sandbox.campaigns.triggerHint":
-    "Why this campaign exists. The note is what a writer reads to understand the moment.",
   "sandbox.campaigns.triggerInventory": "Inventory",
-  "sandbox.campaigns.triggerLabel": "Trigger",
   "sandbox.campaigns.triggerLaunch": "Launch",
-  "sandbox.campaigns.triggerNotePlaceholder":
-    "What is happening, and why it is worth writing about now",
   "sandbox.campaigns.triggerPartnership": "Partnership",
   "sandbox.campaigns.triggerReputation": "Reputation",
   "sandbox.campaigns.triggerSeasonal": "Seasonal",

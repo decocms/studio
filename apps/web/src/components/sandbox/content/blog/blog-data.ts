@@ -75,6 +75,16 @@ import {
   WRAPPER_KEY,
 } from "@decocms/shared/blog";
 import {
+  type BlogEvidence,
+  BlogEvidenceSchema,
+} from "@decocms/shared/blog-card";
+import {
+  type CampaignBriefing,
+  type CampaignBriefingOption,
+  CampaignBriefingOptionSchema,
+  CampaignBriefingSchema,
+  type CampaignRun,
+  CampaignRunSchema,
   CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_KEY_PREFIX,
   CAMPAIGN_OBJECTIVES,
@@ -833,12 +843,7 @@ export { CAMPAIGN_KEY_PREFIX };
  * every call site in this folder keeps importing campaign things from one place.
  */
 export {
-  CAMPAIGN_GOAL_METRICS,
-  CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
-  CAMPAIGN_TARGET_KINDS,
-  CAMPAIGN_TRIGGERS,
-  MAX_CAMPAIGN_PRODUCT_IMAGES,
   type CampaignGoalMetric,
   type CampaignObjective,
   type CampaignStatus,
@@ -892,10 +897,22 @@ export interface CampaignGoal {
 
 export interface CampaignEntry {
   key: string;
+  /** The record's id: its key without the prefix. */
+  id: string;
   name: string;
   /** The seed this campaign was generated from; "" when written by hand. */
   seedKey: string;
   status: CampaignStatus;
+  /** The chat that shapes it, a card's or its own; "" for one written by hand. */
+  threadId: string;
+  /** What the store's systems reported while it was shaped. */
+  evidence: BlogEvidence[];
+  /** The briefings its agent suggested. */
+  briefings: CampaignBriefingOption[];
+  /** The briefing it is developed from, or null before one is chosen. */
+  briefing: CampaignBriefing | null;
+  /** The last run Studio started on it. */
+  run: CampaignRun | null;
   /** `YYYY-MM-DD`, both optional — not every campaign has dates pinned. */
   period: { start: string | null; end: string | null };
   trigger: { type: CampaignTrigger; note: string };
@@ -917,10 +934,6 @@ export interface CampaignEntry {
   updatedAt: string;
 }
 
-export function newCampaignKey(): string {
-  return `${CAMPAIGN_KEY_PREFIX}${crypto.randomUUID()}`;
-}
-
 /** A stored value narrowed to a closed set, or the default. */
 function oneOf<T extends string>(
   allowed: readonly T[],
@@ -935,7 +948,7 @@ function dateOrNull(value: unknown): string | null {
   return str(value) || null;
 }
 
-export function readCampaignTargets(value: unknown): CampaignTarget[] {
+function readCampaignTargets(value: unknown): CampaignTarget[] {
   const targets: CampaignTarget[] = [];
   for (const entry of toArray(value)) {
     const record = asRecord(entry);
@@ -964,7 +977,7 @@ function readProductImages(record: Record<string, unknown>): string[] {
   return all.slice(0, MAX_CAMPAIGN_PRODUCT_IMAGES);
 }
 
-export function readCampaignProducts(value: unknown): CampaignProduct[] {
+function readCampaignProducts(value: unknown): CampaignProduct[] {
   const products: CampaignProduct[] = [];
   for (const entry of toArray(value)) {
     const record = asRecord(entry);
@@ -981,50 +994,24 @@ export function readCampaignProducts(value: unknown): CampaignProduct[] {
   return products;
 }
 
-/**
- * Rebuild a campaign block. Every optional is coalesced rather than omitted, so
- * the JSON on disk has one shape whatever the editor had filled in.
- *
- * `campaignName` rather than `name`: the file is the key, so it is not stored.
- */
-export function buildCampaignBlock(
-  campaign: Omit<CampaignEntry, "key">,
-): Record<string, unknown> {
-  return {
-    campaignName: campaign.name,
-    seedKey: campaign.seedKey,
-    status: campaign.status,
-    period: {
-      start: campaign.period.start ?? "",
-      end: campaign.period.end ?? "",
-    },
-    trigger: { type: campaign.trigger.type, note: campaign.trigger.note },
-    goal: {
-      text: campaign.goal.text,
-      metric: campaign.goal.metric,
-      target: campaign.goal.target,
-    },
-    intent: {
-      objective: campaign.intent.objective,
-      targets: campaign.intent.targets,
-      products: campaign.intent.products,
-      keywords: campaign.intent.keywords,
-    },
-    guardrails: {
-      avoidComplements: campaign.guardrails.avoidComplements,
-      toneOverrides: campaign.guardrails.toneOverrides,
-    },
-    createdAt: campaign.createdAt,
-    updatedAt: campaign.updatedAt,
-  };
+/** The items of a list that pass their schema; anything else is dropped rather than breaking the page. */
+function validItems<T>(
+  value: unknown,
+  schema: { safeParse: (item: unknown) => { success: boolean; data?: T } },
+): T[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const parsed = schema.safeParse(item);
+    return parsed.success && parsed.data !== undefined ? [parsed.data] : [];
+  });
 }
 
 /**
  * Every campaign, newest first.
  *
- * Tolerant of a partial block: a half-written campaign is
- * the normal case while someone is still filling the form, and an unknown enum
- * value reads as the default rather than breaking the board.
+ * Tolerant of a partial block: a half-written campaign is the normal case
+ * while its agent is still shaping it, and an unknown enum value reads as the
+ * default rather than breaking the board.
  */
 export function scanCampaigns(
   decofile: Record<string, unknown>,
@@ -1041,9 +1028,15 @@ export function scanCampaigns(
     const goal = asRecord(record.goal) ?? {};
     campaigns.push({
       key,
+      id: key.slice(CAMPAIGN_KEY_PREFIX.length),
       name: str(record.campaignName),
       seedKey: str(record.seedKey),
       status: oneOf(CAMPAIGN_STATUSES, record.status, "draft"),
+      threadId: str(record.threadId),
+      evidence: validItems(record.evidence, BlogEvidenceSchema),
+      briefings: validItems(record.briefings, CampaignBriefingOptionSchema),
+      briefing: CampaignBriefingSchema.safeParse(record.briefing).data ?? null,
+      run: CampaignRunSchema.safeParse(record.run).data ?? null,
       period: { start: dateOrNull(period.start), end: dateOrNull(period.end) },
       trigger: {
         type: oneOf(CAMPAIGN_TRIGGERS, trigger.type, "seasonal"),
@@ -1072,26 +1065,6 @@ export function scanCampaigns(
     (a, b) =>
       b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name),
   );
-}
-
-/** A campaign with no goal yet: what one reads as before anyone sets it. */
-export const NO_GOAL: CampaignGoal = { text: "", metric: null, target: "" };
-
-/** A campaign as it is born: empty, in draft, nothing pinned. */
-export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
-  const stamp = now.toISOString();
-  return {
-    name: "",
-    seedKey: "",
-    status: "draft",
-    period: { start: null, end: null },
-    trigger: { type: "seasonal", note: "" },
-    goal: { ...NO_GOAL },
-    intent: { objective: "awareness", targets: [], products: [], keywords: [] },
-    guardrails: { avoidComplements: [], toneOverrides: "" },
-    createdAt: stamp,
-    updatedAt: stamp,
-  };
 }
 
 // ------------------ Campaign seeds (what a generation starts from) -----------

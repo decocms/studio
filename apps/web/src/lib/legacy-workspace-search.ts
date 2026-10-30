@@ -41,6 +41,8 @@ export const taskBoardSearchShape = {
   track: z.enum(["code", "content"]).catch("code").optional(),
   /** The blogpost card open on the content track. */
   card: z.string().optional(),
+  /** The campaign open on the content track's Campaigns view. */
+  campaign: z.string().optional(),
 };
 
 const CONTEXT_SECTIONS = [

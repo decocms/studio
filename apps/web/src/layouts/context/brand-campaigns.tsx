@@ -1,14 +1,13 @@
 /**
- * The brand's campaigns: the organization's, kept beside its brand guide and
- * read from its VTEX connection. Reached from the brand page's Content group.
+ * The brand's campaigns: the organization's, kept beside its brand guide.
+ * Reached from the brand page's Content group; a campaign opens on its page in
+ * the organization's content track.
  */
 
+import { useNavigate } from "@tanstack/react-router";
 import { EmptyState } from "@/components/empty-state";
 import { BlogConnectionsGate } from "@/components/sandbox/content/blog/blog-connections-gate";
-import { BlogStateConflict } from "@/components/sandbox/content/blog/blog-state-conflict";
-import { useVtexCatalogSource } from "@/components/sandbox/content/blog/blocks/vtex-mcp-source";
 import { CampaignsPanel } from "@/components/sandbox/content/blog/campaigns-panel";
-import { useBlogConnections } from "@/components/sandbox/content/blog/use-blog-connections";
 import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
 import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useBrandLiveSync } from "@/hooks/use-brand-events";
@@ -17,6 +16,8 @@ import { useProjectContext } from "@/sdk";
 
 export function BrandCampaigns() {
   const t = useT();
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
   const blogAi = useBlogAi();
   // Drafts an agent writes into the brand folder land here as they are written.
   useBrandLiveSync();
@@ -31,20 +32,26 @@ export function BrandCampaigns() {
   }
   return (
     <BlogConnectionsGate>
-      <Campaigns />
+      <Campaigns
+        onOpen={(campaign) =>
+          void navigate({
+            to: "/$org/tasks/{-$taskKey}",
+            params: { org: org.slug, taskKey: undefined },
+            search: { track: "content", view: "campaigns", campaign },
+          })
+        }
+      />
     </BlogConnectionsGate>
   );
 }
 
-export function Campaigns() {
+export function Campaigns({
+  onOpen,
+}: {
+  /** Open a campaign's page. */
+  onOpen: (campaignId: string) => void;
+}) {
   const { org } = useProjectContext();
   const blog = useBlogState({ orgSlug: org.slug });
-  const { vtex } = useBlogConnections();
-  const catalog = useVtexCatalogSource(vtex.connectionId);
-  return (
-    <div className="flex flex-col gap-3">
-      <BlogStateConflict blog={blog} />
-      <CampaignsPanel blog={blog} catalog={catalog} />
-    </div>
-  );
+  return <CampaignsPanel blog={blog} onOpen={onOpen} />;
 }

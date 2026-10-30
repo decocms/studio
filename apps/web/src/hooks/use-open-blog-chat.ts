@@ -7,6 +7,7 @@ interface BlogChatLayout {
   track?: "content";
   view?: "campaigns";
   card?: string;
+  campaign?: string;
 }
 
 /**
