@@ -5,6 +5,7 @@ import type { LastPreviewPage } from "./last-preview-page";
 import type { OptionSource } from "./path-param-picker";
 import type { SavedRunnableEntry } from "@/components/sandbox/content/runnable-catalog";
 import { LayoutAlt01 } from "@untitledui/icons";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Popover,
   PopoverContent,
@@ -92,7 +93,10 @@ import {
   resolveSectionPreviewBase,
   withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
-import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
+import {
+  readDraftPointer,
+  useFastPreviewDraftUrl,
+} from "@/components/sections-editor/use-fast-preview-draft-url";
 import {
   confirmPreviewReloaded,
   contentSyncScope,
@@ -179,7 +183,10 @@ import {
   useContentRevision,
   useProtocolDraftRead,
 } from "@/components/sections-editor/content-protocol-api";
-import { publishPreviewDraft } from "@/components/sections-editor/preview-draft-link";
+import {
+  openDraftTab,
+  publishPreviewDraft,
+} from "@/components/sections-editor/preview-draft-link";
 import { hostedPreviewUrls } from "./hosted-preview-urls";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
@@ -521,6 +528,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // SEO panel state
 
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
 
   const vmEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
@@ -1020,34 +1028,60 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * Preview this is the draft URL itself, which is shareable precisely because
    * the pointer is a query param on the site's own route.
    */
-  const productionOpenTabBase =
-    draftPreviewUrl ??
-    (display.iframeBase
-      ? resolvePreviewUrl(resolvedPath, display.iframeBase)
-      : null);
-  const openInNewTabUrl =
-    display.mode === "production" && hostedUrls
-      ? // The frame's `__draft`, exactly; none until the pointer is read.
-        hostedUrls.newTab
-      : display.mode === "production"
-        ? productionOpenTabBase
-          ? withVariantMatcherOverride(
-              withPreviewOptionsInDraftUrl(
-                withForcedVariantsInDraftUrl(
-                  productionOpenTabBase,
-                  forcedVariants,
-                ),
-                appliedPreviewOptions,
-              ),
-              matcherOverride,
-            )
-          : null
-        : (iframeSrc ?? display.iframeBase);
+  const openInNewTabUrlFor = (draft: {
+    hostedPointer: string | null;
+    draftPreviewUrl: string | null;
+  }) => {
+    if (display.mode !== "production") return iframeSrc ?? display.iframeBase;
+    if (hostedDraft) {
+      // The frame's `__draft`, exactly; none until the pointer is read.
+      return hostedPreviewUrls({
+        display,
+        path: resolvedPath,
+        pointer: draft.hostedPointer,
+        device: previewDeviceSize,
+        forcedVariants,
+        previewOptions: appliedPreviewOptions,
+      }).newTab;
+    }
+    const productionOpenTabBase =
+      draft.draftPreviewUrl ??
+      (display.iframeBase
+        ? resolvePreviewUrl(resolvedPath, display.iframeBase)
+        : null);
+    return productionOpenTabBase
+      ? withVariantMatcherOverride(
+          withPreviewOptionsInDraftUrl(
+            withForcedVariantsInDraftUrl(productionOpenTabBase, forcedVariants),
+            appliedPreviewOptions,
+          ),
+          matcherOverride,
+        )
+      : null;
+  };
+  const openInNewTabUrl = openInNewTabUrlFor({
+    hostedPointer,
+    draftPreviewUrl,
+  });
 
+  // The pointer is read after the pending saves land, so the tab has the last edit.
   const handleOpenPreview = () => {
-    const url = openInNewTabUrl;
-    if (!url) return;
-    window.open(url, "_blank", "noopener");
+    if (!openInNewTabUrl) return;
+    if (!virtualMcpId || !branch) {
+      window.open(openInNewTabUrl, "_blank", "noopener");
+      return;
+    }
+    const params = { orgSlug: org.slug, virtualMcpId, branch };
+    const hosted =
+      contentBackend.kind === "protocol" && contentBackend.source === "github";
+    openDraftTab({ queryClient, ...params }, () => {
+      const pointer = readDraftPointer(queryClient, params, hosted);
+      return openInNewTabUrlFor({
+        hostedPointer: hostedPointer && (pointer ?? hostedPointer),
+        draftPreviewUrl:
+          draftPreviewUrl && withDraftPointer(draftPreviewUrl, pointer),
+      });
+    });
   };
 
   // Last visited page (incl. `:param` values), persisted per project+branch.

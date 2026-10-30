@@ -33,7 +33,11 @@ import {
   HOSTED_RECONCILE_ROUNDS,
   hostedIfMatch,
 } from "./hosted-reconcile";
-import { runContentChange, useContentDiscardListener } from "./content-sync";
+import {
+  runContentChange,
+  useContentDiscardListener,
+  useContentFlushListener,
+} from "./content-sync";
 import { usePackagePath } from "./use-package-path";
 import {
   canonicalBlockJson,
@@ -945,6 +949,15 @@ export function useDebouncedSaveBlock(
       pendingRef.current.delete(blockKey);
       editsRef.current.delete(blockKey);
     }
+  });
+
+  // The listener is registered once; the ref gives it this render's `flush`.
+  const flushRef = useRef(flush);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- ref is only read by the flush listener, not during render
+  flushRef.current = flush;
+  useContentFlushListener(params, () => {
+    flushRef.current();
+    return false;
   });
 
   // Cancel pending debounced saves on unmount so they can't fire against a torn

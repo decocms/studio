@@ -218,7 +218,10 @@ function BlogContextForm({
         data: brandBlockToSave(next, storedBrand, decofile[CONTEXT_BLOCK_KEY]),
       });
     },
-    { onSeed: () => save.hold(BRAND_BLOCK_KEY) },
+    {
+      onSeed: () => save.hold(BRAND_BLOCK_KEY),
+      content: { orgSlug, virtualMcpId },
+    },
   );
 
   /**
@@ -233,7 +236,10 @@ function BlogContextForm({
         data: pickBlogFields(next, CONTEXT_FIELDS),
       });
     },
-    { onSeed: () => save.hold(CONTEXT_BLOCK_KEY) },
+    {
+      onSeed: () => save.hold(CONTEXT_BLOCK_KEY),
+      content: { orgSlug, virtualMcpId },
+    },
   );
 
   const setField = (key: string, value: unknown) =>
@@ -248,7 +254,10 @@ function BlogContextForm({
   const [formatsData, setFormatsData] = useAutosave(
     formatsBlock ?? EMPTY_FORMATS,
     (next) => save.mutate({ blockKey: FORMATS_BLOCK_KEY, data: next }),
-    { onSeed: () => save.hold(FORMATS_BLOCK_KEY) },
+    {
+      onSeed: () => save.hold(FORMATS_BLOCK_KEY),
+      content: { orgSlug, virtualMcpId },
+    },
   );
   const formats = normalizeBrandRules(formatsData.formats);
   const setFormats = (rules: BrandRule[]) =>

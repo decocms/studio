@@ -989,10 +989,33 @@ export function useProtocolDraftRead(params: DecofileScopeParams | null): {
     staleTime: Number.POSITIVE_INFINITY,
   });
   const pending = !!params && isPending && !isError;
-  if (!params || !data?.draft || !data.version) {
-    return { pointer: null, pending };
-  }
-  return { pointer: `${data.draft}@${data.version}`, pending: false };
+  const pointer = params ? hostedDraftPointer(data) : null;
+  return pointer ? { pointer, pending: false } : { pointer: null, pending };
+}
+
+function hostedDraftPointer(
+  data: HostedDraftPointer | undefined,
+): string | null {
+  return data?.draft && data.version ? `${data.draft}@${data.version}` : null;
+}
+
+/**
+ * {@link useProtocolDraft}'s pointer as the cache holds it now: a link built
+ * right after a save carries that save's version.
+ */
+export function readProtocolDraftPointer(
+  queryClient: QueryClient,
+  params: DecofileScopeParams,
+): string | null {
+  return hostedDraftPointer(
+    queryClient.getQueryData<HostedDraftPointer>(
+      KEYS.protocolDraftRead(
+        params.orgSlug,
+        params.virtualMcpId,
+        params.branch,
+      ),
+    ),
+  );
 }
 
 /** {@link useProtocolDraftRead}'s pointer alone. */

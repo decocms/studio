@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useContentFlushListener } from "@/components/sections-editor/content-sync";
 
 const AUTOSAVE_DELAY = 700;
 
@@ -38,6 +39,8 @@ export function useAutosave<T, E = never>(
      * made on.
      */
     onEdit?: () => E | undefined;
+    /** The project whose `settleContentEdits` sends a pending save at once. */
+    content?: { orgSlug: string; virtualMcpId: string };
   },
 ): readonly [T, (next: T) => void, (next: T) => void, boolean] {
   const delay = opts?.delay ?? AUTOSAVE_DELAY;
@@ -53,6 +56,8 @@ export function useAutosave<T, E = never>(
   const [pending, setPending] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const edit = useRef<{ made: E | undefined } | null>(null);
+  // The pending timer's save, for a flush to send it now.
+  const fire = useRef<(() => void) | null>(null);
 
   // Re-seed from external `initial` only once edits settle — not while a save is in flight, whose older echo would revert a newer edit.
   if (initial !== seeded) {
@@ -68,14 +73,24 @@ export function useAutosave<T, E = never>(
     setPending(true);
     if (!edit.current) edit.current = { made: opts?.onEdit?.() };
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
+    const run = () => {
       timer.current = null;
+      fire.current = null;
       setPending(false);
       const made = edit.current?.made;
       edit.current = null;
       save(next, made);
-    }, delay);
+    };
+    fire.current = run;
+    timer.current = setTimeout(run, delay);
   };
+
+  useContentFlushListener(opts?.content ?? null, () => {
+    if (!timer.current) return false;
+    clearTimeout(timer.current);
+    fire.current?.();
+    return false;
+  });
 
   // Update the draft WITHOUT scheduling a save, cancelling any pending one.
   // For callers that already persisted the value through another path (e.g.
@@ -86,6 +101,7 @@ export function useAutosave<T, E = never>(
     setDraft(next);
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
+    fire.current = null;
     edit.current = null;
     setPending(false);
   };
