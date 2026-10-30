@@ -1,21 +1,11 @@
 import type { settings as settingsEn } from "../en/settings.ts";
 
 export const settings = {
-  "settings.subscriptionUsage.title": "Uso do plano",
   "settings.subscriptionUsage.refresh": "Atualizar",
-  "settings.subscriptionUsage.loading": "Carregando limites de uso…",
-  "settings.subscriptionUsage.fiveHour": "Janela de 5 horas",
-  "settings.subscriptionUsage.weekly": "Limite semanal",
-  "settings.subscriptionUsage.sonnet": "Sonnet · semanal",
-  "settings.subscriptionUsage.opus": "Opus · semanal",
   "settings.subscriptionUsage.codeReview": "Revisão de código",
-  "settings.subscriptionUsage.hours": "Janela de {hours} horas",
   "settings.subscriptionUsage.primary": "Limite principal",
   "settings.subscriptionUsage.secondary": "Limite secundário",
-  "settings.subscriptionUsage.used": "{percent}% usado",
   "settings.subscriptionUsage.resets": "Renova em {date}",
-  "settings.subscriptionUsage.resetUnknown":
-    "Horário de renovação não informado",
   "settings.subscriptionUsage.limitReached": "Limite atingido",
   "settings.subscriptionUsage.permission":
     "Este token não permite consultar limites. Veja o uso no site do provedor.",
@@ -27,10 +17,6 @@ export const settings = {
     "Vincule seu plano para consultar os limites.",
   "settings.subscriptionUsage.unavailable":
     "Os limites estão indisponíveis agora. Consulte o provedor para ver o status atual.",
-  "settings.subscriptionUsage.retryAt": "Tente novamente em {date}",
-  "settings.subscriptionUsage.checkedAt": "Consultado em {date}",
-  "settings.subscriptionUsage.sharedUsage":
-    "Inclui uso fora do Studio. Estes limites pertencem ao seu plano pessoal.",
   "settings.subscriptionUsage.openProvider": "Ver no provedor",
 
   "settings.voice.title": "Modo voz",
@@ -647,9 +633,7 @@ export const settings = {
   "settings.connectProviderDialog.connectionTimedOutMessage":
     "Conex\u00e3o expirou",
   "settings.connectProviderDialog.defaultProviderName": "Provedor",
-  "settings.connectProviderDialog.defaultTitle": "Conectar um provedor de IA",
-  "settings.connectProviderDialog.gridDescription":
-    "Escolha um provedor \u2014 o resto a gente resolve.",
+  "settings.connectProviderDialog.defaultTitle": "Adicionar chave de API",
   "settings.connectProviderDialog.oauthFailedMessage":
     "Falha na conex\u00e3o OAuth: {error}",
   "settings.connectProviderDialog.oauthPendingMessage":
@@ -664,10 +648,6 @@ export const settings = {
     "Falha na verifica\u00e7\u00e3o de seguran\u00e7a: Token de estado n\u00e3o corresponde",
   "settings.connectProviderDialog.startOAuthFailedMessage":
     "Falha ao iniciar OAuth: {error}",
-  "settings.connectedProvidersSection.connectButton": "Conectar provedor",
-  "settings.connectedProvidersSection.emptyState":
-    "Traga suas pr\u00f3prias chaves para usar modelos espec\u00edficos junto com o gateway da Deco.",
-  "settings.connectedProvidersSection.sectionTitle": "Provedores conectados",
   "settings.agentTools.chatHarnessCodexTitle":
     "Usar Codex em novos chats no sandbox",
   "settings.agentTools.chatHarnessCodexDescription":
@@ -675,51 +655,43 @@ export const settings = {
   "settings.codexSubscription.setupHeading": "Conecte o Codex",
   "settings.codexSubscription.setupDescription":
     "Vincule sua assinatura do ChatGPT em Configurações → Provedores de IA ou conecte um provedor com um endpoint da API Responses da OpenAI.",
-  "settings.codexSubscription.active":
-    "Suas execuções do Codex usam sua assinatura do ChatGPT. As credenciais são renovadas automaticamente.",
   "settings.codexSubscription.connect": "Vincular",
   "settings.codexSubscription.connected": "Assinatura do ChatGPT vinculada",
-  "settings.codexSubscription.description":
-    "Use sua assinatura do ChatGPT nos chats com Codex no sandbox. As credenciais pertencem a você e ficam criptografadas.",
   "settings.codexSubscription.disconnect": "Desconectar",
   "settings.codexSubscription.disconnected":
     "Assinatura do ChatGPT desconectada",
   "settings.codexSubscription.howTo":
     "Execute este comando na sua máquina, entre com o ChatGPT e cole o conteúdo de ~/.codex/auth.json:",
-  "settings.codexSubscription.title": "Sua assinatura do ChatGPT para Codex",
+  "settings.codexSubscription.title": "ChatGPT para Codex",
   "settings.codexSubscription.tokenPlaceholder": "Cole o conteúdo de auth.json",
-  "settings.claudeSubscription.active":
-    "Seu plano Claude est\u00e1 executando estas tarefas de c\u00f3digo.",
   "settings.claudeSubscription.connect": "Vincular",
   "settings.claudeSubscription.connected": "Assinatura Claude conectada",
-  "settings.claudeSubscription.description":
-    "Execute tarefas de c\u00f3digo no seu pr\u00f3prio plano Claude Pro ou Max, em vez do cr\u00e9dito de IA da organiza\u00e7\u00e3o.",
   "settings.claudeSubscription.disconnect": "Desconectar",
   "settings.claudeSubscription.disconnected": "Assinatura Claude desconectada",
-  "settings.claudeSubscription.expired":
-    "A Anthropic n\u00e3o aceita mais seu token. Gere um novo para continuar usando seu plano.",
   "settings.claudeSubscription.howTo":
     "Gere um token na sua pr\u00f3pria m\u00e1quina com",
-  "settings.claudeSubscription.title": "Sua assinatura Claude",
+  "settings.claudeSubscription.title": "Claude Pro ou Max",
   "settings.claudeSubscription.tokenPlaceholder": "Cole seu token",
-  "settings.githubCopilot.active":
-    "Seu plano GitHub Copilot est\u00e1 executando estas tarefas de c\u00f3digo.",
   "settings.githubCopilot.connect": "Vincular",
   "settings.githubCopilot.connected": "GitHub Copilot conectado",
-  "settings.githubCopilot.description":
-    "Execute tarefas de c\u00f3digo no Claude pelo seu pr\u00f3prio plano GitHub Copilot, em vez do cr\u00e9dito de IA da organiza\u00e7\u00e3o.",
   "settings.githubCopilot.disconnect": "Desconectar",
   "settings.githubCopilot.disconnected": "GitHub Copilot desconectado",
   "settings.githubCopilot.howTo":
     "Crie um token fine-grained do GitHub com a permiss\u00e3o Copilot Requests",
   "settings.githubCopilot.sharedBy":
     "Toda execu\u00e7\u00e3o nesta organiza\u00e7\u00e3o usa o plano GitHub Copilot compartilhado por {name}.",
-  "settings.githubCopilot.shareTitle":
-    "Compartilhar com a organiza\u00e7\u00e3o",
+  "settings.githubCopilot.shareTitle": "Compartilhar com a org",
   "settings.githubCopilot.shareDescription":
     "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
-  "settings.githubCopilot.title": "Seu plano GitHub Copilot",
+  "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
+  "settings.subscriptionUsage.unavailableShort": "Uso indisponível",
+  "settings.ownAccounts.more": "Mais ações",
+  "settings.providerKeyRow.edit": "Editar",
+  "settings.ownAccounts.title": "Suas contas",
+  "settings.ownAccounts.addApiKey": "Adicionar chave de API",
+  "settings.ownAccounts.linked": "Vinculado",
+  "settings.ownAccounts.expired": "Expirado",
   "settings.decoCreditsHero.add": "Adicionar",
   "settings.decoCreditsHero.addCredits": "Adicionar cr\u00e9ditos",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -752,7 +724,9 @@ export const settings = {
   "settings.planUsage.noPlan": "Nenhum plano ativo",
   "settings.planUsage.noPlanDescription":
     "Esta organização não tem um plano ativo. Escolha um abaixo — o primeiro mês do Starter é grátis.",
-  "settings.planUsage.creditsLeft": "restantes",
+  "settings.planUsage.included": "Incluído no plano",
+  "settings.planUsage.credits": "Créditos",
+  "settings.planUsage.creditsInUse": "Em uso",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
   "settings.planUsage.portalFailed":
     "Não foi possível abrir a cobrança: {message}",
@@ -1123,8 +1097,6 @@ export const settings = {
   "settings.providerKeyRow.codex": "Codex",
   "settings.providerKeyRow.delete": "Excluir",
   "settings.providerKeyRow.deleteApiKey": "Excluir chave de API",
-  "settings.providerKeyRow.deleteProviderKey": "Excluir chave do provedor",
-  "settings.providerKeyRow.editProviderKey": "Editar chave do provedor",
   "settings.providerKeyRow.failedToDeleteKey":
     "Falha ao excluir chave: {error}",
   "settings.providerKeyRow.keyDeleted": "Chave exclu\u00edda",
@@ -1227,38 +1199,23 @@ export const settings = {
   "settings.secrets.valueLabel": "Valor",
   "settings.simpleModeSection.defaultModels": "Modelos padr\u00e3o",
   "settings.simpleModeSection.failedToSave": "Falha ao salvar: {error}",
-  "settings.simpleModeSection.modelsPowerDescription":
-    "Estes modelos alimentam chat, automa\u00e7\u00f5es e ferramentas em toda a sua organiza\u00e7\u00e3o.",
   "settings.simpleModeSection.notAvailableWithCurrentProvider":
     "N\u00e3o dispon\u00edvel com o provedor atual",
   "settings.simpleModeSection.pickModel": "Escolher modelo",
   "settings.simpleModeSection.saved": "Salvo",
   "settings.simpleModeSection.saving": "Salvando\u2026",
   "settings.simpleModeSection.tierDeepResearch": "Pesquisa aprofundada",
-  "settings.simpleModeSection.tierDeepResearchDesc":
-    "Relat\u00f3rios de pesquisa aprofundados e multi-fonte",
   "settings.simpleModeSection.tierFast": "R\u00e1pido",
-  "settings.simpleModeSection.tierFastDesc":
-    "Respostas mais r\u00e1pidas, ideal para tarefas r\u00e1pidas",
   "settings.simpleModeSection.tierImage": "Imagem",
-  "settings.simpleModeSection.tierImageDesc": "Gera\u00e7\u00e3o de imagens",
   "settings.simpleModeSection.tierSmart": "Inteligente",
-  "settings.simpleModeSection.tierSmartDesc":
-    "Equil\u00edbrio entre velocidade e capacidade",
   "settings.simpleModeSection.tierThinking": "Reflexivo",
-  "settings.simpleModeSection.tierThinkingDesc":
-    "Mais capaz, ideal para tarefas complexas",
   "settings.simpleModeSection.tierWebSearch": "Busca na web",
-  "settings.simpleModeSection.tierWebSearchDesc":
-    "Respostas r\u00e1pidas e atualizadas da web",
-  "settings.aiProviders.recommended":
-    "Recomendado \u2014 100+ modelos, pague conforme usa",
+  "settings.aiProviders.groupChat": "Chat e tarefas",
+  "settings.aiProviders.groupMedia": "Só imagens e busca na web",
   "settings.aiProviders.customOpenAiCompatible":
     "OpenAI-compat\u00edvel personalizado",
   "settings.aiProviders.customOpenAiDescription":
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
-  "settings.aiProviders.moreProvidersSingular": "{count} provedor adicional",
-  "settings.aiProviders.moreProvidersPlural": "{count} provedores adicionais",
   "settings.aiProviders.decoConnectSuccess":
     "Deco AI Gateway conectado com sucesso",
   "settings.aiProviders.decoConnectError":

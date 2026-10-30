@@ -1,18 +1,9 @@
 export const settings = {
-  "settings.subscriptionUsage.title": "Plan usage",
   "settings.subscriptionUsage.refresh": "Refresh",
-  "settings.subscriptionUsage.loading": "Loading usage limits…",
-  "settings.subscriptionUsage.fiveHour": "5-hour window",
-  "settings.subscriptionUsage.weekly": "Weekly limit",
-  "settings.subscriptionUsage.sonnet": "Sonnet · weekly",
-  "settings.subscriptionUsage.opus": "Opus · weekly",
   "settings.subscriptionUsage.codeReview": "Code review",
-  "settings.subscriptionUsage.hours": "{hours}-hour window",
   "settings.subscriptionUsage.primary": "Primary limit",
   "settings.subscriptionUsage.secondary": "Secondary limit",
-  "settings.subscriptionUsage.used": "{percent}% used",
   "settings.subscriptionUsage.resets": "Resets {date}",
-  "settings.subscriptionUsage.resetUnknown": "Reset time not provided",
   "settings.subscriptionUsage.limitReached": "Limit reached",
   "settings.subscriptionUsage.permission":
     "This token cannot read usage limits. Check usage on the provider’s website.",
@@ -24,10 +15,6 @@ export const settings = {
     "Link your subscription to view usage limits.",
   "settings.subscriptionUsage.unavailable":
     "Usage limits are unavailable right now. Check the provider for the latest status.",
-  "settings.subscriptionUsage.retryAt": "Try again {date}",
-  "settings.subscriptionUsage.checkedAt": "Checked {date}",
-  "settings.subscriptionUsage.sharedUsage":
-    "Includes usage outside Studio. These limits belong to your personal plan.",
   "settings.subscriptionUsage.openProvider": "View on provider",
 
   "settings.voice.title": "Voice mode",
@@ -630,9 +617,7 @@ export const settings = {
   "settings.connectProviderDialog.connectionTimedOutMessage":
     "Connection timed out",
   "settings.connectProviderDialog.defaultProviderName": "Provider",
-  "settings.connectProviderDialog.defaultTitle": "Connect an AI provider",
-  "settings.connectProviderDialog.gridDescription":
-    "Pick a provider — we'll handle the rest.",
+  "settings.connectProviderDialog.defaultTitle": "Add API key",
   "settings.connectProviderDialog.oauthFailedMessage":
     "OAuth connection failed: {error}",
   "settings.connectProviderDialog.oauthPendingMessage":
@@ -647,10 +632,6 @@ export const settings = {
     "Security check failed: State token mismatch",
   "settings.connectProviderDialog.startOAuthFailedMessage":
     "Failed to start OAuth: {error}",
-  "settings.connectedProvidersSection.connectButton": "Connect provider",
-  "settings.connectedProvidersSection.emptyState":
-    "Bring your own keys to use specific models alongside Deco's gateway.",
-  "settings.connectedProvidersSection.sectionTitle": "Connected providers",
   "settings.agentTools.chatHarnessCodexTitle":
     "Use Codex for new sandbox chats",
   "settings.agentTools.chatHarnessCodexDescription":
@@ -658,50 +639,43 @@ export const settings = {
   "settings.codexSubscription.setupHeading": "Connect Codex",
   "settings.codexSubscription.setupDescription":
     "Link your ChatGPT subscription in Settings → AI Providers, or connect a provider with an OpenAI Responses API endpoint.",
-  "settings.codexSubscription.active":
-    "Your Codex runs use your ChatGPT subscription. Credentials refresh automatically.",
   "settings.codexSubscription.connect": "Link",
   "settings.codexSubscription.connected": "ChatGPT subscription linked",
-  "settings.codexSubscription.description":
-    "Use your ChatGPT subscription for Codex sandbox chats. Credentials belong to you and are stored encrypted.",
   "settings.codexSubscription.disconnect": "Disconnect",
   "settings.codexSubscription.disconnected": "ChatGPT subscription unlinked",
   "settings.codexSubscription.howTo":
     "Run this command locally, sign in with ChatGPT, then paste the contents of ~/.codex/auth.json:",
-  "settings.codexSubscription.title": "Your ChatGPT subscription for Codex",
+  "settings.codexSubscription.title": "ChatGPT for Codex",
   "settings.codexSubscription.tokenPlaceholder":
     "Paste the contents of auth.json",
-  "settings.claudeSubscription.active":
-    "Your Claude plan is running these coding tasks.",
   "settings.claudeSubscription.connect": "Link",
   "settings.claudeSubscription.connected": "Claude subscription linked",
-  "settings.claudeSubscription.description":
-    "Run coding tasks on your own Claude Pro or Max plan instead of the organization's AI credit.",
   "settings.claudeSubscription.disconnect": "Disconnect",
   "settings.claudeSubscription.disconnected": "Claude subscription unlinked",
-  "settings.claudeSubscription.expired":
-    "Anthropic no longer accepts your token. Generate a new one to keep using your plan.",
   "settings.claudeSubscription.howTo":
     "Generate a token on your own machine with",
-  "settings.claudeSubscription.title": "Your Claude subscription",
+  "settings.claudeSubscription.title": "Claude Pro or Max",
   "settings.claudeSubscription.tokenPlaceholder": "Paste your token",
-  "settings.githubCopilot.active":
-    "Your GitHub Copilot plan is running these coding tasks.",
   "settings.githubCopilot.connect": "Link",
   "settings.githubCopilot.connected": "GitHub Copilot linked",
-  "settings.githubCopilot.description":
-    "Run coding tasks on Claude through your own GitHub Copilot plan instead of the organization's AI credit.",
   "settings.githubCopilot.disconnect": "Disconnect",
   "settings.githubCopilot.disconnected": "GitHub Copilot unlinked",
   "settings.githubCopilot.howTo":
     "Create a fine-grained GitHub token with the Copilot Requests permission",
   "settings.githubCopilot.sharedBy":
     "Every run in this organization uses {name}'s shared GitHub Copilot plan.",
-  "settings.githubCopilot.shareTitle": "Share with the organization",
+  "settings.githubCopilot.shareTitle": "Share with org",
   "settings.githubCopilot.shareDescription":
     "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
-  "settings.githubCopilot.title": "Your GitHub Copilot plan",
+  "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
+  "settings.subscriptionUsage.unavailableShort": "Usage unavailable",
+  "settings.ownAccounts.more": "More actions",
+  "settings.providerKeyRow.edit": "Edit",
+  "settings.ownAccounts.title": "Your own accounts",
+  "settings.ownAccounts.addApiKey": "Add API key",
+  "settings.ownAccounts.linked": "Linked",
+  "settings.ownAccounts.expired": "Expired",
   "settings.decoCreditsHero.add": "Add",
   "settings.decoCreditsHero.addCredits": "Add credits",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -732,7 +706,9 @@ export const settings = {
   "settings.planUsage.noPlan": "No active plan",
   "settings.planUsage.noPlanDescription":
     "This organization has no active plan. Pick one below — Starter's first month is free.",
-  "settings.planUsage.creditsLeft": "left",
+  "settings.planUsage.included": "Included in plan",
+  "settings.planUsage.credits": "Credits",
+  "settings.planUsage.creditsInUse": "In use",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
@@ -1077,8 +1053,6 @@ export const settings = {
   "settings.providerKeyRow.codex": "Codex",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
-  "settings.providerKeyRow.deleteProviderKey": "Delete provider key",
-  "settings.providerKeyRow.editProviderKey": "Edit provider key",
   "settings.providerKeyRow.failedToDeleteKey": "Failed to delete key: {error}",
   "settings.providerKeyRow.keyDeleted": "Key deleted",
   "settings.roles.allConnections": "All connections",
@@ -1174,36 +1148,22 @@ export const settings = {
   "settings.secrets.valueLabel": "Value",
   "settings.simpleModeSection.defaultModels": "Default models",
   "settings.simpleModeSection.failedToSave": "Failed to save: {error}",
-  "settings.simpleModeSection.modelsPowerDescription":
-    "These models power chat, automations, and tools across your organization.",
   "settings.simpleModeSection.notAvailableWithCurrentProvider":
     "Not available with current provider",
   "settings.simpleModeSection.pickModel": "Pick model",
   "settings.simpleModeSection.saved": "Saved",
   "settings.simpleModeSection.saving": "Saving…",
   "settings.simpleModeSection.tierDeepResearch": "Deep research",
-  "settings.simpleModeSection.tierDeepResearchDesc":
-    "In-depth, multi-source research reports",
   "settings.simpleModeSection.tierFast": "Fast",
-  "settings.simpleModeSection.tierFastDesc":
-    "Fastest responses, best for quick tasks",
   "settings.simpleModeSection.tierImage": "Image",
-  "settings.simpleModeSection.tierImageDesc": "Image generation",
   "settings.simpleModeSection.tierSmart": "Smart",
-  "settings.simpleModeSection.tierSmartDesc": "Balanced speed and capability",
   "settings.simpleModeSection.tierThinking": "Thinking",
-  "settings.simpleModeSection.tierThinkingDesc":
-    "Most capable, best for complex tasks",
   "settings.simpleModeSection.tierWebSearch": "Web search",
-  "settings.simpleModeSection.tierWebSearchDesc":
-    "Quick, up-to-date answers from the web",
-  "settings.aiProviders.recommended":
-    "Recommended — 100+ models, pay as you go",
+  "settings.aiProviders.groupChat": "Chat and tasks",
+  "settings.aiProviders.groupMedia": "Images and web search only",
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.moreProvidersSingular": "{count} more provider",
-  "settings.aiProviders.moreProvidersPlural": "{count} more providers",
   "settings.aiProviders.decoConnectSuccess":
     "Deco AI Gateway connected successfully",
   "settings.aiProviders.decoConnectError":

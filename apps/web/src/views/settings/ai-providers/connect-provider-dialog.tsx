@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@decocms/ui/components/dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -334,11 +333,6 @@ export function ConnectProviderDialog({
             )}
             <DialogTitle>{currentTitle}</DialogTitle>
           </div>
-          {state.kind === "grid" && !initialProvider && (
-            <DialogDescription>
-              {t("settings.connectProviderDialog.gridDescription")}
-            </DialogDescription>
-          )}
         </DialogHeader>
 
         {state.kind === "grid" && !initialProvider && (
