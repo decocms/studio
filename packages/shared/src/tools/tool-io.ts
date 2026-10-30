@@ -2313,6 +2313,46 @@ export interface StudioToolIO {
                   }
                 | undefined;
               status?: "active" | "draft" | "paused" | "finished" | undefined;
+              threadId?: string | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                  }[]
+                | undefined;
+              briefings?:
+                | {
+                    [x: string]: unknown;
+                    id: string;
+                    title: string;
+                    idea: string;
+                    figure?: string | undefined;
+                    source?:
+                      | "calendar"
+                      | "brand"
+                      | "gsc"
+                      | "ga4"
+                      | "vtex"
+                      | undefined;
+                  }[]
+                | undefined;
+              briefing?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    optionId?: string | undefined;
+                  }
+                | undefined;
+              run?:
+                | {
+                    [x: string]: unknown;
+                    requestedAt: string;
+                    requestedBy: string;
+                  }
+                | undefined;
               createdAt?: string | undefined;
               updatedAt?: string | undefined;
             };
@@ -3085,6 +3125,124 @@ export interface StudioToolIO {
       count?: number | undefined;
     };
     output: { threadId: string; seedId: string; campaignIds: string[] };
+  };
+  BLOG_CAMPAIGN_UPDATE: {
+    input: {
+      id: string;
+      patch: {
+        campaignName?: string | undefined;
+        period?:
+          | {
+              start?: string | null | undefined;
+              end?: string | null | undefined;
+            }
+          | undefined;
+        trigger?:
+          | {
+              type?:
+                | "launch"
+                | "seasonal"
+                | "trend"
+                | "seo_gap"
+                | "inventory"
+                | "partnership"
+                | "reputation"
+                | undefined;
+              note?: string | undefined;
+            }
+          | undefined;
+        intent?:
+          | {
+              objective?:
+                | "awareness"
+                | "education"
+                | "conversion"
+                | "retention"
+                | "repositioning"
+                | undefined;
+              targets?:
+                | {
+                    kind: "category" | "collection";
+                    id: string;
+                    name: string;
+                    url: string;
+                    description: string;
+                  }[]
+                | undefined;
+              products?:
+                | {
+                    id: string;
+                    name: string;
+                    url: string;
+                    images: string[];
+                    category: string;
+                    description: string;
+                  }[]
+                | undefined;
+              keywords?: string[] | undefined;
+            }
+          | undefined;
+        guardrails?:
+          | {
+              avoidComplements?: { name: string; value: string }[] | undefined;
+              toneOverrides?: string | undefined;
+            }
+          | undefined;
+        goal?:
+          | {
+              text: string;
+              metric:
+                | "organic_sessions"
+                | "sessions"
+                | "search_clicks"
+                | "search_impressions"
+                | "conversions"
+                | "revenue"
+                | null;
+              target: string;
+            }
+          | null
+          | undefined;
+        status?: "active" | "draft" | "paused" | "finished" | undefined;
+        evidence?:
+          | {
+              [x: string]: unknown;
+              source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+              fact: string;
+              figure?: string | undefined;
+              tool?: string | undefined;
+            }[]
+          | null
+          | undefined;
+        briefings?:
+          | {
+              [x: string]: unknown;
+              id: string;
+              title: string;
+              idea: string;
+              figure?: string | undefined;
+              source?:
+                | "calendar"
+                | "brand"
+                | "gsc"
+                | "ga4"
+                | "vtex"
+                | undefined;
+            }[]
+          | null
+          | undefined;
+        briefing?:
+          | {
+              [x: string]: unknown;
+              text: string;
+              optionId?: string | undefined;
+            }
+          | null
+          | undefined;
+      };
+      expect?: string | undefined;
+    };
+    output: { id: string; campaign: Record<string, unknown>; version: string };
   };
   BLOG_SITE_BLOCKS: {
     input: {

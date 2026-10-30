@@ -1,4 +1,3 @@
-import { CAMPAIGN_STATUSES } from "@decocms/shared/blog-campaign";
 import { BLOG_STATE_CONFLICT } from "@decocms/shared/blog-state";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { z } from "zod";
@@ -24,7 +23,7 @@ import {
 import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
 import { callerBlogJob, campaignsJobRefusal } from "./blog-job";
 import { requireBlogAi } from "./feature-flag";
-import { CampaignDraftSchema, CampaignGoalSchema } from "./schema";
+import { StoredCampaignSchema } from "./campaign-record";
 
 /**
  * Reading and writing the blog's editorial state, for a caller with no browser.
@@ -45,29 +44,6 @@ const MAX_REMOVALS_PER_CALL = 50;
  * the CMS, which carries fields this schema does not know about yet, and a
  * strict parse would quietly delete them on every agent write.
  */
-
-/**
- * A campaign as stored: what the generator proposes, plus the bookkeeping the
- * board keeps. `campaignName` and not `name` because the CMS stores these as
- * decofile blocks too, where `name` is the block's own key.
- */
-const StoredCampaignSchema = CampaignDraftSchema.omit({ name: true })
-  .extend({
-    campaignName: z.string().describe("What someone calls this campaign."),
-    seedKey: z
-      .string()
-      .describe(
-        "The seed this campaign was generated from, as `blog-manager/campaign-seeds/<id>`. Empty when it was written by hand.",
-      ),
-    goal: CampaignGoalSchema.describe(
-      "What the campaign is for, in a figure someone can check. Every post written for it is a step toward this.",
-    ),
-    status: z.enum(CAMPAIGN_STATUSES),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-  })
-  .partial()
-  .loose();
 
 const StoredSeedSchema = z
   .object({

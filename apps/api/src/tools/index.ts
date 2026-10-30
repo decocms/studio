@@ -132,6 +132,7 @@ export const CORE_TOOLS = [
   BlogTools.BLOG_CARD_RUN,
   BlogTools.BLOG_BRAND_FILL,
   BlogTools.BLOG_CAMPAIGNS_PROPOSE,
+  BlogTools.BLOG_CAMPAIGN_UPDATE,
   BlogTools.BLOG_SITE_BLOCKS,
   BlogTools.BLOG_POST_ASSEMBLE,
   BlogTools.BLOG_POST_BRIEF,

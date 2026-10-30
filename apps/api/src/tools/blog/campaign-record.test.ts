@@ -1,0 +1,151 @@
+import { describe, expect, test } from "bun:test";
+import {
+  applyCampaignPatch,
+  type CampaignPatch,
+  campaignPatchRefusal,
+} from "./campaign-record";
+
+const DEVELOPED = {
+  campaignName: "Volta às aulas",
+  status: "draft",
+  threadId: "thrd_card",
+  trigger: { type: "seasonal", note: "As aulas voltam em fevereiro." },
+};
+const NOW = "2026-10-30T00:00:00.000Z";
+
+describe("campaignPatchRefusal", () => {
+  test("the campaign's own chat writes what it develops", () => {
+    expect(
+      campaignPatchRefusal(DEVELOPED, { campaignName: "Novo" }, "thrd_card"),
+    ).toBeNull();
+  });
+
+  test("another chat may not write it", () => {
+    expect(
+      campaignPatchRefusal(DEVELOPED, { campaignName: "Novo" }, "thrd_other"),
+    ).toContain("shaped elsewhere");
+    expect(
+      campaignPatchRefusal(
+        { campaignName: "x" },
+        { campaignName: "y" },
+        "thrd_card",
+      ),
+    ).toContain("shaped elsewhere");
+  });
+
+  test("an agent never sends the goal or the status", () => {
+    const patch: CampaignPatch = { status: "active" };
+    expect(campaignPatchRefusal(DEVELOPED, patch, "thrd_card")).toContain(
+      "a person's",
+    );
+    expect(
+      campaignPatchRefusal(DEVELOPED, { goal: null }, "thrd_card"),
+    ).toContain("a person's");
+  });
+
+  test("a person sets only the goal and the status", () => {
+    expect(
+      campaignPatchRefusal(
+        DEVELOPED,
+        { goal: { text: "Crescer", metric: "sessions", target: "+20%" } },
+        null,
+      ),
+    ).toBeNull();
+    expect(
+      campaignPatchRefusal(DEVELOPED, { campaignName: "Outro" }, null),
+    ).toContain("campaign's chat");
+  });
+
+  test("a person approves a developed draft, never an undeveloped one", () => {
+    expect(
+      campaignPatchRefusal(DEVELOPED, { status: "active" }, null),
+    ).toBeNull();
+    expect(
+      campaignPatchRefusal(
+        { campaignName: "", status: "draft" },
+        { status: "active" },
+        null,
+      ),
+    ).toContain("develops a campaign");
+  });
+
+  test("an approved campaign never goes back to draft", () => {
+    expect(
+      campaignPatchRefusal(
+        { ...DEVELOPED, status: "active" },
+        { status: "draft" },
+        null,
+      ),
+    ).toContain("never sent back");
+    expect(
+      campaignPatchRefusal(
+        { ...DEVELOPED, status: "active" },
+        { status: "paused" },
+        null,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("applyCampaignPatch", () => {
+  test("objects merge, arrays replace, null removes, unknown fields stay", () => {
+    const stored = {
+      ...DEVELOPED,
+      cmsOnly: "kept",
+      intent: {
+        objective: "conversion",
+        targets: [],
+        products: [
+          {
+            id: "1",
+            name: "A",
+            url: "",
+            images: [],
+            category: "",
+            description: "",
+          },
+        ],
+        keywords: ["mochila"],
+      },
+      briefing: { text: "Mochilas" },
+    };
+    const next = applyCampaignPatch(
+      stored,
+      { intent: { keywords: ["lancheira"] }, briefing: null },
+      NOW,
+    );
+    expect(next.cmsOnly).toBe("kept");
+    expect((next.intent as Record<string, unknown>).keywords).toEqual([
+      "lancheira",
+    ]);
+    expect(
+      ((next.intent as Record<string, unknown>).products as unknown[]).length,
+    ).toBe(1);
+    expect("briefing" in next).toBe(false);
+    expect(next.updatedAt).toBe(NOW);
+  });
+
+  test("a goal lands on an old record whose other fields are incomplete", () => {
+    const legacy = {
+      campaignName: "Antiga",
+      status: "active",
+      intent: { objective: "nope" },
+    };
+    const next = applyCampaignPatch(
+      legacy,
+      { goal: { text: "Crescer", metric: null, target: "" } },
+      NOW,
+    );
+    expect(next.goal).toEqual({ text: "Crescer", metric: null, target: "" });
+  });
+
+  test("a touched field that is invalid once merged is refused", () => {
+    const legacy = {
+      campaignName: "Antiga",
+      intent: { objective: "awareness" },
+    };
+    expect(() =>
+      applyCampaignPatch(legacy, { intent: { keywords: ["x"] } }, NOW),
+    ).toThrow("`intent` is not valid");
+  });
+});
