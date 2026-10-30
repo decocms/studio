@@ -7,17 +7,11 @@
  * Studio never has to guess.
  */
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import { authClient } from "@/lib/auth-client";
-import { useProjectContext } from "@/sdk";
-import { KEYS } from "@/lib/query-keys";
-import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
 import { PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import {
@@ -31,64 +25,19 @@ import {
   SubscriptionUsageSummary,
   useSubscriptionUsage,
 } from "./subscription-usage";
+import { useClaudeSubscription } from "./use-claude-subscription";
 
 export function ClaudeSubscriptionRow() {
   const t = useT();
-  const { org } = useProjectContext();
-  const { data: session } = authClient.useSession();
-  const userId = session?.user.id ?? "";
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
   const [token, setToken] = useState("");
   const [linking, setLinking] = useState(false);
-
-  const status = useQuery({
-    queryKey: KEYS.claudeSubscription(org.id, userId),
-    queryFn: () => studio.call("CLAUDE_SUBSCRIPTION_STATUS", {}),
-    enabled: Boolean(userId),
-  });
-
-  const invalidate = async () => {
-    await queryClient.cancelQueries({
-      queryKey: KEYS.subscriptionUsage(org.id, userId, "claude"),
-    });
-    queryClient.removeQueries({
-      queryKey: KEYS.subscriptionUsage(org.id, userId, "claude"),
-    });
-    await queryClient.invalidateQueries({
-      queryKey: KEYS.claudeSubscription(org.id, userId),
-    });
-  };
-
-  const connect = useMutation({
-    mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_CONNECT", { token }),
-    onSuccess: async () => {
-      setToken("");
-      setLinking(false);
-      await invalidate();
-      toast.success(t("settings.claudeSubscription.connected"));
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const disconnect = useMutation({
-    mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_DISCONNECT", {}),
-    onSuccess: async () => {
-      await invalidate();
-      toast.success(t("settings.claudeSubscription.disconnected"));
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const connected = status.data?.connected === true;
-  // A row that exists but is not `connected` is a token Anthropic has aged
-  // out — the only state where "paste a new one" is the honest label.
-  const expired = !connected && Boolean(status.data?.linkedAt);
+  const { orgId, userId, connected, expired, linkedAt, connect, disconnect } =
+    useClaudeSubscription();
   const usage = useSubscriptionUsage({
     provider: "claude",
-    orgId: org.id,
+    orgId,
     userId,
-    linkedAt: status.data?.linkedAt ?? null,
+    linkedAt,
     enabled: connected,
   });
 
@@ -146,7 +95,14 @@ export function ClaudeSubscriptionRow() {
           pending={connect.isPending}
           value={token}
           onChange={setToken}
-          onSubmit={() => connect.mutate()}
+          onSubmit={() =>
+            connect.mutate(token, {
+              onSuccess: () => {
+                setToken("");
+                setLinking(false);
+              },
+            })
+          }
           inputProps={{
             placeholder: t("settings.claudeSubscription.tokenPlaceholder"),
             "aria-label": t("settings.claudeSubscription.tokenPlaceholder"),

@@ -78,6 +78,8 @@ export const sidebar = {
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
   "sidebar.showMoreButton.loading": "Carregando…",
   "sidebar.showMoreButton.showMore": "Mostrar mais",
+  "sidebar.linkClaude.button": "Conectar Claude",
+  "sidebar.linkClaude.relink": "Reconectar Claude",
   "sidebar.sidebarFooter.inviteMembers": "Convidar membros",
   "sidebar.sidebarResizeHandle.ariaLabel": "Redimensionar barra lateral",
   "sidebar.sidebarResizeHandle.title":
