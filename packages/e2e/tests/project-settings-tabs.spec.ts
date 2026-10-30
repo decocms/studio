@@ -41,7 +41,9 @@ test.describe("project settings tabs", () => {
     ).toBeVisible();
     await expect(tabs.getByRole("link")).toHaveText([
       "General",
+      "Views",
       "Connections",
+      "Repository",
       "CMS",
     ]);
     await expect(tabs.getByRole("link", { name: "General" })).toHaveAttribute(
@@ -83,8 +85,10 @@ test.describe("project settings tabs", () => {
     await page.reload();
     await expect(name).toHaveValue("Forma Studio");
 
-    // The layout settings lead General rather than living in a tab of their own.
+    // The layout settings have their own Views section.
     await expect(tabs.locator('[aria-current="page"]')).toHaveText("General");
+    await tabs.getByRole("link", { name: "Views" }).click();
+    await expect(tabs.locator('[aria-current="page"]')).toHaveText("Views");
     await expect(
       content.getByRole("heading", { name: "Default layout" }),
     ).toBeVisible();
