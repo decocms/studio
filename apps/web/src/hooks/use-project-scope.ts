@@ -88,6 +88,10 @@ export function useProjectScope(): ProjectScope {
       virtualmcpid: undefined,
       thread: undefined,
       mainpanel: undefined,
+      // A folder or preview open in one project's Context means nothing elsewhere.
+      path: undefined,
+      preview: undefined,
+      expanded: undefined,
     });
     if (id) {
       navigateToTabLocation(navigate, {
@@ -110,7 +114,16 @@ export function useProjectScope(): ProjectScope {
       });
       return;
     }
-    navigate({ to: DESTINATION_ROUTE.home, params: { org }, search });
+    // The org has the same Context, Monitor and Plan, so leaving keeps them.
+    const sameDestination =
+      currentView === "files"
+        ? DESTINATION_ROUTE.library
+        : currentView === "monitoring"
+          ? DESTINATION_ROUTE.monitoring
+          : currentView === "plan"
+            ? DESTINATION_ROUTE.plan
+            : DESTINATION_ROUTE.home;
+    navigate({ to: sameDestination, params: { org }, search });
   };
 
   return {

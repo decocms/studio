@@ -7,14 +7,20 @@
  * the org's drive would leave you in a project's chrome looking at another
  * project's files.
  */
-import { useSearch } from "@tanstack/react-router";
+import { Navigate, useSearch } from "@tanstack/react-router";
 import { ChatLayout } from "@/components/chat-layout";
 import { LibraryTab } from "@/layouts/main-panel-tabs/library-tab";
 import { useEnsureProjectFolder } from "@/hooks/use-ensure-project-folder";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
-import { ContextShell, projectSection } from "@/layouts/context/context-shell";
+import {
+  ContextShell,
+  movedToSettings,
+  projectSection,
+} from "@/layouts/context/context-shell";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
+import { useProjectContext } from "@/sdk";
 import type { ContextSection } from "@/lib/legacy-workspace-search";
 import { VirtualMcpDetailView } from "@/views/virtual-mcp";
 import { projectFolderPath } from "@decocms/shared/organization/project-folder";
@@ -22,6 +28,7 @@ import { projectFolderPath } from "@decocms/shared/organization/project-folder";
 /** Under project-first nav: the project's Context, its files plus its settings. */
 export default function AgentLibraryRoute() {
   const { project } = useProjectScope();
+  const { org } = useProjectContext();
   const t = useT();
   const projectFirstNav = useProjectFirstNav();
   const { section } = useSearch({ strict: false }) as {
@@ -43,6 +50,18 @@ export default function AgentLibraryRoute() {
     />
   );
   if (!projectFirstNav) return <ChatLayout.Content>{files}</ChatLayout.Content>;
+
+  const moved = movedToSettings(section);
+  if (moved && project) {
+    return (
+      <Navigate
+        to={PROJECT_ROUTE.settings}
+        params={{ org: org.slug, agentId: project.id }}
+        search={{ section: moved === "general" ? undefined : moved }}
+        replace
+      />
+    );
+  }
 
   const current = projectSection(section);
   return (

@@ -20,10 +20,9 @@ describe("project settings sections", () => {
     expect(isProjectSettingsSectionKey("general")).toBe(true);
   });
 
-  /** The views settings moved into General, so a link someone saved while they
-   *  were their own tab still lands on the page that shows them. */
-  test("a stale Views link falls back to General, which now holds them", () => {
-    expect(isProjectSettingsSectionKey("views")).toBe(false);
+  /** Views is its own section again, so a saved Views link opens it. */
+  test("a Views link opens the Views section", () => {
+    expect(isProjectSettingsSectionKey("views")).toBe(true);
   });
 
   test("leaving Settings drops its section selection", () => {

@@ -46,6 +46,7 @@ export const sidebar = {
   "sidebar.customize.projectOptions": "Opções do projeto",
   "sidebar.customize.folderOptions": "Opções da pasta",
   "sidebar.projects.heading": "Projetos",
+  "sidebar.scope.backTo": "Voltar para {name}",
   "sidebar.scope.allProjects": "Todos os projetos",
   "sidebar.picker.ariaLabel": "Organiza\u00e7\u00e3o e projeto: {name}",
   "sidebar.picker.projectInOrg": "{project} — {org}",

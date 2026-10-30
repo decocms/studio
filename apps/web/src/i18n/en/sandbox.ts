@@ -1174,10 +1174,6 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
   "sandbox.fieldDescriptionTooltipsField.description":
     "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",
-  "sandbox.repoRow.label": "Repository",
-  "sandbox.repoRow.noRepositoryConnected": "No repository connected",
-  "sandbox.repoRow.tooltipContent":
-    "The connected GitHub repository for this project. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",

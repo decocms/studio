@@ -79,7 +79,7 @@ test.describe("chat layout composition", () => {
 
     await page
       .getByRole("navigation", { name: "Project settings sections" })
-      .getByRole("link", { name: "General", exact: true })
+      .getByRole("link", { name: "Views", exact: true })
       .click();
     await page.getByRole("button", { name: /^Automations\b/ }).click();
     await expect(page).toHaveURL(

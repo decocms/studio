@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { NAV_DESTINATION_KEYS, SETTINGS_DESTINATION } from "./nav-destinations";
+import {
+  NAV_DESTINATION_KEYS,
+  SETTINGS_DESTINATION,
+  navDestinationKeys,
+} from "./nav-destinations";
 
 /** `NavDestinationsContent` maps over `NAV_DESTINATION_KEYS`, so this constant
  *  IS the render order rather than a description of it. */
@@ -8,9 +12,9 @@ describe("NAV_DESTINATION_KEYS", () => {
     expect(NAV_DESTINATION_KEYS).toEqual([
       "overview",
       "files",
+      "monitor",
       "plan",
       "tasks",
-      "monitor",
     ]);
   });
 
@@ -29,7 +33,12 @@ describe("SETTINGS_DESTINATION", () => {
     expect(SETTINGS_DESTINATION).toBe("settings");
   });
 
-  test("is not one of the spine's rows", () => {
-    expect(NAV_DESTINATION_KEYS).not.toContain(SETTINGS_DESTINATION);
+  test("is not one of the org's rows", () => {
+    expect(navDestinationKeys(false)).not.toContain(SETTINGS_DESTINATION);
+  });
+
+  /** A project's settings left its Context, so the project spine ends on them. */
+  test("is the last of a project's rows", () => {
+    expect(navDestinationKeys(true).at(-1)).toBe(SETTINGS_DESTINATION);
   });
 });

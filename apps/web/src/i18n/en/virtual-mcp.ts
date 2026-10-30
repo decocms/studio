@@ -125,10 +125,32 @@ export const virtualMcp = {
     "How your project appears in the sidebar and across Studio.",
   "virtualMcp.settings.identity.name": "Project name",
   "virtualMcp.settings.identity.description": "Description",
+  "virtualMcp.settings.repository.title": "Repository",
+  "virtualMcp.settings.repository.description":
+    "The code this project is, and how its sandbox runs it.",
+  "virtualMcp.settings.repository.repoTitle": "Repository",
+  "virtualMcp.settings.repository.runtimeTitle": "How it runs",
+  "virtualMcp.settings.repository.runtimeDescription":
+    "What the sandbox installs and starts to preview this project.",
+  "virtualMcp.settings.pageTitle": "Project settings",
+  "virtualMcp.settings.views.title": "Views",
+  "virtualMcp.settings.views.description":
+    "What opens first, and which views the sidebar shows.",
+  "virtualMcp.settings.cmsEmptyTitle": "No site content yet",
+  "virtualMcp.settings.repository.open": "Go to Repository",
+  "virtualMcp.settings.repository.none": "No repository connected",
+  "virtualMcp.settings.repository.noneDescription":
+    "Connect a GitHub repository to edit and preview this project's site.",
+  "virtualMcp.settings.repository.connect": "Connect repository",
+  "virtualMcp.settings.repository.change": "Change",
+  "virtualMcp.settings.repository.connected": "Connected {name}",
+  "virtualMcp.settings.cmsEmpty":
+    "Connect the site's repository to turn the CMS on.",
   "virtualMcp.settings.general.title": "General",
   "virtualMcp.settings.site.title": "CMS",
   "virtualMcp.settings.site.classicTitle": "Site and sandbox",
   "virtualMcp.settings.groups.advanced": "Advanced",
+  "virtualMcp.settings.groups.details": "Details",
   "virtualMcp.settings.connections.title": "Connections",
   "virtualMcp.settings.views.defaults": "Default layout",
   "virtualMcp.settings.views.sidebar": "Views",
@@ -137,19 +159,6 @@ export const virtualMcp = {
   "virtualMcp.settings.views.unpin": "Remove from sidebar",
   "virtualMcp.settings.views.setMainView": "Set as main view",
   "virtualMcp.settings.views.rowActions": "View options",
-  "virtualMcp.subAgentsSection.addSubAgent": "Add sub-project",
-  "virtualMcp.subAgentsSection.anyAgent": "Any project",
-  "virtualMcp.subAgentsSection.canDelegateToAnyAgent":
-    "Can delegate to any project in the organization.",
-  "virtualMcp.subAgentsSection.canOnlyDelegateToItself":
-    "Can only delegate to a fresh copy of itself, no other projects.",
-  "virtualMcp.subAgentsSection.emptyStateMessage":
-    "No sub-projects selected yet. Add one — until then this project can only delegate to itself.",
-  "virtualMcp.subAgentsSection.noAgentsFound": "No projects found.",
-  "virtualMcp.subAgentsSection.onlyItself": "Only itself",
-  "virtualMcp.subAgentsSection.searchPlaceholder": "Search projects...",
-  "virtualMcp.subAgentsSection.specificAgents": "Specific projects",
-  "virtualMcp.subAgentsSection.title": "Sub-projects",
   "virtualMcp.virtualMcp.addConnection": "Add connection",
   "virtualMcp.virtualMcp.agentDeleted": 'Deleted "{title}"',
   "virtualMcp.virtualMcp.agentNameFallback": "Agent",
@@ -162,6 +171,7 @@ export const virtualMcp = {
   "virtualMcp.virtualMcp.connect": "Connect",
   "virtualMcp.virtualMcp.connections": "Connections",
   "virtualMcp.virtualMcp.created": "Created",
+  "virtualMcp.virtualMcp.createdBy": "Created by",
   "virtualMcp.virtualMcp.delete": "Delete",
   "virtualMcp.virtualMcp.deleteAgent": "Delete project",
   "virtualMcp.virtualMcp.deleteAgentConfirm": "Delete Project?",
@@ -178,7 +188,7 @@ export const virtualMcp = {
   "virtualMcp.virtualMcp.instructions": "Instructions",
   "virtualMcp.virtualMcp.instructionsPlaceholder":
     "Define how this agent should behave, what tone to use, any constraints or guidelines...",
-  "virtualMcp.virtualMcp.lastUsed": "Last used {time}",
+  "virtualMcp.virtualMcp.lastUsedLabel": "Last used",
   "virtualMcp.virtualMcp.neverUsed": "Never used",
   "virtualMcp.virtualMcp.newInstanceCreated": "New instance created",
   "virtualMcp.virtualMcp.noConnectionsYet":
@@ -227,7 +237,6 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcp.spaceNotFound": "Space not found",
   "virtualMcp.virtualMcp.spaceNotFoundDescription":
     "This space may have been deleted or you may not have access.",
-  "virtualMcp.virtualMcp.subAgents": "Sub-projects",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
     "Project URL copied to clipboard",
   "virtualMcp.virtualMcpShareModal.claudeCodeCommandCopied":
@@ -253,8 +262,7 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcpShareModal.runtimeVariables": "Runtime variables",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
     "Store this key securely — it won't be shown again.",
-  "virtualMcp.settings.general.description":
-    "Instructions, attached files and who this project may delegate to.",
+  "virtualMcp.settings.general.description": "Name, icon and description.",
   "virtualMcp.settings.site.description":
     "How edits reach the live site, and the repository it runs from.",
   "virtualMcp.settings.backToSettings": "Settings",

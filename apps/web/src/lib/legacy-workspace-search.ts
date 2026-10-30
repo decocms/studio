@@ -48,6 +48,8 @@ const CONTEXT_SECTIONS = [
   "memory",
   "instructions",
   "general",
+  "views",
+  "repository",
   "site",
 ] as const;
 export type ContextSection = (typeof CONTEXT_SECTIONS)[number];

@@ -1,7 +1,8 @@
 /**
  * Context: what agents know, in one place. For the org, the Library's files
  * plus the brand, connections, repositories, skills and memory that used to
- * live in Settings; for a project, its folder plus what was its Settings.
+ * live in Settings; for a project, its folder, instructions and connections.
+ * A project's settings use the same shell on their own page.
  * Project-first nav only.
  */
 
@@ -26,7 +27,6 @@ import { SettingsPage } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { ContextSection } from "@/lib/legacy-workspace-search";
-import type { ProjectContextSection } from "@/views/virtual-mcp";
 import { PROJECT_SETTINGS_SECTIONS } from "@/views/virtual-mcp/settings/sections";
 import { BrandOverview } from "./brand-overview";
 
@@ -41,15 +41,26 @@ const RepositoriesContent = lazy(() =>
 
 type Icon = ComponentType<{ size?: number; className?: string }>;
 
-type OrgSection = Exclude<ContextSection, "instructions" | "general" | "site">;
-type ProjectSection = "files" | ProjectContextSection;
+type OrgSection = Exclude<
+  ContextSection,
+  "instructions" | "general" | "views" | "site" | "repository"
+>;
+type ProjectSection = "files" | "instructions" | "connections";
+/** A project's settings: what it is, not what its agents know. */
+export type ProjectSettingsSection =
+  | "general"
+  | "views"
+  | "repository"
+  | "site";
 
 /** The org's section in the URL; a project's sections fall back to the files. */
 export function orgSection(section: ContextSection | undefined): OrgSection {
   return section === undefined ||
     section === "instructions" ||
     section === "general" ||
-    section === "site"
+    section === "views" ||
+    section === "site" ||
+    section === "repository"
     ? "files"
     : section;
 }
@@ -58,12 +69,29 @@ export function orgSection(section: ContextSection | undefined): OrgSection {
 export function projectSection(
   section: ContextSection | undefined,
 ): ProjectSection {
-  return section === "instructions" ||
-    section === "general" ||
-    section === "connections" ||
-    section === "site"
+  return section === "instructions" || section === "connections"
     ? section
     : "files";
+}
+
+/** A settings section the project's Context used to hold, so an old
+ *  `?section=` link can be sent to the settings page. */
+export function movedToSettings(
+  section: ContextSection | undefined,
+): ProjectSettingsSection | null {
+  return section === "general" ||
+    section === "views" ||
+    section === "site" ||
+    section === "repository"
+    ? section
+    : null;
+}
+
+/** The settings page's section; unknown values open General. */
+export function projectSettingsSection(
+  section: ContextSection | undefined,
+): ProjectSettingsSection {
+  return movedToSettings(section) ?? "general";
 }
 
 type Group = {
@@ -111,12 +139,22 @@ const PROJECT_GROUPS: Group[] = [
         labelKey: "virtualMcp.virtualMcp.instructions",
         Icon: BookOpen01,
       },
-      ...(["connections", "site", "general"] as const).map((id) => ({
-        id,
-        labelKey: PROJECT_SETTINGS_SECTIONS[id].titleKey,
-        Icon: PROJECT_SETTINGS_SECTIONS[id].icon,
-      })),
+      {
+        id: "connections",
+        labelKey: PROJECT_SETTINGS_SECTIONS.connections.titleKey,
+        Icon: PROJECT_SETTINGS_SECTIONS.connections.icon,
+      },
     ],
+  },
+];
+
+const PROJECT_SETTINGS_GROUPS: Group[] = [
+  {
+    items: (["general", "views", "repository", "site"] as const).map((id) => ({
+      id,
+      labelKey: PROJECT_SETTINGS_SECTIONS[id].titleKey,
+      Icon: PROJECT_SETTINGS_SECTIONS[id].icon,
+    })),
   },
 ];
 
@@ -159,7 +197,7 @@ function ContextNav({
               ref={id === section ? revealInRow : undefined}
               to="."
               search={
-                id === "files"
+                id === "files" || id === "general"
                   ? { section: undefined, path: undefined }
                   : { section: id }
               }
@@ -185,12 +223,17 @@ export function ContextShell({
   section,
   children,
 }: {
-  scope?: "org" | "project";
+  scope?: "org" | "project" | "projectSettings";
   section: ContextSection;
   children: ReactNode;
 }) {
   const t = useT();
-  const groups = scope === "org" ? ORG_GROUPS : PROJECT_GROUPS;
+  const groups =
+    scope === "org"
+      ? ORG_GROUPS
+      : scope === "project"
+        ? PROJECT_GROUPS
+        : PROJECT_SETTINGS_GROUPS;
   const label = groups
     .flatMap((group) => group.items)
     .find((item) => item.id === section)?.labelKey;
