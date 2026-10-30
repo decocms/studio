@@ -414,6 +414,7 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
+  "settings.skills.projectSaveError": "Couldn't save the project's skills",
   "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
   "settings.skills.importing": "Importing…",
@@ -425,7 +426,6 @@ export const settings = {
     "Pick a folder, not individual files — this browser may not support folder upload.",
   "settings.skills.searchPlaceholder": "Search skills...",
   "settings.skills.noDescription": "No description",
-  "settings.skills.filterAll": "All",
   "settings.skills.emptyTitle": "No skills yet",
   "settings.skills.emptyDescription":
     "Import a folder with a SKILL.md to give your agents reusable instructions they can load on demand.",

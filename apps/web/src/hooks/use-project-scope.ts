@@ -92,6 +92,7 @@ export function useProjectScope(): ProjectScope {
       path: undefined,
       preview: undefined,
       expanded: undefined,
+      bundle: undefined,
     });
     if (id) {
       navigateToTabLocation(navigate, {

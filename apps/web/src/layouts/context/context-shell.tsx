@@ -45,7 +45,7 @@ type OrgSection = Exclude<
   ContextSection,
   "instructions" | "general" | "views" | "site" | "repository"
 >;
-type ProjectSection = "files" | "instructions" | "connections";
+type ProjectSection = "files" | "instructions" | "skills" | "connections";
 /** A project's settings: what it is, not what its agents know. */
 export type ProjectSettingsSection =
   | "general"
@@ -69,7 +69,9 @@ export function orgSection(section: ContextSection | undefined): OrgSection {
 export function projectSection(
   section: ContextSection | undefined,
 ): ProjectSection {
-  return section === "instructions" || section === "connections"
+  return section === "instructions" ||
+    section === "skills" ||
+    section === "connections"
     ? section
     : "files";
 }
@@ -139,6 +141,7 @@ const PROJECT_GROUPS: Group[] = [
         labelKey: "virtualMcp.virtualMcp.instructions",
         Icon: BookOpen01,
       },
+      { id: "skills", labelKey: "settings.nav.skills", Icon: Stars01 },
       {
         id: "connections",
         labelKey: PROJECT_SETTINGS_SECTIONS.connections.titleKey,
@@ -262,7 +265,8 @@ export function ContextShell({
             </Panel.Toolbar.Right>
           </Panel.Toolbar>
           <Page.Container.Inset value>
-            {section === "files" ? (
+            {/* Skills open packages like folders, so they extend the trail too. */}
+            {section === "files" || section === "skills" ? (
               children
             ) : (
               <Page.Breadcrumbs.Detached>{children}</Page.Breadcrumbs.Detached>
@@ -279,6 +283,19 @@ function Loading() {
     <div className="flex h-64 items-center justify-center">
       <Spinner className="size-5 text-muted-foreground" />
     </div>
+  );
+}
+
+/** A project's skills: the org's catalog, with the project's picks on top. */
+export function ProjectSkillsSection({
+  project,
+}: {
+  project: { id: string; skills: string[] };
+}) {
+  return (
+    <Suspense fallback={<Loading />}>
+      <SkillsPage context project={project} />
+    </Suspense>
   );
 }
 
@@ -324,7 +341,7 @@ export function ContextSectionBody({
     case "skills":
       return (
         <Suspense fallback={<Loading />}>
-          <SkillsPage />
+          <SkillsPage context />
         </Suspense>
       );
     case "memory":
