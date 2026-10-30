@@ -10,6 +10,8 @@ export const sandbox = {
     "Inicie uma sessão de código para instalar apps.",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
+  "sandbox.appInstallPanel.flagOff":
+    "A instalação de apps está desligada nesta organização. Um admin pode ligar em Configurações → Geral → Editor do site.",
   "sandbox.appInstallPanel.install": "Instalar",
   "sandbox.appInstallPanel.oneAtATime":
     "Outro app está instalando — espere terminar para instalar este.",

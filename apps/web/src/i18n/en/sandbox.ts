@@ -8,6 +8,8 @@ export const sandbox = {
     "Start a coding session to install apps.",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",
+  "sandbox.appInstallPanel.flagOff":
+    "Installing apps is off for this organization. An admin can turn it on in Settings → General → Site editor.",
   "sandbox.appInstallPanel.install": "Install",
   "sandbox.appInstallPanel.oneAtATime":
     "Another app is installing — wait for it to finish, then install this one.",

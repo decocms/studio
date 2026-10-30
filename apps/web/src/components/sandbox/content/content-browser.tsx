@@ -669,10 +669,14 @@ function ContentBrowserReady({
    * renders a pasted tunnel and persists nothing, so it has none either.
    */
   const localPreviewUrl = useLocalPreviewUrl(virtualMcpId).url;
+  /**
+   * The org's own switch, off until an admin turns it on (Settings →
+   * General → Site editor). Told apart from the other two reasons below
+   * because it is the only one with something to do about it.
+   */
+  const installFlagOn = useOrgFlag("site_apps_install_enabled");
   const canInstallApps =
-    useOrgFlag("site_apps_install_enabled") &&
-    siteTechnology !== null &&
-    !localPreviewUrl;
+    installFlagOn && siteTechnology !== null && !localPreviewUrl;
   /**
    * Installable apps come from this repository's registry
    * (`@decocms/shared/site-apps`), not a fetch: the catalogue ships with the
@@ -696,22 +700,24 @@ function ContentBrowserReady({
    * never writes code, so offering the button there buys a toast and nothing
    * else — the way out is a coding session, so that is what it offers.
    */
-  const installBlocked = !canInstallApps
-    ? { reason: t("sandbox.appInstallPanel.unavailable") }
-    : // Until the project row lands, `runtime` is the shape of an answer
-      // rather than one, and `handleInstallApp` refuses to act on it. Saying so
-      // beats a button labelled Install whose every click does nothing.
-      !session.resolved
-      ? { reason: t("sandbox.appInstallPanel.sessionLoading") }
-      : session.runtime === "cms"
-        ? {
-            reason: t("sandbox.appEditor.installNeedsCodingSession"),
-            action: {
-              label: t("chat.fastPreview.startCodingSession"),
-              onClick: () => createTask({ runtime: "sandbox" }),
-            },
-          }
-        : null;
+  const installBlocked = !installFlagOn
+    ? { reason: t("sandbox.appInstallPanel.flagOff") }
+    : !canInstallApps
+      ? { reason: t("sandbox.appInstallPanel.unavailable") }
+      : // Until the project row lands, `runtime` is the shape of an answer
+        // rather than one, and `handleInstallApp` refuses to act on it. Saying
+        // so beats a button labelled Install whose every click does nothing.
+        !session.resolved
+        ? { reason: t("sandbox.appInstallPanel.sessionLoading") }
+        : session.runtime === "cms"
+          ? {
+              reason: t("sandbox.appEditor.installNeedsCodingSession"),
+              action: {
+                label: t("chat.fastPreview.startCodingSession"),
+                onClick: () => createTask({ runtime: "sandbox" }),
+              },
+            }
+          : null;
   const handleInstallApp = (entry: AppCatalogEntry) => {
     if (!session.resolved) return;
     // One at a time: the mutation is a single instance, so a second install
