@@ -149,11 +149,11 @@ test("a Claude token without usage permission shows an explanation and provider 
     "This token cannot read usage limits",
   );
   await expect(row.getByRole("progressbar")).toHaveCount(0);
+  await row.screenshot({
+    path: testInfo.outputPath("claude-usage-unavailable.png"),
+  });
   await row.getByRole("button", { name: "More actions" }).click();
   await expect(
     page.getByRole("menuitem", { name: "View on provider" }),
   ).toHaveAttribute("href", "https://claude.ai/settings/usage");
-  await row.screenshot({
-    path: testInfo.outputPath("claude-usage-unavailable.png"),
-  });
 });
