@@ -74,6 +74,8 @@ export const sidebar = {
   "sidebar.showMoreButton.ariaLabel": "Show more tasks",
   "sidebar.showMoreButton.loading": "Loading…",
   "sidebar.showMoreButton.showMore": "Show more",
+  "sidebar.linkClaude.button": "Link Claude",
+  "sidebar.linkClaude.relink": "Relink Claude",
   "sidebar.sidebarFooter.inviteMembers": "Invite members",
   "sidebar.sidebarResizeHandle.ariaLabel": "Resize sidebar",
   "sidebar.sidebarResizeHandle.title": "Drag to resize, double-click to reset",
