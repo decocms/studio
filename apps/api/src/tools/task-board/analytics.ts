@@ -111,6 +111,7 @@ const TableSectionSchema = z.object({
   rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))),
   units: z.record(z.string(), z.string()).optional(),
   drills: z.array(z.string().nullable()).optional(),
+  range: z.object({ from: z.string(), to: z.string() }).optional(),
 });
 
 const FunnelSectionSchema = z.object({
