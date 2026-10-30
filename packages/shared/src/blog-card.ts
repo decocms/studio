@@ -73,7 +73,8 @@ const KeywordSchema = z
   })
   .loose();
 
-const EvidenceSchema = z
+/** One figure a system reported, and what it says. A card's hypothesis and a campaign cite the same shape. */
+export const BlogEvidenceSchema = z
   .object({
     source: z.enum(BLOG_EVIDENCE_SOURCES),
     figure: z
@@ -87,7 +88,7 @@ const EvidenceSchema = z
       .string()
       .min(1)
       .max(600)
-      .describe("What the number says about the post, in one sentence."),
+      .describe("What the number says, in one sentence."),
     tool: z
       .string()
       .max(120)
@@ -95,6 +96,8 @@ const EvidenceSchema = z
       .describe("The tool the figure came from, so a person can check it."),
   })
   .loose();
+
+export type BlogEvidence = z.infer<typeof BlogEvidenceSchema>;
 
 const GuardrailSchema = z
   .object({
@@ -125,7 +128,7 @@ export const BlogCardHypothesisSchema = z
       .describe("One of the brand's formats, with its brief."),
     keywords: z.array(KeywordSchema).max(30),
     evidence: z
-      .array(EvidenceSchema)
+      .array(BlogEvidenceSchema)
       .max(20)
       .describe("The figures the hypothesis stands on, one per finding."),
     guardrails: z
@@ -268,14 +271,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** RFC 7396: objects merge key by key, `null` removes, anything else replaces. */
-function mergePatch(target: unknown, patch: unknown): unknown {
+export function mergeJsonPatch(target: unknown, patch: unknown): unknown {
   if (!isPlainObject(patch)) return patch;
   const merged: Record<string, unknown> = isPlainObject(target)
     ? { ...target }
     : {};
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) delete merged[key];
-    else if (value !== undefined) merged[key] = mergePatch(merged[key], value);
+    else if (value !== undefined)
+      merged[key] = mergeJsonPatch(merged[key], value);
   }
   return merged;
 }
@@ -286,7 +290,7 @@ export function applyBlogCardPatch<T extends Record<string, unknown>>(
   patch: BlogCardPatch,
   now: string,
 ): T {
-  return { ...(mergePatch(card, patch) as T), updatedAt: now };
+  return { ...(mergeJsonPatch(card, patch) as T), updatedAt: now };
 }
 
 /**

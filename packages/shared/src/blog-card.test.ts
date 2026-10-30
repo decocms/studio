@@ -7,6 +7,7 @@ import {
   blogCardBranch,
   BlogCardPatchSchema,
   BlogCardSchema,
+  mergeJsonPatch,
 } from "./blog-card";
 
 const CARD: BlogCard = {
@@ -180,5 +181,16 @@ describe("blogCardBranch", () => {
   test("is flat", () => {
     expect(blogCardBranch("aurora-1")).toBe("blog-aurora-1");
     expect(blogCardBranch("aurora-1")).not.toContain("/");
+  });
+});
+
+describe("mergeJsonPatch", () => {
+  test("objects merge, arrays replace, null removes", () => {
+    expect(
+      mergeJsonPatch(
+        { a: { b: 1, c: 2 }, list: [1, 2], gone: "x" },
+        { a: { c: 3 }, list: [9], gone: null },
+      ),
+    ).toEqual({ a: { b: 1, c: 3 }, list: [9] });
   });
 });

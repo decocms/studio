@@ -20,6 +20,24 @@ describe("blogJobOfThread", () => {
     expect(blogJobOfThread({ [BLOG_JOB_THREAD_KEY]: job })).toEqual(job);
   });
 
+  test("a campaign's chat names the campaign it shapes", () => {
+    const job = {
+      kind: "campaign" as const,
+      brand: "aurora",
+      campaignId: "c1",
+    };
+    expect(blogJobOfThread({ [BLOG_JOB_THREAD_KEY]: job })).toEqual(job);
+    expect(
+      blogJobOfThread({
+        [BLOG_JOB_THREAD_KEY]: {
+          kind: "campaign",
+          brand: "aurora",
+          campaignId: "",
+        },
+      }),
+    ).toBeNull();
+  });
+
   test("any other chat runs no job", () => {
     expect(blogJobOfThread(null)).toBeNull();
     expect(blogJobOfThread({})).toBeNull();

@@ -7,6 +7,11 @@ export const BLOG_JOB_THREAD_KEY = "blogJob";
 const BlogJobSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("brand-fill"), brand: z.string().min(1) }),
   z.object({
+    kind: z.literal("campaign"),
+    brand: z.string().min(1),
+    campaignId: z.string().min(1),
+  }),
+  z.object({
     kind: z.literal("campaigns"),
     brand: z.string().min(1),
     seedId: z.string().min(1),

@@ -1,14 +1,15 @@
 /**
- * The closed sets a blog campaign is described by.
+ * A blog campaign: the closed sets it is described by, and the parts its agent
+ * writes while shaping it — the evidence, the briefings it suggests, the one a
+ * person chose.
  *
- * Shared because both ends validate against them: the editor renders a chip per
- * option, and `BLOG_STATE_SET` checks every campaign written against the same
- * lists. Restating them server-side would mean a trigger added to one end and
- * silently rejected by the other.
- *
- * The campaign shape itself stays in the web app — it is a decofile block, not a
- * wire contract.
+ * Shared because both ends read them: the page renders what the agent wrote,
+ * and the API checks every write against the same lists. Restating them on one
+ * side would mean a value added there and silently rejected by the other.
  */
+
+import { z } from "zod";
+import { BLOG_EVIDENCE_SOURCES } from "./blog-card";
 
 export const CAMPAIGN_STATUSES = [
   "draft",
@@ -83,3 +84,76 @@ export const CAMPAIGN_SEED_KEY_PREFIX = "blog-manager/campaign-seeds/";
 
 /** The most campaigns one proposal may write. */
 export const MAX_PROPOSED_CAMPAIGNS = 3;
+
+/** How many briefings one suggestion offers. */
+export const MAX_CAMPAIGN_BRIEFINGS = 3;
+
+/** One briefing an agent suggests: a campaign in a sentence, and the figure it stands on. */
+export const CampaignBriefingOptionSchema = z
+  .object({
+    id: z.string().min(1).max(40),
+    title: z.string().min(1).max(160),
+    idea: z
+      .string()
+      .min(1)
+      .max(800)
+      .describe(
+        "The campaign in two or three sentences: the moment, the slice of the store, why now.",
+      ),
+    figure: z
+      .string()
+      .max(80)
+      .optional()
+      .describe("The number it stands on, exactly as a tool reported it."),
+    source: z.enum(BLOG_EVIDENCE_SOURCES).optional(),
+  })
+  .loose();
+export type CampaignBriefingOption = z.infer<
+  typeof CampaignBriefingOptionSchema
+>;
+
+/** The briefing a campaign is developed from: one of the suggestions, or a person's own words. */
+export const CampaignBriefingSchema = z
+  .object({
+    text: z.string().trim().min(1).max(2_000),
+    optionId: z
+      .string()
+      .max(40)
+      .optional()
+      .describe("The suggestion it came from, when it came from one."),
+  })
+  .loose();
+export type CampaignBriefing = z.infer<typeof CampaignBriefingSchema>;
+
+/** The last run Studio started on a campaign. Only the server writes it. */
+export const CampaignRunSchema = z
+  .object({ requestedAt: z.string(), requestedBy: z.string() })
+  .loose();
+export type CampaignRun = z.infer<typeof CampaignRunSchema>;
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Whether a campaign's agent has developed it: it has a name and a reason to run now. */
+export function campaignDeveloped(record: Record<string, unknown>): boolean {
+  const trigger = record.trigger;
+  const note =
+    trigger && typeof trigger === "object"
+      ? text((trigger as Record<string, unknown>).note)
+      : "";
+  return text(record.campaignName) !== "" && note !== "";
+}
+
+/** What a draft's agent does next: suggest briefings, develop the chosen one, or nothing until a person acts. */
+export function campaignNextStep(
+  record: Record<string, unknown>,
+): "suggest" | "develop" | null {
+  if ((record.status ?? "draft") !== "draft") return null;
+  if (campaignDeveloped(record)) return null;
+  if (CampaignBriefingSchema.safeParse(record.briefing).success) {
+    return "develop";
+  }
+  const offered = Array.isArray(record.briefings) ? record.briefings.length : 0;
+  return offered > 0 ? null : "suggest";
+}
