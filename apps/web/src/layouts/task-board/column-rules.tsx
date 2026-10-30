@@ -67,7 +67,7 @@ export function useEntryAutomations(columnKey: string) {
 }
 
 /** Every automation with a board starter on `columnKey`, whatever starts it. */
-export function useColumnAutomations(columnKey: string) {
+function useColumnAutomations(columnKey: string) {
   const { data } = useAutomations();
   return (data ?? []).filter((a) =>
     a.board_triggers.some((t) => t.column_key === columnKey),

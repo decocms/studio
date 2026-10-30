@@ -163,8 +163,6 @@ export const taskBoard = {
   "taskBoard.columnRules.starter.board_column_transition": "Entra na coluna",
   "taskBoard.columnRules.starter.board_pr_ready": "Pull request pronto",
   "taskBoard.columnRules.starter.board_pr_merged": "Pull request mergeado",
-  "taskBoard.columnRules.activeAutomations":
-    "{count} automações rodam nos cards daqui",
   "taskBoard.columnRules.toggleAutomation":
     "Rodar {name} nos cards que chegam aqui",
   "taskBoard.columnRules.noAutomations": "Nada roda nos cards que chegam aqui.",
