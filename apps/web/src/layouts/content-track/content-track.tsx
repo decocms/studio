@@ -10,6 +10,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
 import type { BlogCard, BlogCardStatus } from "@decocms/shared/blog-card";
+import type { CampaignBriefing } from "@decocms/shared/blog-campaign";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@/components/empty-state";
@@ -20,6 +21,8 @@ import {
   scanCampaigns,
 } from "@/components/sandbox/content/blog/blog-data";
 import { BlogConnectionsGate } from "@/components/sandbox/content/blog/blog-connections-gate";
+import { readyCampaigns } from "@/components/sandbox/content/blog/campaign-model";
+import { useCampaignActions } from "@/components/sandbox/content/blog/use-campaign-actions";
 import { useBlogCards } from "@/components/sandbox/content/blog/use-blog-cards";
 import {
   type BlogState,
@@ -221,6 +224,7 @@ function Blogposts({
     (project) => projectRepo(project) !== null,
   );
   const { cards, isLoading, create, update, run } = useBlogCards();
+  const campaignActions = useCampaignActions();
   const openChat = useOpenCardChat();
   const [creating, setCreating] = useState(false);
 
@@ -243,6 +247,16 @@ function Blogposts({
       to: ".",
       search: (prev: Record<string, unknown>) => ({ ...prev, card: id }),
     });
+  const openCampaign = (campaignId: string) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        view: "campaigns",
+        card: undefined,
+        campaign: campaignId,
+      }),
+    });
 
   const move = (card: BlogCard, status: BlogCardStatus) =>
     update.mutate(
@@ -255,12 +269,16 @@ function Blogposts({
       },
     );
 
-  const startRun = (card: BlogCard, phase: "hypothesis" | "execute") =>
+  const startRun = (
+    card: BlogCard,
+    phase: "campaign" | "hypothesis" | "execute",
+    briefing?: CampaignBriefing,
+  ) =>
     run.mutate(
-      { id: card.id, phase },
+      { id: card.id, phase, ...(briefing ? { briefing } : {}) },
       {
         onSuccess: ({ threadId }) =>
-          phase === "hypothesis" && openChat({ id: card.id, threadId }),
+          phase !== "execute" && openChat({ id: card.id, threadId }),
         onError: (err) =>
           toast.error(
             t("contentTrack.card.runFailed", { error: message(err) }),
@@ -268,13 +286,43 @@ function Blogposts({
       },
     );
 
+  const link = (card: BlogCard, campaignId: string) =>
+    update.mutate(
+      { id: card.id, patch: { campaignId } },
+      {
+        onError: (err) =>
+          toast.error(
+            t("contentTrack.card.campaignPhase.linkFailed", {
+              error: message(err),
+            }),
+          ),
+      },
+    );
+
+  /** Two calls: if bringing the hypothesis fails, the campaign stays approved and the card offers to bring it again. */
+  const approveCampaign = async (card: BlogCard) => {
+    if (!card.campaignId) return;
+    try {
+      await campaignActions.update.mutateAsync({
+        id: card.campaignId,
+        patch: { status: "active" },
+      });
+    } catch (err) {
+      toast.error(
+        t("contentTrack.campaign.updateFailed", { error: message(err) }),
+      );
+      return;
+    }
+    startRun(card, "hypothesis");
+  };
+
   const start = async (input: NewBlogpost) => {
     let created: BlogCard;
     try {
       created = (
         await create.mutateAsync({
           virtualMcpId: input.virtualMcpId,
-          campaignId: input.campaignId,
+          ...(input.campaignId ? { campaignId: input.campaignId } : {}),
           ...(input.prompt ? { prompt: input.prompt } : {}),
         })
       ).card;
@@ -286,7 +334,7 @@ function Blogposts({
     try {
       const { threadId } = await run.mutateAsync({
         id: created.id,
-        phase: "hypothesis",
+        phase: input.campaignId ? "hypothesis" : "campaign",
       });
       openChat({ id: created.id, threadId });
     } catch (err) {
@@ -324,11 +372,18 @@ function Blogposts({
         campaign={
           card.campaignId ? campaignById.get(card.campaignId) : undefined
         }
+        ready={readyCampaigns(campaigns)}
         site={projects.find((p) => p.id === card.virtualMcpId)}
-        executing={run.isPending}
+        executing={
+          run.isPending || update.isPending || campaignActions.update.isPending
+        }
         onClose={() => openCard(undefined)}
         onOpenChat={() => openChat(card)}
         onRun={(phase) => startRun(card, phase)}
+        onShape={(briefing) => startRun(card, "campaign", briefing)}
+        onLink={(campaignId) => link(card, campaignId)}
+        onApproveCampaign={() => void approveCampaign(card)}
+        onOpenCampaign={openCampaign}
         onMove={(status) => move(card, status)}
       />
     );

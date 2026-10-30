@@ -9,7 +9,10 @@ import {
   type BlogCardStage,
   type BlogCardStatus,
 } from "@decocms/shared/blog-card";
-import type { CampaignProduct } from "@/components/sandbox/content/blog/blog-data";
+import type {
+  CampaignEntry,
+  CampaignProduct,
+} from "@/components/sandbox/content/blog/blog-data";
 import { IMAGE_SENTINEL } from "@decocms/shared/blog-image-sentinel";
 
 /**
@@ -53,11 +56,29 @@ export function upsertCard(cards: BlogCard[], card: BlogCard): BlogCard[] {
   );
 }
 
-export type CardPhase = "hypothesis" | "execute" | "monitor";
+export type CardPhase = "campaign" | "hypothesis" | "execute" | "monitor";
 
-/** The phase a card opens on: its hypothesis until execution has begun. */
-export function defaultPhase(card: Pick<BlogCard, "status">): CardPhase {
-  return card.status === "ideas" ? "hypothesis" : "execute";
+/** The phase a card opens on: its campaign until one is approved, then its hypothesis until execution has begun. */
+export function defaultPhase(
+  card: Pick<BlogCard, "status">,
+  campaign: Pick<CampaignEntry, "status"> | undefined,
+): CardPhase {
+  if (card.status !== "ideas") return "execute";
+  return campaign && campaign.status !== "draft" ? "hypothesis" : "campaign";
+}
+
+/** Where a card's campaign stands: none to write for yet, one its own chat is shaping, or an approved one. */
+export type CardCampaignState = "none" | "shaping" | "approved";
+
+export function cardCampaignState(
+  card: Pick<BlogCard, "threadId">,
+  campaign: Pick<CampaignEntry, "status" | "threadId"> | undefined,
+): CardCampaignState {
+  if (!campaign) return "none";
+  if (campaign.status !== "draft") return "approved";
+  return card.threadId && campaign.threadId === card.threadId
+    ? "shaping"
+    : "none";
 }
 
 /** What a card is called on the board: its hypothesis, then its post, then the ask. */

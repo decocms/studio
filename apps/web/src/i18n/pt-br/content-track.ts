@@ -49,10 +49,9 @@ export const contentTrack = {
   "contentTrack.lane.published": "Publicado",
   "contentTrack.new.title": "Novo blogpost",
   "contentTrack.new.description":
-    "Escolha a campanha aprovada a que ele pertence. A redação lê os dados da loja e traz uma hipótese rumo à meta da campanha para você aprovar.",
+    "Escolha a campanha aprovada a que ele pertence, ou deixe o agente montar uma nova. Depois a redação traz uma hipótese rumo à meta da campanha para você aprovar.",
   "contentTrack.new.campaign": "Campanha",
-  "contentTrack.new.noCampaigns":
-    "Nenhuma campanha aprovada ainda. Sugira uma em Campanhas.",
+  "contentTrack.new.noCampaigns": "Nenhuma campanha aprovada ainda.",
   "contentTrack.new.site": "Site",
   "contentTrack.new.sitePlaceholder": "Escolha o site",
   "contentTrack.new.noSites":
@@ -210,4 +209,28 @@ export const contentTrack = {
     "Não foi possível iniciar o agente: {error}",
   "contentTrack.campaign.updateFailed":
     "Não foi possível atualizar a campanha: {error}",
+  "contentTrack.phase.campaign": "Campanha",
+  "contentTrack.new.createWithAgent": "Criar uma nova com o agente",
+  "contentTrack.new.createWithAgentHint":
+    "O card começa na fase Campanha: três briefings a partir dos dados da loja, depois a campanha para você aprovar.",
+  "contentTrack.new.startCampaign": "Montar a campanha",
+  "contentTrack.card.campaignPhase.chooseTitle":
+    "Para qual campanha é este post?",
+  "contentTrack.card.campaignPhase.chooseHint":
+    "Escolha uma campanha aprovada, ou deixe o agente montar uma nova a partir dos dados da loja.",
+  "contentTrack.card.campaignPhase.noReady": "Nenhuma campanha aprovada ainda.",
+  "contentTrack.card.campaignPhase.createWithAgent": "Criar uma com o agente",
+  "contentTrack.card.campaignPhase.createWithAgentHint":
+    "O pesquisador lê a marca, o GA4 e o catálogo, e sugere três briefings no chat deste card.",
+  "contentTrack.card.campaignPhase.switch": "Escolher outra campanha",
+  "contentTrack.card.campaignPhase.switchTitle":
+    "Descartar a campanha em construção?",
+  "contentTrack.card.campaignPhase.switchDescription":
+    "O agente deste card estava montando essa campanha. Escolher outra apaga o rascunho.",
+  "contentTrack.card.campaignPhase.switchConfirm": "Descartar e trocar",
+  "contentTrack.card.campaignPhase.openCampaign": "Abrir a campanha",
+  "contentTrack.card.campaignPhase.approveAndBring":
+    "Aprovar campanha → Trazer hipótese",
+  "contentTrack.card.campaignPhase.linkFailed":
+    "Não foi possível ligar a campanha: {error}",
 } satisfies Record<keyof typeof contentTrackEn, string>;

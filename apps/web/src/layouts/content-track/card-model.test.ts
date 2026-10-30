@@ -4,6 +4,7 @@ import type { CampaignProduct } from "@/components/sandbox/content/blog/blog-dat
 import {
   canDropOn,
   cardAgentWorking,
+  cardCampaignState,
   cardTitle,
   defaultPhase,
   imageReady,
@@ -111,10 +112,46 @@ test("only generating refuses a drop", () => {
   expect(canDropOn("published")).toBe(true);
 });
 
-test("a card opens on its hypothesis until execution began", () => {
-  expect(defaultPhase(card())).toBe("hypothesis");
-  expect(defaultPhase(card({ status: "generating" }))).toBe("execute");
-  expect(defaultPhase(card({ status: "published" }))).toBe("execute");
+test("a card opens on its campaign until one is approved, then on its hypothesis until execution began", () => {
+  expect(defaultPhase(card(), undefined)).toBe("campaign");
+  expect(defaultPhase(card(), { status: "draft" })).toBe("campaign");
+  expect(defaultPhase(card(), { status: "active" })).toBe("hypothesis");
+  expect(defaultPhase(card(), { status: "paused" })).toBe("hypothesis");
+  expect(defaultPhase(card({ status: "generating" }), undefined)).toBe(
+    "execute",
+  );
+  expect(defaultPhase(card({ status: "published" }), { status: "draft" })).toBe(
+    "execute",
+  );
+});
+
+describe("cardCampaignState", () => {
+  const chat = card({ threadId: "thrd_card" });
+
+  test("a draft is the card's to shape only when its own chat shapes it", () => {
+    expect(
+      cardCampaignState(chat, { status: "draft", threadId: "thrd_card" }),
+    ).toBe("shaping");
+    expect(
+      cardCampaignState(chat, { status: "draft", threadId: "thrd_other" }),
+    ).toBe("none");
+    expect(cardCampaignState(card(), { status: "draft", threadId: "" })).toBe(
+      "none",
+    );
+  });
+
+  test("an approved campaign is approved wherever it was shaped", () => {
+    expect(
+      cardCampaignState(chat, { status: "active", threadId: "thrd_card" }),
+    ).toBe("approved");
+    expect(cardCampaignState(chat, { status: "finished", threadId: "" })).toBe(
+      "approved",
+    );
+  });
+
+  test("no campaign, or one gone, leaves the card to choose", () => {
+    expect(cardCampaignState(chat, undefined)).toBe("none");
+  });
 });
 
 test("a card's title: hypothesis, then post, then the ask", () => {

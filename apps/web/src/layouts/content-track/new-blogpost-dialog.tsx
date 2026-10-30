@@ -1,10 +1,11 @@
 /**
- * Starting a blogpost: which campaign it belongs to, which site it is written
- * for, and, if the person has one, what they want it to explore. The newsroom
- * brings the hypothesis from there, toward the goal of an approved campaign.
+ * Starting a blogpost: which campaign it belongs to — an approved one, or a new
+ * one its agent shapes first — which site it is written for, and, if the person
+ * has one, what they want it to explore.
  */
 
 import { useState } from "react";
+import { Stars02 } from "@untitledui/icons";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -24,6 +25,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   CAMPAIGN_KEY_PREFIX,
   scanCampaigns,
@@ -33,8 +35,12 @@ import { readyCampaigns } from "@/components/sandbox/content/blog/campaign-model
 import type { BlogState } from "@/components/sandbox/content/blog/use-blog-state";
 import { useT } from "@/i18n/use-t.ts";
 
+/** The choice of a campaign the card's agent shapes, instead of an approved one. */
+const NEW_CAMPAIGN = "new";
+
 export interface NewBlogpost {
-  campaignId: string;
+  /** Null when the card's agent shapes a new campaign first. */
+  campaignId: string | null;
   virtualMcpId: string;
   prompt: string;
 }
@@ -67,8 +73,10 @@ export function NewBlogpostDialog({
   const openCampaigns = readyCampaigns(scanCampaigns(blog.blocks));
   const virtualMcpId =
     siteId ?? (sites.length === 1 ? (sites[0]?.id ?? "") : pickedSite);
+  const shapeNew = campaignKey === NEW_CAMPAIGN;
   const ready =
-    openCampaigns.some((campaign) => campaign.key === campaignKey) &&
+    (shapeNew ||
+      openCampaigns.some((campaign) => campaign.key === campaignKey)) &&
     !!virtualMcpId &&
     !pending;
 
@@ -94,7 +102,7 @@ export function NewBlogpostDialog({
           <div className="flex flex-col gap-2">
             <Label>{t("contentTrack.new.campaign")}</Label>
             {openCampaigns.length === 0 ? (
-              <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {t("contentTrack.new.noCampaigns")}
               </p>
             ) : (
@@ -104,6 +112,28 @@ export function NewBlogpostDialog({
                 onChoose={setCampaignKey}
               />
             )}
+            <button
+              type="button"
+              onClick={() => setCampaignKey(NEW_CAMPAIGN)}
+              aria-pressed={shapeNew}
+              className={cn(
+                "flex w-full cursor-pointer items-start gap-2.5 rounded-lg border border-dashed bg-card p-2.5 text-left transition-colors hover:border-primary/40",
+                shapeNew && "border-solid border-primary",
+              )}
+            >
+              <Stars02
+                size={16}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">
+                  {t("contentTrack.new.createWithAgent")}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {t("contentTrack.new.createWithAgentHint")}
+                </span>
+              </span>
+            </button>
           </div>
           {!siteId && sites.length > 1 && (
             <div className="flex flex-col gap-2">
@@ -152,13 +182,17 @@ export function NewBlogpostDialog({
             disabled={!ready}
             onClick={() =>
               onCreate({
-                campaignId: campaignKey.slice(CAMPAIGN_KEY_PREFIX.length),
+                campaignId: shapeNew
+                  ? null
+                  : campaignKey.slice(CAMPAIGN_KEY_PREFIX.length),
                 virtualMcpId,
                 prompt: prompt.trim(),
               })
             }
           >
-            {t("contentTrack.new.start")}
+            {shapeNew
+              ? t("contentTrack.new.startCampaign")
+              : t("contentTrack.new.start")}
           </Button>
         </DialogFooter>
       </DialogContent>

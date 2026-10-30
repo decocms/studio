@@ -47,10 +47,9 @@ export const contentTrack = {
   "contentTrack.lane.published": "Published",
   "contentTrack.new.title": "New blogpost",
   "contentTrack.new.description":
-    "Pick the approved campaign it belongs to. The newsroom reads your store's data and brings a hypothesis toward the campaign's goal for you to approve.",
+    "Pick the approved campaign it belongs to, or let the agent shape a new one. The newsroom then brings a hypothesis toward the campaign's goal for you to approve.",
   "contentTrack.new.campaign": "Campaign",
-  "contentTrack.new.noCampaigns":
-    "No approved campaign yet. Suggest one under Campaigns.",
+  "contentTrack.new.noCampaigns": "No approved campaign yet.",
   "contentTrack.new.site": "Site",
   "contentTrack.new.sitePlaceholder": "Choose the site",
   "contentTrack.new.noSites":
@@ -206,4 +205,29 @@ export const contentTrack = {
   "contentTrack.campaign.runFailed": "Could not start the agent: {error}",
   "contentTrack.campaign.updateFailed":
     "Could not update the campaign: {error}",
+  "contentTrack.phase.campaign": "Campaign",
+  "contentTrack.new.createWithAgent": "Create a new one with the agent",
+  "contentTrack.new.createWithAgentHint":
+    "The card starts in its Campaign phase: three briefings from your store's data, then the campaign for you to approve.",
+  "contentTrack.new.startCampaign": "Shape the campaign",
+  "contentTrack.card.campaignPhase.chooseTitle":
+    "Which campaign is this post for?",
+  "contentTrack.card.campaignPhase.chooseHint":
+    "Pick an approved campaign, or let the agent shape a new one from your store's data.",
+  "contentTrack.card.campaignPhase.noReady": "No approved campaign yet.",
+  "contentTrack.card.campaignPhase.createWithAgent":
+    "Create one with the agent",
+  "contentTrack.card.campaignPhase.createWithAgentHint":
+    "The researcher reads the brand, GA4 and the catalog, and suggests three briefings in this card's chat.",
+  "contentTrack.card.campaignPhase.switch": "Choose another campaign",
+  "contentTrack.card.campaignPhase.switchTitle":
+    "Discard the campaign being shaped?",
+  "contentTrack.card.campaignPhase.switchDescription":
+    "This card's agent was shaping it. Choosing another campaign deletes that draft.",
+  "contentTrack.card.campaignPhase.switchConfirm": "Discard and switch",
+  "contentTrack.card.campaignPhase.openCampaign": "Open the campaign",
+  "contentTrack.card.campaignPhase.approveAndBring":
+    "Approve campaign → Bring hypothesis",
+  "contentTrack.card.campaignPhase.linkFailed":
+    "Could not link the campaign: {error}",
 } as const;

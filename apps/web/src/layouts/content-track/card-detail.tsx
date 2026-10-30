@@ -1,6 +1,6 @@
 /**
- * One blogpost card, over the whole panel: its hypothesis, the post as it
- * fills in, and its properties. A panel rather than a sheet because a sheet is
+ * One blogpost card, over the whole panel: its campaign, its hypothesis, the
+ * post as it fills in, and its properties. A panel rather than a sheet because a sheet is
  * modal, and the card's chat has to stay usable beside it.
  *
  * Nothing here streams or mounts a chat: the card's agent writes the card, and
@@ -31,6 +31,7 @@ import {
   type BlogCard,
   type BlogCardStatus,
 } from "@decocms/shared/blog-card";
+import type { CampaignBriefing } from "@decocms/shared/blog-campaign";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -55,14 +56,20 @@ import {
   goalMeasure,
   hasGoal,
 } from "@/components/sandbox/content/blog/campaign-goal";
+import {
+  campaignAgentWorking,
+  campaignIsDeveloped,
+} from "@/components/sandbox/content/blog/campaign-model";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { CompareFrame } from "@/components/thread/repository/cms-publish-compare";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
 import { CARD_STATUS_LABEL } from "./blogposts-board";
+import { CampaignPhase } from "./card-campaign-phase";
 import {
   type CardPhase,
   cardAgentWorking,
+  cardCampaignState,
   cardTitle,
   defaultPhase,
   imageReady,
@@ -88,9 +95,10 @@ import {
 } from "./use-card-preview";
 import { useOpenCardEditor } from "./use-open-card-editor";
 
-const PHASES = ["hypothesis", "execute", "monitor"] as const;
+const PHASES = ["campaign", "hypothesis", "execute", "monitor"] as const;
 
 const PHASE_LABEL = {
+  campaign: "contentTrack.phase.campaign",
   hypothesis: "contentTrack.phase.hypothesis",
   execute: "contentTrack.phase.execute",
   monitor: "contentTrack.phase.monitor",
@@ -110,32 +118,58 @@ const STAGE_LABEL = {
 export function CardDetail({
   card,
   campaign,
+  ready,
   site,
   executing,
   onClose,
   onOpenChat,
   onRun,
+  onShape,
+  onLink,
+  onApproveCampaign,
+  onOpenCampaign,
   onMove,
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
+  /** The approved campaigns the post can be written for. */
+  ready: CampaignEntry[];
   /** The site the post is written for; undefined while projects load. */
   site: VirtualMCPEntity | undefined;
-  /** A run start is in flight. */
+  /** A run start or a campaign write is in flight. */
   executing: boolean;
   onClose: () => void;
   onOpenChat: () => void;
   onRun: (phase: "hypothesis" | "execute") => void;
+  onShape: (briefing?: CampaignBriefing) => void;
+  onLink: (campaignId: string) => void;
+  /** Approve the campaign the card's agent shaped, then bring the hypothesis. */
+  onApproveCampaign: () => void;
+  onOpenCampaign: (campaignId: string) => void;
   onMove: (status: BlogCardStatus) => void;
 }) {
   const t = useT();
-  const [phase, setPhase] = useState<CardPhase>(defaultPhase(card));
+  const now = useClockTick();
+  const reached = defaultPhase(card, campaign);
+  /** A step the person opened holds until the card moves on. */
+  const [pick, setPick] = useState<{
+    phase: CardPhase;
+    reached: CardPhase;
+  } | null>(null);
+  const phase = pick?.reached === reached ? pick.phase : reached;
+  const open = (next: CardPhase) => setPick({ phase: next, reached });
   const preview = useCardPreview(card, site);
-  const working = cardAgentWorking(card, useClockTick());
+  const working = cardAgentWorking(card, now);
+  const shaping = cardCampaignState(card, campaign) === "shaping";
+  const campaignWorking =
+    shaping && !!campaign && campaignAgentWorking(campaign, now);
   const crumb = cardTitle(card) || t("contentTrack.card.untitled");
   const title =
-    (phase === "hypothesis" ? card.hypothesis?.title : card.post?.title) ||
-    crumb;
+    (phase === "campaign"
+      ? campaign?.name
+      : phase === "hypothesis"
+        ? card.hypothesis?.title
+        : card.post?.title) || crumb;
   const hasThesis = !!card.hypothesis?.statement?.trim();
   const canBring =
     card.status === "ideas" &&
@@ -145,6 +179,12 @@ export function CardDetail({
     campaign.status !== "draft";
   const canApprove =
     card.status === "ideas" && hasThesis && !!card.campaignId && !working;
+  const canApproveCampaign =
+    card.status === "ideas" &&
+    shaping &&
+    !!campaign &&
+    campaignIsDeveloped(campaign) &&
+    !campaignWorking;
   const sections = card.post?.sections?.length ?? 0;
   const meta = [
     t("contentTrack.card.kind"),
@@ -168,6 +208,19 @@ export function CardDetail({
             {t("contentTrack.card.adjust")}
           </Button>
         )}
+        {canApproveCampaign && (
+          <Button
+            variant="brand"
+            size="sm"
+            disabled={executing}
+            onClick={() => {
+              onApproveCampaign();
+              open("hypothesis");
+            }}
+          >
+            {t("contentTrack.card.campaignPhase.approveAndBring")}
+          </Button>
+        )}
         {canBring && (
           <Button
             variant="brand"
@@ -185,7 +238,7 @@ export function CardDetail({
             disabled={executing}
             onClick={() => {
               onRun("execute");
-              setPhase("execute");
+              open("execute");
             }}
           >
             {t("contentTrack.card.approve")}
@@ -197,8 +250,8 @@ export function CardDetail({
           steps={PHASES}
           labels={PHASE_LABEL}
           phase={phase}
-          reached={defaultPhase(card)}
-          onSelect={setPhase}
+          reached={reached}
+          onSelect={open}
         />
       </Panel.Toolbar.Left.Portal>
       <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-8 lg:flex-row lg:items-start">
@@ -236,7 +289,18 @@ export function CardDetail({
               <span>{card.error}</span>
             </div>
           )}
-          {phase === "hypothesis" ? (
+          {phase === "campaign" ? (
+            <CampaignPhase
+              card={card}
+              campaign={campaign}
+              ready={ready}
+              working={campaignWorking}
+              pending={executing}
+              onLink={onLink}
+              onShape={onShape}
+              onOpenCampaign={onOpenCampaign}
+            />
+          ) : phase === "hypothesis" ? (
             <HypothesisPhase
               card={card}
               campaign={campaign}
@@ -262,8 +326,9 @@ export function CardDetail({
             card={card}
             campaign={campaign}
             siteTitle={site?.title}
-            working={working}
+            working={working || campaignWorking}
             onMove={onMove}
+            onOpenCampaign={onOpenCampaign}
           />
         </aside>
       </div>
@@ -691,12 +756,14 @@ function Properties({
   siteTitle,
   working,
   onMove,
+  onOpenCampaign,
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
   siteTitle: string | undefined;
   working: boolean;
   onMove: (status: BlogCardStatus) => void;
+  onOpenCampaign: (campaignId: string) => void;
 }) {
   const t = useT();
   const editor = useOpenCardEditor();
@@ -743,7 +810,17 @@ function Properties({
       </Group>
       <Group caption={t("contentTrack.props.campaign")}>
         <Row icon={<Flag05 size={14} />} trail={period || undefined}>
-          {campaign?.name || none}
+          {campaign ? (
+            <button
+              type="button"
+              className="max-w-full truncate text-left hover:underline"
+              onClick={() => onOpenCampaign(campaign.id)}
+            >
+              {campaign.name || t("contentTrack.campaign.untitled")}
+            </button>
+          ) : (
+            none
+          )}
         </Row>
       </Group>
       <Group caption={t("contentTrack.props.site")}>

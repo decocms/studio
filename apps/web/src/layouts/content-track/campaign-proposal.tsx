@@ -13,6 +13,7 @@ import {
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
+import { campaignIsDeveloped } from "@/components/sandbox/content/blog/campaign-model";
 import {
   CAMPAIGN_OBJECTIVE_LABEL,
   CAMPAIGN_TARGET_KIND_LABEL,
@@ -31,10 +32,7 @@ export function CampaignProposal({
   working: boolean;
 }) {
   const t = useT();
-  const developed =
-    campaign.name.trim() !== "" && campaign.trigger.note.trim() !== "";
-
-  if (!developed) {
+  if (campaign.status === "draft" && !campaignIsDeveloped(campaign)) {
     return working ? (
       <Pending>
         <RoleAtWork
@@ -62,9 +60,11 @@ export function CampaignProposal({
           {t("contentTrack.campaign.whyNow")} ·{" "}
           {t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type])}
         </span>
-        <p className="text-[15px] leading-[1.5] text-foreground">
-          {campaign.trigger.note}
-        </p>
+        {campaign.trigger.note && (
+          <p className="text-[15px] leading-[1.5] text-foreground">
+            {campaign.trigger.note}
+          </p>
+        )}
         <FrameLine
           icon={<Calendar size={13} />}
           label={t("contentTrack.campaign.period")}
