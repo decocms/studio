@@ -5,7 +5,9 @@ import { Providers } from "@/providers/providers";
 import { router } from "@/router";
 import "../index.css";
 import { migrateLegacyStorageKeys } from "@/lib/legacy-storage";
+import { installStaleBuildReload } from "@/lib/stale-build-reload";
 
+installStaleBuildReload();
 migrateLegacyStorageKeys(window.localStorage);
 
 const rootElement = document.getElementById("root")!;
