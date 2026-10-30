@@ -41,6 +41,18 @@ interface SandboxRef {
   threadId: string | null;
 }
 
+/** The numeric `.status` a read fallback tags onto its thrown Error. */
+function errorStatus(error: unknown): number | undefined {
+  if (
+    error instanceof Error &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  return undefined;
+}
+
 /** The sandbox is there but not answering yet, as a read reports it. */
 function notAnsweringYet(relativePath: string): SiteAppInstallError {
   return new SiteAppInstallError(
@@ -64,7 +76,7 @@ async function readSource(
     ref,
     decoRepoPath(packagePath, relativePath),
   ).catch((error: unknown) => {
-    const status = (error as { status?: number } | null)?.status;
+    const status = errorStatus(error);
     if (status !== undefined && status >= 500)
       throw notAnsweringYet(relativePath);
     throw error;
@@ -120,6 +132,38 @@ async function requestDependencyInstall(
     { method: "POST" },
   );
   if (!res.ok) await throwResponseError(res, "Dependency install");
+  await assertForceHonoured(res, force, "install");
+}
+
+/**
+ * Prove the step we asked to bypass its short-circuit actually will.
+ *
+ * A daemon that predates the flag reads the step out of the path and ignores
+ * the body entirely, then answers 200 — so the install short-circuits on a
+ * fingerprint the new `package.json` did not move, and the app's module
+ * imports a package that is not in `node_modules`. A pool pod can be running
+ * that image for as long as the rollout takes. The handler echoes `force` back
+ * precisely so the caller can tell the two apart; reading it is what turns a
+ * silent wrong answer into one the user can act on.
+ */
+async function assertForceHonoured(
+  res: Response,
+  force: boolean,
+  step: string,
+): Promise<void> {
+  if (!force) return;
+  const body: unknown = await res
+    .clone()
+    .json()
+    .catch(() => null);
+  const echoed =
+    typeof body === "object" && body !== null && "force" in body
+      ? body.force
+      : undefined;
+  if (echoed === true) return;
+  throw new SiteAppInstallError(
+    `This sandbox is running a daemon that ignores a forced ${step}, so the install would answer "done" without doing it. Restart the sandbox to pick up a current image, then install again.`,
+  );
 }
 
 /**
@@ -138,6 +182,7 @@ async function requestDevRestart(ref: SandboxRef): Promise<void> {
     { method: "POST" },
   );
   if (!res.ok) await throwResponseError(res, "Dev restart");
+  await assertForceHonoured(res, true, "restart");
 }
 
 /**
@@ -222,26 +267,31 @@ export function useInstallApp({
       return runContentChange(content, {
         kind: "edit",
         write: async () => {
-          // EVERY write first, then the pod is asked to act on the tree. Both
-          // setup steps return once the step is QUEUED, and a forced install
-          // cascades straight into the start that respawns the dev server — so
-          // a request sent between two writes races the very files it exists to
-          // pick up, and the dev server can boot on a tree that is still half
-          // written. Ordering is all this costs: the install is queued, not
-          // awaited, and its failure surfaces in the setup stream, not here.
+          // Every CODE file first, then the pod is asked to act on the tree.
+          // Both setup steps return once the step is QUEUED, and a forced
+          // install cascades straight into the start that respawns the dev
+          // server — so a request sent between two writes races the very files
+          // it exists to pick up, and the dev server can boot on a tree that is
+          // still half written.
           for (const file of patches.files) {
             await writeFile(ref, packagePath, file);
           }
-          // Block last: never leave a resolveType with no module behind it.
-          await writeFile(ref, packagePath, {
-            path: decoBlockFilePath(patches.block.key),
-            content: `${JSON.stringify(patches.block.value, null, 2)}\n`,
-          });
           const install = dependencyInstallFor(patches);
           if (install) await requestDependencyInstall(ref, install.force);
           // Only when the step above did not already do it: the restart is
           // what puts the app's schema in `/live/_meta`.
           if (needsDevRestart(patches, install)) await requestDevRestart(ref);
+          // The block is LAST, after the pod has accepted the work, because
+          // the block is what marks the app installed: the catalogue reads
+          // nothing else (`app-catalog`), and an app that reads as installed
+          // opens its editor instead of the install panel, so there is no way
+          // left to retry. Writing it only once the install is under way keeps
+          // a failed one offering Install again — and a retry is idempotent,
+          // since every artifact already in place is left out of the patches.
+          await writeFile(ref, packagePath, {
+            path: decoBlockFilePath(patches.block.key),
+            content: `${JSON.stringify(patches.block.value, null, 2)}\n`,
+          });
           // The working tree moved by more than one block: the header's change
           // count reads git status, as it does after every other write.
           await queryClient.invalidateQueries({

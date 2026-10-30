@@ -943,9 +943,16 @@ export const createSandboxRoutes = () => {
     // the virtual MCP's current `metadata.runtime.env`. The dev script inherits
     // env at spawn time, so edits made after the last SANDBOX_START don't reach
     // a running process unless we push the freshly-resolved env to /config
-    // first. `install` counts: a real install stops the dev task and the
-    // orchestrator cascades straight into the start that respawns it.
-    if (step === "start" || step === "install") {
+    // first.
+    //
+    // A FORCED install counts: it is the one that always stops the dev task,
+    // and the orchestrator cascades straight into the start that respawns it.
+    // An unforced one does not — it no-ops whenever the fingerprint matches,
+    // which is most of the time, and the push is not free either way: it mints
+    // the caller's secrets, answers 502 when one cannot be resolved, and an env
+    // that DID change is itself a transition the daemon restarts dev for. That
+    // is the healthy dev server this flag exists to stop tearing down.
+    if (step === "start" || (step === "install" && force)) {
       {
         const organization = requireOrganization(c.var.studioContext);
         const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);

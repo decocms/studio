@@ -557,6 +557,13 @@ function ContentBrowserReady({
    * `refetchInterval` runs outside render, where state would be a loop.
    */
   const schemaPollWindow = useRef<SchemaPollWindow | null>(null);
+  /**
+   * Whether that wait is still open, for the editor to say so. The budget is
+   * the only thing that ends a wait no build will ever satisfy, and the editor
+   * cannot see it — left to itself it spins over "appears once the site is
+   * built" for as long as the block stays open.
+   */
+  const [schemaWaitOpen, setSchemaWaitOpen] = useState(false);
   const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
     fetchEnabled: devServerReady,
     refetchInterval: (query) => {
@@ -597,6 +604,8 @@ function ContentBrowserReady({
         window: schemaPollWindow.current,
       });
       schemaPollWindow.current = decision.window;
+      const open = decision.interval !== false;
+      setSchemaWaitOpen((prev) => (prev === open ? prev : open));
       return decision.interval;
     },
   });
@@ -1555,6 +1564,7 @@ function ContentBrowserReady({
             siteApp ? (
               <AppEditor
                 key={`site:${siteApp.key}`}
+                schemaWaiting={schemaWaitOpen}
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
@@ -1694,6 +1704,7 @@ function ContentBrowserReady({
             selection.collection === "apps" ? (
               <AppEditor
                 key={`app:${selection.key}`}
+                schemaWaiting={schemaWaitOpen}
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}

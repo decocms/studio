@@ -73,6 +73,7 @@ function AppEditorForm({
   notice,
   saveGuard,
   persistDefaults,
+  schemaWaiting = true,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -91,6 +92,13 @@ function AppEditorForm({
   saveGuard?: SaveGuard;
   /** `false`: the form's `@default`s are saved with the first change, not when it opens. */
   persistDefaults?: boolean;
+  /**
+   * Whether the owner is still re-reading `/live/_meta` for this block. It
+   * owns the budget that ends the wait (see `schema-poll`), and without it
+   * this form promises a build that is no longer coming. Defaults to true for
+   * a caller with no poll of its own, which is the behaviour it had before.
+   */
+  schemaWaiting?: boolean;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
@@ -118,10 +126,12 @@ function AppEditorForm({
    * down and came back read as two different answers to the same question.
    *
    * Only where a build is actually coming. A Fast Preview session never builds
-   * anything, and a block with no `__resolveType` has nothing to look up —
-   * both are "there is no form here", and waiting on them spins forever.
+   * anything, a block with no `__resolveType` has nothing to look up, and a
+   * wait whose budget ran out is over — all three are "there is no form here",
+   * and waiting on them spins forever.
    */
   const awaitingSchema =
+    schemaWaiting &&
     resolveType !== "" &&
     !(session.resolved && session.runtime === "cms") &&
     !hasManifestBlockSchema(resolveType, meta);

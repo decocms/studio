@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 import { KEYS } from "@/lib/query-keys";
 import type { LiveMeta } from "./resolve-schema";
 import {
+  type ConditionalSupport,
   fetchLiveMeta,
   liveMetaQueryKey,
   metaSourceOrder,
@@ -166,6 +167,9 @@ describe("fetchLiveMeta", () => {
     etag: '"meta-new"',
   };
 
+  /** A runtime this browser has learned nothing about yet. */
+  const unknownRuntime = (): ConditionalSupport => new Map();
+
   function stubFetch(answer: () => Promise<Response>) {
     const calls: RequestInit[] = [];
     globalThis.fetch = mock(
@@ -179,24 +183,30 @@ describe("fetchLiveMeta", () => {
 
   it("first read: plain GET, no conditional header", async () => {
     const calls = stubFetch(async () => Response.json(fresh));
-    expect(await fetchLiveMeta(PREVIEW)).toEqual(fresh);
+    expect(await fetchLiveMeta(PREVIEW, undefined, unknownRuntime())).toEqual(
+      fresh,
+    );
     expect(calls[0]?.headers).toEqual({});
   });
 
   it("revalidates the held schema with its etag; 304 keeps it", async () => {
     const calls = stubFetch(async () => new Response(null, { status: 304 }));
-    expect(await fetchLiveMeta(PREVIEW, held)).toBe(held);
+    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toBe(held);
     expect(calls[0]?.headers).toEqual({ "If-None-Match": '"meta-old"' });
   });
 
   it("a changed schema replaces the held one", async () => {
     stubFetch(async () => Response.json(fresh));
-    expect(await fetchLiveMeta(PREVIEW, held)).toEqual(fresh);
+    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toEqual(fresh);
   });
 
   it("held schema without an etag: plain GET", async () => {
     const calls = stubFetch(async () => Response.json(fresh));
-    await fetchLiveMeta(PREVIEW, { ...held, etag: undefined });
+    await fetchLiveMeta(
+      PREVIEW,
+      { ...held, etag: undefined },
+      unknownRuntime(),
+    );
     expect(calls[0]?.headers).toEqual({});
   });
 
@@ -209,32 +219,68 @@ describe("fetchLiveMeta", () => {
       if (attempt++ === 0) throw new TypeError("Failed to fetch");
       return Response.json(fresh);
     });
-    expect(await fetchLiveMeta(PREVIEW, held)).toEqual(fresh);
+    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toEqual(fresh);
     expect(calls[0]?.headers).toEqual({ "If-None-Match": held.etag! });
     expect(calls[1]?.headers).toEqual({});
+  });
+
+  it("stops asking conditionally once a runtime has refused the header", async () => {
+    // Otherwise that runtime pays a rejected preflight on every single read,
+    // forever: the answer it gave is not going to change.
+    const support = unknownRuntime();
+    let attempt = 0;
+    const calls = stubFetch(async () => {
+      if (attempt++ === 0) throw new TypeError("Failed to fetch");
+      return Response.json(fresh);
+    });
+    await fetchLiveMeta(PREVIEW, held, support);
+    expect(calls).toHaveLength(2);
+
+    await fetchLiveMeta(PREVIEW, held, support);
+    expect(calls).toHaveLength(3);
+    expect(calls[2]?.headers).toEqual({});
+  });
+
+  it("does not retry plainly against a runtime already known to answer", async () => {
+    // A failure here is the dev server being down — restarting, exactly when
+    // the poll is busiest — and asking twice doubles the cost of every read.
+    const support = unknownRuntime();
+    const ok = stubFetch(async () => new Response(null, { status: 304 }));
+    await fetchLiveMeta(PREVIEW, held, support);
+    expect(ok).toHaveLength(1);
+
+    const down = stubFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await fetchLiveMeta(PREVIEW, held, support)).toBe(held);
+    expect(down).toHaveLength(1);
   });
 
   it("no answer either way keeps the held schema", async () => {
     stubFetch(async () => {
       throw new TypeError("Failed to fetch");
     });
-    expect(await fetchLiveMeta(PREVIEW, held)).toBe(held);
+    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toBe(held);
   });
 
   it("nothing held and no answer: null", async () => {
     stubFetch(async () => {
       throw new TypeError("Failed to fetch");
     });
-    expect(await fetchLiveMeta(PREVIEW)).toBeNull();
+    expect(
+      await fetchLiveMeta(PREVIEW, undefined, unknownRuntime()),
+    ).toBeNull();
   });
 
   it("an HTML 200 (not a deco site) is no answer", async () => {
     stubFetch(async () => new Response("<!doctype html>", { status: 200 }));
-    expect(await fetchLiveMeta(PREVIEW)).toBeNull();
+    expect(
+      await fetchLiveMeta(PREVIEW, undefined, unknownRuntime()),
+    ).toBeNull();
   });
 
   it("a 5xx on revalidation is no answer", async () => {
     stubFetch(async () => new Response("down", { status: 502 }));
-    expect(await fetchLiveMeta(PREVIEW, held)).toBeNull();
+    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toBeNull();
   });
 });

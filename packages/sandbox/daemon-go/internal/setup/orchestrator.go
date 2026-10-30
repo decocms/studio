@@ -790,10 +790,9 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = nil // restored an existing golden — nothing to publish
 		o.mu.Unlock()
-		o.relinkAfterGolden(cfg, RestoreL1)
+		relinked := o.relinkAfterGolden(cfg, RestoreL1)
 		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId, pkgCache)
-		o.markInstallSucceeded(cfg)
-		return true
+		return o.finishGoldenInstall(cfg, forced, relinked)
 	}
 
 	// L2: the same lockfile may already be archived on the shared store even
@@ -808,10 +807,9 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = &golden
 		o.mu.Unlock()
-		o.relinkAfterGolden(cfg, RestoreL2)
+		relinked := o.relinkAfterGolden(cfg, RestoreL2)
 		EmitDepsRestore(RestoreL2, cloneUrl, elapsedMs(), bootId, pkgCache)
-		o.markInstallSucceeded(cfg)
-		return true
+		return o.finishGoldenInstall(cfg, forced, relinked)
 	}
 
 	o.chunk("[orchestrator] installing dependencies\r\n")
@@ -879,20 +877,22 @@ func (o *Orchestrator) stepInstallInner() bool {
 // in tens of milliseconds, not a second install. Doing it unconditionally
 // also keeps the fast path correct for hoisted and any future linker layout.
 //
-// Best-effort: a restored golden is still a usable tree, so a failure here is
-// no worse than the skip-install behaviour it replaces — it is logged and the
-// boot continues rather than being marked failed.
-func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSource) {
+// Best-effort on an ordinary boot: a restored golden is still a usable tree,
+// so a failure here is no worse than the skip-install behaviour it replaces —
+// it is logged and the boot continues rather than being marked failed. The
+// caller decides, because that stops being true for a FORCED install (see
+// finishGoldenInstall); the bool says which happened.
+func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSource) bool {
 	o.chunk(fmt.Sprintf("[orchestrator] relinking workspaces after %s golden restore\r\n", tier))
 	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) { o.rawChunk(data) })
 	if !ran {
-		return
+		return true
 	}
 	if code != 0 {
 		o.chunk(fmt.Sprintf(
 			"\r\n[orchestrator] warning: relink after %s golden restore failed (exit %d) — continuing with the restored tree\r\n",
 			tier, code))
-		return
+		return false
 	}
 	// The relink can run install scripts (postinstall/prepare — lefthook,
 	// husky), which overwrite .git/hooks; reinstall them, same as the
@@ -902,6 +902,29 @@ func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSourc
 			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall sandbox git hooks: %s\r\n", err.Error()))
 		}
 	}
+	return true
+}
+
+// finishGoldenInstall records the outcome of an install the golden cache
+// served, and reports whether the pipeline may continue.
+//
+// The relink is what makes the restored tree match the manifest, and on an
+// ordinary boot the two already agree — so a failure is cosmetic and the boot
+// goes on. A FORCED install is the opposite case by definition: the caller
+// rewrote the manifest in the working tree, and the relink is the only thing
+// that fetches what it added. Marking that a success hands the dev server a
+// tree missing the very package the app being installed imports, and records
+// a fingerprint saying it is installed, so nothing retries.
+func (o *Orchestrator) finishGoldenInstall(cfg *config.Enriched, forced, relinked bool) bool {
+	if forced && !relinked {
+		errMsg := "relink after golden restore failed"
+		o.chunk("\r\n[orchestrator] install failed (" + errMsg + ")\r\n")
+		o.deps.InstallState.Mark(Fingerprint(cfg, o.branchHead()), false)
+		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
+		return false
+	}
+	o.markInstallSucceeded(cfg)
+	return true
 }
 
 func (o *Orchestrator) stepStartInner() startOutcome {

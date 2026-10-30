@@ -78,6 +78,23 @@ export function metaSourceOrder(input: {
 const LOCAL_META_POLL_MS = 5_000;
 
 /**
+ * What each site's runtime turned out to do with `If-None-Match`, learned by
+ * asking. A failed cross-origin request reads exactly like a dev server that
+ * is down, so the two are told apart the only way the browser allows: ask
+ * again plainly, and see whether THAT works.
+ *
+ * Remembering the answer is what keeps the cost at one request. Without it a
+ * runtime that refuses the header pays a rejected preflight on every single
+ * read, and — worse, because it is the common case — every read taken while
+ * the dev server restarts sends two failing requests instead of one.
+ *
+ * Keyed by base URL, which is the pod: a different sandbox re-learns.
+ */
+export type ConditionalSupport = Map<string, "ok" | "refused">;
+
+const conditionalSupport: ConditionalSupport = new Map();
+
+/**
  * A running site's `/live/_meta`, or `null` when it can't answer. With the
  * schema already held, asks with its `etag`; a deco runtime then answers 304
  * instead of the whole schema, and the held one is returned. A dev server on
@@ -87,22 +104,29 @@ const LOCAL_META_POLL_MS = 5_000;
 export async function fetchLiveMeta(
   baseUrl: string,
   previous?: LiveMeta,
+  /** What this browser has learned about each runtime; see above. */
+  support: ConditionalSupport = conditionalSupport,
 ): Promise<LiveMeta | null> {
   const url = new URL("/live/_meta", baseUrl).href;
-  const etag = previous?.etag;
+  const known = support.get(baseUrl);
+  const etag = known === "refused" ? undefined : previous?.etag;
   const first = await fetch(url, {
     cache: "no-store",
     headers: etag ? { "If-None-Match": etag } : {},
   }).catch(() => null);
-  // A runtime whose CORS does not allow `If-None-Match` fails the request
-  // outright, and the browser reports that the same way it reports a dev
-  // server that is down. Holding the schema we have forever on that answer
-  // would leave a just-installed app with no form and no way to get one, so
-  // ask once more plainly before concluding the site cannot answer.
-  const res =
-    !first && etag
-      ? await fetch(url, { cache: "no-store", headers: {} }).catch(() => null)
-      : first;
+  // Only while it is still unknown. Once a conditional request has worked
+  // against this runtime, a failure is the server being unreachable and
+  // asking again plainly just doubles the cost of a dev server that is down.
+  const retryPlainly = !first && !!etag && known === undefined;
+  const res = retryPlainly
+    ? await fetch(url, { cache: "no-store", headers: {} }).catch(() => null)
+    : first;
+  if (etag) {
+    // The plain request answering where the conditional one could not is the
+    // only evidence that the HEADER, not the server, was the problem.
+    if (retryPlainly && res) support.set(baseUrl, "refused");
+    else if (first) support.set(baseUrl, "ok");
+  }
   if (previous && (!res || res.status === 304)) return previous;
   if (!res?.ok) return null;
   // A repo that doesn't use the deco framework for sites still answers
