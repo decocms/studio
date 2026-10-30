@@ -499,7 +499,7 @@ const NO_PROJECTS: readonly SiteProject[] = [];
  * repositories load: it opens its PR in the project's repository, so only a
  * project bound to one the org has connected can take the tag.
  */
-export function useInstallableProjects(
+function useInstallableProjects(
   projects: readonly SiteProject[],
 ): SiteProject[] | null {
   const repositoriesQuery = useRepositories();

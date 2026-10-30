@@ -243,10 +243,10 @@ const CACHE_COLORS: Record<string, string> = {
   updating: "bg-subtle-foreground",
   none: "bg-muted-foreground",
 };
-function cacheColor(k: string): string {
+export function cacheColor(k: string): string {
   return CACHE_COLORS[k.toLowerCase()] ?? "bg-muted-foreground";
 }
-function statusColor(code: string): string {
+export function statusColor(code: string): string {
   const n = Number(code);
   if (n >= 200 && n < 300) return "bg-success";
   if (n >= 300 && n < 400) return "bg-notice";
@@ -276,7 +276,7 @@ const STATUS_NAMES: Record<string, string> = {
   "503": "503 Service Unavailable",
   "504": "504 Gateway Timeout",
 };
-function statusName(code: string): string {
+export function statusName(code: string): string {
   return STATUS_NAMES[code] ?? code;
 }
 // A stable palette for dimensionless breakdowns (sources / devices).
@@ -322,25 +322,24 @@ export interface TimelinePoint {
   pageviews: number;
   cache_hit_ratio: number;
 }
-interface BreakdownRow {
+export interface BreakdownRow {
   key: string;
   total_requests: number;
   total_bandwidth_bytes: number;
 }
-/** One monitor view (cdn or audience) for the current range. */
+/** One CDN view for the current range. */
 function useMonitorView<T>(
   base: string,
-  kind: "cdn" | "audience",
   view: string,
   range: string,
   enabled: boolean,
   extra?: string,
 ) {
   return useQuery({
-    queryKey: KEYS.cdnData(base, `${kind}:${view}${extra ?? ""}`, range),
+    queryKey: KEYS.cdnData(base, `cdn:${view}${extra ?? ""}`, range),
     queryFn: async () => {
       const body = (await fetchJson(
-        `${base}/${kind}/data?view=${view}&range=${range}${extra ?? ""}`,
+        `${base}/cdn/data?view=${view}&range=${range}${extra ?? ""}`,
       )) as { available?: boolean; data?: T };
       if (body.available === false) return null;
       return (body.data ?? null) as T | null;
@@ -360,7 +359,7 @@ const REGION_NAMES = (() => {
     return null;
   }
 })();
-function formatCountry(code: string): string {
+export function formatCountry(code: string): string {
   if (!code) return "—";
   const up = code.toUpperCase();
   if (up.length !== 2) return code;
@@ -526,7 +525,11 @@ const MAP_PATH = geoPath(MAP_PROJECTION);
 /** Choropleth of a country breakdown — the Map view of the Countries panel.
  *  The topojson keys countries by numeric ISO id; convert it to alpha-2
  *  (i18n-iso-countries) to join the alpha-2 breakdown data. */
-function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
+export function CountryMap({
+  rows,
+}: {
+  rows: { key: string; value: number }[];
+}) {
   const t = useT();
   const byCode = new Map<string, number>();
   for (const r of rows) if (r.key) byCode.set(r.key.toUpperCase(), r.value);
@@ -934,7 +937,6 @@ function PerformanceSection({
   const fp = filtersParam(filters) + rangeExtra;
   const summary = useMonitorView<CdnSummary>(
     base,
-    "cdn",
     "summary",
     range,
     enabled,
@@ -942,7 +944,6 @@ function PerformanceSection({
   );
   const timeline = useMonitorView<TimelinePoint[]>(
     base,
-    "cdn",
     "timeline",
     range,
     enabled,
@@ -950,7 +951,6 @@ function PerformanceSection({
   );
   const cacheStatus = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "cache-status",
     range,
     enabled,
@@ -958,7 +958,6 @@ function PerformanceSection({
   );
   const statusCodes = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "status-codes",
     range,
     enabled,
@@ -966,7 +965,6 @@ function PerformanceSection({
   );
   const topPaths = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "top-paths",
     range,
     enabled,
@@ -974,7 +972,6 @@ function PerformanceSection({
   );
   const topCountries = useMonitorView<BreakdownRow[]>(
     base,
-    "cdn",
     "top-countries",
     range,
     enabled,

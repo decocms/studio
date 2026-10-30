@@ -10,7 +10,17 @@ import {
   MonitorPage,
   type MonitorSelection,
 } from "@/components/monitor/monitor-page";
-import { MONITOR_VIEWS } from "@/components/monitor/monitor-views";
+import { SEGMENT_SEARCH_KEYS } from "@/components/monitor/analytics/segment";
+import {
+  ERRORS_SECTIONS,
+  EVENTS_SECTIONS,
+  EXPERIMENTS_SECTIONS,
+  PERFORMANCE_SECTIONS,
+} from "@/components/monitor/analytics/sections";
+import {
+  MONITOR_VIEWS,
+  type MonitorView,
+} from "@/components/monitor/monitor-views";
 import { useLiveBoard } from "@/components/monitor/use-live-board";
 import {
   DESTINATION_ROUTE,
@@ -22,10 +32,25 @@ import { useProjectContext } from "@/sdk";
 
 function useMonitorSearch(): MonitorSelection {
   const search = useSearch({ strict: false });
-  const view =
-    "view" in search && typeof search.view === "string"
-      ? MONITOR_VIEWS.find((v) => v === search.view)
+  // `analytics` was the CDN tab's name before it became Performance.
+  const requested =
+    "view" in search && search.view === "analytics"
+      ? "performance"
+      : "view" in search
+        ? search.view
+        : undefined;
+  const asked =
+    typeof requested === "string"
+      ? MONITOR_VIEWS.find((v) => v === requested)
       : undefined;
+  const section =
+    "section" in search && typeof search.section === "string"
+      ? search.section
+      : undefined;
+  // Analytics links from before its sections moved to their own tabs.
+  const moved =
+    asked === "audience" && section ? movedSection(section) : undefined;
+  const view = moved ?? asked;
   return {
     view,
     date:
@@ -37,7 +62,32 @@ function useMonitorSearch(): MonitorSelection {
         ? search.store
         : undefined,
     at: "at" in search && typeof search.at === "string" ? search.at : undefined,
+    project:
+      "project" in search && typeof search.project === "string"
+        ? search.project
+        : undefined,
   };
+}
+
+function movedSection(section: string): MonitorView | undefined {
+  if (section === "live") return "realtime";
+  if (section === "behaviour") return "pages";
+  if (section === "heatmap") return "heatmap";
+  if (EVENTS_SECTIONS.some((s) => s === section)) return "events";
+  if (ERRORS_SECTIONS.some((s) => s === section)) return "errors";
+  if (EXPERIMENTS_SECTIONS.some((s) => s === section)) return "experiments";
+  if (PERFORMANCE_SECTIONS.some((s) => s === section)) return "performance";
+  return undefined;
+}
+
+/** The Analytics segment's search keys, as they are. */
+function useSegmentSearch(): Record<string, unknown> {
+  const search = useSearch({ strict: false }) as Record<string, unknown>;
+  return Object.fromEntries(
+    SEGMENT_SEARCH_KEYS.flatMap((k) =>
+      search[k] === undefined ? [] : [[k, search[k]]],
+    ),
+  );
 }
 
 function LiveMonitoring({
@@ -75,12 +125,20 @@ function MonitoringContent() {
   const navigate = useNavigate();
   const projectFirstNav = useProjectFirstNav();
   const selection = useMonitorSearch();
+  const segment = useSegmentSearch();
 
   if (!projectFirstNav) {
     return <Navigate to="/$org/home" params={{ org: org.slug }} replace />;
   }
 
-  const onSelect = (next: MonitorSelection) => {
+  const onSelect = (selected: MonitorSelection) => {
+    // Filters only make sense within one project's Analytics sections.
+    const next =
+      selected.view === "audience" &&
+      selection.view === "audience" &&
+      selected.project === selection.project
+        ? { ...selected, ...segment }
+        : selected;
     if (scopeId) {
       void navigate({
         to: PROJECT_ROUTE.monitoring,

@@ -1219,10 +1219,32 @@ const planRoute = createRoute({
 /** Monitor: the tab, the past day, and the store (ingest connection id) and
  *  instant under review. A malformed day is dropped, not a broken page. */
 const monitoringSearch = z.object({
-  view: z.enum(["metrics", "deploys", "experiments", "analytics"]).optional(),
+  // `analytics` is the old name of `performance`, kept so saved links still open.
+  view: z
+    .enum([
+      "metrics",
+      "performance",
+      "errors",
+      "audience",
+      "realtime",
+      "pages",
+      "heatmap",
+      "events",
+      "deploys",
+      "experiments",
+      "analytics",
+    ])
+    .optional(),
   date: z.iso.date().optional().catch(undefined),
   store: z.string().optional(),
   at: z.string().optional(),
+  project: z.string().optional(),
+  section: z.string().optional(),
+  // The Analytics segment (components/monitor/analytics/segment.ts).
+  f: z.array(z.string()).optional().catch(undefined),
+  goal: z.string().optional(),
+  currency: z.string().optional(),
+  prop: z.string().optional(),
 });
 const orgMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,

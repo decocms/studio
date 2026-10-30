@@ -1285,7 +1285,7 @@ function ReferencePicker({
 
 /**
  * The headline number. Orders' is the day projected to midnight, not what has
- * come in, so it says so beside it.
+ * come in, so it says so beside it, with the count so far on the same line.
  */
 function Figure({ kpi, value }: { kpi: Kpi; value: number }) {
   const t = useT();
@@ -1295,6 +1295,11 @@ function Figure({ kpi, value }: { kpi: Kpi; value: number }) {
       {kpi.projection && (
         <span className="text-meta font-sans tracking-normal">
           {t("monitor.chart.projectedLabel")}
+        </span>
+      )}
+      {kpi.id === "orders" && kpi.soFar !== undefined && (
+        <span className="text-meta border-l border-border pl-2 font-sans tracking-normal">
+          {t("monitor.chart.soFar", { count: formatCount(kpi.soFar) })}
         </span>
       )}
     </span>
@@ -1414,15 +1419,14 @@ export function MetricChart({
         title={title}
         value={<Figure kpi={kpi} value={kpi.value} />}
         caption={
-          // Orders compare on the toggles themselves; what is left is the count so far.
+          // Orders compare on the toggles themselves and show the count so
+          // far beside the figure; what is left is the history still loading.
           kpi.id === "orders" ? (
-            kpi.soFar !== undefined && (
+            kpi.historyLoaded !== undefined && (
               <span className="text-meta">
-                {t("monitor.chart.soFar", { count: formatCount(kpi.soFar) })}
-                {kpi.historyLoaded !== undefined &&
-                  ` · ${t("monitor.chart.historyLoading", {
-                    pct: `${Math.floor(kpi.historyLoaded * 100)}%`,
-                  })}`}
+                {t("monitor.chart.historyLoading", {
+                  pct: `${Math.floor(kpi.historyLoaded * 100)}%`,
+                })}
               </span>
             )
           ) : (

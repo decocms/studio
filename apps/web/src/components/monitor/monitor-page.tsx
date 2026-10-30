@@ -38,15 +38,29 @@ import {
   sortSignals,
   storeTimezone,
 } from "./board";
+import {
+  type DecoSectionId,
+  ERRORS_SECTIONS,
+  EVENTS_SECTIONS,
+  HEATMAP_SECTIONS,
+  PAGES_SECTIONS,
+  REALTIME_SECTIONS,
+} from "./analytics/sections";
 import { ChannelsChart } from "./channels-chart";
 import { ChangeFocusProvider, MetricChart } from "./metric-chart";
 import {
-  AnalyticsView,
+  AudienceView,
   DeploysView,
+  DecoView,
   ExperimentsView,
   MonitorTabs,
   type MonitorView,
+  PerformanceView,
+  useSiteProjects,
 } from "./monitor-views";
+import { AnalyticsGlance, type OverviewDestination } from "./overview-glance";
+import { useAnalyticsStatus } from "./deco-analytics";
+import { monitorScope, ProjectFilter } from "./project-filter";
 import { connectLink, localDay } from "./parts";
 import { Locked } from "./locked";
 import { MonitoredRepos } from "./monitored-repos";
@@ -60,6 +74,8 @@ import { useSourceIcons } from "./use-source-icons";
 
 export interface MonitorSelection {
   view?: MonitorView;
+  /** Across the org, the one project every tab shows (the filter's pick). */
+  project?: string;
   /** A past local day, `YYYY-MM-DD`; today when absent. */
   date?: string;
   store?: string;
@@ -136,6 +152,15 @@ function Actions({
   );
 }
 
+/** The tabs that are one project's Deco Analytics sections. */
+const DECO_VIEWS: Partial<Record<MonitorView, readonly DecoSectionId[]>> = {
+  errors: ERRORS_SECTIONS,
+  realtime: REALTIME_SECTIONS,
+  pages: PAGES_SECTIONS,
+  heatmap: HEATMAP_SECTIONS,
+  events: EVENTS_SECTIONS,
+};
+
 const CARD_ORDER: readonly KpiId[] = [
   "orders",
   "cancellations",
@@ -164,6 +189,8 @@ function Board({
   showChanges,
   preview,
   bare = false,
+  glance,
+  decoConversion = false,
 }: {
   board: MonitorBoard;
   orgSlug: string;
@@ -175,29 +202,52 @@ function Board({
   preview: readonly Kpi[] | null;
   /** Drawn under the page's connect card: no buttons of its own. */
   bare?: boolean;
+  /** The other tabs' headline numbers, above the orders, when one site. */
+  glance?: ReactNode;
+  /** Deco Analytics shows conversion, so an unfed Analytics card would repeat it. */
+  decoConversion?: boolean;
 }) {
   const t = useT();
   const signals = sortSignals(board.signals);
   const connect = connectLink(orgSlug, scopeId);
   const iconOf = useSourceIcons(orgSlug, board.sources);
   const changes = board.deploys ?? [];
-  // The whole page is laid out from the start: a card whose source isn't
-  // connected shows what it would draw, faded, under the button to connect it.
-  const kpis: Kpi[] = preview
-    ? preview.map(
-        (sample) =>
-          board.kpis.find((k) => k.id === sample.id) ?? {
-            ...sample,
-            source: LIVE_SOURCE[sample.id],
-            value: null,
-            points: null,
-          },
-      )
-    : board.kpis;
+  const unfed = (sample: Kpi): Kpi => ({
+    ...sample,
+    source: LIVE_SOURCE[sample.id],
+    value: null,
+    points: null,
+  });
+  // Under the connect card the whole page is laid out with preview numbers;
+  // once a source is in, only the cards something feeds are drawn, plus the
+  // errors card, which says it is coming soon until a source feeds it.
+  const kpis: Kpi[] =
+    preview && bare
+      ? preview.map(
+          (sample) =>
+            board.kpis.find((k) => k.id === sample.id) ?? unfed(sample),
+        )
+      : [
+          ...board.kpis.filter(
+            (k) =>
+              !(decoConversion && k.id === "conversion" && k.value === null),
+          ),
+          ...(preview ?? [])
+            .filter(
+              (sample) =>
+                sample.id === "errors" &&
+                !board.kpis.some((k) => k.id === "errors"),
+            )
+            .map(unfed),
+        ];
   // Orders, then what happens to them, then the site behind them.
   const [orders, ...rest] = [...kpis].sort(
     (a, b) => CARD_ORDER.indexOf(a.id) - CARD_ORDER.indexOf(b.id),
   );
+  const channels =
+    board.channels && board.channels.length > 1 ? board.channels : null;
+  // An odd card out takes the whole last row instead of leaving half of it empty.
+  const lastAlone = (rest.length + (channels ? 1 : 0)) % 2 === 1;
   const chart = (kpi: Kpi, className?: string) => (
     <MetricChart
       key={kpi.id}
@@ -218,6 +268,7 @@ function Board({
 
   return (
     <div className="flex flex-col gap-4">
+      {!bare && glance}
       {signals.length > 0 && (
         <SignalsPanel
           signals={signals}
@@ -231,11 +282,25 @@ function Board({
         {orders && chart(orders)}
         <div className="grid gap-4 md:grid-cols-2">
           {/* Cancellations beside the channels: both are about the orders. */}
-          {rest.slice(0, 1).map((kpi) => chart(kpi))}
-          {board.channels && board.channels.length > 1 && (
-            <ChannelsChart channels={board.channels} />
-          )}
-          {rest.slice(1).map((kpi) => chart(kpi))}
+          {rest
+            .slice(0, 1)
+            .map((kpi) =>
+              chart(
+                kpi,
+                lastAlone && rest.length === 1 ? "md:col-span-2" : undefined,
+              ),
+            )}
+          {channels && <ChannelsChart channels={channels} />}
+          {rest
+            .slice(1)
+            .map((kpi, i, after) =>
+              chart(
+                kpi,
+                lastAlone && i === after.length - 1
+                  ? "md:col-span-2"
+                  : undefined,
+              ),
+            )}
         </div>
       </ChangeFocusProvider>
       {!bare && board.stores.length > 0 && (
@@ -261,7 +326,7 @@ export function MonitorPage({
   loading,
   error,
   orgSlug,
-  scopeId,
+  scopeId: routeScope,
   selection,
   onSelect,
 }: {
@@ -269,11 +334,16 @@ export function MonitorPage({
   loading: boolean;
   error: Error | null;
   orgSlug: string;
+  /** The project the route is in; null across the org. */
   scopeId: string | null;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
   const t = useT();
+  const projects = useSiteProjects();
+  const scopeId = monitorScope(routeScope, projects, selection.project);
+  const onProject = (project: string | null) =>
+    onSelect({ view: selection.view, project: project ?? undefined });
   const board = scopeBoard(orgBoard, scopeId);
   /** A past day's last second in the store's own timezone. */
   const storeDayEnd = (connectionId: string, date: string | undefined) => {
@@ -287,20 +357,45 @@ export function MonitorPage({
   const stateOf = (id: SourceId) =>
     board.sources.find((s) => s.id === id)?.state ?? "off";
   const view = selection.view ?? "metrics";
+  const day = selection.date ?? localDay(new Date());
+  const today = day === localDay(new Date());
+  const scopeProject = projects.find((p) => p.id === scopeId);
+  const decoConversion =
+    useAnalyticsStatus(
+      orgSlug,
+      { site: scopeProject?.site ?? "" },
+      scopeProject !== undefined && today,
+    ).data?.registered === true &&
+    scopeProject !== undefined &&
+    today;
+  const openTab = (to: OverviewDestination) =>
+    onSelect({ ...to, project: selection.project });
   // Everything the page can show is laid out from the start; what no source
   // feeds yet is drawn from the preview, faded, under its connect button.
   const shown = monitorPreview(scopeId, selection.date);
   const preview = shown.kpis;
   const [showChanges, setShowChanges] = useState(true);
   const tabs = (
-    <MonitorTabs
-      view={view}
-      onView={(next) =>
-        onSelect({ view: next === "metrics" ? undefined : next })
-      }
-    />
+    <>
+      <MonitorTabs
+        view={view}
+        onView={(next) =>
+          onSelect({
+            view: next === "metrics" ? undefined : next,
+            project: selection.project,
+          })
+        }
+      />
+      {!routeScope && projects.length > 1 && (
+        <ProjectFilter
+          projects={projects}
+          value={scopeId}
+          onChange={onProject}
+        />
+      )}
+    </>
   );
-  // Experiments and Analytics are a project's own screens, with their frame.
+  // Experiments, Performance and Audience are a project's own screens, with their frame.
   if (view === "experiments") {
     return (
       <>
@@ -309,20 +404,33 @@ export function MonitorPage({
       </>
     );
   }
-  if (view === "analytics") {
+  if (view === "audience") {
     return (
       <>
         {tabs}
-        <AnalyticsView
+        <AudienceView
           scopeId={scopeId}
-          date={selection.date ?? localDay(new Date())}
-          onDate={(date) =>
-            onSelect({
-              ...selection,
-              date: date === localDay(new Date()) ? undefined : date,
-            })
+          onOpen={(next) =>
+            onSelect({ view: selection.view, project: next.project })
           }
         />
+      </>
+    );
+  }
+  const decoSections = DECO_VIEWS[view];
+  if (decoSections) {
+    return (
+      <>
+        {tabs}
+        <DecoView key={view} scopeId={scopeId} sections={decoSections} />
+      </>
+    );
+  }
+  if (view === "performance") {
+    return (
+      <>
+        {tabs}
+        <PerformanceView scopeId={scopeId} onProject={onProject} />
       </>
     );
   }
@@ -422,7 +530,10 @@ export function MonitorPage({
         kind="metrics"
         title={t("monitor.locked.metrics.title")}
         steps={(["orders", "analytics", "site", "deploys"] as const).map(
-          (source) => ({ source, state: stateOf(source) }),
+          (source) => ({
+            source,
+            state: stateOf(source),
+          }),
         )}
         link={connectLink(orgSlug, scopeId)}
       >
@@ -448,6 +559,17 @@ export function MonitorPage({
         onSelect={onSelect}
         showChanges={showChanges}
         preview={preview}
+        decoConversion={decoConversion}
+        glance={
+          scopeProject && (
+            <AnalyticsGlance
+              project={scopeProject}
+              today={today}
+              withVisitors={!board.kpis.some((k) => k.id === "audience")}
+              onOpen={openTab}
+            />
+          )
+        }
       />
     );
   }

@@ -777,6 +777,12 @@ export const KEYS = {
   // collapsible section caches independently and refetches on range change.
   analyticsData: (org: string, site: string, view: string, range: string) =>
     ["hosting", org, site, "analytics-data", view, range] as const,
+  // Monitor → Analytics: one view keyed by its full query string, so segments cache apart.
+  analyticsView: (org: string, site: string, query: string) =>
+    ["hosting", org, site, "analytics-view", query] as const,
+  // Monitor → Analytics: the filter builder's suggestions for one dimension.
+  analyticsValues: (org: string, site: string, dim: string, range: string) =>
+    ["hosting", org, site, "analytics-values", dim, range] as const,
   // Deco Analytics → Live map: the renderer bundle, proxied through the BFF at
   // /api/:org/hosting/:site/analytics/globe.js. A query rather than a loader of
   // its own because the script is fetched once and then cached for the session
@@ -811,6 +817,17 @@ export const KEYS = {
     ["monitor", base, "cdn-data", view, range] as const,
   siteMonitorData: (base: string, view: string, range: string) =>
     ["monitor", base, "site-data", view, range] as const,
+  /** Monitor Audience: one normalized view of a site's audience for a range. */
+  monitorAudience: (
+    org: string,
+    site: string,
+    trafficSite: string,
+    view: string,
+    range: string,
+  ) => ["monitor", org, "audience", site, trafficSite, view, range] as const,
+  /** Every Monitor audience read for one site, whichever source answers it. */
+  monitorAudienceSite: (org: string, site: string) =>
+    ["monitor", org, "audience", site] as const,
   // Order monitor: every key starts with this prefix, so one invalidation
   // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
   orderMonitor: (org: string) => ["order-monitor", org] as const,

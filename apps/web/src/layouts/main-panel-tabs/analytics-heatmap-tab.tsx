@@ -20,11 +20,18 @@ import {
   Settings01,
   Tablet01,
 } from "@untitledui/icons";
+import { Badge as DsBadge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { Slider } from "@decocms/ui/components/slider.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
@@ -87,11 +94,6 @@ type Hover = {
   y: number;
   pct?: number;
 };
-
-const SEG =
-  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors";
-const SEG_ON = "bg-background text-foreground shadow-xs";
-const SEG_OFF = "text-muted-foreground hover:text-foreground";
 
 export function HeatmapView({
   base,
@@ -175,7 +177,7 @@ export function HeatmapView({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <PageInput
           value={page}
@@ -186,50 +188,58 @@ export function HeatmapView({
             setSample("");
           }}
         />
-        <div
-          role="group"
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
           aria-label={t(k("device"))}
-          className="inline-flex rounded-lg border border-border bg-muted p-0.5"
+          value={device}
+          onValueChange={(v) => {
+            const next = HEAT_DEVICES.find((d) => d === v);
+            if (next) setDevice(next);
+          }}
         >
           {HEAT_DEVICES.map((d) => {
             const Icon = DEVICE_ICON[d];
             const views =
               model?.devices.find((x) => x.device === d)?.views ?? 0;
             return (
-              <button
+              <ToggleGroupItem
                 key={d}
-                type="button"
-                aria-pressed={device === d}
+                value={d}
                 title={t(k("deviceViews"), {
                   device: t(k(d)),
                   views: fmtInt(views, locale),
                 })}
-                onClick={() => setDevice(d)}
-                className={cn(SEG, device === d ? SEG_ON : SEG_OFF)}
+                className="flex-none gap-1.5 px-2.5 text-xs font-normal"
               >
-                <Icon className="size-4" />
+                <Icon className="size-3.5" />
                 <span className="max-sm:hidden">{t(k(d))}</span>
-              </button>
+              </ToggleGroupItem>
             );
           })}
-        </div>
-        <div
-          role="group"
+        </ToggleGroup>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
           aria-label={t(k("range"))}
-          className="inline-flex rounded-lg border border-border bg-muted p-0.5"
+          value={range}
+          onValueChange={(v) => {
+            const next = HEAT_RANGES.find((r) => r === v);
+            if (next) setRange(next);
+          }}
         >
           {HEAT_RANGES.map((r) => (
-            <button
+            <ToggleGroupItem
               key={r}
-              type="button"
-              aria-pressed={range === r}
-              onClick={() => setRange(r)}
-              className={cn(SEG, range === r ? SEG_ON : SEG_OFF)}
+              value={r}
+              className="flex-none px-2.5 text-xs font-normal"
             >
               {t(k(`range${r}`))}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
         {query.isFetching && model && <Spinner size="xs" />}
       </div>
 
@@ -302,7 +312,7 @@ function PageInput({
         list="hm-pages"
         value={draft ?? value}
         spellCheck={false}
-        className="h-8 font-mono text-xs"
+        className="h-8 text-sm"
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
       />
@@ -386,6 +396,7 @@ function Viewer({
   const [status, setStatus] = useState<"loading" | "ready" | "timeout">(
     "loading",
   );
+  const [attempt, setAttempt] = useState(0);
   const [placed, setPlaced] = useState<Placed | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [rowHover, setRowHover] = useState<string | null>(null);
@@ -531,8 +542,11 @@ function Viewer({
     ? placed.stats.matched / placed.stats.total
     : null;
   const activeKey = rowHover ?? pinned;
+  // An element without text is named by the section it sits in; the
+  // section then leaves its line under the name.
+  const textOf = (e: HeatElement) => itemBy.get(e.key)?.label || null;
   const labelOf = (e: HeatElement) =>
-    itemBy.get(e.key)?.label || t(k("noText"));
+    textOf(e) || rootName(e.root) || t(k("noText"));
   const sectionBy = new Map(model.sections.map((s) => [s.root, s]));
   // The funnel follows the pinned element; with nothing pinned the value list
   // shows the page's own, which is what every element is read against.
@@ -584,81 +598,79 @@ function Viewer({
   );
 
   return (
-    <div className="@container flex min-w-0 flex-col">
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-b border-border">
-        <div
-          role="tablist"
-          aria-label={t(k("map"))}
-          className="-mb-px flex gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
+    <div className="@container flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Tabs
+          value={mode}
+          onValueChange={(v) => {
+            const next = HEAT_MODES.find((m) => m === v);
+            if (next) changeMode(next);
+          }}
+          variant="underline"
         >
-          {HEAT_MODES.map((m) => (
-            <button
-              key={m}
-              role="tab"
-              type="button"
-              aria-selected={mode === m}
-              title={t(k(`${m}Hint`))}
-              onClick={() => changeMode(m)}
-              className={cn(
-                "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-                mode === m
-                  ? "border-[var(--chart-1)] text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t(k(m))}
-            </button>
-          ))}
-        </div>
+          <TabsList
+            variant="underline"
+            aria-label={t(k("map"))}
+            className="overflow-x-auto"
+          >
+            {HEAT_MODES.map((m) => (
+              <TabsTrigger
+                key={m}
+                value={m}
+                variant="underline"
+                title={t(k(`${m}Hint`))}
+              >
+                {t(k(m))}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
         {mode === "clicks" && (
-          <div
-            role="group"
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
             aria-label={t(k("clickType"))}
-            className="flex gap-1.5 overflow-x-auto pb-2 [scrollbar-width:none] max-sm:w-full"
+            value={clickType}
+            onValueChange={(v) => {
+              const next = CLICK_TYPES.find((c) => c === v);
+              if (!next) return;
+              onClickType(next);
+              setPinned(null);
+            }}
+            className="overflow-x-auto"
           >
             {CLICK_TYPES.map((c) => (
-              <button
+              <ToggleGroupItem
                 key={c}
-                type="button"
-                aria-pressed={clickType === c}
+                value={c}
                 disabled={c !== "all" && !counts[c]}
-                onClick={() => {
-                  onClickType(c);
-                  setPinned(null);
-                }}
-                className={cn(
-                  "shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-colors disabled:opacity-40",
-                  clickType === c
-                    ? "border-foreground font-semibold text-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground",
-                )}
+                className="flex-none gap-1.5 px-2.5 text-xs font-normal"
               >
                 {t(k(`type_${c}`))}
                 {c !== "all" && (
-                  <b className="ml-1 font-semibold tabular-nums text-muted-foreground">
+                  <span className="tnum text-muted-foreground">
                     {fmtInt(counts[c] * est, locale)}
-                  </b>
+                  </span>
                 )}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         )}
-        <div className="ml-auto flex gap-1.5 overflow-x-auto pb-2 [scrollbar-width:none] max-sm:ml-0 max-sm:w-full">
-          <Pill title={t(k("viewsHint"))}>
+        <div className="text-meta ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 max-sm:ml-0">
+          <span title={t(k("viewsHint"))}>
             {t(k("views"), { n: fmtInt(model.views, locale) })}
-          </Pill>
+          </span>
           {est > 1.05 && (
-            <Pill title={t(k("scaleHint"))}>
+            <span title={t(k("scaleHint"))}>
               {t(k("scale"), { n: fmtInt(est, locale) })}
-            </Pill>
-          )}
-          {model.smallSample && model.views > 0 && (
-            <Pill title={t(k("smallSampleHint"))} tone="warn">
-              {t(k("smallSample"))}
-            </Pill>
+            </span>
           )}
           {match != null && (
-            <Pill title={t(k("matchHint"))}>
+            <span
+              title={t(k("matchHint"))}
+              className="inline-flex items-center gap-1.5"
+            >
               <i
                 className={cn(
                   "size-1.5 rounded-full",
@@ -666,25 +678,23 @@ function Viewer({
                 )}
               />
               {t(k("match"), { pct: fmtPct(match, locale) })}
-            </Pill>
+            </span>
+          )}
+          {model.smallSample && model.views > 0 && (
+            <DsBadge variant="warning" title={t(k("smallSampleHint"))}>
+              {t(k("smallSample"))}
+            </DsBadge>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 overflow-hidden rounded-b-xl border border-t-0 border-border @5xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div
-          className="relative flex h-[clamp(520px,78vh,980px)] min-w-0 flex-col bg-muted px-5 pt-4 max-sm:h-[72vh] max-sm:min-h-[460px] max-sm:px-2 max-sm:pt-2"
-          style={{
-            backgroundImage:
-              "radial-gradient(color-mix(in srgb, var(--muted-foreground) 30%, transparent) 1px, transparent 1.2px)",
-            backgroundSize: "16px 16px",
-          }}
-        >
+      <div className="surface grid grid-cols-1 overflow-hidden @4xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="surface-inset relative flex h-[clamp(520px,78vh,980px)] min-w-0 flex-col rounded-none px-5 pt-4 max-sm:h-[72vh] max-sm:min-h-[460px] max-sm:px-2 max-sm:pt-2">
           <div
-            className="relative mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-t-xl border border-b-0 border-border bg-background shadow-lg"
+            className="relative mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-t-xl border border-b-0 border-border bg-background"
             style={{ maxWidth: device === "desktop" ? undefined : width + 2 }}
           >
-            <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
+            <div className="text-meta flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
               <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md bg-muted px-2.5 py-1">
                 <Lock01 className="size-3 shrink-0" />
                 <span className="truncate">
@@ -695,7 +705,7 @@ function Viewer({
                     : templatePage}
                 </span>
               </div>
-              <span className="tabular-nums max-sm:hidden">{width} px</span>
+              <span className="max-sm:hidden">{width} px</span>
               <div className="inline-flex gap-0.5 max-sm:hidden">
                 {(["fit", 1] as const).map((z) => (
                   <button
@@ -704,9 +714,9 @@ function Viewer({
                     aria-pressed={zoom === z}
                     onClick={() => setZoom(z)}
                     className={cn(
-                      "rounded px-1.5 py-0.5",
+                      "focus-ring rounded-md px-1.5 py-0.5",
                       zoom === z
-                        ? "bg-muted font-semibold text-foreground"
+                        ? "bg-muted text-foreground"
                         : "hover:text-foreground",
                     )}
                   >
@@ -725,6 +735,7 @@ function Viewer({
               {zoom !== "fit" && <div style={{ width, height: 1 }} />}
               {src ? (
                 <iframe
+                  key={attempt}
                   ref={frameRef}
                   title={t(k("frameTitle"))}
                   src={src}
@@ -757,7 +768,25 @@ function Viewer({
               )}
               {src && status === "timeout" && (
                 <Cover title={t(k("timeoutTitle"))}>
-                  {t(k("timeoutDescription"))}
+                  <span className="block">{t(k("timeoutHint"))}</span>
+                  <span className="pointer-events-auto mt-3 flex items-center justify-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setStatus("loading");
+                        setAttempt((n) => n + 1);
+                      }}
+                    >
+                      {t(k("timeoutRetry"))}
+                    </Button>
+                  </span>
+                  <details className="pointer-events-auto mt-3 text-left text-xs">
+                    <summary className="cursor-pointer text-center">
+                      {t(k("timeoutWhy"))}
+                    </summary>
+                    <p className="mt-2">{t(k("timeoutDescription"))}</p>
+                  </details>
                 </Cover>
               )}
               {src && status === "ready" && model.views === 0 && (
@@ -871,59 +900,56 @@ function Viewer({
               )}
             </div>
           </div>
-          <div className="absolute bottom-4 left-8 z-10 flex max-w-[calc(100%-4rem)] flex-wrap items-center gap-x-3.5 gap-y-2 rounded-xl border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur max-sm:inset-x-4 max-sm:max-w-none">
+          <div className="surface absolute bottom-4 left-8 z-10 flex max-w-[calc(100%-4rem)] flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 max-sm:inset-x-4 max-sm:max-w-none">
             <div className="flex min-w-44 flex-col gap-1 max-sm:min-w-0 max-sm:basis-full">
               <div
-                className="h-2.5 rounded-full bg-background ring-1 ring-border"
+                className="h-2 rounded-full border border-border"
                 style={{ backgroundImage: gradient }}
               />
-              <div className="flex justify-between gap-3 text-[11px] text-muted-foreground tabular-nums">
+              <div className="text-meta flex justify-between gap-3">
                 <span>{legend[0]}</span>
                 <span>{legend[1]}</span>
               </div>
             </div>
             {mode !== "sections" && (
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <label className="text-meta flex items-center gap-2">
                 {t(k("opacity"))}
-                <input
-                  type="range"
+                <Slider
                   min={0.2}
                   max={1}
                   step={0.05}
-                  value={opacity}
-                  onChange={(e) => setOpacity(Number(e.target.value))}
-                  className="w-20 accent-[var(--chart-1)]"
+                  value={[opacity]}
+                  onValueChange={([v]) => v !== undefined && setOpacity(v)}
+                  className="w-20"
                 />
               </label>
             )}
-            <div
-              role="group"
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
               aria-label={t(k("colors"))}
-              className="inline-flex gap-0.5"
+              value={ramp}
+              onValueChange={(v) => {
+                if (v === "thermal" || v === "inferno") setRamp(v);
+              }}
             >
               {(["thermal", "inferno"] as const).map((r) => (
-                <button
+                <ToggleGroupItem
                   key={r}
-                  type="button"
-                  aria-pressed={ramp === r}
+                  value={r}
                   title={r === "inferno" ? t(k("infernoHint")) : undefined}
-                  onClick={() => setRamp(r)}
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-xs",
-                    ramp === r
-                      ? "bg-muted font-semibold text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+                  className="flex-none px-2.5 text-xs font-normal"
                 >
                   {t(k(r))}
-                </button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
           </div>
         </div>
 
-        <aside className="flex min-h-0 flex-col border-border bg-background @max-5xl:border-t @5xl:h-[clamp(520px,78vh,980px)] @5xl:border-l">
-          <div className="grid grid-cols-2 gap-px border-b border-border bg-border">
+        <aside className="flex min-h-0 flex-col border-border @max-4xl:border-t @4xl:h-[clamp(520px,78vh,980px)] @4xl:border-l">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 border-b border-border p-4">
             <Stat
               label={t(k("statClicks"))}
               value={fmtInt(model.clicks * est, locale)}
@@ -958,7 +984,7 @@ function Viewer({
           </div>
           <button
             type="button"
-            className="border-b border-border px-4 py-3 text-left text-sm font-semibold text-[var(--chart-1)] @5xl:hidden"
+            className="focus-ring border-b border-border px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-accent/50 @4xl:hidden"
             onClick={() => setRailOpen((o) => !o)}
           >
             {railOpen
@@ -975,8 +1001,8 @@ function Viewer({
           </button>
           <div
             className={cn(
-              "min-h-0 flex-1 flex-col @max-5xl:max-h-[60vh]",
-              railOpen ? "flex" : "hidden @5xl:flex",
+              "min-h-0 flex-1 flex-col @max-4xl:max-h-[60vh]",
+              railOpen ? "flex" : "hidden @4xl:flex",
             )}
           >
             {mode === "clicks" && (
@@ -996,24 +1022,28 @@ function Viewer({
                   })}
                 />
                 {clickType === "all" && (
-                  <div
-                    role="group"
+                  <ToggleGroup
+                    type="single"
+                    variant="outline"
+                    size="sm"
                     aria-label={t(k("rankBy"))}
-                    className="mx-4 mb-1 flex w-fit items-center gap-0.5 rounded-lg border border-border p-0.5"
+                    value={rankBy}
+                    onValueChange={(v) => {
+                      if (v === "clicks" || v === "ctr") setRankBy(v);
+                    }}
+                    className="mx-4 mb-1 w-fit"
                   >
                     {(["clicks", "ctr"] as const).map((r) => (
-                      <button
+                      <ToggleGroupItem
                         key={r}
-                        type="button"
-                        aria-pressed={rankBy === r}
+                        value={r}
                         title={r === "ctr" ? t(k("ctrHint")) : undefined}
-                        onClick={() => setRankBy(r)}
-                        className={cn(SEG, rankBy === r ? SEG_ON : SEG_OFF)}
+                        className="flex-none px-2.5 text-xs font-normal"
                       >
                         {t(k(r === "ctr" ? "rankCtr" : "rankClicks"))}
-                      </button>
+                      </ToggleGroupItem>
                     ))}
-                  </div>
+                  </ToggleGroup>
                 )}
                 {pinnedFunnel && pinnedEl && (
                   <FunnelCard
@@ -1026,7 +1056,7 @@ function Viewer({
                 )}
                 <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
                   {byCtr && (
-                    <p className="px-2 pb-1 text-xs text-muted-foreground">
+                    <p className="px-2 pb-1 text-meta">
                       {t(k("ctrMinNote"), {
                         n: fmtInt(CTR_MIN_SEEN, locale),
                       })}
@@ -1059,7 +1089,7 @@ function Viewer({
                         onLeave={leave}
                         onPick={() => pick(e.key)}
                         sub={[
-                          rootName(e.root),
+                          textOf(e) ? rootName(e.root) : null,
                           // CTR before the click share: it is the figure the
                           // row cannot show on its right, and the first to be
                           // cut when the line truncates.
@@ -1111,13 +1141,11 @@ function Viewer({
                     );
                   })}
                   {!onPage.length && placed && (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">
-                      {t(k("noneOfType"))}
-                    </p>
+                    <p className="px-2 py-3 text-meta">{t(k("noneOfType"))}</p>
                   )}
                   {offPage.length > 0 && (
                     <details className="mx-2 mt-2 border-t border-dashed border-border pt-2">
-                      <summary className="cursor-pointer py-1 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer py-1 text-meta">
                         {t(k("offPage"), {
                           n: fmtInt(offPage.length, locale),
                           pct: fmtPct(
@@ -1137,7 +1165,7 @@ function Viewer({
                           <span className="truncate">
                             {rootName(e.root) ?? t(k("outsideSections"))}
                           </span>
-                          <span className="font-semibold tabular-nums">
+                          <span className="tnum text-foreground">
                             {fmtInt(weightOf(e, clickType) * est, locale)}
                           </span>
                         </div>
@@ -1155,13 +1183,11 @@ function Viewer({
                 />
                 <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
                   {model.valueModel && !model.valueModel.supported ? (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">
+                    <p className="px-2 py-3 text-meta">
                       {t(k("valueOtherGoal"))}
                     </p>
                   ) : !model.valueSummary ? (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">
-                      {t(k("valueNone"))}
-                    </p>
+                    <p className="px-2 py-3 text-meta">{t(k("valueNone"))}</p>
                   ) : (
                     <>
                       {(pinnedFunnel && pinnedEl) || model.pageFunnel ? (
@@ -1183,7 +1209,7 @@ function Viewer({
                           }
                         />
                       ) : null}
-                      <p className="px-2 pb-2 text-xs text-muted-foreground">
+                      <p className="px-2 pb-2 text-meta">
                         {t(k("valueBaseline"), {
                           cvr: fmtPct(
                             model.valueSummary.cvrPct / 100,
@@ -1278,7 +1304,7 @@ function Viewer({
                       {/* NOT optional. These numbers are associative, sampled
                           and not summable; a reader who is not told will add
                           them up and call the result a total. */}
-                      <p className="px-2 pt-3 text-xs text-muted-foreground">
+                      <p className="px-2 pt-3 text-meta">
                         {t(k("valueCaveat"), {
                           minutes: model.valueModel?.windowMinutes ?? 30,
                         })}
@@ -1295,7 +1321,7 @@ function Viewer({
                   aside={t(k("reachAside"))}
                 />
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
-                  <table className="w-full text-sm tabular-nums">
+                  <table className="tnum w-full text-sm">
                     <tbody>
                       {[10, 25, 50, 75, 90, 100].map((d) => {
                         const r = reachAt(model.scroll, d);
@@ -1308,7 +1334,7 @@ function Viewer({
                               />
                               {t(k("reachRow"), { d: String(d) })}
                             </td>
-                            <td className="py-2 text-right font-semibold">
+                            <td className="py-2 text-right text-foreground">
                               {fmtPct(r, locale)}
                             </td>
                           </tr>
@@ -1316,9 +1342,7 @@ function Viewer({
                       })}
                     </tbody>
                   </table>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {t(k("foldNote"))}
-                  </p>
+                  <p className="mt-3 text-meta">{t(k("foldNote"))}</p>
                 </div>
               </>
             )}
@@ -1396,30 +1420,7 @@ function attentionAt(model: HeatmapModel, pct: number): number | null {
   );
 }
 
-function Pill({
-  title,
-  tone,
-  children,
-}: {
-  title: string;
-  tone?: "warn";
-  children: ReactNode;
-}) {
-  return (
-    <span
-      title={title}
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs tabular-nums",
-        tone === "warn"
-          ? "bg-warning/20 text-foreground"
-          : "bg-muted text-muted-foreground",
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
+/** The DS badge at count size, in the tones a row's flags use. */
 function Badge({
   title,
   tone,
@@ -1430,21 +1431,9 @@ function Badge({
   children: ReactNode;
 }) {
   return (
-    <span
-      title={title}
-      className={cn(
-        "shrink-0 whitespace-nowrap rounded-full px-1.5 text-[10.5px] font-semibold",
-        tone === "destructive"
-          ? "bg-destructive/15 text-destructive"
-          : tone === "warning"
-            ? "bg-warning/25 text-foreground"
-            : tone === "success"
-              ? "bg-success/15 text-success"
-              : "bg-muted text-muted-foreground",
-      )}
-    >
+    <DsBadge variant={tone ?? "muted"} size="sm" title={title}>
       {children}
-    </span>
+    </DsBadge>
   );
 }
 
@@ -1458,14 +1447,12 @@ function Stat({
   sub?: string | null;
 }) {
   return (
-    <div className="bg-background px-4 py-3">
-      <span className="block text-xs text-muted-foreground">{label}</span>
-      <b className="mt-0.5 block text-lg font-semibold tabular-nums">{value}</b>
-      {sub && (
-        <em className="text-xs not-italic text-muted-foreground tabular-nums">
-          {sub}
-        </em>
-      )}
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="text-meta">{label}</span>
+      <span className="font-display tnum text-2xl text-foreground">
+        {value}
+      </span>
+      {sub && <span className="text-meta">{sub}</span>}
     </div>
   );
 }
@@ -1487,14 +1474,16 @@ function FunnelCard({
 }) {
   const of = (n: number, d: number) => (d ? n / d : 0);
   return (
-    <div className="mx-3 mb-2 rounded-lg border border-border p-3">
+    <div className="surface-inset mx-3 mb-2 rounded-xl p-3">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-semibold">{t(k("funnelTitle"))}</span>
-        <span className="truncate text-xs text-muted-foreground" title={title}>
+        <span className="text-sm font-medium text-foreground">
+          {t(k("funnelTitle"))}
+        </span>
+        <span className="truncate text-meta" title={title}>
           {title}
         </span>
       </div>
-      <p className="mt-0.5 text-xs text-muted-foreground">
+      <p className="mt-0.5 text-meta">
         {t(k("funnelPeople"), { n: fmtInt(f.visitors, locale) })}
         {f.visitors < 30 ? ` · ${t(k("valueSmall"))}` : ""}
       </p>
@@ -1508,7 +1497,7 @@ function FunnelCard({
               className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 text-xs"
             >
               <span className="truncate">{t(k(`funnel_${step}`))}</span>
-              <span className="font-semibold tabular-nums">
+              <span className="tnum text-foreground">
                 {fmtPct(share, locale, 1)}
                 {base != null && (
                   <span
@@ -1537,9 +1526,9 @@ function FunnelCard({
 
 function ListHead({ title, aside }: { title: string; aside: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 px-4 pt-3.5 pb-1.5">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <span className="text-xs text-muted-foreground">{aside}</span>
+    <div className="flex items-baseline justify-between gap-2 px-4 pt-4 pb-2">
+      <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      <span className="text-meta">{aside}</span>
     </div>
   );
 }
@@ -1569,17 +1558,15 @@ function Row(p: {
       onBlur={p.onLeave}
       onClick={p.onPick}
       className={cn(
-        "grid w-full grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted",
-        p.active && "bg-muted",
+        "focus-ring grid w-full grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1 rounded-lg px-2 py-2 text-left text-sm hover:bg-accent/50",
+        p.active && "bg-accent/50",
       )}
     >
-      <span className="text-right text-xs text-muted-foreground tabular-nums">
-        {p.rank}
-      </span>
-      <span className="truncate font-medium" title={p.label}>
+      <span className="text-meta text-right">{p.rank}</span>
+      <span className="truncate text-foreground" title={p.label}>
         {p.label}
       </span>
-      <span className="text-right font-semibold tabular-nums">{p.value}</span>
+      <span className="tnum text-right text-foreground">{p.value}</span>
       <span className="col-start-2 col-end-4 h-1 overflow-hidden rounded-full bg-muted">
         <i
           className="block h-full rounded-full"
@@ -1589,7 +1576,7 @@ function Row(p: {
           }}
         />
       </span>
-      <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="text-meta col-start-2 col-end-4 flex min-w-0 items-center gap-1.5">
         <span className="truncate">{p.sub}</span>
         {p.children}
       </span>
@@ -1611,10 +1598,8 @@ function Cover({ title, children }: { title?: string; children: ReactNode }) {
   // hovered or have its cookie banner accepted while this is shown.
   return (
     <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center p-6 text-center">
-      <div className="max-w-sm rounded-xl border border-border bg-background px-4 py-3.5 text-sm text-muted-foreground shadow-lg">
-        {title && (
-          <strong className="mb-1 block text-foreground">{title}</strong>
-        )}
+      <div className="surface max-w-sm px-5 py-4 text-sm text-muted-foreground">
+        {title && <h3 className="mb-1 font-medium text-foreground">{title}</h3>}
         {children}
       </div>
     </div>

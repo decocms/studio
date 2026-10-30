@@ -387,6 +387,16 @@ export const mainPanelTabs = {
     "Envie eventos personalizados do seu código via ",
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
+  "mainPanelTabs.analyticsTab.eventsHelp.title":
+    "Enviar eventos personalizados pelo código",
+  "mainPanelTabs.analyticsTab.eventsHelp.intro":
+    "O Analytics já vem ativo: as visualizações são coletadas sem código. Para eventos personalizados, use a API pública em",
+  "mainPanelTabs.analyticsTab.eventsHelp.pageview":
+    "Registra uma visualização manualmente (troca de rota em SPA).",
+  "mainPanelTabs.analyticsTab.eventsHelp.track":
+    "Um evento personalizado. name usa a–z minúsculas, dígitos e sublinhado, até 40 caracteres; props é um objeto simples opcional.",
+  "mainPanelTabs.analyticsTab.eventsHelp.purchase":
+    "Uma compra. transactionId evita contar duas vezes a mesma venda quando a página de confirmação é recarregada.",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
   "mainPanelTabs.analyticsTab.viewEvents": "Eventos & props",
@@ -473,6 +483,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.frameLoading":
     "Carregando a página real…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "O site não respondeu",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutHint":
+    "Passe o mouse sobre a página ou aceite os cookies dela e tente de novo.",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutRetry": "Tentar de novo",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutWhy": "Por que isso acontece",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
     "A página ainda não iniciou o modo de visualização do analytics. Se o site só carrega o analytics depois de uma interação ou do aceite de cookies, passe o mouse sobre a página ou aceite os cookies. Se não, confira se ele roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle":

@@ -20,7 +20,11 @@ import {
   useSiteTraffic,
 } from "@/hooks/use-order-monitor";
 import { usePublicConfig } from "@/hooks/use-public-config";
-import { useConnections, useVirtualMCPsNonBlocking } from "@/sdk";
+import {
+  isStudioPackAgent,
+  useConnections,
+  useVirtualMCPsNonBlocking,
+} from "@/sdk";
 import {
   type Comparison,
   type Deploy,
@@ -131,7 +135,10 @@ export function useLiveBoard(
   );
 
   const scoped = scopeId ? projects.filter((p) => p.id === scopeId) : projects;
-  const sites = scoped.filter((p) => resolveAgentSiteSlug(p));
+  // Studio's own agents come with every org and carry no site.
+  const sites = scoped.filter(
+    (p) => !isStudioPackAgent(p.id) && resolveAgentSiteSlug(p),
+  );
   const analytics = connections.filter((c) => matches(c, "google-analytics"));
   const search = connections.filter((c) => matches(c, "search-console"));
   const vtex = connections.filter(
