@@ -1,23 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
-import { columnGuide } from "./column-guide";
+import { columnSentence } from "./column-guide";
 
-describe("columnGuide", () => {
-  test("every board column has a purpose", () => {
-    for (const key of CANONICAL_COLUMN_KEYS) {
-      expect(columnGuide(key)?.purpose).toBeTruthy();
-    }
-  });
-
-  /** A person only has nothing to do once the card is out of play. */
-  test("only finished columns leave the human step empty", () => {
-    const empty = CANONICAL_COLUMN_KEYS.filter(
-      (key) => columnGuide(key)?.human === null,
+describe("columnSentence", () => {
+  /** A card out of play has nothing left to explain. */
+  test("every column but Done and Archived explains itself", () => {
+    const silent = CANONICAL_COLUMN_KEYS.filter(
+      (key) => columnSentence(key) === null,
     );
-    expect(empty).toEqual(["done", "archived"]);
+    expect(silent).toEqual(["done", "archived"]);
   });
 
-  test("a column the board doesn't have has no guide", () => {
-    expect(columnGuide("custom_lane")).toBeNull();
+  test("a column the board doesn't have has no sentence", () => {
+    expect(columnSentence("custom_lane")).toBeNull();
   });
 });

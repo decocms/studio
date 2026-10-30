@@ -40,7 +40,7 @@ import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
 import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
-import { columnGuide } from "./column-guide";
+import { columnSentence } from "./column-guide";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -74,6 +74,7 @@ import {
   UserPlus01,
   X,
   Zap,
+  InfoCircle,
 } from "@untitledui/icons";
 import { Maximize2, Minimize2 } from "lucide-react";
 import {
@@ -2946,7 +2947,7 @@ function Lane({
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   const [rulesOpen, setRulesOpen] = useState(false);
-  const guide = columnGuide(status);
+  const sentence = columnSentence(status);
   const takers = useEntryAutomations(status)
     .filter((automation) => automation.active)
     .map((automation) => automation.name);
@@ -3083,7 +3084,7 @@ function Lane({
           isTarget ? "bg-muted" : "bg-background",
         )}
       >
-        <div className="flex items-center gap-2 px-2 py-1.5">
+        <div className="relative flex items-center gap-2 px-2 py-1.5">
           {/* Static in the header — unlike the card's own status icon, this
               one isn't tied to a specific task, so spinning it reads as the
               whole lane being "busy" rather than as in-progress work. */}
@@ -3095,87 +3096,109 @@ function Lane({
             )}
           />
           {/* A wrapped name would push every lane's swimlanes down. */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="min-w-0 cursor-default truncate text-sm font-medium text-foreground">
-                {label}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-64">
-              {guide ? t(guide.purpose) : label}
-            </TooltipContent>
-          </Tooltip>
+          <span
+            title={label}
+            className="min-w-0 truncate text-sm font-medium text-foreground"
+          >
+            {label}
+          </span>
           <span className="rounded-md bg-muted px-1.5 text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
+          {/* Over the end of the header rather than beside the name: hidden
+              actions that kept their width would truncate the name at rest. */}
+          <div
+            className={cn(
+              "absolute inset-y-0 right-1 flex items-center gap-0.5 bg-linear-to-l to-transparent pl-8 opacity-0 transition-opacity group-hover/lane:opacity-100 group-data-[drop-target]/lane:opacity-100 focus-within:opacity-100 has-data-[state=open]:opacity-100",
+              isTarget ? "from-muted from-70%" : "from-background from-70%",
+            )}
+          >
+            {sentence && (
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
-                      lane: label,
-                    })}
-                    className={cn(LANE_ACTION, "ml-auto")}
+                    aria-label={t("taskBoard.columnRules.menuItem")}
+                    onClick={() => setRulesOpen(true)}
+                    className={LANE_ACTION}
                   >
-                    <DotsHorizontal size={15} />
+                    <InfoCircle size={13} />
                   </button>
-                </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-64">
+                  {t(sentence)}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
+                        lane: label,
+                      })}
+                      className={LANE_ACTION}
+                    >
+                      <DotsHorizontal size={15} />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setRulesOpen(true)}>
+                  <Stars02 size={14} />
+                  {t("taskBoard.columnRules.menuItem")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
+                  {t("taskBoard.taskBoard.selectAllInLane")}
+                </DropdownMenuItem>
+                {onHide && (
+                  <DropdownMenuItem onClick={onHide}>
+                    {t("taskBoard.taskBoard.hideColumn")}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
+                    lane: label,
+                  })}
+                  onClick={() => onCreate(status)}
+                  className={LANE_ACTION}
+                >
+                  <Plus size={15} />
+                </button>
               </TooltipTrigger>
               <TooltipContent side="top">
-                {t("taskBoard.taskBoard.laneMenuAriaLabel", { lane: label })}
+                {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
               </TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setRulesOpen(true)}>
-                <Stars02 size={14} />
-                {t("taskBoard.columnRules.menuItem")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onSelectAllInLane(status)}>
-                {t("taskBoard.taskBoard.selectAllInLane")}
-              </DropdownMenuItem>
-              {onHide && (
-                <DropdownMenuItem onClick={onHide}>
-                  {t("taskBoard.taskBoard.hideColumn")}
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={t("taskBoard.taskBoard.newTaskInLaneAriaLabel", {
-                  lane: label,
-                })}
-                onClick={() => onCreate(status)}
-                className={LANE_ACTION}
-              >
-                <Plus size={15} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={t("taskBoard.taskBoard.collapseColumnAriaLabel", {
-                  lane: label,
-                })}
-                onClick={onToggleCollapsed}
-                className={LANE_ACTION}
-              >
-                <Minimize2 size={15} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {t("taskBoard.taskBoard.collapseColumn")}
-            </TooltipContent>
-          </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t("taskBoard.taskBoard.collapseColumnAriaLabel", {
+                    lane: label,
+                  })}
+                  onClick={onToggleCollapsed}
+                  className={LANE_ACTION}
+                >
+                  <Minimize2 size={15} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t("taskBoard.taskBoard.collapseColumn")}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         {announce && (
           <div
