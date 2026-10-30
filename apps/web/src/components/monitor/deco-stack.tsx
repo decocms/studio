@@ -30,7 +30,7 @@ function sectionTitle(section: DecoSectionId, t: TFunction): string {
     case "overview":
       return t("mainPanelTabs.analyticsTab.viewOverview");
     case "live":
-      return t("mainPanelTabs.analyticsTab.viewLive");
+      return t("monitor.view.realtime");
     case "behaviour":
       return t("mainPanelTabs.analyticsTab.viewBehaviour");
     case "events":

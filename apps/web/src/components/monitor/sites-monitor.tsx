@@ -144,6 +144,13 @@ const COLOR_CURRENT = "var(--chart-1)";
 const COLOR_PREVIOUS = "var(--muted-foreground)";
 const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" };
 
+/** Whether anything measures this card: requests only exist for traffic the
+ *  deco CDN serves, pageviews only for a site with the analytics tag. A zero
+ *  from neither is no data, not no traffic. */
+// ponytail: a CDN or tagged site with a truly empty day reads as not instrumented too
+const measured = (id: CardId, s: CdnSummary) =>
+  id === "pageviews" ? s.pageviews > 0 : s.total_requests > 0;
+
 /** Traffic going up is good; cache hits are too. Nothing here is bad going up. */
 const BETTER: Record<CardId, "up" | "none"> = {
   pageviews: "up",
@@ -395,6 +402,23 @@ function TrafficCard({
   const t = useT();
   const label = useCardLabel();
   const value = cardValue(id, data.summary);
+  if (!measured(id, data.summary)) {
+    return (
+      <MetricCard
+        title={label(id)}
+        value={<NotInstrumented className="text-base" />}
+        caption={
+          <span className="text-meta">
+            {t(
+              id === "pageviews"
+                ? "monitor.orgAnalytics.noTag"
+                : "monitor.orgAnalytics.noCdn",
+            )}
+          </span>
+        }
+      />
+    );
+  }
   return (
     <MetricCard
       title={label(id)}
@@ -425,6 +449,15 @@ function TrafficCard({
 // --- sites ---------------------------------------------------------------------
 
 const DASH = <span className="text-meta">–</span>;
+
+function NotInstrumented({ className }: { className?: string }) {
+  const t = useT();
+  return (
+    <span className={cn("text-muted-foreground", className)}>
+      {t("monitor.orgAnalytics.notInstrumented")}
+    </span>
+  );
+}
 
 function SitesTable({ sites }: { sites: readonly SiteUsage[] }) {
   const t = useT();
@@ -458,26 +491,31 @@ function SitesTable({ sites }: { sites: readonly SiteUsage[] }) {
                   {site.name}
                 </TableCell>
                 <TableCell>
-                  <span className="flex items-baseline gap-2">
-                    <span className="text-sm tnum text-foreground">
-                      {formatNumber(site.summary.pageviews)}
+                  {measured("pageviews", site.summary) ? (
+                    <span className="flex items-baseline gap-2">
+                      <span className="text-sm tnum text-foreground">
+                        {formatNumber(site.summary.pageviews)}
+                      </span>
+                      <Change
+                        change={relativeChange(
+                          site.summary.pageviews,
+                          // Over the same hours, as the cards compare.
+                          site.previousSeries.length > 0
+                            ? site.previousSeries
+                                .slice(0, site.series.length)
+                                .reduce((n, v) => n + v, 0)
+                            : (site.previous?.pageviews ?? null),
+                        )}
+                        better="up"
+                      />
                     </span>
-                    <Change
-                      change={relativeChange(
-                        site.summary.pageviews,
-                        // Over the same hours, as the cards compare.
-                        site.previousSeries.length > 0
-                          ? site.previousSeries
-                              .slice(0, site.series.length)
-                              .reduce((n, v) => n + v, 0)
-                          : (site.previous?.pageviews ?? null),
-                      )}
-                      better="up"
-                    />
-                  </span>
+                  ) : (
+                    <NotInstrumented className="text-sm" />
+                  )}
                 </TableCell>
                 <TableCell>
-                  {site.series.length > 1 ? (
+                  {measured("pageviews", site.summary) &&
+                  site.series.length > 1 ? (
                     <Sparkline
                       values={site.series}
                       reference={site.previousSeries}
@@ -487,15 +525,23 @@ function SitesTable({ sites }: { sites: readonly SiteUsage[] }) {
                     DASH
                   )}
                 </TableCell>
-                <TableCell className="text-sm tnum text-foreground">
-                  {formatNumber(site.summary.total_requests)}
-                </TableCell>
-                <TableCell className="text-sm tnum text-foreground">
-                  {formatBytes(site.summary.total_bandwidth_bytes)}
-                </TableCell>
-                <TableCell className="pr-4 text-right text-sm tnum text-foreground">
-                  {formatPct(site.summary.cache_hit_ratio)}
-                </TableCell>
+                {measured("requests", site.summary) ? (
+                  <>
+                    <TableCell className="text-sm tnum text-foreground">
+                      {formatNumber(site.summary.total_requests)}
+                    </TableCell>
+                    <TableCell className="text-sm tnum text-foreground">
+                      {formatBytes(site.summary.total_bandwidth_bytes)}
+                    </TableCell>
+                    <TableCell className="pr-4 text-right text-sm tnum text-foreground">
+                      {formatPct(site.summary.cache_hit_ratio)}
+                    </TableCell>
+                  </>
+                ) : (
+                  <TableCell colSpan={3} className="pr-4">
+                    <NotInstrumented className="text-sm" />
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

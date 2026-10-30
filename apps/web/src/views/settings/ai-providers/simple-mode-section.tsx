@@ -324,29 +324,16 @@ export function SimpleModeSection() {
     return labels[tierKey] || tierKey;
   };
 
-  const getTierDescription = (tierKey: string) => {
-    const descriptions: Record<string, string> = {
-      fast: t("settings.simpleModeSection.tierFastDesc"),
-      smart: t("settings.simpleModeSection.tierSmartDesc"),
-      thinking: t("settings.simpleModeSection.tierThinkingDesc"),
-      image: t("settings.simpleModeSection.tierImageDesc"),
-      web_search: t("settings.simpleModeSection.tierWebSearchDesc"),
-      deep_research: t("settings.simpleModeSection.tierDeepResearchDesc"),
-    };
-    return descriptions[tierKey] || "";
-  };
-
   return (
-    <SettingsSection title={t("settings.simpleModeSection.defaultModels")}>
-      <div className="flex items-center justify-between -mt-2 mb-2 px-4">
-        <p className="text-sm text-muted-foreground">
-          {t("settings.simpleModeSection.modelsPowerDescription")}
-        </p>
+    <SettingsSection
+      title={t("settings.simpleModeSection.defaultModels")}
+      actions={
         <AutosaveStatus
           isPending={isPending}
           showSaved={isSuccess && !isDirty}
         />
-      </div>
+      }
+    >
       <SettingsCard>
         {TIER_KEYS.map((row) => (
           <Controller
@@ -356,7 +343,6 @@ export function SimpleModeSection() {
             render={({ field }) => (
               <SettingsCardItem
                 title={getTierLabel(row.key)}
-                description={getTierDescription(row.key)}
                 action={
                   <SimpleModeModelRow
                     slot={field.value}

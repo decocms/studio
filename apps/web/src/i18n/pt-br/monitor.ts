@@ -161,6 +161,10 @@ export const monitor = {
   "monitor.signals.less": "Ver menos",
   "monitor.org.unreadable": "Não deu para ler {names}",
   "monitor.orgAnalytics.sites": "Sites",
+  "monitor.orgAnalytics.notInstrumented": "Não instrumentado",
+  "monitor.orgAnalytics.noCdn": "Nenhum site aqui é servido pela CDN da deco.",
+  "monitor.orgAnalytics.noTag":
+    "Nenhum site aqui tem a tag de analytics ainda.",
   "monitor.connect.orders": "Conectar VTEX",
   "monitor.connect.site": "Conectar site deco",
   "monitor.connect.deploys": "Conectar GitHub",

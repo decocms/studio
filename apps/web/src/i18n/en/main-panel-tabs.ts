@@ -379,7 +379,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.eventsHelp.purchase":
     "A purchase. transactionId dedupes a reloaded confirmation page so a sale isn't counted twice.",
   "mainPanelTabs.analyticsTab.viewOverview": "Overview",
-  "mainPanelTabs.analyticsTab.viewLive": "Realtime",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Pages & sources",
   "mainPanelTabs.analyticsTab.viewEvents": "Events & props",
   "mainPanelTabs.analyticsTab.viewErrors": "Errors",
@@ -575,8 +574,15 @@ export const mainPanelTabs = {
     "country level: no city coordinate",
   "mainPanelTabs.analyticsTab.globe.caption":
     "{places} places on the map · {approximate} at country level · {unplaced} not located",
+  "mainPanelTabs.analyticsTab.globe.replaying":
+    "Nobody on the site right now — replaying the selected period ({range}).",
   "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globe",
   "mainPanelTabs.analyticsTab.globe.modeMap": "Map",
+  // Legend labels: capitalised, unlike the nouns the renderer prints mid-sentence.
+  "mainPanelTabs.analyticsTab.globe.legend": "What the map is showing",
+  "mainPanelTabs.analyticsTab.globe.legendVisits": "Visits",
+  "mainPanelTabs.analyticsTab.globe.legendCarts": "Carts",
+  "mainPanelTabs.analyticsTab.globe.legendConversions": "Conversions",
   "mainPanelTabs.analyticsTab.globe.loadError":
     "Couldn't load the map renderer. The numbers above are still live.",
   "mainPanelTabs.analyticsTab.viewQuality": "Data quality",

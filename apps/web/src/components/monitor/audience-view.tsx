@@ -7,7 +7,7 @@
 
 import { type ReactNode, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { BarChart10 } from "@untitledui/icons";
+import { BarChart10, Plus } from "@untitledui/icons";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type {
   AudiencePoint,
@@ -33,6 +33,11 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Page } from "@/components/page";
@@ -888,7 +893,24 @@ function OrgAudience({
       ? [{ project, points: d.data.points }]
       : [];
   });
-  const action = <RangeAction value={range} onChange={onRange} />;
+  const silent = rows.filter((r) => !r.loading && !r.summary);
+  const action = (
+    <RangeAction value={range} onChange={onRange}>
+      {reporting.length > 0 && silent.length > 0 && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button size="sm" variant="outline" className="gap-1 font-normal">
+              <Plus size={14} />
+              {t("monitor.analyticsGuide.addAnother")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-96">
+            <AnalyticsGuide projects={silent.map((r) => r.project)} />
+          </PopoverContent>
+        </Popover>
+      )}
+    </RangeAction>
+  );
 
   if (!loading && reporting.length === 0) {
     return (

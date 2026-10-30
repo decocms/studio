@@ -1,6 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw01, ArrowUpRight } from "@untitledui/icons";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { AlertCircle, LinkExternal01, RefreshCw01 } from "@untitledui/icons";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { DropdownMenuItem } from "@decocms/ui/components/dropdown-menu.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { StudioToolOutput } from "@decocms/shared/tools/tool-io";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
@@ -8,51 +15,105 @@ import { usePreferences } from "@/hooks/use-preferences.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 
+type Provider = "codex" | "claude";
 type Usage = StudioToolOutput<"SUBSCRIPTION_USAGE_GET">;
 type Window = Usage["windows"][number];
-function windowLabel(window: Window, t: TFunction): string {
-  if (window.id === "seven_day_sonnet")
-    return t("settings.subscriptionUsage.sonnet");
-  if (window.id === "seven_day_opus")
-    return t("settings.subscriptionUsage.opus");
+
+const PROVIDER_USAGE_URL: Record<Provider, string> = {
+  codex: "https://chatgpt.com/codex/settings/usage",
+  claude: "https://claude.ai/settings/usage",
+};
+
+/** "5h", "7d", "Sonnet": short enough to sit beside a bar in a row. */
+function shortLabel(window: Window, t: TFunction): string {
+  if (window.id === "seven_day_sonnet") return "Sonnet";
+  if (window.id === "seven_day_opus") return "Opus";
   if (window.id.startsWith("code_review_"))
     return t("settings.subscriptionUsage.codeReview");
-  if (window.windowSeconds === 18000)
-    return t("settings.subscriptionUsage.fiveHour");
-  if (window.windowSeconds === 604800)
-    return t("settings.subscriptionUsage.weekly");
+  if (window.windowSeconds && window.windowSeconds % 86400 === 0)
+    return `${window.windowSeconds / 86400}d`;
   if (window.windowSeconds)
-    return t("settings.subscriptionUsage.hours", {
-      hours: Math.round((window.windowSeconds / 3600) * 10) / 10,
-    });
+    return `${Math.round((window.windowSeconds / 3600) * 10) / 10}h`;
   return window.id === "secondary"
     ? t("settings.subscriptionUsage.secondary")
     : t("settings.subscriptionUsage.primary");
 }
 
-export function SubscriptionUsage({
+function barColor(percent: number): string {
+  if (percent >= 100) return "bg-destructive";
+  if (percent >= 90) return "bg-warning";
+  return "bg-foreground/70";
+}
+
+export function useSubscriptionUsage({
   provider,
   orgId,
   userId,
   linkedAt,
+  enabled,
 }: {
-  provider: "codex" | "claude";
+  provider: Provider;
   orgId: string;
   userId: string;
   linkedAt: string | null;
+  enabled: boolean;
 }) {
-  const t = useT();
-  const [preferences] = usePreferences();
   const studio = useStudioTools();
-  const query = useQuery({
+  return useQuery({
     queryKey: KEYS.subscriptionUsageSnapshot(orgId, userId, provider, linkedAt),
     queryFn: () => studio.call("SUBSCRIPTION_USAGE_GET", { provider }),
-    enabled: Boolean(userId),
+    enabled: enabled && Boolean(userId),
     staleTime: 60_000,
     retry: false,
     refetchOnWindowFocus: false,
   });
+}
+
+/** The subscription's limits as compact bars, or one quiet line saying why not. */
+export function SubscriptionUsageSummary({
+  query,
+}: {
+  query: ReturnType<typeof useSubscriptionUsage>;
+}) {
+  const t = useT();
+  const [preferences] = usePreferences();
   const usage = query.data;
+
+  if (query.isPending) return <Skeleton className="h-4 w-32" />;
+
+  if (query.isError || usage?.status !== "available") {
+    const issue = usage?.reason;
+    const message =
+      issue === "permission"
+        ? t("settings.subscriptionUsage.permission")
+        : issue === "authorization"
+          ? t("settings.subscriptionUsage.authorization")
+          : issue === "rate_limited"
+            ? t("settings.subscriptionUsage.rateLimited")
+            : usage?.status === "disconnected"
+              ? t("settings.subscriptionUsage.disconnected")
+              : t("settings.subscriptionUsage.unavailable");
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="flex shrink-0 items-center gap-1 text-meta">
+            <AlertCircle size={12} />
+            {t("settings.subscriptionUsage.unavailableShort")}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-64">{message}</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (usage.limitReached) {
+    return (
+      <Badge variant="destructive" size="sm">
+        {t("settings.subscriptionUsage.limitReached")}
+      </Badge>
+    );
+  }
+
   const date = (value: string) =>
     new Intl.DateTimeFormat(preferences.language, {
       month: "short",
@@ -60,141 +121,76 @@ export function SubscriptionUsage({
       hour: "numeric",
       minute: "2-digit",
     }).format(new Date(value));
-  const issue = usage?.reason;
-  const message =
-    issue === "permission"
-      ? t("settings.subscriptionUsage.permission")
-      : issue === "authorization"
-        ? t("settings.subscriptionUsage.authorization")
-        : issue === "rate_limited"
-          ? t("settings.subscriptionUsage.rateLimited")
-          : usage?.status === "disconnected"
-            ? t("settings.subscriptionUsage.disconnected")
-            : t("settings.subscriptionUsage.unavailable");
+
   return (
-    <section
-      className="space-y-4 p-4"
-      aria-label={t("settings.subscriptionUsage.title")}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium">
-            {t("settings.subscriptionUsage.title")}
-          </p>
-          {usage?.limitReached === true && (
-            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
-              {t("settings.subscriptionUsage.limitReached")}
-            </span>
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={query.isFetching}
-          onClick={() => void query.refetch()}
-          aria-label={t("settings.subscriptionUsage.refresh")}
-        >
-          <RefreshCw01
-            size={14}
-            className={cn(query.isFetching && "animate-spin")}
-          />
-          {t("settings.subscriptionUsage.refresh")}
-        </Button>
-      </div>
-      {query.isPending ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          {t("settings.subscriptionUsage.loading")}
-        </p>
-      ) : query.isError || usage?.status !== "available" ? (
-        <p className="text-sm text-muted-foreground" role="status">
-          {message}
-        </p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {usage.windows.map((window) => {
-            const label = windowLabel(window, t);
-            return (
-              <div key={window.id} className="min-w-0 space-y-2">
-                <div className="flex items-baseline justify-between gap-2 text-sm">
-                  <span>{label}</span>
-                  <span
-                    className={cn(
-                      "shrink-0 tabular-nums font-medium",
-                      window.usedPercent >= 100
-                        ? "text-destructive"
-                        : window.usedPercent >= 90
-                          ? "text-warning"
-                          : "text-foreground",
-                    )}
-                  >
-                    {t("settings.subscriptionUsage.used", {
-                      percent: Math.round(window.usedPercent),
-                    })}
-                  </span>
-                </div>
+    <div className="flex shrink-0 items-center gap-4">
+      {usage.windows.slice(0, 2).map((window) => {
+        const percent = Math.round(window.usedPercent);
+        return (
+          <Tooltip key={window.id}>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2">
+                <span className="text-meta">{shortLabel(window, t)}</span>
                 <div
                   role="progressbar"
-                  aria-label={label}
+                  aria-label={shortLabel(window, t)}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={window.usedPercent}
-                  className="h-1.5 overflow-hidden rounded-full bg-muted"
+                  aria-valuenow={percent}
+                  className="h-1.5 w-14 overflow-hidden rounded-full bg-muted"
                 >
                   <div
-                    style={{ width: `${window.usedPercent}%` }}
-                    className={cn(
-                      "h-full rounded-full",
-                      window.usedPercent >= 100
-                        ? "bg-destructive"
-                        : window.usedPercent >= 90
-                          ? "bg-warning"
-                          : "bg-primary",
-                    )}
+                    style={{ width: `${Math.min(100, percent)}%` }}
+                    className={cn("h-full rounded-full", barColor(percent))}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {window.resetAt
-                    ? t("settings.subscriptionUsage.resets", {
-                        date: date(window.resetAt),
-                      })
-                    : t("settings.subscriptionUsage.resetUnknown")}
-                </p>
+                <span className="w-8 text-right text-meta text-foreground">
+                  {percent}%
+                </span>
               </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-muted-foreground">
-        <span>
-          {usage?.retryAt
-            ? t("settings.subscriptionUsage.retryAt", {
-                date: date(usage.retryAt),
-              })
-            : usage?.checkedAt
-              ? t("settings.subscriptionUsage.checkedAt", {
-                  date: date(usage.checkedAt),
-                })
-              : t("settings.subscriptionUsage.sharedUsage")}
-        </span>
+            </TooltipTrigger>
+            {window.resetAt && (
+              <TooltipContent>
+                {t("settings.subscriptionUsage.resets", {
+                  date: date(window.resetAt),
+                })}
+              </TooltipContent>
+            )}
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Refresh and the provider's own usage page, for the row's overflow menu. */
+export function SubscriptionUsageMenuItems({
+  provider,
+  query,
+}: {
+  provider: Provider;
+  query: ReturnType<typeof useSubscriptionUsage>;
+}) {
+  const t = useT();
+  return (
+    <>
+      <DropdownMenuItem
+        disabled={query.isFetching}
+        onSelect={() => void query.refetch()}
+      >
+        <RefreshCw01 />
+        {t("settings.subscriptionUsage.refresh")}
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
         <a
-          href={
-            provider === "codex"
-              ? "https://chatgpt.com/codex/settings/usage"
-              : "https://claude.ai/settings/usage"
-          }
+          href={PROVIDER_USAGE_URL[provider]}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 hover:text-foreground"
         >
+          <LinkExternal01 />
           {t("settings.subscriptionUsage.openProvider")}
-          <ArrowUpRight size={12} />
         </a>
-      </div>
-      {usage?.status === "available" && (
-        <p className="text-xs text-muted-foreground">
-          {t("settings.subscriptionUsage.sharedUsage")}
-        </p>
-      )}
-    </section>
+      </DropdownMenuItem>
+    </>
   );
 }

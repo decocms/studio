@@ -89,6 +89,22 @@ export function toMarkers(
     });
 }
 
+/**
+ * `toMarkers` across several days: a bucket is a slot of the day, so the
+ * same slot on another day must not join it.
+ */
+export function toDailyMarkers(
+  commits: RepoCommit[],
+  timezone: string,
+): OrderMonitorPush[] {
+  const byDay = new Map<number, RepoCommit[]>();
+  for (const c of commits) {
+    const day = localDayStart(new Date(c.date), timezone).getTime();
+    byDay.set(day, [...(byDay.get(day) ?? []), c]);
+  }
+  return [...byDay.values()].flatMap((group) => toMarkers(group, timezone));
+}
+
 /** Pushes during the local day containing `at`, or within [since, until) when given. */
 export async function listPushes(
   ctx: StudioContext,
@@ -168,7 +184,7 @@ export async function listRecentPushes(
     async (repository) => {
       try {
         const commits = await recentCommits(ctx, repository, since);
-        return toMarkers(commits, "UTC").map((push) => ({
+        return toDailyMarkers(commits, "UTC").map((push) => ({
           repositoryId: repository.id,
           repositoryPath: repository.path,
           push,

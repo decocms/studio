@@ -11,6 +11,7 @@
  *      warehouse did not scope to this tenant, so a section can only ever show
  *      this site's numbers. `pipeline` is intentionally not offered — it is an
  *      operator view with no tenant policy.
+ *      Overview is the home: it polls `live` itself, so "now" is not a tab.
  *
  *   2. Configuration — the lifecycle (register → configure / pause-resume /
  *      unregister) that used to be the whole tab, now one collapsible section.
@@ -178,11 +179,8 @@ const MODULES = [
 // module-level const, so it carries the key, not the translated string).
 // `pipeline` (operator-only, no tenant policy) and `install` (only stripped
 // internals) are omitted.
-const DATA_VIEWS: ReadonlyArray<{
-  view: string;
-  labelKey: TranslationKey;
-}> = [
-  { view: "live", labelKey: "mainPanelTabs.analyticsTab.viewLive" },
+// `live` is not a tab either: Overview is the home and carries it.
+const DATA_VIEWS: ReadonlyArray<{ view: string; labelKey: TranslationKey }> = [
   { view: "overview", labelKey: "mainPanelTabs.analyticsTab.viewOverview" },
   { view: "behaviour", labelKey: "mainPanelTabs.analyticsTab.viewBehaviour" },
   { view: "events", labelKey: "mainPanelTabs.analyticsTab.viewEvents" },
@@ -1084,17 +1082,25 @@ const OVERVIEW_METRICS = [
   ["duration_s", "mainPanelTabs.analyticsTab.metricDuration"],
 ] as const;
 
-/** The Overview rendered as a real analytics home: clickable headline metrics
- *  driving one hero time-series, then the ranked breakdowns and the funnel —
- *  the GA4 / OneDollarStats shape, not a generic panel dump. */
+/** The Overview rendered as the analytics home, "now" and the selected period
+ *  on one page: the live counters and the map, then clickable headline metrics
+ *  driving one hero time-series, the ranked breakdowns and the funnel, and the
+ *  live feed at the foot — the GA4 / OneDollarStats shape, not a generic panel
+ *  dump and not a separate Realtime tab to switch to. */
 function OverviewDashboard({
   payload,
   range,
   asOf,
+  base,
+  orgSlug,
+  site,
 }: {
   payload: Record<string, unknown>;
   range: string;
   asOf: number;
+  base: string;
+  orgSlug: string;
+  site: string;
 }) {
   const t = useT();
   const rowsOf = (k: string) =>
@@ -1131,6 +1137,7 @@ function OverviewDashboard({
 
   return (
     <div className="flex flex-col gap-4">
+      <LiveNow base={base} orgSlug={orgSlug} site={site} range={range} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {metrics.map(([k]) => {
           const canChart = seriesCols.includes(k);
@@ -1224,85 +1231,167 @@ function OverviewDashboard({
           </Card>
         )}
       </div>
+
+      <LiveActivity base={base} orgSlug={orgSlug} site={site} />
     </div>
   );
 }
 
-// --- realtime: the curated "now" view ---------------------------------------
+// --- "now": the live half of the home view ----------------------------------
 
-/** The Realtime view, modelled on the admin monitor: Visitors / Pageviews /
- *  Events / Last event headline cards, the globe of where they are, then the
- *  live feed and the pages active right now. All of it is ONE `live` payload
- *  (a 5m window, auto-refreshed), so the map can never disagree with the
- *  numbers above it. */
-function RealtimeDashboard({
-  payload,
+/** How often the live window is re-read. The map animates one frame per poll,
+ *  so the two are deliberately the same number. */
+const LIVE_POLL_MS = 5_000;
+
+/** The `live` payload (the last five minutes), polled. Shared by the counters,
+ *  the map and the live feed through one query key, so the three are always
+ *  the same fetch and the page issues one request per poll, not three.
+ *
+ *  `placeholderData` keeps the previous frame on screen while the next poll is
+ *  in flight: the counters and the map animate from one to the other, and a
+ *  skeleton every five seconds would be a flicker, not feedback. */
+function useLivePayload(
+  base: string,
+  orgSlug: string,
+  site: string,
+  /** Only one reader drives the clock; the rest render the same cache entry. */
+  poll?: "poll",
+) {
+  const query = useQuery({
+    queryKey: KEYS.analyticsData(orgSlug, site, "live", "5m"),
+    queryFn: () => fetchJson(`${base}/analytics/data?view=live&range=5m`),
+    retry: false,
+    staleTime: 0,
+    refetchInterval: poll ? LIVE_POLL_MS : false,
+    placeholderData: (prev: unknown) => prev,
+  });
+  const payload =
+    ((query.data as AnalyticsDataResponse | undefined)?.data as
+      | Record<string, unknown>
+      | undefined) ?? {};
+  return (key: string) =>
+    (Array.isArray(payload[key]) ? payload[key] : []) as Array<
+      Record<string, unknown>
+    >;
+}
+
+/** The last five minutes and where they are: the Visitors / Pageviews / Events
+ *  / Last event counters and the map, under one live poll. */
+function LiveNow({
   base,
   orgSlug,
   site,
+  range,
 }: {
-  payload: Record<string, unknown>;
   base: string;
   orgSlug: string;
   site: string;
+  /** The period the page is showing; the map replays it when nobody is on the
+   *  site right now. */
+  range: string;
 }) {
   const t = useT();
-  const rowsOf = (k: string) =>
-    (Array.isArray(payload[k]) ? payload[k] : []) as Array<
-      Record<string, unknown>
-    >;
+  const rowsOf = useLivePayload(base, orgSlug, site, "poll");
   const kpi = rowsOf("liveVisitors")[0] ?? {};
-  const feed = rowsOf("liveFeed");
-  const pages = rowsOf("livePages");
   const geo = rowsOf("liveGeo") as unknown as LiveGeoRow[];
+
+  // The same panel over the selected range, so a quiet site still has a map.
+  const pastQuery = useQuery({
+    queryKey: KEYS.analyticsData(orgSlug, site, "globe", range),
+    queryFn: () =>
+      fetchJson(
+        `${base}/analytics/data?view=globe&range=${encodeURIComponent(range)}`,
+      ),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const pastPayload =
+    ((pastQuery.data as AnalyticsDataResponse | undefined)?.data as
+      | Record<string, unknown>
+      | undefined) ?? {};
+  const pastGeo = (
+    Array.isArray(pastPayload.liveGeo) ? pastPayload.liveGeo : []
+  ) as LiveGeoRow[];
+
   const cards = [
     ["visitors", "mainPanelTabs.analyticsTab.metricVisitors"],
     ["pageviews", "mainPanelTabs.analyticsTab.metricPageviews"],
     ["events", "mainPanelTabs.analyticsTab.metricEvents"],
     ["last_event", "mainPanelTabs.analyticsTab.metricLastEvent"],
   ] as const;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="relative flex size-2">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--chart-1)] opacity-75" />
-          <span className="relative inline-flex size-2 rounded-full bg-[var(--chart-1)]" />
-        </span>
-        {t("mainPanelTabs.analyticsTab.liveHint")}
+    <div className="flex flex-col gap-3">
+      <div className="surface flex flex-col gap-3 p-4">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--chart-1)] opacity-75" />
+            <span className="relative inline-flex size-2 rounded-full bg-[var(--chart-1)]" />
+          </span>
+          {t("mainPanelTabs.analyticsTab.liveHint")}
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {cards.map(([k, label]) => (
+            <div key={k} className="flex flex-col gap-1">
+              <span className="text-2xs font-medium text-muted-foreground">
+                {t(label)}
+              </span>
+              <span className="text-xl font-semibold leading-none text-foreground tabular-nums sm:text-2xl">
+                {k === "last_event"
+                  ? bucketLabel(kpi[k])
+                  : fmtMetric(k, kpi[k])}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {cards.map(([k, label]) => (
-          <div key={k} className="surface flex flex-col gap-1.5 p-4">
-            <span className="text-2xs font-medium text-muted-foreground">
-              {t(label)}
-            </span>
-            <span className="text-2xl font-semibold sm:text-3xl leading-none text-foreground tabular-nums">
-              {k === "last_event" ? bucketLabel(kpi[k]) : fmtMetric(k, kpi[k])}
-            </span>
-          </div>
-        ))}
-      </div>
-      <LiveGlobe base={base} orgSlug={orgSlug} site={site} rows={geo} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title={t("mainPanelTabs.analyticsTab.cardLiveFeed")}>
-          {feed.length > 0 ? (
-            <DataTable rows={feed} />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.emptyLive")}
-            </p>
-          )}
-        </Card>
-        <Card title={t("mainPanelTabs.analyticsTab.cardPagesNow")}>
-          {pages.length > 0 ? (
-            <BarList rows={pages} labelKey="k" valueKey="n" />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.emptyView")}
-            </p>
-          )}
-        </Card>
-      </div>
+      <LiveGlobe
+        base={base}
+        orgSlug={orgSlug}
+        site={site}
+        rows={geo}
+        history={pastGeo}
+        rangeLabel={range}
+      />
+    </div>
+  );
+}
+
+/** The live feed and the pages being read right now — the same poll as
+ *  {@link LiveNow}, at the foot of the home view where a list belongs. */
+function LiveActivity({
+  base,
+  orgSlug,
+  site,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+}) {
+  const t = useT();
+  const rowsOf = useLivePayload(base, orgSlug, site);
+  const feed = rowsOf("liveFeed");
+  const pages = rowsOf("livePages");
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Card title={t("mainPanelTabs.analyticsTab.cardLiveFeed")}>
+        {feed.length > 0 ? (
+          <DataTable rows={feed} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.emptyLive")}
+          </p>
+        )}
+      </Card>
+      <Card title={t("mainPanelTabs.analyticsTab.cardPagesNow")}>
+        {pages.length > 0 ? (
+          <BarList rows={pages} labelKey="k" valueKey="n" />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("mainPanelTabs.analyticsTab.emptyView")}
+          </p>
+        )}
+      </Card>
     </div>
   );
 }
@@ -1430,22 +1519,17 @@ function ActiveView({
   quota?: number;
 }) {
   const t = useT();
-  // Realtime is "now": a short window, auto-refreshed. Everything else follows
-  // the selected range as a snapshot.
-  const isLive = view === "live";
-  const effectiveRange = isLive ? "5m" : range;
-
+  // A snapshot of the selected range; "now" is the home view's own live poll.
   const query = useQuery({
-    queryKey: KEYS.analyticsData(orgSlug, site, view, effectiveRange),
+    queryKey: KEYS.analyticsData(orgSlug, site, view, range),
     queryFn: () =>
       fetchJson(
         `${base}/analytics/data?view=${encodeURIComponent(
           view,
-        )}&range=${encodeURIComponent(effectiveRange)}`,
+        )}&range=${encodeURIComponent(range)}`,
       ),
     retry: false,
-    staleTime: isLive ? 0 : 30_000,
-    refetchInterval: isLive ? 5_000 : false,
+    staleTime: 30_000,
   });
 
   if (query.isLoading) {
@@ -1473,16 +1557,6 @@ function ActiveView({
       </p>
     );
   }
-  if (isLive) {
-    return (
-      <RealtimeDashboard
-        payload={response.data}
-        base={base}
-        orgSlug={orgSlug}
-        site={site}
-      />
-    );
-  }
   if (view === "errors") return <ErrorsDashboard payload={response.data} />;
   if (view === "overview") {
     return (
@@ -1490,6 +1564,9 @@ function ActiveView({
         payload={response.data}
         range={range}
         asOf={query.dataUpdatedAt}
+        base={base}
+        orgSlug={orgSlug}
+        site={site}
       />
     );
   }
@@ -2322,10 +2399,8 @@ function RegisteredView({
     view?: string;
   };
   const [range, setRange] = useState("24h");
-  // `?view=globe` links predate the map moving into Realtime.
-  const [requested, setRequested] = useState(
-    initialView === "globe" ? "live" : (initialView ?? "overview"),
-  );
+  // `?view=live`/`?view=globe` predate the merge; `pickView` lands them on Overview.
+  const [requested, setRequested] = useState(initialView ?? "overview");
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
   const enabled = cfg.enabled !== false;
@@ -2334,11 +2409,8 @@ function RegisteredView({
   // site isn't offered (e.g. `?view=heatmap` without it) lands on Overview.
   const views = gateViews(DATA_VIEWS, modules);
   const active = pickView(requested, views);
-  const isLive = active === "live";
-  // Heatmap reads daily facts with its own 24h/7d/30d choice; Realtime is
-  // always the last five minutes, so a 30d pill over it would be a control that
-  // changes nothing.
-  const ownRange = isLive || active === "heatmap";
+  // Heatmap reads daily facts with its own 24h/7d/30d choice.
+  const ownRange = active === "heatmap";
 
   return (
     <div className="flex flex-col gap-5">
@@ -2396,8 +2468,7 @@ function RegisteredView({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Range pills — hidden on Realtime, which is always "now", and on
-              Heatmap, which picks its own. */}
+          {/* Range pills — hidden on Heatmap, which picks its own. */}
           {!ownRange && (
             <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
               {RANGE_PILLS.map((r) => (
