@@ -1225,7 +1225,7 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
     );
   const thread = activeTask;
   const isRunInProgress =
-    (thread?.status === "in_progress" || thread?.status === "expired") &&
+    thread?.status === "in_progress" &&
     connStatus.kind === "ready" &&
     messages.length > 0;
 
