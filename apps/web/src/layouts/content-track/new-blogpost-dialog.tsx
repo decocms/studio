@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Select,
   SelectContent,
@@ -35,10 +36,13 @@ import {
   CampaignEditorSheet,
   useCampaignCreate,
 } from "@/components/sandbox/content/blog/campaign-create";
-import { GenerateCampaignsDialog } from "@/components/sandbox/content/blog/generate-campaigns-dialog";
+import {
+  type CampaignsProposal,
+  GenerateCampaignsDialog,
+} from "@/components/sandbox/content/blog/generate-campaigns-dialog";
 import { CampaignList } from "@/components/sandbox/content/blog/generate-post-dialog";
 import type { BlogState } from "@/components/sandbox/content/blog/use-blog-state";
-import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { useOpenBlogChat } from "@/hooks/use-open-blog-chat";
 import { useT } from "@/i18n/use-t.ts";
 
 export interface NewBlogpost {
@@ -71,23 +75,31 @@ export function NewBlogpostDialog({
   onCreate: (blogpost: NewBlogpost) => void;
 }) {
   const t = useT();
-  const hasAi = useHostedAiProviderKeys().length > 0;
-  const { addCampaign, createFromSeed } = useCampaignCreate(blog);
+  const openChat = useOpenBlogChat();
+  const { addCampaign } = useCampaignCreate(blog);
   const [campaignKey, setCampaignKey] = useState("");
   const [pickedSite, setPickedSite] = useState("");
   const [prompt, setPrompt] = useState("");
   /** The campaign started here, open in its editor over the dialog. */
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  /** A proposal started here, whose first draft is chosen when it lands. */
+  const [proposal, setProposal] = useState<CampaignsProposal | null>(null);
 
   const openCampaigns = scanCampaigns(blog.blocks).filter(
     (campaign) => campaign.status !== "finished",
   );
+  const arrivedKey =
+    proposal?.campaignIds
+      .map((id) => `${CAMPAIGN_KEY_PREFIX}${id}`)
+      .find((key) => openCampaigns.some((campaign) => campaign.key === key)) ??
+    "";
+  const chosenKey = campaignKey || arrivedKey;
   const virtualMcpId =
     siteId ?? (sites.length === 1 ? (sites[0]?.id ?? "") : pickedSite);
   // The card reads its campaign from disk, so a campaign still being written waits.
   const ready =
-    openCampaigns.some((campaign) => campaign.key === campaignKey) &&
+    openCampaigns.some((campaign) => campaign.key === chosenKey) &&
     !!virtualMcpId &&
     !pending &&
     !blog.save.isPending;
@@ -100,6 +112,7 @@ export function NewBlogpostDialog({
       setPrompt("");
       setEditingKey(null);
       setGenerating(false);
+      setProposal(null);
     }
   };
 
@@ -127,7 +140,6 @@ export function NewBlogpostDialog({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  disabled={!hasAi}
                   onClick={() => setGenerating(true)}
                 >
                   <Stars02 size={14} />
@@ -144,6 +156,26 @@ export function NewBlogpostDialog({
                 </Button>
               </div>
             </div>
+            {proposal && !arrivedKey && (
+              <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                <Spinner size="xs" />
+                <span className="min-w-0 flex-1">
+                  {t("sandbox.campaignGen.waiting")}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const thread = proposal.threadId;
+                    close(false);
+                    openChat(thread);
+                  }}
+                >
+                  {t("sandbox.campaignGen.openChat")}
+                </Button>
+              </div>
+            )}
             {openCampaigns.length === 0 ? (
               <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
                 {t("contentTrack.new.noCampaigns")}
@@ -151,7 +183,7 @@ export function NewBlogpostDialog({
             ) : (
               <CampaignList
                 campaigns={openCampaigns}
-                chosen={campaignKey}
+                chosen={chosenKey}
                 onChoose={setCampaignKey}
               />
             )}
@@ -203,7 +235,7 @@ export function NewBlogpostDialog({
             disabled={!ready}
             onClick={() =>
               onCreate({
-                campaignId: campaignKey.slice(CAMPAIGN_KEY_PREFIX.length),
+                campaignId: chosenKey.slice(CAMPAIGN_KEY_PREFIX.length),
                 virtualMcpId,
                 prompt: prompt.trim(),
               })
@@ -228,11 +260,7 @@ export function NewBlogpostDialog({
         open={generating}
         onOpenChange={setGenerating}
         decofile={blog.blocks}
-        hasAi={hasAi}
-        onCreate={async (seed, chosen) => {
-          const [first] = await createFromSeed(seed, chosen);
-          if (first) setCampaignKey(first);
-        }}
+        onStarted={setProposal}
       />
     </Dialog>
   );

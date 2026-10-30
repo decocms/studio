@@ -1,13 +1,8 @@
-import { BRAND_FILL_THREAD_KEY } from "@decocms/shared/brand";
-import { getDecopilotId } from "@decocms/shared/sdk";
 import { z } from "zod";
-import { agentSandboxEnabled } from "@/settings";
-import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { defineTool } from "../../core/define-tool";
-import { getUserId } from "../../core/studio-context";
-import { callerRunThread } from "./cards";
+import { blogJobStarter } from "./blog-job";
 import { resolveBlogScope } from "./state";
-import { dispatchSuperAgentTurn } from "./super-agent-turn";
+import { openBlogJobChat } from "./super-agent-turn";
 
 /**
  * A brand guide's fill, in a chat of its own.
@@ -20,7 +15,6 @@ import { dispatchSuperAgentTurn } from "./super-agent-turn";
  */
 
 const MAX_PROMPT_CHARS = 4_000;
-const MAX_TITLE_CHARS = 120;
 
 export const BLOG_BRAND_FILL = defineTool({
   name: "BLOG_BRAND_FILL",
@@ -51,55 +45,14 @@ export const BLOG_BRAND_FILL = defineTool({
 
   handler: async (input, ctx) => {
     const { organizationId, brand } = await resolveBlogScope(ctx);
-    if (callerRunThread(ctx)) {
-      throw new Error("A run cannot start a brand fill; a person does.");
-    }
-    if (!agentSandboxEnabled()) {
-      throw new Error(
-        "A brand fill runs in a sandbox, and this deployment has none.",
-      );
-    }
-    const userId = getUserId(ctx);
-    if (!userId) throw new Error("A brand fill needs a person to belong to.");
-
-    const threadId = crypto.randomUUID();
-    const branch = threadBranch(threadId);
-    const line = input.prompt.split("\n")[0]?.trim() || brand;
-    await ctx.storage.threads.create({
-      id: threadId,
-      organization_id: organizationId,
-      title:
-        line.length > MAX_TITLE_CHARS
-          ? `${line.slice(0, MAX_TITLE_CHARS - 1)}…`
-          : line,
-      status: "in_progress",
-      virtual_mcp_id: getDecopilotId(organizationId),
-      // The terminal writer skips v1 threads, so a v1 run never ends.
-      message_storage_version: 2,
-      harness_id: "claude-code",
-      created_by: userId,
-      branch,
-      metadata: { runtime: "sandbox", [BRAND_FILL_THREAD_KEY]: { brand } },
+    const userId = blogJobStarter(ctx, "a brand fill");
+    const threadId = await openBlogJobChat(ctx, {
+      organizationId,
+      userId,
+      job: { kind: "brand-fill", brand },
+      title: input.prompt.split("\n")[0]?.trim() || brand,
+      text: input.prompt,
     });
-
-    try {
-      await dispatchSuperAgentTurn(ctx, {
-        organizationId,
-        userId,
-        threadId,
-        branch,
-        text: input.prompt,
-        fence: `brand-fill:${threadId}`,
-        requestedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      await ctx.storage.threads
-        .delete(threadId)
-        .catch((cleanup) =>
-          console.error("[blog] brand fill chat cleanup failed", cleanup),
-        );
-      throw err;
-    }
     return { threadId };
   },
 });

@@ -32,7 +32,6 @@ import {
   newCampaignKey,
   CAMPAIGN_KEY_PREFIX,
   CAMPAIGN_SEED_KEY_PREFIX,
-  buildCampaignSeedBlock,
   scanCampaignSeeds,
   PLANNING_POST_KEY_PREFIX,
   emptyDraftPostPayload,
@@ -926,15 +925,15 @@ describe("scanCampaigns", () => {
 describe("campaign seeds", () => {
   const key = `${CAMPAIGN_SEED_KEY_PREFIX}a`;
 
-  test("round-trips a seed", () => {
+  test("reads a stored seed", () => {
     const [seed] = scanCampaignSeeds({
-      [key]: buildCampaignSeedBlock({
-        name: "Verão 2027",
+      [key]: {
+        seedName: "Verão 2027",
         keywords: ["protetor solar", "praia"],
         prompt: "Começar a falar de verão antes dos concorrentes.",
         createdAt: "2026-01-01",
         updatedAt: "2026-01-02",
-      }),
+      },
     });
     expect(seed).toEqual({
       key,

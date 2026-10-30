@@ -12,7 +12,6 @@ import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { resolveHiddenProjectIds } from "../../core/project-scope";
-import type { StudioContext } from "../../core/studio-context";
 import {
   CAMPAIGNS_DIR,
   CARDS_DIR,
@@ -23,7 +22,7 @@ import {
 } from "../../file-storage/blog-state";
 import { type OrgFs, OrgFsNotFoundError } from "../../file-storage/org-fs";
 import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
-import { taskRunContextStore } from "../task-board/task-run-context";
+import { callerRunThread } from "./blog-job";
 import { emitBlogCardDeleted, emitBlogCardUpdated } from "./card-events";
 import { resolveSiteProject } from "./site-repo";
 import { conflictOrRethrow, resolveBlogScope } from "./state";
@@ -55,18 +54,6 @@ const CardOutputSchema = z.object({
 
 /** Short, lowercase and safe as the tail of a post key and a branch name. */
 const mintCardId = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 12);
-
-/**
- * The chat whose run is calling, or null for a person.
- *
- * A sandboxed run reaches Studio on its thread's MCP endpoint, which puts the
- * thread here; a run on the platform carries it in the request metadata.
- */
-export function callerRunThread(ctx: StudioContext): string | null {
-  return (
-    taskRunContextStore.getStore()?.threadId ?? ctx.metadata?.threadId ?? null
-  );
-}
 
 /**
  * Why a patch may not land on a card, or null when it may.

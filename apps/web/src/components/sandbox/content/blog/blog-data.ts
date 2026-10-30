@@ -79,7 +79,9 @@ import {
 } from "@decocms/shared/blog";
 import {
   CAMPAIGN_GOAL_METRICS,
+  CAMPAIGN_KEY_PREFIX,
   CAMPAIGN_OBJECTIVES,
+  CAMPAIGN_SEED_KEY_PREFIX,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
   CAMPAIGN_TRIGGERS,
@@ -860,7 +862,7 @@ export function filledBrandRules(rules: BrandRule[]): BrandRule[] {
  * prefix so a write never clobbers the campaign being edited. Replaces
  * `blog-manager/pillars/`, which is no longer read.
  */
-export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
+export { CAMPAIGN_KEY_PREFIX };
 
 /**
  * The closed sets live in `@decocms/shared` because `BLOG_CAMPAIGN_SUGGEST`
@@ -1131,7 +1133,7 @@ export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
 
 // ------------------ Campaign seeds (what a generation starts from) -----------
 
-export const CAMPAIGN_SEED_KEY_PREFIX = "blog-manager/campaign-seeds/";
+export { CAMPAIGN_SEED_KEY_PREFIX };
 
 /**
  * What a campaign generation starts from: the terms to aim at and the sentence
@@ -1153,18 +1155,6 @@ export interface CampaignSeedEntry {
 
 export function newCampaignSeedKey(): string {
   return `${CAMPAIGN_SEED_KEY_PREFIX}${crypto.randomUUID()}`;
-}
-
-export function buildCampaignSeedBlock(
-  seed: Omit<CampaignSeedEntry, "key">,
-): Record<string, unknown> {
-  return {
-    seedName: seed.name,
-    keywords: seed.keywords,
-    prompt: seed.prompt,
-    createdAt: seed.createdAt,
-    updatedAt: seed.updatedAt,
-  };
 }
 
 /** Every seed, newest first. Tolerant of a partial block, like its siblings. */
@@ -1189,17 +1179,6 @@ export function scanCampaignSeeds(
     (a, b) =>
       b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name),
   );
-}
-
-export function emptyCampaignSeed(now: Date): Omit<CampaignSeedEntry, "key"> {
-  const stamp = now.toISOString();
-  return {
-    name: "",
-    keywords: [],
-    prompt: "",
-    createdAt: stamp,
-    updatedAt: stamp,
-  };
 }
 
 // ------------------ Formats (loose post templates) ---------------------------

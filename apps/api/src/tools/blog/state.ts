@@ -1,5 +1,6 @@
 import { CAMPAIGN_STATUSES } from "@decocms/shared/blog-campaign";
 import { BLOG_STATE_CONFLICT } from "@decocms/shared/blog-state";
+import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { type OrgFs, OrgFsConflictError } from "../../file-storage/org-fs";
@@ -13,12 +14,15 @@ import {
   CAMPAIGN_SEEDS_DIR,
   CAMPAIGNS_DIR,
   deleteBlogRecords,
+  readBlogRecord,
   readBlogState,
   recordPath,
   resolveBrandDir,
   writeBlogFiles,
   type BlogWrite,
 } from "../../file-storage/blog-state";
+import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
+import { callerBlogJob, campaignsJobRefusal } from "./blog-job";
 import { CampaignDraftSchema } from "./campaign-suggest";
 import { requireBlogAi } from "./feature-flag";
 import { CampaignGoalSchema } from "./schema";
@@ -79,21 +83,23 @@ const StoredSeedSchema = z
 
 const LooseRecord = z.record(z.string(), z.unknown());
 
+/** A record's id, which is its file's name. */
+export const RecordIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(
+    /^[A-Za-z0-9_-]+$/,
+    "An id is the file's name: letters, digits, dash and underscore only.",
+  );
+
 const RecordListSchema = <T extends z.ZodType>(what: T, noun: string) =>
   z
     .array(
       z.object({
-        id: z
-          .string()
-          .min(1)
-          .max(128)
-          .regex(
-            /^[A-Za-z0-9_-]+$/,
-            "An id is the file's name: letters, digits, dash and underscore only.",
-          )
-          .describe(
-            `The ${noun}'s own id. Reuse the id BLOG_STATE_GET reported to edit one; mint a UUID for a new one.`,
-          ),
+        id: RecordIdSchema.describe(
+          `The ${noun}'s own id. Reuse the id BLOG_STATE_GET reported to edit one; mint a UUID for a new one.`,
+        ),
         data: what,
       }),
     )
@@ -184,7 +190,7 @@ export const BLOG_STATE_GET = defineTool({
 export const BLOG_STATE_SET = defineTool({
   name: "BLOG_STATE_SET",
   description:
-    "Write the organization's blog campaigns and campaign seeds, beside its brand guide. Every field is optional and only what is given is touched. Campaigns and seeds are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand, writing rules and formats are the guide's sections and are edited there, not here.",
+    "Write the organization's blog campaigns and campaign seeds, beside its brand guide. Every field is optional and only what is given is touched. Campaigns and seeds are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand, writing rules and formats are the guide's sections and are edited there, not here. A campaigns chat writes only the drafts its instructions name.",
   annotations: {
     title: "Write Blog State",
     readOnlyHint: false,
@@ -231,7 +237,36 @@ export const BLOG_STATE_SET = defineTool({
     `Wrote ${r.written.length} file(s), removed ${r.removed.length} record(s).`,
 
   handler: async (input, ctx) => {
-    const { orgFs, brand: target, actor } = await resolveBlogScope(ctx);
+    const {
+      organizationId,
+      orgFs,
+      brand: target,
+      actor,
+    } = await resolveBlogScope(ctx);
+
+    const job = await callerBlogJob(ctx);
+    if (job?.kind === "campaigns") {
+      const stored = new Map<string, Record<string, unknown> | null>();
+      for (const { id } of input.campaigns ?? []) {
+        const record = await readBlogRecord(
+          orgFs,
+          recordPath(target, CAMPAIGNS_DIR, id),
+        );
+        stored.set(id, record?.data ?? null);
+      }
+      const refusal = campaignsJobRefusal(
+        job,
+        {
+          campaigns: input.campaigns ?? [],
+          seeds: input.campaignSeeds?.length ?? 0,
+          removals:
+            (input.removeCampaigns?.length ?? 0) +
+            (input.removeCampaignSeeds?.length ?? 0),
+        },
+        stored,
+      );
+      if (refusal) throw new Error(refusal);
+    }
 
     const expect = input.expect ?? {};
     const conditional = (path: string): BlogWrite["expect"] =>
@@ -270,6 +305,20 @@ export const BLOG_STATE_SET = defineTool({
       CAMPAIGN_SEEDS_DIR,
       removedSeeds,
     );
+
+    // Announced so a brand page or the content track shows what an agent wrote.
+    const touched = [
+      ...entries.map((entry) => entry.path),
+      ...removedCampaigns.map((id) => recordPath(target, CAMPAIGNS_DIR, id)),
+      ...removedSeeds.map((id) => recordPath(target, CAMPAIGN_SEEDS_DIR, id)),
+    ];
+    if (touched.length > 0) {
+      await notifyOrgFsChangeFromServer(
+        organizationId,
+        HOME_MOUNT_PATH,
+        touched,
+      );
+    }
 
     return {
       written: entries.map((entry) => ({

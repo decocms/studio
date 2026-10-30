@@ -131,6 +131,7 @@ export const CORE_TOOLS = [
   BlogTools.BLOG_CARD_DELETE,
   BlogTools.BLOG_CARD_RUN,
   BlogTools.BLOG_BRAND_FILL,
+  BlogTools.BLOG_CAMPAIGNS_PROPOSE,
   BlogTools.BLOG_SITE_GROUND,
   BlogTools.BLOG_SITE_CATALOGUE,
   BlogTools.BLOG_SITE_BLOCKS,

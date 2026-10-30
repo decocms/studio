@@ -1,7 +1,7 @@
-import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useAskInChat } from "@/hooks/use-ask-in-chat";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useOpenBlogChat } from "@/hooks/use-open-blog-chat";
 import { useT } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 
@@ -15,7 +15,7 @@ export function useBrandFill() {
   const ask = useAskInChat();
   const blogAi = useBlogAi();
   const studio = useStudioTools();
-  const navigate = useNavigate();
+  const openChat = useOpenBlogChat();
 
   return async (prompt: string) => {
     if (!blogAi) {
@@ -24,14 +24,7 @@ export function useBrandFill() {
     }
     try {
       const { threadId } = await studio.call("BLOG_BRAND_FILL", { prompt });
-      void navigate({
-        to: ".",
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          thread: threadId,
-          sidepanel: true,
-        }),
-      });
+      openChat(threadId);
     } catch (err) {
       toast.error(
         t("library.context.fillFailed", {

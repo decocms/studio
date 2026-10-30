@@ -11,12 +11,15 @@ import { CampaignsPanel } from "@/components/sandbox/content/blog/campaigns-pane
 import { useBlogConnections } from "@/components/sandbox/content/blog/use-blog-connections";
 import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useBrandLiveSync } from "@/hooks/use-brand-events";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
 
 export function BrandCampaigns() {
   const t = useT();
   const blogAi = useBlogAi();
+  // Drafts an agent writes into the brand folder land here as they are written.
+  useBrandLiveSync();
   if (!blogAi) {
     return (
       <EmptyState

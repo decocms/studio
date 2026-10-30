@@ -80,7 +80,7 @@ import {
   selfToolGrantsFor,
 } from "@/harnesses/org-mcp-grants";
 import { blogCardOfThread } from "@decocms/shared/blog-card";
-import { brandFillOfThread } from "@decocms/shared/brand";
+import { blogJobOfThread } from "@decocms/shared/blog-job";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import { blogCardRunConnections } from "@/tools/blog/connections";
 import {
@@ -532,7 +532,7 @@ export class SandboxDispatchClient {
    * (`coding_agent_org_mcps`). None without a slug, without which the
    * per-connection URL cannot be built.
    *
-   * A blogpost card's chat and a brand fill's chat also get the connections
+   * A blogpost card's chat and a blog job's chat also get the connections
    * (`blogCardRunConnections`), granted with `limits` on the tools and never
    * mounted.
    *
@@ -568,7 +568,7 @@ export class SandboxDispatchClient {
     const { items } = await this.ctx.storage.connections.list(organization.id);
     const blog =
       (blogCardOfThread(thread?.metadata) ||
-        brandFillOfThread(thread?.metadata)) &&
+        blogJobOfThread(thread?.metadata)) &&
       orgFlagEnabled(settings?.flags, "blog_ai_enabled")
         ? blogCardRunConnections(items)
         : { ids: [], limits: {} };

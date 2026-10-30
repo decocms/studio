@@ -148,41 +148,18 @@ export const sandbox = {
   "sandbox.campaigns.objectiveRetentionProduct":
     "What they already own — and what pairs with it.",
   "sandbox.campaigns.productImageLabel": "Product image",
-  "sandbox.campaignGen.back": "Back",
-  "sandbox.campaignGen.cardSummary":
-    "{targets} target(s) · {products} product(s)",
   "sandbox.campaignGen.countHint":
     "At most. If the starting point is already specific, one comes back — and that is a good answer.",
   "sandbox.campaignGen.countLabel": "How many proposals",
-  "sandbox.campaignGen.create": "Create {count} campaign(s)",
-  "sandbox.campaignGen.failed": "Could not generate the campaigns",
-  "sandbox.campaignGen.gapNoSite":
-    "This site has no connections to read, so nothing here was checked against the store: targets, products and any figure come from the brand context alone.",
-  "sandbox.campaignGen.gapNoTools":
-    "The connected systems offer no read-only tools, so none could be consulted. Nothing here was checked against the store.",
-  "sandbox.campaignGen.gapTimeoutPartial":
-    "The store was still answering when the search ran out of time — {count} call(s) came back, but the findings were discarded. Try again, or narrow the starting point.",
-  "sandbox.campaignGen.gapTimeoutEmpty":
-    "The search for store data ran out of time before anything came back.",
-  "sandbox.campaignGen.gapFailed":
-    "The search for store data could not be completed, so nothing here was checked against it.",
-  "sandbox.campaignGen.gapNothingUseful":
-    "The connected systems were reachable but reported nothing useful for this starting point.",
-  "sandbox.campaignGen.gapTargetsDropped":
-    "{count} proposed target(s) were dropped: nothing in the store data backed them.",
-  "sandbox.campaignGen.gapProductsDropped":
-    "{count} proposed product(s) were dropped: nothing in the store data backed them.",
+  "sandbox.campaignGen.cancel": "Cancel",
+  "sandbox.campaignGen.failed": "Could not start the generation: {error}",
   "sandbox.campaignGen.generate": "Generate",
   "sandbox.campaignGen.keywordsHint":
     "The terms this campaign should aim at. Enter or comma adds one.",
   "sandbox.campaignGen.keywordsLabel": "Keywords",
   "sandbox.campaignGen.keywordsPlaceholder": "Type a term and press Enter",
-  "sandbox.campaignGen.noCandidates":
-    "Nothing came back. Try a more specific starting point.",
   "sandbox.campaignGen.open": "Generate campaigns",
-  "sandbox.campaignGen.phaseReading": "Reading the connected systems",
-  "sandbox.campaignGen.phaseReviewing": "Reviewing each one",
-  "sandbox.campaignGen.phaseWriting": "Writing the proposals",
+  "sandbox.campaignGen.openChat": "Open the chat",
   "sandbox.campaignGen.promptHint":
     "In your words: what the moment is, and why it is worth writing about now.",
   "sandbox.campaignGen.promptLabel": "What is happening",
@@ -192,16 +169,12 @@ export const sandbox = {
   "sandbox.campaignGen.savedSeeds": "Saved starting points",
   "sandbox.campaignGen.seedNameLabel": "Name",
   "sandbox.campaignGen.seedNamePlaceholder": "e.g. Summer 2027",
-  "sandbox.campaignGen.stepPick": "Choose",
-  "sandbox.campaignGen.stepRunning": "Generating",
-  "sandbox.campaignGen.stepSeed": "Starting point",
   "sandbox.campaignGen.subtitle":
-    "Write the starting point. Generation reads the systems connected to this site to discover the rest.",
+    "Write the starting point. The content track's agent reads the store's VTEX, GA4 and Search Console in a chat, and the campaigns arrive as drafts.",
   "sandbox.campaignGen.title": "Generate campaigns",
   "sandbox.campaignGen.untitledSeed": "Unnamed",
-  "sandbox.campaignGen.verdictStrong": "Ready",
-  "sandbox.campaignGen.verdictWeak": "Weak",
-  "sandbox.campaignGen.verdictWorkable": "Workable",
+  "sandbox.campaignGen.waiting":
+    "Generating in the chat. The first draft is chosen here as soon as it arrives.",
   "sandbox.campaigns.add": "New campaign",
   "sandbox.campaigns.addAvoid": "Add guardrail",
   "sandbox.campaigns.addTarget": "Add target",
@@ -789,7 +762,6 @@ export const sandbox = {
   "sandbox.postBoard.selectPrompt": "Select a post to view it here.",
   "sandbox.postBoard.untitled": "Untitled post",
   "sandbox.postBoard.generatingLabel": "Generating…",
-  "sandbox.postBoard.usesCredits": "Uses AI credits",
   "sandbox.postBoard.viewBoard": "Board",
   "sandbox.postBoard.viewList": "List",
   "sandbox.postCalendar.couldNotCreate": "Could not create",

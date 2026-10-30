@@ -1,17 +1,22 @@
 import { createHash } from "node:crypto";
+import { BLOG_JOB_THREAD_KEY, type BlogJob } from "@decocms/shared/blog-job";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
-import { claudeSubscriptionChatModel } from "@/harnesses/claude-code-env";
+import {
+  claudeSubscriptionChatModel,
+  TASK_RUN_INSTRUCTIONS_KEY,
+} from "@/harnesses/claude-code-env";
 import { userPlanCredentialId } from "@/harnesses/sandbox-only-chats";
+import { threadBranch } from "@/tools/sandbox/thread-repo";
 import { resolveTaskRunModel } from "@/tools/task-board/task-run-harness";
 import { TierUnavailableError } from "../../core/resolve-tier";
 import type { StudioContext } from "../../core/studio-context";
 
 /**
  * One turn of a Super Agent chat on Claude Code that Studio starts rather than
- * a person types: a blogpost card's phase, a brand guide's fill. The request is
+ * a person types: a blogpost card's phase, a brand fill, a campaigns proposal. The request is
  * written to the chat first, so the reply cannot be projected ahead of it, and
  * the run is queued behind a fence, so a retried start is the same run.
  */
@@ -105,4 +110,65 @@ export async function dispatchSuperAgentTurn(
     },
     { workflowID: turn.fence },
   );
+}
+
+const MAX_TITLE_CHARS = 120;
+
+/** Open a chat of its own for a blog job, marked so dispatch gives it the blog's connections, and start its first turn. */
+export async function openBlogJobChat(
+  ctx: StudioContext,
+  chat: {
+    organizationId: string;
+    userId: string;
+    job: BlogJob;
+    title: string;
+    text: string;
+    instructions?: string;
+  },
+): Promise<string> {
+  const threadId = crypto.randomUUID();
+  const branch = threadBranch(threadId);
+  await ctx.storage.threads.create({
+    id: threadId,
+    organization_id: chat.organizationId,
+    title:
+      chat.title.length > MAX_TITLE_CHARS
+        ? `${chat.title.slice(0, MAX_TITLE_CHARS - 1)}…`
+        : chat.title,
+    status: "in_progress",
+    virtual_mcp_id: getDecopilotId(chat.organizationId),
+    // The terminal writer skips v1 threads, so a v1 run never ends.
+    message_storage_version: 2,
+    harness_id: "claude-code",
+    created_by: chat.userId,
+    branch,
+    metadata: {
+      runtime: "sandbox",
+      [BLOG_JOB_THREAD_KEY]: chat.job,
+      ...(chat.instructions
+        ? { [TASK_RUN_INSTRUCTIONS_KEY]: chat.instructions }
+        : {}),
+    },
+  });
+
+  try {
+    await dispatchSuperAgentTurn(ctx, {
+      organizationId: chat.organizationId,
+      userId: chat.userId,
+      threadId,
+      branch,
+      text: chat.text,
+      instructions: chat.instructions,
+      fence: `${chat.job.kind}:${threadId}`,
+      requestedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    await ctx.storage.threads
+      .delete(threadId)
+      .catch((cleanup) =>
+        console.error("[blog] job chat cleanup failed", cleanup),
+      );
+    throw err;
+  }
+  return threadId;
 }

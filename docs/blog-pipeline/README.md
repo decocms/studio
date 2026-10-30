@@ -12,10 +12,15 @@ escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
 ## O fluxo
 
 1. **A marca preenchida**, em Contexto → Marca. Sem ela o Content mostra o
-   setup e nada mais é possível.
+   setup e nada mais é possível. O "Preencher com IA" abre um chat do agente
+   (`BLOG_BRAND_FILL`), que lê o repositório do site e os sistemas da loja.
 2. **Uma campanha**, em Content → Campanhas, lida da conexão VTEX da org. A
    meta dela (`goal`: o texto, a métrica e o alvo, até o fim do período) é
-   posta por uma pessoa; nenhum modelo propõe alvo.
+   posta por uma pessoa; nenhum modelo propõe alvo. "Gerar campanhas"
+   (`BLOG_CAMPAIGNS_PROPOSE`) grava a semente e abre um chat do agente ao lado
+   da página: ele segue o `campaigns.md` e grava cada campanha como rascunho,
+   sem meta, com o `seedKey` da semente. Os rascunhos chegam ao vivo pelo
+   `brand.updated`, e no Novo blogpost o primeiro já fica selecionado.
 3. **Novo blogpost.** `BLOG_CARD_CREATE` cria o card em Ideas, para um site e
    uma campanha, e `BLOG_CARD_RUN` com `phase: "hypothesis"` começa o agente.
    O post é da campanha: o agente parte dela e da meta, pergunta à VTEX, ao GA4
@@ -45,8 +50,10 @@ escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
 | --- | --- |
 | O card | `home/brands/<marca>/cards/<id>.json`, schema em `@decocms/shared/blog-card` |
 | As campanhas | `home/brands/<marca>/campaigns/<id>.json` |
+| As sementes | `home/brands/<marca>/campaign-seeds/<id>.json` |
 | O guia da marca | `home/brands/<marca>/brand.md` |
 | O chat do card | Uma thread do Super Agent no Claude Code, com id fixo por card (`blogCardThreadId`) e marcada com `metadata.blogCard` |
+| O chat de um job | Uma thread do Super Agent no Claude Code, marcada com `metadata.blogJob` (`brand-fill` ou `campaigns`) |
 | O rascunho | `blog-manager/posts/<id>`, na branch `blog-<id>` do site |
 | A skill | `packages/sandbox/image/skills/blogpost/`, no conjunto público `core` |
 
@@ -85,13 +92,27 @@ no card guardado e relê quando outra escrita cai no meio, até três vezes; com
 podem se sobrepor: o `OrgFs.write` confere a versão contra a linha do
 manifesto que leu, não de forma atômica com a própria escrita.
 
+## Os jobs fora do card
+
+| Tool | Quem chama | O que faz |
+| --- | --- | --- |
+| `BLOG_BRAND_FILL` | A página da marca e o setup do Content | Abre um chat que preenche o guia da marca |
+| `BLOG_CAMPAIGNS_PROPOSE` | "Gerar campanhas" | Grava a semente e abre um chat que propõe campanhas como rascunho |
+
+Os chats não recebem nenhuma das duas: só uma pessoa começa um job. Um chat de
+campanhas grava só os rascunhos que o job dele cunhou, com o `seedKey` da
+semente e sem meta, e não mexe numa campanha que uma pessoa já ativou ou à
+qual deu meta (`campaignsJobRefusal`, no `BLOG_STATE_SET`).
+
 ## O modelo do run
 
-O run do card começa no modelo da org e, sem nenhum, no plano Claude de quem
-disparou, como o chat (`cardRunModel`). No despacho o plano tem prioridade
+O run do card e o de um job começam no modelo da org e, sem nenhum, no plano
+Claude de quem disparou, como o chat (`dispatchSuperAgentTurn`). No despacho o plano tem prioridade
 sobre a chave da org de todo jeito. Imagem é a exceção: o Claude não gera
 imagem, então `BLOG_POST_ILLUSTRATE` precisa de um modelo de imagem da org, e
-sem ele o post sai sem imagens e com a lacuna `no-image-model`.
+sem ele o post sai sem imagens e com a lacuna `no-image-model`. Para a web, o
+agente usa o `WebSearch` e o `WebFetch` do próprio Claude Code: o
+`web_search` do Studio precisa do modelo da org.
 
 ## O acesso às conexões
 
@@ -101,7 +122,7 @@ a VTEX e o GA4, tomaria acesso negado em toda chamada e responderia `ok` em
 cima de nenhum dado.
 
 Por isso `sandbox-dispatch-client.ts` dá à chave de um chat marcado com
-`metadata.blogCard`, com `blog_ai_enabled` ligado, as conexões do blog
+`metadata.blogCard` ou `metadata.blogJob`, com `blog_ai_enabled` ligado, as conexões do blog
 (`blogCardRunConnections`): a VTEX só com as tools de embasamento
 (`VTEX_GROUNDING_TOOLS`, via `narrowConnectionGrants`), o GA4 e o Search
 Console inteiros. Elas entram só na chave, sem montagem no Claude Code: o
@@ -126,7 +147,8 @@ teste manual desta esteira já gravou um post direto na `main`.
   depois disso, com o servidor ainda trabalhando e cobrando. Com a escrita no
   Claude Code, só a imagem chega perto: uma por chamada.
 - **O primeiro turno do card sobe um sandbox do zero.** O card é o registro
-  durável, então perder a sessão custa tempo, não trabalho.
+  durável, então perder a sessão custa tempo, não trabalho. Gerar campanhas
+  também sobe um, então os rascunhos levam alguns minutos.
 - **As branches `blog-<id>` se acumulam** até alguém publicar ou limpar.
 
 ## O que honestamente não dá pra ser skill

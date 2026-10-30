@@ -45,7 +45,7 @@ import {
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
 import type { CatalogSource } from "./blocks/catalog-source";
-import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { useOpenBlogChat } from "@/hooks/use-open-blog-chat";
 import { GenerateCampaignsDialog } from "./generate-campaigns-dialog";
 import { SaveStatus } from "./save-status";
 import { CampaignEditor } from "./campaign-editor";
@@ -115,7 +115,7 @@ export function CampaignsPanel({
   const { save, remove: deleteBlock } = blog;
   const decofile = blog.blocks;
 
-  const hasAi = useHostedAiProviderKeys().length > 0;
+  const openChat = useOpenBlogChat();
   const [generateOpen, setGenerateOpen] = useState(false);
   const [view, setView] = useState<CampaignView>("board");
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -135,7 +135,7 @@ export function CampaignsPanel({
   const setLaneCollapsed = (lane: string, collapsed: boolean) =>
     setLaneOverrides((prev) => ({ ...prev, [lane]: collapsed }));
 
-  const { addCampaign, createFromSeed } = useCampaignCreate(blog);
+  const { addCampaign } = useCampaignCreate(blog);
 
   const moveTo = async (key: string, next: CampaignStatus) => {
     const campaign = campaigns.find((entry) => entry.key === key);
@@ -212,7 +212,6 @@ export function CampaignsPanel({
             type="button"
             size="sm"
             variant="outline"
-            disabled={!hasAi}
             onClick={() => setGenerateOpen(true)}
           >
             <Stars02 size={14} />
@@ -439,10 +438,9 @@ export function CampaignsPanel({
         open={generateOpen}
         onOpenChange={setGenerateOpen}
         decofile={decofile}
-        hasAi={hasAi}
-        onCreate={async (seed, chosen) => {
-          await createFromSeed(seed, chosen);
-        }}
+        onStarted={(proposal) =>
+          openChat(proposal.threadId, { view: "campaigns" })
+        }
       />
 
       <CampaignEditorSheet

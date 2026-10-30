@@ -151,41 +151,18 @@ export const sandbox = {
   "sandbox.campaigns.objectiveRetentionProduct":
     "O que ele já tem — e o que acompanha bem.",
   "sandbox.campaigns.productImageLabel": "Imagem do produto",
-  "sandbox.campaignGen.back": "Voltar",
-  "sandbox.campaignGen.cardSummary":
-    "{targets} alvo(s) · {products} produto(s)",
   "sandbox.campaignGen.countHint":
     "No máximo. Se o ponto de partida já for direto, vem uma só — e isso é uma boa resposta.",
   "sandbox.campaignGen.countLabel": "Quantas propostas",
-  "sandbox.campaignGen.create": "Criar {count} campanha(s)",
-  "sandbox.campaignGen.failed": "Não foi possível gerar as campanhas",
-  "sandbox.campaignGen.gapNoSite":
-    "Este site não tem conexões para consultar, então nada aqui foi conferido com a loja: alvos, produtos e qualquer número vêm só do contexto da marca.",
-  "sandbox.campaignGen.gapNoTools":
-    "Os sistemas conectados não oferecem nenhuma ferramenta de leitura, então nenhum pôde ser consultado. Nada aqui foi conferido com a loja.",
-  "sandbox.campaignGen.gapTimeoutPartial":
-    "A loja ainda estava respondendo quando a busca estourou o tempo — {count} chamada(s) voltaram, mas os achados foram descartados. Tente de novo, ou estreite o ponto de partida.",
-  "sandbox.campaignGen.gapTimeoutEmpty":
-    "A busca por dados da loja estourou o tempo antes de qualquer coisa voltar.",
-  "sandbox.campaignGen.gapFailed":
-    "A busca por dados da loja não pôde ser concluída, então nada aqui foi conferido com ela.",
-  "sandbox.campaignGen.gapNothingUseful":
-    "Os sistemas conectados responderam, mas não trouxeram nada de útil para este ponto de partida.",
-  "sandbox.campaignGen.gapTargetsDropped":
-    "{count} alvo(s) propostos foram descartados: nada nos dados da loja os sustentava.",
-  "sandbox.campaignGen.gapProductsDropped":
-    "{count} produto(s) propostos foram descartados: nada nos dados da loja os sustentava.",
+  "sandbox.campaignGen.cancel": "Cancelar",
+  "sandbox.campaignGen.failed": "Não foi possível começar a geração: {error}",
   "sandbox.campaignGen.generate": "Gerar",
   "sandbox.campaignGen.keywordsHint":
     "Os termos que essa campanha deve mirar. Enter ou vírgula adiciona.",
   "sandbox.campaignGen.keywordsLabel": "Palavras-chave",
   "sandbox.campaignGen.keywordsPlaceholder": "Escreva um termo e tecle Enter",
-  "sandbox.campaignGen.noCandidates":
-    "Nenhuma proposta veio. Tente um ponto de partida mais específico.",
   "sandbox.campaignGen.open": "Gerar campanhas",
-  "sandbox.campaignGen.phaseReading": "Lendo os sistemas conectados",
-  "sandbox.campaignGen.phaseReviewing": "Revisando cada uma",
-  "sandbox.campaignGen.phaseWriting": "Escrevendo as propostas",
+  "sandbox.campaignGen.openChat": "Abrir o chat",
   "sandbox.campaignGen.promptHint":
     "Em suas palavras: que momento é esse e por que vale escrever sobre ele agora.",
   "sandbox.campaignGen.promptLabel": "O que está acontecendo",
@@ -195,16 +172,12 @@ export const sandbox = {
   "sandbox.campaignGen.savedSeeds": "Pontos de partida salvos",
   "sandbox.campaignGen.seedNameLabel": "Nome",
   "sandbox.campaignGen.seedNamePlaceholder": "ex: Verão 2027",
-  "sandbox.campaignGen.stepPick": "Escolher",
-  "sandbox.campaignGen.stepRunning": "Gerando",
-  "sandbox.campaignGen.stepSeed": "Ponto de partida",
   "sandbox.campaignGen.subtitle":
-    "Escreva o ponto de partida. A geração consulta os sistemas conectados ao site para descobrir o resto.",
+    "Escreva o ponto de partida. O agente da esteira lê a VTEX, o GA4 e o Search Console da loja num chat, e as campanhas chegam como rascunho.",
   "sandbox.campaignGen.title": "Gerar campanhas",
   "sandbox.campaignGen.untitledSeed": "Sem nome",
-  "sandbox.campaignGen.verdictStrong": "Pronta",
-  "sandbox.campaignGen.verdictWeak": "Fraca",
-  "sandbox.campaignGen.verdictWorkable": "Dá para trabalhar",
+  "sandbox.campaignGen.waiting":
+    "Gerando no chat. O primeiro rascunho fica selecionado aqui assim que chegar.",
   "sandbox.campaigns.add": "Nova campanha",
   "sandbox.campaigns.addAvoid": "Adicionar guardrail",
   "sandbox.campaigns.addTarget": "Adicionar alvo",
@@ -804,7 +777,6 @@ export const sandbox = {
   "sandbox.postBoard.selectPrompt": "Selecione um post para vê-lo aqui.",
   "sandbox.postBoard.untitled": "Post sem título",
   "sandbox.postBoard.generatingLabel": "Gerando…",
-  "sandbox.postBoard.usesCredits": "Usa créditos de IA",
   "sandbox.postBoard.viewBoard": "Quadro",
   "sandbox.postBoard.viewList": "Lista",
   "sandbox.postCalendar.couldNotCreate": "Não foi possível criar",

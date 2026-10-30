@@ -1,14 +1,16 @@
 ---
 name: blogpost
-description: Work a blogpost card of an organization's content track — bring the post's hypothesis from the store's own data, then write the post yourself on the card's branch. Use when you are running in a blogpost card's chat, or are asked to bring or execute a card's hypothesis.
+description: Work an organization's content track — propose campaigns from a seed, bring a blogpost card's hypothesis from the store's own data, then write the post yourself on the card's branch. Use when you are running in a campaigns chat or a blogpost card's chat, or are asked to propose campaigns or to bring or execute a card's hypothesis.
 ---
 
-# blogpost — work a card of the content track
+# blogpost — work the content track
 
 A card is one blog post of one campaign, on its way from the hypothesis that
 argues for it to the draft a person reviews. It lives in the brand folder,
 `/app/org/home/brands/<brand>/cards/<id>.json`, and the board shows it as you
-save it. Your chat's instructions name the card, its site and its branch.
+save it. Your chat's instructions name the card, its site and its branch. A
+campaigns chat has no card: its instructions name the seed and the drafts it
+may write.
 
 You do the thinking and the writing: read the store's systems, argue the
 hypothesis, write the post. Studio's tools give you what only Studio has (the
@@ -17,6 +19,7 @@ wrote.
 
 | Phase | File | Ends with |
 | --- | --- | --- |
+| Propose campaigns from a seed | `campaigns.md` (in this skill folder) | The drafts in the brand's campaigns, presented in the chat |
 | Bring the hypothesis | `hypothesis.md` (in this skill folder) | The hypothesis on the card, presented in the chat |
 | Write the post | `execute.md` (in this skill folder) | The draft committed on the card's branch, the card in `awaiting_review` |
 
@@ -55,11 +58,16 @@ On VTEX you may call only these: `VTEX_IS_GET_TOP_SEARCHES`,
 Console default to the property and site their connections are configured
 with.
 
+For the web, use your own `WebSearch` and `WebFetch`. Studio's `web_search`
+needs the organization's model, which a run on a person's Claude plan does not
+have.
+
 ## How to call the tools
 
 Small calls go through your Studio tools as usual, prefixed `mcp__studio__`:
-`BLOG_CARD_GET`, `BLOG_CARD_UPDATE`, `BLOG_STATE_GET`, `FILE_CONFIG_LIST`,
-`CONNECTION_TOOLS_SEARCH` and `BLOG_POST_ILLUSTRATE` with one image.
+`BLOG_CARD_GET`, `BLOG_CARD_UPDATE`, `BLOG_STATE_GET`, `BLOG_STATE_SET`,
+`FILE_CONFIG_LIST`, `CONNECTION_TOOLS_SEARCH` and `BLOG_POST_ILLUSTRATE` with
+one image.
 
 Calls whose input or answer is large go through files, so a block schema, a
 list of products or a whole post never passes through your context twice:

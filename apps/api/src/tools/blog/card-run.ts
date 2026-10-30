@@ -22,7 +22,8 @@ import {
   updateBlogRecord,
 } from "../../file-storage/blog-state";
 import { emitBlogCardUpdated } from "./card-events";
-import { callerRunThread, CardIdSchema, parseCard } from "./cards";
+import { callerRunThread } from "./blog-job";
+import { CardIdSchema, parseCard } from "./cards";
 import { resolveSiteProject, resolveSiteRepo } from "./site-repo";
 import { conflictOrRethrow, resolveBlogScope } from "./state";
 import { dispatchSuperAgentTurn } from "./super-agent-turn";

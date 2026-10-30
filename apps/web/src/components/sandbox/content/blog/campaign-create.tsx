@@ -13,14 +13,11 @@ import type { CatalogSource } from "./blocks/catalog-source";
 import { str } from "./blocks/primitives";
 import {
   buildCampaignBlock,
-  buildCampaignSeedBlock,
-  type CampaignSeedEntry,
   emptyCampaign,
   newCampaignKey,
   readBlogContext,
 } from "./blog-data";
 import { CampaignEditor } from "./campaign-editor";
-import type { SuggestedCampaign } from "./generate-campaigns-dialog";
 import type { BlogState } from "./use-blog-state";
 
 export function useCampaignCreate(blog: BlogState) {
@@ -36,43 +33,7 @@ export function useCampaignCreate(blog: BlogState) {
     return blockKey;
   };
 
-  /**
-   * Persist the seed and the chosen candidates together, and hand back the
-   * campaigns' keys in the order they were chosen.
-   *
-   * Sequential rather than parallel: each write goes through the same decofile
-   * cache entry, and concurrent saves would race on it.
-   */
-  const createFromSeed = async (
-    seed: { key: string; entry: Omit<CampaignSeedEntry, "key"> },
-    chosen: SuggestedCampaign[],
-  ): Promise<string[]> => {
-    const now = new Date().toISOString();
-    await save.mutateAsync({
-      blockKey: seed.key,
-      data: buildCampaignSeedBlock({ ...seed.entry, updatedAt: now }),
-    });
-    const keys: string[] = [];
-    for (const candidate of chosen) {
-      const blockKey = newCampaignKey();
-      await save.mutateAsync({
-        blockKey,
-        data: buildCampaignBlock({
-          ...emptyCampaign(new Date()),
-          name: candidate.name,
-          seedKey: seed.key,
-          period: candidate.period,
-          trigger: candidate.trigger,
-          intent: candidate.intent,
-          guardrails: candidate.guardrails,
-        }),
-      });
-      keys.push(blockKey);
-    }
-    return keys;
-  };
-
-  return { addCampaign, createFromSeed };
+  return { addCampaign };
 }
 
 /** One campaign's editor, docked at the right edge, the way the Posts board edits. */

@@ -3074,6 +3074,18 @@ export interface StudioToolIO {
     };
   };
   BLOG_BRAND_FILL: { input: { prompt: string }; output: { threadId: string } };
+  BLOG_CAMPAIGNS_PROPOSE: {
+    input: {
+      seed: {
+        prompt: string;
+        id?: string | undefined;
+        name?: string | undefined;
+        keywords?: string[] | undefined;
+      };
+      count?: number | undefined;
+    };
+    output: { threadId: string; seedId: string; campaignIds: string[] };
+  };
   BLOG_SITE_GROUND: {
     input: {
       purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";

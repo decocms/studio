@@ -74,3 +74,12 @@ export const MAX_CAMPAIGN_PRODUCT_IMAGES = 3;
  * cover at all on exactly the well-stocked campaigns that most deserve one.
  */
 export const MAX_OFFERED_PHOTOS = 12;
+
+/** A campaign's key in the editor's decofile view; its file is named by the rest. */
+export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
+
+/** A seed's key, and what a campaign generated from it stores as `seedKey`. */
+export const CAMPAIGN_SEED_KEY_PREFIX = "blog-manager/campaign-seeds/";
+
+/** The most campaigns one proposal may write. */
+export const MAX_PROPOSED_CAMPAIGNS = 3;
