@@ -1161,6 +1161,35 @@ export const settings = {
   "settings.roles.roleOwner": "Propriet\u00e1rio",
   "settings.roles.roleUser": "Usu\u00e1rio",
   "settings.roles.searchPlaceholder": "Pesquisar fun\u00e7\u00f5es...",
+  "settings.apiKeys.accessLabel": "Acesso",
+  "settings.apiKeys.accessReadOnly": "Somente leitura",
+  "settings.apiKeys.accessReadOnlyDescription":
+    "As {count} ferramentas do Studio que nunca alteram dados. Ferramentas novas ficam de fora.",
+  "settings.apiKeys.accessCustom": "Escolher ferramentas",
+  "settings.apiKeys.accessCustomDescription":
+    "Só as ferramentas do Studio e das conexões que você marcar. Ferramentas novas ficam de fora.",
+  "settings.apiKeys.accessFull": "Acesso total",
+  "settings.apiKeys.accessFullDescription":
+    "Todas as ferramentas, inclusive as que apagam dados e as que forem lançadas depois.",
+  "settings.apiKeys.expired": "Expirada",
+  "settings.apiKeys.expiredOn": "Expirou em {date}",
+  "settings.apiKeys.expiresOn": "Expira em {date}",
+  "settings.apiKeys.expiryDays": "{days} dias",
+  "settings.apiKeys.expiryLabel": "Validade",
+  "settings.apiKeys.expiryNever": "Sem validade",
+  "settings.apiKeys.expiryYear": "1 ano",
+  "settings.apiKeys.neverExpires": "Sem validade",
+  "settings.apiKeys.readOnlyBadge": "Leitura",
+  "settings.apiKeys.toolCount": "{count} ferramentas",
+  "settings.apiKeys.studioTools": "Studio",
+  "settings.apiKeys.toolsGroupCount": "{count}/{total}",
+  "settings.apiKeys.toolsNone": "Nenhuma ferramenta",
+  "settings.apiKeys.toolsSelectGroup":
+    "Selecionar todas as ferramentas de {name}",
+  "settings.apiKeys.toolsSelected": "{count} selecionadas",
+  "settings.apiKeys.toolsLoadFailed":
+    "Não foi possível carregar a lista de ferramentas. Feche e tente de novo.",
+  "settings.apiKeys.toolsSearch": "Buscar ferramentas…",
   "settings.apiKeys.cancelButton": "Cancelar",
   "settings.apiKeys.copied": "Copiado para a área de transferência",
   "settings.apiKeys.copyKey": "Copiar chave",
@@ -1188,7 +1217,7 @@ export const settings = {
   "settings.apiKeys.namePlaceholder": "Minha integração",
   "settings.apiKeys.newKey": "Nova chave",
   "settings.apiKeys.newKeyDescription":
-    "Dê um nome à chave para reconhecê-la depois.",
+    "Dê à chave só as ferramentas de que ela precisa. Quem tiver a chave pode usá-las, mesmo se ela vazar.",
   "settings.apiKeys.newKeyTitle": "Nova chave de API",
   "settings.apiKeys.sectionDescription":
     "Para scripts e clientes que não conseguem entrar pelo navegador.",
