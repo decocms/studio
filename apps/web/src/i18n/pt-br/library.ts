@@ -42,13 +42,13 @@ export const library = {
   "library.context.sitePlaceholder": "https://www.sua-loja.com.br",
   "library.context.languagePlaceholder": "pt-BR",
   "library.context.fillBrandPrompt":
-    "Use a skill brand e siga o fill.md dela para preencher o guia da nossa marca em {path} a partir do nosso site, {site}, e do repositório dele. Preencha só as seções que ainda estão vazias, inclusive os formatos de post, e mantenha exatamente o que já estiver escrito.",
+    "Use a skill brand e siga o fill.md dela para preencher o guia da nossa marca em {path} a partir do nosso site, {site}, do repositório dele e dos sistemas da loja: VTEX, GA4 e Search Console. Preencha só o que ainda está vazio, inclusive os formatos de post e as cores e fontes do site, e mantenha exatamente o que já estiver escrito.",
   "library.context.fillBrandReplacePrompt":
-    "Use a skill brand e siga o fill.md dela no modo substituir para reescrever o guia da nossa marca em {path} a partir do nosso site, {site}, e do repositório dele. Reescreva toda seção para a qual encontrar evidência, inclusive os formatos de post; nunca apague uma seção para a qual não achou nada.",
+    "Use a skill brand e siga o fill.md dela no modo substituir para reescrever o guia da nossa marca em {path} a partir do nosso site, {site}, do repositório dele e dos sistemas da loja: VTEX, GA4 e Search Console. Reescreva toda seção para a qual encontrar evidência, inclusive os formatos de post e as cores e fontes do site; nunca apague uma seção para a qual não achou nada.",
   "library.context.fillModeEmpty": "Preencher só o que está vazio",
   "library.context.fillModeReplace": "Sobrescrever com o que o site diz",
   "library.context.fillSectionPrompt":
-    'Use a skill brand e siga o fill.md dela para preencher a seção "{section}" do guia da nossa marca em {path} a partir do nosso site, {site}, e do repositório dele. Não mexa no resto.',
+    'Use a skill brand e siga o fill.md dela para preencher a seção "{section}" do guia da nossa marca em {path} a partir do nosso site, {site}, do repositório dele e dos sistemas da loja: VTEX, GA4 e Search Console. Não mexa no resto.',
   "library.context.siteUnknown":
     "cujo endereço você encontra pela nossa conexão VTEX ou pelo nome da marca",
   "library.context.thisProject": "Este projeto",

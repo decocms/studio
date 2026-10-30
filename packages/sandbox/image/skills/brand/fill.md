@@ -1,8 +1,9 @@
 # Filling the brand guide from the site
 
 How to write the sections of `brand.md` that the brand page shows and the
-blog writes with, from evidence instead of imagination. The brand page's
-"Fill from site" and "Fill" buttons send you here.
+blog writes with, and the colors and fonts in `tokens.css`, from evidence
+instead of imagination. The brand page's "Fill from site" and "Fill" buttons
+send you here.
 
 The guide is read by people and by every agent that writes for the brand, so a
 wrong sentence spreads. **Empty beats a guess**: a section left empty is asked
@@ -36,6 +37,32 @@ one-line pitch, in its own words — when it is missing, and set `site:` (the
 store's public address, origin only) and `language:` (a BCP-47 tag such as
 `pt-BR`) when you know them. The blog needs both.
 
+## The look
+
+The brand page's Visual card shows the colors and fonts in `tokens.css`, next
+to `brand.md`, under the names `SKILL.md` gives. Take them from what the site
+declares in its repository, never from taste:
+
+- a theme block in `.deco/blocks/`, such as a `Theme` section with its colors
+  and font;
+- the global stylesheet and the Tailwind config: custom properties such as
+  `--color-primary` or `--primary`, a DaisyUI theme, Tailwind's `@theme`,
+  `theme.extend.colors` and `fontFamily`;
+- the fonts the site loads: `@font-face`, a Google Fonts link or `@import`,
+  and the `font-family` on `body` and on headings.
+
+When they disagree, the theme block the site's app points to (`theme` in its
+`site` block) is what the pages render, over the stylesheet: use it, and name
+the other in what you report.
+
+Write only the core: `--brand-primary`; `--brand-secondary` and
+`--brand-accent` when the site has them; `--brand-bg` and `--brand-fg`;
+`--brand-font-display` and `--brand-font-body`; and `--brand-radius` when the
+site declares one. Write colors in hex, converting `oklch()` or `rgb()`. Keep
+each font's own name with a generic fallback, and `@import` the fonts the site
+loads from Google Fonts at the top of the file. Leave out a role the site does
+not declare, and skip the ramps: the page shows the core.
+
 ## Evidence, in order of trust
 
 1. **The site's own content, in its repository.** The storefront's CMS keeps
@@ -58,26 +85,34 @@ store's public address, origin only) and `language:` (a BCP-47 tag such as
    blocks do not hold. If the site refuses automated requests (a Cloudflare
    challenge, 403), move on: do not try to get around the block.
 3. **The store's systems, read-only, for what a site never says about
-   itself.** Not optional when the organization has them: they are the only
-   source of what customers search for and buy. Listing the connections is
-   not reading them. Find each one's tools with `CONNECTION_TOOLS_SEARCH`
-   (`vtex top searches`, `vtex categories`, `analytics run report`,
-   `search console query`, with `withSchema: true`), then call them with
-   `CONNECTION_TOOL_CALL`. A handful of calls:
-   - **VTEX**: top searches and search suggestions for Palavras-chave; the
-     category, collection and brand names for Vocabulário and for what the
-     brand sells; the orders trend for the peaks behind Datas especiais.
-   - **GA4**: the most visited pages, and, when the property has them, the
-     audience's age, place and device for Público.
-   - **Search Console**, when connected: the queries with the most
-     impressions, for Palavras-chave.
+   itself.** They are the only source of what customers search for, visit
+   and buy, so read every one before you write a section. Search for each
+   system, even one you expect to be missing: `CONNECTION_TOOLS_SEARCH`, with
+   `withSchema: true`, lists only the connections this chat may use, with
+   their ids and tools. Then call the tools with `CONNECTION_TOOL_CALL`.
+   - **VTEX** (search `vtex top searches`): top searches and search
+     suggestions (`VTEX_IS_GET_TOP_SEARCHES`, `VTEX_IS_GET_SEARCH_SUGGESTIONS`)
+     for Palavras-chave; categories, brands and collections
+     (`VTEX_LIST_CATEGORIES`, `VTEX_LIST_BRANDS`, `VTEX_LIST_COLLECTIONS`) for
+     Vocabulário and for what the brand sells; the orders trend
+     (`VTEX_GET_ORDERS_TREND`) for the peaks behind Datas especiais.
+   - **GA4** (search `analytics run report`): the most visited pages over the
+     last 90 days, and the audience by `userAgeBracket`, `region` and
+     `deviceCategory`, for Público. A property without demographics answers
+     age empty; keep region and device.
+   - **Search Console** (search `search console query`): the queries with the
+     most impressions over the last 90 days, for Palavras-chave.
 
-   A connection that is missing, or that answers "Connection not found" or
-   access denied, is a gap to report, not a reason to stop.
+   A system is missing only when its search finds no connection, or its call
+   answers "Connection not found" or access denied. Then it is a gap to
+   report, not a reason to stop.
 4. **The web, for two sections only.** Competitors and special dates are what
-   a site never states about itself. Search the brand's own market, in its
-   language, and keep the URL behind every claim. Nothing else comes from the
-   web.
+   a site never states about itself. Search with your own `WebSearch` and read
+   pages with `WebFetch`, never Studio's `web_search`: that one needs the
+   organization's model, and a fill on a person's Claude plan has none. Search
+   the brand's own market, in its language, and keep the URL behind every
+   claim. If neither tool answers, leave both sections empty and say why.
+   Nothing else comes from the web.
 
 Read breadth before depth: voice repeats across a site, so fifteen pages read
 shallowly describe it better than five read in full.
@@ -125,9 +160,11 @@ claims all fail stays empty.
 ## Modes
 
 - **Only empty** (the default, and what "keep what is already written" means):
-  write sections that are missing or empty; leave every other one untouched.
-- **Replace** (only when asked): rewrite the sections you have evidence for.
-  Never blank a section because you found nothing for it.
+  write sections that are missing or empty, and the core tokens `tokens.css`
+  lacks; leave every other section and every value already set untouched.
+- **Replace** (only when asked): rewrite the sections and core tokens you have
+  evidence for. Never blank a section, or drop a token, because you found
+  nothing for it.
 
 ## Writing the file
 
@@ -135,6 +172,11 @@ With no `brand.md` yet, create it — and its folder — as `SKILL.md` describes
 frontmatter first. Otherwise edit `brand.md` in place. Change only the sections you are filling and the
 frontmatter keys you are setting; every other byte stays as it was, including
 section numbering, the opening quote and anything the page or a person wrote.
+`tokens.css` follows the same rule: create it with the core when it is
+missing, otherwise change only the tokens you are setting.
+
 Then say, briefly, what you filled, what you left empty and why, which
-sources you used, and which of the store's systems you read, or could not
-reach and why.
+sources you used, and the colors and fonts you set with the file each came
+from. For VTEX, GA4 and Search Console, one line each: what you read, or the
+search or call that failed. "Did not look" is not an answer; go back and
+look.
