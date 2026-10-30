@@ -1202,10 +1202,6 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
-  "sandbox.repoRow.label": "Repositório",
-  "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
-  "sandbox.repoRow.tooltipContent":
-    "O repositório GitHub conectado para este projeto. Gerencie em Conexões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",

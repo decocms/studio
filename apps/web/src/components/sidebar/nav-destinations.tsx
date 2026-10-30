@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import type { LinkProps } from "@tanstack/react-router";
 import {
   Activity,
+  Settings01,
   Columns03,
   Folder,
   Home02,
@@ -45,19 +46,28 @@ interface NavDestination {
 
 /** Settings has no row any more, but the VALUE stays: PostHog dashboards key
  *  on it, and its replacement should report as the same series. */
-export const SETTINGS_DESTINATION = "settings";
+export const SETTINGS_DESTINATION = "settings" as const;
 
 /** The display order `useNavDestinations` maps over. The keyed record below is
  *  exhaustive over it, so the two cannot drift. */
 export const NAV_DESTINATION_KEYS = [
   "overview",
   "files",
+  "monitor",
   "plan",
   "tasks",
-  "monitor",
 ] as const;
 
-type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
+/** A project's rows: the org's, then its own settings. */
+export function navDestinationKeys(inProject: boolean) {
+  return inProject
+    ? ([...NAV_DESTINATION_KEYS, SETTINGS_DESTINATION] as const)
+    : NAV_DESTINATION_KEYS;
+}
+
+type NavDestinationKey =
+  | (typeof NAV_DESTINATION_KEYS)[number]
+  | typeof SETTINGS_DESTINATION;
 
 /** The destinations, in display order. */
 function useNavDestinations(): NavDestination[] {
@@ -134,7 +144,19 @@ function useNavDestinations(): NavDestination[] {
           }
         : { to: DESTINATION_ROUTE.monitoring, params: { org: org.slug } },
     },
-    /** A project's Context is its own folder and settings; the org's is the drive. */
+    /** A project's settings; the org's open from the footer gear instead. */
+    settings: {
+      key: "settings",
+      label: t("sidebar.navDestinations.settings"),
+      icon: <Settings01 size={16} />,
+      isActive: leafPath === PROJECT_ROUTE.settings,
+      trackAs: SETTINGS_DESTINATION,
+      link: {
+        to: PROJECT_ROUTE.settings,
+        params: { org: org.slug, agentId: scopeId ?? "" },
+      },
+    },
+    /** A project's Context is what its agents know; the org's is the drive. */
     files: {
       key: "files",
       label: t("sidebar.navDestinations.context"),
@@ -152,7 +174,7 @@ function useNavDestinations(): NavDestination[] {
     },
   };
 
-  return NAV_DESTINATION_KEYS.map((key) => rows[key]);
+  return navDestinationKeys(!!scopeId).map((key) => rows[key]);
 }
 
 /** The destination list; chat opens from the sidebar header instead.
