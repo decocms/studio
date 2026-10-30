@@ -5,6 +5,7 @@ import {
   type BlogCardPatch,
   BlogCardPatchSchema,
   BlogCardSchema,
+  blogCardOfThread,
   MAX_BLOG_CARD_BYTES,
 } from "@decocms/shared/blog-card";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
@@ -12,6 +13,7 @@ import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { resolveHiddenProjectIds } from "../../core/project-scope";
+import type { StudioContext } from "../../core/studio-context";
 import {
   CAMPAIGNS_DIR,
   CARDS_DIR,
@@ -89,6 +91,41 @@ export function cardPatchRefusal(
     return "This card's branch is already cut on its site. Create a new card to write for another site.";
   }
   return null;
+}
+
+/** Why a call may not act as a card's run, or null for the card's own run. */
+export function cardRunRefusal(
+  runThreadId: string | null,
+  card: Pick<BlogCard, "threadId"> | null,
+): string | null {
+  if (!runThreadId) {
+    return "Only a blogpost card's own run may call this; a person or another chat may not.";
+  }
+  if (!card) return "This chat runs no blogpost card.";
+  if (card.threadId !== runThreadId) {
+    return "This chat is not the run of the card it names.";
+  }
+  return null;
+}
+
+/** Refuse anything but a blogpost card's own run. A chat's mark can be written by anyone, so the card must name the chat too. */
+export async function requireCardRun(
+  ctx: StudioContext,
+  orgFs: OrgFs,
+  brand: string,
+): Promise<void> {
+  const runThreadId = callerRunThread(ctx);
+  let card: BlogCard | null = null;
+  if (runThreadId) {
+    const thread = await ctx.storage.threads.get(runThreadId).catch(() => null);
+    const mark = blogCardOfThread(thread?.metadata);
+    const record = mark
+      ? await readBlogRecord(orgFs, recordPath(brand, CARDS_DIR, mark.cardId))
+      : null;
+    card = mark && record ? parseCard(mark.cardId, record.data) : null;
+  }
+  const refusal = cardRunRefusal(runThreadId, card);
+  if (refusal) throw new Error(refusal);
 }
 
 /** A stored card, read as one, with its filename as its id. */

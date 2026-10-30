@@ -110,7 +110,9 @@ O run do card e o de um job começam no modelo da org e, sem nenhum, no plano
 Claude de quem disparou, como o chat (`dispatchSuperAgentTurn`). No despacho o plano tem prioridade
 sobre a chave da org de todo jeito. Imagem é a exceção: o Claude não gera
 imagem, então `BLOG_POST_ILLUSTRATE` precisa de um modelo de imagem da org, e
-sem ele o post sai sem imagens e com a lacuna `no-image-model`. Para a web, o
+sem ele o post sai sem imagens e com a lacuna `no-image-model`. Ela só atende o
+run do próprio card (`requireCardRun`): a marca da thread não basta, porque
+qualquer um pode escrevê-la, então o card também tem de apontar o chat. Para a web, o
 agente usa o `WebSearch` e o `WebFetch` do próprio Claude Code: o
 `web_search` do Studio precisa do modelo da org.
 

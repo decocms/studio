@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { MAX_OFFERED_PHOTOS } from "@decocms/shared/blog-campaign";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
-import { requireBlogAi } from "./feature-flag";
+import { requireCardRun } from "./cards";
 import { painterFor } from "./cover-image";
 import {
   clearSentinels,
@@ -11,6 +10,7 @@ import {
   withImageAt,
 } from "./block-props";
 import { fetchProductPhotos, MAX_REFERENCE_PHOTOS } from "./product-photo";
+import { resolveBlogScope } from "./state";
 
 /**
  * The pictures for a post, after the post exists.
@@ -40,7 +40,7 @@ const MAX_URL_CHARS = 2_048;
 export const BLOG_POST_ILLUSTRATE = defineTool({
   name: "BLOG_POST_ILLUSTRATE",
   description:
-    "Draw the images a drafted post asked for and upload them to the organization's bucket. Give it the product photographs the post names and the generation is conditioned on the real product instead of inventing one. Returns an address per request, empty for any that could not be made — a post without its cover is still a post.",
+    "Draw the images a drafted post asked for and upload them to the organization's bucket. Give it the product photographs the post names and the generation is conditioned on the real product instead of inventing one. Returns an address per request, empty for any that could not be made — a post without its cover is still a post. Answers only a blogpost card's own run.",
   annotations: {
     title: "Illustrate a Post",
     /** Uploads what it draws to the organization's bucket. */
@@ -156,16 +156,8 @@ export const BLOG_POST_ILLUSTRATE = defineTool({
     `${r.images.filter((i) => i.url).length}/${r.images.length} image(s) drawn (${r.outcome})${r.referenced > 0 ? `, from ${r.referenced} product photo(s)` : ", from the brief alone"}.`,
 
   handler: async (input, ctx) => {
-    requireAuth(ctx);
-    await ctx.access.check();
-
-    const organizationId = ctx.organization?.id;
-    if (!organizationId) {
-      throw new Error(
-        "Organization ID required (no active organization in context)",
-      );
-    }
-    await requireBlogAi(ctx, organizationId);
+    const { organizationId, orgFs, brand } = await resolveBlogScope(ctx);
+    await requireCardRun(ctx, orgFs, brand);
 
     const painter = await painterFor(
       ctx,

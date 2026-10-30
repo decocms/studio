@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cardPatchRefusal } from "./cards";
+import { cardPatchRefusal, cardRunRefusal } from "./cards";
 
 const CARD = {
   threadId: "thrd_card",
@@ -57,5 +57,27 @@ describe("cardPatchRefusal", () => {
       "branch",
     );
     expect(cardPatchRefusal(cut, { virtualMcpId: "vmcp_1" }, null)).toBeNull();
+  });
+});
+
+describe("cardRunRefusal", () => {
+  test("only the card's own run may act as it", () => {
+    expect(cardRunRefusal("thrd_card", { threadId: "thrd_card" })).toBeNull();
+  });
+
+  test("a person, or a chat that runs no card, may not", () => {
+    expect(cardRunRefusal(null, { threadId: "thrd_card" })).toContain(
+      "own run",
+    );
+    expect(cardRunRefusal("thrd_chat", null)).toContain("no blogpost card");
+  });
+
+  test("a chat marked with a card it does not run may not", () => {
+    expect(cardRunRefusal("thrd_other", { threadId: "thrd_card" })).toContain(
+      "not the run",
+    );
+    expect(cardRunRefusal("thrd_card", { threadId: undefined })).toContain(
+      "not the run",
+    );
   });
 });
