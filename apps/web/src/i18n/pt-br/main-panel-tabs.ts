@@ -584,6 +584,11 @@ export const mainPanelTabs = {
     "Ninguém no site agora — reproduzindo o período selecionado ({range}).",
   "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globo",
   "mainPanelTabs.analyticsTab.globe.modeMap": "Mapa",
+  // Legenda: capitalizada, ao contrário dos substantivos de meio de frase acima.
+  "mainPanelTabs.analyticsTab.globe.legend": "O que o mapa mostra",
+  "mainPanelTabs.analyticsTab.globe.legendVisits": "Visitas",
+  "mainPanelTabs.analyticsTab.globe.legendCarts": "Carrinhos",
+  "mainPanelTabs.analyticsTab.globe.legendConversions": "Conversões",
   "mainPanelTabs.analyticsTab.globe.loadError":
     "Não foi possível carregar o renderizador do mapa. Os números acima continuam ao vivo.",
   "mainPanelTabs.analyticsTab.viewQuality": "Qualidade dos dados",

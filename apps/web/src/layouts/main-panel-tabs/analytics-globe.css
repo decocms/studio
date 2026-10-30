@@ -39,11 +39,12 @@
 
   position: relative;
   width: 100%;
-  /* Half the window: the map sits between the Realtime numbers and the feed,
-     and the feed must stay reachable without a long scroll. Bounded in `vh`
-     with a `min()` so it does not outgrow a short laptop screen. */
-  height: min(52vh, 36rem);
-  min-height: 20rem;
+  /* What the viewport leaves after the Realtime numbers above and the legend
+     below: the legend is what makes the map's colours readable, so it is the
+     one thing that must not fall below the fold. Clamped at both ends — it
+     still has to fit a short laptop, and it stops growing on a tall display so
+     the feed stays one short scroll away. */
+  height: clamp(20rem, calc(100vh - 22rem), 46rem);
   border-radius: var(--radius);
   overflow: hidden;
   background: var(--globe-ocean);
