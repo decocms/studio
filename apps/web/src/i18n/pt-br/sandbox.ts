@@ -497,6 +497,7 @@ export const sandbox = {
   "sandbox.collectionsSidebar.postSchedule": "Agendamento",
   "sandbox.collectionsSidebar.posts": "Posts",
   "sandbox.collectionsSidebar.redirects": "Redirecionamentos",
+  "sandbox.collectionsSidebar.savedBlocks": "Blocos salvos",
   "sandbox.collectionsSidebar.sections": "Seções",
   "sandbox.collectionsSidebar.seo": "SEO",
   "sandbox.collectionsSidebar.settings": "Configurações",
@@ -519,6 +520,16 @@ export const sandbox = {
   "sandbox.contentBrowser.duplicateFailed": "Falha ao duplicar",
   "sandbox.contentBrowser.duplicatedSection": '"{name}" duplicada',
   "sandbox.contentBrowser.renameFailed": "Falha ao renomear",
+  "sandbox.contentBrowser.savedBlocks.empty": "Nenhum bloco salvo ainda.",
+  "sandbox.contentBrowser.savedBlocks.emptyHint":
+    "Salve uma seção ou um carregador para reutilizá-lo em várias páginas.",
+  "sandbox.contentBrowser.savedBlocks.loaders": "Carregadores salvos",
+  "sandbox.contentBrowser.savedBlocks.search": "Buscar blocos salvos…",
+  "sandbox.contentBrowser.savedBlocks.sections": "Seções salvas",
+  "sandbox.contentBrowser.savedBlocks.selectDescription":
+    "Escolha uma seção ou um carregador salvo na lista para editar.",
+  "sandbox.contentBrowser.savedBlocks.selectTitle":
+    "Selecione um bloco salvo para editar",
   "sandbox.contentBrowser.sectionNotFound": "Seção não encontrada.",
   "sandbox.contentBrowser.sectionRenamed": "Seção renomeada",
   "sandbox.drawer.failedToRestart": "Falha ao reiniciar {name}",

@@ -15,6 +15,7 @@ import {
   AlertCircle,
   CornerUpRight,
   Cube01,
+  Database01,
   File02,
   Globe01,
   Grid01,
@@ -142,7 +143,13 @@ import { usePostStatusMove } from "./blog/use-post-status-move";
 import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
 import { SavedPageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
-import { countAvailableRunnables } from "./runnable-catalog";
+import {
+  countAvailableRunnables,
+  filterSavedRunnables,
+  listSavedRunnables,
+  runnableLocationLabel,
+  type SavedRunnableEntry,
+} from "./runnable-catalog";
 import { EmptyMessage } from "./empty-message";
 import { SectionsRightPane } from "./sections-right-pane";
 import { useConflictMembers } from "@/components/sections-editor/conflict-author";
@@ -256,6 +263,7 @@ export type CollectionId =
   | "loaders"
   | "actions"
   | "redirects"
+  | "saved-blocks"
   | "context"
   | BlogKind;
 
@@ -301,6 +309,7 @@ export type CollectionCounts = Record<
   | "loaders"
   | "actions"
   | "redirects"
+  | "savedBlocks"
   | "posts"
   | "authors"
   | "categories",
@@ -317,6 +326,7 @@ type Selection =
     }
   | { collection: "apps"; key: string }
   | { collection: "redirects"; key: string }
+  | { collection: "saved-loader"; key: string }
   | { collection: BlogKind; key: string }
   | null;
 
@@ -800,6 +810,7 @@ function ContentBrowserReady({
     a.from.localeCompare(b.from),
   );
   const globalSections = extractGlobalSections(decofile, meta);
+  const savedLoaders = listSavedRunnables(meta, decofile, "loaders");
   // Only the Sections tab needs the raw catalog. Use the cheap lister (labels
   // only, no per-section schema resolution) — resolving every section's schema
   // here froze the tab on sites with many sections.
@@ -853,6 +864,7 @@ function ContentBrowserReady({
     loaders: loadersCount,
     actions: actionsCount,
     redirects: redirects.length,
+    savedBlocks: globalSections.length + savedLoaders.length,
     posts: allBlogEntries.posts.length,
     authors: allBlogEntries.authors.length,
     categories: allBlogEntries.categories.length,
@@ -898,7 +910,9 @@ function ContentBrowserReady({
     const wanted: CollectionId =
       selection.collection === "available-section"
         ? "sections"
-        : selection.collection;
+        : selection.collection === "saved-loader"
+          ? "saved-blocks"
+          : selection.collection;
     if (storedCollection !== wanted) setActiveCollection(wanted);
   }
   const typesEditorOpen =
@@ -1574,6 +1588,42 @@ function ContentBrowserReady({
               target={{ kind: "site" }}
               previewBaseUrl={sitePreviewUrl}
             />
+          ) : activeCollection === "saved-blocks" ? (
+            selection?.collection === "saved-loader" &&
+            Object.hasOwn(decofile, selection.key) ? (
+              <RunnableBlocksBrowser
+                key={`saved:${selection.key}`}
+                initialSavedKey={selection.key}
+                onBack={() => setSelection(null)}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                previewUrl={previewUrl}
+                meta={meta}
+                decofile={decofile}
+                kind="loaders"
+              />
+            ) : selection?.collection === "sections" ? (
+              <SectionsRightPane
+                selection={selection}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                previewUrl={previewUrl}
+                meta={meta}
+                decofile={decofile}
+                isCreating={saveBlock.isPending}
+                onCreateAvailable={handleCreateAvailableSection}
+                onSaveReferencedBlock={saveReferencedBlock}
+              />
+            ) : (
+              <EmptyMessage
+                title={t("sandbox.contentBrowser.savedBlocks.selectTitle")}
+                description={t(
+                  "sandbox.contentBrowser.savedBlocks.selectDescription",
+                )}
+              />
+            )
           ) : activeCollection === "sections" ? (
             <SectionsRightPane
               selection={
@@ -1818,6 +1868,7 @@ function ContentBrowserReady({
               redirects={redirects}
               sections={globalSections}
               availableSections={availableSections}
+              savedLoaders={savedLoaders}
               appCatalog={appCatalog}
               canInstallApps={canInstallApps}
               installingAppId={
@@ -2090,6 +2141,7 @@ function ItemList({
   redirects,
   sections,
   availableSections,
+  savedLoaders,
   appCatalog,
   canInstallApps,
   installingAppId,
@@ -2119,6 +2171,7 @@ function ItemList({
   redirects: RedirectEntry[];
   sections: GlobalSectionEntry[];
   availableSections: AvailableSectionEntry[];
+  savedLoaders: SavedRunnableEntry[];
   appCatalog: AppCatalogEntry[];
   /** Whether this project has a stack to install FOR — see ContentBrowser. */
   canInstallApps: boolean;
@@ -2174,6 +2227,7 @@ function ItemList({
   // Group saved sections by their underlying resolveType (the section's
   // component), so the list reads as families of the same kind.
   const savedSectionGroups = groupSavedSectionsByResolveType(filteredSections);
+  const filteredSavedLoaders = filterSavedRunnables(savedLoaders, searchQuery);
   const filteredApps = appCatalog.filter(
     (entry) =>
       !q ||
@@ -2194,7 +2248,10 @@ function ItemList({
       ? orderCategoryTree(filteredBlog)
       : filteredBlog.map((entry) => ({ entry, depth: 0 }));
 
-  const placeholder = `Search ${activeCollection}…`;
+  const placeholder =
+    activeCollection === "saved-blocks"
+      ? t("sandbox.contentBrowser.savedBlocks.search")
+      : `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
     ? `Create new ${BLOG_SINGULAR[activeCollection]}`
     : activeCollection === "redirects"
@@ -2202,7 +2259,44 @@ function ItemList({
       : "Create new page";
   // Sections are created by saving an available section, not via the "+".
   const showCreateButton =
-    activeCollection !== "apps" && activeCollection !== "sections";
+    activeCollection !== "apps" &&
+    activeCollection !== "sections" &&
+    activeCollection !== "saved-blocks";
+
+  const savedSectionRows = savedSectionGroups.map((group) => (
+    <div key={group.label} className="flex flex-col gap-1">
+      <div className="px-2.5 pt-1 pb-0.5 text-2xs font-medium text-muted-foreground/60">
+        {group.label}
+      </div>
+      {group.sections.map((section) => {
+        const isActive =
+          selection?.collection === "sections" && selection.key === section.key;
+        return (
+          <ItemRow
+            key={section.key}
+            icon={Globe01}
+            accent="global"
+            title={section.name}
+            subtitle={group.label}
+            active={isActive}
+            onClick={() =>
+              onSelect({
+                collection: "sections",
+                key: section.key,
+              })
+            }
+            menu={
+              <ItemActions
+                onDuplicate={() => onDuplicateSection(section)}
+                onRename={() => onRenameSection(section)}
+                onDelete={() => onDeleteSection(section)}
+              />
+            }
+          />
+        );
+      })}
+    </div>
+  ));
 
   return (
     <div className="shrink-0 border-r flex flex-col min-h-0 w-[300px]">
@@ -2297,43 +2391,7 @@ function ItemList({
                 {savedSectionGroups.length > 0 && (
                   <>
                     <GroupHeader icon={Globe01} label="Saved sections" />
-                    {savedSectionGroups.map((group) => (
-                      <div key={group.label} className="flex flex-col gap-1">
-                        <div className="px-2.5 pt-1 pb-0.5 text-2xs font-medium text-muted-foreground/60">
-                          {group.label}
-                        </div>
-                        {group.sections.map((section) => {
-                          const isActive =
-                            selection?.collection === "sections" &&
-                            selection.key === section.key;
-                          return (
-                            <ItemRow
-                              key={section.key}
-                              icon={Globe01}
-                              accent="global"
-                              title={section.name}
-                              subtitle={group.label}
-                              active={isActive}
-                              onClick={() =>
-                                onSelect({
-                                  collection: "sections",
-                                  key: section.key,
-                                })
-                              }
-                              menu={
-                                <ItemActions
-                                  onDuplicate={() =>
-                                    onDuplicateSection(section)
-                                  }
-                                  onRename={() => onRenameSection(section)}
-                                  onDelete={() => onDeleteSection(section)}
-                                />
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                    ))}
+                    {savedSectionRows}
                   </>
                 )}
                 {filteredAvailableSections.length > 0 && (
@@ -2368,6 +2426,55 @@ function ItemList({
                         />
                       );
                     })}
+                  </>
+                )}
+              </>
+            )
+          ) : activeCollection === "saved-blocks" ? (
+            savedSectionGroups.length === 0 &&
+            filteredSavedLoaders.length === 0 ? (
+              <ListEmpty
+                hasItems={sections.length > 0 || savedLoaders.length > 0}
+                emptyLabel={t("sandbox.contentBrowser.savedBlocks.empty")}
+                emptyHint={t("sandbox.contentBrowser.savedBlocks.emptyHint")}
+              />
+            ) : (
+              <>
+                {savedSectionGroups.length > 0 && (
+                  <>
+                    <GroupHeader
+                      icon={Globe01}
+                      label={t("sandbox.contentBrowser.savedBlocks.sections")}
+                    />
+                    {savedSectionRows}
+                  </>
+                )}
+                {filteredSavedLoaders.length > 0 && (
+                  <>
+                    <GroupHeader
+                      icon={Database01}
+                      label={t("sandbox.contentBrowser.savedBlocks.loaders")}
+                      className={cn(savedSectionGroups.length > 0 && "mt-3")}
+                    />
+                    {filteredSavedLoaders.map((loader) => (
+                      <ItemRow
+                        key={loader.key}
+                        icon={Database01}
+                        accent="global"
+                        title={loader.title}
+                        subtitle={runnableLocationLabel(loader.resolveType)}
+                        active={
+                          selection?.collection === "saved-loader" &&
+                          selection.key === loader.key
+                        }
+                        onClick={() =>
+                          onSelect({
+                            collection: "saved-loader",
+                            key: loader.key,
+                          })
+                        }
+                      />
+                    ))}
                   </>
                 )}
               </>
