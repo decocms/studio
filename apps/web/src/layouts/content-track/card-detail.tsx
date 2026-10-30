@@ -7,12 +7,10 @@
  * the card arrives through the board's own subscription.
  */
 
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import {
   AlertCircle,
   BarChart07,
-  Calendar,
-  Check,
   CheckCircle,
   Clock,
   CornerDownRight,
@@ -23,10 +21,7 @@ import {
   Globe01,
   LinkExternal01,
   MessageChatCircle,
-  Package,
-  SearchMd,
   SlashCircle01,
-  Star01,
   Tag01,
   Target04,
 } from "@untitledui/icons";
@@ -35,9 +30,7 @@ import {
   BLOG_CARD_STATUSES,
   type BlogCard,
   type BlogCardStatus,
-  type BlogEvidenceSource,
 } from "@decocms/shared/blog-card";
-import { pickBlogConnection } from "@decocms/shared/blog-connections";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -66,7 +59,6 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { CompareFrame } from "@/components/thread/repository/cms-publish-compare";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
-import { useConnections } from "@/sdk";
 import { CARD_STATUS_LABEL } from "./blogposts-board";
 import {
   type CardPhase,
@@ -76,6 +68,17 @@ import {
   imageReady,
   stageDone,
 } from "./card-model";
+import {
+  FrameLine,
+  Group,
+  KeywordChips,
+  Pending,
+  PhaseSteps,
+  PropertiesPanel,
+  Row,
+  Section,
+} from "./detail-parts";
+import { EvidenceBySource } from "./evidence-grid";
 import { RoleAtWork, RoleAvatar } from "./newsroom";
 import { PostBody } from "./post-body";
 import {
@@ -93,22 +96,6 @@ const PHASE_LABEL = {
   monitor: "contentTrack.phase.monitor",
 } as const satisfies Record<CardPhase, TranslationKey>;
 
-const SOURCE_LABEL = {
-  gsc: "contentTrack.card.source.gsc",
-  ga4: "contentTrack.card.source.ga4",
-  vtex: "contentTrack.card.source.vtex",
-  calendar: "contentTrack.card.source.calendar",
-  brand: "contentTrack.card.source.brand",
-} as const satisfies Record<BlogEvidenceSource, TranslationKey>;
-
-const SOURCE_ICON = {
-  gsc: SearchMd,
-  ga4: BarChart07,
-  vtex: Package,
-  calendar: Calendar,
-  brand: Star01,
-} as const satisfies Record<BlogEvidenceSource, unknown>;
-
 const STAGE_LABEL = {
   grounding: "contentTrack.card.stage.grounding",
   drafting: "contentTrack.card.stage.drafting",
@@ -119,9 +106,6 @@ const STAGE_LABEL = {
   Exclude<(typeof BLOG_CARD_STAGES)[number], "done">,
   TranslationKey
 >;
-
-/** The four systems a hypothesis is read against, always shown. */
-const SIGNALS = ["gsc", "ga4", "vtex", "calendar"] as const;
 
 export function CardDetail({
   card,
@@ -210,6 +194,8 @@ export function CardDetail({
       </Page.Actions>
       <Panel.Toolbar.Left.Portal>
         <PhaseSteps
+          steps={PHASES}
+          labels={PHASE_LABEL}
           phase={phase}
           reached={defaultPhase(card)}
           onSelect={setPhase}
@@ -285,78 +271,6 @@ export function CardDetail({
   );
 }
 
-/** The card's phases as steps: the ones it has passed are done. */
-function PhaseSteps({
-  phase,
-  reached,
-  onSelect,
-}: {
-  phase: CardPhase;
-  reached: CardPhase;
-  onSelect: (phase: CardPhase) => void;
-}) {
-  const t = useT();
-  return (
-    <div className="flex items-center gap-1">
-      {PHASES.map((entry, index) => {
-        const active = entry === phase;
-        const done = index < PHASES.indexOf(reached);
-        return (
-          <button
-            key={entry}
-            type="button"
-            onClick={() => onSelect(entry)}
-            className={cn(
-              "flex items-center gap-[7px] rounded-full px-[13px] py-[5px] text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted",
-              active && "bg-muted font-semibold text-foreground",
-            )}
-          >
-            <span
-              className={cn(
-                "grid size-[15px] place-items-center rounded-full border-[1.5px] border-current",
-                done && "border-foreground bg-foreground text-background",
-                active && !done && "border-foreground",
-              )}
-            >
-              {done ? (
-                <Check size={10} />
-              ) : active ? (
-                <span className="size-1.5 rounded-full bg-foreground" />
-              ) : null}
-            </span>
-            {t(PHASE_LABEL[entry])}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-[9px]">
-      <h3 className="text-[12.5px] font-medium text-muted-foreground">
-        {title}
-      </h3>
-      {children}
-    </section>
-  );
-}
-
-/** Lines of text that are not there yet, with the role writing them. */
-function Pending({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex flex-col items-start gap-3">
-      {children}
-      <div className="flex w-full flex-col gap-2">
-        <Skeleton className="h-4 w-11/12" />
-        <Skeleton className="h-4 w-4/5" />
-        <Skeleton className="h-4 w-1/2" />
-      </div>
-    </div>
-  );
-}
-
 function HypothesisPhase({
   card,
   campaign,
@@ -367,8 +281,6 @@ function HypothesisPhase({
   working: boolean;
 }) {
   const t = useT();
-  const connections = useConnections();
-  const gscConnected = !!pickBlogConnection("gsc", connections);
   const hypothesis = card.hypothesis ?? {};
   const evidence = hypothesis.evidence ?? [];
 
@@ -386,10 +298,6 @@ function HypothesisPhase({
       </p>
     );
   }
-
-  const sources = evidence.some((item) => item.source === "brand")
-    ? [...SIGNALS, "brand" as const]
-    : SIGNALS;
 
   return (
     <div className="flex flex-col gap-6">
@@ -439,91 +347,12 @@ function HypothesisPhase({
       </section>
 
       <Section title={t("contentTrack.card.signals")}>
-        <div className="grid gap-[9px] sm:grid-cols-2">
-          {sources.map((source) => {
-            const [first, ...rest] = evidence.filter(
-              (item) => item.source === source,
-            );
-            const Icon = SOURCE_ICON[source];
-            return (
-              <div
-                key={source}
-                className="rounded-[11px] border border-border bg-card px-[13px] py-3"
-              >
-                <div className="mb-[9px] flex items-center gap-[7px]">
-                  <span className="grid size-[22px] shrink-0 place-items-center rounded-md border border-border bg-card text-muted-foreground">
-                    <Icon size={12} />
-                  </span>
-                  <span className="text-[11.5px] font-semibold text-muted-foreground">
-                    {t(SOURCE_LABEL[source])}
-                  </span>
-                </div>
-                {first ? (
-                  <>
-                    {first.figure ? (
-                      <>
-                        <div className="mb-[3px] text-[15px] font-semibold tracking-[-0.01em] text-foreground tabular-nums">
-                          {first.figure}
-                        </div>
-                        <p className="text-xs leading-[1.42] text-muted-foreground">
-                          {first.fact}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-[13px] leading-[1.45] text-foreground">
-                        {first.fact}
-                      </p>
-                    )}
-                    {rest.length > 0 && (
-                      <ul className="mt-2.5 flex flex-col gap-2 border-t border-border pt-2.5">
-                        {rest.map((item, index) => (
-                          <li
-                            key={index}
-                            className="text-xs leading-[1.42] text-muted-foreground"
-                          >
-                            {item.figure && (
-                              <span className="font-semibold text-foreground tabular-nums">
-                                {item.figure}{" "}
-                              </span>
-                            )}
-                            {item.fact}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {source === "gsc" && !gscConnected
-                      ? t("contentTrack.card.notConnected")
-                      : t("contentTrack.card.noSignal")}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <EvidenceBySource evidence={evidence} />
       </Section>
 
       {(hypothesis.keywords?.length ?? 0) > 0 && (
         <Section title={t("contentTrack.card.keywords")}>
-          <div className="flex flex-wrap gap-[7px]">
-            {hypothesis.keywords?.map((keyword) => (
-              <span
-                key={keyword.term}
-                className="inline-flex items-center gap-[7px] rounded-[9px] border border-border bg-card px-[11px] py-1.5 text-[12.5px] text-foreground"
-              >
-                {keyword.term}
-                {keyword.volume !== undefined && (
-                  <span className="text-[11px] text-muted-foreground">
-                    {t("contentTrack.card.perMonth", {
-                      volume: keyword.volume.toLocaleString(),
-                    })}
-                  </span>
-                )}
-              </span>
-            ))}
-          </div>
+          <KeywordChips keywords={hypothesis.keywords ?? []} />
         </Section>
       )}
 
@@ -633,28 +462,6 @@ function CampaignFrame({
           </FrameLine>
         )}
       </div>
-    </div>
-  );
-}
-
-function FrameLine({
-  icon,
-  label,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className="mt-px grid w-3.5 shrink-0 place-items-center text-muted-foreground">
-        {icon}
-      </span>
-      <p className="min-w-0 flex-1 text-muted-foreground">
-        <span className="font-semibold text-foreground">{label}</span>{" "}
-        {children}
-      </p>
     </div>
   );
 }
@@ -878,48 +685,6 @@ function PostContent({
   );
 }
 
-/** One property: an icon, its value, and what sits at its right. */
-function Row({
-  icon,
-  children,
-  trail,
-}: {
-  icon: ReactNode;
-  children: ReactNode;
-  trail?: ReactNode;
-}) {
-  return (
-    <div className="flex min-h-7 items-center gap-2 text-[13px] text-foreground">
-      <span className="grid w-4 shrink-0 place-items-center text-muted-foreground">
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1 truncate">{children}</div>
-      {trail && (
-        <span className="shrink-0 text-xs text-muted-foreground">{trail}</span>
-      )}
-    </div>
-  );
-}
-
-function Group({
-  caption,
-  children,
-}: {
-  caption?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      {caption && (
-        <span className="pb-1 text-xs font-medium text-muted-foreground">
-          {caption}
-        </span>
-      )}
-      {children}
-    </div>
-  );
-}
-
 function Properties({
   card,
   campaign,
@@ -941,10 +706,7 @@ function Properties({
     : "";
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-edge">
-      <span className="border-b border-border pb-2 text-[13px] font-semibold text-foreground">
-        {t("contentTrack.props.title")}
-      </span>
+    <PropertiesPanel title={t("contentTrack.props.title")}>
       <Group>
         <Row icon={<Clock size={14} />}>
           <Select
@@ -1012,6 +774,6 @@ function Properties({
           </Row>
         </Group>
       )}
-    </div>
+    </PropertiesPanel>
   );
 }
