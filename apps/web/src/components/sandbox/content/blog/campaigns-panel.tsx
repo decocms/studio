@@ -46,7 +46,7 @@ import {
 } from "@decocms/ui/components/alert-dialog.tsx";
 import type { CatalogSource } from "./blocks/catalog-source";
 import { useOpenBlogChat } from "@/hooks/use-open-blog-chat";
-import { GenerateCampaignsDialog } from "./generate-campaigns-dialog";
+import { useStudioTools } from "@/lib/studio-tools";
 import { SaveStatus } from "./save-status";
 import { CampaignEditor } from "./campaign-editor";
 import { CampaignEditorSheet, useCampaignCreate } from "./campaign-create";
@@ -116,7 +116,24 @@ export function CampaignsPanel({
   const decofile = blog.blocks;
 
   const openChat = useOpenBlogChat();
-  const [generateOpen, setGenerateOpen] = useState(false);
+  const studio = useStudioTools();
+  const [suggesting, setSuggesting] = useState(false);
+  /** A new draft whose agent suggests briefings, in a chat opened beside the page. */
+  const suggest = async () => {
+    setSuggesting(true);
+    try {
+      const { threadId } = await studio.call("BLOG_CAMPAIGN_RUN", {});
+      openChat(threadId, { view: "campaigns" });
+    } catch (err) {
+      toast.error(
+        t("sandbox.campaigns.suggestFailed", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    } finally {
+      setSuggesting(false);
+    }
+  };
   const [view, setView] = useState<CampaignView>("board");
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -144,11 +161,14 @@ export function CampaignsPanel({
     try {
       await save.mutateAsync({
         blockKey: key,
-        data: buildCampaignBlock({
-          ...campaign,
-          status: next,
-          updatedAt: new Date().toISOString(),
-        }),
+        data: {
+          ...(blog.blocks[key] as Record<string, unknown> | undefined),
+          ...buildCampaignBlock({
+            ...campaign,
+            status: next,
+            updatedAt: new Date().toISOString(),
+          }),
+        },
       });
     } catch (err) {
       toast.error(
@@ -212,10 +232,11 @@ export function CampaignsPanel({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => setGenerateOpen(true)}
+            disabled={suggesting}
+            onClick={() => void suggest()}
           >
             <Stars02 size={14} />
-            {t("sandbox.campaignGen.open")}
+            {t("sandbox.campaigns.suggest")}
           </Button>
           <Button
             type="button"
@@ -433,15 +454,6 @@ export function CampaignsPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <GenerateCampaignsDialog
-        open={generateOpen}
-        onOpenChange={setGenerateOpen}
-        decofile={decofile}
-        onStarted={(proposal) =>
-          openChat(proposal.threadId, { view: "campaigns" })
-        }
-      />
 
       <CampaignEditorSheet
         blockKey={view === "board" ? boardKey : null}

@@ -1098,52 +1098,6 @@ export function emptyCampaign(now: Date): Omit<CampaignEntry, "key"> {
 
 export { CAMPAIGN_SEED_KEY_PREFIX };
 
-/**
- * What a campaign generation starts from: the terms to aim at and the sentence
- * saying what the moment is.
- *
- * Stored rather than kept in the dialog because the generation reaches the
- * brand's own systems, and the answer changes as the store does — a seed worth
- * writing once is worth running again next quarter. Campaigns point back at it
- * through `seedKey`.
- */
-export interface CampaignSeedEntry {
-  key: string;
-  name: string;
-  keywords: string[];
-  prompt: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export function newCampaignSeedKey(): string {
-  return `${CAMPAIGN_SEED_KEY_PREFIX}${crypto.randomUUID()}`;
-}
-
-/** Every seed, newest first. Tolerant of a partial block, like its siblings. */
-export function scanCampaignSeeds(
-  decofile: Record<string, unknown>,
-): CampaignSeedEntry[] {
-  const seeds: CampaignSeedEntry[] = [];
-  for (const [key, value] of Object.entries(decofile)) {
-    if (!key.startsWith(CAMPAIGN_SEED_KEY_PREFIX)) continue;
-    const record = asRecord(value);
-    if (!record) continue;
-    seeds.push({
-      key,
-      name: str(record.seedName),
-      keywords: filledTerms(normalizeTerms(record.keywords)),
-      prompt: str(record.prompt),
-      createdAt: str(record.createdAt),
-      updatedAt: str(record.updatedAt),
-    });
-  }
-  return seeds.sort(
-    (a, b) =>
-      b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name),
-  );
-}
-
 // ------------------ Formats (loose post templates) ---------------------------
 
 /**

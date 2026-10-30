@@ -18,11 +18,11 @@ a de imagem, e só no run do próprio card.
    (`BLOG_BRAND_FILL`), que lê o repositório do site e os sistemas da loja.
 2. **Uma campanha**, em Content → Campanhas, lida da conexão VTEX da org. A
    meta dela (`goal`: o texto, a métrica e o alvo, até o fim do período) é
-   posta por uma pessoa; nenhum modelo propõe alvo. "Gerar campanhas"
-   (`BLOG_CAMPAIGNS_PROPOSE`) grava a semente e abre um chat do agente ao lado
-   da página: ele segue o `campaigns.md` e grava cada campanha como rascunho,
-   sem meta, com o `seedKey` da semente. Os rascunhos chegam ao vivo pelo
-   `brand.updated`, e no Novo blogpost o primeiro já fica selecionado.
+   posta por uma pessoa; nenhum modelo propõe alvo. Ninguém cria campanha do
+   zero: "Sugerir campanhas" (`BLOG_CAMPAIGN_RUN`) cria um rascunho e abre o
+   chat dele. O agente segue o `campaigns.md`: grava a evidência, sugere três
+   briefings, e desenvolve o que a pessoa escolher ou escrever. Tudo chega ao
+   vivo pelo `brand.updated`. Aprovar e pôr a meta continuam sendo da pessoa.
 3. **Novo blogpost.** `BLOG_CARD_CREATE` cria o card em Ideas, para um site e
    uma campanha, e `BLOG_CARD_RUN` com `phase: "hypothesis"` começa o agente.
    O post é da campanha: o agente parte dela e da meta, pergunta à VTEX, ao GA4
@@ -52,7 +52,6 @@ a de imagem, e só no run do próprio card.
 | --- | --- |
 | O card | `home/brands/<marca>/cards/<id>.json`, schema em `@decocms/shared/blog-card` |
 | As campanhas | `home/brands/<marca>/campaigns/<id>.json` |
-| As sementes | `home/brands/<marca>/campaign-seeds/<id>.json` |
 | O guia da marca | `home/brands/<marca>/brand.md` |
 | O chat do card | Uma thread do Super Agent no Claude Code, com id fixo por card (`blogCardThreadId`) e marcada com `metadata.blogCard` |
 | O chat de um job | Uma thread do Super Agent no Claude Code, marcada com `metadata.blogJob` (`brand-fill` ou `campaigns`) |
@@ -99,12 +98,16 @@ manifesto que leu, não de forma atômica com a própria escrita.
 | Tool | Quem chama | O que faz |
 | --- | --- | --- |
 | `BLOG_BRAND_FILL` | A página da marca e o setup do Content | Abre um chat que preenche o guia da marca |
-| `BLOG_CAMPAIGNS_PROPOSE` | "Gerar campanhas" | Grava a semente e abre um chat que propõe campanhas como rascunho |
+| `BLOG_CAMPAIGN_RUN` | "Sugerir campanhas" e a página da campanha | Cria o rascunho e o chat dele, ou dá o próximo passo: desenvolver o briefing escolhido |
 
-Os chats não recebem nenhuma das duas: só uma pessoa começa um job. Um chat de
-campanhas grava só os rascunhos que o job dele cunhou, com o `seedKey` da
-semente e sem meta, e não mexe numa campanha que uma pessoa já ativou ou à
-qual deu meta (`campaignsJobRefusal`, no `BLOG_STATE_SET`).
+Os chats não recebem nenhuma das duas: só uma pessoa começa um job.
+
+Uma campanha muda pelo `BLOG_CAMPAIGN_UPDATE`, por merge, como o card. O
+registro aponta o chat que a molda (`threadId`), e só esse chat a escreve, sem
+nunca mandar `status` nem `goal`. A pessoa só manda esses dois: nunca volta uma
+campanha aprovada para rascunho, e só aprova uma já desenvolvida. O
+`BLOG_STATE_SET` recusa toda escrita de agente em campanha ou semente, e toda
+remoção.
 
 ## O modelo do run
 
@@ -151,8 +154,8 @@ teste manual desta esteira já gravou um post direto na `main`.
   depois disso, com o servidor ainda trabalhando e cobrando. Com a escrita no
   Claude Code, só a imagem chega perto: uma por chamada.
 - **O primeiro turno do card sobe um sandbox do zero.** O card é o registro
-  durável, então perder a sessão custa tempo, não trabalho. Gerar campanhas
-  também sobe um, então os rascunhos levam alguns minutos.
+  durável, então perder a sessão custa tempo, não trabalho. Sugerir campanhas
+  também sobe um, então os briefings levam alguns minutos.
 - **As branches `blog-<id>` se acumulam** até alguém publicar ou limpar.
 
 ## O que honestamente não dá pra ser skill

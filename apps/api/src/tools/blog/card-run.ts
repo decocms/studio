@@ -67,7 +67,7 @@ export function blogCardThreadId(organizationId: string, cardId: string) {
  * was requested moments ago and has not started yet.
  */
 export function cardRunInFlight(
-  run: BlogCard["run"],
+  run: { requestedAt?: string } | undefined,
   thread: { status?: string | null; run_started_at?: string | null } | null,
   now: number,
 ): boolean {

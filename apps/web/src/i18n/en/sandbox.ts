@@ -146,34 +146,9 @@ export const sandbox = {
   "sandbox.campaigns.objectiveRetentionProduct":
     "What they already own — and what pairs with it.",
   "sandbox.campaigns.productImageLabel": "Product image",
-  "sandbox.campaignGen.countHint":
-    "At most. If the starting point is already specific, one comes back — and that is a good answer.",
-  "sandbox.campaignGen.countLabel": "How many proposals",
-  "sandbox.campaignGen.cancel": "Cancel",
-  "sandbox.campaignGen.failed": "Could not start the generation: {error}",
-  "sandbox.campaignGen.generate": "Generate",
-  "sandbox.campaignGen.keywordsHint":
-    "The terms this campaign should aim at. Enter or comma adds one.",
-  "sandbox.campaignGen.keywordsLabel": "Keywords",
-  "sandbox.campaignGen.keywordsPlaceholder": "Type a term and press Enter",
-  "sandbox.campaignGen.open": "Generate campaigns",
-  "sandbox.campaignGen.openChat": "Open the chat",
-  "sandbox.campaignGen.promptHint":
-    "In your words: what the moment is, and why it is worth writing about now.",
-  "sandbox.campaignGen.promptLabel": "What is happening",
-  "sandbox.campaignGen.promptPlaceholder":
-    "e.g. summer starts in December and we want to rank for sunscreen before our competitors do",
-  "sandbox.campaignGen.removeKeyword": "Remove term",
-  "sandbox.campaignGen.savedSeeds": "Saved starting points",
-  "sandbox.campaignGen.seedNameLabel": "Name",
-  "sandbox.campaignGen.seedNamePlaceholder": "e.g. Summer 2027",
-  "sandbox.campaignGen.subtitle":
-    "Write the starting point. The content track's agent reads the store's VTEX, GA4 and Search Console in a chat, and the campaigns arrive as drafts.",
-  "sandbox.campaignGen.title": "Generate campaigns",
-  "sandbox.campaignGen.untitledSeed": "Unnamed",
-  "sandbox.campaignGen.waiting":
-    "Generating in the chat. The first draft is chosen here as soon as it arrives.",
   "sandbox.campaigns.add": "New campaign",
+  "sandbox.campaigns.suggest": "Suggest campaigns",
+  "sandbox.campaigns.suggestFailed": "Could not start the suggestion: {error}",
   "sandbox.campaigns.addAvoid": "Add guardrail",
   "sandbox.campaigns.addTarget": "Add target",
   "sandbox.campaigns.avoidBodyPlaceholder":

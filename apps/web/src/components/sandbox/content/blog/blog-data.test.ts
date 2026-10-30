@@ -31,8 +31,6 @@ import {
   emptyCampaign,
   newCampaignKey,
   CAMPAIGN_KEY_PREFIX,
-  CAMPAIGN_SEED_KEY_PREFIX,
-  scanCampaignSeeds,
   PLANNING_POST_KEY_PREFIX,
   emptyDraftPostPayload,
   blockExample,
@@ -918,62 +916,6 @@ describe("scanCampaigns", () => {
 
   test("ignores a corrupt block rather than throwing", () => {
     expect(scanCampaigns({ [key]: "corrupt" })).toEqual([]);
-  });
-});
-
-describe("campaign seeds", () => {
-  const key = `${CAMPAIGN_SEED_KEY_PREFIX}a`;
-
-  test("reads a stored seed", () => {
-    const [seed] = scanCampaignSeeds({
-      [key]: {
-        seedName: "Verão 2027",
-        keywords: ["protetor solar", "praia"],
-        prompt: "Começar a falar de verão antes dos concorrentes.",
-        createdAt: "2026-01-01",
-        updatedAt: "2026-01-02",
-      },
-    });
-    expect(seed).toEqual({
-      key,
-      name: "Verão 2027",
-      keywords: ["protetor solar", "praia"],
-      prompt: "Começar a falar de verão antes dos concorrentes.",
-      createdAt: "2026-01-01",
-      updatedAt: "2026-01-02",
-    });
-  });
-
-  test("a half-written seed reads, because that is the normal case", () => {
-    const [seed] = scanCampaignSeeds({ [key]: { seedName: "Rascunho" } });
-    expect(seed?.name).toBe("Rascunho");
-    expect(seed?.keywords).toEqual([]);
-    expect(seed?.prompt).toBe("");
-  });
-
-  test("newest first", () => {
-    const seeds = scanCampaignSeeds({
-      [`${CAMPAIGN_SEED_KEY_PREFIX}a`]: {
-        seedName: "Antiga",
-        createdAt: "2026-01-01",
-      },
-      [`${CAMPAIGN_SEED_KEY_PREFIX}b`]: {
-        seedName: "Nova",
-        createdAt: "2026-02-01",
-      },
-    });
-    expect(seeds.map((s) => s.name)).toEqual(["Nova", "Antiga"]);
-  });
-
-  test("ignores blocks that are not seeds", () => {
-    expect(scanCampaignSeeds({ [`${CAMPAIGN_KEY_PREFIX}a`]: {} })).toEqual([]);
-  });
-
-  test("a campaign with no seedKey reads as empty, not undefined", () => {
-    const [campaign] = scanCampaigns({
-      [`${CAMPAIGN_KEY_PREFIX}x`]: { campaignName: "À mão" },
-    });
-    expect(campaign?.seedKey).toBe("");
   });
 });
 

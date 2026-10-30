@@ -69,7 +69,7 @@ const ALL_TOOL_NAMES = [
   "BLOG_CARD_DELETE",
   "BLOG_CARD_RUN",
   "BLOG_BRAND_FILL",
-  "BLOG_CAMPAIGNS_PROPOSE",
+  "BLOG_CAMPAIGN_RUN",
   "BLOG_CAMPAIGN_UPDATE",
   "BLOG_SITE_BLOCKS",
   "BLOG_POST_ASSEMBLE",
@@ -481,9 +481,9 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Blog",
   },
   {
-    name: "BLOG_CAMPAIGNS_PROPOSE",
+    name: "BLOG_CAMPAIGN_RUN",
     description:
-      "Propose campaigns from a seed in a chat of its own that reads the store's connections",
+      "Start or continue a campaign's agent in a chat of its own that reads the store's connections",
     category: "Blog",
   },
   {

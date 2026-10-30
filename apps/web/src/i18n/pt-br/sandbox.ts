@@ -149,34 +149,10 @@ export const sandbox = {
   "sandbox.campaigns.objectiveRetentionProduct":
     "O que ele já tem — e o que acompanha bem.",
   "sandbox.campaigns.productImageLabel": "Imagem do produto",
-  "sandbox.campaignGen.countHint":
-    "No máximo. Se o ponto de partida já for direto, vem uma só — e isso é uma boa resposta.",
-  "sandbox.campaignGen.countLabel": "Quantas propostas",
-  "sandbox.campaignGen.cancel": "Cancelar",
-  "sandbox.campaignGen.failed": "Não foi possível começar a geração: {error}",
-  "sandbox.campaignGen.generate": "Gerar",
-  "sandbox.campaignGen.keywordsHint":
-    "Os termos que essa campanha deve mirar. Enter ou vírgula adiciona.",
-  "sandbox.campaignGen.keywordsLabel": "Palavras-chave",
-  "sandbox.campaignGen.keywordsPlaceholder": "Escreva um termo e tecle Enter",
-  "sandbox.campaignGen.open": "Gerar campanhas",
-  "sandbox.campaignGen.openChat": "Abrir o chat",
-  "sandbox.campaignGen.promptHint":
-    "Em suas palavras: que momento é esse e por que vale escrever sobre ele agora.",
-  "sandbox.campaignGen.promptLabel": "O que está acontecendo",
-  "sandbox.campaignGen.promptPlaceholder":
-    "ex: o verão começa em dezembro e queremos chegar antes dos concorrentes na busca por protetor solar",
-  "sandbox.campaignGen.removeKeyword": "Remover termo",
-  "sandbox.campaignGen.savedSeeds": "Pontos de partida salvos",
-  "sandbox.campaignGen.seedNameLabel": "Nome",
-  "sandbox.campaignGen.seedNamePlaceholder": "ex: Verão 2027",
-  "sandbox.campaignGen.subtitle":
-    "Escreva o ponto de partida. O agente da esteira lê a VTEX, o GA4 e o Search Console da loja num chat, e as campanhas chegam como rascunho.",
-  "sandbox.campaignGen.title": "Gerar campanhas",
-  "sandbox.campaignGen.untitledSeed": "Sem nome",
-  "sandbox.campaignGen.waiting":
-    "Gerando no chat. O primeiro rascunho fica selecionado aqui assim que chegar.",
   "sandbox.campaigns.add": "Nova campanha",
+  "sandbox.campaigns.suggest": "Sugerir campanhas",
+  "sandbox.campaigns.suggestFailed":
+    "Não foi possível começar a sugestão: {error}",
   "sandbox.campaigns.addAvoid": "Adicionar guardrail",
   "sandbox.campaigns.addTarget": "Adicionar alvo",
   "sandbox.campaigns.avoidBodyPlaceholder":

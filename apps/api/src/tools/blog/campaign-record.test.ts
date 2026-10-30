@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  agentStateWriteRefusal,
   applyCampaignPatch,
   type CampaignPatch,
   campaignPatchRefusal,
+  campaignShell,
 } from "./campaign-record";
 
 const DEVELOPED = {
@@ -147,5 +149,41 @@ describe("applyCampaignPatch", () => {
     expect(() =>
       applyCampaignPatch(legacy, { intent: { keywords: ["x"] } }, NOW),
     ).toThrow("`intent` is not valid");
+  });
+});
+
+describe("campaignShell", () => {
+  test("a draft with no name yet, naming the chat that shapes it", () => {
+    const run = { requestedAt: NOW, requestedBy: "user_1" };
+    expect(campaignShell("thrd_1", run, NOW)).toMatchObject({
+      campaignName: "",
+      status: "draft",
+      threadId: "thrd_1",
+      run,
+    });
+    expect(
+      campaignShell("thrd_1", run, NOW, { text: "Mochilas" }).briefing,
+    ).toEqual({ text: "Mochilas" });
+  });
+});
+
+describe("agentStateWriteRefusal", () => {
+  const none = { campaigns: 0, seeds: 0, removals: 0 };
+
+  test("a person writes the blog state as before", () => {
+    expect(agentStateWriteRefusal(null, { ...none, campaigns: 2 })).toBeNull();
+  });
+
+  test("a chat changes campaigns elsewhere, and never seeds or removals", () => {
+    expect(
+      agentStateWriteRefusal("thrd_1", { ...none, campaigns: 1 }),
+    ).toContain("BLOG_CAMPAIGN_UPDATE");
+    expect(agentStateWriteRefusal("thrd_1", { ...none, seeds: 1 })).toContain(
+      "a person's",
+    );
+    expect(
+      agentStateWriteRefusal("thrd_1", { ...none, removals: 1 }),
+    ).toContain("a person's");
+    expect(agentStateWriteRefusal("thrd_1", none)).toBeNull();
   });
 });

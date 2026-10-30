@@ -3114,17 +3114,15 @@ export interface StudioToolIO {
     };
   };
   BLOG_BRAND_FILL: { input: { prompt: string }; output: { threadId: string } };
-  BLOG_CAMPAIGNS_PROPOSE: {
+  BLOG_CAMPAIGN_RUN: {
     input: {
-      seed: {
-        prompt: string;
-        id?: string | undefined;
-        name?: string | undefined;
-        keywords?: string[] | undefined;
-      };
-      count?: number | undefined;
+      campaignId?: string | undefined;
+      briefing?:
+        | { [x: string]: unknown; text: string; optionId?: string | undefined }
+        | undefined;
+      message?: string | undefined;
     };
-    output: { threadId: string; seedId: string; campaignIds: string[] };
+    output: { campaignId: string; threadId: string };
   };
   BLOG_CAMPAIGN_UPDATE: {
     input: {

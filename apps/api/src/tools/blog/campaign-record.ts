@@ -1,9 +1,11 @@
 import { BlogEvidenceSchema, mergeJsonPatch } from "@decocms/shared/blog-card";
 import {
   CAMPAIGN_STATUSES,
+  type CampaignBriefing,
   CampaignBriefingOptionSchema,
   CampaignBriefingSchema,
   campaignDeveloped,
+  type CampaignRun,
   CampaignRunSchema,
   MAX_CAMPAIGN_BRIEFINGS,
 } from "@decocms/shared/blog-campaign";
@@ -142,4 +144,38 @@ export function applyCampaignPatch(
     merged[key] = parsed.data;
   }
   return { ...merged, updatedAt: now };
+}
+
+/** A campaign before its agent's first turn: no name yet, a draft, and the chat that will shape it. */
+export function campaignShell(
+  threadId: string,
+  run: CampaignRun,
+  now: string,
+  briefing?: CampaignBriefing,
+): Record<string, unknown> {
+  return {
+    campaignName: "",
+    status: "draft",
+    seedKey: "",
+    threadId,
+    run,
+    ...(briefing ? { briefing } : {}),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** Why an agent may not make this BLOG_STATE_SET call: a campaign changes through BLOG_CAMPAIGN_UPDATE, and seeds and removals are a person's. */
+export function agentStateWriteRefusal(
+  runThreadId: string | null,
+  counts: { campaigns: number; seeds: number; removals: number },
+): string | null {
+  if (!runThreadId) return null;
+  if (counts.campaigns > 0) {
+    return "A chat changes a campaign with BLOG_CAMPAIGN_UPDATE, and only the campaign it shapes.";
+  }
+  if (counts.seeds > 0 || counts.removals > 0) {
+    return "Seeds and removals are a person's.";
+  }
+  return null;
 }

@@ -82,9 +82,6 @@ export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
 /** A seed's key, and what a campaign generated from it stores as `seedKey`. */
 export const CAMPAIGN_SEED_KEY_PREFIX = "blog-manager/campaign-seeds/";
 
-/** The most campaigns one proposal may write. */
-export const MAX_PROPOSED_CAMPAIGNS = 3;
-
 /** How many briefings one suggestion offers. */
 export const MAX_CAMPAIGN_BRIEFINGS = 3;
 

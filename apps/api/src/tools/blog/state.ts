@@ -13,7 +13,6 @@ import {
   CAMPAIGN_SEEDS_DIR,
   CAMPAIGNS_DIR,
   deleteBlogRecords,
-  readBlogRecord,
   readBlogState,
   recordPath,
   resolveBrandDir,
@@ -21,9 +20,12 @@ import {
   type BlogWrite,
 } from "../../file-storage/blog-state";
 import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
-import { callerBlogJob, campaignsJobRefusal } from "./blog-job";
+import { callerRunThread } from "./blog-job";
 import { requireBlogAi } from "./feature-flag";
-import { StoredCampaignSchema } from "./campaign-record";
+import {
+  agentStateWriteRefusal,
+  StoredCampaignSchema,
+} from "./campaign-record";
 
 /**
  * Reading and writing the blog's editorial state, for a caller with no browser.
@@ -165,7 +167,7 @@ export const BLOG_STATE_GET = defineTool({
 export const BLOG_STATE_SET = defineTool({
   name: "BLOG_STATE_SET",
   description:
-    "Write the organization's blog campaigns and campaign seeds, beside its brand guide. Every field is optional and only what is given is touched. Campaigns and seeds are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand, writing rules and formats are the guide's sections and are edited there, not here. A campaigns chat writes only the drafts its instructions name.",
+    "Write the organization's blog campaigns and campaign seeds, beside its brand guide. Every field is optional and only what is given is touched. Campaigns and seeds are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand, writing rules and formats are the guide's sections and are edited there, not here. A chat never writes here: it changes the campaign it shapes with BLOG_CAMPAIGN_UPDATE.",
   annotations: {
     title: "Write Blog State",
     readOnlyHint: false,
@@ -219,29 +221,14 @@ export const BLOG_STATE_SET = defineTool({
       actor,
     } = await resolveBlogScope(ctx);
 
-    const job = await callerBlogJob(ctx);
-    if (job?.kind === "campaigns") {
-      const stored = new Map<string, Record<string, unknown> | null>();
-      for (const { id } of input.campaigns ?? []) {
-        const record = await readBlogRecord(
-          orgFs,
-          recordPath(target, CAMPAIGNS_DIR, id),
-        );
-        stored.set(id, record?.data ?? null);
-      }
-      const refusal = campaignsJobRefusal(
-        job,
-        {
-          campaigns: input.campaigns ?? [],
-          seeds: input.campaignSeeds?.length ?? 0,
-          removals:
-            (input.removeCampaigns?.length ?? 0) +
-            (input.removeCampaignSeeds?.length ?? 0),
-        },
-        stored,
-      );
-      if (refusal) throw new Error(refusal);
-    }
+    const refusal = agentStateWriteRefusal(callerRunThread(ctx), {
+      campaigns: input.campaigns?.length ?? 0,
+      seeds: input.campaignSeeds?.length ?? 0,
+      removals:
+        (input.removeCampaigns?.length ?? 0) +
+        (input.removeCampaignSeeds?.length ?? 0),
+    });
+    if (refusal) throw new Error(refusal);
 
     const expect = input.expect ?? {};
     const conditional = (path: string): BlogWrite["expect"] =>

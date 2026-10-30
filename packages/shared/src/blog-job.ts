@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { MAX_PROPOSED_CAMPAIGNS } from "./blog-campaign";
 
 /** Where a blog job's chat is marked in its thread metadata, as a card's chat is by `blogCard`. */
 export const BLOG_JOB_THREAD_KEY = "blogJob";
@@ -10,12 +9,6 @@ const BlogJobSchema = z.discriminatedUnion("kind", [
     kind: z.literal("campaign"),
     brand: z.string().min(1),
     campaignId: z.string().min(1),
-  }),
-  z.object({
-    kind: z.literal("campaigns"),
-    brand: z.string().min(1),
-    seedId: z.string().min(1),
-    campaignIds: z.array(z.string().min(1)).min(1).max(MAX_PROPOSED_CAMPAIGNS),
   }),
 ]);
 export type BlogJob = z.infer<typeof BlogJobSchema>;

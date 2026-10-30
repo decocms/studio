@@ -1,6 +1,6 @@
 ---
 name: blogpost
-description: Work an organization's content track — propose campaigns from a seed, bring a blogpost card's hypothesis from the store's own data, then write the post yourself on the card's branch. Use when you are running in a campaigns chat or a blogpost card's chat, or are asked to propose campaigns or to bring or execute a card's hypothesis.
+description: Work an organization's content track — shape a campaign from briefings, bring a blogpost card's hypothesis from the store's own data, then write the post yourself on the card's branch. Use when you are running in a campaign's chat or a blogpost card's chat, or are asked to shape a campaign or to bring or execute a card's hypothesis.
 ---
 
 # blogpost — work the content track
@@ -9,8 +9,7 @@ A card is one blog post of one campaign, on its way from the hypothesis that
 argues for it to the draft a person reviews. It lives in the brand folder,
 `/app/org/home/brands/<brand>/cards/<id>.json`, and the board shows it as you
 save it. Your chat's instructions name the card, its site and its branch. A
-campaigns chat has no card: its instructions name the seed and the drafts it
-may write.
+campaign's own chat has no card: its instructions name the campaign it shapes.
 
 You do the thinking and the writing: read the store's systems, argue the
 hypothesis, write the post. Studio's tools give you what only Studio has (the
@@ -19,7 +18,7 @@ wrote.
 
 | Phase | File | Ends with |
 | --- | --- | --- |
-| Propose campaigns from a seed | `campaigns.md` (in this skill folder) | The drafts in the brand's campaigns, presented in the chat |
+| Shape the campaign | `campaigns.md` (in this skill folder) | The campaign developed from the chosen briefing, presented in the chat |
 | Bring the hypothesis | `hypothesis.md` (in this skill folder) | The hypothesis on the card, presented in the chat |
 | Write the post | `execute.md` (in this skill folder) | The draft committed on the card's branch, the card in `awaiting_review` |
 
@@ -65,7 +64,7 @@ have.
 ## How to call the tools
 
 Small calls go through your Studio tools as usual, prefixed `mcp__studio__`:
-`BLOG_CARD_GET`, `BLOG_CARD_UPDATE`, `BLOG_STATE_GET`, `BLOG_STATE_SET`,
+`BLOG_CARD_GET`, `BLOG_CARD_UPDATE`, `BLOG_STATE_GET`, `BLOG_CAMPAIGN_UPDATE`,
 `FILE_CONFIG_LIST`, `CONNECTION_TOOLS_SEARCH` and `BLOG_POST_ILLUSTRATE` with
 one image.
 

@@ -14,8 +14,7 @@ export {
 } from "./cards";
 export { BLOG_CARD_RUN } from "./card-run";
 export { BLOG_BRAND_FILL } from "./brand-fill";
-export { BLOG_CAMPAIGNS_PROPOSE } from "./campaigns-propose";
-export { BLOG_CAMPAIGN_UPDATE } from "./campaigns";
+export { BLOG_CAMPAIGN_RUN, BLOG_CAMPAIGN_UPDATE } from "./campaigns";
 export { BLOG_POST_BRIEF } from "./post-brief";
 export { BLOG_POST_WRITE } from "./post-write";
 export { BLOG_SITE_BLOCKS } from "./site-blocks";

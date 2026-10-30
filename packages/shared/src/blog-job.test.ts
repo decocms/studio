@@ -10,16 +10,6 @@ describe("blogJobOfThread", () => {
     ).toEqual({ kind: "brand-fill", brand: "aurora" });
   });
 
-  test("a campaigns chat names its seed and the drafts it may write", () => {
-    const job = {
-      kind: "campaigns" as const,
-      brand: "aurora",
-      seedId: "s1",
-      campaignIds: ["c1", "c2"],
-    };
-    expect(blogJobOfThread({ [BLOG_JOB_THREAD_KEY]: job })).toEqual(job);
-  });
-
   test("a campaign's chat names the campaign it shapes", () => {
     const job = {
       kind: "campaign" as const,
@@ -47,18 +37,6 @@ describe("blogJobOfThread", () => {
     expect(
       blogJobOfThread({
         [BLOG_JOB_THREAD_KEY]: { kind: "brand-fill", brand: "" },
-      }),
-    ).toBeNull();
-  });
-
-  test("a campaigns chat with no draft to write, or too many, runs no job", () => {
-    const base = { kind: "campaigns", brand: "aurora", seedId: "s1" };
-    expect(
-      blogJobOfThread({ [BLOG_JOB_THREAD_KEY]: { ...base, campaignIds: [] } }),
-    ).toBeNull();
-    expect(
-      blogJobOfThread({
-        [BLOG_JOB_THREAD_KEY]: { ...base, campaignIds: ["a", "b", "c", "d"] },
       }),
     ).toBeNull();
   });

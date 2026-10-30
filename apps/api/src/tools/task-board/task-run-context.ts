@@ -132,7 +132,7 @@ const NOT_ON_A_CHAT: ReadonlySet<ToolName> = new Set<ToolName>([
   "BLOG_CARD_DELETE",
   "BLOG_CARD_RUN",
   "BLOG_BRAND_FILL",
-  "BLOG_CAMPAIGNS_PROPOSE",
+  "BLOG_CAMPAIGN_RUN",
 ]);
 
 /**

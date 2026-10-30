@@ -249,12 +249,14 @@ export function CampaignEditor({
 
   const campaign = readCampaign(blockKey, draft);
   /** Every edit stamps `updatedAt`, so the list can sort by last touched. */
-  const nextBlock = (next: Partial<Omit<CampaignEntry, "key">>) =>
-    buildCampaignBlock({
+  const nextBlock = (next: Partial<Omit<CampaignEntry, "key">>) => ({
+    ...draft,
+    ...buildCampaignBlock({
       ...campaign,
       ...next,
       updatedAt: new Date().toISOString(),
-    });
+    }),
+  });
 
   const patch = (next: Partial<Omit<CampaignEntry, "key">>) =>
     setDraft(nextBlock(next));

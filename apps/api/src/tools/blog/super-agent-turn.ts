@@ -120,13 +120,15 @@ export async function openBlogJobChat(
   chat: {
     organizationId: string;
     userId: string;
+    /** Minted by the caller when a record has to name the chat before it exists. */
+    threadId?: string;
     job: BlogJob;
     title: string;
     text: string;
     instructions?: string;
   },
 ): Promise<string> {
-  const threadId = crypto.randomUUID();
+  const threadId = chat.threadId ?? crypto.randomUUID();
   const branch = threadBranch(threadId);
   await ctx.storage.threads.create({
     id: threadId,

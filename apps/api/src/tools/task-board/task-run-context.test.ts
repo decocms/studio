@@ -118,7 +118,8 @@ describe("resolveThreadToolNames", () => {
 
   test("no chat starts a brand fill; a person does", () => {
     expect(THREAD_TOOL_NAMES).not.toContain("BLOG_BRAND_FILL");
-    expect(THREAD_TOOL_NAMES).not.toContain("BLOG_CAMPAIGNS_PROPOSE");
+    expect(THREAD_TOOL_NAMES).not.toContain("BLOG_CAMPAIGN_RUN");
+    expect(THREAD_TOOL_NAMES).toContain("BLOG_CAMPAIGN_UPDATE");
   });
 
   test("a chat's run-scoped tools are only its task-run ones", () => {
