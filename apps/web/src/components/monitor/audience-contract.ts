@@ -6,7 +6,7 @@
  * that source is retired.
  */
 
-export const AUDIENCE_VIEWS = [
+const AUDIENCE_VIEWS = [
   "summary",
   "timeline",
   "pages",

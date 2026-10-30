@@ -243,10 +243,10 @@ const CACHE_COLORS: Record<string, string> = {
   updating: "bg-subtle-foreground",
   none: "bg-muted-foreground",
 };
-function cacheColor(k: string): string {
+export function cacheColor(k: string): string {
   return CACHE_COLORS[k.toLowerCase()] ?? "bg-muted-foreground";
 }
-function statusColor(code: string): string {
+export function statusColor(code: string): string {
   const n = Number(code);
   if (n >= 200 && n < 300) return "bg-success";
   if (n >= 300 && n < 400) return "bg-notice";
@@ -525,7 +525,11 @@ const MAP_PATH = geoPath(MAP_PROJECTION);
 /** Choropleth of a country breakdown — the Map view of the Countries panel.
  *  The topojson keys countries by numeric ISO id; convert it to alpha-2
  *  (i18n-iso-countries) to join the alpha-2 breakdown data. */
-function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
+export function CountryMap({
+  rows,
+}: {
+  rows: { key: string; value: number }[];
+}) {
   const t = useT();
   const byCode = new Map<string, number>();
   for (const r of rows) if (r.key) byCode.set(r.key.toUpperCase(), r.value);

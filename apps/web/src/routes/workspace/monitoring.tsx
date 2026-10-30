@@ -11,7 +11,16 @@ import {
   type MonitorSelection,
 } from "@/components/monitor/monitor-page";
 import { SEGMENT_SEARCH_KEYS } from "@/components/monitor/analytics/segment";
-import { MONITOR_VIEWS } from "@/components/monitor/monitor-views";
+import {
+  ERRORS_SECTIONS,
+  EVENTS_SECTIONS,
+  EXPERIMENTS_SECTIONS,
+  PERFORMANCE_SECTIONS,
+} from "@/components/monitor/analytics/sections";
+import {
+  MONITOR_VIEWS,
+  type MonitorView,
+} from "@/components/monitor/monitor-views";
 import { useLiveBoard } from "@/components/monitor/use-live-board";
 import {
   DESTINATION_ROUTE,
@@ -30,10 +39,18 @@ function useMonitorSearch(): MonitorSelection {
       : "view" in search
         ? search.view
         : undefined;
-  const view =
+  const asked =
     typeof requested === "string"
       ? MONITOR_VIEWS.find((v) => v === requested)
       : undefined;
+  const section =
+    "section" in search && typeof search.section === "string"
+      ? search.section
+      : undefined;
+  // Analytics links from before its sections moved to their own tabs.
+  const moved =
+    asked === "audience" && section ? movedSection(section) : undefined;
+  const view = moved ?? asked;
   return {
     view,
     date:
@@ -49,11 +66,18 @@ function useMonitorSearch(): MonitorSelection {
       "project" in search && typeof search.project === "string"
         ? search.project
         : undefined,
-    section:
-      "section" in search && typeof search.section === "string"
-        ? search.section
-        : undefined,
   };
+}
+
+function movedSection(section: string): MonitorView | undefined {
+  if (section === "live") return "realtime";
+  if (section === "behaviour") return "pages";
+  if (section === "heatmap") return "heatmap";
+  if (EVENTS_SECTIONS.some((s) => s === section)) return "events";
+  if (ERRORS_SECTIONS.some((s) => s === section)) return "errors";
+  if (EXPERIMENTS_SECTIONS.some((s) => s === section)) return "experiments";
+  if (PERFORMANCE_SECTIONS.some((s) => s === section)) return "performance";
+  return undefined;
 }
 
 /** The Analytics segment's search keys, as they are. */

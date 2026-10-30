@@ -484,6 +484,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.frameLoading":
     "Carregando a página real…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "O site não respondeu",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutHint":
+    "Passe o mouse sobre a página ou aceite os cookies dela e tente de novo.",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutRetry": "Tentar de novo",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutWhy": "Por que isso acontece",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
     "A página ainda não iniciou o modo de visualização do analytics. Se o site só carrega o analytics depois de uma interação ou do aceite de cookies, passe o mouse sobre a página ou aceite os cookies. Se não, confira se ele roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle":

@@ -27,7 +27,6 @@ import {
   PanelTable,
   type Payload,
   type Row,
-  ratioPct,
   rowsOf,
   SectionError,
   SectionSkeleton,
@@ -39,11 +38,12 @@ import type { SectionProps } from "./types";
 const fmtDecimal = (n: number) =>
   new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(n);
 
+/** The old Usage screen's order: refused first, then the limits, then losses. */
 const CAUSES = [
+  "events_rejected",
   "events_rate_limited",
   "events_batch_overflow",
   "events_over_quota",
-  "events_rejected",
   "events_lost",
 ] as const;
 type Cause = (typeof CAUSES)[number];
@@ -155,94 +155,56 @@ function limitsOf(data: Payload | undefined): {
 export function UsageSection(props: SectionProps) {
   const t = useT();
   const view = useSectionView(props, "usage");
-  if (view.isLoading) return <SectionSkeleton tiles={5} />;
+  if (view.isLoading) return <SectionSkeleton tiles={10} />;
   if (view.error) return <SectionError error={view.error} />;
   const data = view.data;
 
   const u = firstRow(data, "usage") ?? {};
   const accepted = n0(u.events_accepted);
   const requests = n0(u.requests);
-  const drops = CAUSES.map((c) => ({ cause: c, events: n0(u[c]) }));
-  const arrived = accepted + drops.reduce((a, d) => a + d.events, 0);
-  const active = drops
-    .filter((d) => d.events > 0)
-    .sort((a, b) => b.events - a.events);
-  const storedPct = ratioPct(accepted, arrived);
   const perRequest = requests ? accepted / requests : null;
-  const recovered = n0(u.insert_recovered);
   const trend = rowsOf(data, "usageTrend");
   const sites = rowsOf(data, "usageSites");
   const limits = limitsOf(data);
   const quota = props.status.config?.quota;
   const capped = typeof quota === "number" && quota > 0;
 
-  const tiles = [
-    {
-      key: "stored",
-      title: t("monitor.analytics.panels.usage.stored"),
-      value: fmtInt(accepted),
-    },
-    {
-      key: "pct",
-      title: t("monitor.analytics.panels.usage.ofSent"),
-      value: fmtPct(storedPct, 2),
-      caption: t("monitor.analytics.panels.usage.arrived", {
-        n: fmtInt(arrived),
-      }),
-    },
+  const tiles: {
+    key: string;
+    title: string;
+    value: string;
+    cause?: Cause;
+  }[] = [
     {
       key: "requests",
       title: t("monitor.analytics.panels.usage.requests"),
       value: fmtInt(requests),
     },
     {
-      key: "perRequest",
-      title: t("monitor.analytics.panels.usage.perRequest"),
-      value: perRequest === null ? "—" : fmtDecimal(perRequest),
-    },
-    {
       key: "bytes",
       title: t("monitor.analytics.panels.usage.bytes"),
       value: fmtBytes(u.bytes_in),
     },
-  ];
-
-  const causeColumns: Column<{ cause: Cause; events: number }>[] = [
     {
-      id: "cause",
-      header: t("monitor.analytics.panels.usage.cause"),
-      cell: ({ cause }) => {
-        const { label, remedy } = causeText(cause, t);
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex cursor-default items-center gap-1.5">
-                {label}
-                <InfoCircle size={14} className="text-muted-foreground" />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-80">{remedy}</TooltipContent>
-          </Tooltip>
-        );
-      },
+      key: "accepted",
+      title: t("monitor.analytics.panels.usage.accepted"),
+      value: fmtInt(accepted),
+    },
+    ...CAUSES.map((cause) => ({
+      key: cause,
+      title: causeText(cause, t).label,
+      value: fmtInt(u[cause]),
+      cause,
+    })),
+    {
+      key: "retries",
+      title: t("monitor.analytics.panels.usage.retries"),
+      value: fmtInt(u.insert_retries),
     },
     {
-      id: "whose",
-      header: t("monitor.analytics.panels.usage.whose"),
-      cell: ({ cause }) => <WhoseBadge whose={causeWhose(cause)} />,
-    },
-    {
-      id: "events",
-      header: t("monitor.analytics.panels.col.events"),
-      numeric: true,
-      cell: ({ events }) => fmtInt(events),
-    },
-    {
-      id: "share",
-      header: t("monitor.analytics.panels.usage.ofArrived"),
-      numeric: true,
-      className: "text-muted-foreground",
-      cell: ({ events }) => fmtPct(ratioPct(events, arrived), 2),
+      key: "recovered",
+      title: t("monitor.analytics.panels.usage.recoveredTitle"),
+      value: fmtInt(u.insert_recovered),
     },
   ];
 
@@ -353,53 +315,47 @@ export function UsageSection(props: SectionProps) {
       </section>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        {tiles.map((tile) => (
-          <Panel
-            key={tile.key}
-            title={tile.title}
-            value={<span className="whitespace-nowrap">{tile.value}</span>}
-            caption={
-              tile.caption && (
-                <span className="text-meta tnum">{tile.caption}</span>
-              )
-            }
-          />
-        ))}
+        {tiles.map((tile) => {
+          const remedy =
+            tile.cause && n0(u[tile.cause]) > 0
+              ? causeText(tile.cause, t).remedy
+              : null;
+          return (
+            <Panel
+              key={tile.key}
+              title={tile.title}
+              value={<span className="whitespace-nowrap">{tile.value}</span>}
+              caption={
+                tile.cause &&
+                remedy && <WhoseBadge whose={causeWhose(tile.cause)} />
+              }
+              aside={
+                remedy && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <InfoCircle
+                        size={14}
+                        className="shrink-0 text-muted-foreground"
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-80">
+                      {remedy}
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              }
+            />
+          );
+        })}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel
-          title={t("monitor.analytics.panels.usage.why")}
-          aside={
-            recovered > 0 && (
-              <Badge variant="muted">
-                {t("monitor.analytics.panels.usage.recovered", {
-                  n: fmtInt(recovered),
-                })}
-              </Badge>
-            )
-          }
-        >
-          {active.length === 0 ? (
-            <Badge variant="success" className="w-fit">
-              {t("monitor.analytics.panels.usage.allStored")}
-            </Badge>
-          ) : (
-            <PanelTable
-              columns={causeColumns}
-              rows={active}
-              rowKey={(r) => r.cause}
-            />
-          )}
-        </Panel>
-        <Panel title={t("monitor.analytics.panels.usage.limits")}>
-          <PanelTable
-            columns={limitColumns}
-            rows={limitRows}
-            rowKey={(r) => r.key}
-          />
-        </Panel>
-      </div>
+      <Panel title={t("monitor.analytics.panels.usage.limits")}>
+        <PanelTable
+          columns={limitColumns}
+          rows={limitRows}
+          rowKey={(r) => r.key}
+        />
+      </Panel>
 
       {trend.length > 1 && (
         <Panel title={t("monitor.analytics.panels.usage.overTime")}>

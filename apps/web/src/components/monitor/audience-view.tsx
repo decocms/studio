@@ -17,8 +17,8 @@ import type {
   AudienceSource,
   AudienceSummary,
   AudienceView,
-} from "@decocms/shared/monitor-audience";
-import { AUDIENCE_RANGES } from "@decocms/shared/monitor-audience";
+} from "./audience-contract";
+import { AUDIENCE_RANGES } from "./audience-contract";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -57,19 +57,14 @@ import { weightedMean } from "./aggregate";
 import { AnalyticsGuide, AnalyticsPreview, Locked } from "./locked";
 import { connectLink, Spread, Trend } from "./parts";
 import {
-  analyticsSections,
   ConfigureButton,
   ConfigureDialog,
   RegisterAnalytics,
-  SectionTabs,
-  unionSections,
   useAnalyticsStatus,
-  useRegisteredSites,
 } from "./deco-analytics";
-import { asDecoSection, DecoSection } from "./analytics/sections";
+import { DecoSection } from "./analytics/sections";
 import { SegmentActions, SegmentChips } from "./analytics/segment-bar";
 import { useAnalyticsSegment } from "./analytics/segment";
-import { LiveNowGlance } from "./analytics/glance-now";
 
 const COLOR_VISITORS = "var(--chart-1)";
 
@@ -137,9 +132,9 @@ function rangeLabel(range: AudienceRange, t: TFunction): string {
   }
 }
 
-type SectionRange = (typeof RANGE_PILLS)[number];
+export type SectionRange = (typeof RANGE_PILLS)[number];
 
-function sectionRangeLabel(range: SectionRange, t: TFunction): string {
+export function sectionRangeLabel(range: SectionRange, t: TFunction): string {
   switch (range) {
     case "5m":
       return t("monitor.audience.range.5m");
@@ -361,13 +356,7 @@ function VisitorsChart({
 }
 
 /** A titled list of rows, busiest first, each with a bar to its share of the top. */
-export function Ranked({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: AudienceRow[];
-}) {
+function Ranked({ title, rows }: { title: string; rows: AudienceRow[] }) {
   const t = useT();
   const top = rows.slice(0, 8);
   const max = Math.max(1, ...top.map((r) => r.count));
@@ -546,37 +535,26 @@ function AudienceOverview({
 }
 
 /**
- * One project's analytics in full: the overview from whichever source it
- * reports to and, on Deco Analytics, every other view and its settings.
+ * One project's analytics: the overview from whichever source it reports to
+ * and, on Deco Analytics, its settings. Its other views are tabs of their own.
  */
 function ProjectAudience({
   project,
   range,
   onRange,
-  requested,
-  onSection,
 }: {
   project: SiteProject;
   range: AudienceRange;
   onRange: (range: AudienceRange) => void;
-  requested: string;
-  onSection: (section: string) => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const status = useAnalyticsStatus(org.slug, project);
-  const sections = analyticsSections(status.data);
-  const section = sections.some((s) => s.view === requested)
-    ? requested
-    : "overview";
   const [dialog, setDialog] = useState<"configure" | "register" | null>(null);
-  // One range for every Deco Analytics section, down to the last minutes.
+  // Deco Analytics reads down to the last minutes.
   const [decoRange, setDecoRange] = useState<SectionRange>("24h");
   const { segment } = useAnalyticsSegment();
   const deco = status.data?.registered ? status.data : undefined;
-  const decoSection = asDecoSection(section);
-  // Realtime is always "now" and the heatmap picks its own period.
-  const ownRange = decoSection === "live" || decoSection === "heatmap";
   const [registered, setRegistered] = useState<AnalyticsRegisterResult | null>(
     null,
   );
@@ -602,7 +580,7 @@ function ProjectAudience({
   return (
     <>
       <RangeAction value={range} onChange={onRange} hideRange={!!deco}>
-        {deco && !ownRange && (
+        {deco && (
           <TopbarSelect
             label={t("monitor.audience.range")}
             value={decoRange}
@@ -613,11 +591,11 @@ function ProjectAudience({
             onChange={setDecoRange}
           />
         )}
-        {deco && decoSection !== "heatmap" && (
+        {deco && (
           <SegmentActions
             orgSlug={org.slug}
             site={project.site}
-            range={ownRange ? "5m" : decoRange}
+            range={decoRange}
             segment={segment}
           />
         )}
@@ -642,18 +620,15 @@ function ProjectAudience({
           onDismiss={() => setRegistered(null)}
         />
       )}
-      {sections.length > 1 && (
-        <SectionTabs sections={sections} value={section} onChange={onSection} />
-      )}
-      {deco && decoSection !== "heatmap" && <SegmentChips />}
+      {deco && <SegmentChips />}
       {deco ? (
         <DecoSection
           orgSlug={org.slug}
           site={project.site}
           status={deco}
           segment={segment}
-          section={decoSection}
-          range={decoSection === "live" ? "5m" : decoRange}
+          section="overview"
+          range={decoRange}
           onConfigure={() => setDialog("configure")}
         />
       ) : (
@@ -1095,28 +1070,23 @@ function OrgAudience({
  * the org, Deco Analytics' other views stay one click away: each is a single
  * site's, so picking one filters to the first site that has it.
  */
+/** A project to open the Analytics tab on, from across the org. */
 export interface AnalyticsTarget {
-  /** Kept as filtered when absent. */
-  project?: string;
-  section: string;
+  project: string;
 }
 
 export function AudienceScreen({
   projects,
   scopeId,
-  section,
   onOpen,
 }: {
   projects: readonly SiteProject[];
   scopeId: string | null;
-  section: string;
   onOpen: (next: AnalyticsTarget) => void;
 }) {
   const t = useT();
-  const { org } = useProjectContext();
   const [range, setRange] = useState<AudienceRange>("7d");
   const project = projects.find((p) => p.id === scopeId);
-  const registered = useRegisteredSites(org.slug, project ? [] : projects);
   if (scopeId && !project) {
     return (
       <Frame>
@@ -1127,7 +1097,6 @@ export function AudienceScreen({
       </Frame>
     );
   }
-  const orgSections = unionSections(registered.map((r) => r.status));
   return (
     <Frame>
       {project ? (
@@ -1136,89 +1105,15 @@ export function AudienceScreen({
           project={project}
           range={range}
           onRange={setRange}
-          requested={section}
-          onSection={(next) => onOpen({ section: next })}
         />
       ) : (
-        <>
-          {orgSections.length > 1 && (
-            <SectionTabs
-              sections={orgSections}
-              value="overview"
-              onChange={(next) => {
-                const site = registered.find((r) =>
-                  analyticsSections(r.status).some((s) => s.view === next),
-                );
-                if (site) onOpen({ project: site.project.id, section: next });
-              }}
-            />
-          )}
-          <OrgAudience
-            projects={projects}
-            range={range}
-            onRange={setRange}
-            onProject={(id) => onOpen({ project: id, section: "overview" })}
-          />
-        </>
-      )}
-    </Frame>
-  );
-}
-
-/**
- * The Overview's line of audience for one site: today's visitors and
- * pageviews, opening the Audience tab. Nothing when the site has no source.
- */
-export function AudienceGlance({
-  project,
-  withVisitors,
-  onOpen,
-}: {
-  project: SiteProject;
-  /** Off when the board already charts today's visitors. */
-  withVisitors: boolean;
-  /** Opens the Analytics tab, on a section when given. */
-  onOpen: (section?: string) => void;
-}) {
-  const t = useT();
-  const { org } = useProjectContext();
-  const query = useAudience(org.slug, project, "summary", "24h");
-  const body = query.data;
-  if (!body?.available || body.data.view !== "summary") return null;
-  const { summary, previous } = body.data;
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(0,1fr))]">
-      {withVisitors && (
-        <MetricCard
-          title={t("monitor.audience.glance.visitors")}
-          value={formatNumber(summary.visitors)}
-          caption={
-            <Trend
-              change={delta(summary.visitors, previous?.visitors)}
-              better="up"
-              reference=""
-            />
-          }
-          onClick={() => onOpen()}
+        <OrgAudience
+          projects={projects}
+          range={range}
+          onRange={setRange}
+          onProject={(id) => onOpen({ project: id })}
         />
       )}
-      <MetricCard
-        title={t("monitor.audience.glance.pageviews")}
-        value={formatNumber(summary.pageviews)}
-        caption={
-          <Trend
-            change={delta(summary.pageviews, previous?.pageviews)}
-            better="up"
-            reference=""
-          />
-        }
-        onClick={() => onOpen()}
-      />
-      <LiveNowGlance
-        orgSlug={org.slug}
-        project={project}
-        onOpen={() => onOpen("live")}
-      />
-    </div>
+    </Frame>
   );
 }

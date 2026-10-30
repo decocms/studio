@@ -8,14 +8,27 @@
 import { type ReactNode, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Globe01 } from "@untitledui/icons";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import { Page } from "@/components/page";
 import { resolveAnalyticsSiteSlug } from "@decocms/shared/site-slug";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
@@ -24,9 +37,12 @@ import {
   type BreakdownRow,
   CdnTab,
   type CdnSummary,
+  cacheColor,
   fetchJson,
+  formatBytes,
   formatCountry,
   formatNumber,
+  statusColor,
   statusName,
   type TimelinePoint,
 } from "@/layouts/main-panel-tabs/cdn-tab";
@@ -38,7 +54,10 @@ import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { weightedMean } from "./aggregate";
-import { Ranked } from "./audience-view";
+import { RankedList } from "./analytics/panels";
+import { PERFORMANCE_SECTIONS } from "./analytics/sections";
+import type { SectionRange } from "./audience-view";
+import { DecoStack } from "./deco-stack";
 import { TopbarSelect } from "./topbar-select";
 import type { SiteProject } from "./org-insights";
 import { Spread, Trend } from "./parts";
@@ -137,19 +156,18 @@ function RangeAction({
   );
 }
 
-function rows(
-  data: BreakdownRow[] | null | undefined,
-  label: (key: string) => string = (k) => k,
-) {
-  return (data ?? []).map((r) => ({
-    key: label(r.key),
-    count: r.total_requests,
-  }));
-}
-
 function tick(bucket: string): string {
   return bucket.length > 10 ? bucket.slice(11, 16) : bucket.slice(5);
 }
+
+/** Requests and bytes per pageview: what a page costs to serve. */
+const perPageview = (s: CdnSummary | null) =>
+  s && s.pageviews > 0
+    ? {
+        requests: s.total_requests / s.pageviews,
+        bytesPer10k: s.total_bandwidth_bytes / (s.pageviews / 10_000),
+      }
+    : null;
 
 function Cards({
   summary,
@@ -159,72 +177,207 @@ function Cards({
   previous: CdnSummary | null;
 }) {
   const t = useT();
-  const change = (a: number, b: number | undefined) =>
-    previous && b !== undefined ? relativeChange(a, b) : null;
+  const now = perPageview(summary);
+  const before = perPageview(previous);
+  const cards: {
+    title: string;
+    value: string;
+    current?: number;
+    prior?: number;
+    better?: "up" | "down" | "none";
+    caption?: ReactNode;
+  }[] = [
+    {
+      title: t("mainPanelTabs.cdnTab.requests"),
+      value: formatNumber(summary.total_requests),
+      current: summary.total_requests,
+      prior: previous?.total_requests,
+      better: "none",
+    },
+    {
+      title: t("mainPanelTabs.cdnTab.pageviews"),
+      value: formatNumber(summary.pageviews),
+      current: summary.pageviews,
+      prior: previous?.pageviews,
+      better: "up",
+    },
+    {
+      title: t("mainPanelTabs.cdnTab.bandwidth"),
+      value: formatBytes(summary.total_bandwidth_bytes),
+      current: summary.total_bandwidth_bytes,
+      prior: previous?.total_bandwidth_bytes,
+      better: "none",
+    },
+    {
+      title: t("mainPanelTabs.cdnTab.cacheHit"),
+      value: formatRatio(summary.cache_hit_ratio),
+      current: summary.cache_hit_ratio,
+      prior: previous?.cache_hit_ratio,
+      better: "up",
+    },
+    {
+      title: t("mainPanelTabs.cdnTab.requestsPerPageview"),
+      value: now ? ONE_DECIMAL.format(now.requests) : "—",
+      current: now?.requests,
+      prior: before?.requests,
+      better: "down",
+    },
+    {
+      title: t("mainPanelTabs.cdnTab.bandwidthPer10k"),
+      value: now ? formatBytes(now.bytesPer10k) : "—",
+      current: now?.bytesPer10k,
+      prior: before?.bytesPer10k,
+      better: "down",
+    },
+    {
+      title: t("mainPanelTabs.cdnTab.avgLatency"),
+      value: `${Math.round(summary.avg_latency_ms)} ms`,
+      current: summary.avg_latency_ms,
+      prior: previous?.avg_latency_ms,
+      better: "down",
+    },
+    {
+      title: t("mainPanelTabs.cdnTab.errors5xx"),
+      value: formatNumber(summary.status_5xx_count),
+      caption: (
+        <span className="text-meta">
+          {t("monitor.performance.errorShare", {
+            share: shareOf(summary.status_5xx_count, summary.total_requests),
+          })}
+        </span>
+      ),
+    },
+  ];
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      <MetricCard
-        title={t("mainPanelTabs.cdnTab.requests")}
-        value={formatNumber(summary.total_requests)}
-        caption={
-          <Trend
-            change={change(summary.total_requests, previous?.total_requests)}
-            better="none"
-            reference=""
-          />
-        }
-      />
-      <MetricCard
-        title={t("mainPanelTabs.cdnTab.cacheHit")}
-        value={formatRatio(summary.cache_hit_ratio)}
-        caption={
-          <Trend
-            change={change(summary.cache_hit_ratio, previous?.cache_hit_ratio)}
-            better="up"
-            reference=""
-          />
-        }
-      />
-      <MetricCard
-        title={t("mainPanelTabs.cdnTab.avgLatency")}
-        value={`${Math.round(summary.avg_latency_ms)} ms`}
-        caption={
-          <Trend
-            change={change(summary.avg_latency_ms, previous?.avg_latency_ms)}
-            better="down"
-            reference=""
-          />
-        }
-      />
-      <MetricCard
-        title={t("mainPanelTabs.cdnTab.errors5xx")}
-        value={formatNumber(summary.status_5xx_count)}
-        caption={
-          <span className="text-meta">
-            {t("monitor.performance.errorShare", {
-              share: shareOf(summary.status_5xx_count, summary.total_requests),
-            })}
-          </span>
-        }
-      />
+      {cards.map((card) => (
+        <MetricCard
+          key={card.title}
+          title={card.title}
+          value={card.value}
+          caption={
+            card.caption ?? (
+              <Trend
+                change={
+                  card.current !== undefined && card.prior !== undefined
+                    ? relativeChange(card.current, card.prior)
+                    : null
+                }
+                better={card.better ?? "none"}
+                reference=""
+              />
+            )
+          }
+        />
+      ))}
     </div>
   );
 }
 
-function RequestsChart({ points }: { points: TimelinePoint[] }) {
+const USAGE = ["requests", "pageviews", "bandwidth_bytes"] as const;
+type Usage = (typeof USAGE)[number];
+type UsageView = "all" | Usage;
+const USAGE_VIEWS: readonly UsageView[] = ["all", ...USAGE];
+
+const USAGE_COLORS: Record<Usage, string> = {
+  requests: COLOR_REQUESTS,
+  pageviews: "var(--chart-2)",
+  bandwidth_bytes: "var(--chart-4)",
+};
+
+function usageLabel(view: UsageView, t: TFunction): string {
+  switch (view) {
+    case "all":
+      return t("monitor.performance.allUsage");
+    case "requests":
+      return t("mainPanelTabs.cdnTab.requests");
+    case "pageviews":
+      return t("mainPanelTabs.cdnTab.pageviews");
+    case "bandwidth_bytes":
+      return t("mainPanelTabs.cdnTab.bandwidth");
+    default: {
+      const unhandled: never = view;
+      return unhandled;
+    }
+  }
+}
+
+const compact = new Intl.NumberFormat(undefined, { notation: "compact" });
+const formatUsage = (metric: Usage, v: number) =>
+  metric === "bandwidth_bytes" ? formatBytes(v) : compact.format(v);
+const isUsage = (key: unknown): key is Usage => USAGE.some((m) => m === key);
+
+/**
+ * Requests, pageviews and bandwidth over the range: all three together, with
+ * bandwidth on its own axis, or one at a time on its own scale, where
+ * pageviews read as more than a flat line under millions of requests.
+ */
+function UsageChart({ points }: { points: TimelinePoint[] }) {
   const t = useT();
+  const [view, setView] = useState<UsageView>("all");
+  const shown: readonly Usage[] = view === "all" ? USAGE : [view];
+  const axisOf = (m: Usage) =>
+    view === "all" && m === "bandwidth_bytes" ? "bytes" : "main";
+  const yAxis = (id: "main" | "bytes", side: "left" | "right") => (
+    <YAxis
+      yAxisId={id}
+      orientation={side}
+      axisLine={false}
+      tickLine={false}
+      tick={AXIS_TICK}
+      width={56}
+      tickCount={4}
+      allowDecimals={false}
+      tickFormatter={(v: number) =>
+        formatUsage(
+          id === "bytes" ? "bandwidth_bytes" : (shown[0] ?? "requests"),
+          v,
+        )
+      }
+    />
+  );
   return (
-    <MetricCard title={t("monitor.performance.overTime")}>
+    <MetricCard
+      title={t("mainPanelTabs.cdnTab.usageOverTime")}
+      aside={
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={view}
+          onValueChange={(v) => {
+            const next = USAGE_VIEWS.find((m) => m === v);
+            if (next) setView(next);
+          }}
+        >
+          {USAGE_VIEWS.map((m) => (
+            <ToggleGroupItem
+              key={m}
+              value={m}
+              className="flex-none gap-1.5 px-2.5 text-xs font-normal"
+            >
+              {m !== "all" && (
+                <span
+                  className="size-2 rounded-full"
+                  style={{ background: USAGE_COLORS[m] }}
+                />
+              )}
+              {usageLabel(m, t)}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      }
+    >
       <ChartContainer
-        config={{
-          requests: {
-            label: t("mainPanelTabs.cdnTab.requests"),
-            color: COLOR_REQUESTS,
-          },
-        }}
-        className="h-[170px] w-full"
+        config={Object.fromEntries(
+          shown.map((m) => [
+            m,
+            { label: usageLabel(m, t), color: USAGE_COLORS[m] },
+          ]),
+        )}
+        className="h-[220px] w-full"
       >
-        <AreaChart data={points} margin={{ left: 0, right: 0, top: 4 }}>
+        <ComposedChart data={points} margin={{ left: 0, right: 0, top: 4 }}>
           <CartesianGrid
             strokeDasharray="4 4"
             stroke="var(--border)"
@@ -240,38 +393,73 @@ function RequestsChart({ points }: { points: TimelinePoint[] }) {
             minTickGap={32}
             tickFormatter={tick}
           />
-          <YAxis
-            orientation="right"
-            axisLine={false}
-            tickLine={false}
-            tick={AXIS_TICK}
-            width={44}
-            tickCount={4}
-            allowDecimals={false}
-            tickFormatter={(v: number) =>
-              new Intl.NumberFormat(undefined, {
-                notation: "compact",
-              }).format(v)
+          {view === "all" ? (
+            <>
+              {yAxis("main", "left")}
+              {yAxis("bytes", "right")}
+            </>
+          ) : (
+            yAxis("main", "right")
+          )}
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                formatter={(value, name) =>
+                  isUsage(name) && (
+                    <span className="flex w-full items-center justify-between gap-3">
+                      <span className="text-muted-foreground">
+                        {usageLabel(name, t)}
+                      </span>
+                      <span className="tnum text-foreground">
+                        {formatUsage(name, Number(value))}
+                      </span>
+                    </span>
+                  )
+                }
+              />
             }
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
-          <Area
-            dataKey="requests"
-            type="monotone"
-            fill={COLOR_REQUESTS}
-            fillOpacity={0.15}
-            stroke={COLOR_REQUESTS}
-            strokeWidth={1.5}
-            isAnimationActive={false}
-          />
-        </AreaChart>
+          {shown.map((m) =>
+            m === "requests" || view !== "all" ? (
+              <Area
+                key={m}
+                yAxisId={axisOf(m)}
+                dataKey={m}
+                type="monotone"
+                fill={USAGE_COLORS[m]}
+                fillOpacity={0.15}
+                stroke={USAGE_COLORS[m]}
+                strokeWidth={1.5}
+                isAnimationActive={false}
+              />
+            ) : (
+              <Line
+                key={m}
+                yAxisId={axisOf(m)}
+                dataKey={m}
+                type="monotone"
+                stroke={USAGE_COLORS[m]}
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            ),
+          )}
+        </ComposedChart>
       </ChartContainer>
     </MetricCard>
   );
 }
 
 /** One v7 site's CDN performance, inside the Monitor. */
-function CdnPerformance({ base }: { base: string }) {
+function CdnPerformance({
+  base,
+  after,
+}: {
+  base: string;
+  /** Drawn under the CDN, read over the same period. */
+  after?: (range: Range) => ReactNode;
+}) {
   const t = useT();
   const [range, setRange] = useState<Range>("7d");
   const prev = previousWindow(range);
@@ -284,11 +472,13 @@ function CdnPerformance({ base }: { base: string }) {
     prev !== null,
   );
   const timeline = useCdnView<TimelinePoint[]>(base, "timeline", range);
+  const [measure, setMeasure] = useState<"requests" | "bandwidth">("requests");
+  const [ignoreQuery, setIgnoreQuery] = useState(true);
   const paths = useCdnView<BreakdownRow[]>(
     base,
     "top-paths",
     range,
-    "&groupByPath=1",
+    ignoreQuery ? "&groupByPath=1" : "",
   );
   const statuses = useCdnView<BreakdownRow[]>(base, "status-codes", range);
   const cache = useCdnView<BreakdownRow[]>(base, "cache-status", range);
@@ -320,12 +510,33 @@ function CdnPerformance({ base }: { base: string }) {
   const panel = (
     query: { isLoading: boolean; data: BreakdownRow[] | null | undefined },
     title: string,
-    label?: (key: string) => string,
+    options: {
+      label?: (key: string) => string;
+      dot?: (key: string) => string;
+      aside?: ReactNode;
+    } = {},
   ) =>
     query.isLoading ? (
       <Skeleton className="h-64" />
     ) : (
-      <Ranked title={title} rows={rows(query.data, label)} />
+      <RankedList
+        title={title}
+        aside={options.aside}
+        rows={(query.data ?? [])
+          .map((r) => ({
+            k: r.key,
+            n:
+              measure === "requests"
+                ? r.total_requests
+                : r.total_bandwidth_bytes,
+          }))
+          .sort((x, y) => y.n - x.n)}
+        label={options.label}
+        dot={options.dot}
+        format={measure === "requests" ? formatNumber : formatBytes}
+        limit={10}
+        expandable
+      />
     );
 
   return (
@@ -349,28 +560,85 @@ function CdnPerformance({ base }: { base: string }) {
         <Skeleton className="h-64" />
       ) : (
         (timeline.data?.length ?? 0) > 1 && (
-          <RequestsChart points={timeline.data ?? []} />
+          <UsageChart points={timeline.data ?? []} />
         )
       )}
-      <div className="grid gap-4 md:grid-cols-2">
-        {panel(paths, t("mainPanelTabs.cdnTab.topPaths"))}
-        {panel(statuses, t("mainPanelTabs.cdnTab.statusCodes"), statusName)}
-        {panel(cache, t("mainPanelTabs.cdnTab.cacheStatus"))}
-        {panel(
-          countries,
-          t("mainPanelTabs.cdnTab.topCountries"),
-          formatCountry,
-        )}
+      <div className="flex items-center gap-2">
+        <span className="text-meta">{t("mainPanelTabs.cdnTab.measureBy")}</span>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={measure}
+          onValueChange={(v) => {
+            if (v === "requests" || v === "bandwidth") setMeasure(v);
+          }}
+        >
+          <ToggleGroupItem
+            value="requests"
+            className="flex-none px-2.5 text-xs font-normal"
+          >
+            {t("mainPanelTabs.cdnTab.requests")}
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="bandwidth"
+            className="flex-none px-2.5 text-xs font-normal"
+          >
+            {t("mainPanelTabs.cdnTab.bandwidth")}
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {panel(cache, t("mainPanelTabs.cdnTab.cacheStatus"), {
+          dot: cacheColor,
+        })}
+        {panel(statuses, t("mainPanelTabs.cdnTab.statusCodes"), {
+          label: statusName,
+          dot: statusColor,
+        })}
+        {panel(paths, t("mainPanelTabs.cdnTab.topPaths"), {
+          aside: (
+            <label className="text-meta flex cursor-pointer items-center gap-1.5">
+              <Checkbox
+                checked={ignoreQuery}
+                onCheckedChange={(v) => setIgnoreQuery(v === true)}
+              />
+              {t("mainPanelTabs.cdnTab.ignoreQueryString")}
+            </label>
+          ),
+        })}
+        {panel(countries, t("mainPanelTabs.cdnTab.topCountries"), {
+          label: formatCountry,
+        })}
+      </div>
+      {after?.(range)}
     </>
   );
 }
 
 /**
+ * Deco Analytics reads rolling windows, not days: the CDN's day or days read
+ * as the window that holds them.
+ */
+const DECO_RANGE: Record<Range, SectionRange> = {
+  today: "24h",
+  yesterday: "24h",
+  "7d": "7d",
+  "30d": "30d",
+  "90d": "30d",
+};
+
+/**
  * A site's performance inside the Monitor: the CDN for a v7 site, the site's
  * own telemetry for a Blocks v8 one (its own screen, as the Monitor app shows it).
  */
-function SitePerformance({ projectId }: { projectId: string }) {
+function SitePerformance({
+  projectId,
+  project,
+}: {
+  projectId: string;
+  project: SiteProject | undefined;
+}) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(projectId);
@@ -401,6 +669,15 @@ function SitePerformance({ projectId }: { projectId: string }) {
       <CdnPerformance
         key={site}
         base={`/api/${org.slug}/monitor/${encodeURIComponent(site)}`}
+        after={(range) =>
+          project && (
+            <DecoStack
+              project={project}
+              sections={PERFORMANCE_SECTIONS}
+              range={DECO_RANGE[range]}
+            />
+          )
+        }
       />
     </Frame>
   );
@@ -416,12 +693,7 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-export function cdnQuery<T>(
-  base: string,
-  view: string,
-  range: string,
-  extra = "",
-) {
+function cdnQuery<T>(base: string, view: string, range: string, extra = "") {
   return {
     queryKey: KEYS.cdnData(base, `cdn:${view}${extra}`, range),
     queryFn: async () => {
@@ -784,7 +1056,7 @@ function OrgPerformance({
   );
 }
 
-export function shareOf(part: number, whole: number): string {
+function shareOf(part: number, whole: number): string {
   if (whole <= 0) return "—";
   const pct = (part / whole) * 100;
   return pct > 0 && pct < 0.1
@@ -805,7 +1077,15 @@ export function PerformanceScreen({
   scopeId: string | null;
   onProject: (projectId: string) => void;
 }) {
-  if (scopeId) return <SitePerformance key={scopeId} projectId={scopeId} />;
+  if (scopeId) {
+    return (
+      <SitePerformance
+        key={scopeId}
+        projectId={scopeId}
+        project={projects.find((p) => p.id === scopeId)}
+      />
+    );
+  }
   return (
     <Frame>
       <OrgPerformance projects={projects} onProject={onProject} />

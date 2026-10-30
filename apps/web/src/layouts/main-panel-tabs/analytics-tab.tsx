@@ -178,7 +178,7 @@ const MODULES = [
 // module-level const, so it carries the key, not the translated string).
 // `pipeline` (operator-only, no tenant policy) and `install` (only stripped
 // internals) are omitted.
-export const DATA_VIEWS: ReadonlyArray<{
+const DATA_VIEWS: ReadonlyArray<{
   view: string;
   labelKey: TranslationKey;
 }> = [

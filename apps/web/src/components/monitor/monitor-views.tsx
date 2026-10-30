@@ -15,7 +15,6 @@ import { Panel } from "@/components/panel";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { ExperimentsTab } from "@/layouts/main-panel-tabs/experiments-tab";
 import { MetricCard } from "@/layouts/task-board/analytics-sections";
 import {
   isStudioPackAgent,
@@ -24,6 +23,8 @@ import {
 } from "@/sdk";
 import { type AnalyticsTarget, AudienceScreen } from "./audience-view";
 import type { Deploy } from "./board";
+import { type DecoSectionId, EXPERIMENTS_SECTIONS } from "./analytics/sections";
+import { DecoScreen } from "./deco-stack";
 import { PerformanceScreen } from "./performance-view";
 import { DeployTimeline } from "./deploy-timeline";
 import { DeploysTable } from "./deploys-table";
@@ -40,13 +41,23 @@ import { connectLink } from "./parts";
 export type MonitorView =
   | "metrics"
   | "performance"
+  | "errors"
   | "audience"
+  | "realtime"
+  | "pages"
+  | "heatmap"
+  | "events"
   | "deploys"
   | "experiments";
 export const MONITOR_VIEWS: readonly MonitorView[] = [
   "metrics",
   "performance",
+  "errors",
   "audience",
+  "realtime",
+  "pages",
+  "heatmap",
+  "events",
   "deploys",
   "experiments",
 ];
@@ -59,6 +70,16 @@ function viewLabel(view: MonitorView, t: TFunction): string {
       return t("monitor.view.performance");
     case "audience":
       return t("monitor.view.audience");
+    case "errors":
+      return t("monitor.view.errors");
+    case "realtime":
+      return t("monitor.view.realtime");
+    case "pages":
+      return t("monitor.view.pages");
+    case "heatmap":
+      return t("monitor.view.heatmap");
+    case "events":
+      return t("monitor.view.events");
     case "deploys":
       return t("monitor.view.deploys");
     case "experiments":
@@ -246,16 +267,25 @@ function ProjectScreen({
   );
 }
 
-/** Thais's rebuilt Experiments where the org has it, through the tab's own pick. */
+/**
+ * How each running test is doing, read only: tests are created and changed
+ * where work is done, not in the Monitor.
+ */
 export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
   const views = useControlPlaneViews();
+  const projects = useSiteProjects();
   return (
     <ProjectScreen
       scopeId={scopeId}
       enabled={views.experiments}
       empty="experiments"
-      render={(id) => <ExperimentsTab virtualMcpId={id} />}
-      org={(projects) => <OrgExperiments projects={projects} />}
+      render={() => (
+        <DecoScreen
+          project={projects.find((p) => p.id === scopeId)}
+          sections={EXPERIMENTS_SECTIONS}
+        />
+      )}
+      org={(list) => <OrgExperiments projects={list} />}
     />
   );
 }
@@ -293,25 +323,46 @@ export function PerformanceView({
   );
 }
 
+/** A tab drawn from one project's Deco Analytics sections. */
+export function DecoView({
+  scopeId,
+  sections,
+}: {
+  scopeId: string | null;
+  sections: readonly DecoSectionId[];
+}) {
+  const views = useControlPlaneViews();
+  const projects = useSiteProjects();
+  const screen = (
+    <DecoScreen
+      project={projects.find((p) => p.id === scopeId)}
+      sections={sections}
+    />
+  );
+  return (
+    <ProjectScreen
+      scopeId={scopeId}
+      enabled={views.monitor}
+      empty="analytics"
+      render={() => screen}
+      org={() => screen}
+      bare
+    />
+  );
+}
+
 /** Who visits, from Deco Analytics or OneDollarStats, one shape for both. */
 export function AudienceView({
   scopeId,
-  section,
   onOpen,
 }: {
   scopeId: string | null;
-  section: string;
   onOpen: (next: AnalyticsTarget) => void;
 }) {
   const views = useControlPlaneViews();
   const projects = useSiteProjects();
   const screen = (
-    <AudienceScreen
-      projects={projects}
-      scopeId={scopeId}
-      section={section}
-      onOpen={onOpen}
-    />
+    <AudienceScreen projects={projects} scopeId={scopeId} onOpen={onOpen} />
   );
   return (
     <ProjectScreen

@@ -1224,7 +1224,12 @@ const monitoringSearch = z.object({
     .enum([
       "metrics",
       "performance",
+      "errors",
       "audience",
+      "realtime",
+      "pages",
+      "heatmap",
+      "events",
       "deploys",
       "experiments",
       "analytics",

@@ -5,11 +5,15 @@
  * Audience cards so the sections read as one screen with the rest.
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { BarChart10, Check } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import {
   Table,
   TableBody,
@@ -114,7 +118,11 @@ export function ratioPct(part: number, whole: number): number | null {
   return whole > 0 ? (100 * part) / whole : null;
 }
 
-export function fmtMoney(v: unknown, currency: string | null): string {
+export function fmtMoney(
+  v: unknown,
+  currency: string | null,
+  digits = 0,
+): string {
   const n = num(v);
   if (n === null) return "—";
   if (!currency) {
@@ -126,7 +134,7 @@ export function fmtMoney(v: unknown, currency: string | null): string {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
-      maximumFractionDigits: 0,
+      maximumFractionDigits: digits,
     }).format(n);
   } catch {
     return `${new Intl.NumberFormat().format(Math.round(n))} ${currency}`;
@@ -267,7 +275,7 @@ export function SectionEmpty({
   );
 }
 
-export function NoRows() {
+function NoRows() {
   const t = useT();
   return <p className="text-meta">{t("monitor.analytics.panels.empty")}</p>;
 }
@@ -388,7 +396,13 @@ interface RankedRowsProps {
   label?: (k: string) => ReactNode;
   /** A second figure after the count, e.g. converters. */
   extra?: (row: RankedRow) => ReactNode;
+  /** How a row's figure reads; a plain count by default. */
+  format?: (n: number) => string;
+  /** A dot's color class, for rows whose kind has a meaning (2xx, a cache hit). */
+  dot?: (k: string) => string;
   limit?: number;
+  /** Past the limit, a button that lists every row. */
+  expandable?: boolean;
   share?: boolean;
 }
 
@@ -409,67 +423,144 @@ export function RankedList({
   );
 }
 
+export interface RankedOption extends RankedRowsProps {
+  id: string;
+  /** The option's name in the card's corner. */
+  name: string;
+  /** Drawn instead of the rows, e.g. the countries on a map. */
+  body?: ReactNode;
+}
+
+/**
+ * One card for several cuts of the same people (device, browser, OS), picked
+ * in its corner instead of a card each.
+ */
+export function RankedChoice({
+  title,
+  options,
+}: {
+  title: string;
+  options: RankedOption[];
+}) {
+  const [picked, setPicked] = useState(options[0]?.id);
+  const current = options.find((o) => o.id === picked) ?? options[0];
+  if (!current) return null;
+  const { id: _id, name: _name, body, ...rows } = current;
+  return (
+    <Panel
+      title={title}
+      aside={
+        options.length > 1 && (
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={current.id}
+            onValueChange={(v) => v && setPicked(v)}
+          >
+            {options.map((o) => (
+              <ToggleGroupItem
+                key={o.id}
+                value={o.id}
+                className="flex-none px-2.5 text-xs font-normal"
+              >
+                {o.name}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        )
+      }
+    >
+      {body ?? <RankedRows {...rows} />}
+    </Panel>
+  );
+}
+
 /** The rows of a ranked list, for a card that holds more than the list. */
-export function RankedRows({
+function RankedRows({
   rows,
   dim,
   filterValue,
   label,
   extra,
+  format = fmtInt,
+  dot,
   limit = 8,
+  expandable = true,
   share = true,
 }: RankedRowsProps) {
+  const t = useT();
   const rowFilter = useRowFilter();
-  const top = rows.filter((r) => r.k !== "").slice(0, limit);
+  const [all, setAll] = useState(false);
+  const named = rows.filter((r) => r.k !== "");
+  const top = all ? named : named.slice(0, limit);
   const max = Math.max(1, ...top.map((r) => r.n));
   const total = rows.reduce((a, r) => a + r.n, 0);
   if (top.length === 0) return <NoRows />;
   return (
-    <ul className="flex flex-col gap-1">
-      {top.map((row) => {
-        const props = dim
-          ? rowFilter(dim, filterValue ? filterValue(row.k) : row.k)
-          : null;
-        return (
-          <li
-            key={row.k}
-            {...props}
-            className={cn(
-              "group relative flex items-center rounded-md",
-              props &&
-                "focus-ring cursor-pointer hover:bg-accent/60 aria-pressed:bg-accent",
-            )}
-          >
-            <span
-              className="surface-inset absolute inset-y-0 left-0 group-aria-pressed:bg-foreground/10"
-              style={{ width: `${(row.n / max) * 100}%` }}
-            />
-            <span className="relative flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-sm text-foreground">
-              <span className="truncate">{label ? label(row.k) : row.k}</span>
-              {props && (
-                <Check
-                  size={14}
-                  className="hidden shrink-0 text-foreground group-aria-pressed:block"
-                />
+    <div className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-1">
+        {top.map((row) => {
+          const props = dim
+            ? rowFilter(dim, filterValue ? filterValue(row.k) : row.k)
+            : null;
+          return (
+            <li
+              key={row.k}
+              {...props}
+              className={cn(
+                "group relative flex items-center rounded-md",
+                props &&
+                  "focus-ring cursor-pointer hover:bg-accent/60 aria-pressed:bg-accent",
               )}
-            </span>
-            {extra && (
-              <span className="tnum relative px-2 text-sm text-muted-foreground">
-                {extra(row)}
+            >
+              <span
+                className="surface-inset absolute inset-y-0 left-0 group-aria-pressed:bg-foreground/10"
+                style={{ width: `${(row.n / max) * 100}%` }}
+              />
+              <span className="relative flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-sm text-foreground">
+                {dot && (
+                  <span
+                    className={cn("size-2 shrink-0 rounded-full", dot(row.k))}
+                  />
+                )}
+                <span className="truncate">{label ? label(row.k) : row.k}</span>
+                {props && (
+                  <Check
+                    size={14}
+                    className="hidden shrink-0 text-foreground group-aria-pressed:block"
+                  />
+                )}
               </span>
-            )}
-            {share && (
-              <span className="text-meta tnum relative w-12 text-right">
-                {total > 0 ? fmtPct((100 * row.n) / total, 0) : ""}
+              {extra && (
+                <span className="tnum relative px-2 text-sm text-muted-foreground">
+                  {extra(row)}
+                </span>
+              )}
+              {share && (
+                <span className="text-meta tnum relative w-12 shrink-0 text-right">
+                  {total > 0 ? fmtPct((100 * row.n) / total, 0) : ""}
+                </span>
+              )}
+              <span className="tnum relative min-w-20 shrink-0 px-2 text-right text-sm whitespace-nowrap text-foreground">
+                {format(row.n)}
               </span>
-            )}
-            <span className="tnum relative w-20 px-2 text-right text-sm text-foreground">
-              {fmtInt(row.n)}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+            </li>
+          );
+        })}
+      </ul>
+      {expandable && named.length > limit && (
+        <button
+          type="button"
+          onClick={() => setAll((v) => !v)}
+          className="text-meta self-start px-2 hover:text-foreground"
+        >
+          {all
+            ? t("mainPanelTabs.cdnTab.showLess")
+            : t("mainPanelTabs.cdnTab.showAll")}
+        </button>
+      )}
+    </div>
   );
 }
 

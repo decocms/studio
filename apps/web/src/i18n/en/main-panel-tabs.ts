@@ -461,6 +461,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.frameTitle": "Live page with the heatmap",
   "mainPanelTabs.analyticsTab.heatmap.frameLoading": "Loading the live page…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "The site did not answer",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutHint":
+    "Move the mouse over the page or accept its cookies, then try again.",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutRetry": "Try again",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutWhy": "Why this happens",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
     "The page has not started the analytics view mode yet. If the site loads analytics only after an interaction or cookie consent, move the mouse over the page or accept its cookies. Otherwise check that it runs the current Deco Analytics runtime and lets Studio frame it.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle": "No heatmap visits here",

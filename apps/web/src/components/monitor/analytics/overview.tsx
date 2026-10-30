@@ -14,8 +14,6 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { TrendChart } from "./charts";
 import {
-  capitalize,
-  countryLabel,
   firstRow,
   fmtDuration,
   fmtInt,
@@ -24,14 +22,15 @@ import {
   num,
   Panel,
   PrevChange,
+  RankedChoice,
   RankedList,
-  splitRows,
   rowsOf,
   SectionError,
   SectionSkeleton,
   useSectionView,
   WithheldBadge,
 } from "./panels";
+import { countryOptions, deviceOptions } from "./behaviour";
 import type { SectionProps } from "./types";
 
 const METRICS = ["visitors", "pageviews", "events"] as const;
@@ -222,17 +221,17 @@ export function DecoOverview(props: SectionProps) {
               rows={kn(rowsOf(b, "pages"))}
               dim="path"
             />
-            <RankedList
+            <RankedChoice
               title={t("monitor.analytics.panels.countries")}
-              rows={kn(rowsOf(b, "countries"))}
-              dim="country"
-              label={countryLabel}
+              options={countryOptions(rowsOf(b, "countries"), t)}
             />
-            <RankedList
+            <RankedChoice
               title={t("monitor.analytics.panels.devices")}
-              rows={splitRows(kn(rowsOf(b, "devices")), "first")}
-              dim="device"
-              label={capitalize}
+              options={deviceOptions(
+                kn(rowsOf(b, "devices")),
+                kn(rowsOf(b, "os")),
+                t,
+              )}
             />
           </div>
         )

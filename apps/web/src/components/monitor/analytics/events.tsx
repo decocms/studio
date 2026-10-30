@@ -1,21 +1,15 @@
 /**
- * Events & properties: the custom events a site sends, the values of any
- * property it sends with them, and what the engagement module measures on its
- * own (scroll depth, site search, outbound links, downloads).
+ * Events: the custom events a site sends, and what the engagement module
+ * measures on its own (scroll depth, site search, outbound links, downloads).
  */
 
 import { CursorClick01 } from "@untitledui/icons";
-import { Chip } from "@decocms/ui/components/chip.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { useAnalyticsSegment } from "./segment";
 import {
   fmtInt,
   kn,
-  NoRows,
   n0,
-  Panel,
   RankedList,
-  RankedRows,
   rowsOf,
   SectionEmpty,
   SectionError,
@@ -46,19 +40,12 @@ export function EventsSection(props: SectionProps) {
 
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-2">
-        <RankedList
-          title={t("monitor.analytics.panels.events")}
-          rows={kn(rowsOf(data, "events"))}
-          dim="name"
-          limit={12}
-        />
-        <Properties
-          keys={kn(rowsOf(data, "propKeys"))}
-          values={kn(rowsOf(data, "propValues"))}
-          selected={props.segment.prop}
-        />
-      </div>
+      <RankedList
+        title={t("monitor.analytics.panels.events")}
+        rows={kn(rowsOf(data, "events"))}
+        dim="name"
+        limit={12}
+      />
       {engagement ? (
         <div className="grid gap-4 md:grid-cols-2">
           <RankedList
@@ -105,75 +92,5 @@ export function EventsSection(props: SectionProps) {
         />
       )}
     </>
-  );
-}
-
-/**
- * Every property key the site sends, as a chooser that wraps (keys are the
- * site's own names and can be long), then the chosen key's values. A value
- * row filters on `key=value`.
- */
-function Properties({
-  keys,
-  values,
-  selected,
-}: {
-  keys: { k: string; n: number }[];
-  values: { k: string; n: number }[];
-  selected: string | undefined;
-}) {
-  const t = useT();
-  const { setSegment } = useAnalyticsSegment();
-  const title = t("monitor.analytics.panels.properties");
-  if (keys.length === 0) {
-    return (
-      <Panel title={title}>
-        <NoRows />
-      </Panel>
-    );
-  }
-  return (
-    <Panel title={title}>
-      <div className="flex flex-col gap-5">
-        <div
-          role="radiogroup"
-          aria-label={title}
-          className="flex flex-wrap gap-1.5"
-        >
-          {keys.map((key) => (
-            <Chip key={key.k} asChild>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={selected === key.k}
-                title={t("monitor.analytics.panels.propUses", {
-                  n: fmtInt(key.n),
-                })}
-                onClick={() =>
-                  setSegment({
-                    prop: selected === key.k ? undefined : key.k,
-                  })
-                }
-                className="font-mono aria-checked:bg-foreground aria-checked:text-background aria-checked:hover:bg-foreground/90"
-              >
-                {key.k}
-              </button>
-            </Chip>
-          ))}
-        </div>
-        {selected ? (
-          <RankedRows
-            rows={values}
-            dim="prop"
-            filterValue={(k) => `${selected}=${k}`}
-            limit={10}
-          />
-        ) : (
-          <p className="text-meta">
-            {t("monitor.analytics.panels.pickProperty")}
-          </p>
-        )}
-      </div>
-    </Panel>
   );
 }

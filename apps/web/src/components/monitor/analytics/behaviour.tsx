@@ -5,7 +5,8 @@
  */
 
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useT } from "@/i18n/use-t.ts";
+import { type TFunction, useT } from "@/i18n/use-t.ts";
+import { CountryMap } from "@/layouts/main-panel-tabs/cdn-tab";
 import {
   capitalize,
   type Column,
@@ -21,7 +22,11 @@ import {
   num,
   Panel,
   PanelTable,
+  type Payload,
+  RankedChoice,
   RankedList,
+  type RankedOption,
+  type RankedRow,
   type Row,
   rowsOf,
   SectionError,
@@ -44,7 +49,7 @@ export function BehaviourSection(props: SectionProps) {
   return (
     <>
       <Group title={t("monitor.analytics.panels.group.acquisition")}>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-3">
           <RankedList
             title={t("monitor.analytics.panels.channels")}
             rows={kn(rowsOf(data, "channels"))}
@@ -55,27 +60,9 @@ export function BehaviourSection(props: SectionProps) {
             rows={kn(rowsOf(data, "sources"))}
             dim="source"
           />
-          <RankedList
-            title={t("monitor.analytics.panels.campaigns")}
-            rows={kn(rowsOf(data, "campaigns"))}
-            dim="utmSource"
-            filterValue={(k) => k.split(" · ")[0] ?? k}
-          />
-          <RankedList
-            title={t("monitor.analytics.panels.campaignNames")}
-            rows={rowsOf(data, "campaignNames").map((r) => ({
-              k: str(r.k),
-              n: n0(r.n),
-              converters: n0(r.converters),
-            }))}
-            dim="utmCampaign"
-            extra={(r) =>
-              "converters" in r
-                ? t("monitor.analytics.panels.convertersShort", {
-                    n: fmtInt(r.converters),
-                  })
-                : null
-            }
+          <RankedChoice
+            title={t("monitor.analytics.panels.utm")}
+            options={utmOptions(data, t)}
           />
         </div>
         <Attribution rows={rowsOf(data, "attribution")} />
@@ -112,12 +99,14 @@ export function BehaviourSection(props: SectionProps) {
       )}
 
       <Group title={t("monitor.analytics.panels.group.audience")}>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <RankedList
+        <div className="grid gap-4 md:grid-cols-2">
+          <RankedChoice
             title={t("monitor.analytics.panels.countries")}
-            rows={kn(rowsOf(data, "countries"))}
-            dim="country"
-            label={countryLabel}
+            options={countryOptions(rowsOf(data, "countries"), t)}
+          />
+          <RankedChoice
+            title={t("monitor.analytics.panels.devices")}
+            options={deviceOptions(devices, kn(rowsOf(data, "os")), t)}
           />
           <RankedList
             title={t("monitor.analytics.panels.regions")}
@@ -128,22 +117,6 @@ export function BehaviourSection(props: SectionProps) {
             title={t("monitor.analytics.panels.cities")}
             rows={kn(rowsOf(data, "cities"))}
             dim="city"
-          />
-          <RankedList
-            title={t("monitor.analytics.panels.devices")}
-            rows={splitRows(devices, "first")}
-            dim="device"
-            label={capitalize}
-          />
-          <RankedList
-            title={t("monitor.analytics.panels.browsers")}
-            rows={splitRows(devices, "second")}
-            dim="browser"
-          />
-          <RankedList
-            title={t("monitor.analytics.panels.os")}
-            rows={kn(rowsOf(data, "os"))}
-            dim="os"
           />
         </div>
       </Group>
@@ -379,4 +352,88 @@ function ProductFunnel({ rows }: { rows: Row[] }) {
       <PanelTable columns={columns} rows={rows} rowKey={(r) => str(r.k)} />
     </Panel>
   );
+}
+
+/** Campaign names, or the UTM source or medium behind the campaigns. */
+function utmOptions(data: Payload | undefined, t: TFunction): RankedOption[] {
+  const campaigns = kn(rowsOf(data, "campaigns"));
+  return [
+    {
+      id: "campaign",
+      name: t("monitor.analytics.panels.choice.campaign"),
+      rows: rowsOf(data, "campaignNames").map((r) => ({
+        k: str(r.k),
+        n: n0(r.n),
+        converters: n0(r.converters),
+      })),
+      dim: "utmCampaign",
+      extra: (r) =>
+        "converters" in r
+          ? t("monitor.analytics.panels.convertersShort", {
+              n: fmtInt(r.converters),
+            })
+          : null,
+    },
+    {
+      id: "source",
+      name: t("monitor.analytics.panels.choice.source"),
+      rows: splitRows(campaigns, "first"),
+      dim: "utmSource",
+    },
+    {
+      id: "medium",
+      name: t("monitor.analytics.panels.choice.medium"),
+      rows: splitRows(campaigns, "second"),
+      dim: "utmMedium",
+    },
+  ];
+}
+
+/** Where visitors are, on the map or as a list. */
+export function countryOptions(rows: Row[], t: TFunction): RankedOption[] {
+  const ranked = kn(rows);
+  return [
+    {
+      id: "map",
+      name: t("monitor.analytics.panels.choice.map"),
+      rows: ranked,
+      body: <CountryMap rows={ranked.map((r) => ({ key: r.k, value: r.n }))} />,
+    },
+    {
+      id: "list",
+      name: t("monitor.analytics.panels.choice.list"),
+      rows: ranked,
+      dim: "country",
+      label: countryLabel,
+    },
+  ];
+}
+
+/** `mobile · Chrome` rows by device or by browser, and the OS on its own. */
+export function deviceOptions(
+  devices: RankedRow[],
+  os: RankedRow[],
+  t: TFunction,
+): RankedOption[] {
+  return [
+    {
+      id: "device",
+      name: t("monitor.analytics.panels.choice.device"),
+      rows: splitRows(devices, "first"),
+      dim: "device",
+      label: capitalize,
+    },
+    {
+      id: "browser",
+      name: t("monitor.analytics.panels.choice.browser"),
+      rows: splitRows(devices, "second"),
+      dim: "browser",
+    },
+    {
+      id: "os",
+      name: t("monitor.analytics.panels.choice.os"),
+      rows: os,
+      dim: "os",
+    },
+  ];
 }

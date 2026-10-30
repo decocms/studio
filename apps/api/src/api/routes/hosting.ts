@@ -47,7 +47,6 @@ import {
   isCustomerLakeConfigured,
   linkAnalyticsSite,
 } from "../../customer-lake/client";
-import { readAnalyticsValues } from "../../deco-analytics/read-surface";
 import { getSettings } from "../../settings";
 
 type Variables = { studioContext: StudioContext };
@@ -257,77 +256,6 @@ export function heatmapParams(
   return {
     ...(page !== undefined ? { page } : {}),
     ...(device !== undefined ? { device } : {}),
-  };
-}
-
-/** The dimensions a segment can filter on, as the read surface names them
- *  (queries.mjs DIMENSIONS). */
-const ANALYTICS_DIMENSIONS = new Set([
-  "path",
-  "source",
-  "device",
-  "browser",
-  "os",
-  "country",
-  "region",
-  "city",
-  "name",
-  "channel",
-  "utmSource",
-  "utmMedium",
-  "utmCampaign",
-  "flag",
-  "exp",
-  "prop",
-]);
-const ANALYTICS_OPERATORS = new Set(["is", "not", "has", "starts"]);
-const MAX_ANALYTICS_FILTERS = 10;
-
-/** A view's segment and reading: repeated `f=<dim>:<op>:<value>` filters, the
- *  conversion goal, the currency money is shown in and the property whose
- *  values the events view lists. Validated before they reach the read surface,
- *  which ignores an unknown dimension instead of refusing it — a segment that
- *  silently reads as the whole site. `null` when anything present is invalid. */
-export function analyticsQueryParams(input: {
-  f: readonly string[];
-  goal?: string;
-  currency?: string;
-  prop?: string;
-}): { f: string[]; single: Record<string, string> } | null {
-  if (input.f.length > MAX_ANALYTICS_FILTERS) return null;
-  for (const raw of input.f) {
-    const [dim, op, ...rest] = raw.split(":");
-    const value = rest.join(":");
-    if (
-      !dim ||
-      !ANALYTICS_DIMENSIONS.has(dim) ||
-      !op ||
-      !ANALYTICS_OPERATORS.has(op) ||
-      value.length === 0 ||
-      value.length > 200
-    ) {
-      return null;
-    }
-  }
-  if (input.goal !== undefined && !/^[\w-]{1,64}$/.test(input.goal)) {
-    return null;
-  }
-  if (input.currency !== undefined && !/^[A-Z]{3}$/.test(input.currency)) {
-    return null;
-  }
-  if (
-    input.prop !== undefined &&
-    (input.prop.length === 0 || input.prop.length > 100)
-  ) {
-    return null;
-  }
-  return {
-    f: [...input.f],
-    single: {
-      ...(input.goal !== undefined ? { goal: input.goal } : {}),
-      ...(input.currency !== undefined ? { currency: input.currency } : {}),
-      ...(input.prop !== undefined ? { prop: input.prop } : {}),
-    },
   };
 }
 
@@ -835,15 +763,6 @@ export const createHostingRoutes = () => {
     if (!heatmap) {
       return c.json({ error: "invalid heatmap page or device" }, 400);
     }
-    const segment = analyticsQueryParams({
-      f: c.req.queries("f") ?? [],
-      goal: c.req.query("goal"),
-      currency: c.req.query("currency"),
-      prop: c.req.query("prop"),
-    });
-    if (!segment) {
-      return c.json({ error: "invalid filter, goal, currency or prop" }, 400);
-    }
 
     // Resolve the warehouse site_id from a slug the org owns — never trust a
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
@@ -862,13 +781,9 @@ export const createHostingRoutes = () => {
     upstream.searchParams.set("view", view);
     upstream.searchParams.set("range", range);
     upstream.searchParams.set("site", siteId);
-    for (const [key, value] of Object.entries({
-      ...heatmap,
-      ...segment.single,
-    })) {
+    for (const [key, value] of Object.entries(heatmap)) {
       upstream.searchParams.set(key, value);
     }
-    for (const f of segment.f) upstream.searchParams.append("f", f);
 
     let payload: Record<string, unknown> | null;
     try {
@@ -934,51 +849,6 @@ export const createHostingRoutes = () => {
       range,
       data: toTenantAnalyticsPayload(payload, siteId),
     });
-  });
-
-  // GET /api/:org/hosting/:site/analytics/values?dim=&range= — filter suggestions.
-  app.get("/:site/analytics/values", async (c) => {
-    const ctx = c.get("studioContext");
-    if (!isAuthenticated(ctx)) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    const org = requireOrganization(ctx);
-    const site = c.req.param("site");
-    if (!site) return c.json({ error: "site is required" }, 400);
-    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!ownsSite) {
-      return c.json({ error: "Site not found in organization" }, 404);
-    }
-    const { analyticsDataUrl, analyticsMasterToken } = getSettings();
-    if (!analyticsDataUrl || !analyticsMasterToken) {
-      return c.json({ error: "Analytics data surface is not configured" }, 503);
-    }
-    const dim = c.req.query("dim") ?? "";
-    if (!ANALYTICS_DIMENSIONS.has(dim)) {
-      return c.json({ error: `unknown dimension: ${dim}` }, 400);
-    }
-    const range = c.req.query("range") ?? "24h";
-    if (!ANALYTICS_RANGES.has(range)) {
-      return c.json({ error: `unknown range: ${range}` }, 400);
-    }
-    const resolution = await resolveWarehouseSiteId(org, site);
-    if (resolution.status === "error") {
-      return c.json({ error: "Failed to resolve analytics registration" }, 502);
-    }
-    if (resolution.status === "unregistered") return c.json({ values: [] });
-    const read = await readAnalyticsValues({
-      analyticsDataUrl,
-      analyticsMasterToken,
-      siteId: resolution.id,
-      dim,
-      range,
-      site,
-    });
-    if (!read.ok) return c.json({ error: read.error }, read.status);
-    return c.json(read.payload);
   });
 
   // GET /api/:org/hosting/:site/analytics/globe.js — the live map's renderer.

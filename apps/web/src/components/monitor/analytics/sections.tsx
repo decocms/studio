@@ -30,9 +30,27 @@ const DECO_SECTIONS = [
 ] as const;
 export type DecoSectionId = (typeof DECO_SECTIONS)[number];
 
-export function asDecoSection(section: string): DecoSectionId {
-  return DECO_SECTIONS.find((s) => s === section) ?? "overview";
-}
+/** The Realtime tab: who is on the site now. */
+export const REALTIME_SECTIONS: readonly DecoSectionId[] = ["live"];
+/** The Pages & sources tab: how visitors arrive and where they go. */
+export const PAGES_SECTIONS: readonly DecoSectionId[] = ["behaviour"];
+/** The Heatmap tab: where visitors click and scroll on a page. */
+export const HEATMAP_SECTIONS: readonly DecoSectionId[] = ["heatmap"];
+/** The Events tab, top to bottom: what the site sends, how clean, how much. */
+export const EVENTS_SECTIONS: readonly DecoSectionId[] = [
+  "events",
+  "quality",
+  "usage",
+];
+/** Under the CDN on Performance: how fast pages feel. */
+export const PERFORMANCE_SECTIONS: readonly DecoSectionId[] = ["vitals"];
+/**
+ * The Experiments tab, read only: how each running test is doing. Tests are
+ * created and changed where work is done, not in the Monitor.
+ */
+export const EXPERIMENTS_SECTIONS: readonly DecoSectionId[] = ["experiments"];
+/** The Errors tab: what breaks in visitors' browsers. */
+export const ERRORS_SECTIONS: readonly DecoSectionId[] = ["errors"];
 
 export function DecoSection({
   section,
