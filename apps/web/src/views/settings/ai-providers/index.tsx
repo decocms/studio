@@ -11,10 +11,7 @@ import { DecoCreditsHero } from "./deco-credits-hero";
 import { PlanUsageCard } from "./plan-usage-card";
 import { PlanCatalog } from "./plan-catalog";
 import { DecoNudgeCard } from "./deco-nudge-card";
-import { ConnectedProvidersSection } from "./connected-providers-section";
-import { CodexSubscriptionCard } from "./codex-subscription-card";
-import { ClaudeSubscriptionCard } from "./claude-subscription-card";
-import { GithubCopilotCard } from "./github-copilot-card";
+import { OwnAccountsSection } from "./own-accounts-section";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
@@ -37,8 +34,7 @@ function ErrorFallback({ error }: { error: Error }) {
 
 function OrgAiProvidersContent() {
   const allKeys = useAiProviderKeys();
-  const { hasInventory, hasHostedProvider, hasDeco } =
-    getProviderInventoryState(allKeys);
+  const { hasHostedProvider, hasDeco } = getProviderInventoryState(allKeys);
   const [connectOpen, setConnectOpen] = useState(false);
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
@@ -70,15 +66,9 @@ function OrgAiProvidersContent() {
             provider keys the org happens to have connected. */}
         <PlanUsageCard />
         <PlanCatalog />
-        <ProviderGrid
-          providers={providers}
-          onSelect={setPendingProvider}
-          onShowAll={() => setConnectOpen(true)}
-        />
+        <ProviderGrid providers={providers} onSelect={setPendingProvider} />
         {/* A user's own plan runs chats with no org provider at all. */}
-        <ClaudeSubscriptionCard />
-        <CodexSubscriptionCard />
-        <GithubCopilotCard />
+        <OwnAccountsSection onAddKey={() => setConnectOpen(true)} />
         <ConnectProviderDialog
           open={pendingProvider !== null || connectOpen}
           onOpenChange={(o) => {
@@ -89,11 +79,6 @@ function OrgAiProvidersContent() {
           }}
           initialProvider={pendingProvider ?? undefined}
         />
-        {hasInventory ? (
-          <ConnectedProvidersSection
-            onConnectClick={() => setConnectOpen(true)}
-          />
-        ) : null}
       </>
     );
   }
@@ -109,10 +94,7 @@ function OrgAiProvidersContent() {
         </Suspense>
       ) : null}
       {hasDeco ? null : <DecoNudgeCard />}
-      <ClaudeSubscriptionCard />
-      <CodexSubscriptionCard />
-      <GithubCopilotCard />
-      <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
+      <OwnAccountsSection onAddKey={() => setConnectOpen(true)} />
       <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </>
   );

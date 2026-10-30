@@ -1,16 +1,15 @@
+import type { ReactNode } from "react";
 import type { AiProviderInfo } from "@/sdk";
-import { ChevronRight } from "@untitledui/icons";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   SettingsCard,
   SettingsCardItem,
-  SettingsSection,
 } from "@/components/settings/settings-section";
 import {
   getPreset,
-  OPENAI_COMPATIBLE_PRESETS,
   type OpenAICompatiblePreset,
 } from "@/utils/openai-compatible-presets";
+import { usePlansEnabled } from "@/hooks/use-entitlements";
 import { useT } from "@/i18n/use-t.ts";
 
 export type ProviderSelection =
@@ -24,11 +23,16 @@ export type ProviderSelection =
 interface ProviderGridProps {
   providers: AiProviderInfo[];
   onSelect: (selection: ProviderSelection) => void;
-  /** When provided, cloud section is capped at 4 tiles with a "see all" row. */
-  onShowAll?: () => void;
 }
 
-const CLOUD_PREVIEW_COUNT = 4;
+/**
+ * Chat runs on the Claude Code and Codex harnesses, so only providers that can
+ * serve them belong under "chat". Gemini answers neither — it still powers
+ * image generation and web search, so it is offered for that alone. Providers
+ * in neither list (LLMAPI) are not offered; their existing keys stay listed.
+ */
+const CHAT_PROVIDER_IDS = ["anthropic", "openrouter"] as const;
+const MEDIA_PROVIDER_IDS = ["google"] as const;
 
 function ProviderTile({
   logo,
@@ -46,11 +50,7 @@ function ProviderTile({
       onClick={onClick}
       icon={
         logo ? (
-          <img
-            src={logo}
-            alt={name}
-            className="size-8 rounded-md object-contain dark:bg-white dark:p-0.5"
-          />
+          <img src={logo} alt={name} className="size-5 object-contain" />
         ) : (
           <Avatar
             fallback={name.charAt(0)}
@@ -64,77 +64,72 @@ function ProviderTile({
   );
 }
 
-export function ProviderGrid({
-  providers,
-  onSelect,
-  onShowAll,
-}: ProviderGridProps) {
+function Group({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="px-1 text-meta">{label}</span>
+      <SettingsCard>{children}</SettingsCard>
+    </div>
+  );
+}
+
+export function ProviderGrid({ providers, onSelect }: ProviderGridProps) {
   const t = useT();
-  const deco = providers.find((p) => p.id === "deco");
-  const CLOUD_ORDER: Record<string, number> = {
-    openrouter: 0,
-    llmapi: 1,
-    anthropic: 2,
-    google: 3,
-  };
-  const cloud = providers
-    .filter((p) => p.id !== "deco" && p.id !== "openai-compatible")
-    .sort((a, b) => {
-      const ai = CLOUD_ORDER[a.id] ?? Number.MAX_SAFE_INTEGER;
-      const bi = CLOUD_ORDER[b.id] ?? Number.MAX_SAFE_INTEGER;
-      return ai - bi;
-    });
-  const openaiCompatible = providers.find((p) => p.id === "openai-compatible");
+  // With plans on, the deco gateway is the plan itself, not a key to add.
+  const plansEnabled = usePlansEnabled();
+  const byId = (id: string) => providers.find((p) => p.id === id);
+  const deco = plansEnabled ? undefined : byId("deco");
+  const openaiCompatible = byId("openai-compatible");
   const openaiPreset = getPreset("openai");
 
-  const allCloudTiles = [
-    ...cloud.map((provider) => (
+  const tile = (provider: AiProviderInfo) => (
+    <ProviderTile
+      key={provider.id}
+      logo={provider.logo}
+      name={provider.name}
+      description={provider.description}
+      onClick={() => onSelect({ kind: "provider", provider })}
+    />
+  );
+
+  const chat = CHAT_PROVIDER_IDS.flatMap((id) => {
+    const provider = byId(id);
+    return provider ? [tile(provider)] : [];
+  });
+  if (openaiCompatible && openaiPreset) {
+    chat.push(
       <ProviderTile
-        key={provider.id}
-        logo={provider.logo}
-        name={provider.name}
-        description={provider.description}
-        onClick={() => onSelect({ kind: "provider", provider })}
-      />
-    )),
-    ...(openaiCompatible && openaiPreset
-      ? [
+        key={openaiPreset.id}
+        logo={openaiPreset.logo}
+        name={openaiPreset.name}
+        description={openaiPreset.description}
+        onClick={() =>
+          onSelect({
+            kind: "openai-compatible",
+            provider: openaiCompatible,
+            preset: openaiPreset,
+          })
+        }
+      />,
+    );
+  }
+  const media = MEDIA_PROVIDER_IDS.flatMap((id) => {
+    const provider = byId(id);
+    return provider ? [tile(provider)] : [];
+  });
+
+  return (
+    <div className="flex flex-col gap-5">
+      {deco && <SettingsCard>{tile(deco)}</SettingsCard>}
+      {chat.length > 0 && (
+        <Group label={t("settings.aiProviders.groupChat")}>{chat}</Group>
+      )}
+      {media.length > 0 && (
+        <Group label={t("settings.aiProviders.groupMedia")}>{media}</Group>
+      )}
+      {openaiCompatible && (
+        <SettingsCard>
           <ProviderTile
-            key={openaiPreset.id}
-            logo={openaiPreset.logo}
-            name={openaiPreset.name}
-            description={openaiPreset.description}
-            onClick={() =>
-              onSelect({
-                kind: "openai-compatible",
-                provider: openaiCompatible,
-                preset: openaiPreset,
-              })
-            }
-          />,
-        ]
-      : []),
-    ...(openaiCompatible
-      ? [
-          ...OPENAI_COMPATIBLE_PRESETS.filter((p) => p.id !== "openai").map(
-            (preset) => (
-              <ProviderTile
-                key={preset.id}
-                logo={preset.logo}
-                name={preset.name}
-                description={preset.description}
-                onClick={() =>
-                  onSelect({
-                    kind: "openai-compatible",
-                    provider: openaiCompatible,
-                    preset,
-                  })
-                }
-              />
-            ),
-          ),
-          <ProviderTile
-            key="custom"
             logo={openaiCompatible.logo}
             name={t("settings.aiProviders.customOpenAiCompatible")}
             description={t("settings.aiProviders.customOpenAiDescription")}
@@ -145,57 +140,9 @@ export function ProviderGrid({
                 preset: null,
               })
             }
-          />,
-        ]
-      : []),
-  ];
-
-  const hiddenCount = allCloudTiles.length - CLOUD_PREVIEW_COUNT;
-  const shouldPreview = !!onShowAll && hiddenCount > 0;
-  const visibleCloudTiles = shouldPreview
-    ? allCloudTiles.slice(0, CLOUD_PREVIEW_COUNT)
-    : allCloudTiles;
-
-  return (
-    <div className="flex flex-col gap-6">
-      {deco && (
-        <SettingsSection>
-          <div className="relative rounded-xl border border-violet-400/30 bg-gradient-to-br from-violet-50/50 via-transparent to-lime-50/30 dark:from-violet-950/20 dark:to-lime-950/10 p-1.5">
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-400/5 to-lime-400/5 pointer-events-none" />
-            <p className="text-xs font-medium text-special mb-1.5 px-2 pt-2 relative">
-              {t("settings.aiProviders.recommended")}
-            </p>
-            <SettingsCard className="relative">
-              <ProviderTile
-                logo={deco.logo}
-                name={deco.name}
-                description={deco.description}
-                onClick={() => onSelect({ kind: "provider", provider: deco })}
-              />
-            </SettingsCard>
-          </div>
-        </SettingsSection>
-      )}
-
-      <SettingsSection>
-        <SettingsCard>
-          {visibleCloudTiles}
-          {shouldPreview && (
-            <SettingsCardItem
-              onClick={onShowAll}
-              title={t(
-                hiddenCount === 1
-                  ? "settings.aiProviders.moreProvidersSingular"
-                  : "settings.aiProviders.moreProvidersPlural",
-                { count: hiddenCount },
-              )}
-              action={
-                <ChevronRight size={16} className="text-muted-foreground" />
-              }
-            />
-          )}
+          />
         </SettingsCard>
-      </SettingsSection>
+      )}
     </div>
   );
 }

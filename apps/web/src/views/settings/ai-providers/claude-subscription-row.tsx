@@ -1,5 +1,3 @@
-import { authClient } from "@/lib/auth-client";
-import { SubscriptionUsage } from "./subscription-usage";
 /**
  * Link your own Claude subscription, so sandbox-hosted claude-code runs bill
  * against your plan instead of the org's AI credit.
@@ -12,17 +10,29 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import { authClient } from "@/lib/auth-client";
 import { useProjectContext } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useT } from "@/i18n/use-t.ts";
+import { PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import {
-  SettingsCard,
-  SettingsSection,
-} from "@/components/settings/settings-section";
+  AccountLogo,
+  AccountMenu,
+  AccountRow,
+  LinkTokenForm,
+} from "./account-row";
+import {
+  SubscriptionUsageMenuItems,
+  SubscriptionUsageSummary,
+  useSubscriptionUsage,
+} from "./subscription-usage";
 
-export function ClaudeSubscriptionCard() {
+export function ClaudeSubscriptionRow() {
   const t = useT();
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
@@ -30,6 +40,7 @@ export function ClaudeSubscriptionCard() {
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [token, setToken] = useState("");
+  const [linking, setLinking] = useState(false);
 
   const status = useQuery({
     queryKey: KEYS.claudeSubscription(org.id, userId),
@@ -53,6 +64,7 @@ export function ClaudeSubscriptionCard() {
     mutationFn: () => studio.call("CLAUDE_SUBSCRIPTION_CONNECT", { token }),
     onSuccess: async () => {
       setToken("");
+      setLinking(false);
       await invalidate();
       toast.success(t("settings.claudeSubscription.connected"));
     },
@@ -72,66 +84,75 @@ export function ClaudeSubscriptionCard() {
   // A row that exists but is not `connected` is a token Anthropic has aged
   // out — the only state where "paste a new one" is the honest label.
   const expired = !connected && Boolean(status.data?.linkedAt);
+  const usage = useSubscriptionUsage({
+    provider: "claude",
+    orgId: org.id,
+    userId,
+    linkedAt: status.data?.linkedAt ?? null,
+    enabled: connected,
+  });
 
   return (
-    <SettingsSection
-      title={t("settings.claudeSubscription.title")}
-      description={
-        connected
-          ? t("settings.claudeSubscription.active")
-          : expired
-            ? t("settings.claudeSubscription.expired")
-            : t("settings.claudeSubscription.description")
+    <AccountRow
+      icon={
+        <AccountLogo
+          src={PROVIDER_LOGOS["claude-code"]}
+          alt={t("settings.claudeSubscription.title")}
+        />
       }
-      actions={
+      title={t("settings.claudeSubscription.title")}
+      status={connected ? "linked" : expired ? "expired" : null}
+      summary={connected ? <SubscriptionUsageSummary query={usage} /> : null}
+      action={
         connected ? (
+          <AccountMenu>
+            <SubscriptionUsageMenuItems provider="claude" query={usage} />
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={disconnect.isPending}
+              onSelect={() => disconnect.mutate()}
+            >
+              {t("settings.claudeSubscription.disconnect")}
+            </DropdownMenuItem>
+          </AccountMenu>
+        ) : (
           <Button
             variant="outline"
             size="sm"
-            disabled={disconnect.isPending}
-            onClick={() => disconnect.mutate()}
+            onClick={() => {
+              setLinking((open) => !open);
+              setToken("");
+            }}
           >
-            {t("settings.claudeSubscription.disconnect")}
+            {linking
+              ? t("settings.ownAccounts.cancel")
+              : t("settings.claudeSubscription.connect")}
           </Button>
-        ) : null
+        )
       }
     >
-      {connected && (
-        <SettingsCard>
-          <SubscriptionUsage
-            provider="claude"
-            orgId={org.id}
-            userId={userId}
-            linkedAt={status.data?.linkedAt ?? null}
-          />
-        </SettingsCard>
-      )}
-      {connected ? null : (
-        <SettingsCard>
-          <div className="flex flex-col gap-2 p-4">
-            <p className="text-sm text-muted-foreground">
+      {!connected && linking && (
+        <LinkTokenForm
+          hint={
+            <>
               {t("settings.claudeSubscription.howTo")}{" "}
-              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+              <code className="rounded bg-muted px-1.5 py-0.5">
                 claude setup-token
               </code>
-            </p>
-            <div className="flex items-center gap-2">
-              <Input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder={t("settings.claudeSubscription.tokenPlaceholder")}
-              />
-              <Button
-                disabled={token.trim().length === 0 || connect.isPending}
-                onClick={() => connect.mutate()}
-              >
-                {t("settings.claudeSubscription.connect")}
-              </Button>
-            </div>
-          </div>
-        </SettingsCard>
+            </>
+          }
+          submitLabel={t("settings.claudeSubscription.connect")}
+          pending={connect.isPending}
+          value={token}
+          onChange={setToken}
+          onSubmit={() => connect.mutate()}
+          inputProps={{
+            placeholder: t("settings.claudeSubscription.tokenPlaceholder"),
+            "aria-label": t("settings.claudeSubscription.tokenPlaceholder"),
+          }}
+        />
       )}
-    </SettingsSection>
+    </AccountRow>
   );
 }

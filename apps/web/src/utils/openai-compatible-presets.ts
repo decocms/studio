@@ -24,7 +24,7 @@ export interface OpenAICompatiblePreset {
   helpText?: string;
 }
 
-export const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
+const OPENAI_COMPATIBLE_PRESETS: OpenAICompatiblePreset[] = [
   {
     id: "openai",
     name: "OpenAI",
