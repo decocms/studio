@@ -53,11 +53,6 @@ const KIND_ICON: Record<
   actions: Zap,
 };
 
-const KIND_LABEL: Record<RunnableKind, string> = {
-  loaders: "Loaders",
-  actions: "Actions",
-};
-
 type IconComponent = React.ComponentType<{ size?: number; className?: string }>;
 
 /**
@@ -158,6 +153,13 @@ export function RunnableBlocksBrowser({
 
   const singular = runnableSingular(kind);
   const Icon = KIND_ICON[kind];
+  // The collection's own name, as the sidebar tab spells it — the breadcrumb's
+  // root crumb.
+  const collectionLabel = t(
+    kind === "loaders"
+      ? "sandbox.collectionsSidebar.loaders"
+      : "sandbox.collectionsSidebar.actions",
+  );
 
   // Saved (global) blocks live alongside the raw manifest blocks they
   // instantiate — same folder, purple accent, counted on the folder card.
@@ -266,6 +268,12 @@ export function RunnableBlocksBrowser({
 
   const target = buildTarget(selection, decofile);
 
+  const currentFolder = path[path.length - 1];
+  const backDestinationLabel =
+    !searching && currentFolder !== undefined
+      ? folderLabel(currentFolder, path.length - 1)
+      : collectionLabel;
+
   if (target) {
     const editorKey = `${target.mode}:${target.mode === "saved" ? target.blockKey : target.resolveType}`;
     return (
@@ -292,6 +300,11 @@ export function RunnableBlocksBrowser({
           onCreate={handleCreate}
           onSaveReferencedBlock={saveReferencedBlock}
           onBack={onBack ?? (() => setSelection(null))}
+          // A caller with its own list renders its own back header; only the
+          // folder browser's own selection gets the in-pane control. Closing the
+          // editor keeps `path` and the search, so the label names the list the
+          // user actually lands back in, not the collection root.
+          backLabel={onBack ? undefined : backDestinationLabel}
         />
       </HeldBlockView>
     );
@@ -315,7 +328,7 @@ export function RunnableBlocksBrowser({
                 : "text-muted-foreground",
             )}
           >
-            {KIND_LABEL[kind]}
+            {collectionLabel}
           </button>
           {path.map((segment, index) => {
             const isLast = index === path.length - 1;

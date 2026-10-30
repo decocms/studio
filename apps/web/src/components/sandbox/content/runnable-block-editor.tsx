@@ -3,6 +3,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useEffect, useState } from "react";
 import {
+  ChevronLeft,
   Code01,
   LinkExternal01,
   Maximize01,
@@ -68,6 +69,7 @@ export function RunnableBlockEditor({
   onCreate,
   onSaveReferencedBlock,
   onBack,
+  backLabel,
   showRun = true,
 }: {
   orgSlug: string;
@@ -87,6 +89,11 @@ export function RunnableBlockEditor({
   ) => void;
   /** Navigates back to the folder browser. */
   onBack?: () => void;
+  /**
+   * Label for the in-pane Back control. Absent when the host renders its own
+   * back header above this editor, so the two never stack.
+   */
+  backLabel?: string;
   /** Show the "Run" button (invoke + result panel). Defaults to true. */
   showRun?: boolean;
 }) {
@@ -240,9 +247,20 @@ export function RunnableBlockEditor({
         onSelect={handleBreadcrumbClick}
         onSelectRoot={onBack}
       />
-      {/* Run, Save (available only), and JSON controls. */}
+      {/* Back, Run, Save (available only), and JSON controls. */}
       <div className="shrink-0 border-b px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+          {onBack && backLabel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-1 min-w-0 shrink gap-1"
+              onClick={onBack}
+            >
+              <ChevronLeft size={14} className="shrink-0" />
+              <span className="truncate">{backLabel}</span>
+            </Button>
+          )}
           <div className="flex-1" />
           {target.mode === "saved" && (
             <SaveStatus isPending={isSaving} isError={false} />
