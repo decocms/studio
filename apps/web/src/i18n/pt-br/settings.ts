@@ -424,6 +424,8 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
+  "settings.skills.projectSaveError":
+    "Não foi possível salvar as skills do projeto",
   "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Importar skill",
   "settings.skills.importing": "Importando\u2026",
@@ -435,7 +437,6 @@ export const settings = {
     "Selecione uma pasta, não arquivos individuais — este navegador pode não suportar upload de pastas.",
   "settings.skills.searchPlaceholder": "Pesquisar skills...",
   "settings.skills.noDescription": "Sem descri\u00e7\u00e3o",
-  "settings.skills.filterAll": "Todas",
   "settings.skills.emptyTitle": "Nenhuma skill ainda",
   "settings.skills.emptyDescription":
     "Importe uma pasta com um SKILL.md para dar aos seus agentes instru\u00e7\u00f5es reutiliz\u00e1veis que eles podem carregar sob demanda.",

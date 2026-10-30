@@ -88,26 +88,6 @@ export const virtualMcp = {
   "virtualMcp.dependencySelectionDialog.toolsNotSupported":
     "Ferramentas não são suportadas por este servidor",
   "virtualMcp.dependencySelectionDialog.unexpectedError": "Erro inesperado",
-  "virtualMcp.filesSection.add": "Adicionar",
-  "virtualMcp.filesSection.description":
-    "Anexe arquivos e skills que o projeto sempre pode consultar.",
-  "virtualMcp.filesSection.failedUploadFile": "Falha ao enviar arquivo.",
-  "virtualMcp.filesSection.fileTooLargeDescription":
-    "Excede o limite de 25MB, não enviado: {names}",
-  "virtualMcp.filesSection.fileTooLargeTitle": "Arquivo muito grande",
-  "virtualMcp.filesSection.filesAndSkills": "Arquivos e skills",
-  "virtualMcp.filesSection.kindFile": "Arquivo",
-  "virtualMcp.filesSection.kindSkill": "Skill",
-  "virtualMcp.filesSection.noFilesFound": "Nenhum arquivo encontrado.",
-  "virtualMcp.filesSection.noFilesOrSkillsYet":
-    "Nenhum arquivo ou skill ainda. Adicione um ou arraste e solte aqui.",
-  "virtualMcp.filesSection.noSkillsFound": "Nenhum skill encontrado.",
-  "virtualMcp.filesSection.removeAriaLabel": "Remover {name}",
-  "virtualMcp.filesSection.searchFilesPlaceholder": "Pesquisar arquivos...",
-  "virtualMcp.filesSection.searchSkillsPlaceholder": "Pesquisar skills...",
-  "virtualMcp.filesSection.selectFileOrFolder": "Selecionar arquivo ou pasta",
-  "virtualMcp.filesSection.selectSkill": "Selecionar skill",
-  "virtualMcp.filesSection.uploadFile": "Enviar arquivo",
   "virtualMcp.layoutTabContent.noMainView": "Sem visão principal",
   "virtualMcp.layoutTabContent.automations": "Automações",
   "virtualMcp.layoutTabContent.chatAlwaysShown":

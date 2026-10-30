@@ -85,26 +85,6 @@ export const virtualMcp = {
     "Tools not supported by this server",
   "virtualMcp.dependencySelectionDialog.unexpectedError":
     "An unexpected error occurred",
-  "virtualMcp.filesSection.add": "Add",
-  "virtualMcp.filesSection.description":
-    "Attach files and skills the project can always reference.",
-  "virtualMcp.filesSection.failedUploadFile": "Failed to upload file.",
-  "virtualMcp.filesSection.fileTooLargeDescription":
-    "Exceeds the 25MB limit, not uploaded: {names}",
-  "virtualMcp.filesSection.fileTooLargeTitle": "File too large",
-  "virtualMcp.filesSection.filesAndSkills": "Files and skills",
-  "virtualMcp.filesSection.kindFile": "File",
-  "virtualMcp.filesSection.kindSkill": "Skill",
-  "virtualMcp.filesSection.noFilesFound": "No files found.",
-  "virtualMcp.filesSection.noFilesOrSkillsYet":
-    "No files or skills yet. Add one or drag and drop here.",
-  "virtualMcp.filesSection.noSkillsFound": "No skills found.",
-  "virtualMcp.filesSection.removeAriaLabel": "Remove {name}",
-  "virtualMcp.filesSection.searchFilesPlaceholder": "Search files...",
-  "virtualMcp.filesSection.searchSkillsPlaceholder": "Search skills...",
-  "virtualMcp.filesSection.selectFileOrFolder": "Select file or folder",
-  "virtualMcp.filesSection.selectSkill": "Select skill",
-  "virtualMcp.filesSection.uploadFile": "Upload file",
   "virtualMcp.layoutTabContent.noMainView": "No main view",
   "virtualMcp.layoutTabContent.automations": "Automations",
   "virtualMcp.layoutTabContent.chatAlwaysShown":

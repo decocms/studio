@@ -75,4 +75,36 @@ describe("parseSkillMd", () => {
       );
     });
   });
+
+  it("reads title, category and inline bundles", () => {
+    const meta = parseSkillMd(
+      "---\nname: deco-edge-caching\ntitle: Edge caching\ndescription: Cache at the edge.\ncategory: performance\nbundles: [caching, storefront-performance]\n---\n\nBody\n",
+    );
+    expect(meta.title).toBe("Edge caching");
+    expect(meta.category).toBe("performance");
+    expect(meta.bundles).toEqual(["caching", "storefront-performance"]);
+  });
+
+  it("drops an unknown category and accepts a bare bundle list", () => {
+    const meta = parseSkillMd(
+      '---\nname: x\ncategory: Performance\nbundles: pr-qa, "go-live"\n---\n',
+    );
+    expect(meta.category).toBeNull();
+    expect(meta.bundles).toEqual(["pr-qa", "go-live"]);
+  });
+
+  it("defaults the new fields when frontmatter is absent", () => {
+    const meta = parseSkillMd(PLAIN_STYLE);
+    expect(meta.title).toBeNull();
+    expect(meta.category).toBeNull();
+    expect(meta.bundles).toEqual([]);
+  });
+
+  it("strips the quotes around a quoted value", () => {
+    const meta = parseSkillMd(
+      "---\nname: x\ntitle: 'Edge: caching'\ndescription: \"Use when: caching\"\n---\n",
+    );
+    expect(meta.title).toBe("Edge: caching");
+    expect(meta.description).toBe("Use when: caching");
+  });
 });

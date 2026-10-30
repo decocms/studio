@@ -1,4 +1,5 @@
 import type { Kysely } from "kysely";
+import { skillsLoadLine } from "@decocms/shared/skills";
 import type { Database } from "./types";
 import { DEFAULT_BOARD_PROMPTS } from "./task-board-default-prompts";
 
@@ -45,15 +46,20 @@ export class TaskBoardPromptStorage {
     );
   }
 
-  /** The org-wide and `columnKey` scopes, composed for one run. */
+  /** The org-wide and `columnKey` scopes, composed for one run.
+   *  `expand` turns stored references (bundles included) into catalog ids. */
   async promptFor(
     organizationId: string,
     columnKey: string | null,
+    expand: (refs: string[]) => Promise<string[]> = async (refs) => refs,
   ): Promise<string | undefined> {
     const scoped = (await this.listByOrg(organizationId)).filter(
       (p) => p.columnKey === null || p.columnKey === columnKey,
     );
-    return composeBoardPrompt(scoped);
+    return composeBoardPrompt(
+      scoped,
+      await expand([...new Set(scoped.flatMap((p) => p.skills))]),
+    );
   }
 
   /** Set a scope's fields; omitted `skills` keeps the existing ones. */
@@ -112,13 +118,10 @@ const defaultFor = (columnKey: string | null) =>
 /** Scopes' prompts in order, then one line naming their skills. */
 export function composeBoardPrompt(
   scopes: Pick<TaskBoardPrompt, "prompt" | "skills">[],
+  skills: string[] = [...new Set(scopes.flatMap((p) => p.skills))],
 ): string | undefined {
   const parts = scopes.map((p) => p.prompt.trim()).filter(Boolean);
-  const skills = [...new Set(scopes.flatMap((p) => p.skills))];
-  if (skills.length > 0) {
-    parts.push(
-      `Skills configured for this work — load each one with the skill tool before you start: ${skills.join(", ")}`,
-    );
-  }
+  const load = skillsLoadLine(skills);
+  if (load) parts.push(load);
   return parts.length > 0 ? parts.join("\n\n") : undefined;
 }

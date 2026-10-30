@@ -15,7 +15,7 @@ import {
   useSaveColumnRules,
   useTaskBoardPrompts,
 } from "@/hooks/use-task-board-prompts";
-import { SkillsField } from "@/layouts/task-board/column-rules";
+import { SkillPicker } from "@/components/skills/skill-picker";
 import { useT } from "@/i18n/use-t.ts";
 
 export function TaskSystemPromptSettings() {
@@ -57,7 +57,7 @@ export function TaskSystemPromptSettings() {
                 <span className="text-sm font-medium text-foreground">
                   {t("settings.taskPrompt.skillsLabel")}
                 </span>
-                <SkillsField
+                <SkillPicker
                   value={draft.skills}
                   onChange={(next) => setDraft({ ...draft, skills: next })}
                 />
