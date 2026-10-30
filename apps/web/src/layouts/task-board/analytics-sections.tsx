@@ -790,6 +790,8 @@ function formatPeriod(range: { from: string; to: string }): string {
     day: "numeric",
     month: "short",
     year: "numeric",
+    // The server buckets months in UTC.
+    timeZone: "UTC",
   }).formatRange(new Date(range.from), new Date(range.to));
 }
 
