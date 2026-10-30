@@ -114,13 +114,56 @@ export const taskBoard = {
   "taskBoard.agenticSetup.failed": "Couldn't start the board setup chat",
   "taskBoard.dropHint.pickUp": "{names} will pick this card up",
   "taskBoard.dropHint.pickUpMany": "{names} will pick these cards up",
-  "taskBoard.columnRules.menuItem": "Rules and automations",
-  "taskBoard.columnRules.automationsLabel": "Automations",
+  "taskBoard.columnRules.menuItem": "How this column works",
+  "taskBoard.columnGuide.actor.agent": "Agent works here",
+  "taskBoard.columnGuide.actor.person": "A person works here",
+  "taskBoard.columnGuide.actor.customer": "The customer decides here",
+  "taskBoard.columnGuide.actor.none": "Nothing runs here",
+  "taskBoard.columnGuide.triage.purpose":
+    "Requests and ideas that nobody owns yet.",
+  "taskBoard.columnGuide.triage.human":
+    "Prioritize them and move the ready ones to To Do.",
+  "taskBoard.columnGuide.todo.purpose": "Ready to start.",
+  "taskBoard.columnGuide.todo.human":
+    "Move a card to In Progress to hand it to the agent.",
+  "taskBoard.columnGuide.inProgress.purpose":
+    "The agent implements the task and opens a pull request.",
+  "taskBoard.columnGuide.inProgress.human":
+    "Step in when a card is blocked or asks for your input.",
+  "taskBoard.columnGuide.inReview.purpose":
+    "The reviewing agent checks the pull request, fixes what it finds and approves.",
+  "taskBoard.columnGuide.inReview.human":
+    "A card here with no assignee is waiting for your review.",
+  "taskBoard.columnGuide.qa.purpose": "A person tests the change.",
+  "taskBoard.columnGuide.qa.human": "Test it, then approve or send it back.",
+  "taskBoard.columnGuide.customerApproval.purpose":
+    "The customer approves the change.",
+  "taskBoard.columnGuide.customerApproval.human":
+    "Follow up with the customer; their approval moves the card.",
+  "taskBoard.columnGuide.readyForDeployment.purpose":
+    "Approved and waiting to merge.",
+  "taskBoard.columnGuide.readyForDeployment.human":
+    "Merge it; a merged pull request moves the card on.",
+  "taskBoard.columnGuide.postDeployValidation.purpose":
+    "In production; someone confirms it works.",
+  "taskBoard.columnGuide.postDeployValidation.human":
+    "Check it in production, then move it to Done.",
+  "taskBoard.columnGuide.done.purpose": "Finished.",
+  "taskBoard.columnGuide.archived.purpose": "Retired.",
+  "taskBoard.columnRules.whenHuman": "When you step in",
+  "taskBoard.columnRules.onEnterLabel": "When a card lands here",
+  "taskBoard.columnRules.newAutomation": "New automation",
+  "taskBoard.columnRules.newAutomationName": "{column}: new automation",
+  "taskBoard.columnRules.newAutomationFailed": "Couldn't create the automation",
+  "taskBoard.columnRules.starter.board_column_transition": "Enters the column",
+  "taskBoard.columnRules.starter.board_pr_ready": "Pull request ready",
+  "taskBoard.columnRules.starter.board_pr_merged": "Pull request merged",
+  "taskBoard.columnRules.activeAutomations":
+    "{count} automations run on cards here",
   "taskBoard.columnRules.toggleAutomation":
     "Run {name} on cards that land here",
   "taskBoard.columnRules.noAutomations":
     "Nothing runs on the cards that land here.",
-  "taskBoard.columnRules.addAutomation": "Add an automation",
   "taskBoard.columnRules.promptLabel": "Instructions",
   "taskBoard.columnRules.promptPlaceholder":
     "Conventions, tools to prefer, what never to touch",

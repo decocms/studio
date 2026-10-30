@@ -39,7 +39,12 @@ import { DemoBoardResetButton } from "./demo-reset-button";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
 import { AgenticSetupButton } from "./agentic-setup";
-import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
+import {
+  ColumnRulesSheet,
+  useColumnAutomations,
+  useEntryAutomations,
+} from "./column-rules";
+import { columnGuide } from "./column-guide";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -2945,6 +2950,10 @@ function Lane({
   const { label, visual } = laneHeader(status, t);
   const LaneIcon = visual.icon;
   const [rulesOpen, setRulesOpen] = useState(false);
+  const guide = columnGuide(status);
+  const activeAutomations = useColumnAutomations(status).filter(
+    (a) => a.active,
+  ).length;
   const takers = useEntryAutomations(status)
     .filter((automation) => automation.active)
     .map((automation) => automation.name);
@@ -3093,15 +3102,39 @@ function Lane({
             )}
           />
           {/* A wrapped name would push every lane's swimlanes down. */}
-          <span
-            title={label}
-            className="min-w-0 truncate text-sm font-medium text-foreground"
-          >
-            {label}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="min-w-0 cursor-default truncate text-sm font-medium text-foreground">
+                {label}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-64">
+              {guide ? t(guide.purpose) : label}
+            </TooltipContent>
+          </Tooltip>
           <span className="rounded-md bg-muted px-1.5 text-2xs font-medium text-muted-foreground">
             {items.length}
           </span>
+          {activeAutomations > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setRulesOpen(true)}
+                  aria-label={t("taskBoard.columnRules.menuItem")}
+                  className="flex items-center gap-0.5 rounded-md px-1 text-2xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <Zap size={12} />
+                  <span className="tnum">{activeAutomations}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t("taskBoard.columnRules.activeAutomations", {
+                  count: activeAutomations,
+                })}
+              </TooltipContent>
+            </Tooltip>
+          )}
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -3270,6 +3303,10 @@ function Lane({
       <ColumnRulesSheet
         columnKey={status}
         label={label}
+        icon={LaneIcon}
+        iconClassName={visual.iconClassName
+          .replace(/\banimate-\S+\b/g, "")
+          .trim()}
         open={rulesOpen}
         onOpenChange={setRulesOpen}
       />

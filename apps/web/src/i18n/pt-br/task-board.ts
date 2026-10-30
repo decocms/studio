@@ -118,12 +118,56 @@ export const taskBoard = {
     "Não foi possível iniciar o chat de configuração do quadro",
   "taskBoard.dropHint.pickUp": "{names} vai pegar este card",
   "taskBoard.dropHint.pickUpMany": "{names} vai pegar estes cards",
-  "taskBoard.columnRules.menuItem": "Regras e automações",
-  "taskBoard.columnRules.automationsLabel": "Automações",
+  "taskBoard.columnRules.menuItem": "Como esta coluna funciona",
+  "taskBoard.columnGuide.actor.agent": "O agente trabalha aqui",
+  "taskBoard.columnGuide.actor.person": "Uma pessoa trabalha aqui",
+  "taskBoard.columnGuide.actor.customer": "O cliente decide aqui",
+  "taskBoard.columnGuide.actor.none": "Nada roda aqui",
+  "taskBoard.columnGuide.triage.purpose":
+    "Pedidos e ideias que ainda não têm dono.",
+  "taskBoard.columnGuide.triage.human":
+    "Priorize e mova os prontos para A fazer.",
+  "taskBoard.columnGuide.todo.purpose": "Pronto para começar.",
+  "taskBoard.columnGuide.todo.human":
+    "Mova o card para Em andamento para entregar ao agente.",
+  "taskBoard.columnGuide.inProgress.purpose":
+    "O agente implementa a tarefa e abre um pull request.",
+  "taskBoard.columnGuide.inProgress.human":
+    "Entre quando o card travar ou pedir sua resposta.",
+  "taskBoard.columnGuide.inReview.purpose":
+    "O agente revisor confere o pull request, corrige o que achar e aprova.",
+  "taskBoard.columnGuide.inReview.human":
+    "Card aqui sem responsável está esperando a sua revisão.",
+  "taskBoard.columnGuide.qa.purpose": "Uma pessoa testa a mudança.",
+  "taskBoard.columnGuide.qa.human": "Teste e aprove ou devolva.",
+  "taskBoard.columnGuide.customerApproval.purpose":
+    "O cliente aprova a mudança.",
+  "taskBoard.columnGuide.customerApproval.human":
+    "Acompanhe o cliente; a aprovação dele move o card.",
+  "taskBoard.columnGuide.readyForDeployment.purpose":
+    "Aprovado, esperando o merge.",
+  "taskBoard.columnGuide.readyForDeployment.human":
+    "Faça o merge; o pull request mergeado leva o card adiante.",
+  "taskBoard.columnGuide.postDeployValidation.purpose":
+    "Em produção; alguém confirma que funciona.",
+  "taskBoard.columnGuide.postDeployValidation.human":
+    "Confira em produção e mova para Concluído.",
+  "taskBoard.columnGuide.done.purpose": "Concluído.",
+  "taskBoard.columnGuide.archived.purpose": "Arquivado.",
+  "taskBoard.columnRules.whenHuman": "Quando você entra",
+  "taskBoard.columnRules.onEnterLabel": "Quando um card chega aqui",
+  "taskBoard.columnRules.newAutomation": "Nova automação",
+  "taskBoard.columnRules.newAutomationName": "{column}: nova automação",
+  "taskBoard.columnRules.newAutomationFailed":
+    "Não foi possível criar a automação",
+  "taskBoard.columnRules.starter.board_column_transition": "Entra na coluna",
+  "taskBoard.columnRules.starter.board_pr_ready": "Pull request pronto",
+  "taskBoard.columnRules.starter.board_pr_merged": "Pull request mergeado",
+  "taskBoard.columnRules.activeAutomations":
+    "{count} automações rodam nos cards daqui",
   "taskBoard.columnRules.toggleAutomation":
     "Rodar {name} nos cards que chegam aqui",
   "taskBoard.columnRules.noAutomations": "Nada roda nos cards que chegam aqui.",
-  "taskBoard.columnRules.addAutomation": "Adicionar uma automação",
   "taskBoard.columnRules.promptLabel": "Instruções",
   "taskBoard.columnRules.promptPlaceholder":
     "Convenções, ferramentas preferidas, o que nunca tocar",
