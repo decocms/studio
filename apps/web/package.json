@@ -84,6 +84,7 @@
     "topojson-client": "^3.1.0",
     "use-stick-to-bottom": "^1.1.6",
     "world-atlas": "^2.0.2",
+    "write-excel-file": "^4.1.1",
     "zod": "4.3.6"
   },
   "devDependencies": {

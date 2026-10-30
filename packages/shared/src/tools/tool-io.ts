@@ -1107,6 +1107,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -1223,6 +1224,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -1340,6 +1342,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -1456,6 +1459,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -1572,6 +1576,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -1688,6 +1693,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -1804,6 +1810,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -1920,6 +1927,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -2036,6 +2044,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -2152,6 +2161,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -6357,6 +6367,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";
@@ -6473,6 +6484,7 @@ export interface StudioToolIO {
             rows: (string | number | null)[][];
             units?: Record<string, string> | undefined;
             drills?: (string | null)[] | undefined;
+            range?: { from: string; to: string } | undefined;
           }
         | {
             kind: "funnel";

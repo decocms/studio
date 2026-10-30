@@ -29,7 +29,7 @@ async function requireThreadAdmin(ctx: StudioContext): Promise<void> {
 export const THREAD_ANALYTICS_USAGE = defineAnalyticsTool(
   "THREAD_ANALYTICS_USAGE",
   "Thread Usage",
-  'Token and USD usage across chats, automations and task runs: totals, spend per day by kind, top orgs and users over the last 24h/7d/30d, and spend by org, user, agent and thread. Admin orgs only; org: "all" for every tenant.',
+  'Token and USD usage across chats, automations and task runs: totals, spend per day by kind, top orgs and users per calendar month over the last 3 months, and spend by org, user, agent and thread. Admin orgs only; org: "all" for every tenant.',
   async (ctx, query) => {
     await requireThreadAdmin(ctx);
     return ctx.storage.threadAnalytics.usage(query);

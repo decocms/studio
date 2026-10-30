@@ -25,6 +25,7 @@ import {
   ArrowUp,
   ArrowUpRight,
   Calendar,
+  Download01,
   Flag01,
   LayersThree01,
   Tag01,
@@ -49,6 +50,8 @@ import { useT } from "@/i18n/use-t";
 import { useNavigate } from "@tanstack/react-router";
 import { timeAgo } from "@/lib/format-time";
 import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { toast } from "sonner";
 import { SettingsSection } from "@/components/settings/settings-section";
 import {
   PRIORITY_CONFIG,
@@ -56,6 +59,7 @@ import {
   TASK_TYPE_CONFIG,
   laneHeader,
 } from "./config";
+import { downloadTable } from "./table-export";
 
 /** A task link that stays in the app; modified clicks still open a new tab. */
 function TaskLink({
@@ -781,6 +785,43 @@ const CODE_COLUMNS = new Set(["Error", "Signature"]);
 /** Columns that only say something across tenants. */
 const CROSS_ORG_COLUMNS = new Set(["Org", "Orgs"]);
 
+function formatPeriod(range: { from: string; to: string }): string {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).formatRange(new Date(range.from), new Date(range.to));
+}
+
+function ExportButton({
+  title,
+  columns,
+  rows,
+}: {
+  title: string;
+  columns: string[];
+  rows: () => (string | number | null)[][];
+}) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const download = async () => {
+    setBusy(true);
+    try {
+      await downloadTable(title, columns, rows());
+    } catch {
+      toast.error(t("taskBoard.analytics.downloadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button variant="outline" size="sm" disabled={busy} onClick={download}>
+      <Download01 size={14} />
+      {t("taskBoard.analytics.downloadExcel")}
+    </Button>
+  );
+}
+
 function TableCard({
   section,
   threadLinks,
@@ -819,11 +860,35 @@ function TableCard({
       })
       .map(({ c }) => c),
   );
+  const header = {
+    title: section.title,
+    description: section.range ? formatPeriod(section.range) : undefined,
+    actions:
+      section.rows.length > 0 ? (
+        <ExportButton
+          title={section.title}
+          columns={shown.map(({ c }) => c)}
+          rows={() =>
+            section.rows.map((row) =>
+              shown.map(({ j }) => {
+                const value = row[j] ?? null;
+                return j === threadCol && value !== null
+                  ? new URL(
+                      threadHref(String(row[orgCol]), String(value)),
+                      window.location.origin,
+                    ).href
+                  : value;
+              }),
+            )
+          }
+        />
+      ) : undefined,
+  };
   // One row of figures is a scorecard, not a table: label over value.
   if (section.rows.length === 1 && shown.every(({ c }) => numeric.has(c))) {
     const row = section.rows[0] ?? [];
     return (
-      <SettingsSection title={section.title}>
+      <SettingsSection {...header}>
         <dl className="surface grid px-4 pt-4 pb-5 grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-[repeat(auto-fill,minmax(120px,1fr))]">
           {shown.map(({ c, j }) => {
             const value = row[j];
@@ -844,7 +909,7 @@ function TableCard({
   }
 
   return (
-    <SettingsSection title={section.title}>
+    <SettingsSection {...header}>
       {section.rows.length === 0 ? (
         <p className="surface px-4 py-4 text-sm text-muted-foreground">
           {t("taskBoard.analytics.nothingToShow")}

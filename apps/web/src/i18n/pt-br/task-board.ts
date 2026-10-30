@@ -452,6 +452,8 @@ export const taskBoard = {
   "taskBoard.analytics.tabTenants": "Organizações",
   "taskBoard.analytics.noDataInRange": "Sem dados neste período",
   "taskBoard.analytics.nothingToShow": "Nada para mostrar",
+  "taskBoard.analytics.downloadExcel": "Baixar Excel",
+  "taskBoard.analytics.downloadFailed": "Não foi possível gerar a planilha",
   "taskBoard.feed.composerPlaceholder": "O que precisa ser feito?",
   "taskBoard.feed.composerDescriptionPlaceholder": "Adicionar descrição...",
   "taskBoard.feed.composerSubmit": "Adicionar",

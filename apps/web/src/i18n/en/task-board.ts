@@ -445,6 +445,8 @@ export const taskBoard = {
   "taskBoard.analytics.tabTenants": "Tenants",
   "taskBoard.analytics.noDataInRange": "No data in this range",
   "taskBoard.analytics.nothingToShow": "Nothing to show",
+  "taskBoard.analytics.downloadExcel": "Download Excel",
+  "taskBoard.analytics.downloadFailed": "Couldn't create the spreadsheet",
   "taskBoard.feed.composerPlaceholder": "What needs doing?",
   "taskBoard.feed.composerDescriptionPlaceholder": "Add description...",
   "taskBoard.feed.composerSubmit": "Add",
