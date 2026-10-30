@@ -2,7 +2,7 @@
  * The closed sets a blog campaign is described by.
  *
  * Shared because both ends validate against them: the editor renders a chip per
- * option, and `BLOG_CAMPAIGN_SUGGEST` narrows what the model returns to the same
+ * option, and `BLOG_STATE_SET` checks every campaign written against the same
  * lists. Restating them server-side would mean a trigger added to one end and
  * silently rejected by the other.
  *

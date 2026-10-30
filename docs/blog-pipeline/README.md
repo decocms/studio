@@ -7,7 +7,9 @@ sandbox, com a skill `blogpost` —, e duas decisões de pessoa no meio.
 Quem pensa e escreve é o Claude Code: ele lê os sistemas da loja, argumenta a
 hipótese e escreve o post. As tools do Studio dão o que só o Studio tem (o
 card, a marca, os blocos do site, as imagens) e conferem e gravam o que ele
-escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
+escreveu. Toda a IA do blog roda assim, na esteira: o card, o preenchimento da
+marca e as campanhas. Nenhuma tool de blog chama modelo dentro da api, exceto
+a de imagem, e só no run do próprio card.
 
 ## O fluxo
 
@@ -31,10 +33,10 @@ escreveu. Nenhuma delas chama modelo no caminho do card, exceto a de imagem.
    chama `BLOG_CARD_RUN` com `phase: "execute"`. O card vai pra Generating, na
    branch `blog-<id>` do site, e passa por cinco etapas — `grounding`,
    `drafting`, `illustrating`, `assembling` e `writing` —, cada uma gravando
-   `stage` e o que produziu. O post sai das instruções de `BLOG_POST_BRIEF` —
-   as mesmas regras e a mesma leitura de marca, campanha e blocos que o
-   `BLOG_POST_DRAFT` dá ao modelo dele —, e o `BLOG_POST_ASSEMBLE` confere cada
-   seção contra o schema do bloco, devolvendo o motivo do que cortou. Termina
+   `stage` e o que produziu. O post sai das instruções de `BLOG_POST_BRIEF`
+   (as regras e a leitura de marca, campanha e blocos), e o
+   `BLOG_POST_ASSEMBLE` confere cada seção contra o schema do bloco,
+   devolvendo o motivo do que cortou. Termina
    em Awaiting review, com `postKey` e `commit`.
 5. **Revisão**, no próprio card: o site renderiza o post a partir da branch do
    card, pelo ponteiro de rascunho do Fast Preview (`?__draft=`), sem sandbox.

@@ -23,9 +23,6 @@ import {
 
 export { clearSentinels, IMAGE_SENTINEL, sentinelRequests };
 
-/** Deco's marker for a prop holding an image address. */
-const IMAGE_FORMAT = "image-uri";
-
 type Schema = Record<string, unknown>;
 
 export interface BlockDef {
@@ -204,8 +201,7 @@ const validationSchemas = new WeakMap<Schema, Schema>();
  * block on every run and a red herring every time someone reads it.
  *
  * Only the copy ajv sees loses them. The prompt keeps `format`, because it is
- * how the writer learns a field is loader-driven, and {@link imageRequests}
- * reads it to find where an image was asked for.
+ * how the writer learns a field is loader-driven.
  */
 function forValidation(schema: Schema): Schema {
   const cached = validationSchemas.get(schema);
@@ -228,49 +224,6 @@ function withoutFormats(node: unknown): unknown {
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-/** One image the model asked to have generated, and where it goes. */
-export interface ImageRequest {
-  path: (string | number)[];
-  prompt: string;
-}
-
-/**
- * Where this block wants an image, and what of.
- *
- * Driven by the schema rather than by a list of block names, so a site's own
- * section with an `ImageWidget` prop works the day it is written. The sentinel
- * is what separates "generate this" from an address the model copied out of the
- * store's catalogue, which must be left exactly as it is.
- */
-export function imageRequests(
-  value: unknown,
-  schema: Schema,
-  path: (string | number)[] = [],
-): ImageRequest[] {
-  if (typeof value === "string") {
-    const wanted =
-      schema.type === "string" &&
-      schema.format === IMAGE_FORMAT &&
-      value.startsWith(IMAGE_SENTINEL);
-    if (!wanted) return [];
-    const prompt = value.slice(IMAGE_SENTINEL.length).trim();
-    return prompt ? [{ path, prompt }] : [];
-  }
-
-  const items = asSchema(schema.items);
-  if (Array.isArray(value) && items) {
-    return value.flatMap((entry, i) =>
-      imageRequests(entry, items, [...path, i]),
-    );
-  }
-
-  const record = asSchema(value);
-  if (!record) return [];
-  return Object.entries(propertiesOf(schema)).flatMap(([key, child]) =>
-    key in record ? imageRequests(record[key], child, [...path, key]) : [],
-  );
 }
 
 /** The props with one image address written in, leaving the rest untouched. */
@@ -306,9 +259,4 @@ function setDeep(
     ...record,
     [head]: rest.length === 0 ? url : setDeep(record[head], rest, url),
   };
-}
-
-/** {@link clearSentinels} over a block's props. */
-export function clearUnfilled(props: Schema): Schema {
-  return clearSentinels(props);
 }

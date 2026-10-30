@@ -24,10 +24,10 @@ import { readSiteMeta } from "./site-blocks";
 import { requireBranch, resolveSiteRepo } from "./site-repo";
 
 /**
- * A drafted post, turned into the blocks this site renders.
+ * A written post, turned into the blocks this site renders.
  *
- * `BLOG_POST_DRAFT` names blocks by component name and writes props as plain
- * data; the decofile wants a `__resolveType` this site actually uses and a
+ * The agent names blocks by component name and writes props as plain data,
+ * from `BLOG_POST_BRIEF`; the decofile wants a `__resolveType` this site actually uses and a
  * product slot in whichever of four shapes it already stores. That mapping
  * lived in the browser, which is why a post could be written anywhere and
  * saved only from a tab.
@@ -37,10 +37,10 @@ import { requireBranch, resolveSiteRepo } from "./site-repo";
  * anything — and the one thing an agent should never do unseen is write to a
  * branch.
  *
- * Returns `bodyText` because the internal-link pass needs the body as prose
+ * Returns `bodyText` because picking internal links needs the body as prose,
  * and prose only exists once the sections are blocks. Call once to get the
- * text, run `BLOG_LINK_SUGGEST` on it, call again with `links`: two runs of a
- * pure function against one decofile read.
+ * text, pick the links from it, call again with `links`: two runs of a pure
+ * function against one decofile read.
  */
 
 const MAX_SECTIONS = 40;
@@ -134,7 +134,7 @@ export const BLOG_POST_ASSEMBLE = defineTool({
         sections: z.array(SectionSchema).max(MAX_SECTIONS),
       })
       .describe(
-        "The post as written, by BLOG_POST_DRAFT or by you from BLOG_POST_BRIEF, with `cover.url` filled by whoever drew it.",
+        "The post as you wrote it from BLOG_POST_BRIEF, with `cover.url` filled by whoever drew it.",
       ),
     postId: z
       .string()
@@ -186,9 +186,7 @@ export const BLOG_POST_ASSEMBLE = defineTool({
       .describe("Pass straight to BLOG_POST_WRITE as `post`."),
     bodyText: z
       .string()
-      .describe(
-        "The body as prose: where the link phrases are chosen from, and what BLOG_LINK_SUGGEST takes as `body`.",
-      ),
+      .describe("The body as prose: where the link phrases are chosen from."),
     posts: z
       .array(z.object({ title: z.string(), slug: z.string() }))
       .describe(

@@ -7,11 +7,11 @@ import { agentWritingBrief, WritingInputSchema } from "./post-draft";
 /**
  * The writing brief for an agent that writes a post itself.
  *
- * `BLOG_POST_DRAFT` writes with the organization's model, so a card's Claude
- * Code, on the person's own plan, had only that model to write with. This
- * hands it what that model reads instead: the same rules, the same reading of
- * the brand, campaign and blocks, and what the store said. The agent writes,
- * and `BLOG_POST_ASSEMBLE` checks each section against its block's schema.
+ * A card's Claude Code writes on the organization's model or the person's own
+ * plan, and nothing here spends either. This hands it the rules, the reading
+ * of the brand, campaign and blocks, and what the store said. The agent
+ * writes, and `BLOG_POST_ASSEMBLE` checks each section against its block's
+ * schema.
  */
 
 /** What the store's systems said, as the agent gathered it. */

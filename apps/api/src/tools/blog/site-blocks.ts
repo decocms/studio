@@ -16,8 +16,8 @@ import { requireBranch, resolveSiteRepo, type SiteRepo } from "./site-repo";
 /**
  * The blocks a post may be built from, read off the site itself.
  *
- * `BLOG_POST_DRAFT` takes `blocks` and will not invent them: a writer that
- * guesses a prop name produces a section that saves fine and renders empty,
+ * `BLOG_POST_BRIEF` takes `blocks`, so the writer never invents them: a writer
+ * that guesses a prop name produces a section that saves fine and renders empty,
  * which is the worst way to be wrong. Until this existed the only thing that
  * could answer was the CMS, because the mapping lived in the browser's
  * bundle — so an agent could draft a post only if a person had a tab open.
@@ -30,7 +30,7 @@ import { requireBranch, resolveSiteRepo, type SiteRepo } from "./site-repo";
 const MAX_NAME_CHARS = 200;
 const MAX_BODY_CHARS = 20_000;
 
-/** `BLOG_POST_DRAFT`'s own cap. More than it accepts is waste on both ends. */
+/** `BLOG_POST_BRIEF`'s own cap. More than it accepts is waste on both ends. */
 const MAX_BLOCKS = 40;
 
 const BlockSchema = z.object({
@@ -51,7 +51,7 @@ const BlockSchema = z.object({
 export const BLOG_SITE_BLOCKS = defineTool({
   name: "BLOG_SITE_BLOCKS",
   description:
-    "The blocks this site can actually render a post out of, each with its own JSON Schema and an example of how the site already stores it: the ones a format cites, then the basic text and product blocks. Returns the blog's categories and authors with them. Pass `blocks` straight into BLOG_POST_DRAFT.",
+    "The blocks this site can actually render a post out of, each with its own JSON Schema and an example of how the site already stores it: the ones a format cites, then the basic text and product blocks. Returns the blog's categories and authors with them. Pass `blocks` straight into BLOG_POST_BRIEF.",
   annotations: {
     title: "Read the Site's Post Blocks",
     readOnlyHint: true,

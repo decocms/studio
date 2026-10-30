@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { CAMPAIGN_GOAL_METRICS } from "@decocms/shared/blog-campaign";
+import {
+  CAMPAIGN_GOAL_METRICS,
+  CAMPAIGN_OBJECTIVES,
+  CAMPAIGN_TARGET_KINDS,
+  CAMPAIGN_TRIGGERS,
+} from "@decocms/shared/blog-campaign";
 import { clampText } from "@decocms/shared/report-seo";
 
 /**
@@ -33,7 +38,7 @@ export function boundedText(max: number) {
  * ProductCard") nor a competitor worth naming (a name alone says nothing about
  * how the brand differs from it).
  */
-export const BrandRuleSchema = z.object({
+const BrandRuleSchema = z.object({
   name: z
     .string()
     .describe("Short phrase naming the rule — what it is about, not the rule"),
@@ -63,6 +68,83 @@ export const CampaignGoalSchema = z.object({
   target: z.string().max(40).describe("How far, as a person wrote it: '+20%'."),
 });
 
+/** How long a campaign's free text may run before it is clamped. */
+const MAX_CAMPAIGN_TEXT_CHARS = 2_000;
+
+/**
+ * What the model writes here is clamped, never rejected.
+ *
+ * {@link boundedText} explains why at length. The short of it: these fields
+ * carry values copied out of a tool result, a `.max()` on them throws away the
+ * whole campaign rather than the overlong field, and every retry throws it away
+ * again for the same reason. Ids and URLs carry no bound at all — truncating one
+ * breaks it.
+ */
+const TargetSchema = z.object({
+  kind: z.enum(CAMPAIGN_TARGET_KINDS),
+  id: z
+    .string()
+    .describe(
+      "The store's own id, exactly as a tool reported it. For a collection this IS the identifier, so it is required; for a category it is optional.",
+    ),
+  name: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+  url: z
+    .string()
+    .describe(
+      "The address a reader can open. Never invented. Always '' for a collection: a collection is a cluster the store filters by, not a page, so it has no address of its own.",
+    ),
+  description: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+    "What falls inside this slice, and who it is for.",
+  ),
+});
+
+const ProductSchema = z.object({
+  id: z.string(),
+  name: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+  url: z.string(),
+  images: z
+    .array(z.string())
+    .describe(
+      "Left to the catalogue when the product is in it. Fill this only for a product no catalogue entry covers, copying the URLs a tool reported verbatim — they sit on a CDN whose host is NOT the store's.",
+    ),
+  category: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+  description: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+});
+
+/** A campaign as proposed — no key, no audit dates; the caller stamps those. */
+export const CampaignDraftSchema = z.object({
+  name: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+    "What someone would call this campaign. 'Black Friday 2026'.",
+  ),
+  period: z.object({
+    start: z
+      .string()
+      .nullable()
+      .describe("`YYYY-MM-DD`, or null when the moment has no fixed date."),
+    end: z.string().nullable(),
+  }),
+  trigger: z.object({
+    type: z.enum(CAMPAIGN_TRIGGERS),
+    note: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+      "Why this campaign exists now — what a writer reads first.",
+    ),
+  }),
+  intent: z.object({
+    objective: z.enum(CAMPAIGN_OBJECTIVES),
+    targets: z.array(TargetSchema),
+    products: z.array(ProductSchema),
+    keywords: z.array(boundedText(MAX_CAMPAIGN_TEXT_CHARS)),
+  }),
+  guardrails: z.object({
+    avoidComplements: z
+      .array(BrandRuleSchema)
+      .describe("Added to the brand's guardrails for this campaign only."),
+    toneOverrides: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+      "Replaces the brand's tone while this runs. '' to keep it.",
+    ),
+  }),
+});
+
 /** One example sentence, and whether it is one to imitate or one to avoid — a pair of opposites teaches a voice faster than either side alone, since "not like this" is what pins down how far "like this" goes. */
 const VoiceExampleSchema = z.object({
   text: z.string().describe("The sentence, exactly as it is written"),
@@ -76,7 +158,7 @@ const VoiceExampleSchema = z.object({
 /**
  * Who the brand is, in `blog-manager-brand.json` — facts that hold whether or not it ever blogs.
  */
-export const BlogBrandSchema = z.object({
+const BlogBrandSchema = z.object({
   companyName: z
     .string()
     .describe(
@@ -133,10 +215,8 @@ export const BlogBrandSchema = z.object({
  * How this blog is written: the rules a generated post must follow. Persisted
  * to the site's `blog-manager-context.json`, separately from the brand, because
  * these evolve with the blog while the brand's identity does not.
- *
- * `BLOG_CONTEXT_EXTRACT` produces this.
  */
-export const BlogGenerationSchema = z.object({
+const BlogGenerationSchema = z.object({
   tone: z
     .string()
     .describe(
@@ -179,7 +259,7 @@ export const BlogGenerationSchema = z.object({
  * human fills the rest. `normalizeBrandRules` (web) reads the older `string[]`
  * rule lists too.
  */
-export const BlogContextSchema = BlogBrandSchema.merge(BlogGenerationSchema);
+const BlogContextSchema = BlogBrandSchema.merge(BlogGenerationSchema);
 
 /**
  * What writing one post actually needs.

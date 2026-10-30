@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  clearUnfilled,
-  imageRequests,
+  clearSentinels,
   sentinelRequests,
   pruneProps,
   readProps,
@@ -115,35 +114,6 @@ describe("pruneProps", () => {
   });
 });
 
-describe("imageRequests", () => {
-  test("finds a sentinel at a top-level image prop", () => {
-    expect(
-      imageRequests({ image: "generate:a packed suitcase" }, HERO),
-    ).toEqual([{ path: ["image"], prompt: "a packed suitcase" }]);
-  });
-
-  test("finds one nested in an array", () => {
-    expect(
-      imageRequests(
-        { gallery: [{ alt: "a" }, { src: "generate:a tent" }] },
-        HERO,
-      ),
-    ).toEqual([{ path: ["gallery", 1, "src"], prompt: "a tent" }]);
-  });
-
-  test("ignores an address the model copied rather than asked for", () => {
-    expect(imageRequests({ image: "https://cdn/x.jpg" }, HERO)).toEqual([]);
-  });
-
-  test("ignores a sentinel on a prop that is not an image", () => {
-    expect(imageRequests({ heading: "generate:something" }, HERO)).toEqual([]);
-  });
-
-  test("ignores a sentinel with nothing after it", () => {
-    expect(imageRequests({ image: "generate:  " }, HERO)).toEqual([]);
-  });
-});
-
 describe("withImageAt", () => {
   test("writes a top-level address", () => {
     expect(
@@ -165,16 +135,16 @@ describe("withImageAt", () => {
   });
 });
 
-describe("clearUnfilled", () => {
+describe("clearSentinels", () => {
   test("blanks a sentinel no image was generated for", () => {
-    expect(clearUnfilled({ image: "generate:x", heading: "Oi" })).toEqual({
+    expect(clearSentinels({ image: "generate:x", heading: "Oi" })).toEqual({
       image: "",
       heading: "Oi",
     });
   });
 
   test("leaves a real address alone", () => {
-    expect(clearUnfilled({ image: "https://cdn/a.jpg" })).toEqual({
+    expect(clearSentinels({ image: "https://cdn/a.jpg" })).toEqual({
       image: "https://cdn/a.jpg",
     });
   });
@@ -186,13 +156,13 @@ describe("clearUnfilled", () => {
    */
   test("blanks one in a prop no schema declares as an image", () => {
     expect(
-      clearUnfilled({ url: "generate:backpacks on a shelf", size: "full" }),
+      clearSentinels({ url: "generate:backpacks on a shelf", size: "full" }),
     ).toEqual({ url: "", size: "full" });
   });
 
   test("reaches into nested objects and arrays", () => {
     expect(
-      clearUnfilled({
+      clearSentinels({
         slides: [{ image: "generate:a" }, { image: "https://cdn/b.jpg" }],
       }),
     ).toEqual({
@@ -201,7 +171,7 @@ describe("clearUnfilled", () => {
   });
 
   test("leaves prose that merely mentions the word alone", () => {
-    expect(clearUnfilled({ html: "<p>Vamos generate: nada</p>" })).toEqual({
+    expect(clearSentinels({ html: "<p>Vamos generate: nada</p>" })).toEqual({
       html: "<p>Vamos generate: nada</p>",
     });
   });

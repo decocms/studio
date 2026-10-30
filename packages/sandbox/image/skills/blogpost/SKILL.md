@@ -90,10 +90,7 @@ the fields you need. A call that fails prints the error and leaves the output em
   every tool that takes one. Never the repository's default branch: it is
   production.
 - **Keep each Studio call short.** An edge proxy hangs up on requests past
-  about 100 seconds: draw one image per `BLOG_POST_ILLUSTRATE` call, and never
-  call `BLOG_SITE_GROUND`, `BLOG_POST_DRAFT`, `BLOG_LINK_SUGGEST` or
-  `BLOG_CAMPAIGN_SUGGEST` — they spend the organization's model on work that
-  is yours.
+  about 100 seconds: draw one image per `BLOG_POST_ILLUSTRATE` call.
 - **Retry a failed call once at most**, then save `error` and stop.
 - **Figures are copied, never computed or rounded**, and every one names the
   tool it came from.

@@ -2,13 +2,10 @@
  * The two connections the blog will not start without: the store's VTEX
  * account, for every commerce read, and its GA4 property, for what readers do.
  *
- * Both sides need the same answer — the server refuses a generation, the
- * browser shows what is missing before anyone clicks — so the identity and
- * readiness rules live here, once.
+ * Both sides need the same answer — the server grants a blog run these
+ * connections, the browser shows what is missing before anyone clicks — so the
+ * identity and readiness rules live here, once.
  */
-
-/** Prefix on the error a blog tool throws when either connection is not ready. */
-export const BLOG_CONNECTIONS_MISSING = "blog-connections-missing:";
 
 export const BLOG_CONNECTION_APPS = {
   vtex: { appName: "vtex", registryAppId: "deco/vtex" },
@@ -133,16 +130,4 @@ export function blogConnectionStatus(
           ? "unauthorized"
           : null;
   return { connectionId: connection.id, gap };
-}
-
-/** The message a refusal carries, naming what is missing. */
-export function blogConnectionsMissingMessage(
-  missing: readonly BlogConnectionKind[],
-): string {
-  return `${BLOG_CONNECTIONS_MISSING} ${missing.join(", ")}`;
-}
-
-/** Whether a thrown value is that refusal rather than a broken call. */
-export function isBlogConnectionsMissing(err: unknown): boolean {
-  return err instanceof Error && err.message.includes(BLOG_CONNECTIONS_MISSING);
 }

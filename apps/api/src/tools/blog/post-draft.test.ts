@@ -1,62 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  agentWritingBrief,
-  describeGaps,
-  renderCampaign,
-  resolveProductIds,
-} from "./post-draft";
-
-const RUN = {
-  grounded: true,
-  droppedSections: 0,
-  failedDrafts: 0,
-  images: "ok" as const,
-  covered: 1,
-};
-
-describe("describeGaps", () => {
-  test("says nothing when everything worked", () => {
-    expect(describeGaps(RUN)).toEqual([]);
-  });
-
-  test("a store that answered nothing is its own gap", () => {
-    expect(describeGaps({ ...RUN, grounded: false })).toEqual([
-      { code: "no-store-data" },
-    ]);
-  });
-
-  test("counts the sections a block refused to accept", () => {
-    expect(describeGaps({ ...RUN, droppedSections: 3 })).toEqual([
-      { code: "sections-dropped", count: 3 },
-    ]);
-  });
-
-  test("counts the drafts that were asked for and never arrived", () => {
-    expect(describeGaps({ ...RUN, failedDrafts: 2 })).toEqual([
-      { code: "drafts-failed", count: 2 },
-    ]);
-  });
-
-  test("tells a missing bucket apart from a missing image model", () => {
-    expect(describeGaps({ ...RUN, images: "no-bucket", covered: 0 })).toEqual([
-      { code: "no-bucket" },
-    ]);
-    expect(describeGaps({ ...RUN, images: "no-model", covered: 0 })).toEqual([
-      { code: "no-image-model" },
-    ]);
-  });
-
-  /**
-   * One image failing out of three is not a story worth telling — the posts
-   * that did get a cover are the evidence that the bucket and the model work.
-   */
-  test("only reports failed images when none at all were made", () => {
-    expect(describeGaps({ ...RUN, images: "failed", covered: 2 })).toEqual([]);
-    expect(describeGaps({ ...RUN, images: "failed", covered: 0 })).toEqual([
-      { code: "images-failed" },
-    ]);
-  });
-});
+import { agentWritingBrief, renderCampaign } from "./post-draft";
 
 describe("renderCampaign", () => {
   const campaign = {
@@ -199,21 +142,6 @@ describe("renderCampaign — the product's id", () => {
     const rendered = renderCampaign(withProduct("1948858"));
     expect(rendered).toContain("https://loja.com.br/mochila-frozen/p");
     expect(rendered).toContain("Mochila Frozen");
-  });
-});
-
-describe("resolveProductIds", () => {
-  const valid = new Set(["1948858", "2001"]);
-
-  test("drops an id the campaign never listed", () => {
-    expect(resolveProductIds(["1948858", "9999"], valid)).toEqual(["1948858"]);
-  });
-
-  test("keeps a repeated id only once, in its first position", () => {
-    expect(resolveProductIds(["2001", "1948858", "2001"], valid)).toEqual([
-      "2001",
-      "1948858",
-    ]);
   });
 });
 

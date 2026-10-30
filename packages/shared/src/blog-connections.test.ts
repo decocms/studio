@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   blogConnectionStatus,
-  blogConnectionsMissingMessage,
   isBlogConnection,
-  isBlogConnectionsMissing,
   pickBlogConnection,
 } from "./blog-connections";
 
@@ -129,11 +127,4 @@ describe("Search Console", () => {
         .gap,
     ).toBe("unconfigured");
   });
-});
-
-test("the refusal names what is missing and is recognized", () => {
-  const err = new Error(blogConnectionsMissingMessage(["vtex", "ga4"]));
-  expect(err.message).toBe("blog-connections-missing: vtex, ga4");
-  expect(isBlogConnectionsMissing(err)).toBe(true);
-  expect(isBlogConnectionsMissing(new Error("other"))).toBe(false);
 });

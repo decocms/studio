@@ -828,8 +828,8 @@ export function filledBrandRules(rules: BrandRule[]): BrandRule[] {
 export { CAMPAIGN_KEY_PREFIX };
 
 /**
- * The closed sets live in `@decocms/shared` because `BLOG_CAMPAIGN_SUGGEST`
- * narrows the model's output against the very same lists. Re-exported here so
+ * The closed sets live in `@decocms/shared` because `BLOG_STATE_SET` checks
+ * every campaign written against the very same lists. Re-exported here so
  * every call site in this folder keeps importing campaign things from one place.
  */
 export {

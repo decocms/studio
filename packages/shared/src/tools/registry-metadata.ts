@@ -70,20 +70,11 @@ const ALL_TOOL_NAMES = [
   "BLOG_CARD_RUN",
   "BLOG_BRAND_FILL",
   "BLOG_CAMPAIGNS_PROPOSE",
-  "BLOG_SITE_GROUND",
-  "BLOG_SITE_CATALOGUE",
   "BLOG_SITE_BLOCKS",
   "BLOG_POST_ASSEMBLE",
-  "BLOG_BRAND_EXTRACT",
-  "BLOG_BRAND_ENRICH",
-  "BLOG_CONTEXT_EXTRACT",
-  "BLOG_FORMAT_SUGGEST",
-  "BLOG_POST_DRAFT",
   "BLOG_POST_BRIEF",
   "BLOG_POST_WRITE",
   "BLOG_POST_ILLUSTRATE",
-  "BLOG_LINK_SUGGEST",
-  "BLOG_CAMPAIGN_SUGGEST",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -495,52 +486,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Blog",
   },
   {
-    name: "BLOG_SITE_GROUND",
-    description:
-      "Read the site's connected systems once, for the generators that follow",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_SITE_CATALOGUE",
-    description:
-      "Turn a grounding pass's raw output into the store's catalogue",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_BRAND_EXTRACT",
-    description:
-      "Infer a brand's identity (name, audience, values, competitors) from a site",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_BRAND_ENRICH",
-    description:
-      "Research a brand on the web and drop the claims its evidence does not support",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_CONTEXT_EXTRACT",
-    description:
-      "Infer a blog's writing context (tone, dos and don'ts) from a site",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_FORMAT_SUGGEST",
-    description: "Name the post formats a blog writes in",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_CAMPAIGN_SUGGEST",
-    description:
-      "Propose campaigns from a seed, grounded in the site's systems",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_POST_DRAFT",
-    description: "Write a blog post from a theme and a format",
-    category: "Blog",
-  },
-  {
     name: "BLOG_POST_BRIEF",
     description:
       "Read the brief for writing a blog post yourself, without spending a model",
@@ -556,11 +501,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_POST_ILLUSTRATE",
     description:
       "Draw a drafted post's images, conditioned on the product's own photographs",
-    category: "Blog",
-  },
-  {
-    name: "BLOG_LINK_SUGGEST",
-    description: "Propose internal links from a post to the site's other posts",
     category: "Blog",
   },
   {

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BLOG_POST_ASSEMBLE } from "./post-assemble";
 import { BLOG_POST_BRIEF } from "./post-brief";
-import { BLOG_POST_DRAFT } from "./post-draft";
 import { BLOG_SITE_BLOCKS } from "./site-blocks";
 
 /**
@@ -56,21 +55,21 @@ describe("the site-reading tools stay free and read-only", () => {
 });
 
 describe("what one returns is what the next one takes", () => {
-  test("the blocks read off the site satisfy the drafting tool's schema", () => {
+  test("the blocks read off the site are the ones the brief takes", () => {
     expect(
       Object.keys(
         shapeOf(elementOf(shapeOf(BLOG_SITE_BLOCKS.outputSchema).blocks)),
       ).sort(),
     ).toEqual(
       Object.keys(
-        shapeOf(elementOf(shapeOf(BLOG_POST_DRAFT.inputSchema).blocks)),
+        shapeOf(elementOf(shapeOf(BLOG_POST_BRIEF.inputSchema).blocks)),
       ).sort(),
     );
   });
 
-  test("categories and authors come back drafting-ready", () => {
+  test("categories and authors come back as the brief takes them", () => {
     const read = shapeOf(BLOG_SITE_BLOCKS.outputSchema);
-    const draft = shapeOf(BLOG_POST_DRAFT.inputSchema);
+    const draft = shapeOf(BLOG_POST_BRIEF.inputSchema);
     for (const field of ["categories", "authors"] as const) {
       expect(Object.keys(shapeOf(elementOf(read[field]))).sort()).toEqual(
         Object.keys(shapeOf(elementOf(draft[field]))).sort(),
@@ -78,17 +77,7 @@ describe("what one returns is what the next one takes", () => {
     }
   });
 
-  test("assembling takes a draft shaped like the one drafting returns", () => {
-    const written = shapeOf(
-      elementOf(shapeOf(BLOG_POST_DRAFT.outputSchema).posts),
-    );
-    const taken = shapeOf(shapeOf(BLOG_POST_ASSEMBLE.inputSchema).draft);
-    for (const field of Object.keys(taken)) {
-      expect(written).toHaveProperty(field);
-    }
-  });
-
-  test("assembling hands the link pass both halves of its input", () => {
+  test("assembling returns the post's text beside the site's posts, to link from", () => {
     const out = shapeOf(BLOG_POST_ASSEMBLE.outputSchema);
     expect(out).toHaveProperty("bodyText");
     expect(out).toHaveProperty("posts");
@@ -96,15 +85,6 @@ describe("what one returns is what the next one takes", () => {
 
   test("the payload is the one the writer takes", () => {
     expect(shapeOf(BLOG_POST_ASSEMBLE.outputSchema)).toHaveProperty("post");
-  });
-
-  test("the brief reads the post as drafting does, plus what was gathered", () => {
-    const brief = shapeOf(BLOG_POST_BRIEF.inputSchema);
-    for (const field of Object.keys(brief)) {
-      if (field === "grounding") continue;
-      expect(shapeOf(BLOG_POST_DRAFT.inputSchema)).toHaveProperty(field);
-    }
-    expect(brief).toHaveProperty("grounding");
   });
 
   test("assembling says why a section was dropped, so it can be fixed", () => {

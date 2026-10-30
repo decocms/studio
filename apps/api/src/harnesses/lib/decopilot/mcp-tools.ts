@@ -169,10 +169,6 @@ export interface ToolsFromMcpOptions {
   disableOutputTruncation?: boolean;
   isPlanMode?: boolean;
   timeoutMs?: number;
-  isToolVisible?: (tool: {
-    name: string;
-    _meta?: Record<string, unknown>;
-  }) => boolean;
   resolveArgs?: (
     input: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
@@ -193,9 +189,7 @@ export async function toolsFromMCP(
 }> {
   const truncate = !options.disableOutputTruncation;
   const list = await client.listTools();
-  const visibleTools = list.tools.filter((t) =>
-    (options.isToolVisible ?? defaultToolVisibility)(t),
-  );
+  const visibleTools = list.tools.filter((t) => defaultToolVisibility(t));
 
   const nameMap = buildShortNameMap(visibleTools);
   const toolEntries = visibleTools.map((t) => {

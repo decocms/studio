@@ -23,9 +23,8 @@ import {
 } from "../../file-storage/blog-state";
 import { notifyOrgFsChangeFromServer } from "../../file-storage/org-fs-notify";
 import { callerBlogJob, campaignsJobRefusal } from "./blog-job";
-import { CampaignDraftSchema } from "./campaign-suggest";
 import { requireBlogAi } from "./feature-flag";
-import { CampaignGoalSchema } from "./schema";
+import { CampaignDraftSchema, CampaignGoalSchema } from "./schema";
 
 /**
  * Reading and writing the blog's editorial state, for a caller with no browser.
