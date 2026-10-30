@@ -188,9 +188,15 @@ export const common = {
   "common.inviteMemberDialog.emailLabel": "Endereços de e-mail",
   "common.inviteMemberDialog.emailPlaceholder":
     "Digite os endereços de e-mail separados por vírgulas ou quebras de linha\ne.g. usuario1@example.com, usuario2@example.com\nou um por linha",
+  "common.inviteMemberDialog.errorAlreadyInvited":
+    "{email} já tem um convite pendente. Peça para aceitar o convite ou gerencie-o em Membros.",
+  "common.inviteMemberDialog.errorAlreadyMember":
+    "{email} já é membro desta organização",
   "common.inviteMemberDialog.errorFailedInvite":
     "Falha ao convidar {count} membro(s)",
   "common.inviteMemberDialog.errorGeneric": "Falha ao convidar membros",
+  "common.inviteMemberDialog.errorInviteEmail":
+    "Não foi possível convidar {email}",
   "common.inviteMemberDialog.errorNoValidEmail":
     "Digite pelo menos um endereço de e-mail válido",
   "common.inviteMemberDialog.errorSelectRole": "Selecione uma função",

@@ -63,6 +63,28 @@ function parseEmails(text: string): string[] {
   return Array.from(new Set(emails));
 }
 
+type InviteFailure = { email: string; code: string | undefined };
+
+class InviteFailuresError extends Error {
+  constructor(readonly failures: InviteFailure[]) {
+    super("Failed to invite members");
+  }
+}
+
+function failureReason(
+  t: ReturnType<typeof useT>,
+  { email, code }: InviteFailure,
+) {
+  switch (code) {
+    case "USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION":
+      return t("common.inviteMemberDialog.errorAlreadyInvited", { email });
+    case "USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION":
+      return t("common.inviteMemberDialog.errorAlreadyMember", { email });
+    default:
+      return t("common.inviteMemberDialog.errorInviteEmail", { email });
+  }
+}
+
 export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
   const [open, setOpen] = useState(false);
   const { locator } = useProjectContext();
@@ -114,41 +136,35 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
         throw new Error(t("common.inviteMemberDialog.errorSelectRole"));
       }
 
-      // Invite each valid email with the selected role
       const results = await Promise.allSettled(
-        emails.map(async (email) => {
-          const result = await orgAuth.organization.inviteMember({
+        emails.map((email) =>
+          orgAuth.organization.inviteMember({
             email,
             role: role as "admin" | "owner",
-          });
-
-          if (result.error) {
-            throw new Error(result.error.message);
-          }
-
-          return result.data;
-        }),
+          }),
+        ),
       );
 
-      // Check for failures
-      const failures = results.filter((r) => r.status === "rejected");
-      if (failures.length > 0) {
-        throw new Error(
-          t("common.inviteMemberDialog.errorFailedInvite", {
-            count: failures.length,
-          }),
-        );
-      }
+      const failures = results.flatMap((result, i): InviteFailure[] => {
+        const email = emails[i] ?? "";
+        if (result.status === "rejected") return [{ email, code: undefined }];
+        const { error } = result.value;
+        return error ? [{ email, code: error.code }] : [];
+      });
+      if (failures.length > 0) throw new InviteFailuresError(failures);
 
       return results;
+    },
+    onSettled: () => {
+      // Some emails may have been invited even when others failed.
+      queryClient.invalidateQueries({ queryKey: KEYS.members(locator) });
+      queryClient.invalidateQueries({ queryKey: KEYS.invitations(locator) });
     },
     onSuccess: (_, { emails, role }) => {
       track("member_invited", {
         count: emails.length,
         role,
       });
-      queryClient.invalidateQueries({ queryKey: KEYS.members(locator) });
-      queryClient.invalidateQueries({ queryKey: KEYS.invitations(locator) });
       toast.success(
         emails.length === 1
           ? t("common.inviteMemberDialog.successSingle")
@@ -163,15 +179,40 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
       setOpen(false);
     },
     onError: (error, { emails, role }) => {
+      const failures =
+        error instanceof InviteFailuresError ? error.failures : [];
       track("member_invite_failed", {
         count: emails.length,
         role,
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          failures.length > 0
+            ? failures.map((f) => f.code ?? "UNKNOWN").join(",")
+            : error.message,
       });
+      if (failures.length === 0) {
+        toast.error(
+          error.message || t("common.inviteMemberDialog.errorGeneric"),
+        );
+        return;
+      }
+      const reasons = failures.map((failure) => failureReason(t, failure));
+      if (reasons.length === 1) {
+        toast.error(reasons[0]);
+        return;
+      }
       toast.error(
-        error instanceof Error
-          ? error.message
-          : t("common.inviteMemberDialog.errorGeneric"),
+        t("common.inviteMemberDialog.errorFailedInvite", {
+          count: failures.length,
+        }),
+        {
+          description: (
+            <ul>
+              {reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          ),
+        },
       );
     },
   });

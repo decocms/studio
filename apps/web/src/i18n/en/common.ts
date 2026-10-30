@@ -179,9 +179,14 @@ export const common = {
   "common.inviteMemberDialog.emailLabel": "Email addresses",
   "common.inviteMemberDialog.emailPlaceholder":
     "Enter email addresses separated by commas or new lines\ne.g. user1@example.com, user2@example.com\nor one per line",
+  "common.inviteMemberDialog.errorAlreadyInvited":
+    "{email} already has a pending invitation. Ask them to accept it, or manage it under Members.",
+  "common.inviteMemberDialog.errorAlreadyMember":
+    "{email} is already a member of this organization",
   "common.inviteMemberDialog.errorFailedInvite":
     "Failed to invite {count} member(s)",
   "common.inviteMemberDialog.errorGeneric": "Failed to invite members",
+  "common.inviteMemberDialog.errorInviteEmail": "Couldn't invite {email}",
   "common.inviteMemberDialog.errorNoValidEmail":
     "Please enter at least one valid email address",
   "common.inviteMemberDialog.errorSelectRole": "Please select a role",
