@@ -114,9 +114,14 @@ export function GithubCopilotRow() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLinking((open) => !open)}
+            onClick={() => {
+              setLinking((open) => !open);
+              setToken("");
+            }}
           >
-            {t("settings.githubCopilot.connect")}
+            {linking
+              ? t("settings.ownAccounts.cancel")
+              : t("settings.githubCopilot.connect")}
           </Button>
         )
       }

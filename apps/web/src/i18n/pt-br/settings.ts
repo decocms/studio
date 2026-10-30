@@ -689,6 +689,7 @@ export const settings = {
   "settings.ownAccounts.more": "Mais ações",
   "settings.providerKeyRow.edit": "Editar",
   "settings.ownAccounts.title": "Suas contas",
+  "settings.ownAccounts.cancel": "Cancelar",
   "settings.ownAccounts.addApiKey": "Adicionar chave de API",
   "settings.ownAccounts.linked": "Vinculado",
   "settings.ownAccounts.expired": "Expirado",

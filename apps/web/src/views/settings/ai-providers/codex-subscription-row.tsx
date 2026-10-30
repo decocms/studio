@@ -114,9 +114,14 @@ export function CodexSubscriptionRow() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLinking((open) => !open)}
+            onClick={() => {
+              setLinking((open) => !open);
+              setToken("");
+            }}
           >
-            {t("settings.codexSubscription.connect")}
+            {linking
+              ? t("settings.ownAccounts.cancel")
+              : t("settings.codexSubscription.connect")}
           </Button>
         )
       }

@@ -120,14 +120,19 @@ export function ClaudeSubscriptionRow() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setLinking((open) => !open)}
+            onClick={() => {
+              setLinking((open) => !open);
+              setToken("");
+            }}
           >
-            {t("settings.claudeSubscription.connect")}
+            {linking
+              ? t("settings.ownAccounts.cancel")
+              : t("settings.claudeSubscription.connect")}
           </Button>
         )
       }
     >
-      {!connected && (linking || expired) && (
+      {!connected && linking && (
         <LinkTokenForm
           hint={
             <>
