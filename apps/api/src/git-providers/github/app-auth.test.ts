@@ -6,6 +6,7 @@ import {
 } from "@decocms/shared/github-repo-scope";
 import {
   buildAppJwt,
+  GithubAppAuth,
   installationCacheKey,
   type InstallationToken,
   invalidTokenScope,
@@ -365,4 +366,69 @@ describe("usableAppKey", () => {
     expect(usableAppKey(config(key.slice(0, 120)))).toBe(false);
     expect(usableAppKey(config("not a key"))).toBe(false);
   });
+});
+
+describe("GithubAppAuth.installationToken", () => {
+  const privateKeyPem = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  }).privateKey;
+
+  /** A GitHub that 422s any mint asking for `statuses` or `deployments`. */
+  function fakeGithub(message: string) {
+    const requested: Record<string, string>[] = [];
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as {
+          permissions: Record<string, string>;
+        };
+        requested.push(body.permissions);
+        if (
+          "statuses" in body.permissions ||
+          "deployments" in body.permissions
+        ) {
+          return Response.json({ message }, { status: 422 });
+        }
+        return Response.json({
+          token: "ghs_test",
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          permissions: body.permissions,
+        });
+      },
+    });
+    return { server, requested };
+  }
+
+  for (const message of [
+    "The permissions requested are not granted to this installation.",
+    "Repository is not in this installation, or the requested permissions exceed what the GitHub App was granted.",
+  ]) {
+    test(`sheds ungranted optional permissions on "${message}"`, async () => {
+      const { server, requested } = fakeGithub(message);
+      try {
+        const auth = new GithubAppAuth(
+          {
+            appId: "1",
+            privateKeyPem,
+            clientId: "c",
+            clientSecret: "s",
+            slug: "studio",
+          },
+          { apiBaseUrl: server.url.origin },
+        );
+        const token = await auth.installationToken(1, {
+          permissions: GITHUB_SCOPED_PERMISSIONS,
+        });
+        expect(token.token).toBe("ghs_test");
+        expect(token.permissions).not.toHaveProperty("statuses");
+        expect(token.permissions).not.toHaveProperty("deployments");
+        expect(token.permissions).toHaveProperty("checks", "read");
+        expect(requested).toHaveLength(3);
+      } finally {
+        server.stop(true);
+      }
+    });
+  }
 });
