@@ -78,6 +78,23 @@ export function metaSourceOrder(input: {
 const LOCAL_META_POLL_MS = 5_000;
 
 /**
+ * What each site's runtime turned out to do with `If-None-Match`, learned by
+ * asking. A failed cross-origin request reads exactly like a dev server that
+ * is down, so the two are told apart the only way the browser allows: ask
+ * again plainly, and see whether THAT works.
+ *
+ * Remembering the answer is what keeps the cost at one request. Without it a
+ * runtime that refuses the header pays a rejected preflight on every single
+ * read, and — worse, because it is the common case — every read taken while
+ * the dev server restarts sends two failing requests instead of one.
+ *
+ * Keyed by base URL, which is the pod: a different sandbox re-learns.
+ */
+export type ConditionalSupport = Map<string, "ok" | "refused">;
+
+const conditionalSupport: ConditionalSupport = new Map();
+
+/**
  * A running site's `/live/_meta`, or `null` when it can't answer. With the
  * schema already held, asks with its `etag`; a deco runtime then answers 304
  * instead of the whole schema, and the held one is returned. A dev server on
@@ -87,14 +104,29 @@ const LOCAL_META_POLL_MS = 5_000;
 export async function fetchLiveMeta(
   baseUrl: string,
   previous?: LiveMeta,
+  /** What this browser has learned about each runtime; see above. */
+  support: ConditionalSupport = conditionalSupport,
 ): Promise<LiveMeta | null> {
   const url = new URL("/live/_meta", baseUrl).href;
-  const headers: Record<string, string> = previous?.etag
-    ? { "If-None-Match": previous.etag }
-    : {};
-  const res = await fetch(url, { cache: "no-store", headers }).catch(
-    () => null,
-  );
+  const known = support.get(baseUrl);
+  const etag = known === "refused" ? undefined : previous?.etag;
+  const first = await fetch(url, {
+    cache: "no-store",
+    headers: etag ? { "If-None-Match": etag } : {},
+  }).catch(() => null);
+  // Only while it is still unknown. Once a conditional request has worked
+  // against this runtime, a failure is the server being unreachable and
+  // asking again plainly just doubles the cost of a dev server that is down.
+  const retryPlainly = !first && !!etag && known === undefined;
+  const res = retryPlainly
+    ? await fetch(url, { cache: "no-store", headers: {} }).catch(() => null)
+    : first;
+  if (etag) {
+    // The plain request answering where the conditional one could not is the
+    // only evidence that the HEADER, not the server, was the problem.
+    if (retryPlainly && res) support.set(baseUrl, "refused");
+    else if (first) support.set(baseUrl, "ok");
+  }
   if (previous && (!res || res.status === 304)) return previous;
   if (!res?.ok) return null;
   // A repo that doesn't use the deco framework for sites still answers
@@ -219,12 +251,19 @@ export function useLiveMeta(
           if (committed.kind === "data") return committed.data;
           continue;
         }
-        // Only Local polls, so only it revalidates what it holds.
+        // Revalidate what we hold whenever the runtime gave us an etag to
+        // revalidate WITH. Two reasons, both measured against a sandbox dev
+        // server: the schema is ~1 MB and a 304 is ~0, and a dev server that
+        // misses a beat (a restart, a paused VM waking) must not drop the CMS
+        // back onto the committed snapshot, which is a build behind — an app
+        // installed into the working tree is in one and not the other, so the
+        // editor flips between "no editable schema" and "appears after the
+        // build" every couple of seconds. An etag is also what says the
+        // runtime is new enough to accept the conditional request at all.
+        const held = queryClient.getQueryData<LiveMeta>(queryKey);
         const meta = await fetchLiveMeta(
           source.baseUrl,
-          localOverride
-            ? queryClient.getQueryData<LiveMeta>(queryKey)
-            : undefined,
+          localOverride || held?.etag ? held : undefined,
         );
         if (meta) return meta;
       }

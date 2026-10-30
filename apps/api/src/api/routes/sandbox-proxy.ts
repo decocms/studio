@@ -780,6 +780,13 @@ export async function fetchDaemonJson<T>(
 
 // ---- Setup validation -------------------------------------------------------
 
+/** `?force` as a boolean, or null when it is neither absent nor recognised. */
+export function parseSetupForce(raw: string | undefined): boolean | null {
+  if (raw === undefined || raw === "0") return false;
+  if (raw === "1") return true;
+  return null;
+}
+
 const SETUP_STEPS = ["clone", "install", "start"] as const;
 type SetupStep = (typeof SETUP_STEPS)[number];
 
@@ -906,6 +913,15 @@ export const createSandboxRoutes = () => {
         400,
       );
     }
+    // `?force=1` reaches the daemon as the step's body, where install and
+    // start each decide what it bypasses. Rejected rather than coerced when it
+    // is anything else: a `?force=true` read as false is an install that
+    // answers 200 and does nothing, which is the failure this flag exists to
+    // make impossible.
+    const force = parseSetupForce(c.req.query("force"));
+    if (force === null) {
+      return c.json({ error: 'force must be "1" or "0"' }, 400);
+    }
     // Pod-addressed means a pod that EXISTS. Without the liveness
     // check a sandbox-less session would proxy to a daemon that was never
     // provisioned and get a 410 where it used to get a clean 404.
@@ -923,12 +939,20 @@ export const createSandboxRoutes = () => {
         SANDBOX_PROXY_CACHE_HEADERS,
       );
     }
-    // On "start", refresh the daemon's env from the virtual MCP's current
-    // `metadata.runtime.env`. The dev script inherits env at spawn time, so
-    // edits made after the last SANDBOX_START don't reach a running process
-    // unless we push the freshly-resolved env to /config before the
-    // orchestrator restarts it.
-    if (step === "start") {
+    // Before a step that ends in a dev spawn, refresh the daemon's env from
+    // the virtual MCP's current `metadata.runtime.env`. The dev script inherits
+    // env at spawn time, so edits made after the last SANDBOX_START don't reach
+    // a running process unless we push the freshly-resolved env to /config
+    // first.
+    //
+    // A FORCED install counts: it is the one that always stops the dev task,
+    // and the orchestrator cascades straight into the start that respawns it.
+    // An unforced one does not — it no-ops whenever the fingerprint matches,
+    // which is most of the time, and the push is not free either way: it mints
+    // the caller's secrets, answers 502 when one cannot be resolved, and an env
+    // that DID change is itself a transition the daemon restarts dev for. That
+    // is the healthy dev server this flag exists to stop tearing down.
+    if (step === "start" || (step === "install" && force)) {
       {
         const organization = requireOrganization(c.var.studioContext);
         const entries = readValidatedRuntimeEnv(claim.virtualMcpMetadata);
@@ -956,6 +980,7 @@ export const createSandboxRoutes = () => {
       signal: c.req.raw.signal,
       map404to410: true,
       runner: podRunner,
+      jsonBody: JSON.stringify({ force }),
     });
   });
 

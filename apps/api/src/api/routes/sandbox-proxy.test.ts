@@ -6,6 +6,7 @@ import {
 } from "../../lib/bounded-text";
 import {
   fetchDaemonJson,
+  parseSetupForce,
   redactRepoDir,
   withClaimGitLock,
 } from "./sandbox-proxy";
@@ -128,5 +129,21 @@ describe("fetchDaemonJson", () => {
     await expect(
       fetchDaemonJson(runner, "claim-a", "/_sandbox/git/status"),
     ).rejects.toThrow("SANDBOX_GONE");
+  });
+});
+
+describe("parseSetupForce", () => {
+  it("reads the two recognised values, and absence as unforced", () => {
+    expect(parseSetupForce(undefined)).toBe(false);
+    expect(parseSetupForce("0")).toBe(false);
+    expect(parseSetupForce("1")).toBe(true);
+  });
+
+  it("refuses anything else instead of reading it as unforced", () => {
+    // A `?force=true` coerced to false is an install that answers 200 and
+    // installs nothing — the failure the flag exists to make impossible.
+    for (const raw of ["true", "yes", "", "01", "TRUE"]) {
+      expect(parseSetupForce(raw)).toBeNull();
+    }
   });
 });

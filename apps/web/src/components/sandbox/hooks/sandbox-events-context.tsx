@@ -294,6 +294,21 @@ function useSandboxEventsValue({
     // to the live `/.decofile` + `/live/_meta` routes).
     let prevLifecyclePhase: LifecycleState["phase"] | null = null;
 
+    /**
+     * Re-read the schema, after a pause: the dev server needs a moment to
+     * rebuild before `/live/_meta` answers with the new one, and rapid
+     * successive writes reset the wait.
+     */
+    const scheduleLiveMetaInvalidate = () => {
+      if (liveMetaDebounceTimer) clearTimeout(liveMetaDebounceTimer);
+      liveMetaDebounceTimer = setTimeout(() => {
+        liveMetaDebounceTimer = null;
+        void queryClient.invalidateQueries({
+          queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
+        });
+      }, 1_000);
+    };
+
     const handleClaimPhase = (e: MessageEvent) => {
       try {
         const next = JSON.parse(e.data) as ClaimPhase;
@@ -482,8 +497,16 @@ function useSandboxEventsValue({
               // truth until the lifecycle→running transition re-invalidates.
               const devServerRunning = prevLifecyclePhase === "running";
               if (!devServerRunning) return;
-              // Debounce decofile invalidation for the same reason as liveMeta
-              // below: writing a `.deco/` block emits `file-changed`, but the
+              // `.deco/meta.gen.json` IS the schema, not a block: a rebuild
+              // that regenerates it means the form the CMS holds is older
+              // than the site — an app installed into this branch is exactly
+              // that case. Its own timer, so a block write right after does
+              // not cancel it.
+              if (filePath.endsWith(".deco/meta.gen.json")) {
+                scheduleLiveMetaInvalidate();
+              }
+              // Debounce decofile invalidation for the same reason as the
+              // schema: writing a `.deco/` block emits `file-changed`, but the
               // dev server needs a moment to rebuild before `/.decofile`
               // reflects the write. Refetching immediately re-reads the stale
               // pre-rebuild config and clobbers the optimistic cache update from
@@ -508,16 +531,7 @@ function useSandboxEventsValue({
                 }
               }, 500);
             } else {
-              // Debounce liveMeta invalidation so the dev server has time to
-              // rebuild before we hit /live/_meta. Rapid successive
-              // file-changed events reset the timer.
-              if (liveMetaDebounceTimer) clearTimeout(liveMetaDebounceTimer);
-              liveMetaDebounceTimer = setTimeout(() => {
-                liveMetaDebounceTimer = null;
-                void queryClient.invalidateQueries({
-                  queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
-                });
-              }, 1_000);
+              scheduleLiveMetaInvalidate();
             }
             return;
           }

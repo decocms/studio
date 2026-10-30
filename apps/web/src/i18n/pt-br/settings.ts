@@ -383,6 +383,9 @@ export const settings = {
   "settings.blocksEditor.title": "Novo editor de blocos",
   "settings.blocksEditor.description":
     "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",
+  "settings.siteAppsInstall.title": "Instalar apps do catálogo",
+  "settings.siteAppsInstall.description":
+    "Permite que a aba Apps instale um app no site: escreve o módulo do app e o registro dele na branch, adiciona a dependência e reinicia o dev server da sandbox para o formulário de configuração aparecer. Com isso desligado o catálogo continua navegável e nada é instalável.",
   "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
   "settings.multiAppPreview.description":
     "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",

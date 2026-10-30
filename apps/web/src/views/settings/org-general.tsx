@@ -36,7 +36,7 @@ export function OrgGeneralPage() {
                 <BlogSettings />
               </>
             )}
-            <BlocksEditorSettings />
+            <BlocksEditorSettings manageable={granted} />
             {granted && (
               <>
                 <DomainSettings />

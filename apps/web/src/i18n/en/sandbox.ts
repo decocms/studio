@@ -6,9 +6,24 @@ export const sandbox = {
     "Installed. Its settings appear once the site is built with this app — the schema is generated from the app's own module.",
   "sandbox.appEditor.installNeedsCodingSession":
     "Start a coding session to install apps.",
-  "sandbox.appEditor.loadingSchema": "Loading app schema…",
   "sandbox.appEditor.noEditableSchema":
     "No editable schema found for this app.",
+  "sandbox.appInstallPanel.flagOff":
+    "Installing apps is off for this organization. An admin can turn it on in Settings → General → Site editor.",
+  "sandbox.appInstallPanel.install": "Install",
+  "sandbox.appInstallPanel.oneAtATime":
+    "Another app is installing — wait for it to finish, then install this one.",
+  "sandbox.appInstallPanel.sessionLoading":
+    "Still reading this session — the button comes back in a moment.",
+  "sandbox.appInstallPanel.installing": "Installing…",
+  "sandbox.appInstallPanel.notInstallable":
+    "This app comes from the site's own code, not from the registry — there is nothing to install from here.",
+  "sandbox.appInstallPanel.unavailable":
+    "Installing apps is not available in this session.",
+  "sandbox.appInstallPanel.writesDeno":
+    "Installing adds apps/{vendor}/{app}.ts and the app's block to this branch.",
+  "sandbox.appInstallPanel.writesTanstack":
+    "Installing adds src/apps/{vendor}/{app}.ts, the app's package, its APP_REGISTRY entry and the app's block to this branch.",
   "sandbox.availableSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.availableSectionEditor.localEditsHint":
     "{typeLabel} — edits stay local until you save this as a global section.",
