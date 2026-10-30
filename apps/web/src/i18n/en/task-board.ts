@@ -114,26 +114,40 @@ export const taskBoard = {
   "taskBoard.agenticSetup.failed": "Couldn't start the board setup chat",
   "taskBoard.dropHint.pickUp": "{names} will pick this card up",
   "taskBoard.dropHint.pickUpMany": "{names} will pick these cards up",
-  "taskBoard.columnRules.menuItem": "Rules and automations",
-  "taskBoard.columnRules.automationsLabel": "Automations",
-  "taskBoard.columnRules.toggleAutomation":
-    "Run {name} on cards that land here",
-  "taskBoard.columnRules.noAutomations":
-    "Nothing runs on the cards that land here.",
-  "taskBoard.columnRules.addAutomation": "Add an automation",
-  "taskBoard.columnRules.promptLabel": "Instructions",
-  "taskBoard.columnRules.promptPlaceholder":
-    "Conventions, tools to prefer, what never to touch",
-  "taskBoard.columnRules.skillsLabel": "Skills",
+  "taskBoard.columnRules.menuItem": "How this column works",
+  "taskBoard.columnRules.off": "Off",
+  "taskBoard.columnRules.runsHere": "Runs here",
+  "taskBoard.columnGuide.postDeployValidation":
+    "The change is in production. Once someone confirms it works there, the card moves to Done.",
+  "taskBoard.columnGuide.readyForDeployment":
+    "Approved and waiting to merge. Merging the pull request moves the card on.",
+  "taskBoard.columnGuide.customerApproval":
+    "The customer reviews the change, and their approval moves the card on.",
+  "taskBoard.columnGuide.qa":
+    "Someone on the team tests the change, then approves it or sends it back.",
+  "taskBoard.columnGuide.inReview":
+    "The agent reviews the pull request, fixes what it finds and approves it for QA.",
+  "taskBoard.columnGuide.inProgress":
+    "The agent implements the task and opens a pull request for review.",
+  "taskBoard.columnGuide.todo":
+    "Ready to start. Move a card to In Progress to hand it to the agent.",
+  "taskBoard.columnGuide.triage":
+    "New requests wait here until someone prioritizes them for To Do.",
+  "taskBoard.columnRules.newAutomation": "Create automation",
+  "taskBoard.columnRules.newAutomationName": "{column}: new automation",
+  "taskBoard.columnRules.newAutomationFailed": "Couldn't create the automation",
+  "taskBoard.columnRules.starter.board_column_transition":
+    "Runs when a card enters",
+  "taskBoard.columnRules.starter.board_pr_ready":
+    "Runs when the pull request is ready",
+  "taskBoard.columnRules.starter.board_pr_merged":
+    "Runs when the pull request is merged",
+  "taskBoard.columnRules.noAutomations": "Nothing runs here yet",
   "taskBoard.columnRules.removeSkill": "Remove {skill}",
   "taskBoard.columnRules.searchSkills": "Search skills",
   "taskBoard.columnRules.noSkills": "No skills found",
   "taskBoard.columnRules.inheritedHint":
     "Also available here, from Settings → Tasks:",
-  "taskBoard.columnRules.cancel": "Cancel",
-  "taskBoard.columnRules.save": "Save",
-  "taskBoard.columnRules.saved": "Column rules saved",
-  "taskBoard.columnRules.failed": "Couldn't save the column rules",
   "taskBoard.taskBoard.hiddenColumns": "Hidden columns",
   "taskBoard.taskBoard.showColumn": "Show",
   "taskBoard.taskBoard.selectedCount": "{count} selected",
