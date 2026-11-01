@@ -16,10 +16,7 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   const { data } = useOrgAccessStatus(orgSlug);
 
-  // We render only when the user is NOT a member. Both cached slugs are only
-  // recorded for orgs the user belonged to, so one naming this org means the
-  // home loader sent them here from cache: drop it, or "/" — and every gate
-  // screen's "Go to home" — would bounce them straight back.
+  // Non-member: a cached slug naming this org is stale; drop it so "/" stops bouncing back here.
   if (data.status !== "member") {
     const lastLocationMatches = readLastLocation()?.org === orgSlug;
     if (lastLocationMatches) clearLastLocation();

@@ -85,7 +85,10 @@ export function activeOrganizationQueryOptions(
  *
  * Never throws: a failed read is the shell's to report, from its own query.
  */
+let latestPreloadedOrg: string | undefined;
+
 export async function preloadActiveOrganization(org: string): Promise<void> {
+  latestPreloadedOrg = org;
   await sessionSettled();
   const userId = currentSessionUserId();
   // Signed out, a cached `null` would read as "no access" right after sign-in.
@@ -93,7 +96,8 @@ export async function preloadActiveOrganization(org: string): Promise<void> {
   const data = await queryClient
     .ensureQueryData(activeOrganizationQueryOptions(org, userId))
     .catch(() => null);
-  // Only an org the user belongs to is worth restoring on cold entry: a stale
-  // slug sent to "/" would redirect straight back to the access gate.
-  if (data && !isOrgArchived(data)) saveLastLocation({ org });
+  // Record only orgs the user can open, and only for the latest navigation.
+  if (data && !isOrgArchived(data) && latestPreloadedOrg === org) {
+    saveLastLocation({ org });
+  }
 }

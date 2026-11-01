@@ -204,10 +204,10 @@ const homeRoute = createRoute({
     // Super Agent) — never resume the last conversation. Cold entry / a fresh
     // tab is a "start from home" gesture (ChatGPT-style), so we deliberately
     // ignore any recorded taskId here. lastLocation's org is recorded on every
-    // navigation into an org the user belongs to (orgRoute's loader), so it's
-    // current even after an in-app org switch that the queryFn-driven
-    // lastOrgSlug can miss. Reads are synchronous so cold entry stays instant. An org the user has since
-    // lost self-heals: OrgAccessGate clears it and bounces back to "/".
+    // org-scoped navigation (orgRoute's loader), so it's current even after
+    // an in-app org switch that the queryFn-driven lastOrgSlug can miss. Reads
+    // are synchronous so cold entry stays instant. A stale org self-heals:
+    // OrgAccessGate clears it and bounces back to "/".
     const lastLocation = readLastLocation();
     if (lastLocation) {
       throw redirect({ to: "/$org", params: { org: lastLocation.org } });

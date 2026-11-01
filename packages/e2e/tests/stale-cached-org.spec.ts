@@ -22,13 +22,14 @@ const CACHES = {
 test.describe("stale cached organization", () => {
   for (const [label, cache] of Object.entries(CACHES)) {
     test(`"/" recovers from a stale ${label}`, async ({ page }) => {
-      const user = await signUpViaApi(page.context().request);
+      // Seed signed out: a signed-in /login redirects and records the real org.
       await page.goto("/login");
       await page.evaluate((entries) => {
         for (const [key, value] of Object.entries(entries)) {
           localStorage.setItem(key, value);
         }
       }, cache);
+      const user = await signUpViaApi(page.context().request);
 
       await page.goto("/");
 
