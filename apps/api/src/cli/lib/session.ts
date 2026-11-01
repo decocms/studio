@@ -9,6 +9,9 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+/** Studio the CLI talks to when no `--target` is given. */
+export const DEFAULT_TARGET = "https://studio.decocms.com";
+
 export interface Session {
   /** OAuth issuer / decocms target (e.g. https://studio.decocms.com). */
   target: string;
@@ -69,9 +72,10 @@ async function listSessionPaths(dataDir: string): Promise<string[]> {
 }
 
 /**
- * Reads the host-keyed session for `target`. With no `target`, returns the
- * first host-keyed session on disk for target-agnostic callers like `whoami`
- * and `logout`.
+ * Reads the host-keyed session for `target`. With no `target`, prefers the
+ * default studio's session, then falls back to the first host-keyed session
+ * on disk. Without the preference, a stale session for another host (e.g. a
+ * local dev studio) that sorts first would shadow a valid prod login.
  */
 export async function readSession(
   dataDir: string,
@@ -80,6 +84,8 @@ export async function readSession(
   if (target) {
     return readSessionFile(sessionPath(dataDir, target));
   }
+  const preferred = await readSessionFile(sessionPath(dataDir, DEFAULT_TARGET));
+  if (preferred) return preferred;
   for (const path of await listSessionPaths(dataDir)) {
     const session = await readSessionFile(path);
     if (session) return session;
