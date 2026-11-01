@@ -7,6 +7,7 @@ import {
   currentSessionUserId,
   sessionSettled,
 } from "@/lib/auth-client";
+import { saveLastLocation } from "@/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { KEYS } from "@/lib/query-keys";
 import { readCachedOrg, writeCachedOrg } from "@/lib/query-persist";
@@ -89,7 +90,10 @@ export async function preloadActiveOrganization(org: string): Promise<void> {
   const userId = currentSessionUserId();
   // Signed out, a cached `null` would read as "no access" right after sign-in.
   if (!userId) return;
-  await queryClient
+  const data = await queryClient
     .ensureQueryData(activeOrganizationQueryOptions(org, userId))
-    .catch(() => undefined);
+    .catch(() => null);
+  // Only an org the user belongs to is worth restoring on cold entry: a stale
+  // slug sent to "/" would redirect straight back to the access gate.
+  if (data && !isOrgArchived(data)) saveLastLocation({ org });
 }

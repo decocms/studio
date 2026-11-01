@@ -20,7 +20,7 @@ import * as z from "zod";
 import { listOrganizationsCached } from "@/lib/auth-client";
 import { preloadActiveOrganization } from "@/lib/active-organization";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { readLastLocation, saveLastLocation } from "@/lib/last-location";
+import { readLastLocation } from "@/lib/last-location";
 import {
   canonicalProjectPathFromLegacyAgents,
   isCanonicalAgentIdSegment,
@@ -204,10 +204,10 @@ const homeRoute = createRoute({
     // Super Agent) — never resume the last conversation. Cold entry / a fresh
     // tab is a "start from home" gesture (ChatGPT-style), so we deliberately
     // ignore any recorded taskId here. lastLocation's org is recorded on every
-    // org-scoped navigation (orgRoute.beforeLoad), so it's current even after
-    // an in-app org switch that the queryFn-driven lastOrgSlug can miss. Reads
-    // are synchronous so cold entry stays instant. A stale org self-heals:
-    // OrgAccessGate clears it and bounces back to "/".
+    // navigation into an org the user belongs to (orgRoute's loader), so it's
+    // current even after an in-app org switch that the queryFn-driven
+    // lastOrgSlug can miss. Reads are synchronous so cold entry stays instant. An org the user has since
+    // lost self-heals: OrgAccessGate clears it and bounces back to "/".
     const lastLocation = readLastLocation();
     if (lastLocation) {
       throw redirect({ to: "/$org", params: { org: lastLocation.org } });
@@ -365,14 +365,9 @@ const reportRoute = createRoute({
 const orgRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/$org",
-  // Record the org on every entry/switch (this re-runs whenever the $org param
-  // changes). Cold entry deliberately restores only this organization, never a
-  // conversation or route-local workspace state.
-  beforeLoad: ({ params }) => {
-    saveLastLocation({ org: params.org });
-  },
   /** The org the shell reads, cached before the URL commits — see
-   *  `preloadActiveOrganization`. During boot `boot-gate.tsx` waits on it under
+   *  `preloadActiveOrganization`, which also records it for cold entry once
+   *  membership is confirmed. During boot `boot-gate.tsx` waits on it under
    *  the splash. */
   loader: ({ params }) => preloadActiveOrganization(params.org),
   /** The last route above the sidebar, and the one that mounts it, so it has

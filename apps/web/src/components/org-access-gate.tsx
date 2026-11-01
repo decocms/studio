@@ -16,26 +16,26 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   const { data } = useOrgAccessStatus(orgSlug);
 
-  // We render only when the user is NOT a member. orgLayout's beforeLoad
-  // optimistically recorded this slug as the user's last location (before
-  // membership was known), so the home loader — and every gate screen's "Go to
-  // home" → "/" — would bounce them straight back here. Undo that optimistic
-  // write for every non-member status so leaving actually leaves.
+  // We render only when the user is NOT a member. Both cached slugs are only
+  // recorded for orgs the user belonged to, so one naming this org means the
+  // home loader sent them here from cache: drop it, or "/" — and every gate
+  // screen's "Go to home" — would bounce them straight back.
   if (data.status !== "member") {
-    if (readLastLocation()?.org === orgSlug) clearLastLocation();
+    const lastLocationMatches = readLastLocation()?.org === orgSlug;
+    if (lastLocationMatches) clearLastLocation();
 
-    const cachedSlugMatches =
+    const lastOrgSlugMatches =
       localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug;
-    if (cachedSlugMatches) {
+    if (lastOrgSlugMatches) {
       localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     }
 
     // not-found / no-access have nothing actionable here. If the user only
-    // landed here via the stale cached slug, bounce back to "/" so the loader
+    // landed here via a stale cached slug, bounce back to "/" so the loader
     // picks a valid destination instead of dead-ending. A deliberate visit to a
     // bad org (e.g. a shared link) still shows the screen rather than bouncing.
     if (
-      cachedSlugMatches &&
+      (lastLocationMatches || lastOrgSlugMatches) &&
       (data.status === "not-found" || data.status === "no-access")
     ) {
       window.location.href = "/";
