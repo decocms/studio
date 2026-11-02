@@ -72,6 +72,8 @@ export function activeOrganizationQueryOptions(
   });
 }
 
+let latestPreloadedOrg: string | undefined;
+
 /**
  * The `$org` route's loader: have the org in the cache before the router
  * commits the URL that names it.
@@ -85,8 +87,6 @@ export function activeOrganizationQueryOptions(
  *
  * Never throws: a failed read is the shell's to report, from its own query.
  */
-let latestPreloadedOrg: string | undefined;
-
 export async function preloadActiveOrganization(org: string): Promise<void> {
   latestPreloadedOrg = org;
   await sessionSettled();
