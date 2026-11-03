@@ -352,15 +352,22 @@ export async function fetchOrgFsText(
  */
 export function useFileText(url: string, opts?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: KEYS.fileText(url),
+    ...fileTextQuery(url),
     enabled: opts?.enabled !== false && url !== "",
+  });
+}
+
+/** The query behind {@link useFileText}, for reading several files at once. */
+export function fileTextQuery(url: string) {
+  return {
+    queryKey: KEYS.fileText(url),
     staleTime: 60_000,
     retry: false,
     queryFn: async (): Promise<string | null> => {
       const res = await fetch(url, { credentials: "include" });
       return res.ok ? await res.text() : null;
     },
-  });
+  };
 }
 
 /** A text file inside a skill folder, collected for inlining into chat. */

@@ -78,7 +78,9 @@ import {
   fontName,
   formatsFrom,
   groupBrandSections,
+  FORMATS_DIR,
   pickBrandDir,
+  removeSection,
   sectionMarkdown,
   withFontName,
   writeFrontmatter,
@@ -89,6 +91,7 @@ import { parseFrontmatterDoc } from "@decocms/shared/harness/skill-md";
 import { useBlogAi } from "@/hooks/use-blog-ai";
 import { scanCampaigns } from "@/components/sandbox/content/blog/blog-data";
 import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
+import { FormatsDrawer, useBrandFormats } from "./brand-formats";
 
 /** The colors a brand is recognised by, in the order a person names them. */
 const SWATCHES = ["primary", "secondary", "accent", "bg", "fg"] as const;
@@ -186,13 +189,6 @@ function CampaignsRow() {
   );
 }
 
-/** A formats section's summary: the names of the formats it defines. */
-function formatNames(md: string, title: string): string {
-  return formatsFrom(sectionMarkdown(md, title) ?? "")
-    .map((format) => format.name)
-    .join(", ");
-}
-
 function titleCase(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
@@ -287,6 +283,8 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   } | null>(null);
   /** The section whose row opened the form, focused once it mounts. */
   const [focus, setFocus] = useState<string | null>(null);
+  const [formatsOpen, setFormatsOpen] = useState(false);
+  const formatFiles = useBrandFormats(brand.path);
   const [saving, setSaving] = useState(false);
   const editing = draft !== null;
   const listing = useOrgFsList(HOME_MOUNT_PATH, brand.path);
@@ -319,6 +317,20 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
   const { groups, more } = groupBrandSections(brandSections(md.body));
   const guidePath = `${HOME_MOUNT_PATH}/${brand.path}/brand.md`;
   const logo = findBrandLogo(files);
+  /** The guide's formats sections, from before each format became a file. */
+  const legacyTitles =
+    groups
+      .find((group) => group.id === "content")
+      ?.items.find((item) => item.id === "formats")
+      ?.sections.map((section) => section.title) ?? [];
+  const legacyFormats = legacyTitles.flatMap((title) =>
+    formatsFrom(sectionMarkdown(raw, title) ?? ""),
+  );
+  const formatSummary =
+    (formatFiles.length > 0
+      ? formatFiles.map((file) => file.format?.name ?? file.id)
+      : legacyFormats.map((format) => format.name)
+    ).join(", ") || t("library.context.notWritten");
 
   const tokens = parseBrandTokens(tokensCss.data ?? "");
   const token = (id: string) =>
@@ -456,6 +468,23 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     } finally {
       if (logoInput.current) logoInput.current.value = "";
     }
+  };
+
+  /** The guide without its formats sections, written only over what was read. */
+  const removeLegacyFormats = async (): Promise<boolean> => {
+    const next = legacyTitles.reduce(
+      (text, title) => removeSection(text, title),
+      raw,
+    );
+    if (next === raw) return true;
+    const outcome = await writeIfUnchanged(org.slug, `${brand.path}/brand.md`, {
+      base: raw,
+      next,
+      type: "text/markdown; charset=utf-8",
+    });
+    await queryClient.invalidateQueries({ queryKey: KEYS.fileText(mdUrl) });
+    invalidateOrgFsWrite(queryClient, org.id, HOME_MOUNT_PATH);
+    return outcome === "saved";
   };
 
   const row = (title: string, label: string, Icon: Icon, summary?: string) =>
@@ -761,18 +790,22 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           </h2>
           {group.items.map((item) => {
             const { labelKey, Icon: ItemIcon } = ITEMS[item.id];
+            if (item.id === "formats") {
+              return (
+                <SectionRow
+                  key={item.id}
+                  title={t(labelKey)}
+                  summary={formatSummary}
+                  Icon={ItemIcon}
+                  onOpen={() => setFormatsOpen(true)}
+                />
+              );
+            }
             if (item.sections.length === 0) {
               return row(t(labelKey), t(labelKey), ItemIcon);
             }
             return item.sections.map((section) =>
-              row(
-                section.title,
-                section.title,
-                ItemIcon,
-                item.id === "formats"
-                  ? formatNames(raw, section.title) || section.summary
-                  : section.summary,
-              ),
+              row(section.title, section.title, ItemIcon, section.summary),
             );
           })}
           {group.id === "content" && blogAi && <CampaignsRow />}
@@ -788,6 +821,27 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
           )}
         </section>
       )}
+      <FormatsDrawer
+        open={formatsOpen}
+        onOpenChange={setFormatsOpen}
+        brandPath={brand.path}
+        files={formatFiles}
+        legacy={legacyFormats}
+        onFill={(replace) =>
+          void fill(
+            t(
+              replace
+                ? "library.formats.fillReplacePrompt"
+                : "library.formats.fillPrompt",
+              {
+                path: `${HOME_MOUNT_PATH}/${brand.path}/${FORMATS_DIR}`,
+                site: siteForPrompt,
+              },
+            ),
+          )
+        }
+        onRemoveLegacy={removeLegacyFormats}
+      />
     </>
   );
 }

@@ -239,6 +239,48 @@ export const library = {
   "library.library.placeUploads": "Uploads",
   "library.library.placeOutputs": "Outputs",
   "library.library.placeSkills": "Skills",
+  "library.formats.title": "Post formats",
+  "library.formats.description":
+    "One file per format, in the brand's formats folder. The agent picks a format by its summary and follows its brief.",
+  "library.formats.new": "New format",
+  "library.formats.fill": "Fill with the agent",
+  "library.formats.fillPrompt":
+    "Use the brand skill and follow its fill.md to write our brand's post formats, one file per format under {path}, in the shape of its templates/format.md, from our site, {site}, its repository and GA4. Write formats only if there are none yet, and keep everything already written exactly as it is.",
+  "library.formats.fillReplacePrompt":
+    "Use the brand skill and follow its fill.md in replace mode to rewrite our brand's post formats, one file per format under {path}, in the shape of its templates/format.md, from our site, {site}, its repository and GA4. Rewrite every format you find evidence for, filling every section of the template, and move any formats still in the brand guide into files; never delete a format you found nothing for.",
+  "library.formats.empty": "No formats yet.",
+  "library.formats.legacyTitle":
+    "These formats are still inside the brand guide.",
+  "library.formats.legacyHint":
+    "Move each into its own file to edit it here. The guide's formats section is then removed.",
+  "library.formats.moveToFiles": "Move to files",
+  "library.formats.moved": "Formats moved to their own files.",
+  "library.formats.unnamed": "No name: the agent skips this file.",
+  "library.formats.tooLong":
+    "Too long: the agent skips briefs over {max} characters.",
+  "library.formats.name": "Name",
+  "library.formats.namePlaceholder": "Seasonal buying guide",
+  "library.formats.summary": "Summary",
+  "library.formats.summaryPlaceholder":
+    "What it is for, in one line: the agent chooses by it",
+  "library.formats.length": "Length",
+  "library.formats.lengthPlaceholder": "1,200–1,800 words",
+  "library.formats.brief": "Brief",
+  "library.formats.briefPlaceholder":
+    "What the format is for, its structure, site blocks, title and SEO, images, tone, what to avoid and examples",
+  "library.formats.charCount": "{count}/{max} characters",
+  "library.formats.template":
+    "## What it is for\n\n## When to use it\n\n## When not to\n\n## Structure\n\n## Site blocks\n\n## Title and SEO\n\n## Images\n\n## Tone\n\n## Avoid\n\n## Examples",
+  "library.formats.saved": "Format saved.",
+  "library.formats.deleted": "Format deleted.",
+  "library.formats.failed": "Could not save the format.",
+  "library.formats.conflict":
+    "This format changed while you were editing it. It was reloaded.",
+  "library.formats.delete": "Delete",
+  "library.formats.deleteTitle": 'Delete "{name}"?',
+  "library.formats.deleteDescription":
+    "Its file is deleted. Cards that already use it keep their copy of the brief.",
+
   "library.library.anyType": "Any type",
   "library.library.typeFilter": "Type",
   "library.entries.createdBy": "Created by",

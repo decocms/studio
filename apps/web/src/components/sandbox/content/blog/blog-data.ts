@@ -1071,7 +1071,7 @@ export function scanCampaigns(
 
 export { CAMPAIGN_SEED_KEY_PREFIX };
 
-// ------------------ Formats (loose post templates) ---------------------------
+// ------------------ Checks before saving or generating ----------------------
 
 /**
  * Whether another record of `kind` already carries `name`, comparing on

@@ -1,8 +1,8 @@
 /**
- * The blog's editorial state: brand, writing rules, formats, campaigns, seeds.
+ * The blog's editorial state: brand, writing rules, campaigns, seeds.
  *
- * The organization's: brand, writing rules and formats are read off its brand
- * guide, and campaigns and seeds are files beside it. The guide is edited on
+ * The organization's: brand and writing rules are read off its brand guide,
+ * and campaigns and seeds are files beside it. The guide is edited on
  * the brand page and a campaign changes through `BLOG_CAMPAIGN_UPDATE`, so this
  * hook only removes. Sites that once kept this state as decofile blocks still
  * have them on disk; {@link withoutBlogState} keeps them from leaking back in.
@@ -43,7 +43,6 @@ function blocksOf(state: RemoteState | undefined): Record<string, unknown> {
   const blocks: Record<string, unknown> = {};
   if (state.brand) blocks[BRAND_BLOCK_KEY] = state.brand;
   if (state.context) blocks[CONTEXT_BLOCK_KEY] = state.context;
-  if (state.formats) blocks[FORMATS_BLOCK_KEY] = state.formats;
   for (const { id, data } of state.campaigns) {
     blocks[`${CAMPAIGN_KEY_PREFIX}${id}`] = data;
   }

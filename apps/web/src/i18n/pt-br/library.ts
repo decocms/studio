@@ -248,6 +248,48 @@ export const library = {
   "library.library.placeUploads": "Uploads",
   "library.library.placeOutputs": "Outputs",
   "library.library.placeSkills": "Skills",
+  "library.formats.title": "Formatos de post",
+  "library.formats.description":
+    "Um arquivo por formato, na pasta de formatos da marca. O agente escolhe o formato pelo resumo e segue o brief.",
+  "library.formats.new": "Novo formato",
+  "library.formats.fill": "Preencher com o agente",
+  "library.formats.fillPrompt":
+    "Use a skill brand e siga o fill.md dela para escrever os formatos de post da nossa marca, um arquivo por formato em {path}, no modelo templates/format.md dela, a partir do nosso site, {site}, do repositório dele e do GA4. Escreva formatos só se ainda não houver nenhum, e mantenha exatamente o que já estiver escrito.",
+  "library.formats.fillReplacePrompt":
+    "Use a skill brand e siga o fill.md dela no modo substituir para reescrever os formatos de post da nossa marca, um arquivo por formato em {path}, no modelo templates/format.md dela, a partir do nosso site, {site}, do repositório dele e do GA4. Reescreva todo formato para o qual encontrar evidência, preenchendo todas as seções do modelo, e mova para arquivos os formatos que ainda estiverem no guia da marca; nunca apague um formato para o qual não achou nada.",
+  "library.formats.empty": "Nenhum formato ainda.",
+  "library.formats.legacyTitle":
+    "Estes formatos ainda estão dentro do guia da marca.",
+  "library.formats.legacyHint":
+    "Mova cada um para um arquivo próprio para editar aqui. A seção de formatos sai do guia.",
+  "library.formats.moveToFiles": "Mover para arquivos",
+  "library.formats.moved": "Formatos movidos para arquivos próprios.",
+  "library.formats.unnamed": "Sem nome: o agente ignora este arquivo.",
+  "library.formats.tooLong":
+    "Longo demais: o agente ignora briefs com mais de {max} caracteres.",
+  "library.formats.name": "Nome",
+  "library.formats.namePlaceholder": "Guia de compra para datas",
+  "library.formats.summary": "Resumo",
+  "library.formats.summaryPlaceholder":
+    "Para que serve, numa linha: o agente escolhe por ele",
+  "library.formats.length": "Tamanho",
+  "library.formats.lengthPlaceholder": "1.200–1.800 palavras",
+  "library.formats.brief": "Brief",
+  "library.formats.briefPlaceholder":
+    "Para que serve, estrutura, blocos do site, título e SEO, imagens, tom, o que evitar e exemplos",
+  "library.formats.charCount": "{count}/{max} caracteres",
+  "library.formats.template":
+    "## Para que serve\n\n## Quando usar\n\n## Quando não usar\n\n## Estrutura\n\n## Blocos do site\n\n## Título e SEO\n\n## Imagens\n\n## Tom\n\n## Evite\n\n## Exemplos",
+  "library.formats.saved": "Formato salvo.",
+  "library.formats.deleted": "Formato apagado.",
+  "library.formats.failed": "Não foi possível salvar o formato.",
+  "library.formats.conflict":
+    "Este formato mudou enquanto você editava. Ele foi recarregado.",
+  "library.formats.delete": "Apagar",
+  "library.formats.deleteTitle": 'Apagar "{name}"?',
+  "library.formats.deleteDescription":
+    "O arquivo é apagado. Cards que já usam este formato mantêm a cópia do brief.",
+
   "library.library.anyType": "Qualquer tipo",
   "library.library.typeFilter": "Tipo",
   "library.entries.createdBy": "Criado por",
