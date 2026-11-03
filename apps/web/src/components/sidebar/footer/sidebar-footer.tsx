@@ -15,14 +15,15 @@ import { useT } from "@/i18n/use-t";
 import { InboxFullButton, InboxIconButton } from "./inbox";
 import { SettingsFullButton, SettingsIconButton } from "./settings-button";
 import { SidebarFooterIcon, SIDEBAR_FOOTER_ICON_SIZE } from "./icon-slot";
+import { SidebarLinkClaude } from "./link-claude";
 
-/** The one quick action left in the footer. Connections live in their own
- *  destination, so the footer no longer offers a second door to them — which
- *  also makes commerce (reports-only) orgs and everyone else identical here. */
-function SidebarExtraActions() {
+/** Quick actions above the account row: linking your own Claude plan (until
+ *  it is linked, and not in reports-only orgs) and inviting members. */
+function SidebarExtraActions({ showLinkClaude }: { showLinkClaude: boolean }) {
   const t = useT();
   return (
     <SidebarMenu className="gap-0.5">
+      {showLinkClaude && <SidebarLinkClaude />}
       <SidebarMenuItem>
         <InviteMemberDialog
           trigger={
@@ -59,7 +60,7 @@ export function SidebarAccountFooter() {
     return (
       <SidebarFooter className="px-2 pb-3 gap-1">
         {showCredits && <SidebarTopActions />}
-        <SidebarExtraActions />
+        <SidebarExtraActions showLinkClaude={!reportsOnly} />
         <SidebarMenu>
           {projectFirstNav && (
             <SidebarMenuItem>
@@ -80,7 +81,7 @@ export function SidebarAccountFooter() {
   return (
     <SidebarFooter className="px-2 pb-3 gap-0.5">
       {showCredits && <SidebarTopActions />}
-      <SidebarExtraActions />
+      <SidebarExtraActions showLinkClaude={!reportsOnly} />
       <SidebarMenu className="gap-0.5">
         <SidebarMenuItem>
           <div className="flex items-center gap-1">
