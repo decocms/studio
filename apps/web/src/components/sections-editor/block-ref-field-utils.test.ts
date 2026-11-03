@@ -10,6 +10,7 @@ import {
   moduleResolveTypeFromBlockData,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
+  withBranchDiscriminator,
   type BlockRefOption,
 } from "./block-ref-field-utils";
 
@@ -378,5 +379,36 @@ describe("blockRefValueForBranch", () => {
   test("passes non-object values through", () => {
     expect(blockRefValueForBranch(undefined, PRODUCT_LIST)).toBeUndefined();
     expect(blockRefValueForBranch([], PRODUCT_LIST)).toEqual([]);
+  });
+});
+
+describe("withBranchDiscriminator", () => {
+  const equals: BlockRefOption = {
+    resolveType: "Equals",
+    discriminatorValue: "Equals",
+  };
+
+  test("writes the shown branch's discriminator the hidden field never sets", () => {
+    expect(withBranchDiscriminator({ value: "x" }, "type", equals)).toEqual({
+      type: "Equals",
+      value: "x",
+    });
+  });
+
+  test("keeps a value that already carries it", () => {
+    const value = { type: "Equals", value: "x" };
+    expect(withBranchDiscriminator(value, "type", equals)).toBe(value);
+  });
+
+  test("keeps a discriminator the schema doesn't list", () => {
+    const value = { type: "Newer", value: "x" };
+    expect(withBranchDiscriminator(value, "type", equals)).toBe(value);
+  });
+
+  test("leaves the value alone without a known branch or an object", () => {
+    const value = { value: "x" };
+    expect(withBranchDiscriminator(value, "type", undefined)).toBe(value);
+    expect(withBranchDiscriminator(undefined, "type", equals)).toBeUndefined();
+    expect(withBranchDiscriminator([], "type", equals)).toEqual([]);
   });
 });

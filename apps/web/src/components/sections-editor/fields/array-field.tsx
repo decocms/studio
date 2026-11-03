@@ -43,6 +43,7 @@ import {
   showArrayItem,
 } from "../array-item-hidden";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
+import { withBranchDiscriminator } from "../block-ref-field-utils";
 import {
   type Crumb,
   buildArrayDrillDownBreadcrumb,
@@ -320,7 +321,16 @@ export function ArrayField({
           ? {}
           : t === "block-ref"
             ? (() => {
-                const rt = itemSchema?.anyOfRefs?.[0]?.resolveType;
+                const first = itemSchema?.anyOfRefs?.[0];
+                // A `type`-discriminated branch is keyed by its discriminator, not a `__resolveType`.
+                if (itemSchema?.discriminatorKey) {
+                  return withBranchDiscriminator(
+                    {},
+                    itemSchema.discriminatorKey,
+                    first,
+                  );
+                }
+                const rt = first?.resolveType;
                 if (typeof rt !== "string" || isEmbeddedUnionResolveType(rt)) {
                   return {};
                 }
