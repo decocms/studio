@@ -96,7 +96,8 @@ ground the hypothesis stands on:
     "keywords": [{ "term": "sofá para sala pequena", "volume": 1240 }],
     "guardrails": [{ "text": "<what the post must not do>", "origin": "brand" }],
     "objective": "<what this post moves, toward one of the campaign's goals>",
-    "metric": "<what would show it worked>"
+    "metric": "<what would show it worked>",
+    "publishAt": "2026-11-12T09:00:00-03:00"
   }
 }
 ```
@@ -123,6 +124,10 @@ ground the hypothesis stands on:
 - **Metric**: one, measurable in the systems you read: how the objective will
   be checked, such as clicks from search for the keywords or sessions that
   reach a campaign product.
+- **publishAt**: when the post should go live, from the calendar evidence, in
+  the brand's time zone: early enough to be indexed before the date it serves
+  (about two weeks before a seasonal peak), never after the campaign ends. It
+  is a suggestion; the person sets the real date on the card.
 
 ## 5. Present it and wait
 

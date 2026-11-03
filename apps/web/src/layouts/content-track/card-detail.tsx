@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -63,6 +64,7 @@ import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
 import { CARD_STATUS_LABEL } from "./blogposts-board";
 import { CampaignPhase } from "./card-campaign-phase";
+import { type CardPatch, CardPublishing } from "./card-publishing";
 import {
   type CardPhase,
   cardAgentWorking,
@@ -126,6 +128,7 @@ export function CardDetail({
   onApproveCampaign,
   onOpenCampaign,
   onMove,
+  onUpdate,
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
@@ -144,6 +147,8 @@ export function CardDetail({
   onApproveCampaign: () => void;
   onOpenCampaign: (campaignId: string) => void;
   onMove: (status: BlogCardStatus) => void;
+  /** A person's write on the card: its publishing fields follow the post. */
+  onUpdate: (patch: CardPatch) => Promise<unknown>;
 }) {
   const t = useT();
   const now = useClockTick();
@@ -329,10 +334,11 @@ export function CardDetail({
           <Properties
             card={card}
             campaign={campaign}
-            siteTitle={site?.title}
+            site={site}
             working={working || campaignWorking}
             onMove={onMove}
             onOpenCampaign={onOpenCampaign}
+            onUpdate={onUpdate}
           />
         </aside>
       </div>
@@ -743,27 +749,31 @@ function PostContent({
 function Properties({
   card,
   campaign,
-  siteTitle,
+  site,
   working,
   onMove,
   onOpenCampaign,
+  onUpdate,
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
-  siteTitle: string | undefined;
+  site: VirtualMCPEntity | undefined;
   working: boolean;
   onMove: (status: BlogCardStatus) => void;
   onOpenCampaign: (campaignId: string) => void;
+  onUpdate: (patch: CardPatch) => Promise<unknown>;
 }) {
   const t = useT();
+  const [tab, setTab] = useState<"properties" | "publishing">("properties");
+  const siteTitle = site?.title;
   const editor = useOpenCardEditor();
   const none = t("contentTrack.props.none");
   const period = campaign
     ? [campaign.period.start, campaign.period.end].filter(Boolean).join(" → ")
     : "";
 
-  return (
-    <PropertiesPanel title={t("contentTrack.props.title")}>
+  const groups = (
+    <>
       <Group>
         <Row icon={<Clock size={14} />}>
           <Select
@@ -841,6 +851,56 @@ function Properties({
           </Row>
         </Group>
       )}
-    </PropertiesPanel>
+    </>
+  );
+  // The post's publishing fields are there to set once it is on the site.
+  if (!card.postKey) {
+    return (
+      <PropertiesPanel title={t("contentTrack.props.title")}>
+        {groups}
+      </PropertiesPanel>
+    );
+  }
+  return (
+    <Tabs
+      value={tab}
+      onValueChange={(next) =>
+        setTab(next === "publishing" ? "publishing" : "properties")
+      }
+      variant="underline"
+      className="gap-0"
+    >
+      <PropertiesPanel
+        title={
+          <TabsList variant="underline" className="-mx-1 h-8">
+            <TabsTrigger
+              variant="underline"
+              value="properties"
+              className="px-1.5 text-[13px] font-semibold"
+            >
+              {t("contentTrack.props.title")}
+            </TabsTrigger>
+            <TabsTrigger
+              variant="underline"
+              value="publishing"
+              className="px-1.5 text-[13px] font-semibold"
+            >
+              {t("contentTrack.props.publishing")}
+            </TabsTrigger>
+          </TabsList>
+        }
+      >
+        {tab === "properties" ? (
+          groups
+        ) : (
+          <CardPublishing
+            card={card}
+            site={site}
+            locked={working}
+            onUpdate={onUpdate}
+          />
+        )}
+      </PropertiesPanel>
+    </Tabs>
   );
 }

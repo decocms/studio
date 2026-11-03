@@ -844,12 +844,12 @@ export const KEYS = {
   blogCards: (orgSlug: string) => ["blog-cards", orgSlug] as const,
 
   // A card's post as its site renders it, per commit: a new commit is a new URL.
-  blogCardPreview: (
+  blogCardDecofile: (
     orgSlug: string,
     virtualMcpId: string,
     branch: string,
     commit: string,
-  ) => ["blog-card-preview", orgSlug, virtualMcpId, branch, commit] as const,
+  ) => ["blog-card-decofile", orgSlug, virtualMcpId, branch, commit] as const,
 
   // Whether the org's GA4 connection still has a usable sign-in.
   blogConnectionToken: (orgId: string, connectionId: string) =>

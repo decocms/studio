@@ -385,6 +385,7 @@ function Blogposts({
         onApproveCampaign={() => void approveCampaign(card)}
         onOpenCampaign={openCampaign}
         onMove={(status) => move(card, status)}
+        onUpdate={(patch) => update.mutateAsync({ id: card.id, patch })}
       />
     );
   }

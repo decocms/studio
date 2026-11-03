@@ -5,6 +5,7 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { buildBlogPostPreviewUrl } from "@/components/sandbox/content/blog/blog-preview-url";
 import {
+  type DecofileDraft,
   fetchDecofile,
   getDecofileDraft,
 } from "@/components/sections-editor/decofile-api";
@@ -26,6 +27,12 @@ export interface CardPreview {
   loading: boolean;
 }
 
+/** The card's branch as read at its commit: the decofile, and the draft pointer of that read. */
+export interface CardBranch {
+  decofile: Record<string, unknown>;
+  draft: DecofileDraft;
+}
+
 /** Well inside the six hours a draft grant lives, so an open card never holds a dead one. */
 const PREVIEW_STALE_MS = 30 * 60_000;
 
@@ -37,73 +44,91 @@ export function previewGapOf(err: unknown): CardPreviewGap {
   return "unavailable";
 }
 
+/** Whether the card's post is on its branch yet: a commit carries it. */
+export function cardWritten(card: BlogCard): boolean {
+  return !!card.postKey && !!card.branch && !!card.commit;
+}
+
+/**
+ * The card's branch at its commit, read once for the preview and the
+ * Publishing tab. Null for a hosted site, which answers with its own draft and
+ * no decofile. The read waits for the commit: a session read creates a missing
+ * branch.
+ */
+export function useCardBranch(card: BlogCard, enabled = true) {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  const { branch, commit, virtualMcpId } = card;
+  return useQuery({
+    queryKey: KEYS.blogCardDecofile(
+      org.slug,
+      virtualMcpId,
+      branch ?? "",
+      commit ?? "",
+    ),
+    enabled: enabled && cardWritten(card),
+    staleTime: PREVIEW_STALE_MS,
+    retry: false,
+    queryFn: async (): Promise<CardBranch | null> => {
+      if (!branch) return null;
+      const scope = { orgSlug: org.slug, virtualMcpId, branch };
+      const decofile = await fetchDecofile(queryClient, scope);
+      const draft = getDecofileDraft(queryClient, scope);
+      return decofile && draft ? { decofile, draft } : null;
+    },
+  });
+}
+
 /**
  * The card's post as its site renders it, from the card's own branch.
  *
  * The site pulls the branch through the draft pointer Fast Preview uses, and
  * the decofile API shows that pull a planning post as published, so no sandbox
- * runs. The read waits for the commit: a session read creates a missing branch.
+ * runs.
  */
 export function useCardPreview(
   card: BlogCard,
   site: VirtualMCPEntity | undefined,
 ): CardPreview {
   const { org } = useProjectContext();
-  const queryClient = useQueryClient();
   const previewBaseUrl = resolvePreviewServerUrl(site?.metadata);
-  const { postKey, branch, commit, virtualMcpId } = card;
-  const written = !!postKey && !!branch && !!commit;
+  const query = useCardBranch(card, !!previewBaseUrl);
+  const { postKey, branch, virtualMcpId } = card;
+  const read = query.data;
 
-  const query = useQuery({
-    queryKey: KEYS.blogCardPreview(
-      org.slug,
-      virtualMcpId,
-      branch ?? "",
-      commit ?? "",
-    ),
-    enabled: written && !!previewBaseUrl,
-    staleTime: PREVIEW_STALE_MS,
-    retry: false,
-    queryFn: async (): Promise<Pick<CardPreview, "url" | "gap">> => {
-      if (!postKey || !branch) return { url: null, gap: "not-written" };
-      const scope = { orgSlug: org.slug, virtualMcpId, branch };
-      let decofile: Record<string, unknown> | undefined;
-      try {
-        decofile = await fetchDecofile(queryClient, scope);
-      } catch (err) {
-        return { url: null, gap: previewGapOf(err) };
-      }
-      const draft = getDecofileDraft(queryClient, scope);
-      // A hosted site answers with its own draft and no decofile: no branch to show.
-      if (!decofile || !draft) return { url: null, gap: "unavailable" };
-      const block = decofile[postKey];
-      const url = buildBlogPostPreviewUrl({
-        decofile,
-        post: getBlogPayload(
-          block && typeof block === "object"
-            ? (block as Record<string, unknown>)
-            : undefined,
-          "posts",
-        ),
-        previewBaseUrl,
-        draftPointer: buildDraftPointer({
-          ...draft,
-          orgSlug: org.slug,
-          virtualMcpId,
-          branch,
-        }),
-      });
-      return url ? { url, gap: null } : { url: null, gap: "no-route" };
-    },
-  });
+  const block = read && postKey ? read.decofile[postKey] : undefined;
+  const url =
+    read && branch && previewBaseUrl
+      ? buildBlogPostPreviewUrl({
+          decofile: read.decofile,
+          post: getBlogPayload(
+            block && typeof block === "object"
+              ? (block as Record<string, unknown>)
+              : undefined,
+            "posts",
+          ),
+          previewBaseUrl,
+          draftPointer: buildDraftPointer({
+            ...read.draft,
+            orgSlug: org.slug,
+            virtualMcpId,
+            branch,
+          }),
+        })
+      : null;
 
-  if (!written) return { url: null, gap: "not-written", loading: false };
+  if (!cardWritten(card)) {
+    return { url: null, gap: "not-written", loading: false };
+  }
   if (!previewBaseUrl) {
     return { url: null, gap: "no-preview-server", loading: false };
   }
-  return {
-    url: query.data?.url ?? null,
-    gap: query.data?.gap ?? (query.isError ? "unavailable" : null),
-    loading: query.isLoading,
-  };
+  if (query.isError) {
+    return { url: null, gap: previewGapOf(query.error), loading: false };
+  }
+  if (query.isLoading) return { url: null, gap: null, loading: true };
+  if (!read) return { url: null, gap: "unavailable", loading: false };
+  return url
+    ? { url, gap: null, loading: false }
+    : { url: null, gap: "no-route", loading: false };
 }

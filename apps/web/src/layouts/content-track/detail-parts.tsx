@@ -146,14 +146,19 @@ export function PropertiesPanel({
   title,
   children,
 }: {
-  title: string;
+  /** A heading, or a row of its own such as tabs. */
+  title: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-edge">
-      <span className="border-b border-border pb-2 text-[13px] font-semibold text-foreground">
-        {title}
-      </span>
+      {typeof title === "string" ? (
+        <span className="border-b border-border pb-2 text-[13px] font-semibold text-foreground">
+          {title}
+        </span>
+      ) : (
+        title
+      )}
       {children}
     </div>
   );

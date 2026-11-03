@@ -252,6 +252,12 @@ export const BlogCardHypothesisSchema = z
       .string()
       .max(300)
       .describe("What would show the post worked, such as clicks from search."),
+    publishAt: z
+      .string()
+      .max(40)
+      .describe(
+        "When the post should go live, as an ISO date-time, read off the calendar evidence. A suggestion: a person sets the real one.",
+      ),
     groundingOutcome: z
       .string()
       .max(40)

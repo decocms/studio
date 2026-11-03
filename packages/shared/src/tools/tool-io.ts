@@ -2567,6 +2567,7 @@ export interface StudioToolIO {
                 | undefined;
               objective?: string | undefined;
               metric?: string | undefined;
+              publishAt?: string | undefined;
               groundingOutcome?: string | undefined;
             }
           | undefined;
@@ -2742,6 +2743,7 @@ export interface StudioToolIO {
                 | undefined;
               objective?: string | undefined;
               metric?: string | undefined;
+              publishAt?: string | undefined;
               groundingOutcome?: string | undefined;
             }
           | undefined;
@@ -2923,6 +2925,7 @@ export interface StudioToolIO {
                 | undefined;
               objective?: string | undefined;
               metric?: string | undefined;
+              publishAt?: string | undefined;
               groundingOutcome?: string | undefined;
             }
           | undefined;
@@ -3093,6 +3096,7 @@ export interface StudioToolIO {
                 | undefined;
               objective?: string | undefined;
               metric?: string | undefined;
+              publishAt?: string | undefined;
               groundingOutcome?: string | undefined;
             }
           | null
@@ -3260,6 +3264,7 @@ export interface StudioToolIO {
                 | undefined;
               objective?: string | undefined;
               metric?: string | undefined;
+              publishAt?: string | undefined;
               groundingOutcome?: string | undefined;
             }
           | undefined;
@@ -3445,6 +3450,7 @@ export interface StudioToolIO {
                 | undefined;
               objective?: string | undefined;
               metric?: string | undefined;
+              publishAt?: string | undefined;
               groundingOutcome?: string | undefined;
             }
           | undefined;
