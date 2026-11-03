@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { hasMissingRequiredField } from "./section-required-status";
+import {
+  hasMissingRequiredField,
+  missingRequiredFields,
+} from "./section-required-status";
 import { hideArrayItem } from "./array-item-hidden";
 import type { SchemaProperty } from "./resolve-schema";
 
@@ -121,5 +124,91 @@ describe("hasMissingRequiredField", () => {
         sections: [{ __resolveType: "site/sections/Foo.tsx" }],
       }),
     ).toBe(false);
+  });
+});
+
+describe("missingRequiredFields", () => {
+  /** A card list as a listing section may declare it. */
+  const cards = obj({
+    cards: {
+      type: "array",
+      title: "Cards",
+      items: obj(
+        {
+          headline: { type: "string", title: "Headline" },
+          image: { type: "string", title: "Image" },
+          cta: obj(
+            {
+              link: { type: "string", title: "Link" },
+              variant: { type: "string", default: "solid" },
+            },
+            ["link"],
+          ),
+        },
+        ["headline", "image", "cta"],
+      ),
+    },
+  });
+
+  test("names every missing field of an item added and left unfilled", () => {
+    expect(
+      missingRequiredFields(cards, {
+        cards: [
+          { headline: "Sale", image: "a.png", cta: { link: "/" } },
+          {
+            cta: { variant: "solid" },
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        path: ["cards", 1, "headline"],
+        labels: ["Cards", 1, "Headline"],
+        blocks: true,
+      },
+      {
+        path: ["cards", 1, "image"],
+        labels: ["Cards", 1, "Image"],
+        blocks: true,
+      },
+      {
+        path: ["cards", 1, "cta", "link"],
+        labels: ["Cards", 1, "cta", "Link"],
+        blocks: true,
+      },
+    ]);
+  });
+
+  test("a blank value only warns; a missing one or null stops a Publish", () => {
+    const schema = obj({ title: { type: "string" }, tags: { type: "array" } }, [
+      "title",
+      "tags",
+    ]);
+    expect(
+      missingRequiredFields(schema, { title: "  ", tags: [] }).map(
+        (f) => f.blocks,
+      ),
+    ).toEqual([false, false]);
+    expect(
+      missingRequiredFields(schema, { title: null }).map((f) => f.blocks),
+    ).toEqual([true, true]);
+  });
+
+  test("a missing field with a schema default only warns", () => {
+    const schema = obj({ layout: { type: "string", default: "grid" } }, [
+      "layout",
+    ]);
+    expect(missingRequiredFields(schema, {})).toEqual([
+      { path: ["layout"], labels: ["layout"], blocks: false },
+    ]);
+  });
+
+  test("agrees with hasMissingRequiredField", () => {
+    const filled = {
+      cards: [{ headline: "Sale", image: "a.png", cta: { link: "/" } }],
+    };
+    expect(missingRequiredFields(cards, filled)).toEqual([]);
+    expect(hasMissingRequiredField(cards, filled)).toBe(false);
+    expect(hasMissingRequiredField(cards, { cards: [{}] })).toBe(true);
   });
 });
