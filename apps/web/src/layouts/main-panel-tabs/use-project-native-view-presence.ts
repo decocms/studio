@@ -73,11 +73,12 @@ export function useProjectNativeViewPresence(
       releases: hostedCms && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
-      // A site deco doesn't host reads the registration its project carries.
+      // A site deco doesn't host reads the registration its project carries,
+      // through the analytics read surface alone: no control-plane needed.
       analytics:
-        hostingEnabled &&
         controlPlaneViews.analytics &&
-        (ownsSite || !!storedExternalRegistration(project?.metadata)),
+        ((hostingEnabled && ownsSite) ||
+          !!storedExternalRegistration(project?.metadata)),
       // A v8 site's Monitor reads the telemetry of its own site (the one its
       // token names); a v7 site's reads the analytics site. "error" is a site
       // last found v8, which the tab opens as v8 too (`monitorKind`).

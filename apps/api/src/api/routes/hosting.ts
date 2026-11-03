@@ -703,8 +703,10 @@ export const createHostingRoutes = () => {
       const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
       if (access?.kind === "error") return registrationLookupFailed(c);
       if (access?.kind === "external") {
+        const { analyticsDataUrl, analyticsMasterToken } = getSettings();
         return c.json({
-          configured: true,
+          // Only the read surface serves an external site.
+          configured: !!analyticsDataUrl && !!analyticsMasterToken,
           registered: true,
           external: true,
           host: null,
