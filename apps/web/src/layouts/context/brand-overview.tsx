@@ -827,17 +827,26 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
         brandPath={brand.path}
         files={formatFiles}
         legacy={legacyFormats}
-        onFill={(replace) =>
+        onFill={(replace, blocksSite) =>
           void fill(
-            t(
-              replace
-                ? "library.formats.fillReplacePrompt"
-                : "library.formats.fillPrompt",
-              {
-                path: `${HOME_MOUNT_PATH}/${brand.path}/${FORMATS_DIR}`,
-                site: siteForPrompt,
-              },
-            ),
+            [
+              t(
+                replace
+                  ? "library.formats.fillReplacePrompt"
+                  : "library.formats.fillPrompt",
+                {
+                  path: `${HOME_MOUNT_PATH}/${brand.path}/${FORMATS_DIR}`,
+                  site: siteForPrompt,
+                },
+              ),
+              blocksSite &&
+                t("library.formats.fillBlocks", {
+                  site: blocksSite.title,
+                  id: blocksSite.id,
+                }),
+            ]
+              .filter(Boolean)
+              .join(" "),
           )
         }
         onRemoveLegacy={removeLegacyFormats}

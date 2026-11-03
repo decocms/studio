@@ -104,7 +104,11 @@ function SectionMentionMenu({
       editor={editor}
       char="@"
       pluginKey="markdownMentionMenu"
-      queryKey={["markdown-editor-mentions"]}
+      // Keyed by the list, so items that arrive after the first `@` are offered.
+      queryKey={[
+        "markdown-editor-mentions",
+        ...items.map((item) => item.href ?? item.name),
+      ]}
       queryFn={({ query }) => {
         const term = query.trim().toLowerCase();
         return Promise.resolve(

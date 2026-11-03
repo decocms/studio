@@ -253,6 +253,12 @@ export const library = {
     "Um arquivo por formato, na pasta de formatos da marca. O agente escolhe o formato pelo resumo e segue o brief.",
   "library.formats.new": "Novo formato",
   "library.formats.fill": "Preencher com o agente",
+  "library.formats.fillBlocks":
+    "Cite só os blocos de blog que o site {site} renderiza: liste-os com BLOG_SITE_BLOCKS (virtualMcpId {id}, branch main) e use os nomes que ele devolver.",
+  "library.formats.blocksFrom": "Blocos de",
+  "library.formats.mentionHint":
+    "Digite @ para citar um bloco de blog do site.",
+  "library.formats.noBlocks": "Nenhum bloco do site encontrado",
   "library.formats.fillPrompt":
     "Use a skill brand e siga o fill.md dela para escrever os formatos de post da nossa marca, um arquivo por formato em {path}, no modelo templates/format.md dela, a partir do nosso site, {site}, do repositório dele e do GA4. Escreva formatos só se ainda não houver nenhum, e mantenha exatamente o que já estiver escrito.",
   "library.formats.fillReplacePrompt":

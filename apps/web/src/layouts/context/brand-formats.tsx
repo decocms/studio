@@ -26,8 +26,10 @@ import {
   newFormatId,
   parseFormatFile,
 } from "@decocms/shared/brand";
+import { mentionableSections } from "@decocms/shared/blog";
 import { parseFrontmatterDoc } from "@decocms/shared/harness/skill-md";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +50,13 @@ import {
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -55,7 +64,12 @@ import {
   SheetTitle,
 } from "@decocms/ui/components/sheet.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { MarkdownEditor } from "@/components/markdown-editor";
+import {
+  MarkdownEditor,
+  type MarkdownMentions,
+} from "@/components/markdown-editor";
+import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
+import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import {
   fileTextQuery,
   invalidateOrgFsWrite,
@@ -64,9 +78,10 @@ import {
   useOrgFsMutations,
   writeOrgFsTextIf,
 } from "@/hooks/use-org-fs";
+import { scopableProjects } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
 
 /** A file under `formats/`, with what it reads as. */
 export interface FormatFile {
@@ -113,6 +128,53 @@ function problemOf(file: FormatFile): "unnamed" | "tooLong" | null {
   return null;
 }
 
+/** The blog blocks a format cites by `@`, and the site they are read from. */
+interface FormatBlocks {
+  sites: VirtualMCPEntity[];
+  site: VirtualMCPEntity | null;
+  choose: (siteId: string) => void;
+  mentions: MarkdownMentions;
+}
+
+function useFormatBlocks(enabled: boolean): FormatBlocks {
+  const t = useT();
+  const { org } = useProjectContext();
+  const sites = scopableProjects(useVirtualMCPsNonBlocking());
+  const [chosen, setChosen] = useState<string | null>(null);
+  const site = sites.find((entry) => entry.id === chosen) ?? sites[0] ?? null;
+  const hideDefaults = useHideDefaultBlogBlocks();
+  // A project does not record its default branch; the app reads `main` elsewhere too.
+  const meta = useLiveMeta(
+    enabled && site
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId: site.id,
+          branch: "main",
+          threadId: null,
+          previewUrl: null,
+        }
+      : null,
+  );
+  const items = meta.data
+    ? mentionableSections(meta.data, { hideDefaults }).map((section) => ({
+        name: section.name,
+        href: section.resolveType,
+        title: section.title,
+        description: section.description,
+      }))
+    : [];
+  return {
+    sites,
+    site,
+    choose: setChosen,
+    mentions: {
+      items,
+      hint: t("library.formats.mentionHint"),
+      emptyLabel: t("library.formats.noBlocks"),
+    },
+  };
+}
+
 type View = { kind: "list" } | { kind: "edit"; id: string } | { kind: "new" };
 
 export function FormatsDrawer({
@@ -130,12 +192,13 @@ export function FormatsDrawer({
   files: FormatFile[];
   /** Formats still kept in the guide's section. */
   legacy: BrandFormat[];
-  /** Start the brand skill on the formats; `replace` rewrites the ones there. */
-  onFill: (replace: boolean) => void;
+  /** Start the brand skill on the formats; `replace` rewrites the ones there, citing `site`'s blocks. */
+  onFill: (replace: boolean, site: VirtualMCPEntity | null) => void;
   /** Take the formats section out of the guide; false when it changed meanwhile. */
   onRemoveLegacy: () => Promise<boolean>;
 }) {
   const [view, setView] = useState<View>({ kind: "list" });
+  const blocks = useFormatBlocks(open);
   const editing =
     view.kind === "edit" ? files.find((file) => file.id === view.id) : null;
   const back = () => setView({ kind: "list" });
@@ -159,7 +222,7 @@ export function FormatsDrawer({
             legacy={legacy}
             onOpen={(id) => setView({ kind: "edit", id })}
             onNew={() => setView({ kind: "new" })}
-            onFill={onFill}
+            onFill={(replace) => onFill(replace, blocks.site)}
             onRemoveLegacy={onRemoveLegacy}
           />
         ) : (
@@ -168,6 +231,7 @@ export function FormatsDrawer({
             brandPath={brandPath}
             file={editing ?? null}
             taken={files.map((file) => file.id)}
+            blocks={blocks}
             onClose={back}
           />
         )}
@@ -376,6 +440,7 @@ function FormatEditor({
   brandPath,
   file,
   taken,
+  blocks,
   onClose,
 }: {
   brandPath: string;
@@ -383,6 +448,7 @@ function FormatEditor({
   file: FormatFile | null;
   /** The ids already in use, which a new format's file must not take. */
   taken: string[];
+  blocks: FormatBlocks;
   onClose: () => void;
 }) {
   const t = useT();
@@ -517,11 +583,29 @@ function FormatEditor({
               })}
             </span>
           </div>
+          {blocks.sites.length > 1 && blocks.site && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{t("library.formats.blocksFrom")}</span>
+              <Select value={blocks.site.id} onValueChange={blocks.choose}>
+                <SelectTrigger size="sm" className="h-7 w-auto">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {blocks.sites.map((site) => (
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="rounded-xl border border-border px-3 py-2">
             <MarkdownEditor
               defaultValue={start.value}
               onChange={setBrief}
               attachments={false}
+              mentions={blocks.mentions}
               placeholder={t("library.formats.briefPlaceholder")}
             />
           </div>

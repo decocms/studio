@@ -244,6 +244,12 @@ export const library = {
     "One file per format, in the brand's formats folder. The agent picks a format by its summary and follows its brief.",
   "library.formats.new": "New format",
   "library.formats.fill": "Fill with the agent",
+  "library.formats.fillBlocks":
+    "Cite only the blog blocks the site {site} renders: list them with BLOG_SITE_BLOCKS (virtualMcpId {id}, branch main) and use the names it returns.",
+  "library.formats.blocksFrom": "Blocks from",
+  "library.formats.mentionHint":
+    "Type @ to cite one of the site's blog blocks.",
+  "library.formats.noBlocks": "No site blocks found",
   "library.formats.fillPrompt":
     "Use the brand skill and follow its fill.md to write our brand's post formats, one file per format under {path}, in the shape of its templates/format.md, from our site, {site}, its repository and GA4. Write formats only if there are none yet, and keep everything already written exactly as it is.",
   "library.formats.fillReplacePrompt":

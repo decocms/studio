@@ -31,7 +31,8 @@ writer may merge or split sections when the subject asks for it.>
 
 - <`@ComponentName`: where it goes and what it shows>
 
-<Only components the site's own posts already use.>
+<Only blog blocks the site renders, by the names `BLOG_SITE_BLOCKS` returns, or
+those its own posts already use: a post is built from the blocks cited here.>
 
 ## Título e SEO / Title and SEO
 

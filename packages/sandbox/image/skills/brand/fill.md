@@ -53,6 +53,10 @@ reads it only while `formats/` is empty.
   structure a writer can follow, the site blocks its posts use, cited as
   `@ComponentName`, title patterns taken from its posts, and two or three
   example URLs. A section you have no evidence for says so in one line.
+- **Only blocks the site renders.** A post is built from the blocks its format
+  cites. When the ask names the site's `virtualMcpId`, list them with
+  `BLOG_SITE_BLOCKS` (an empty `format` and the site's default branch) and cite
+  the names it returns; otherwise, the blocks its posts in the repository use.
 - **Up to 8,000 characters** a file: the card carries the brief whole, and a
   longer one is left out.
 - **Intent, not a script**: say what each part of the post does, not the
