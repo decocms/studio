@@ -160,9 +160,46 @@ describe("getSectionDisplayTitle", () => {
     expect(getSectionDisplayTitle(raw, meta())).toBe("Department Shop  Nike");
   });
 
-  test("falls back to undefined for a plain-titled section", () => {
+  test("uses a plain @title as-is, like the section picker", () => {
     const raw = { __resolveType: PLAIN_RT };
-    expect(getSectionDisplayTitle(raw, meta())).toBeUndefined();
+    expect(getSectionDisplayTitle(raw, meta())).toBe("Hero");
+  });
+
+  test("uses a plain @title registered in the manifest", () => {
+    const rt = "site/sections/Promo.tsx";
+    const m: LiveMeta = {
+      manifest: {
+        blocks: { sections: { [rt]: { $ref: "#/definitions/PromoDef" } } },
+      },
+      schema: { definitions: { PromoDef: { title: "Black Friday Promo" } } },
+    };
+    expect(getSectionDisplayTitle({ __resolveType: rt }, m)).toBe(
+      "Black Friday Promo",
+    );
+  });
+
+  test("unwraps a lazy-wrapped plain-titled section", () => {
+    const raw = { __resolveType: LAZY, section: { __resolveType: PLAIN_RT } };
+    expect(getSectionDisplayTitle(raw, meta())).toBe("Hero");
+  });
+
+  test("returns undefined for an untitled section", () => {
+    const rt = "site/sections/Untitled.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { definitions: { [btoa(rt)]: { type: "object" } } },
+    };
+    expect(getSectionDisplayTitle({ __resolveType: rt }, m)).toBeUndefined();
+  });
+
+  test("ignores the site-wide schema title for an unknown section", () => {
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { title: "Site", definitions: {} },
+    };
+    expect(
+      getSectionDisplayTitle({ __resolveType: "site/sections/Gone.tsx" }, m),
+    ).toBeUndefined();
   });
 
   test("collapses an object-valued prop to empty instead of [object Object]", () => {

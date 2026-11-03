@@ -1,7 +1,11 @@
 import { isV8Schema } from "@decocms/shared/blocks-major";
 import Mustache from "mustache";
 import { formatMustacheValue } from "./array-item-display";
-import type { LiveMeta } from "./resolve-schema";
+import {
+  hasManifestBlockSchema,
+  resolveBlockSchemaMetadata,
+  type LiveMeta,
+} from "./resolve-schema";
 import { sectionSchemaChain } from "./section-schema";
 import { resolveSectionPreviewContext } from "./section-variants";
 import type { RawSection } from "./section-types";
@@ -14,8 +18,7 @@ const RENDER_CONFIG = { escape: formatMustacheValue };
 /**
  * Read the `@title` template from the section's schema chain (mirror of
  * `resolveSectionImageTemplate`). Only returns a value when the title is a
- * Mustache template — a plain title carries no props and is already covered by
- * the resolve-type-derived label.
+ * Mustache template; {@link getSectionDisplayTitle} reads a plain title.
  */
 export function resolveSectionTitleTemplate(
   resolveType: string,
@@ -28,11 +31,24 @@ export function resolveSectionTitleTemplate(
   return undefined;
 }
 
+function renderTitleTemplate(
+  template: string,
+  data: Record<string, unknown>,
+): string | undefined {
+  try {
+    return (
+      Mustache.render(template, data, {}, RENDER_CONFIG).trim() || undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * Resolve a section's display name from its component's `@title` Mustache
- * template, evaluated against the section's own props. Returns undefined when
- * there is no template, it renders empty, or rendering fails — callers fall
- * back to the resolve-type-derived label.
+ * Resolve a section's display name from its component's `@title`: a Mustache
+ * template is evaluated against the section's own props; otherwise the plain
+ * title the section picker shows is used. Returns undefined when there is no
+ * usable title — callers fall back to the resolve-type-derived label.
  */
 export function getSectionDisplayTitle(
   formData: RawSection,
@@ -43,12 +59,12 @@ export function getSectionDisplayTitle(
   const ctx = resolveSectionPreviewContext(formData, isV8Schema(meta));
   if (!ctx) return undefined;
 
-  try {
-    const titleTpl = resolveSectionTitleTemplate(ctx.resolveType, meta);
-    if (!titleTpl) return undefined;
-    const rendered = Mustache.render(titleTpl, ctx.data, {}, RENDER_CONFIG);
-    return rendered.trim() || undefined;
-  } catch {
-    return undefined;
-  }
+  const titleTpl = resolveSectionTitleTemplate(ctx.resolveType, meta);
+  const rendered = titleTpl && renderTitleTemplate(titleTpl, ctx.data);
+  if (rendered) return rendered;
+
+  // Unknown blocks resolve to the root schema in resolveBlockSchemaMetadata.
+  if (!hasManifestBlockSchema(ctx.resolveType, meta)) return undefined;
+  const { title } = resolveBlockSchemaMetadata(ctx.resolveType, meta);
+  return title?.trim() && !title.includes("{{") ? title.trim() : undefined;
 }
