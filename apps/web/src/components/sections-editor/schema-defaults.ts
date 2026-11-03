@@ -89,12 +89,7 @@ function seedValue(
       : value;
   }
   if (schema?.type === "block-ref" && schema.discriminatorKey) {
-    return seedDiscriminatedBranch(
-      schema,
-      schema.discriminatorKey,
-      value,
-      meta,
-    );
+    return seedDiscriminator(schema, schema.discriminatorKey, value);
   }
   return schema?.type === "object" || schema?.type === "inline-union"
     ? seedShape(schema, value, meta)
@@ -102,26 +97,24 @@ function seedValue(
 }
 
 /**
- * A `type`-discriminated union is filled from the branch the editor shows,
- * discriminator included. A discriminator no branch lists is left alone.
+ * A `type`-discriminated union value only gets the discriminator of the branch
+ * the editor shows, when it has none. Its other `@default`s stay unwritten:
+ * this path never seeded them, and filling them would rewrite every saved
+ * value of such a union on open.
  */
-function seedDiscriminatedBranch(
+function seedDiscriminator(
   schema: SchemaProperty,
   discriminatorKey: string,
   obj: PlainObject,
-  meta: LiveMeta | undefined,
 ): PlainObject {
+  if (obj[discriminatorKey] !== undefined) return obj;
   const refs = schema.anyOfRefs ?? [];
   const shown = detectBlockRefType(obj, refs);
-  const ref = refs.find((r) => r.resolveType === shown);
-  const current = obj[discriminatorKey];
-  if (current !== undefined && ref?.discriminatorValue !== current) return obj;
-  const withDiscriminator = withBranchDiscriminator(
+  return withBranchDiscriminator(
     obj,
     discriminatorKey,
-    ref,
+    refs.find((r) => r.resolveType === shown),
   ) as PlainObject;
-  return seedObject(ref?.schema, withDiscriminator, meta);
 }
 
 function isPlainObject(value: unknown): value is PlainObject {

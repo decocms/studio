@@ -124,6 +124,20 @@ describe("a union discriminated by a hidden const `type`", () => {
     ).toEqual(block([{ type: "Equals", value: "gold" }]));
   });
 
+  test("a case with its `type` gets none of its branch's other defaults", () => {
+    const withDefault = {
+      ...META,
+      schema: structuredClone(META.schema),
+    } as LiveMeta;
+    const def = (withDefault.schema as any).definitions[DEF];
+    const equals = def.properties.conditions.items.properties.case.anyOf[0];
+    equals.properties.negate = { type: "boolean", default: false };
+    const value = block([{ type: "Equals", value: "gold" }]);
+    expect(
+      applySchemaDefaults(resolveSchema(RT, withDefault), value, withDefault),
+    ).toBe(value);
+  });
+
   test("a `type` the schema doesn't list is kept", () => {
     const value = block([{ type: "Newer", value: "gold" }]);
     expect(applySchemaDefaults(schema(), value, META)).toBe(value);
