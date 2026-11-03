@@ -2,8 +2,8 @@ import { LOCALSTORAGE_KEYS } from "./localstorage-keys";
 
 /**
  * Where the user last was, restored on cold app entry ("/"). Recorded on every
- * org-scoped navigation (see `orgRoute.beforeLoad` in `router.tsx`), which
- * always lands on that org's Home rather than resuming a conversation.
+ * navigation into an org the user belongs to (see `preloadActiveOrganization`),
+ * which always lands on that org's Home rather than resuming a conversation.
  */
 export interface LastLocation {
   org: string;
