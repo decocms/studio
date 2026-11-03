@@ -5,6 +5,11 @@ import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-co
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/hooks/use-file-picker";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  ANIMATED_AREA_MAX_MP,
+  ANIMATED_AREA_WARN_MP,
+  readAnimatedImageArea,
+} from "./animated-image-area";
 import { resolveTargetConfigId } from "./resolve-target-config-id";
 
 /**
@@ -71,6 +76,21 @@ export function useImageUpload({
     if (list.length === 0) {
       toast.error(t("sectionsEditor.imageField.onlyImageFilesAccepted"));
       return;
+    }
+
+    const animated = await readAnimatedImageArea(list[0]!);
+    if (animated && animated.megapixels > ANIMATED_AREA_WARN_MP) {
+      const vars = {
+        width: animated.width,
+        height: animated.height,
+        frames: animated.frames,
+        megapixels: Math.round(animated.megapixels),
+      };
+      if (animated.megapixels > ANIMATED_AREA_MAX_MP) {
+        toast.error(t("sectionsEditor.imageField.animationTooLarge", vars));
+        return;
+      }
+      toast.warning(t("sectionsEditor.imageField.animationNotOptimized", vars));
     }
 
     if (serveUpload) {
