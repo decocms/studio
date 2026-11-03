@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, AlertCircle } from "@untitledui/icons";
@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@decocms/ui/components/dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -298,17 +297,23 @@ export function ConnectProviderDialog({
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- providers intentionally closed over
   }, [state.kind, oauthStateToken, oauthProviderId, exchangeOAuth]);
 
-  const currentProviderId = activeProviderId(state);
+  // Closing drops the state at once, but the dialog animates out: keep
+  // painting the last open step so it doesn't flash back to the grid title.
+  const [lastOpen, setLastOpen] = useState(state);
+  if (state.kind !== "closed" && state !== lastOpen) setLastOpen(state);
+  const view = state.kind === "closed" ? lastOpen : state;
+
+  const currentProviderId = activeProviderId(view);
   const currentProvider = currentProviderId
     ? providers.find((p) => p.id === currentProviderId)
     : null;
   const currentPreset =
-    state.kind === "form" && state.presetId ? getPreset(state.presetId) : null;
+    view.kind === "form" && view.presetId ? getPreset(view.presetId) : null;
   const currentTitle =
     currentPreset?.name ??
     currentProvider?.name ??
     t("settings.connectProviderDialog.defaultTitle");
-  const showBack = state.kind !== "grid" && state.kind !== "closed";
+  const showBack = view.kind !== "grid" && view.kind !== "closed";
   const handleBack = () => {
     if (initialProvider) {
       close();
@@ -334,21 +339,16 @@ export function ConnectProviderDialog({
             )}
             <DialogTitle>{currentTitle}</DialogTitle>
           </div>
-          {state.kind === "grid" && !initialProvider && (
-            <DialogDescription>
-              {t("settings.connectProviderDialog.gridDescription")}
-            </DialogDescription>
-          )}
         </DialogHeader>
 
-        {state.kind === "grid" && !initialProvider && (
+        {view.kind === "grid" && !initialProvider && (
           <ProviderGrid providers={providers} onSelect={handleSelect} />
         )}
 
-        {state.kind === "form" &&
-          (state.providerId === "openai-compatible" ? (
+        {view.kind === "form" &&
+          (view.providerId === "openai-compatible" ? (
             <ConnectOpenAICompatibleForm
-              preset={state.presetId ? getPreset(state.presetId) : undefined}
+              preset={view.presetId ? getPreset(view.presetId) : undefined}
               onCancel={() => dispatch({ type: "back" })}
               onSuccess={() => {
                 invalidateKeys();
@@ -357,7 +357,7 @@ export function ConnectProviderDialog({
             />
           ) : (
             <ConnectApiKeyForm
-              providerId={state.providerId}
+              providerId={view.providerId}
               onCancel={() => dispatch({ type: "back" })}
               onSuccess={() => {
                 invalidateKeys();
@@ -366,7 +366,7 @@ export function ConnectProviderDialog({
             />
           ))}
 
-        {state.kind === "oauth-pending" && (
+        {view.kind === "oauth-pending" && (
           <div className="flex flex-col items-center gap-4 py-8">
             <Spinner size="lg" />
             <p className="text-sm text-muted-foreground text-center">
@@ -375,7 +375,7 @@ export function ConnectProviderDialog({
           </div>
         )}
 
-        {state.kind === "provision-pending" && (
+        {view.kind === "provision-pending" && (
           <div className="flex flex-col items-center gap-4 py-8">
             <Spinner size="lg" />
             <p className="text-sm text-muted-foreground">
@@ -384,10 +384,10 @@ export function ConnectProviderDialog({
           </div>
         )}
 
-        {state.kind === "provision-error" && (
+        {view.kind === "provision-error" && (
           <div className="flex flex-col items-center gap-4 py-6">
             <AlertCircle size={28} className="text-destructive" />
-            <p className="text-sm text-foreground text-center">{state.error}</p>
+            <p className="text-sm text-foreground text-center">{view.error}</p>
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -400,7 +400,7 @@ export function ConnectProviderDialog({
                 size="sm"
                 onClick={() => {
                   dispatch({ type: "retry-provision" });
-                  provisionKey(state.providerId);
+                  provisionKey(view.providerId);
                 }}
               >
                 {t("settings.connectProviderDialog.retryButton")}

@@ -85,10 +85,10 @@ describe("toTenantAnalyticsPayload", () => {
   });
 });
 
-// A view the tab offers but the proxy rejects is a 400 the moment someone
+// A view the tab asks for but the proxy rejects is a 400 the moment someone
 // clicks the tab — the one failure that is invisible until a user finds it.
 describe("ANALYTICS_VIEWS", () => {
-  it("accepts every view the tab offers", () => {
+  it("accepts every view the tab asks for", () => {
     const tab = readFileSync(
       join(
         import.meta.dir,
@@ -97,10 +97,18 @@ describe("ANALYTICS_VIEWS", () => {
       "utf8",
     );
     const block = tab.match(/const DATA_VIEWS[^=]*=\s*\[([\s\S]*?)\n\];/)?.[1];
-    const views = [...(block ?? "").matchAll(/view:\s*"(\w+)"/g)].flatMap(
-      (m) => m[1] ?? [],
-    );
+    const views = [
+      ...[...(block ?? "").matchAll(/view:\s*"(\w+)"/g)].flatMap(
+        (m) => m[1] ?? [],
+      ),
+      ...[...tab.matchAll(/analytics\/data\?view=(\w+)/g)].flatMap(
+        (m) => m[1] ?? [],
+      ),
+    ];
+    expect(views).toContain("overview");
+    // Overview polls these itself; neither is a tab any more.
     expect(views).toContain("live");
+    expect(views).toContain("globe");
     expect(views.filter((v) => !ANALYTICS_VIEWS.has(v))).toEqual([]);
   });
 });

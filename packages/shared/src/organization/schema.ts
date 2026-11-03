@@ -326,7 +326,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Installing a site app from the Apps tab: writes the app module, the npm dependency and the registry entry into the project's repository, then reinstalls dependencies and restarts the dev script on the running sandbox. Off by default, for every org — the catalogue stays browsable without it and nothing is installable. Rollout lever, separate from the deploy.",
+      "Installing a site app from the Apps tab: writes the app module, registers it (the manifest on Deno, APP_REGISTRY on TanStack), adds the npm dependency, then reinstalls dependencies and restarts the dev script on the running sandbox. Off by default — it writes code and restarts the dev server on install, and the restart only works on a daemon new enough to honour a forced step, so an org opts in once its pods are running one. With it off the catalogue stays browsable and nothing is installable, which is also the lever for an org that does not want the CMS writing code.",
     ),
   multi_app_preview: z
     .boolean()

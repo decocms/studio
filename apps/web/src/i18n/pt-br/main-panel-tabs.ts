@@ -388,7 +388,6 @@ export const mainPanelTabs = {
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
-  "mainPanelTabs.analyticsTab.viewLive": "Tempo real",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
   "mainPanelTabs.analyticsTab.viewEvents": "Eventos & props",
   "mainPanelTabs.analyticsTab.viewErrors": "Erros",
@@ -581,8 +580,15 @@ export const mainPanelTabs = {
     "nível de país: sem coordenada de cidade",
   "mainPanelTabs.analyticsTab.globe.caption":
     "{places} lugares no mapa · {approximate} no nível de país · {unplaced} sem localização",
+  "mainPanelTabs.analyticsTab.globe.replaying":
+    "Ninguém no site agora — reproduzindo o período selecionado ({range}).",
   "mainPanelTabs.analyticsTab.globe.modeGlobe": "Globo",
   "mainPanelTabs.analyticsTab.globe.modeMap": "Mapa",
+  // Legenda: capitalizada, ao contrário dos substantivos de meio de frase acima.
+  "mainPanelTabs.analyticsTab.globe.legend": "O que o mapa mostra",
+  "mainPanelTabs.analyticsTab.globe.legendVisits": "Visitas",
+  "mainPanelTabs.analyticsTab.globe.legendCarts": "Carrinhos",
+  "mainPanelTabs.analyticsTab.globe.legendConversions": "Conversões",
   "mainPanelTabs.analyticsTab.globe.loadError":
     "Não foi possível carregar o renderizador do mapa. Os números acima continuam ao vivo.",
   "mainPanelTabs.analyticsTab.viewQuality": "Qualidade dos dados",

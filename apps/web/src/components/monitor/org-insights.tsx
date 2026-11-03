@@ -8,8 +8,15 @@
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueries } from "@tanstack/react-query";
+import { Plus } from "@untitledui/icons";
 import { z } from "zod";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { DayInput } from "@/components/order-monitor/order-monitor-day";
 import { Page } from "@/components/page";
@@ -344,9 +351,27 @@ export function OrgAnalytics({
   const previous = sites.every((s) => s.previous)
     ? sumSummaries(sites.flatMap((s) => (s.previous ? [s.previous] : [])))
     : null;
+  const counted = new Set(
+    sites.filter((s) => s.summary.pageviews > 0).map((s) => s.project.site),
+  );
   return (
     <>
-      {actions}
+      <Page.Actions>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button size="sm" variant="outline" className="gap-1">
+              <Plus size={14} />
+              {t("monitor.analyticsGuide.addAnother")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-96">
+            <AnalyticsGuide
+              projects={projects.filter((p) => !counted.has(p.site))}
+            />
+          </PopoverContent>
+        </Popover>
+        <DayInput value={date} max={today} onChange={onDate} />
+      </Page.Actions>
       {uncounted && uncounted.length > 0 && (
         <Card className="gap-3 p-5">
           <p className="text-sm font-medium text-foreground">

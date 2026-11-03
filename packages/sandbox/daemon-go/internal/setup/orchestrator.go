@@ -71,6 +71,12 @@ type Orchestrator struct {
 	// The `running` state a checkout interrupted, restored by stepStartInner
 	// when the dev server turns out never to have stopped. Zero otherwise.
 	interruptedRunning events.LifecycleState
+	// "Run this step even though the usual short-circuit says it is already
+	// done." Set by ResumeInstall/ResumeStart and consumed by the step itself,
+	// so the intent travels WITH the queued step: a caller that mutated shared
+	// state instead would have it overwritten by whatever is already in flight.
+	forceInstall bool
+	forceStart   bool
 
 	// Held for the duration of a secondary-checkout sweep. Its own lock, not
 	// `mu`: the sweep runs OFF the step queue (see CloneSecondariesNow) and must
@@ -147,6 +153,52 @@ func (o *Orchestrator) ResumeFrom(step Step) {
 	o.enqueue(step)
 }
 
+// ResumeInstall queues an install. `force` makes it run even when the install
+// fingerprint still matches — the fingerprint is the package manager, the
+// runtime and the branch HEAD, so a dependency added to the working tree
+// without a commit is invisible to it and the step would skip an install the
+// caller knows it needs.
+func (o *Orchestrator) ResumeInstall(force bool) {
+	o.armForce(&o.forceInstall, force)
+	o.clearCrashError()
+	o.enqueue(StepInstall)
+}
+
+// ResumeStart queues a start. `force` respawns the dev server even when the
+// same command is already running or the install fingerprint does not match —
+// the two short-circuits that otherwise make this a no-op. It is the user
+// asking for the process back: after a failed install (which stopped the dev
+// task and marked the fingerprint bad) nothing else can bring it up, and a
+// restart that silently does nothing is how freshly pushed env never reaches
+// the process it was pushed for.
+func (o *Orchestrator) ResumeStart(force bool) {
+	o.armForce(&o.forceStart, force)
+	o.clearCrashError()
+	o.enqueue(StepStart)
+}
+
+// armForce raises a force flag for the step about to be queued. Never lowers
+// one: a plain resume arriving between a forced resume and its step must not
+// cancel the force.
+func (o *Orchestrator) armForce(flag *bool, force bool) {
+	if !force {
+		return
+	}
+	o.mu.Lock()
+	*flag = true
+	o.mu.Unlock()
+}
+
+// takeForce reads and clears a force flag. Consumed inside the step, once: a
+// second step must not inherit the first one's intent.
+func (o *Orchestrator) takeForce(flag *bool) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	forced := *flag
+	*flag = false
+	return forced
+}
+
 // RestartDev force-respawns the dev server. It clears a latched crash error
 // (so the start step below isn't skipped) and unconditionally stops the current
 // dev task before restarting, so it recovers a process that is alive-but-wedged
@@ -155,6 +207,11 @@ func (o *Orchestrator) ResumeFrom(step Step) {
 // ResumeFrom(StepStart) would short-circuit on "dev already running".
 func (o *Orchestrator) RestartDev() {
 	o.clearCrashError()
+	// Forced for the same reason it stops the task by hand: the gates below
+	// are what make a plain resume a no-op. Without it the fingerprint check
+	// refuses every restart after a failed install, which is exactly when the
+	// watchdog is the only thing left trying.
+	o.armForce(&o.forceStart, true)
 	o.stopDevTask()
 	o.enqueue(StepStart)
 }
@@ -678,6 +735,11 @@ func (o *Orchestrator) stepInstallInner() bool {
 	if cfg == nil {
 		return false
 	}
+	// Consumed here, ahead of every short-circuit below: a force this step
+	// returns early on is a force this step answered, and leaving it armed
+	// hands it to whatever install comes next — one that was never asked to
+	// bypass its fingerprint and would reinstall a tree that did not move.
+	forced := o.takeForce(&o.forceInstall)
 	// Clone-only: the consumer wants the checkout, nothing else. Skipped here
 	// rather than by omitting `application`, because fillApplicationDefaults
 	// autodetects a package manager from the lockfile and would put the install
@@ -686,7 +748,10 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.chunk("[orchestrator] clone-only: skipping dependency install\r\n")
 		return true
 	}
-	if o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
+	// Forced: the shared install state is not consulted at all, so an install
+	// finishing concurrently cannot mark the fingerprint good underneath this
+	// one and turn it back into the skip it was asked to bypass.
+	if !forced && o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.broadcastDiscoveredScripts(cfg)
 		return true
 	}
@@ -725,10 +790,9 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = nil // restored an existing golden — nothing to publish
 		o.mu.Unlock()
-		o.relinkAfterGolden(cfg, RestoreL1)
+		relinked := o.relinkAfterGolden(cfg, RestoreL1)
 		EmitDepsRestore(RestoreL1, cloneUrl, elapsedMs(), bootId, pkgCache)
-		o.markInstallSucceeded(cfg)
-		return true
+		return o.finishGoldenInstall(cfg, forced, relinked)
 	}
 
 	// L2: the same lockfile may already be archived on the shared store even
@@ -743,10 +807,9 @@ func (o *Orchestrator) stepInstallInner() bool {
 		o.mu.Lock()
 		o.pendingGolden = &golden
 		o.mu.Unlock()
-		o.relinkAfterGolden(cfg, RestoreL2)
+		relinked := o.relinkAfterGolden(cfg, RestoreL2)
 		EmitDepsRestore(RestoreL2, cloneUrl, elapsedMs(), bootId, pkgCache)
-		o.markInstallSucceeded(cfg)
-		return true
+		return o.finishGoldenInstall(cfg, forced, relinked)
 	}
 
 	o.chunk("[orchestrator] installing dependencies\r\n")
@@ -814,20 +877,22 @@ func (o *Orchestrator) stepInstallInner() bool {
 // in tens of milliseconds, not a second install. Doing it unconditionally
 // also keeps the fast path correct for hoisted and any future linker layout.
 //
-// Best-effort: a restored golden is still a usable tree, so a failure here is
-// no worse than the skip-install behaviour it replaces — it is logged and the
-// boot continues rather than being marked failed.
-func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSource) {
+// Best-effort on an ordinary boot: a restored golden is still a usable tree,
+// so a failure here is no worse than the skip-install behaviour it replaces —
+// it is logged and the boot continues rather than being marked failed. The
+// caller decides, because that stops being true for a FORCED install (see
+// finishGoldenInstall); the bool says which happened.
+func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSource) bool {
 	o.chunk(fmt.Sprintf("[orchestrator] relinking workspaces after %s golden restore\r\n", tier))
 	code, ran := SpawnInstall(cfg, o.deps.RepoDir, cfg.Env, func(data string) { o.rawChunk(data) })
 	if !ran {
-		return
+		return true
 	}
 	if code != 0 {
 		o.chunk(fmt.Sprintf(
 			"\r\n[orchestrator] warning: relink after %s golden restore failed (exit %d) — continuing with the restored tree\r\n",
 			tier, code))
-		return
+		return false
 	}
 	// The relink can run install scripts (postinstall/prepare — lefthook,
 	// husky), which overwrite .git/hooks; reinstall them, same as the
@@ -837,9 +902,33 @@ func (o *Orchestrator) relinkAfterGolden(cfg *config.Enriched, tier RestoreSourc
 			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not reinstall sandbox git hooks: %s\r\n", err.Error()))
 		}
 	}
+	return true
+}
+
+// finishGoldenInstall records the outcome of an install the golden cache
+// served, and reports whether the pipeline may continue.
+//
+// The relink is what makes the restored tree match the manifest, and on an
+// ordinary boot the two already agree — so a failure is cosmetic and the boot
+// goes on. A FORCED install is the opposite case by definition: the caller
+// rewrote the manifest in the working tree, and the relink is the only thing
+// that fetches what it added. Marking that a success hands the dev server a
+// tree missing the very package the app being installed imports, and records
+// a fingerprint saying it is installed, so nothing retries.
+func (o *Orchestrator) finishGoldenInstall(cfg *config.Enriched, forced, relinked bool) bool {
+	if forced && !relinked {
+		errMsg := "relink after golden restore failed"
+		o.chunk("\r\n[orchestrator] install failed (" + errMsg + ")\r\n")
+		o.deps.InstallState.Mark(Fingerprint(cfg, o.branchHead()), false)
+		o.deps.Lifecycle.Transition(events.LifecycleState{Phase: events.PhaseInstallFailed, Error: errMsg})
+		return false
+	}
+	o.markInstallSucceeded(cfg)
+	return true
 }
 
 func (o *Orchestrator) stepStartInner() startOutcome {
+	forced := o.takeForce(&o.forceStart)
 	cfg := o.deps.Store.Read()
 	if cfg == nil {
 		return startSkipped
@@ -853,7 +942,10 @@ func (o *Orchestrator) stepStartInner() startOutcome {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] skipping start: status=%s (resume to retry)\r\n", status.State))
 		return startSkipped
 	}
-	if !o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
+	// A failed install stops the dev task and marks the fingerprint bad, so
+	// this gate would then refuse every restart — the watchdog's included —
+	// and leave the pod with no way back. A forced start is the way out.
+	if !forced && !o.deps.InstallState.IsInstalledFor(cfg, o.branchHead()) {
 		o.chunk("\r\n[orchestrator] skipping start: install fingerprint mismatch\r\n")
 		return startSkipped
 	}
@@ -866,7 +958,7 @@ func (o *Orchestrator) stepStartInner() startOutcome {
 		return startFailed
 	}
 
-	if runningCmd, runningCwd, found := o.deps.TaskManager.RunningCommandByLogName(command.Source); found &&
+	if runningCmd, runningCwd, found := o.deps.TaskManager.RunningCommandByLogName(command.Source); !forced && found &&
 		runningCmd == command.Cmd && runningCwd == command.Cwd {
 		o.chunk(fmt.Sprintf("[orchestrator] dev already running (%s) — skipping restart\r\n", command.Source))
 		cur := o.deps.Lifecycle.Current().Phase

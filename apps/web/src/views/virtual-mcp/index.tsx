@@ -49,7 +49,7 @@ import {
 } from "@/sdk";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   LinkExternal01,
   Maximize01,
@@ -64,7 +64,6 @@ import { toast } from "sonner";
 import { Page } from "@/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
 import { FilesSection } from "./files-section";
-import { SubAgentsSection } from "./sub-agents-section";
 import { track } from "@/lib/posthog-client";
 import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ConnectionItem, ConnectionItemSkeleton } from "./connection-item";
@@ -94,7 +93,7 @@ import {
 } from "@/lib/agent-capabilities";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { omitSandboxMap } from "@/lib/omit-sandbox-map";
-import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
+import { RepositoryCard } from "./settings/repository-card";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
 import { RuntimeAppsField } from "@/components/sandbox/runtime-card/runtime-apps-field";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
@@ -993,9 +992,9 @@ function VirtualMcpDetailViewWithData({
               <Plus size={14} />
               {t("virtualMcp.virtualMcp.addConnection")}
             </Button>
-          ) : (
+          ) : section === "general" ? (
             connectButton
-          )}
+          ) : null}
         </Page.Actions>
         <Page.Content key={contextSection ?? section}>
           <Page.Container
@@ -1005,36 +1004,9 @@ function VirtualMcpDetailViewWithData({
             <SettingsPage>
               {/* Its own sections, so SettingsPage spaces them like every other
                 pair rather than the tighter rhythm inside the identity block. */}
-              {showGeneral && <ProjectViewsSection views={views} />}
+              {section === "views" && <ProjectViewsSection views={views} />}
               {showGeneral && (
-                <div className="flex flex-col gap-4">
-                  <ProjectIdentity form={form} onCommit={flushAndSave} />
-                  <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
-                    <User
-                      id={virtualMcp.created_by}
-                      size="2xs"
-                      className="text-sm text-muted-foreground"
-                    />
-                    <span className="text-muted-foreground/50">·</span>
-                    <span>
-                      {t("virtualMcp.virtualMcp.created")}{" "}
-                      {format(new Date(virtualMcp.created_at), "PP", {
-                        locale,
-                      })}
-                    </span>
-                    <span className="text-muted-foreground/50">·</span>
-                    <span>
-                      {lastUsedAt
-                        ? t("virtualMcp.virtualMcp.lastUsed", {
-                            time: formatDistanceToNow(new Date(lastUsedAt), {
-                              addSuffix: true,
-                              locale,
-                            }),
-                          })
-                        : t("virtualMcp.virtualMcp.neverUsed")}
-                    </span>
-                  </div>
-                </div>
+                <ProjectIdentity form={form} onCommit={flushAndSave} />
               )}
               {section === "connections" && (
                 <section className="flex flex-col gap-3">
@@ -1140,27 +1112,23 @@ function VirtualMcpDetailViewWithData({
               {/* Files section — files attached to the agent as reference */}
               {showInstructions && <FilesSection form={form} />}
 
-              {/* Sub-agents section — delegation allowlist for the subtask tool */}
-              {showGeneral && (
-                <ErrorBoundary fallback={() => null}>
-                  <Suspense
-                    fallback={
-                      <section className="flex flex-col gap-3">
-                        <h2 className="text-sm font-medium text-foreground">
-                          {t("virtualMcp.virtualMcp.subAgents")}
-                        </h2>
-                        <div className="h-16 rounded-lg border border-dashed border-border animate-pulse" />
-                      </section>
-                    }
-                  >
-                    <SubAgentsSection
-                      form={form}
-                      currentAgentId={virtualMcp.id}
+              {section === "site" && !hasClonableSource && (
+                <SettingsSection>
+                  <SettingsCard>
+                    <SettingsCardItem
+                      title={t("virtualMcp.settings.cmsEmptyTitle")}
+                      description={t("virtualMcp.settings.cmsEmpty")}
+                      action={
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to="." search={{ section: "repository" }}>
+                            {t("virtualMcp.settings.repository.open")}
+                          </Link>
+                        </Button>
+                      }
                     />
-                  </Suspense>
-                </ErrorBoundary>
+                  </SettingsCard>
+                </SettingsSection>
               )}
-
               {/* CMS — content editing, then how changes reach the live
                 site. Publishing is code-agent only. */}
               {section === "site" && hasClonableSource && (
@@ -1217,13 +1185,27 @@ function VirtualMcpDetailViewWithData({
                 />
               )}
 
-              {/* Sandbox — the repo it clones and what it runs there. */}
-              {section === "site" && (
-                <SettingsSection title={t("virtualMcp.virtualMcp.sandbox")}>
+              {/* Repository — which repo the project is, then how its
+                sandbox runs it. */}
+              {section === "repository" && (
+                <RepositoryCard
+                  repo={runtimeCardRepo}
+                  onConnect={(binding) => {
+                    form.setValue("metadata.repository", binding, {
+                      shouldDirty: true,
+                    });
+                    return flushAndSave();
+                  }}
+                />
+              )}
+              {section === "repository" && (
+                <SettingsSection
+                  title={t("virtualMcp.settings.repository.runtimeTitle")}
+                  description={t(
+                    "virtualMcp.settings.repository.runtimeDescription",
+                  )}
+                >
                   <SettingsCard>
-                    <SettingsCardRow>
-                      <RepoRow repo={runtimeCardRepo} />
-                    </SettingsCardRow>
                     <SettingsCardRow>
                       <RuntimeFields control={form.control} />
                     </SettingsCardRow>
@@ -1241,6 +1223,47 @@ function VirtualMcpDetailViewWithData({
                         sandboxMap={virtualMcp.metadata.sandboxMap}
                       />
                     </SettingsCardRow>
+                  </SettingsCard>
+                </SettingsSection>
+              )}
+              {showGeneral && (
+                <SettingsSection
+                  title={t("virtualMcp.settings.groups.details")}
+                >
+                  <SettingsCard>
+                    <SettingsCardItem
+                      title={t("virtualMcp.virtualMcp.createdBy")}
+                      action={
+                        <User
+                          id={virtualMcp.created_by}
+                          size="2xs"
+                          className="text-sm text-muted-foreground"
+                        />
+                      }
+                    />
+                    <SettingsCardItem
+                      title={t("virtualMcp.virtualMcp.created")}
+                      action={
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(virtualMcp.created_at), "PP", {
+                            locale,
+                          })}
+                        </span>
+                      }
+                    />
+                    <SettingsCardItem
+                      title={t("virtualMcp.virtualMcp.lastUsedLabel")}
+                      action={
+                        <span className="text-sm text-muted-foreground">
+                          {lastUsedAt
+                            ? formatDistanceToNow(new Date(lastUsedAt), {
+                                addSuffix: true,
+                                locale,
+                              })
+                            : t("virtualMcp.virtualMcp.neverUsed")}
+                        </span>
+                      }
+                    />
                   </SettingsCard>
                 </SettingsSection>
               )}

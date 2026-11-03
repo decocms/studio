@@ -71,8 +71,9 @@ export const OPTIONAL_MINT_PERMISSIONS = [
  *   1. github-mcp's own allowlist predating a permission — it hard-rejects with
  *      `Permission "<name>" is not allowed` (deploy-window skew).
  *   2. GitHub itself, when the App installation hasn't granted it — the mint
- *      422s, surfaced as `...the requested permissions exceed what the GitHub
- *      App was granted`.
+ *      422s with `...the requested permissions exceed what the GitHub App was
+ *      granted` or `The permissions requested are not granted to this
+ *      installation.`
  * The allowlist form matches ONLY for an OPTIONAL permission (a required one
  * being rejected is a real misconfiguration, not something to silently drop);
  * the generic 422 doesn't name the offending permission, so the ladder degrades
@@ -86,7 +87,10 @@ export function isPermissionRejected(
   return (
     new RegExp(`permission\\s+"?(?:${optional})"?\\s+is not allowed`, "i").test(
       message,
-    ) || /permissions exceed what the github app/i.test(message)
+    ) ||
+    /permissions exceed what the github app|permissions requested are not granted to this installation/i.test(
+      message,
+    )
   );
 }
 
