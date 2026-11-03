@@ -53,7 +53,7 @@ import {
   linkAnalyticsSite,
 } from "../../customer-lake/client";
 import { getSettings } from "../../settings";
-import { findOwnedProject } from "../../tools/experiments/ownership";
+import { lookupOwnedProject } from "../../tools/experiments/ownership";
 
 type Variables = { studioContext: StudioContext };
 
@@ -423,9 +423,7 @@ async function externalWarehouseSiteId(
   organizationId: string,
   site: string,
 ): Promise<string | null> {
-  const project = await findOwnedProject(ctx, organizationId, site).catch(
-    () => null,
-  );
+  const project = await lookupOwnedProject(ctx, organizationId, site);
   return storedExternalRegistration(project?.metadata)?.id ?? null;
 }
 
@@ -754,9 +752,25 @@ export const createHostingRoutes = () => {
       site.toLowerCase(),
       org.id,
     );
-    const externalSiteId = ownsSite
-      ? null
-      : await externalWarehouseSiteId(ctx, org.id, site.toLowerCase());
+    let externalSiteId: string | null = null;
+    if (!ownsSite) {
+      try {
+        externalSiteId = await externalWarehouseSiteId(
+          ctx,
+          org.id,
+          site.toLowerCase(),
+        );
+      } catch (err) {
+        console.error(
+          `[analytics] registration lookup failed for site="${site}":`,
+          err,
+        );
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+    }
     if (!ownsSite && !externalSiteId) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
