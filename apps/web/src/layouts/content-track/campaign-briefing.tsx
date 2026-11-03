@@ -14,7 +14,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
 import { useT } from "@/i18n/use-t.ts";
 import { Pending, Section } from "./detail-parts";
-import { EvidenceBySource } from "./evidence-grid";
+import { EvidenceBySource, EvidenceSourceIcon } from "./evidence-grid";
+import { ExpandableGrid } from "./expandable-grid";
 import { RoleAtWork } from "./newsroom";
 
 export function BriefingPicker({
@@ -68,55 +69,72 @@ export function BriefingPicker({
             />
           </Pending>
         ) : (
-          <div className="grid gap-[9px] md:grid-cols-3">
-            {campaign.briefings.map((option) => {
+          <ExpandableGrid
+            columns={3}
+            items={campaign.briefings.map((option) => {
               const chosen = campaign.briefing?.optionId === option.id;
-              return (
-                <div
-                  key={option.id}
-                  className={cn(
-                    "flex flex-col gap-2 rounded-[11px] border bg-card p-3",
-                    chosen ? "border-primary" : "border-border",
-                  )}
-                >
-                  <span className="text-[13.5px] font-semibold leading-snug text-foreground">
-                    {option.title}
-                  </span>
-                  <p className="flex-1 text-xs leading-[1.45] text-muted-foreground">
-                    {option.idea}
-                  </p>
-                  {option.figure && (
-                    <span className="text-[12.5px] font-semibold text-foreground tabular-nums">
-                      {option.figure}
-                    </span>
-                  )}
-                  {chosen ? (
-                    <Badge variant="brand" className="self-start">
-                      <Check size={12} />
-                      {t("contentTrack.campaign.chosen")}
-                    </Badge>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="self-start"
-                      disabled={disabled}
-                      onClick={() =>
-                        onChoose({
-                          text: `${option.title}\n\n${option.idea}`,
-                          optionId: option.id,
-                        })
-                      }
+              return {
+                id: option.id,
+                selected: chosen,
+                summary: (open: boolean) => (
+                  <div className="flex flex-col gap-2">
+                    <span
+                      className={cn(
+                        "text-[13.5px] font-semibold leading-snug text-foreground",
+                        !open && "line-clamp-2",
+                      )}
                     >
-                      <Stars02 size={14} />
-                      {t("contentTrack.campaign.useBriefing")}
-                    </Button>
-                  )}
-                </div>
-              );
+                      {option.title}
+                    </span>
+                    {!open && (
+                      <p className="line-clamp-2 text-xs leading-[1.45] text-muted-foreground">
+                        {option.idea}
+                      </p>
+                    )}
+                    {option.figure && (
+                      <span className="flex items-center gap-[7px] text-[12.5px] font-semibold text-foreground tabular-nums">
+                        {option.source && (
+                          <EvidenceSourceIcon source={option.source} />
+                        )}
+                        {option.figure}
+                      </span>
+                    )}
+                    {chosen && (
+                      <Badge variant="brand" className="self-start">
+                        <Check size={12} />
+                        {t("contentTrack.campaign.chosen")}
+                      </Badge>
+                    )}
+                  </div>
+                ),
+                detail: (
+                  <div className="flex flex-col gap-3">
+                    <p className="text-[13px] leading-[1.5] text-foreground">
+                      {option.idea}
+                    </p>
+                    {!chosen && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="self-start"
+                        disabled={disabled}
+                        onClick={() =>
+                          onChoose({
+                            text: `${option.title}\n\n${option.idea}`,
+                            optionId: option.id,
+                          })
+                        }
+                      >
+                        <Stars02 size={14} />
+                        {t("contentTrack.campaign.useBriefing")}
+                      </Button>
+                    )}
+                  </div>
+                ),
+              };
             })}
-          </div>
+          />
         )}
       </Section>
 
