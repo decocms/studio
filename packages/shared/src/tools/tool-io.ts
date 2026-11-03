@@ -2488,6 +2488,7 @@ export interface StudioToolIO {
                     name: string;
                     id?: string | undefined;
                     value?: string | undefined;
+                    length?: string | undefined;
                   }
                 | undefined;
               keywords?:
@@ -2664,6 +2665,7 @@ export interface StudioToolIO {
                     name: string;
                     id?: string | undefined;
                     value?: string | undefined;
+                    length?: string | undefined;
                   }
                 | undefined;
               keywords?:
@@ -2846,6 +2848,7 @@ export interface StudioToolIO {
                     name: string;
                     id?: string | undefined;
                     value?: string | undefined;
+                    length?: string | undefined;
                   }
                 | undefined;
               keywords?:
@@ -3017,6 +3020,7 @@ export interface StudioToolIO {
                     name: string;
                     id?: string | undefined;
                     value?: string | undefined;
+                    length?: string | undefined;
                   }
                 | undefined;
               keywords?:
@@ -3185,6 +3189,7 @@ export interface StudioToolIO {
                     name: string;
                     id?: string | undefined;
                     value?: string | undefined;
+                    length?: string | undefined;
                   }
                 | undefined;
               keywords?:
@@ -3371,6 +3376,7 @@ export interface StudioToolIO {
                     name: string;
                     id?: string | undefined;
                     value?: string | undefined;
+                    length?: string | undefined;
                   }
                 | undefined;
               keywords?:
@@ -3822,7 +3828,7 @@ export interface StudioToolIO {
             }
           | undefined;
       };
-      format: { name: string; value: string };
+      format: { name: string; value: string; length?: string | undefined };
       blocks: {
         name: string;
         title: string;

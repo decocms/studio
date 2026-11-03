@@ -92,7 +92,7 @@ ground the hypothesis stands on:
     "title": "<working headline>",
     "statement": "<the thesis: what the post argues, for whom, and why now>",
     "angle": "<how it differs from what is already out there>",
-    "format": { "id": "<the format's id>", "name": "<its name>", "value": "<its brief, whole>" },
+    "format": { "id": "<the format's id>", "name": "<its name>", "value": "<its brief, whole>", "length": "<its length>" },
     "keywords": [{ "term": "sofá para sala pequena", "volume": 1240 }],
     "guardrails": [{ "text": "<what the post must not do>", "origin": "brand" }],
     "objective": "<what this post moves, toward one of the campaign's goals>",
@@ -105,9 +105,9 @@ ground the hypothesis stands on:
 - **The statement argues from the evidence**, for the campaign. Name the
   figure it rests on.
 - **Format**: pick the one of `formats` whose `summary` fits the post, and
-  copy its `id`, `name` and `value` exactly. Never invent one, and never
-  shorten the brief: the draft follows it. A brand whose formats still live in
-  its guide gives no `id`; copy `name` and `value`.
+  copy its `id`, `name`, `value` and `length` exactly. Never invent one, and
+  never shorten the brief: the draft follows it. A brand whose formats still
+  live in its guide gives no `id` or `length`; copy `name` and `value`.
 - **Keywords**: three to eight terms readers search. `volume` only when a tool
   reported it.
 - **Guardrails**: from the brand's don'ts and rules (`origin: "brand"`) and

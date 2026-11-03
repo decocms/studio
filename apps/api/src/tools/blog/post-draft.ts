@@ -240,6 +240,11 @@ export const WritingInputSchema = z.object({
     .object({
       name: z.string().max(MAX_NAME_CHARS),
       value: z.string().max(MAX_BODY_CHARS),
+      length: z
+        .string()
+        .max(MAX_NAME_CHARS)
+        .optional()
+        .describe("How long a post in this format runs."),
     })
     .describe("How this brand builds a post of this kind."),
   blocks: z
@@ -318,7 +323,7 @@ function writingContext(input: WritingInput, grounding: string): string {
     ),
     renderVoiceExamples(brand.voiceExamples),
     renderCampaign(campaign),
-    `## Format: ${input.format.name}\n${input.format.value}`,
+    `## Format: ${input.format.name}${input.format.length ? `\nLength: ${input.format.length}` : ""}\n${input.format.value}`,
     `## Blocks available — props must match these schemas\n\n${input.blocks
       .map(renderBlock)
       .join("\n\n")}`,

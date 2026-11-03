@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   applyLinksToBlocks,
-  blockExample,
   blocksForFormat,
   buildGeneratedPostPayload,
   type DraftSection,
@@ -11,6 +10,7 @@ import {
   postLinkTargets,
   listAuthorRefs,
   listBlogPayloads,
+  productShape,
   sectionResolveTypes,
   str,
 } from "@decocms/shared/blog";
@@ -249,7 +249,7 @@ export const BLOG_POST_ASSEMBLE = defineTool({
       productShapes: Object.fromEntries(
         Object.entries(resolveTypes).map(([name, resolveType]) => [
           name,
-          blockExample(resolveType, decofile),
+          productShape(resolveType, decofile),
         ]),
       ),
       categories: listBlogPayloads(decofile, "categories").map(

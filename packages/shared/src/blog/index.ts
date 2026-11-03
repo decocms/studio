@@ -87,6 +87,7 @@ export {
 } from "./block-schema";
 export {
   citedSections,
+  formatExampleSlugs,
   FORMATS_BLOCK_KEY,
   type MentionableSection,
   mentionableSections,
@@ -101,7 +102,9 @@ export {
   type GenerationBlock,
   KNOWN_BLOG_BLOCK_EXAMPLES,
   maskSlugInput,
+  productShape,
   productSlotOf,
+  referencePosts,
   sectionResolveTypes,
   slugifyTitle,
   uniqueCategorySlug,

@@ -9,7 +9,7 @@
  * to get right.
  */
 import { clearSentinels } from "../blog-image-sentinel";
-import { asRecord, randomHex, toArray } from "./fields";
+import { asRecord, randomHex, str, toArray } from "./fields";
 import { listBlogPayloads } from "./decofile-scan";
 import {
   type AuthorRef,
@@ -23,9 +23,17 @@ import {
   type BlogBlockDiscoveryOptions,
 } from "./block-discovery";
 import { rawBlockSchema, reconciledSchema } from "./block-schema";
-import { citedSections, mentionableSections } from "./formats";
+import {
+  citedSections,
+  formatExampleSlugs,
+  mentionableSections,
+} from "./formats";
 import type { LiveMeta } from "./live-meta";
-import { writeProductListIds } from "./product-loader";
+import {
+  PRODUCT_REF,
+  readProductListIds,
+  writeProductListIds,
+} from "./product-loader";
 
 /**
  * One correctly-filled example per block the CMS draws its own editor for.
@@ -127,6 +135,46 @@ export interface GenerationBlock {
 const MAX_EXAMPLE_CHARS = 600;
 
 /**
+ * The site's own posts, in the order to learn from them: the ones a format
+ * holds up as its examples, then the newest. Studio's own posts never count,
+ * live or not: a generated post may itself be wrong, and copying our own
+ * mistake back in would make it permanent.
+ */
+export function referencePosts(
+  decofile: Record<string, unknown>,
+  preferSlugs: readonly string[] = [],
+): Record<string, unknown>[] {
+  const rank = (post: Record<string, unknown>) => {
+    const at = preferSlugs.indexOf(str(post.slug));
+    return at === -1 ? preferSlugs.length : at;
+  };
+  return listBlogPayloads(decofile, "posts")
+    .map(({ payload }) => payload)
+    .filter((post) => !post.planning)
+    .sort(
+      (a, b) => rank(a) - rank(b) || str(b.date).localeCompare(str(a.date)),
+    );
+}
+
+/** Every stored instance of a block, in {@link referencePosts} order. */
+function storedBlocks(
+  resolveType: string,
+  decofile: Record<string, unknown>,
+  preferSlugs: readonly string[],
+): Record<string, unknown>[] {
+  const found: Record<string, unknown>[] = [];
+  for (const post of referencePosts(decofile, preferSlugs)) {
+    for (const raw of toArray(post.sections)) {
+      const section = asRecord(raw);
+      if (!section || section.__resolveType !== resolveType) continue;
+      const { __resolveType: _type, ...props } = section;
+      if (Object.keys(props).length > 0) found.push(props);
+    }
+  }
+  return found;
+}
+
+/**
  * One of this block as the site already stores it.
  *
  * The derived schema is not always the truth. A prop whose `$ref` did not
@@ -135,25 +183,49 @@ const MAX_EXAMPLE_CHARS = 600;
  * newline-joined string was handed a schema saying "object" and dutifully
  * wrote a map. An existing post is what actually renders, so it settles the
  * shape where the schema only describes it.
- *
- * Live posts first: a planning post may itself have been generated wrong, and
- * copying our own mistake back in would make it permanent.
  */
 export function blockExample(
   resolveType: string,
   decofile: Record<string, unknown>,
+  preferSlugs: readonly string[] = [],
 ): Record<string, unknown> | undefined {
-  for (const { payload } of listBlogPayloads(decofile, "posts")) {
-    for (const raw of toArray(payload.sections)) {
-      const section = asRecord(raw);
-      if (!section || section.__resolveType !== resolveType) continue;
-      const { __resolveType: _type, ...props } = section;
-      if (Object.keys(props).length === 0) continue;
-      if (JSON.stringify(props).length > MAX_EXAMPLE_CHARS) continue;
-      return props;
-    }
-  }
-  return undefined;
+  return storedBlocks(resolveType, decofile, preferSlugs).find(
+    (props) => JSON.stringify(props).length <= MAX_EXAMPLE_CHARS,
+  );
+}
+
+/**
+ * A product block's example is the instance its slot is copied from, so the
+ * schema the writer reads, the shape assembly writes and the example agree.
+ */
+function shortProductShape(
+  resolveType: string,
+  decofile: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const shape = productShape(resolveType, decofile);
+  return shape && JSON.stringify(shape).length <= MAX_EXAMPLE_CHARS
+    ? shape
+    : undefined;
+}
+
+/**
+ * The stored instance to copy a block's product slot from. One that names its
+ * products by reference wins over one holding bare ids: the reference says
+ * which kind of id it is, and the bare form is what some sites search as text.
+ */
+export function productShape(
+  resolveType: string,
+  decofile: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const stored = storedBlocks(resolveType, decofile, []).filter(
+    (props) => productSlotOf(props) !== null,
+  );
+  const byRef = stored.find((props) =>
+    readProductListIds(props[productSlotOf(props) ?? ""]).some((id) =>
+      PRODUCT_REF.test(id),
+    ),
+  );
+  return byRef ?? stored[0];
 }
 
 /** The text every post needs, whatever its format cites. */
@@ -181,6 +253,7 @@ export function blocksForFormat(
   const available = mentionableSections(meta, options);
   const byName = sectionResolveTypes(meta, options);
   const cited = new Set(citedSections(format.value, byName));
+  const examplesFrom = formatExampleSlugs(format.value);
   const wanted = available.filter((section) => cited.has(section.resolveType));
   const chosen =
     wanted.length > 0
@@ -190,8 +263,7 @@ export function blocksForFormat(
             (section) =>
               !cited.has(section.resolveType) &&
               (BASIC_TEXT_BLOCKS.has(section.name) ||
-                productSlotOf(blockExample(section.resolveType, decofile)) !==
-                  null),
+                productShape(section.resolveType, decofile) !== undefined),
           ),
         ]
       : available;
@@ -203,7 +275,8 @@ export function blocksForFormat(
     if (byName[section.name] !== section.resolveType) continue;
     seen.add(section.name);
     const example =
-      blockExample(section.resolveType, decofile) ??
+      shortProductShape(section.resolveType, decofile) ??
+      blockExample(section.resolveType, decofile, examplesFrom) ??
       KNOWN_BLOG_BLOCK_EXAMPLES[section.name];
     blocks.push({
       name: section.name,

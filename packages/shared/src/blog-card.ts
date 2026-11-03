@@ -230,6 +230,11 @@ export const BlogCardHypothesisSchema = z
           .describe("The format's file under the brand's `formats/`."),
         name: z.string().max(120),
         value: z.string().max(8_000).optional(),
+        length: z
+          .string()
+          .max(120)
+          .optional()
+          .describe("How long a post in this format runs, as the format says."),
       })
       .loose()
       .describe("One of the brand's formats, with its brief."),

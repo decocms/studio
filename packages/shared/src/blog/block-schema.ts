@@ -194,8 +194,10 @@ export function reconciledSchema(
       typeof declared === "string" &&
       declared !== stored
     ) {
+      // `nullable` only qualifies a `type`; left alone it does not compile.
       delete (prop as Record<string, unknown>).type;
       delete (prop as Record<string, unknown>).enum;
+      delete (prop as Record<string, unknown>).nullable;
       changed = true;
     }
     reconciled[name] = prop;

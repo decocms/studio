@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { blocksForFormat } from "./generation";
+import { blocksForFormat, productShape } from "./generation";
 import type { LiveMeta } from "./live-meta";
 import { postLinkTargets } from "./post-meta";
 
@@ -45,6 +45,18 @@ describe("blocksForFormat", () => {
   test("a format's @citations pick the blocks, and a product block the site never filled stays out", () => {
     const blocks = blocksForFormat(
       { value: "Open with @Heading, then @Paragraph." },
+      metaWith(SITE),
+      {},
+    );
+    expect(blocks.map((block) => block.name).sort()).toEqual([
+      "Heading",
+      "Paragraph",
+    ]);
+  });
+
+  test("citations in code backticks narrow the blocks too", () => {
+    const blocks = blocksForFormat(
+      { value: "- `@Heading`, `@Paragraph`: corpo e critérios." },
       metaWith(SITE),
       {},
     );
@@ -203,5 +215,76 @@ describe("postLinkTargets", () => {
 
   test("an empty decofile has no targets rather than throwing", () => {
     expect(postLinkTargets({})).toEqual([]);
+  });
+});
+
+describe("a product block's example", () => {
+  const SHELF = "site/sections/Blog/Post/ProductShelf.tsx";
+  test("is the shelf its slot is copied from, so its schema still compiles", () => {
+    const post = (date: string, products: unknown) => ({
+      __resolveType: "blog/loaders/Blogpost.ts",
+      post: {
+        title: date,
+        date,
+        sections: [{ __resolveType: SHELF, title: "Malas", products }],
+      },
+    });
+    const [block] = blocksForFormat(
+      { value: "@ProductShelf" },
+      metaWith([SHELF], {
+        [SHELF]: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            products: {
+              type: "array",
+              items: { type: "string" },
+              nullable: true,
+            },
+          },
+        },
+      }),
+      {
+        "collections/blog/posts/a": post("2026-01-10", ["vtex:product:1"]),
+        "collections/blog/posts/b": post("2026-10-30", {
+          __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+          props: { ids: ["2"] },
+        }),
+      },
+    );
+    expect(block?.example).toMatchObject({ products: ["vtex:product:1"] });
+    expect(block?.schema).toMatchObject({
+      properties: { products: { type: "array", nullable: true } },
+    });
+  });
+});
+
+describe("productShape", () => {
+  const SHELF = "site/sections/Blog/Post/ProductShelf.tsx";
+  const shelf = (date: string, products: string[]) => ({
+    __resolveType: "blog/loaders/Blogpost.ts",
+    post: {
+      title: date,
+      date,
+      sections: [{ __resolveType: SHELF, title: "Malas", products }],
+    },
+  });
+
+  test("copies a shelf that names its products by reference over a newer one with bare ids", () => {
+    expect(
+      productShape(SHELF, {
+        "collections/blog/posts/a": shelf("2026-01-10", ["vtex:product:1"]),
+        "collections/blog/posts/b": shelf("2026-10-30", ["1948858"]),
+      }),
+    ).toMatchObject({ products: ["vtex:product:1"] });
+  });
+
+  test("falls back to the newest shelf when none uses a reference", () => {
+    expect(
+      productShape(SHELF, {
+        "collections/blog/posts/a": shelf("2026-01-10", ["1"]),
+        "collections/blog/posts/b": shelf("2026-10-30", ["2"]),
+      }),
+    ).toMatchObject({ products: ["2"] });
   });
 });

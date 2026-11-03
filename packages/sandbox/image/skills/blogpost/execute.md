@@ -29,7 +29,7 @@ Read the card and `BLOG_STATE_GET` first. You need from them: the site
 {
   "brand": { "...": "brand and context from BLOG_STATE_GET, merged" },
   "campaign": { "...": "the campaign's data", "name": "<its campaignName>" },
-  "format": { "name": "...", "value": "..." },
+  "format": { "name": "...", "value": "...", "length": "<when the hypothesis has one>" },
   "blocks": [], "categories": [], "authors": [],
   "extraInstructions": "<the statement, the angle, the objective, the keywords and the guardrails, as the hypothesis has them>",
   "grounding": "<the contents of /tmp/blog/grounding.txt>"

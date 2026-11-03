@@ -59,9 +59,9 @@ export function mentionableSections(
  * which block renders must not depend on the name.
  *
  * A bare `@Name` still reads, because briefs written before this and briefs a
- * model writes both use it. It resolves through `byName` when the site has that
- * component, and is returned as-is when it does not, so an unknown citation
- * stays visible as one.
+ * model writes both use it, in code backticks too. It resolves through
+ * `byName` when the site has that component, and is returned as-is when it
+ * does not, so an unknown citation stays visible as one.
  */
 /**
  * A `[@Name](resolveType)` citation.
@@ -76,6 +76,17 @@ export function mentionableSections(
  */
 const CITATION = /\[@[^\]]{1,200}\]\(([^)\s]{1,500})\)/g;
 
+/** The posts a format holds up as its examples, by slug: the last path segment of each address it cites. */
+export function formatExampleSlugs(markdown: string): string[] {
+  const slugs: string[] = [];
+  for (const [address] of markdown.matchAll(/https?:\/\/[^\s)<>"'`]+/g)) {
+    if (!URL.canParse(address)) continue;
+    const slug = new URL(address).pathname.split("/").filter(Boolean).pop();
+    if (slug && !slugs.includes(slug)) slugs.push(slug);
+  }
+  return slugs;
+}
+
 export function citedSections(
   markdown: string,
   byName: Record<string, string> = {},
@@ -85,7 +96,7 @@ export function citedSections(
   for (const match of markdown.matchAll(linked)) {
     if (match[1]) cited.add(match[1]);
   }
-  const bare = /(?:^|[\s([{>])@([A-Za-z][\w-]*)/g;
+  const bare = /(?:^|[\s([{>`])@([A-Za-z][\w-]*)/g;
   for (const match of markdown.replace(linked, " ").matchAll(bare)) {
     const name = match[1];
     if (name) cited.add(byName[name] ?? name);

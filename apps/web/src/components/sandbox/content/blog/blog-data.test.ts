@@ -1662,6 +1662,12 @@ describe("citedSections", () => {
     expect(citedSections("Um formato de guia prático.")).toEqual([]);
   });
 
+  test("reads a citation in code backticks, as the format template writes it", () => {
+    expect(
+      citedSections("- `@Heading`, `@List`: corpo; `@Divider` no fim."),
+    ).toEqual(["Heading", "List", "Divider"]);
+  });
+
   test("reads the linked form as the resolveType it points at", () => {
     expect(
       citedSections("Abre com [@Heading](site/sections/Blog/Post/Heading.tsx)"),
@@ -2362,6 +2368,55 @@ describe("blockExample", () => {
   test("answers nothing for a block no post uses yet", () => {
     expect(blockExample(LIST, {})).toBeUndefined();
   });
+
+  const dated = (
+    date: string,
+    items: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    __resolveType: "blog/loaders/Blogpost.ts",
+    post: {
+      title: items,
+      slug: items,
+      date,
+      ...extra,
+      sections: [{ __resolveType: LIST, items }],
+    },
+  });
+
+  test("learns from the newest post, not the first one by title", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": dated("2023-02-07", "antigo"),
+        "collections/blog/posts/b": dated("2026-10-27", "recente"),
+      }),
+    ).toEqual({ items: "recente" });
+  });
+
+  test("a post the format holds up as its example comes before the newest", () => {
+    expect(
+      blockExample(
+        LIST,
+        {
+          "collections/blog/posts/a": dated("2023-02-07", "exemplo"),
+          "collections/blog/posts/b": dated("2026-10-27", "recente"),
+        },
+        ["exemplo"],
+      ),
+    ).toEqual({ items: "exemplo" });
+  });
+
+  /** A promoted post keeps its planning brief; it is still ours, and may be wrong. */
+  test("never learns from a post Studio generated, even once it is live", () => {
+    expect(
+      blockExample(LIST, {
+        "collections/blog/posts/a": dated("2023-02-07", "do-site"),
+        "collections/blog/posts/b": dated("2026-11-03", "nosso", {
+          planning: { format: { name: "Guia" } },
+        }),
+      }),
+    ).toEqual({ items: "do-site" });
+  });
 });
 
 /**
@@ -2395,6 +2450,21 @@ describe("reconciledSchema", () => {
 
   test("a block with no example to show keeps every assertion", () => {
     expect(reconciledSchema(listSchema, undefined)).toBe(listSchema);
+  });
+
+  test("takes nullable out with the type, or the schema no longer compiles", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        products: { type: "array", items: { type: "string" }, nullable: true },
+      },
+    };
+    expect(
+      reconciledSchema(schema, { products: { __resolveType: "x", props: {} } }),
+    ).toEqual({
+      type: "object",
+      properties: { products: { items: { type: "string" } } },
+    });
   });
 
   test("takes the enum out with the type, since it described the wrong shape", () => {

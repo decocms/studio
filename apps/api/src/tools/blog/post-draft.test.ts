@@ -196,6 +196,19 @@ describe("agentWritingBrief", () => {
     expect(brief).toContain("`props` is an object here, not a string.");
   });
 
+  test("states how long a post in the format runs, when the format says", () => {
+    expect(
+      agentWritingBrief(
+        {
+          ...input,
+          format: { ...input.format, length: "1.200–1.800 palavras" },
+        },
+        "",
+      ),
+    ).toContain("## Format: Guia de escolha\nLength: 1.200–1.800 palavras");
+    expect(agentWritingBrief(input, "")).not.toContain("Length:");
+  });
+
   test("leaves the store section out when nothing was gathered", () => {
     expect(agentWritingBrief(input, "  ")).not.toContain(
       "What this brand's own systems report",

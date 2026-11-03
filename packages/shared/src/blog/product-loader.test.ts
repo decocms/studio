@@ -179,6 +179,27 @@ describe("plain references", () => {
     expect(writeProductListIds("1948858", [])).toBe("");
   });
 
+  test("writes ids in the admin's reference form the site stores", () => {
+    expect(
+      writeProductListIds(["vtex:product:1951568"], ["1948858", "1951101"]),
+    ).toEqual(["vtex:product:1948858", "vtex:product:1951101"]);
+    expect(writeProductListIds("vtex:product:1951568", ["1948858"])).toBe(
+      "vtex:product:1948858",
+    );
+  });
+
+  test("a campaign's product id stays a product ref where the site stores SKU refs", () => {
+    expect(writeProductListIds(["vtex:sku:151294"], ["1948858"])).toEqual([
+      "vtex:product:1948858",
+    ]);
+  });
+
+  test("an id that is already a reference is kept as it is", () => {
+    expect(
+      writeProductListIds(["vtex:product:1"], ["vtex:sku:2", "3"]),
+    ).toEqual(["vtex:sku:2", "vtex:product:3"]);
+  });
+
   test("an array of refs is still an array of refs, not a list of ids", () => {
     const refs = [
       { __resolveType: "site/loaders/productById.ts", productId: "1" },
