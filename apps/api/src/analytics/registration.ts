@@ -151,7 +151,14 @@ export async function readExternalAnalyticsConfig(
       return null;
     }
     const parsed = ExternalConfig.safeParse(await res.json().catch(() => null));
-    return parsed.success ? parsed.data.config : null;
+    if (!parsed.success) {
+      console.error(
+        `[analytics] external config read got an invalid body for id="${id}":`,
+        parsed.error.issues,
+      );
+      return null;
+    }
+    return parsed.data.config;
   } catch (err) {
     console.error(
       `[analytics] external config read failed for id="${id}":`,
