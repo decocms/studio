@@ -45,7 +45,10 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
-import { readAnalyticsRegistration } from "../../analytics/registration";
+import {
+  readAnalyticsRegistration,
+  readExternalAnalyticsConfig,
+} from "../../analytics/registration";
 import {
   isCustomerLakeConfigured,
   linkAnalyticsSite,
@@ -710,7 +713,12 @@ export const createHostingRoutes = () => {
           registered: true,
           external: true,
           host: null,
-          config: { id: access.siteId },
+          // Its modules gate the tab's views (Heatmap); without them the
+          // data views still work from the id alone.
+          config: {
+            ...(await readExternalAnalyticsConfig(access.siteId)),
+            id: access.siteId,
+          },
         });
       }
     }
