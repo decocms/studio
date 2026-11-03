@@ -300,6 +300,7 @@ test("every row's own label finds its row again, in both languages", () => {
     dates: ["Special dates", "Datas especiais"],
     policies: ["Commercial policies", "Políticas comerciais"],
     formats: ["Formats", "Formatos"],
+    blocks: ["Blog blocks", "Blocos do blog"],
   };
   for (const [id, titles] of Object.entries(labels)) {
     const grouped = groupBrandSections(

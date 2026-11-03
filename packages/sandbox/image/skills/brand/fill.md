@@ -28,6 +28,7 @@ reads each one as a field.
 | Palavras-chave / Keywords | What its customers search for | Bullets or one comma-separated line |
 | Datas especiais / Special dates | Dates its sales and content turn on | `- **Date** — when, and why it matters here` |
 | Políticas comerciais / Commercial policies | Shipping, returns, payment, as customers see them | `- **Policy** — what it promises` |
+| Blocos do blog / Blog blocks | How the blog's posts fill each block (see "The blocks") | `- **@Block** — default props, then when to use it` |
 
 Frontmatter: keep an existing `name`. A new guide's `name` is the brand as
 its customers know it (the store's name), never the folder's slug, which
@@ -61,6 +62,33 @@ reads it only while `formats/` is empty.
   longer one is left out.
 - **Intent, not a script**: say what each part of the post does, not the
   sentences it says.
+
+## The blocks
+
+`Blocos do blog` tells the writer how this blog fills each block it builds
+posts from: the props a post takes by default, which a block's schema does not
+say. One line per block the brand's posts use, its default props as JSON, then
+when to use it:
+
+```
+- **@Heading** — `{"level":"h2"}` for a section; `"h3"` for a question or
+  subtopic inside one.
+- **@ProductShelf** — the title goes in `title`, with no @Heading before it;
+  three or four products.
+```
+
+- **Read the block's code first.** A schema says a prop is text; only the
+  component says which values it renders. A block's `__resolveType` names its
+  file (`site/sections/Blog/Post/Heading.tsx` is
+  `src/sections/Blog/Post/Heading.tsx`, or `sections/…` in an older site): read
+  it for the values it accepts and its defaults, and write only those.
+- **A value the posts store but the code ignores is a bug, not a default.** A
+  heading stored as `"3"` in a component that reads `"h3"` renders as an h2.
+  Write what the code reads.
+- **Then the newest published posts**, for how the brand combines the blocks:
+  what titles a shelf, how many products it shows, where a call to action
+  goes, which variant a tip takes.
+- Leave out the blocks no post uses.
 
 ## The look
 
@@ -204,7 +232,7 @@ written whole, one per format, under `formats/`, which you create when it is
 missing.
 
 Then say, briefly, what you filled, what you left empty and why, the formats
-you wrote, which sources you used, and the colors and fonts you set with the file each came
+you wrote, the blocks you described, which sources you used, and the colors and fonts you set with the file each came
 from. For VTEX, GA4 and Search Console, one line each: what you read, or the
 search or call that failed. "Did not look" is not an answer; go back and
 look.

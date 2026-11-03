@@ -54,6 +54,8 @@ export type BlogContext = {
   avoid: BrandRule[];
   vocabulary: BrandRule[];
   voiceExamples: BrandVoiceExample[];
+  /** How the brand fills each blog block: `name` is the block (`@Heading`), `value` its default props and when to use it. */
+  blocks: BrandRule[];
 };
 
 export type BlogFormats = {
@@ -261,6 +263,7 @@ export function brandForBlog(
       avoid: guardrails.avoid,
       vocabulary: rules(part("vocabulary")),
       voiceExamples: voiceExamples(part("examples")),
+      blocks: rules(part("blocks")),
     },
     formats: { formats: formatsFrom(part("formats")) },
   };

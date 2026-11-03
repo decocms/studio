@@ -84,7 +84,8 @@ Prose the agent follows when writing copy or designing. Structure (see
 - **Do / Don't** — a tight checklist.
 - **The sections the brand page shows and the blog writes with** — audience,
   example phrases, rules, vocabulary, values, competitors, keywords, special
-  dates and commercial policies. `fill.md` lists their headings and shapes;
+  dates, commercial policies and how the blog fills its blocks. `fill.md`
+  lists their headings and shapes;
   use those headings so the page and the blog find them. Post formats are not
   a section: they are files under `formats/` (see `fill.md`).
 

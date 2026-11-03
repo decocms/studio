@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Columns03,
   Heart,
+  LayoutGrid01,
   Lock01,
   Announcement02,
   MessageChatSquare,
@@ -130,6 +131,7 @@ const ITEMS = {
   dates: { labelKey: "library.context.itemDates", Icon: Calendar },
   policies: { labelKey: "library.context.itemPolicies", Icon: Lock01 },
   formats: { labelKey: "library.context.itemFormats", Icon: Columns03 },
+  blocks: { labelKey: "library.context.itemBlocks", Icon: LayoutGrid01 },
 } as const satisfies Record<
   BrandItemId,
   { labelKey: TranslationKey; Icon: Icon }

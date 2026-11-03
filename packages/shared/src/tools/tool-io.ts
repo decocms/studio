@@ -3758,6 +3758,7 @@ export interface StudioToolIO {
         avoid?: { name: string; value: string }[] | undefined;
         vocabulary?: { name: string; value: string }[] | undefined;
         voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+        blocks?: { name: string; value: string }[] | undefined;
       };
       campaign: {
         name: string;

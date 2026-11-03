@@ -158,7 +158,10 @@ const BRAND_GROUPS = [
   },
   {
     id: "content",
-    items: [{ id: "formats", match: /format/i }],
+    items: [
+      { id: "formats", match: /format/i },
+      { id: "blocks", match: /\bblocos?\b|\bblocks?\b/i },
+    ],
   },
 ] as const;
 
@@ -171,6 +174,7 @@ export type BrandItemId = (typeof BRAND_GROUPS)[number]["items"][number]["id"];
  */
 const MATCH_ORDER: BrandItemId[] = [
   "formats",
+  "blocks",
   "donts",
   "examples",
   "vocabulary",

@@ -222,6 +222,11 @@ const BlogGenerationSchema = z.object({
     .describe(
       "The brand's own words, and the ordinary ones they replace. `name` is the word to use, `value` says what it names and which word it displaces — for a Portuguese site, \"mochila: a sacola de compras; nunca 'carrinho'\". Take these verbatim from the copy, in the brand's language. A generated post using the displaced word reads as an impostor, which is the whole reason this field exists.",
     ),
+  blocks: z
+    .array(BrandRuleSchema)
+    .describe(
+      'How this brand fills each blog block it uses. `name` is the block as a format cites it (\'@Heading\'), `value` its default props — values the block\'s own code accepts, such as `{"level":"h2"}` for a section and `"h3"` for a question inside one — and when to use it. Where it gives a value, that value wins over the block\'s stored example.',
+    ),
   voiceExamples: z
     .array(VoiceExampleSchema)
     .describe(
@@ -265,4 +270,5 @@ export const ReducedContextSchema = BlogContextSchema.pick({
   avoid: true,
   vocabulary: true,
   voiceExamples: true,
+  blocks: true,
 });

@@ -118,6 +118,8 @@ THE CAMPAIGN IS THE BRIEF, THE FORMAT IS THE SHAPE. The campaign says why this p
 
 THE BLOCKS ARE TYPED, AND THE TYPE IS BINDING. Each available block comes with its JSON Schema. \`props\` is a JSON object matching THAT schema — its property names, its types, its enums, everything it marks required. A prop the schema does not declare is dropped. A value the schema rejects loses the entire section, not just that prop. Read the schema before you write the section: a field called \`items\` that is typed as a string is one string, not a list, however much it sounds like a list.
 
+HOW THIS BRAND FILLS ITS BLOCKS COMES FIRST. Where the brand says which props a block takes by default — a heading level, a shelf's title, a callout's variant — those are the values its blocks render as intended. They win over a block's example.
+
 COPY THE EXAMPLE'S SHAPE. A block that shows one is showing you how this site actually stores it — and a prop the schema leaves untyped is one a stored block already disproved, so the example is the only account of it you have. Follow it: same property names, same shape, your own content.
 
 USE ONLY THE BLOCKS YOU ARE GIVEN, by the \`name\` given. A block that is not listed does not exist on this site.
@@ -324,6 +326,10 @@ function writingContext(input: WritingInput, grounding: string): string {
     renderVoiceExamples(brand.voiceExamples),
     renderCampaign(campaign),
     `## Format: ${input.format.name}${input.format.length ? `\nLength: ${input.format.length}` : ""}\n${input.format.value}`,
+    renderRules(
+      "How this brand fills its blocks — these values win over the examples below",
+      brand.blocks,
+    ),
     `## Blocks available — props must match these schemas\n\n${input.blocks
       .map(renderBlock)
       .join("\n\n")}`,

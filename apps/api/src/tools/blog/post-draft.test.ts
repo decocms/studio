@@ -209,6 +209,31 @@ describe("agentWritingBrief", () => {
     expect(agentWritingBrief(input, "")).not.toContain("Length:");
   });
 
+  test("states how the brand fills its blocks before the blocks themselves", () => {
+    const brief = agentWritingBrief(
+      {
+        ...input,
+        brand: {
+          ...input.brand,
+          blocks: [
+            {
+              name: "@Heading",
+              value: '`{"level":"h2"}` para seção; `"h3"` para pergunta.',
+            },
+          ],
+        },
+      },
+      "",
+    );
+    const notes = brief.indexOf("## How this brand fills its blocks");
+    expect(notes).toBeGreaterThan(-1);
+    expect(brief).toContain('- @Heading: `{"level":"h2"}` para seção');
+    expect(notes).toBeLessThan(brief.indexOf("## Blocks available"));
+    expect(agentWritingBrief(input, "")).not.toContain(
+      "## How this brand fills its blocks",
+    );
+  });
+
   test("leaves the store section out when nothing was gathered", () => {
     expect(agentWritingBrief(input, "  ")).not.toContain(
       "What this brand's own systems report",

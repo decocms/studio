@@ -76,6 +76,11 @@ Quem está montando a primeira casa, entre 25 e 40 anos.
 
 - Frete grátis acima de R$ 299.
 
+## Blocos do blog
+
+- **@Heading** — \`{"level":"h2"}\` para seção; \`"h3"\` para subtópico.
+- **@ProductShelf** — o título vai em \`title\`, sem @Heading antes.
+
 ## Formatos de post
 
 ### Guia prático
@@ -161,6 +166,19 @@ describe("brandForBlog", () => {
     ]);
   });
 
+  test("each block the brand fills is a rule: the block, then its default props", () => {
+    expect(context.blocks).toEqual([
+      {
+        name: "@Heading",
+        value: '`{"level":"h2"}` para seção; `"h3"` para subtópico.',
+      },
+      {
+        name: "@ProductShelf",
+        value: "o título vai em `title`, sem @Heading antes.",
+      },
+    ]);
+  });
+
   test("with no description, the brand's own quote describes it", () => {
     const { brand: quoted } = brandForBlog(
       "# Acme\n\n> Casa é onde a vida acontece.\n",
@@ -175,6 +193,7 @@ describe("brandForBlog", () => {
     expect(empty.brand.values).toEqual([]);
     expect(empty.context.tone).toBe("");
     expect(empty.context.voiceExamples).toEqual([]);
+    expect(empty.context.blocks).toEqual([]);
     expect(empty.formats.formats).toEqual([]);
   });
 

@@ -32,6 +32,7 @@ export const library = {
   "library.context.itemDates": "Special dates",
   "library.context.itemPolicies": "Commercial policies",
   "library.context.itemFormats": "Formats",
+  "library.context.itemBlocks": "Blog blocks",
   "library.context.itemCampaigns": "Campaigns",
   "library.context.noCampaigns": "No campaigns yet",
   "library.context.siteLabel": "Site",
