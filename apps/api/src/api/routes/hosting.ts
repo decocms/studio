@@ -17,7 +17,9 @@
  *                to the control-plane; PLUS analytics/data — the tenant-scoped
  *                dashboard views read straight from the Analytics read surface
  *                (a different upstream), scoped by a warehouse site_id this BFF
- *                resolves from an owned slug and never from the client.
+ *                resolves from an owned slug — or, for a site deco doesn't
+ *                host, from its project's registration — and never from the
+ *                client.
  *
  * Required env vars (see settings/resolve-config.ts):
  *   CONTROLPLANE_REST_URL        – control-plane REST base, e.g.
@@ -42,12 +44,16 @@ import {
   isAuthenticated,
   requireOrganization,
 } from "../../core/studio-context";
-import { readAnalyticsRegistration } from "../../analytics/registration";
+import {
+  readAnalyticsRegistration,
+  storedExternalRegistration,
+} from "../../analytics/registration";
 import {
   isCustomerLakeConfigured,
   linkAnalyticsSite,
 } from "../../customer-lake/client";
 import { getSettings } from "../../settings";
+import { lookupOwnedProject } from "../../tools/experiments/ownership";
 
 type Variables = { studioContext: StudioContext };
 
@@ -407,6 +413,20 @@ export function toTenantAnalyticsPayload(
   return out;
 }
 
+/**
+ * The warehouse id of a site deco doesn't host, which is never in
+ * `org_sites`: the registration ANALYTICS_INSTALL stored on this org's
+ * project for `site`, or null.
+ */
+async function externalWarehouseSiteId(
+  ctx: StudioContext,
+  organizationId: string,
+  site: string,
+): Promise<string | null> {
+  const project = await lookupOwnedProject(ctx, organizationId, site);
+  return storedExternalRegistration(project?.metadata)?.id ?? null;
+}
+
 async function resolveWarehouseSiteId(
   org: { id: string },
   site: string,
@@ -725,13 +745,33 @@ export const createHostingRoutes = () => {
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
 
-    // Same ownership guard as proxyControlplane: the org must own this slug.
+    // Same ownership guard as proxyControlplane: the org must own this slug,
+    // or, for a site deco doesn't host, have registered it from its project.
     // 404 (not 403) so an unowned slug looks like a non-existent one.
     const ownsSite = await ctx.storage.orgSites.isOwnedBy(
       site.toLowerCase(),
       org.id,
     );
+    let externalSiteId: string | null = null;
     if (!ownsSite) {
+      try {
+        externalSiteId = await externalWarehouseSiteId(
+          ctx,
+          org.id,
+          site.toLowerCase(),
+        );
+      } catch (err) {
+        console.error(
+          `[analytics] registration lookup failed for site="${site}":`,
+          err,
+        );
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+    }
+    if (!ownsSite && !externalSiteId) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
 
@@ -741,7 +781,7 @@ export const createHostingRoutes = () => {
       analyticsDataUrl,
       analyticsMasterToken,
     } = getSettings();
-    if (!controlplaneRestUrl || !controlplaneServiceToken) {
+    if (ownsSite && (!controlplaneRestUrl || !controlplaneServiceToken)) {
       return c.json({ error: "Hosting integration is not configured" }, 503);
     }
     if (!analyticsDataUrl || !analyticsMasterToken) {
@@ -768,14 +808,20 @@ export const createHostingRoutes = () => {
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
     // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
     // tab reports a data-load failure instead of a misleading Configuration screen.
-    const resolution = await resolveWarehouseSiteId(org, site);
-    if (resolution.status === "error") {
-      return c.json({ error: "Failed to resolve analytics registration" }, 502);
+    let siteId = externalSiteId;
+    if (!siteId) {
+      const resolution = await resolveWarehouseSiteId(org, site);
+      if (resolution.status === "error") {
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+      if (resolution.status === "unregistered") {
+        return c.json({ registered: false, view, range });
+      }
+      siteId = resolution.id;
     }
-    if (resolution.status === "unregistered") {
-      return c.json({ registered: false, view, range });
-    }
-    const siteId = resolution.id;
 
     const upstream = new URL(`${analyticsDataUrl}/data`);
     upstream.searchParams.set("view", view);

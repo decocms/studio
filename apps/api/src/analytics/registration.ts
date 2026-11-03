@@ -7,8 +7,10 @@
  * (`registerExternalAnalyticsSite`).
  */
 
+import { z } from "zod";
 import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { getSettings } from "../settings";
+import { DECO_ANALYTICS_METADATA_KEY } from "../tools/strip-server-managed-metadata";
 
 export type AnalyticsRegistration =
   | {
@@ -163,4 +165,28 @@ export function typedHost(domain: string | undefined): string | null {
   const url = productionUrlFromDomain(domain);
   const host = url ? new URL(url).hostname : null;
   return host?.includes(".") ? host : null;
+}
+
+const ExternalRegistration = z.object({
+  id: z.string().min(1),
+  key: z.string().min(1),
+});
+
+/** The registration ANALYTICS_INSTALL stored on a project whose site deco
+ *  doesn't host, or null. Only the server writes this key, so its id is one
+ *  this org created and may read. */
+export function storedExternalRegistration(
+  metadata: unknown,
+): { id: string; key: string } | null {
+  if (
+    !metadata ||
+    typeof metadata !== "object" ||
+    !(DECO_ANALYTICS_METADATA_KEY in metadata)
+  ) {
+    return null;
+  }
+  const parsed = ExternalRegistration.safeParse(
+    metadata[DECO_ANALYTICS_METADATA_KEY],
+  );
+  return parsed.success ? parsed.data : null;
 }

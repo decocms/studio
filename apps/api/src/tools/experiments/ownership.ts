@@ -5,16 +5,16 @@ import {
 } from "@decocms/shared/site-slug";
 
 /**
- * The org's project whose site is `site`. A slug linked in `org_sites` names
- * its project directly; a slug linked to another org's project — or a
- * tombstone (its org was deleted) — is never this org's. Projects not linked
- * yet (several imports of one storefront in an org, slugs never claimed) still
- * match by resolved slug.
+ * The org's project whose site is `site`, or undefined. A slug linked in
+ * `org_sites` names its project directly; a slug linked to another org's
+ * project — or a tombstone (its org was deleted) — is never this org's.
+ * Projects not linked yet (several imports of one storefront in an org, slugs
+ * never claimed) still match by resolved slug.
  *
  * Known gap, kept for v7 compatibility: an unlinked slug owned by another org
  * still matches this org's look-alike project.
  */
-export async function findOwnedProject(
+export async function lookupOwnedProject(
   ctx: StudioContext,
   organizationId: string,
   site: string,
@@ -23,14 +23,21 @@ export async function findOwnedProject(
     ctx.storage.virtualMcps.list(organizationId),
     ctx.storage.orgSites.getBySlug(site),
   ]);
-  if (row && row.organizationId === null) {
-    throw new Error("Site not found in organization");
-  }
-  const project = row?.projectId
+  if (row && row.organizationId === null) return undefined;
+  return row?.projectId
     ? row.organizationId === organizationId
       ? vms.find((vm) => vm.id === row.projectId)
       : undefined
     : vms.find((vm) => resolveAgentSiteSlug(vm) === site);
+}
+
+/** {@link lookupOwnedProject}, failing when the org owns no such project. */
+export async function findOwnedProject(
+  ctx: StudioContext,
+  organizationId: string,
+  site: string,
+) {
+  const project = await lookupOwnedProject(ctx, organizationId, site);
   if (!project) {
     throw new Error("Site not found in organization");
   }
