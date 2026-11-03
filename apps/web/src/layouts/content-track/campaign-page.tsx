@@ -18,11 +18,10 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import type { BlogCard } from "@decocms/shared/blog-card";
-import {
-  type CampaignBriefing,
-  type CampaignGoal,
-  type CampaignStatus,
-  MAX_CAMPAIGN_GOALS,
+import type {
+  CampaignBriefing,
+  CampaignGoal,
+  CampaignStatus,
 } from "@decocms/shared/blog-campaign";
 import {
   AlertDialog,
@@ -55,10 +54,7 @@ import { toast } from "sonner";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
-import {
-  GoalDialog,
-  GoalLine,
-} from "@/components/sandbox/content/blog/campaign-goal";
+import { GoalDialog } from "@/components/sandbox/content/blog/campaign-goal";
 import {
   CAMPAIGN_OBJECTIVE_LABEL,
   CAMPAIGN_PROGRESS_LABEL,
@@ -277,7 +273,12 @@ export function CampaignPage({
               onChoose={(briefing) => startAgent({ briefing })}
             />
           ) : (
-            <CampaignProposal campaign={campaign} working={working} />
+            <CampaignProposal
+              campaign={campaign}
+              working={working}
+              onGoal={setEditingGoal}
+              canAddGoal
+            />
           )}
         </div>
         <aside className="w-full shrink-0 lg:w-[264px]">
@@ -324,34 +325,6 @@ export function CampaignPage({
                     {period || t("contentTrack.campaign.noPeriod")}
                   </Row>
                 </>
-              )}
-            </Group>
-            <Group caption={t("contentTrack.campaign.goal")}>
-              {campaign.goals.length === 0 ? (
-                <span className="text-xs text-muted-foreground">
-                  {t("contentTrack.campaign.noGoal")}
-                </span>
-              ) : (
-                campaign.goals.map((goal, index) => (
-                  <button
-                    key={`${goal.text}:${index}`}
-                    type="button"
-                    className="text-left"
-                    onClick={() => setEditingGoal(index)}
-                  >
-                    <GoalLine goals={[goal]} />
-                  </button>
-                ))
-              )}
-              {campaign.goals.length < MAX_CAMPAIGN_GOALS && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="self-start px-0"
-                  onClick={() => setEditingGoal("new")}
-                >
-                  {t("contentTrack.campaign.addGoal")}
-                </Button>
               )}
             </Group>
             {owner && (

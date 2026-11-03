@@ -8,10 +8,12 @@
 import {
   Calendar,
   LinkExternal01,
+  Plus,
   SlashCircle01,
-  Target04,
 } from "@untitledui/icons";
+import { MAX_CAMPAIGN_GOALS } from "@decocms/shared/blog-campaign";
 import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
 import { campaignIsDeveloped } from "@/components/sandbox/content/blog/campaign-model";
 import {
@@ -23,13 +25,20 @@ import { useT } from "@/i18n/use-t.ts";
 import { FrameLine, KeywordChips, Pending, Section } from "./detail-parts";
 import { RoleAtWork } from "./newsroom";
 import { ProductShelf } from "./product-shelf";
+import { goalNodes, goalsHint, WhereItSits } from "./where-it-sits";
 
 export function CampaignProposal({
   campaign,
   working,
+  onGoal,
+  canAddGoal,
 }: {
   campaign: CampaignEntry;
   working: boolean;
+  /** Opens one of its goals, or "new" to add one: the goal's dialog on the campaign page, the campaign page elsewhere. */
+  onGoal: (goal: number | "new") => void;
+  /** Goals are added where they are edited, on the campaign page. */
+  canAddGoal: boolean;
 }) {
   const t = useT();
   if (campaign.status === "draft" && !campaignIsDeveloped(campaign)) {
@@ -71,13 +80,39 @@ export function CampaignProposal({
         >
           {period || t("contentTrack.campaign.noPeriod")}
         </FrameLine>
-        <FrameLine
-          icon={<Target04 size={13} />}
-          label={t("contentTrack.campaign.objective")}
-        >
-          {t(CAMPAIGN_OBJECTIVE_LABEL[campaign.intent.objective])}
-        </FrameLine>
       </section>
+
+      <WhereItSits
+        title={t("contentTrack.sits.campaignTitle")}
+        hint={goalsHint(campaign.goals.length, t)}
+        nodes={goalNodes(campaign.goals, t, onGoal, {
+          title: t("contentTrack.sits.noGoals"),
+          onOpen: () => onGoal("new"),
+        })}
+        action={
+          canAddGoal &&
+          campaign.goals.length > 0 &&
+          campaign.goals.length < MAX_CAMPAIGN_GOALS ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-1"
+              onClick={() => onGoal("new")}
+            >
+              <Plus size={14} />
+              {t("contentTrack.campaign.addGoal")}
+            </Button>
+          ) : undefined
+        }
+        here={{
+          kind: "campaign",
+          label: t("contentTrack.sits.thisCampaign"),
+          meta: [
+            t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type]),
+            t(CAMPAIGN_OBJECTIVE_LABEL[campaign.intent.objective]),
+          ],
+        }}
+      />
 
       {targets.length > 0 && (
         <Section title={t("contentTrack.campaign.targets")}>

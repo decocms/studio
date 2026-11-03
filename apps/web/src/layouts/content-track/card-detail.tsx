@@ -10,10 +10,8 @@
 import { useState } from "react";
 import {
   AlertCircle,
-  BarChart07,
   CheckCircle,
   Clock,
-  CornerDownRight,
   Eye,
   File06,
   Flag05,
@@ -23,7 +21,6 @@ import {
   MessageChatCircle,
   SlashCircle01,
   Tag01,
-  Target04,
 } from "@untitledui/icons";
 import {
   BLOG_CARD_STAGES,
@@ -53,8 +50,9 @@ import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
 import {
-  goalMeasure,
-} from "@/components/sandbox/content/blog/campaign-goal";
+  CAMPAIGN_OBJECTIVE_LABEL,
+  CAMPAIGN_TRIGGER_LABEL,
+} from "@/components/sandbox/content/blog/campaign-labels";
 import {
   campaignAgentWorking,
   campaignIsDeveloped,
@@ -75,7 +73,6 @@ import {
   stageDone,
 } from "./card-model";
 import {
-  FrameLine,
   Group,
   KeywordChips,
   Pending,
@@ -93,6 +90,7 @@ import {
   useCardPreview,
 } from "./use-card-preview";
 import { useOpenCardEditor } from "./use-open-card-editor";
+import { goalNodes, type SitsNode, WhereItSits } from "./where-it-sits";
 
 const PHASES = ["campaign", "hypothesis", "execute", "monitor"] as const;
 
@@ -185,13 +183,17 @@ export function CardDetail({
     campaignIsDeveloped(campaign) &&
     !campaignWorking;
   const sections = card.post?.sections?.length ?? 0;
-  const meta = [
-    t("contentTrack.card.kind"),
-    card.hypothesis?.format?.name,
-    sections > 0
-      ? t("contentTrack.card.sectionCount", { count: sections })
-      : undefined,
-  ].filter(Boolean);
+  // The Campaign phase is titled with the campaign's name, which is not the post's.
+  const meta =
+    phase === "campaign"
+      ? []
+      : [
+          t("contentTrack.card.kind"),
+          card.hypothesis?.format?.name,
+          sections > 0
+            ? t("contentTrack.card.sectionCount", { count: sections })
+            : undefined,
+        ].filter(Boolean);
 
   return (
     <>
@@ -260,9 +262,11 @@ export function CardDetail({
               <h1 className="text-2xl font-bold tracking-[-0.01em] text-foreground">
                 {title}
               </h1>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                {meta.join(" · ")}
-              </p>
+              {meta.length > 0 && (
+                <p className="mt-1 text-[13px] text-muted-foreground">
+                  {meta.join(" · ")}
+                </p>
+              )}
             </div>
             {card.postKey && (
               <Button
@@ -304,6 +308,7 @@ export function CardDetail({
               card={card}
               campaign={campaign}
               working={working}
+              onOpenCampaign={onOpenCampaign}
             />
           ) : phase === "execute" ? (
             <ExecutePhase
@@ -339,10 +344,12 @@ function HypothesisPhase({
   card,
   campaign,
   working,
+  onOpenCampaign,
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
   working: boolean;
+  onOpenCampaign: (campaignId: string) => void;
 }) {
   const t = useT();
   const hypothesis = card.hypothesis ?? {};
@@ -407,8 +414,13 @@ function HypothesisPhase({
             {hypothesis.angle}
           </p>
         )}
-        <CampaignFrame campaign={campaign} hypothesis={hypothesis} />
       </section>
+
+      <HypothesisSits
+        campaign={campaign}
+        hypothesis={hypothesis}
+        onOpenCampaign={onOpenCampaign}
+      />
 
       <Section title={t("contentTrack.card.signals")}>
         <EvidenceBySource evidence={evidence} />
@@ -449,85 +461,63 @@ function HypothesisPhase({
   );
 }
 
-/** The campaign the post belongs to: its goal, this post's share of it, and how that is checked. */
-function CampaignFrame({
+/** What the post answers to: the campaign's goals, the campaign, and this post's own objective. */
+function HypothesisSits({
   campaign,
   hypothesis,
+  onOpenCampaign,
 }: {
   campaign: CampaignEntry | undefined;
   hypothesis: NonNullable<BlogCard["hypothesis"]>;
+  onOpenCampaign: (campaignId: string) => void;
 }) {
   const t = useT();
-  if (!campaign && !hypothesis.objective && !hypothesis.metric) return null;
-  const period = campaign
-    ? [campaign.period.start, campaign.period.end].filter(Boolean).join(" → ")
-    : "";
-  const [goal] = campaign?.goals ?? [];
-  const measure = goal ? goalMeasure(goal, t) : "";
-
+  if (!campaign && !hypothesis.objective) return null;
+  const post: SitsNode = {
+    key: "post",
+    kind: "post",
+    onPage: true,
+    title: t("contentTrack.sits.thisPost"),
+    body: hypothesis.objective || t("contentTrack.sits.noObjective"),
+    meta: hypothesis.metric
+      ? [t("contentTrack.sits.measuredBy", { metric: hypothesis.metric })]
+      : [],
+  };
+  if (!campaign) {
+    return (
+      <WhereItSits
+        title={t("contentTrack.sits.hypothesisTitle")}
+        nodes={[post]}
+      />
+    );
+  }
+  const open = () => onOpenCampaign(campaign.id);
+  const period = [campaign.period.start, campaign.period.end]
+    .filter(Boolean)
+    .join(" → ");
   return (
-    <div className="mt-1 flex flex-col gap-2.5 rounded-[11px] border border-border bg-card px-[13px] py-3">
-      {campaign && (
-        <div className="flex items-center gap-[11px]">
-          <span className="grid size-[30px] shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-            <Flag05 size={14} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13.5px] font-semibold text-foreground">
-              {campaign.name || t("sandbox.campaigns.untitled")}
-            </div>
-            <div className="mt-px text-xs text-muted-foreground tabular-nums">
-              {[t("contentTrack.card.campaign"), period]
-                .filter(Boolean)
-                .join(" · ")}
-            </div>
-          </div>
-        </div>
-      )}
-      <div
-        className={cn(
-          "flex flex-col gap-2 text-[12.5px] leading-[1.45]",
-          campaign && "border-t border-border pt-2.5",
-        )}
-      >
-        {campaign && (
-          <FrameLine
-            icon={<Target04 size={14} className="text-success" />}
-            label={t("contentTrack.card.campaignGoal")}
-          >
-            {goal ? (
-              <>
-                {goal.text.trim()}
-                {measure && (
-                  <span className="font-semibold text-foreground">
-                    {" "}
-                    · {measure}
-                  </span>
-                )}
-              </>
-            ) : (
-              t("contentTrack.card.noGoal")
-            )}
-          </FrameLine>
-        )}
-        {hypothesis.objective && (
-          <FrameLine
-            icon={<CornerDownRight size={14} />}
-            label={t("contentTrack.card.thisPost")}
-          >
-            {hypothesis.objective}
-          </FrameLine>
-        )}
-        {hypothesis.metric && (
-          <FrameLine
-            icon={<BarChart07 size={14} />}
-            label={t("contentTrack.card.measuredIn")}
-          >
-            {hypothesis.metric}
-          </FrameLine>
-        )}
-      </div>
-    </div>
+    <WhereItSits
+      title={t("contentTrack.sits.hypothesisTitle")}
+      nodes={[
+        ...goalNodes(campaign.goals, t, open, {
+          title: t("contentTrack.sits.noGoals"),
+          onOpen: open,
+        }),
+        {
+          key: "campaign",
+          kind: "campaign",
+          title: campaign.name || t("sandbox.campaigns.untitled"),
+          meta: [
+            t("contentTrack.sits.campaign"),
+            t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type]),
+            t(CAMPAIGN_OBJECTIVE_LABEL[campaign.intent.objective]),
+            period,
+          ],
+          onOpen: open,
+        },
+        post,
+      ]}
+    />
   );
 }
 
