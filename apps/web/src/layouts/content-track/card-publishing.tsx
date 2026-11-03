@@ -44,6 +44,7 @@ import {
   cardWritten,
   useCardBranch,
 } from "./use-card-preview";
+import { cardPostKey } from "./card-post-move";
 
 export type CardPatch = StudioToolInput<"BLOG_CARD_UPDATE">["patch"];
 
@@ -175,12 +176,13 @@ export function CardPublishing({
     );
   }
   const read = query.data;
-  const block = read ? read.decofile[card.postKey] : undefined;
+  const postKey = read ? cardPostKey(card, read.decofile) : null;
+  const block = read && postKey ? read.decofile[postKey] : undefined;
   const payload =
     block && typeof block === "object"
       ? getBlogPayload(block as Record<string, unknown>, "posts")
       : undefined;
-  if (!read || !payload) {
+  if (!read || !postKey || !payload) {
     return (
       <p className="text-xs text-muted-foreground">
         {t("contentTrack.publish.unavailable")}
@@ -192,7 +194,7 @@ export function CardPublishing({
       // A new head (a save, or the agent's) starts the form from it.
       key={read.draft.version}
       card={card}
-      postKey={card.postKey}
+      postKey={postKey}
       site={site}
       read={read}
       block={block}

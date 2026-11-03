@@ -100,6 +100,10 @@ export const contentTrack = {
   "contentTrack.card.approve": "Aprovar → Executar",
   "contentTrack.card.runFailed": "Não foi possível iniciar o agente: {error}",
   "contentTrack.card.moveFailed": "Não foi possível mover o card: {error}",
+  "contentTrack.card.postNotMoved":
+    "O card mudou, mas o post no site não: este site não deixa o Studio ler o branch.",
+  "contentTrack.card.postMissing":
+    "O post não está no branch do card, então não há o que agendar ou publicar.",
   "contentTrack.card.missingTitle": "Este card não existe mais",
   "contentTrack.card.missingDescription":
     "Ele foi apagado, ou pertence a outra organização.",

@@ -41,6 +41,7 @@ import { ContentSetup } from "./content-setup";
 import { TrackDivider } from "./track-divider";
 import { type NewBlogpost, NewBlogpostDialog } from "./new-blogpost-dialog";
 import { contentTrackGate } from "./track-state";
+import { useCardStatusMove } from "./use-card-status-move";
 import { useOpenCardChat } from "./use-open-card-chat";
 
 type ContentView = "blogposts" | "campaigns";
@@ -258,16 +259,9 @@ function Blogposts({
       }),
     });
 
+  const moveCard = useCardStatusMove(update.mutateAsync);
   const move = (card: BlogCard, status: BlogCardStatus) =>
-    update.mutate(
-      { id: card.id, patch: { status } },
-      {
-        onError: (err) =>
-          toast.error(
-            t("contentTrack.card.moveFailed", { error: message(err) }),
-          ),
-      },
-    );
+    void moveCard(card, status);
 
   const startRun = (
     card: BlogCard,

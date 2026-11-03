@@ -1,4 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { getBlogPayload } from "@decocms/shared/blog";
 import type { BlogCard } from "@decocms/shared/blog-card";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
@@ -12,6 +16,7 @@ import {
 import { buildDraftPointer } from "@/components/sections-editor/section-preview-url";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
+import { cardPostKey } from "./card-post-move";
 
 /** Why a card shows no preview: each one asks something different of a person. */
 export type CardPreviewGap =
@@ -50,32 +55,42 @@ export function cardWritten(card: BlogCard): boolean {
 }
 
 /**
- * The card's branch at its commit, read once for the preview and the
- * Publishing tab. Null for a hosted site, which answers with its own draft and
- * no decofile. The read waits for the commit: a session read creates a missing
- * branch.
+ * The card's branch at its commit, read once for the preview, the Publishing
+ * tab and a status move. Null for a hosted site, which answers with its own
+ * draft and no decofile.
  */
-export function useCardBranch(card: BlogCard, enabled = true) {
-  const { org } = useProjectContext();
-  const queryClient = useQueryClient();
+export function cardBranchQuery(
+  queryClient: QueryClient,
+  orgSlug: string,
+  card: Pick<BlogCard, "branch" | "commit" | "virtualMcpId">,
+) {
   const { branch, commit, virtualMcpId } = card;
-  return useQuery({
+  return {
     queryKey: KEYS.blogCardDecofile(
-      org.slug,
+      orgSlug,
       virtualMcpId,
       branch ?? "",
       commit ?? "",
     ),
-    enabled: enabled && cardWritten(card),
     staleTime: PREVIEW_STALE_MS,
     retry: false,
     queryFn: async (): Promise<CardBranch | null> => {
       if (!branch) return null;
-      const scope = { orgSlug: org.slug, virtualMcpId, branch };
+      const scope = { orgSlug, virtualMcpId, branch };
       const decofile = await fetchDecofile(queryClient, scope);
       const draft = getDecofileDraft(queryClient, scope);
       return decofile && draft ? { decofile, draft } : null;
     },
+  };
+}
+
+/** The read waits for the commit: a session read creates a missing branch. */
+export function useCardBranch(card: BlogCard, enabled = true) {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  return useQuery({
+    ...cardBranchQuery(queryClient, org.slug, card),
+    enabled: enabled && cardWritten(card),
   });
 }
 
@@ -93,9 +108,10 @@ export function useCardPreview(
   const { org } = useProjectContext();
   const previewBaseUrl = resolvePreviewServerUrl(site?.metadata);
   const query = useCardBranch(card, !!previewBaseUrl);
-  const { postKey, branch, virtualMcpId } = card;
+  const { branch, virtualMcpId } = card;
   const read = query.data;
 
+  const postKey = read ? cardPostKey(card, read.decofile) : null;
   const block = read && postKey ? read.decofile[postKey] : undefined;
   const url =
     read && branch && previewBaseUrl

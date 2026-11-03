@@ -1,10 +1,13 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { BlogCard } from "@decocms/shared/blog-card";
 import { useThreadManager } from "@/components/chat/store/hooks";
 import { authClient } from "@/lib/auth-client";
 import { useProjectContext } from "@/sdk";
 import { cardTitle } from "./card-model";
+import { cardPostKey } from "./card-post-move";
+import { type CardBranch, cardBranchQuery } from "./use-card-preview";
 
 /**
  * A person's Site Editor chat on a card's branch. Fixed per organization, card
@@ -36,6 +39,7 @@ export async function cardEditorThreadId(
 export function useOpenCardEditor() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const threads = useThreadManager();
   const { data: session } = authClient.useSession();
   const [opening, setOpening] = useState(false);
@@ -43,6 +47,12 @@ export function useOpenCardEditor() {
 
   const open = async (card: BlogCard) => {
     if (!userId || !card.branch || !card.postKey) return;
+    // The branch as last read, when there is one, knows where the post sits now.
+    const read = queryClient.getQueryData<CardBranch | null>(
+      cardBranchQuery(queryClient, org.slug, card).queryKey,
+    );
+    const contentItem =
+      (read && cardPostKey(card, read.decofile)) || card.postKey;
     setOpening(true);
     try {
       const thread = await cardEditorThreadId(org.id, card.id, userId);
@@ -58,7 +68,7 @@ export function useOpenCardEditor() {
         search: {
           thread,
           contentCollection: "posts",
-          contentItem: card.postKey,
+          contentItem,
         },
       });
     } catch {
