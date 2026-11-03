@@ -9,13 +9,28 @@ import {
 } from "./publish-required-fields.ts";
 
 const LISTING = "site/sections/Listing.tsx";
+const SECRET = "website/loaders/secret.ts";
 const def = (rt: string) => ({ $ref: `#/definitions/${btoa(rt)}` });
 
 /** A listing section whose promo cards need a headline, an image and a link. */
 const META = {
-  manifest: { blocks: { sections: { [LISTING]: def(LISTING) } } },
+  manifest: {
+    blocks: {
+      sections: { [LISTING]: def(LISTING) },
+      loaders: { [SECRET]: def(SECRET) },
+    },
+  },
   schema: {
     definitions: {
+      [btoa(SECRET)]: {
+        title: SECRET,
+        type: "object",
+        required: ["__resolveType", "ciphertext"],
+        properties: {
+          __resolveType: { type: "string", enum: [SECRET], default: SECRET },
+          ciphertext: { type: "string", title: "Ciphertext", writeOnly: true },
+        },
+      },
       [btoa(LISTING)]: {
         title: LISTING,
         type: "object",
@@ -133,7 +148,7 @@ describe("publishRequiredFields", () => {
     expect(requiredFieldsBlockPublish(found)).toBe(false);
   });
 
-  test("filled content, deletions, saved-block references and unknown blocks pass", () => {
+  test("filled content, deletions, saved-block references, secrets and unknown blocks pass", () => {
     expect(
       publishRequiredFields(
         [
@@ -145,6 +160,15 @@ describe("publishRequiredFields", () => {
           change("Page using a saved section", {
             __resolveType: "website/pages/Page.tsx",
             sections: [{ __resolveType: "Example listing" }],
+          }),
+          change("Section with a secret stored the older way", {
+            __resolveType: LISTING,
+            promoCards: [FILLED_CARD],
+            apiKey: {
+              __resolveType: SECRET,
+              name: "apiKey",
+              encrypted: "ab12",
+            },
           }),
           change("Unknown type", {
             __resolveType: "site/sections/Other.tsx",

@@ -1,3 +1,4 @@
+import { isSecretBlock } from "@decocms/shared/decofile";
 import { isManifestBlockResolveType } from "@/components/sections-editor/block-type-utils.ts";
 import { cachedResolveSchema } from "@/components/sections-editor/fields/resolved-schema-cache.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema.ts";
@@ -21,7 +22,8 @@ const MAX_DEPTH = 32;
  * editor's required markers. Every block inside it is judged by its own
  * schema (a page's sections, a lazy section's inner one). A reference to
  * another saved block isn't: that block is judged when it changes. Blocks the
- * schema doesn't know are skipped, never guessed at.
+ * schema doesn't know are skipped, never guessed at, and so are secrets: older
+ * sites store them as `encrypted`, which the schema's `ciphertext` doesn't match.
  */
 export function publishRequiredFields(
   changes: readonly PublishChange[],
@@ -41,7 +43,12 @@ function blockMissingFields(
   labels: Array<string | number>,
   depth: number,
 ): MissingRequiredField[] {
-  if (depth > MAX_DEPTH || value === null || typeof value !== "object") {
+  if (
+    depth > MAX_DEPTH ||
+    value === null ||
+    typeof value !== "object" ||
+    isSecretBlock(value)
+  ) {
     return [];
   }
   const own: MissingRequiredField[] = [];
