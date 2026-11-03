@@ -550,9 +550,9 @@ function ExecutePhase({
   preview: CardPreview;
 }) {
   const t = useT();
-  /** The person's pick; until then the site's own render when there is one. */
+  /** The person's pick; until then the post's content, with the site a click away. */
   const [view, setView] = useState<"site" | "content" | null>(null);
-  const shown = view ?? (preview.url ? "site" : "content");
+  const shown = view ?? "content";
   if (card.status === "ideas" && !card.post) {
     return (
       <p className="text-sm text-muted-foreground">
