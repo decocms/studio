@@ -358,6 +358,12 @@ describe("boardCollisions", () => {
     expect(collide(closestCorners, { x: 420, y: 70 })).toBe("card_in_review");
   });
 
+  test("lands in the lane whose header the pointer is over", () => {
+    // Above the wells, where a lane's header and swimlane label sit.
+    expect(collide(boardCollisions, { x: 420, y: -30 })).toBe("lane:approved");
+    expect(collide(closestCorners, { x: 420, y: -30 })).toBe("card_in_review");
+  });
+
   test("prefers a card over the lane that holds it, so reordering works", () => {
     expect(collide(boardCollisions, { x: 100, y: 50 })).toBe("card_in_review");
   });

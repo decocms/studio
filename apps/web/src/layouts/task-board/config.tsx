@@ -501,15 +501,32 @@ export function boardGridColumns({
 export const LANE_DROPPABLE_PREFIX = "lane:";
 
 /**
- * The board's drop target: whatever the pointer is inside, else the closest
- * corners. `closestCorners` alone can't pick an empty lane: its droppable runs
- * the lane's full height, so its bottom corners are far from any dragged card
- * and a card in the next lane always measures closer. The keyboard sensor has
+ * The board's drop target: whatever the pointer is inside, else the lane whose
+ * column the pointer is in, else the closest corners. `closestCorners` alone
+ * can't pick an empty lane: its droppable runs the lane's full height, so its
+ * bottom corners are far from any dragged card and a card in the next lane
+ * always measures closer. The column check covers a pointer over a lane's
+ * header or swimlane label, which sit above its well. The keyboard sensor has
  * no pointer, so it keeps the corner distance.
  */
 export const boardCollisions: CollisionDetection = (args) => {
   const within = pointerWithin(args);
-  return within.length > 0 ? within : closestCorners(args);
+  if (within.length > 0) return within;
+  const pointer = args.pointerCoordinates;
+  const column = pointer
+    ? args.droppableContainers.filter((container) => {
+        const rect = args.droppableRects.get(container.id);
+        return (
+          String(container.id).startsWith(LANE_DROPPABLE_PREFIX) &&
+          rect !== undefined &&
+          pointer.x >= rect.left &&
+          pointer.x <= rect.right
+        );
+      })
+    : [];
+  return closestCorners(
+    column.length > 0 ? { ...args, droppableContainers: column } : args,
+  );
 };
 
 /** True for one of the board's columns — the only place a drop may land. */
