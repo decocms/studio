@@ -185,6 +185,58 @@ describe("readBlogState", () => {
     );
   });
 
+  it("reads formats from their files, one version each, over the guide's section", async () => {
+    const { fs } = fakeOrgFs(
+      withFiles({
+        [`${BASE}/brand.md`]: GUIDE,
+        [`${BASE}/formats/lista.md`]:
+          "---\nname: Lista\nsummary: Cinco a dez itens\n---\n\n## Estrutura\n\n1. Itens.\n",
+        [`${BASE}/formats/guia.md`]:
+          "---\nname: Guia prático\n---\nPasso a passo.\n",
+        [`${BASE}/formats/notes.txt`]: "not a format",
+      }),
+    );
+
+    const state = await readBlogState(fs, BRAND);
+
+    expect(state.formats).toEqual({
+      formats: [
+        { id: "guia", name: "Guia prático", value: "Passo a passo." },
+        {
+          id: "lista",
+          name: "Lista",
+          summary: "Cinco a dez itens",
+          value: "## Estrutura\n\n1. Itens.",
+        },
+      ],
+    });
+    expect(state.versions[`${BASE}/formats/guia.md`]).toBe(
+      `hash-of-${BASE}/formats/guia.md`,
+    );
+    expect(state.context?.tone).toBe("Direto.");
+  });
+
+  it("leaves out a format file with no name or a brief past the limit, and says so", async () => {
+    const { fs } = fakeOrgFs(
+      withFiles({
+        [`${BASE}/formats/ok.md`]: "---\nname: Ok\n---\nCurto.",
+        [`${BASE}/formats/anon.md`]: "Sem frontmatter.",
+        [`${BASE}/formats/long.md`]: `---\nname: Longo\n---\n${"x".repeat(8_001)}`,
+      }),
+    );
+
+    const state = await readBlogState(fs, BRAND);
+
+    expect(state.formats).toEqual({
+      formats: [{ id: "ok", name: "Ok", value: "Curto." }],
+      skipped: [
+        { id: "anon", reason: "unnamed" },
+        { id: "long", reason: "too-long" },
+      ],
+    });
+    expect(state.versions[`${BASE}/formats/long.md`]).toBeUndefined();
+  });
+
   it("reads as empty when the brand has no folder yet", async () => {
     const { fs } = fakeOrgFs(new Map(), { unlistable: new Set([BASE]) });
     const state = await readBlogState(fs, BRAND);

@@ -30,10 +30,11 @@ import {
 /**
  * Reading and writing the blog's editorial state, for a caller with no browser.
  *
- * The state is the organization's: its brand guide, read as the blog's brand,
- * writing rules and formats, and the campaigns kept beside it. The guide is
- * edited on the brand page or as a file, never through here — these tools
- * read it and write only campaigns and their seeds. The file layout and its
+ * The state is the organization's: its brand guide, read as the blog's brand
+ * and writing rules, its post formats, and the campaigns kept beside them.
+ * The guide and the formats are edited on the brand page or as files, never
+ * through here — these tools read them and write only campaigns and their
+ * seeds. The file layout and its
  * hazards live in `file-storage/blog-state.ts`; what is here is the contract.
  */
 
@@ -120,7 +121,7 @@ export function conflictOrRethrow(err: unknown): unknown {
 export const BLOG_STATE_GET = defineTool({
   name: "BLOG_STATE_GET",
   description:
-    "Read the organization's blog editorial state: the brand profile, writing rules and post formats, read from its brand guide (`home/brands/<brand>/brand.md`), and the campaigns and seeds kept beside it. Returns `versions` — pass the entries back to BLOG_STATE_SET so a write refuses rather than overwriting an edit made meanwhile. An organization with none of this reads as empty, which is not an error. To change the brand, writing rules or formats, edit the guide's sections.",
+    "Read the organization's blog editorial state: the brand profile and writing rules, read from its brand guide (`home/brands/<brand>/brand.md`); its post formats, one file each under `home/brands/<brand>/formats/`; and the campaigns and seeds kept beside them. Returns `versions` — pass the entries back to BLOG_STATE_SET so a write refuses rather than overwriting an edit made meanwhile. An organization with none of this reads as empty, which is not an error. To change the brand or writing rules, edit the guide's sections; to change a format, edit its file.",
   annotations: {
     title: "Read Blog State",
     readOnlyHint: true,
@@ -144,7 +145,7 @@ export const BLOG_STATE_GET = defineTool({
       "How this blog is written — tone, dos, don'ts, vocabulary, example sentences.",
     ),
     formats: LooseRecord.nullable().describe(
-      "`{ formats: { name, value }[] }` — the shapes of post this blog writes.",
+      "`{ formats: { id, name, summary?, length?, value }[], skipped? }` — the shapes of post this blog writes, one per file under `formats/`; `value` is the brief to copy whole. `skipped` names files left out (`unnamed`, or `too-long` past 8000 characters). A brand that has not moved its formats out of the guide reads them from the guide's section, without `id`.",
     ),
     campaigns: z.array(z.object({ id: z.string(), data: LooseRecord })),
     campaignSeeds: z.array(z.object({ id: z.string(), data: LooseRecord })),
@@ -167,7 +168,7 @@ export const BLOG_STATE_GET = defineTool({
 export const BLOG_STATE_SET = defineTool({
   name: "BLOG_STATE_SET",
   description:
-    "Write the organization's blog campaigns and campaign seeds, beside its brand guide. Every field is optional and only what is given is touched. Campaigns and seeds are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand, writing rules and formats are the guide's sections and are edited there, not here. A chat never writes here: it changes the campaign it shapes with BLOG_CAMPAIGN_UPDATE.",
+    "Write the organization's blog campaigns and campaign seeds, beside its brand guide. Every field is optional and only what is given is touched. Campaigns and seeds are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand and writing rules are the guide's sections, and formats are files beside it; both are edited there, not here. A chat never writes here: it changes the campaign it shapes with BLOG_CAMPAIGN_UPDATE.",
   annotations: {
     title: "Write Blog State",
     readOnlyHint: false,

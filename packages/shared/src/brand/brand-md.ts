@@ -240,6 +240,18 @@ export function writeSection(md: string, title: string, text: string): string {
   return `${md.slice(0, span.start)}\n\n${body}${tail}${md.slice(span.end)}`;
 }
 
+/** The file without one section, heading included; unchanged when it has none. */
+export function removeSection(md: string, title: string): string {
+  const found = headings(md);
+  const at = found.findIndex((h) => sectionTitle(h.text) === title);
+  const heading = found[at];
+  if (!heading) return md;
+  const before = md.slice(0, heading.start).replace(/\n+$/, "\n");
+  const after = md.slice(found[at + 1]?.start ?? md.length);
+  if (!before.trim()) return after;
+  return after ? `${before}\n${after}` : before;
+}
+
 /** The file with its first blockquote replaced, or one added before the first section. */
 export function writeQuote(md: string, text: string): string {
   const quote = text

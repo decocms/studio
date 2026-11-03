@@ -2420,6 +2420,7 @@ export interface StudioToolIO {
                 | {
                     [x: string]: unknown;
                     name: string;
+                    id?: string | undefined;
                     value?: string | undefined;
                   }
                 | undefined;
@@ -2542,6 +2543,7 @@ export interface StudioToolIO {
                 | {
                     [x: string]: unknown;
                     name: string;
+                    id?: string | undefined;
                     value?: string | undefined;
                   }
                 | undefined;
@@ -2670,6 +2672,7 @@ export interface StudioToolIO {
                 | {
                     [x: string]: unknown;
                     name: string;
+                    id?: string | undefined;
                     value?: string | undefined;
                   }
                 | undefined;
@@ -2787,6 +2790,7 @@ export interface StudioToolIO {
                 | {
                     [x: string]: unknown;
                     name: string;
+                    id?: string | undefined;
                     value?: string | undefined;
                   }
                 | undefined;
@@ -2901,6 +2905,7 @@ export interface StudioToolIO {
                 | {
                     [x: string]: unknown;
                     name: string;
+                    id?: string | undefined;
                     value?: string | undefined;
                   }
                 | undefined;
@@ -3033,6 +3038,7 @@ export interface StudioToolIO {
                 | {
                     [x: string]: unknown;
                     name: string;
+                    id?: string | undefined;
                     value?: string | undefined;
                   }
                 | undefined;

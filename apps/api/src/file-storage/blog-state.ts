@@ -1,10 +1,13 @@
 /**
  * The blog's editorial state, in the organization's brand folder.
  *
- * Brand, writing rules and formats are the brand's own guide,
+ * Brand and writing rules are the brand's own guide,
  * `home/brands/<brand>/brand.md` — the file the brand page edits and every
- * agent reads. The blog derives its fields from it and never writes it:
- * a person edits it on the page, an agent edits it as a file.
+ * agent reads. Post formats are files beside it, one each under `formats/`
+ * (`brand-format.ts`); a guide that predates them keeps its formats in a
+ * section, read only while `formats/` is empty. The blog derives its fields
+ * from these files and never writes them: a person edits them on the page, an
+ * agent edits them as files.
  *
  * Campaigns and their seeds sit beside it, one file per record under
  * `campaigns/` and `campaign-seeds/`, keyed by the id the web app mints. One
@@ -22,9 +25,16 @@ import {
   type BlogBrand,
   type BlogContext,
   type BlogFormats,
+  type BrandFormat,
   BRANDS_DIR,
   brandForBlog,
+  FORMATS_DIR,
+  formatIdOf,
+  MAX_FORMAT_CHARS,
+  MAX_FORMATS,
+  parseFormatFile,
   pickBrandDir,
+  type SkippedFormat,
 } from "@decocms/shared/brand";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { retry, RetryError } from "@decocms/shared/std";
@@ -182,6 +192,54 @@ async function readRecords(
 }
 
 /**
+ * The brand's formats, one per file under `formats/`; null when the folder
+ * holds none, so the guide's formats section is read instead. A file with no
+ * `name` or a brief over the limit a card carries is left out and named in
+ * `skipped`.
+ */
+async function readFormats(
+  orgFs: OrgFs,
+  dir: string,
+  versions: Record<string, string>,
+): Promise<BlogFormats | null> {
+  let entries: OrgFsEntry[];
+  try {
+    entries = await orgFs.listDir(BLOG_VOLUME, dir);
+  } catch {
+    return null;
+  }
+  const files = entries
+    .flatMap((entry) => {
+      const id = entry.kind === "file" ? formatIdOf(entry.path) : null;
+      return id ? [{ id, entry }] : [];
+    })
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .slice(0, MAX_FORMATS);
+  if (files.length === 0) return null;
+
+  const read = await Promise.all(
+    files.map(async (file) => ({
+      ...file,
+      text: await readText(orgFs, file.entry.path),
+    })),
+  );
+  const formats: BrandFormat[] = [];
+  const skipped: SkippedFormat[] = [];
+  for (const { id, entry, text } of read) {
+    if (text === null) continue;
+    const format = parseFormatFile(text, id);
+    if (!format) skipped.push({ id, reason: "unnamed" });
+    else if (format.value.length > MAX_FORMAT_CHARS) {
+      skipped.push({ id, reason: "too-long" });
+    } else {
+      if (entry.contentHash) versions[entry.path] = entry.contentHash;
+      formats.push(format);
+    }
+  }
+  return skipped.length > 0 ? { formats, skipped } : { formats };
+}
+
+/**
  * The blog's whole editorial state, from one brand folder.
  *
  * Never throws: a brand with no folder, no guide or no campaigns reads as
@@ -205,8 +263,9 @@ export async function readBlogState(
     (entry) => entry.kind === "file" && entry.path === guidePath,
   );
 
-  const [guide, campaigns, campaignSeeds] = await Promise.all([
+  const [guide, formats, campaigns, campaignSeeds] = await Promise.all([
     guideEntry ? readText(orgFs, guidePath) : Promise.resolve(null),
+    readFormats(orgFs, `${base}/${FORMATS_DIR}`, versions),
     readRecords(orgFs, `${base}/${CAMPAIGNS_DIR}`, MAX_CAMPAIGNS, versions),
     readRecords(
       orgFs,
@@ -225,7 +284,7 @@ export async function readBlogState(
     brandPath: base,
     brand: read?.brand ?? null,
     context: read?.context ?? null,
-    formats: read?.formats ?? null,
+    formats: formats ?? read?.formats ?? null,
     campaigns,
     campaignSeeds,
     versions,

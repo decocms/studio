@@ -11,7 +11,8 @@ draft's brief.
 - The card, with `BLOG_CARD_GET`: its campaign (`campaignId`) and what the
   person asked to explore (`prompt`).
 - The brand, with `BLOG_STATE_GET`: `brand` (who it is, its language),
-  `context` (tone, rules, don'ts, special dates), `formats`, and the card's
+  `context` (tone, rules, don'ts, special dates), `formats` (each with its
+  `id`, `name`, a one-line `summary` and its brief as `value`), and the card's
   campaign among `campaigns`, by id.
 
 The campaign is where the post starts, not where it lands. Its `goal` (what
@@ -87,7 +88,7 @@ ground the hypothesis stands on:
     "title": "<working headline>",
     "statement": "<the thesis: what the post argues, for whom, and why now>",
     "angle": "<how it differs from what is already out there>",
-    "format": { "name": "<one of the brand's formats>", "value": "<its brief, verbatim>" },
+    "format": { "id": "<the format's id>", "name": "<its name>", "value": "<its brief, whole>" },
     "keywords": [{ "term": "sofá para sala pequena", "volume": 1240 }],
     "guardrails": [{ "text": "<what the post must not do>", "origin": "brand" }],
     "objective": "<what this post moves, toward the campaign's goal>",
@@ -98,8 +99,10 @@ ground the hypothesis stands on:
 
 - **The statement argues from the evidence**, for the campaign. Name the
   figure it rests on.
-- **Format**: pick one of `formats` and copy its `name` and `value`. Do not
-  invent one.
+- **Format**: pick the one of `formats` whose `summary` fits the post, and
+  copy its `id`, `name` and `value` exactly. Never invent one, and never
+  shorten the brief: the draft follows it. A brand whose formats still live in
+  its guide gives no `id`; copy `name` and `value`.
 - **Keywords**: three to eight terms readers search. `volume` only when a tool
   reported it.
 - **Guardrails**: from the brand's don'ts and rules (`origin: "brand"`) and

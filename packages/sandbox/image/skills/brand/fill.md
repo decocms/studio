@@ -28,7 +28,6 @@ reads each one as a field.
 | Palavras-chave / Keywords | What its customers search for | Bullets or one comma-separated line |
 | Datas especiais / Special dates | Dates its sales and content turn on | `- **Date** — when, and why it matters here` |
 | Políticas comerciais / Commercial policies | Shipping, returns, payment, as customers see them | `- **Policy** — what it promises` |
-| Formatos / Formats | The shapes of blog post it publishes | One `### Name` per format, with its brief |
 
 Frontmatter: keep an existing `name`. A new guide's `name` is the brand as
 its customers know it (the store's name), never the folder's slug, which
@@ -36,6 +35,28 @@ often names the organization instead. Write `description` — the brand's
 one-line pitch, in its own words — when it is missing, and set `site:` (the
 store's public address, origin only) and `language:` (a BCP-47 tag such as
 `pt-BR`) when you know them. The blog needs both.
+
+## The formats
+
+The shapes of blog post the brand publishes are files, not a section: one per
+format, `formats/<id>.md` beside `brand.md`, where `<id>` is its name in
+lowercase kebab. Follow `templates/format.md` in this skill folder: flat
+frontmatter (`name`, a one-line `summary` an agent chooses the format by, and
+`length`), then the brief as the body, written in the brand's language. A
+`## Formatos` section in `brand.md` is how formats were kept before; the blog
+reads it only while `formats/` is empty.
+
+- **Two to five formats**, from what the brand's blog already publishes and
+  what works: its posts in the repository's blocks, and the `/blog` pages with
+  the most sessions and conversions in GA4.
+- **Each one complete.** Fill every section of the template from evidence: a
+  structure a writer can follow, the site blocks its posts use, cited as
+  `@ComponentName`, title patterns taken from its posts, and two or three
+  example URLs. A section you have no evidence for says so in one line.
+- **Up to 8,000 characters** a file: the card carries the brief whole, and a
+  longer one is left out.
+- **Intent, not a script**: say what each part of the post does, not the
+  sentences it says.
 
 ## The look
 
@@ -141,10 +162,7 @@ shallowly describe it better than five read in full.
    brand's subject, the way it would never say it.
 4. **Rules are imperatives** ("Fale com o leitor como 'você'"), not adjectives
    ("acolhedor"). Don'ts are things to avoid, not dos turned around.
-5. **Formats** describe the job each post shape does: what it is for, how it
-   opens, what it covers and how it ends. Cite the site's components as
-   `@ComponentName` when you know them from its posts. Describe intent, not a
-   fixed sequence. Two to five formats.
+5. **Formats** follow "The formats" above, one file each.
 
 ## Check before you write
 
@@ -162,9 +180,13 @@ claims all fail stays empty.
 - **Only empty** (the default, and what "keep what is already written" means):
   write sections that are missing or empty, and the core tokens `tokens.css`
   lacks; leave every other section and every value already set untouched.
-- **Replace** (only when asked): rewrite the sections and core tokens you have
-  evidence for. Never blank a section, or drop a token, because you found
-  nothing for it.
+  Formats are missing only when `formats/` holds no file and the guide has no
+  formats section.
+- **Replace** (only when asked): rewrite the sections, format files and core
+  tokens you have evidence for. Never blank a section, delete a format, or drop
+  a token, because you found nothing for it. When the guide still has a
+  formats section, move each `###` format into its own file in the template's
+  shape, then delete the section.
 
 ## Writing the file
 
@@ -173,10 +195,12 @@ frontmatter first. Otherwise edit `brand.md` in place. Change only the sections 
 frontmatter keys you are setting; every other byte stays as it was, including
 section numbering, the opening quote and anything the page or a person wrote.
 `tokens.css` follows the same rule: create it with the core when it is
-missing, otherwise change only the tokens you are setting.
+missing, otherwise change only the tokens you are setting. Format files are
+written whole, one per format, under `formats/`, which you create when it is
+missing.
 
-Then say, briefly, what you filled, what you left empty and why, which
-sources you used, and the colors and fonts you set with the file each came
+Then say, briefly, what you filled, what you left empty and why, the formats
+you wrote, which sources you used, and the colors and fonts you set with the file each came
 from. For VTEX, GA4 and Search Console, one line each: what you read, or the
 search or call that failed. "Did not look" is not an answer; go back and
 look.

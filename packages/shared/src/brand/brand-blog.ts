@@ -12,6 +12,7 @@
  */
 
 import { parseFrontmatterDoc } from "../harness/skill-md";
+import type { BrandFormat, SkippedFormat } from "./brand-format";
 import {
   type BrandItemId,
   brandQuote,
@@ -56,7 +57,9 @@ export type BlogContext = {
 };
 
 export type BlogFormats = {
-  formats: BrandRule[];
+  formats: BrandFormat[];
+  /** Files under `formats/` left out, so whoever reads them can say why. */
+  skipped?: SkippedFormat[];
 };
 
 /** One item's sections, joined: a brand may split a part across two headings. */
@@ -200,9 +203,12 @@ export function doDont(markdown: string): {
   return { dos, avoid };
 }
 
-/** Each `### Name` under the formats section, with its brief. */
-export function formatsFrom(markdown: string): BrandRule[] {
-  const formats: BrandRule[] = [];
+/**
+ * Each `### Name` under a guide's formats section, with its brief — how
+ * formats were kept before each became its own file (`brand-format.ts`).
+ */
+export function formatsFrom(markdown: string): BrandFormat[] {
+  const formats: BrandFormat[] = [];
   const chunks = markdown.split(/^###\s+/m).slice(1);
   for (const chunk of chunks) {
     const [heading = "", ...rest] = chunk.split("\n");

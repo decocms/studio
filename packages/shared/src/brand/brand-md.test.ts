@@ -6,6 +6,7 @@ import {
   fontName,
   groupBrandSections,
   pickBrandDir,
+  removeSection,
   withFontName,
   sectionMarkdown,
   writeFrontmatter,
@@ -147,6 +148,19 @@ describe("sections in place", () => {
       `${md}\n## Values\n\nCare.\n`,
     );
     expect(writeSection("", "Values", "Care.")).toBe("## Values\n\nCare.\n");
+  });
+
+  test("removes one section, heading and all, and keeps the rest", () => {
+    expect(removeSection(md, "Voice")).toBe(
+      "---\nname: Acme\n---\n\n## Rules\n\n- One.\n",
+    );
+    expect(removeSection(md, "Rules")).toBe(
+      "---\nname: Acme\n---\n\n## 1. Voice\n\nShort.\n",
+    );
+    expect(
+      removeSection("## Formats\n\n### Guide\n\nx\n\n## Rules\n", "Formats"),
+    ).toBe("## Rules\n");
+    expect(removeSection(md, "Values")).toBe(md);
   });
 });
 

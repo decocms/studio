@@ -121,6 +121,11 @@ export const BlogCardHypothesisSchema = z
       .describe("How this post differs from what is already out there."),
     format: z
       .object({
+        id: z
+          .string()
+          .max(128)
+          .optional()
+          .describe("The format's file under the brand's `formats/`."),
         name: z.string().max(120),
         value: z.string().max(8_000).optional(),
       })
