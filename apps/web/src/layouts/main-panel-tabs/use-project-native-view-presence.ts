@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
@@ -72,7 +73,11 @@ export function useProjectNativeViewPresence(
       releases: hostedCms && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
-      analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
+      // A site deco doesn't host reads the registration its project carries.
+      analytics:
+        hostingEnabled &&
+        controlPlaneViews.analytics &&
+        (ownsSite || !!storedExternalRegistration(project?.metadata)),
       // A v8 site's Monitor reads the telemetry of its own site (the one its
       // token names); a v7 site's reads the analytics site. "error" is a site
       // last found v8, which the tab opens as v8 too (`monitorKind`).
