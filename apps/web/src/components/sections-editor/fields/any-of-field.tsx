@@ -41,6 +41,7 @@ import {
   lazyWrappedInner,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
+  withBranchDiscriminator,
 } from "../block-ref-field-utils";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import { labelFromResolveType } from "../section-types";
@@ -363,7 +364,9 @@ export function AnyOfField({
 
     const persistUnionValue = (next: unknown) => {
       onChange(
-        discriminatorKey ? next : blockRefValueForBranch(next, activeRt),
+        discriminatorKey
+          ? withBranchDiscriminator(next, discriminatorKey, selectedRef)
+          : blockRefValueForBranch(next, activeRt),
       );
     };
 

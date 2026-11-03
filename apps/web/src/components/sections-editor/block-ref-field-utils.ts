@@ -20,6 +20,7 @@ export type BlockRefOption = {
   description?: string;
   schema?: SchemaProperty;
   discriminatorValue?: string;
+  discriminatorRequired?: boolean;
 };
 
 /** Module resolve type used to pick JSON Schema (unwraps lazy wrappers). */
@@ -202,6 +203,27 @@ export function blockRefValueForBranch(
     return next;
   }
   return { ...next, __resolveType: activeRt };
+}
+
+/**
+ * A branch value of a `type`-discriminated union (`discriminatorKey`) with the
+ * branch's discriminator written when it is missing and the branch requires
+ * it. The form hides that field, so an edit never writes it, and deco rejects
+ * a value without it (`type: required`). An optional one is left out.
+ */
+export function withBranchDiscriminator(
+  next: unknown,
+  discriminatorKey: string,
+  ref: BlockRefOption | undefined,
+): unknown {
+  if (!next || typeof next !== "object" || Array.isArray(next)) return next;
+  const discriminatorValue = ref?.discriminatorValue;
+  if (discriminatorValue === undefined) return next;
+  if (!ref?.discriminatorRequired) return next;
+  const obj = next as Record<string, unknown>;
+  // One the schema doesn't list (an older copy of it) is kept, not overwritten.
+  if (obj[discriminatorKey] !== undefined) return next;
+  return { ...obj, [discriminatorKey]: discriminatorValue };
 }
 
 /** Resolve nested form schema from live meta (admin uses getSchemaRefForResolveType). */
