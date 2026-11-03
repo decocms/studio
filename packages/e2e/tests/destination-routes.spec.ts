@@ -317,9 +317,8 @@ test.describe("destination routes", () => {
     );
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toBeHidden({ timeout: SHELL_TIMEOUT_MS });
-    // A project's settings live in its Context now.
     expect(new URL(page.url()).pathname).toBe(
-      `/${orgSlug}/projects/${projectId}/library`,
+      `/${orgSlug}/projects/${projectId}/settings`,
     );
 
     /* A bookmark from before the split lands on the same view, with `main`
@@ -329,8 +328,7 @@ test.describe("destination routes", () => {
     );
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/projects/${projectId}/library` &&
-        url.searchParams.get("section") === "general" &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("main") === null,
       { timeout: SHELL_TIMEOUT_MS },
@@ -351,8 +349,7 @@ test.describe("destination routes", () => {
     await page.goto(`/${orgSlug}/agents/${projectId}/settings`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/projects/${projectId}/library` &&
-        url.searchParams.get("section") === "general" &&
+        url.pathname === `/${orgSlug}/projects/${projectId}/settings` &&
         url.searchParams.get("virtualmcpid") === null,
       { timeout: SHELL_TIMEOUT_MS },
     );

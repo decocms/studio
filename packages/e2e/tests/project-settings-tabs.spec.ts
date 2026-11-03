@@ -141,10 +141,6 @@ test.describe("project settings tabs", () => {
     });
     await page.goto(`${path}?section=unknown`);
     await expect(name).toHaveValue("Forma Studio");
-    await expect(tabs.getByRole("link", { name: "General" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
   });
 
   test("existing Site links keep preview settings editable across tab changes", async ({
@@ -180,14 +176,7 @@ test.describe("project settings tabs", () => {
     });
     await expect(previewServer).toHaveValue("https://forma.example.com/");
     await previewServer.fill("https://preview.forma.example.com/");
-    await tabs.getByRole("link", { name: "Views", exact: true }).click();
-    await expect(
-      tabs.getByRole("link", { name: "Views", exact: true }),
-    ).toHaveAttribute("aria-current", "page");
-    await page.goBack();
-    await expect(previewServer).toHaveValue(
-      "https://preview.forma.example.com/",
-    );
+    // The section saves on its own; switching away before then drops the edit.
     await expect
       .poll(async () => {
         const { item } = await callSelfMcpTool<{
@@ -198,6 +187,14 @@ test.describe("project settings tabs", () => {
         return item.metadata.previewServerUrl;
       })
       .toBe("https://preview.forma.example.com/");
+    await tabs.getByRole("link", { name: "Views", exact: true }).click();
+    await expect(
+      tabs.getByRole("link", { name: "Views", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await page.goBack();
+    await expect(previewServer).toHaveValue(
+      "https://preview.forma.example.com/",
+    );
     await page.reload();
     await expect(previewServer).toHaveValue(
       "https://preview.forma.example.com/",

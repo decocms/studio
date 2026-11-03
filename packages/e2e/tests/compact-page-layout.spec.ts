@@ -53,7 +53,7 @@ test.describe("compact page layout", () => {
     ).toBeVisible();
     const breadcrumbs = header.getByRole("navigation", { name: "Breadcrumbs" });
     // The org is never a crumb, so a project's home has no trail above its
-    // title — the way back out is the sidebar's project switcher.
+    // title — the way back out is the sidebar header's back arrow.
     await expect(breadcrumbs.getByRole("link")).toHaveCount(0);
     await expect(header.getByText("Overview", { exact: true })).toHaveCount(0);
     await header.screenshot({
@@ -65,10 +65,7 @@ test.describe("compact page layout", () => {
     ).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 720 });
     const sidebar = page.locator('[data-slot="sidebar"]');
-    await sidebar.getByRole("button", { name: "Forma", exact: true }).click();
-    await page
-      .getByRole("menuitem", { name: "All projects", exact: true })
-      .click();
+    await sidebar.getByRole("button", { name: /^Back to / }).click();
     await expect(
       header.getByRole("heading", { name: "Home", exact: true }),
     ).toBeVisible();
