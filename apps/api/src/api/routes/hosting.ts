@@ -44,10 +44,8 @@ import {
   isAuthenticated,
   requireOrganization,
 } from "../../core/studio-context";
-import {
-  readAnalyticsRegistration,
-  storedExternalRegistration,
-} from "../../analytics/registration";
+import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
+import { readAnalyticsRegistration } from "../../analytics/registration";
 import {
   isCustomerLakeConfigured,
   linkAnalyticsSite,
@@ -414,17 +412,41 @@ export function toTenantAnalyticsPayload(
 }
 
 /**
- * The warehouse id of a site deco doesn't host, which is never in
- * `org_sites`: the registration ANALYTICS_INSTALL stored on this org's
- * project for `site`, or null.
+ * How the org may read `site`'s analytics: it owns the slug in `org_sites`, or,
+ * for a site deco doesn't host (never in `org_sites`), its project carries the
+ * registration ANALYTICS_INSTALL made for it. Null when neither; `error` when
+ * the project lookup failed.
  */
-async function externalWarehouseSiteId(
+async function analyticsAccess(
   ctx: StudioContext,
   organizationId: string,
   site: string,
-): Promise<string | null> {
-  const project = await lookupOwnedProject(ctx, organizationId, site);
-  return storedExternalRegistration(project?.metadata)?.id ?? null;
+): Promise<
+  | { kind: "owned" }
+  | { kind: "external"; siteId: string }
+  | { kind: "error" }
+  | null
+> {
+  if (await ctx.storage.orgSites.isOwnedBy(site, organizationId)) {
+    return { kind: "owned" };
+  }
+  try {
+    const project = await lookupOwnedProject(ctx, organizationId, site);
+    const stored = storedExternalRegistration(project?.metadata);
+    return stored ? { kind: "external", siteId: stored.id } : null;
+  } catch (err) {
+    console.error(
+      `[analytics] registration lookup failed for site="${site}":`,
+      err,
+    );
+    return { kind: "error" };
+  }
+}
+
+function registrationLookupFailed(
+  c: import("hono").Context<{ Variables: Variables }>,
+) {
+  return c.json({ error: "Failed to resolve analytics registration" }, 502);
 }
 
 async function resolveWarehouseSiteId(
@@ -672,9 +694,28 @@ export const createHostingRoutes = () => {
   // GET /api/:org/hosting/:site/analytics/status — `{ configured, registered,
   // host, config }`. `configured:false` means the collector isn't wired to the
   // environment; `registered:false` means the site can be registered here.
-  app.get("/:site/analytics/status", (c) =>
-    proxyControlplane(c, "analytics/status"),
-  );
+  // The control-plane has no record of a site deco doesn't host.
+  app.get("/:site/analytics/status", async (c) => {
+    const ctx = c.get("studioContext");
+    const site = c.req.param("site");
+    if (isAuthenticated(ctx) && site) {
+      const org = requireOrganization(ctx);
+      const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+      if (access?.kind === "error") return registrationLookupFailed(c);
+      if (access?.kind === "external") {
+        const { analyticsDataUrl, analyticsMasterToken } = getSettings();
+        return c.json({
+          // Only the read surface serves an external site.
+          configured: !!analyticsDataUrl && !!analyticsMasterToken,
+          registered: true,
+          external: true,
+          host: null,
+          config: { id: access.siteId },
+        });
+      }
+    }
+    return proxyControlplane(c, "analytics/status");
+  });
 
   // GET /api/:org/hosting/:site/analytics/usage (?from&to&granularity passthrough)
   // Upstream may answer 503 `not_configured` when analytics isn't set up; that
@@ -745,33 +786,10 @@ export const createHostingRoutes = () => {
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
 
-    // Same ownership guard as proxyControlplane: the org must own this slug,
-    // or, for a site deco doesn't host, have registered it from its project.
     // 404 (not 403) so an unowned slug looks like a non-existent one.
-    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    let externalSiteId: string | null = null;
-    if (!ownsSite) {
-      try {
-        externalSiteId = await externalWarehouseSiteId(
-          ctx,
-          org.id,
-          site.toLowerCase(),
-        );
-      } catch (err) {
-        console.error(
-          `[analytics] registration lookup failed for site="${site}":`,
-          err,
-        );
-        return c.json(
-          { error: "Failed to resolve analytics registration" },
-          502,
-        );
-      }
-    }
-    if (!ownsSite && !externalSiteId) {
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
 
@@ -781,7 +799,10 @@ export const createHostingRoutes = () => {
       analyticsDataUrl,
       analyticsMasterToken,
     } = getSettings();
-    if (ownsSite && (!controlplaneRestUrl || !controlplaneServiceToken)) {
+    if (
+      access.kind === "owned" &&
+      (!controlplaneRestUrl || !controlplaneServiceToken)
+    ) {
       return c.json({ error: "Hosting integration is not configured" }, 503);
     }
     if (!analyticsDataUrl || !analyticsMasterToken) {
@@ -808,7 +829,7 @@ export const createHostingRoutes = () => {
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
     // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
     // tab reports a data-load failure instead of a misleading Configuration screen.
-    let siteId = externalSiteId;
+    let siteId = access.kind === "external" ? access.siteId : null;
     if (!siteId) {
       const resolution = await resolveWarehouseSiteId(org, site);
       if (resolution.status === "error") {
@@ -917,11 +938,9 @@ export const createHostingRoutes = () => {
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
 
-    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!ownsSite) {
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
 

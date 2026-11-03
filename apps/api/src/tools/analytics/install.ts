@@ -8,7 +8,6 @@ import {
   registerAnalyticsSite,
   registerExternalAnalyticsSite,
   siteDomains,
-  storedExternalRegistration,
   typedHost,
 } from "../../analytics/registration";
 import { defineTool } from "../../core/define-tool";
@@ -19,7 +18,10 @@ import {
 } from "../../customer-lake/client";
 import { findOwnedProject } from "../experiments/ownership";
 import { resolveRepositoryForProject } from "../experiments/resolve-site-repository";
-import { DECO_ANALYTICS_METADATA_KEY } from "../strip-server-managed-metadata";
+import {
+  DECO_ANALYTICS_METADATA_KEY,
+  storedExternalRegistration,
+} from "@decocms/shared/deco-analytics";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
 import { buildInstruction } from "./instruction";
 
