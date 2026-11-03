@@ -35,14 +35,18 @@ describe("campaignPatchRefusal", () => {
     ).toContain("shaped elsewhere");
   });
 
-  test("an agent never sends the goals or the status", () => {
+  test("an agent sets the goals, and never the status", () => {
     const patch: CampaignPatch = { status: "active" };
     expect(campaignPatchRefusal(DEVELOPED, patch, "thrd_card")).toContain(
       "a person's",
     );
     expect(
-      campaignPatchRefusal(DEVELOPED, { goals: [] }, "thrd_card"),
-    ).toContain("a person's");
+      campaignPatchRefusal(
+        DEVELOPED,
+        { goals: [{ text: "Crescer", metric: "sessions", target: "+20%" }] },
+        "thrd_card",
+      ),
+    ).toBeNull();
   });
 
   test("a person sets only the goals and the status", () => {

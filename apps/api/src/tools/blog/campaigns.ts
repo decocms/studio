@@ -42,7 +42,7 @@ export function blogCampaignInstructions(campaign: {
     "",
     `- The campaign is \`${campaign.campaignId}\`, kept in the brand folder \`home/brands/${campaign.brand}/\`. Read it, the brand and its other campaigns with BLOG_STATE_GET at the start of every turn.`,
     "- Follow `campaigns.md` in the `blogpost` skill.",
-    `- Save what you produce with BLOG_CAMPAIGN_UPDATE on \`${campaign.campaignId}\`, sending only what changed. Never send \`status\` or \`goals\`: approving a campaign and setting its goals are a person's.`,
+    `- Save what you produce with BLOG_CAMPAIGN_UPDATE on \`${campaign.campaignId}\`, sending only what changed, its goals included. Never send \`status\`: approving a campaign is a person's.`,
     "- Write in the brand's language, whatever language you are spoken to in.",
     "- Your Studio tools are namespaced `mcp__studio__`: where this names `BLOG_CAMPAIGN_UPDATE`, the tool you call is `mcp__studio__BLOG_CAMPAIGN_UPDATE`.",
   ].join("\n");
@@ -58,7 +58,7 @@ export function blogCampaignPrompt(
       ? "Suggest this campaign's briefings: follow `campaigns.md` in the `blogpost` skill. Save the evidence, then the briefings, present them here and wait."
       : turn === "develop"
         ? "Develop this campaign from its chosen briefing: follow `campaigns.md` in the `blogpost` skill. Save it as you go, present it here and wait."
-        : "Change this campaign as the person asks: follow `campaigns.md` in the `blogpost` skill, keeping its status and goals.";
+        : "Change this campaign as the person asks: follow `campaigns.md` in the `blogpost` skill, keeping its status.";
   const said = message?.trim();
   return said ? `${ask}\n\nFrom the person:\n${said}` : ask;
 }
@@ -93,7 +93,7 @@ export async function restoreCampaignRun(
 export const BLOG_CAMPAIGN_UPDATE = defineTool({
   name: "BLOG_CAMPAIGN_UPDATE",
   description:
-    "Change a blog campaign by merging `patch` into it: objects merge, arrays replace, and `null` removes a field. Send only what changed; `goals` and `briefing` are replaced whole. A campaign's agent writes only the campaign its chat shapes, and never its goals or status; a person sets only the goals and the status. Without `expect`, a write that lands meanwhile is merged with; with it, the call fails if the campaign moved since that version. Studio creates a campaign before its chat's first turn, so this never creates one.",
+    "Change a blog campaign by merging `patch` into it: objects merge, arrays replace, and `null` removes a field. Send only what changed; `goals` and `briefing` are replaced whole. A campaign's agent writes only the campaign its chat shapes, its goals included, and never its status; a person sets only the goals and the status. Without `expect`, a write that lands meanwhile is merged with; with it, the call fails if the campaign moved since that version. Studio creates a campaign before its chat's first turn, so this never creates one.",
   annotations: {
     title: "Update a Blog Campaign",
     readOnlyHint: false,

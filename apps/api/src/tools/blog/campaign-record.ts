@@ -103,8 +103,8 @@ export function campaignPatchRefusal(
     if (stored.threadId !== runThreadId) {
       return "This chat writes only the campaign it shapes, and this one is shaped elsewhere.";
     }
-    if ("goals" in patch || "status" in patch) {
-      return "The goals and the status are a person's: leave them out of the patch.";
+    if ("status" in patch) {
+      return "The status is a person's: leave it out of the patch.";
     }
     return null;
   }

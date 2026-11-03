@@ -64,7 +64,7 @@ export const MAX_CAMPAIGN_GOALS = 5;
 /**
  * One thing a campaign is for, in a figure someone can check: the text says
  * it, the metric names what counts it, the target says how far. The
- * campaign's period is its deadline. A person sets it; no model proposes one.
+ * campaign's period is its deadline. Its agent sets it; a person can change it.
  */
 export const CampaignGoalSchema = z.object({
   text: z
@@ -76,8 +76,13 @@ export const CampaignGoalSchema = z.object({
   metric: z
     .enum(CAMPAIGN_GOAL_METRICS)
     .nullable()
-    .describe("What counts it, or null when nobody picked one."),
-  target: z.string().max(40).describe("How far, as a person wrote it: '+20%'."),
+    .describe("What counts it, or null when none of these does."),
+  target: z
+    .string()
+    .max(40)
+    .describe(
+      "How far, from where the evidence puts it today: '+20%'. Empty when nothing gives that baseline.",
+    ),
 });
 export type CampaignGoal = z.infer<typeof CampaignGoalSchema>;
 

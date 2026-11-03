@@ -210,7 +210,7 @@ export const contentTrack = {
   "contentTrack.campaign.guardrails": "O que evitar",
   "contentTrack.campaign.tone": "Tom:",
   "contentTrack.campaign.goalHint":
-    "Quem define é você: o agente nunca muda a meta.",
+    "O agente define as metas ao montar a campanha; aqui você ajusta.",
   "contentTrack.campaign.goalPlaceholder":
     "Vender mais ar-condicionado nesta semana",
   "contentTrack.campaign.saveGoal": "Salvar meta",
@@ -218,8 +218,8 @@ export const contentTrack = {
   "contentTrack.sits.hypothesisTitle": "Onde esta hipótese se encaixa",
   "contentTrack.sits.goal": "Meta",
   "contentTrack.sits.goalsNone": "nenhuma meta ainda",
-  "contentTrack.sits.goalsOne": "1 meta que você definiu",
-  "contentTrack.sits.goalsMany": "{count} metas que você definiu",
+  "contentTrack.sits.goalsOne": "1 meta",
+  "contentTrack.sits.goalsMany": "{count} metas",
   "contentTrack.sits.noGoals":
     "Nenhuma meta ainda: defina o que a campanha precisa mover",
   "contentTrack.sits.thisCampaign": "Esta campanha",

@@ -207,7 +207,8 @@ export const contentTrack = {
   "contentTrack.campaign.keywords": "Keywords",
   "contentTrack.campaign.guardrails": "What to avoid",
   "contentTrack.campaign.tone": "Tone:",
-  "contentTrack.campaign.goalHint": "Yours to set: the agent never changes it.",
+  "contentTrack.campaign.goalHint":
+    "The agent sets the goals when it shapes the campaign; adjust them here.",
   "contentTrack.campaign.goalPlaceholder":
     "Sell more air conditioners this week",
   "contentTrack.campaign.saveGoal": "Save goal",
@@ -215,8 +216,8 @@ export const contentTrack = {
   "contentTrack.sits.hypothesisTitle": "Where this hypothesis sits",
   "contentTrack.sits.goal": "Goal",
   "contentTrack.sits.goalsNone": "no goals yet",
-  "contentTrack.sits.goalsOne": "1 goal you defined",
-  "contentTrack.sits.goalsMany": "{count} goals you defined",
+  "contentTrack.sits.goalsOne": "1 goal",
+  "contentTrack.sits.goalsMany": "{count} goals",
   "contentTrack.sits.noGoals":
     "No goals yet: set what the campaign has to move",
   "contentTrack.sits.thisCampaign": "This campaign",
