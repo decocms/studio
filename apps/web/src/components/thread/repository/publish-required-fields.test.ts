@@ -276,6 +276,15 @@ describe("the site's content check", () => {
     expect(blocking("changes", [change("New listing", published)])).toBe(true);
   });
 
+  test("`changes` follows an already-missing field to its new index", () => {
+    const moved = change(
+      "Example listing",
+      { __resolveType: LISTING, promoCards: [FILLED_CARD, EMPTY_CARD] },
+      published,
+    );
+    expect(blocking("changes", [moved])).toBe(false);
+  });
+
   test("`none` checks nothing", () => {
     expect(
       publishRequiredFieldsGate({

@@ -28,7 +28,9 @@ const MAX_DEPTH = 32;
  *
  * With `changes`, a field the published version already left missing is only
  * listed: the site runs with it, and holding the Publish would block every
- * later edit of that block.
+ * later edit of that block. It counts as already missing at the same path, or
+ * when an identical object lacked it anywhere before (items added ahead of it
+ * move it to another index).
  */
 export function publishRequiredFields(
   changes: readonly PublishChange[],
@@ -38,14 +40,19 @@ export function publishRequiredFields(
   return changes.flatMap((change) => {
     if (!change.toJson) return [];
     let fields = blockMissingFields(change.toJson, meta, [], [], 0);
-    if (check === "changes" && change.fromJson) {
-      const before = new Set(
-        blockMissingFields(change.fromJson, meta, [], [], 0)
-          .filter((field) => field.blocks)
-          .map((field) => pathKey(field.path)),
+    const fromJson = change.fromJson;
+    if (check === "changes" && fromJson) {
+      const before = blockMissingFields(fromJson, meta, [], [], 0).filter(
+        (field) => field.blocks,
+      );
+      const paths = new Set(before.map((field) => pathKey(field.path)));
+      const owners = new Set(
+        before.map((field) => ownerKey(fromJson, field.path)),
       );
       fields = fields.map((field) =>
-        field.blocks && before.has(pathKey(field.path))
+        field.blocks &&
+        (paths.has(pathKey(field.path)) ||
+          owners.has(ownerKey(change.toJson, field.path)))
           ? { ...field, blocks: false }
           : field,
       );
@@ -55,6 +62,15 @@ export function publishRequiredFields(
 }
 
 const pathKey = (path: ReadonlyArray<string | number>) => path.join("\u0000");
+
+/** The missing field's name and the object that lacks it, by content. */
+function ownerKey(root: unknown, path: ReadonlyArray<string | number>): string {
+  let owner = root;
+  for (const key of path.slice(0, -1)) {
+    owner = (owner as Record<string | number, unknown> | null)?.[key];
+  }
+  return `${String(path.at(-1))}\u0000${JSON.stringify(owner)}`;
+}
 
 function blockMissingFields(
   value: unknown,
