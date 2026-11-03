@@ -80,6 +80,7 @@ import {
   type PublishPolicy,
 } from "./sandbox-git-api.ts";
 import type { PrSummary } from "./use-pr-data.ts";
+import type { ContentCheck } from "@decocms/shared/sdk/types/virtual-mcp";
 import {
   useCmsPublishActions,
   type CmsPublishMode,
@@ -119,6 +120,8 @@ export interface PublishDialogProps {
   owner: string;
   repo: string;
   publishPolicy: PublishPolicy;
+  /** The site's `contentCheck`: what Publish checks for missing required fields. */
+  contentCheck: ContentCheck | null | undefined;
   /** Where Preview opens: Fast Preview's draft URL, or the sandbox preview. */
   draftPreviewUrl: string | null;
   destinationHost: string | null;
@@ -697,6 +700,7 @@ function CmsPublishView({
   repoTarget,
   owner,
   repo,
+  contentCheck,
   draftPreviewUrl,
   destinationHost,
   previewServerUrl,
@@ -869,6 +873,7 @@ function CmsPublishView({
   const siteMeta = useCachedSiteMeta({ orgSlug, virtualMcpId, branch });
   const requiredFields = publishRequiredFieldsGate({
     meta: siteMeta,
+    check: contentCheck,
     changes,
     contentPending: bodiesPending,
     contentFailed: bodiesFailed,

@@ -225,6 +225,18 @@ Defina passo a passo como o agente deve tratar as solicitações.
 3. Resumir o resultado e propor próximos passos.
 4. Pedir confirmação antes de fazer qualquer alteração.
 </workflows>`,
+  "virtualMcp.contentCheck.label": "Verificação de conteúdo ao publicar",
+  "virtualMcp.contentCheck.description":
+    "O que o Publish verifica sobre campos obrigatórios ausentes no conteúdo.",
+  "virtualMcp.contentCheck.none": "Nenhuma",
+  "virtualMcp.contentCheck.noneDescription":
+    "Publica sem verificar campos obrigatórios.",
+  "virtualMcp.contentCheck.changes": "Só as mudanças",
+  "virtualMcp.contentCheck.changesDescription":
+    "Segura o Publish quando uma mudança deixa um campo obrigatório ausente. Campos que já estavam ausentes só são listados.",
+  "virtualMcp.contentCheck.all": "Tudo",
+  "virtualMcp.contentCheck.allDescription":
+    "Segura o Publish enquanto algum bloco publicado tiver um campo obrigatório ausente. Indicado para sites cujo build roda o deco check.",
   "virtualMcp.virtualMcp.publishing": "Publicação",
   "virtualMcp.virtualMcp.publishingDescription":
     "Controle quando as alterações deste projeto podem ser publicadas diretamente, sem revisão por pull request.",

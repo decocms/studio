@@ -73,6 +73,7 @@ const EMPTY_CARD = { cta: { variant: "solid" } };
 const change = (
   name: string,
   toJson: Record<string, unknown> | null,
+  fromJson: Record<string, unknown> | null = null,
 ): PublishChange => ({
   kind: "block",
   blockKey: name,
@@ -82,7 +83,7 @@ const change = (
   status: "edited",
   filepaths: [],
   sections: [],
-  fromJson: null,
+  fromJson,
   toJson,
 });
 
@@ -193,6 +194,7 @@ describe("publishRequiredFieldsGate", () => {
   ) =>
     publishRequiredFieldsGate({
       meta: META,
+      check: undefined,
       changes: unfilled,
       contentPending: false,
       contentFailed: false,
@@ -227,5 +229,63 @@ describe("publishRequiredFieldsGate", () => {
       checking: false,
       blocks: false,
     });
+  });
+});
+
+describe("the site's content check", () => {
+  const published = { __resolveType: LISTING, promoCards: [EMPTY_CARD] };
+  const blocking = (
+    check: "none" | "changes" | "all" | undefined,
+    changes: PublishChange[],
+  ) =>
+    publishRequiredFieldsGate({
+      meta: META,
+      check,
+      changes,
+      contentPending: false,
+      contentFailed: false,
+      review: false,
+    }).blocks;
+
+  test("`changes` (the default) only lists a field the published version already left missing", () => {
+    const edited = [
+      change(
+        "Example listing",
+        { ...published, title: "New title" },
+        published,
+      ),
+    ];
+    expect(blocking("changes", edited)).toBe(false);
+    expect(blocking(undefined, edited)).toBe(false);
+    const found = publishRequiredFields(edited, META, "changes");
+    expect(found[0]!.fields.map(requiredFieldLabel)).toEqual([
+      "Promo cards › 1 › Headline",
+      "Promo cards › 1 › Image",
+      "Promo cards › 1 › Button › Link",
+    ]);
+    expect(blocking("all", edited)).toBe(true);
+  });
+
+  test("`changes` holds a field the change leaves missing, and every one in a new block", () => {
+    const addedCard = change(
+      "Example listing",
+      { __resolveType: LISTING, promoCards: [FILLED_CARD, EMPTY_CARD] },
+      { __resolveType: LISTING, promoCards: [FILLED_CARD] },
+    );
+    expect(blocking("changes", [addedCard])).toBe(true);
+    expect(blocking("changes", [change("New listing", published)])).toBe(true);
+  });
+
+  test("`none` checks nothing", () => {
+    expect(
+      publishRequiredFieldsGate({
+        meta: META,
+        check: "none",
+        changes: [change("New listing", published)],
+        contentPending: true,
+        contentFailed: false,
+        review: false,
+      }),
+    ).toEqual({ found: [], checking: false, blocks: false });
   });
 });

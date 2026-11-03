@@ -5,6 +5,7 @@ import { render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import type { CmsMode } from "@decocms/shared/sdk/types";
+import { ContentCheckField } from "./content-check-field";
 import { ContentEditingField } from "./content-editing-field";
 import { PublishPolicyField } from "./publish-policy-field";
 
@@ -28,6 +29,13 @@ function PolicyHarness({ policy }: { policy: string | null }) {
     defaultValues: { metadata: { publishPolicy: policy } },
   });
   return <PublishPolicyField control={form.control} onCommit={() => {}} />;
+}
+
+function CheckHarness({ check }: { check: string | null }) {
+  const form = useForm({
+    defaultValues: { metadata: { contentCheck: check } },
+  });
+  return <ContentCheckField control={form.control} onCommit={() => {}} />;
 }
 
 function renderField(ui: React.ReactElement) {
@@ -77,6 +85,26 @@ describe("PublishPolicyField", () => {
     );
     expect(renderField(<PolicyHarness policy={null} />).trigger).toBe(
       "Smart review",
+    );
+  });
+});
+
+describe("ContentCheckField", () => {
+  test("describes the field, not the selected check", () => {
+    const descriptions = [null, "none", "changes", "all"].map(
+      (check) => renderField(<CheckHarness check={check} />).description,
+    );
+    expect(new Set(descriptions).size).toBe(1);
+    expect(descriptions[0]).toBe(
+      "What Publish checks for required fields left missing in the content.",
+    );
+  });
+
+  test("shows the selected check in the trigger, `Only changes` when unset", () => {
+    expect(renderField(<CheckHarness check="all" />).trigger).toBe("All");
+    expect(renderField(<CheckHarness check="none" />).trigger).toBe("None");
+    expect(renderField(<CheckHarness check={null} />).trigger).toBe(
+      "Only changes",
     );
   });
 });

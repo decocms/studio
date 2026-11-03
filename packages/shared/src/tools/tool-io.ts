@@ -3876,6 +3876,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           siteSlug?: string | null | undefined;
+          contentCheck?: "none" | "changes" | "all" | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
@@ -4167,6 +4168,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               siteSlug?: string | null | undefined;
+              contentCheck?: "none" | "changes" | "all" | null | undefined;
               publishPolicy?:
                 | "smart"
                 | "open"
@@ -4380,6 +4382,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           siteSlug?: string | null | undefined;
+          contentCheck?: "none" | "changes" | "all" | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
@@ -4632,6 +4635,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           siteSlug?: string | null | undefined;
+          contentCheck?: "none" | "changes" | "all" | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
@@ -4875,6 +4879,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           siteSlug?: string | null | undefined;
+          contentCheck?: "none" | "changes" | "all" | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
@@ -5119,6 +5124,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               siteSlug?: string | null | undefined;
+              contentCheck?: "none" | "changes" | "all" | null | undefined;
               publishPolicy?:
                 | "smart"
                 | "open"
@@ -5340,6 +5346,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           siteSlug?: string | null | undefined;
+          contentCheck?: "none" | "changes" | "all" | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
@@ -5581,6 +5588,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           siteSlug?: string | null | undefined;
+          contentCheck?: "none" | "changes" | "all" | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;
@@ -7238,6 +7246,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           siteSlug?: string | null | undefined;
+          contentCheck?: "none" | "changes" | "all" | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
           productionUrl?: string | null | undefined;

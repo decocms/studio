@@ -221,6 +221,18 @@ Define step-by-step how the agent should handle requests.
 3. Summarize the result and propose next steps.
 4. Ask for confirmation before making any changes.
 </workflows>`,
+  "virtualMcp.contentCheck.label": "On-publish content check",
+  "virtualMcp.contentCheck.description":
+    "What Publish checks for required fields left missing in the content.",
+  "virtualMcp.contentCheck.none": "None",
+  "virtualMcp.contentCheck.noneDescription":
+    "Publish without checking required fields.",
+  "virtualMcp.contentCheck.changes": "Only changes",
+  "virtualMcp.contentCheck.changesDescription":
+    "Hold Publish when a change leaves a required field missing. Fields that were already missing are only listed.",
+  "virtualMcp.contentCheck.all": "All",
+  "virtualMcp.contentCheck.allDescription":
+    "Hold Publish while any published block has a required field missing. Suits sites whose build runs deco check.",
   "virtualMcp.virtualMcp.publishing": "Publishing",
   "virtualMcp.virtualMcp.publishingDescription":
     "Control when this project's changes can be published directly, skipping pull-request review.",
