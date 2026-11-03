@@ -58,6 +58,61 @@ export const CAMPAIGN_GOAL_METRICS = [
 ] as const;
 export type CampaignGoalMetric = (typeof CAMPAIGN_GOAL_METRICS)[number];
 
+/** How many goals a campaign keeps. */
+export const MAX_CAMPAIGN_GOALS = 5;
+
+/**
+ * One thing a campaign is for, in a figure someone can check: the text says
+ * it, the metric names what counts it, the target says how far. The
+ * campaign's period is its deadline. A person sets it; no model proposes one.
+ */
+export const CampaignGoalSchema = z.object({
+  text: z
+    .string()
+    .max(200)
+    .describe(
+      "The goal in the brand's language: 'Grow organic traffic on accessories'.",
+    ),
+  metric: z
+    .enum(CAMPAIGN_GOAL_METRICS)
+    .nullable()
+    .describe("What counts it, or null when nobody picked one."),
+  target: z.string().max(40).describe("How far, as a person wrote it: '+20%'."),
+});
+export type CampaignGoal = z.infer<typeof CampaignGoalSchema>;
+
+/**
+ * A campaign's goals: its `goals`, or the single `goal` a record kept before a
+ * campaign could have several, read as a list of one. A goal with no text is
+ * none.
+ */
+export function campaignGoals(record: {
+  goals?: unknown;
+  goal?: unknown;
+}): CampaignGoal[] {
+  const listed: unknown[] = Array.isArray(record.goals)
+    ? record.goals
+    : record.goal
+      ? [record.goal]
+      : [];
+  return listed
+    .flatMap((value) => {
+      if (!value || typeof value !== "object") return [];
+      const goal = value as Record<string, unknown>;
+      const text = typeof goal.text === "string" ? goal.text.trim() : "";
+      if (!text) return [];
+      // A metric this version does not know keeps the goal's words, not the metric.
+      return [
+        {
+          text,
+          metric: CAMPAIGN_GOAL_METRICS.find((m) => m === goal.metric) ?? null,
+          target: typeof goal.target === "string" ? goal.target.trim() : "",
+        },
+      ];
+    })
+    .slice(0, MAX_CAMPAIGN_GOALS);
+}
+
 /** A target is the slice a campaign argues for — never a single product. */
 export const CAMPAIGN_TARGET_KINDS = ["category", "collection"] as const;
 export type CampaignTargetKind = (typeof CAMPAIGN_TARGET_KINDS)[number];

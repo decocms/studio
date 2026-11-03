@@ -193,14 +193,14 @@ export const contentTrack = {
   "contentTrack.campaign.guardrails": "O que evitar",
   "contentTrack.campaign.tone": "Tom:",
   "contentTrack.campaign.goal": "Meta",
-  "contentTrack.campaign.noGoal": "Sem meta ainda.",
-  "contentTrack.campaign.setGoal": "Definir meta",
-  "contentTrack.campaign.editGoal": "Editar meta",
+  "contentTrack.campaign.noGoal": "Sem metas ainda.",
   "contentTrack.campaign.goalHint":
     "Quem define é você: o agente nunca muda a meta.",
   "contentTrack.campaign.goalPlaceholder":
     "Vender mais ar-condicionado nesta semana",
   "contentTrack.campaign.saveGoal": "Salvar meta",
+  "contentTrack.campaign.addGoal": "Adicionar meta",
+  "contentTrack.campaign.deleteGoal": "Apagar meta",
   "contentTrack.campaign.bornIn": "Nasceu em",
   "contentTrack.campaign.posts": "Blogposts",
   "contentTrack.campaign.postCount": "{count} blogpost(s)",

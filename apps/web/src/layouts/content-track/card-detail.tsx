@@ -54,7 +54,6 @@ import { Panel } from "@/components/panel";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
 import {
   goalMeasure,
-  hasGoal,
 } from "@/components/sandbox/content/blog/campaign-goal";
 import {
   campaignAgentWorking,
@@ -463,7 +462,8 @@ function CampaignFrame({
   const period = campaign
     ? [campaign.period.start, campaign.period.end].filter(Boolean).join(" → ")
     : "";
-  const measure = campaign ? goalMeasure(campaign.goal, t) : "";
+  const [goal] = campaign?.goals ?? [];
+  const measure = goal ? goalMeasure(goal, t) : "";
 
   return (
     <div className="mt-1 flex flex-col gap-2.5 rounded-[11px] border border-border bg-card px-[13px] py-3">
@@ -495,9 +495,9 @@ function CampaignFrame({
             icon={<Target04 size={14} className="text-success" />}
             label={t("contentTrack.card.campaignGoal")}
           >
-            {hasGoal(campaign.goal) ? (
+            {goal ? (
               <>
-                {campaign.goal.text.trim()}
+                {goal.text.trim()}
                 {measure && (
                   <span className="font-semibold text-foreground">
                     {" "}

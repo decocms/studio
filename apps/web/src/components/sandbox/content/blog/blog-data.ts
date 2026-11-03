@@ -85,7 +85,6 @@ import {
   CampaignBriefingSchema,
   type CampaignRun,
   CampaignRunSchema,
-  CAMPAIGN_GOAL_METRICS,
   CAMPAIGN_KEY_PREFIX,
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_SEED_KEY_PREFIX,
@@ -93,7 +92,8 @@ import {
   CAMPAIGN_TARGET_KINDS,
   CAMPAIGN_TRIGGERS,
   MAX_CAMPAIGN_PRODUCT_IMAGES,
-  type CampaignGoalMetric,
+  type CampaignGoal,
+  campaignGoals,
   type CampaignObjective,
   type CampaignStatus,
   type CampaignTargetKind,
@@ -844,7 +844,7 @@ export { CAMPAIGN_KEY_PREFIX };
  */
 export {
   CAMPAIGN_STATUSES,
-  type CampaignGoalMetric,
+  type CampaignGoal,
   type CampaignObjective,
   type CampaignStatus,
   type CampaignTargetKind,
@@ -885,16 +885,6 @@ export interface CampaignProduct {
   description: string;
 }
 
-/** What a campaign is for, in a figure someone can check by its period's end. */
-export interface CampaignGoal {
-  /** The goal in the brand's words; "" when the campaign has none. */
-  text: string;
-  /** What counts it; null until someone picks it. */
-  metric: CampaignGoalMetric | null;
-  /** How far, as typed: "+20%". */
-  target: string;
-}
-
 export interface CampaignEntry {
   key: string;
   /** The record's id: its key without the prefix. */
@@ -916,7 +906,8 @@ export interface CampaignEntry {
   /** `YYYY-MM-DD`, both optional — not every campaign has dates pinned. */
   period: { start: string | null; end: string | null };
   trigger: { type: CampaignTrigger; note: string };
-  goal: CampaignGoal;
+  /** What it is for, each in a figure someone can check by its period's end. */
+  goals: CampaignGoal[];
   intent: {
     objective: CampaignObjective;
     targets: CampaignTarget[];
@@ -1025,7 +1016,6 @@ export function scanCampaigns(
     const trigger = asRecord(record.trigger) ?? {};
     const intent = asRecord(record.intent) ?? {};
     const guardrails = asRecord(record.guardrails) ?? {};
-    const goal = asRecord(record.goal) ?? {};
     campaigns.push({
       key,
       id: key.slice(CAMPAIGN_KEY_PREFIX.length),
@@ -1042,11 +1032,7 @@ export function scanCampaigns(
         type: oneOf(CAMPAIGN_TRIGGERS, trigger.type, "seasonal"),
         note: str(trigger.note),
       },
-      goal: {
-        text: str(goal.text),
-        metric: CAMPAIGN_GOAL_METRICS.find((m) => m === goal.metric) ?? null,
-        target: str(goal.target),
-      },
+      goals: campaignGoals(record),
       intent: {
         objective: oneOf(CAMPAIGN_OBJECTIVES, intent.objective, "awareness"),
         targets: readCampaignTargets(intent.targets),

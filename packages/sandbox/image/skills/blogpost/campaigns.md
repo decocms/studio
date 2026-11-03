@@ -8,7 +8,7 @@ instructions name, or, in a blogpost card's chat, the card's `campaignId`.
 Studio created the campaign before your first turn, so you never create one.
 Save with `BLOG_CAMPAIGN_UPDATE` on its id, sending only what changed: objects
 merge, arrays replace, `null` removes, and `briefing` is replaced whole. Never
-send `status` or `goal`: approving a campaign and setting its goal are a
+send `status` or `goals`: approving a campaign and setting its goals are a
 person's.
 
 ## 1. Read, and let the campaign say what comes next
@@ -197,13 +197,13 @@ result" beats "check the facts".
 The campaign's name, its period, why now (with its figures and their tools),
 its objective, how many targets and products it has, its keywords, and your
 verdict with its risks. Then one line for each system you could not read, and
-why. Close by saying a person approves it and sets its goal. Then stop.
+why. Close by saying a person approves it and sets its goals. Then stop.
 
 ## 8. Change on request
 
 Read the campaign again with `BLOG_STATE_GET`, change only what was asked, and
 save it with `BLOG_CAMPAIGN_UPDATE`. This holds after it is approved too: a
-person adjusts a campaign through you. Its status and goal stay theirs.
+person adjusts a campaign through you. Its status and goals stay theirs.
 
 ## When something is missing
 

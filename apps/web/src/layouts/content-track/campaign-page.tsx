@@ -18,9 +18,11 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import type { BlogCard } from "@decocms/shared/blog-card";
-import type {
-  CampaignBriefing,
-  CampaignStatus,
+import {
+  type CampaignBriefing,
+  type CampaignGoal,
+  type CampaignStatus,
+  MAX_CAMPAIGN_GOALS,
 } from "@decocms/shared/blog-campaign";
 import {
   AlertDialog,
@@ -56,7 +58,6 @@ import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data"
 import {
   GoalDialog,
   GoalLine,
-  hasGoal,
 } from "@/components/sandbox/content/blog/campaign-goal";
 import {
   CAMPAIGN_OBJECTIVE_LABEL,
@@ -123,7 +124,8 @@ export function CampaignPage({
     reached: CampaignPagePhase;
   } | null>(null);
   const phase = pick?.reached === reached ? pick.phase : reached;
-  const [goalOpen, setGoalOpen] = useState(false);
+  /** The goal whose dialog is open: its index, or "new" for one being added. */
+  const [editingGoal, setEditingGoal] = useState<number | "new" | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   const [askDelete, setAskDelete] = useState(false);
 
@@ -158,6 +160,19 @@ export function CampaignPage({
     update.mutate(
       { id: campaign.id, patch: { status } },
       {
+        onError: (err) =>
+          toast.error(
+            t("contentTrack.campaign.updateFailed", { error: message(err) }),
+          ),
+      },
+    );
+
+  /** The campaign's goals replaced by `goals`, closing the goal dialog once saved. */
+  const saveGoals = (goals: CampaignGoal[]) =>
+    update.mutate(
+      { id: campaign.id, patch: { goals } },
+      {
+        onSuccess: () => setEditingGoal(null),
         onError: (err) =>
           toast.error(
             t("contentTrack.campaign.updateFailed", { error: message(err) }),
@@ -312,23 +327,32 @@ export function CampaignPage({
               )}
             </Group>
             <Group caption={t("contentTrack.campaign.goal")}>
-              {hasGoal(campaign.goal) ? (
-                <GoalLine goal={campaign.goal} />
-              ) : (
+              {campaign.goals.length === 0 ? (
                 <span className="text-xs text-muted-foreground">
                   {t("contentTrack.campaign.noGoal")}
                 </span>
+              ) : (
+                campaign.goals.map((goal, index) => (
+                  <button
+                    key={`${goal.text}:${index}`}
+                    type="button"
+                    className="text-left"
+                    onClick={() => setEditingGoal(index)}
+                  >
+                    <GoalLine goals={[goal]} />
+                  </button>
+                ))
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start px-0"
-                onClick={() => setGoalOpen(true)}
-              >
-                {hasGoal(campaign.goal)
-                  ? t("contentTrack.campaign.editGoal")
-                  : t("contentTrack.campaign.setGoal")}
-              </Button>
+              {campaign.goals.length < MAX_CAMPAIGN_GOALS && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-start px-0"
+                  onClick={() => setEditingGoal("new")}
+                >
+                  {t("contentTrack.campaign.addGoal")}
+                </Button>
+              )}
             </Group>
             {owner && (
               <Group caption={t("contentTrack.campaign.bornIn")}>
@@ -350,24 +374,29 @@ export function CampaignPage({
         </aside>
       </div>
 
-      {goalOpen && (
+      {editingGoal !== null && (
         <GoalDialog
-          goal={campaign.goal}
+          goal={
+            editingGoal === "new" ? null : (campaign.goals[editingGoal] ?? null)
+          }
           pending={update.isPending}
-          onClose={() => setGoalOpen(false)}
+          onClose={() => setEditingGoal(null)}
           onSave={(goal) =>
-            update.mutate(
-              { id: campaign.id, patch: { goal } },
-              {
-                onSuccess: () => setGoalOpen(false),
-                onError: (err) =>
-                  toast.error(
-                    t("contentTrack.campaign.updateFailed", {
-                      error: message(err),
-                    }),
+            saveGoals(
+              editingGoal === "new"
+                ? [...campaign.goals, goal]
+                : campaign.goals.map((each, index) =>
+                    index === editingGoal ? goal : each,
                   ),
-              },
             )
+          }
+          onDelete={
+            editingGoal === "new"
+              ? undefined
+              : () =>
+                  saveGoals(
+                    campaign.goals.filter((_, index) => index !== editingGoal),
+                  )
           }
         />
       )}

@@ -2298,6 +2298,20 @@ export interface StudioToolIO {
                 | undefined;
               campaignName?: string | undefined;
               seedKey?: string | undefined;
+              goals?:
+                | {
+                    text: string;
+                    metric:
+                      | "organic_sessions"
+                      | "sessions"
+                      | "search_clicks"
+                      | "search_impressions"
+                      | "conversions"
+                      | "revenue"
+                      | null;
+                    target: string;
+                  }[]
+                | undefined;
               goal?:
                 | {
                     text: string;
@@ -3559,7 +3573,7 @@ export interface StudioToolIO {
               toneOverrides?: string | undefined;
             }
           | undefined;
-        goal?:
+        goals?:
           | {
               text: string;
               metric:
@@ -3571,8 +3585,7 @@ export interface StudioToolIO {
                 | "revenue"
                 | null;
               target: string;
-            }
-          | null
+            }[]
           | undefined;
         status?: "active" | "draft" | "paused" | "finished" | undefined;
         evidence?:
@@ -3774,6 +3787,20 @@ export interface StudioToolIO {
           avoidComplements?: { name: string; value: string }[] | undefined;
           toneOverrides?: string | undefined;
         };
+        goals?:
+          | {
+              text: string;
+              metric:
+                | "organic_sessions"
+                | "sessions"
+                | "search_clicks"
+                | "search_impressions"
+                | "conversions"
+                | "revenue"
+                | null;
+              target: string;
+            }[]
+          | undefined;
         goal?:
           | {
               text: string;

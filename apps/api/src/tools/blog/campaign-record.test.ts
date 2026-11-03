@@ -35,21 +35,21 @@ describe("campaignPatchRefusal", () => {
     ).toContain("shaped elsewhere");
   });
 
-  test("an agent never sends the goal or the status", () => {
+  test("an agent never sends the goals or the status", () => {
     const patch: CampaignPatch = { status: "active" };
     expect(campaignPatchRefusal(DEVELOPED, patch, "thrd_card")).toContain(
       "a person's",
     );
     expect(
-      campaignPatchRefusal(DEVELOPED, { goal: null }, "thrd_card"),
+      campaignPatchRefusal(DEVELOPED, { goals: [] }, "thrd_card"),
     ).toContain("a person's");
   });
 
-  test("a person sets only the goal and the status", () => {
+  test("a person sets only the goals and the status", () => {
     expect(
       campaignPatchRefusal(
         DEVELOPED,
-        { goal: { text: "Crescer", metric: "sessions", target: "+20%" } },
+        { goals: [{ text: "Crescer", metric: "sessions", target: "+20%" }] },
         null,
       ),
     ).toBeNull();
@@ -127,18 +127,27 @@ describe("applyCampaignPatch", () => {
     expect(next.updatedAt).toBe(NOW);
   });
 
-  test("a goal lands on an old record whose other fields are incomplete", () => {
+  test("goals land on an old record whose other fields are incomplete, and its single goal goes", () => {
     const legacy = {
       campaignName: "Antiga",
       status: "active",
       intent: { objective: "nope" },
+      goal: { text: "Antiga meta", metric: null, target: "" },
     };
-    const next = applyCampaignPatch(
-      legacy,
-      { goal: { text: "Crescer", metric: null, target: "" } },
-      NOW,
-    );
-    expect(next.goal).toEqual({ text: "Crescer", metric: null, target: "" });
+    const goals = [
+      { text: "Crescer", metric: null, target: "" },
+      { text: "Vender", metric: "revenue" as const, target: "+10%" },
+    ];
+    const next = applyCampaignPatch(legacy, { goals }, NOW);
+    expect(next.goals).toEqual(goals);
+    expect("goal" in next).toBe(false);
+  });
+
+  test("more goals than a campaign keeps are refused", () => {
+    const goal = { text: "x", metric: null, target: "" };
+    expect(() =>
+      applyCampaignPatch(DEVELOPED, { goals: Array(6).fill(goal) }, NOW),
+    ).toThrow();
   });
 
   test("evidence carries each figure's detail, and refuses one that cannot be drawn", () => {

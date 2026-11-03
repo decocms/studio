@@ -39,7 +39,7 @@ export function CampaignList({
                   : t("sandbox.generatePost.campaignNoProducts")}
               </Badge>
             </div>
-            <GoalLine goal={campaign.goal} className="mt-1" />
+            <GoalLine goals={campaign.goals} className="mt-1" />
             {campaign.trigger.note && (
               <p className="line-clamp-2 text-xs text-muted-foreground">
                 {campaign.trigger.note}

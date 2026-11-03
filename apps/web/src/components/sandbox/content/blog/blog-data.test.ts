@@ -768,11 +768,13 @@ describe("scanCampaigns", () => {
       run: { requestedAt: "2026-01-02T00:00:00.000Z", requestedBy: "u1" },
       period: { start: "2026-11-20", end: "2026-11-30" },
       trigger: { type: "seasonal", note: "A semana inteira, não o dia." },
-      goal: {
-        text: "Vender mais ar condicionado na semana",
-        metric: "revenue",
-        target: "+30%",
-      },
+      goals: [
+        {
+          text: "Vender mais ar condicionado na semana",
+          metric: "revenue",
+          target: "+30%",
+        },
+      ],
       intent: {
         objective: "conversion",
         targets: [
@@ -812,7 +814,7 @@ describe("scanCampaigns", () => {
     expect(campaign?.trigger.type).toBe("seasonal");
     expect(campaign?.intent.objective).toBe("awareness");
     expect(campaign?.period).toEqual({ start: null, end: null });
-    expect(campaign?.goal).toEqual({ text: "", metric: null, target: "" });
+    expect(campaign?.goals).toEqual([]);
     expect(campaign?.briefings).toEqual([]);
     expect(campaign?.briefing).toBeNull();
     expect(campaign?.run).toBeNull();
@@ -837,11 +839,26 @@ describe("scanCampaigns", () => {
     const [campaign] = scanCampaigns({
       [key]: { goal: { text: "Mais visitas", metric: "likes", target: "+5%" } },
     });
-    expect(campaign?.goal).toEqual({
-      text: "Mais visitas",
-      metric: null,
-      target: "+5%",
+    expect(campaign?.goals).toEqual([
+      { text: "Mais visitas", metric: null, target: "+5%" },
+    ]);
+  });
+
+  test("goals read as listed, over the single goal an older record kept", () => {
+    const [campaign] = scanCampaigns({
+      [key]: {
+        goal: { text: "Antiga", metric: null, target: "" },
+        goals: [
+          { text: "Mais sessões", metric: "sessions", target: "+20%" },
+          { text: "   ", metric: null, target: "" },
+          { text: "Mais vendas", metric: "revenue", target: "+10%" },
+        ],
+      },
     });
+    expect(campaign?.goals.map((goal) => goal.text)).toEqual([
+      "Mais sessões",
+      "Mais vendas",
+    ]);
   });
 
   test("an unknown enum value reads as the default, never breaking the board", () => {

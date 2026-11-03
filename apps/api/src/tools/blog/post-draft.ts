@@ -4,7 +4,12 @@ import {
   CAMPAIGN_TRIGGERS,
 } from "@decocms/shared/blog-campaign";
 import { renderGrounding } from "./site-tools";
-import { CampaignGoalSchema, ReducedContextSchema } from "./schema";
+import {
+  CampaignGoalSchema,
+  campaignGoals,
+  MAX_CAMPAIGN_GOALS,
+} from "@decocms/shared/blog-campaign";
+import { ReducedContextSchema } from "./schema";
 import { IMAGE_SENTINEL } from "./block-props";
 
 /**
@@ -62,6 +67,7 @@ const CampaignSchema = z.object({
     type: z.enum(CAMPAIGN_TRIGGERS),
     note: z.string().max(MAX_BODY_CHARS),
   }),
+  goals: z.array(CampaignGoalSchema).max(MAX_CAMPAIGN_GOALS).optional(),
   goal: CampaignGoalSchema.optional(),
   intent: z.object({
     objective: z.enum(CAMPAIGN_OBJECTIVES),
@@ -171,17 +177,21 @@ function renderVoiceExamples(
 export function renderCampaign(
   campaign: z.infer<typeof CampaignSchema>,
 ): string {
-  const { intent, period, trigger, guardrails, goal } = campaign;
+  const { intent, period, trigger, guardrails } = campaign;
   const when =
     period.start || period.end
       ? `\nRuns ${period.start ?? "from whenever"} to ${period.end ?? "no fixed end"}.`
       : "";
-  const measure = [goal?.target.trim(), goal?.metric?.replaceAll("_", " ")]
-    .filter(Boolean)
-    .join(" ");
-  const aim = goal?.text.trim()
-    ? `\nGoal: ${goal.text.trim()}${measure ? ` (${measure})` : ""}. Every post in this campaign is a step toward it.`
-    : "";
+  const goals = campaignGoals(campaign).map((goal) => {
+    const measure = [goal.target.trim(), goal.metric?.replaceAll("_", " ")]
+      .filter(Boolean)
+      .join(" ");
+    return `${goal.text.trim()}${measure ? ` (${measure})` : ""}`;
+  });
+  const aim =
+    goals.length > 0
+      ? `\nGoals: ${goals.join("; ")}. Every post in this campaign is a step toward them.`
+      : "";
   return [
     `## The campaign: ${campaign.name}\nWhy now (${trigger.type}): ${trigger.note}\nObjective: ${intent.objective}.${aim}${when}`,
     intent.targets.length > 0 &&

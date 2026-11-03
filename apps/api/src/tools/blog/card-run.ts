@@ -191,7 +191,7 @@ export function blogCardRunInstructions(card: {
     `- The card is \`${card.id}\`, kept in the brand folder \`home/brands/${card.brand}/\`. Read it with BLOG_CARD_GET at the start of every turn, and save what you produce with BLOG_CARD_UPDATE after every step, sending only what changed.`,
     `- The site is \`${card.virtualMcpId}\`: pass it as \`virtualMcpId\` wherever a tool asks for one.`,
     "- Follow the `blogpost` skill: its `campaigns.md` shapes the card's campaign, its `hypothesis.md` brings the hypothesis, its `execute.md` writes the post.",
-    "- While the card's campaign is a draft shaped in this chat, save it with BLOG_CAMPAIGN_UPDATE on the card's `campaignId`, sending only what changed and never `status` or `goal`: approving it and setting its goal are a person's.",
+    "- While the card's campaign is a draft shaped in this chat, save it with BLOG_CAMPAIGN_UPDATE on the card's `campaignId`, sending only what changed and never `status` or `goals`: approving it and setting its goals are a person's.",
     `- The post is written on the branch \`${branch}\`. Pass it as \`branch\` to every tool that takes one, and never write to the repository's default branch.`,
     "- Never move the card to scheduled or published, and never publish the post. A person does both.",
     "- Write in the brand's language, whatever language you are spoken to in.",

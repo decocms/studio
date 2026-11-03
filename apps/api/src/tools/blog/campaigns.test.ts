@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { blogCampaignInstructions, blogCampaignPrompt } from "./campaigns";
 
 describe("blogCampaignInstructions", () => {
-  test("pins the campaign, the skill and who sets the goal and status", () => {
+  test("pins the campaign, the skill and who sets the goals and status", () => {
     const text = blogCampaignInstructions({
       brand: "aurora",
       campaignId: "c1",
@@ -11,7 +11,7 @@ describe("blogCampaignInstructions", () => {
     expect(text).toContain("home/brands/aurora/");
     expect(text).toContain("`campaigns.md`");
     expect(text).toContain("mcp__studio__BLOG_CAMPAIGN_UPDATE");
-    expect(text).toContain("Never send `status` or `goal`");
+    expect(text).toContain("Never send `status` or `goals`");
   });
 });
 

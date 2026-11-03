@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Target04 } from "@untitledui/icons";
+import { Target04, Trash01 } from "@untitledui/icons";
 import {
   CAMPAIGN_GOAL_METRICS,
   type CampaignGoalMetric,
@@ -37,11 +37,6 @@ const GOAL_METRIC_LABEL: Record<CampaignGoalMetric, TranslationKey> = {
   revenue: "sandbox.campaigns.goalMetricRevenue",
 };
 
-/** The text is what makes a goal: a target with nothing to aim it at is not one. */
-export function hasGoal(goal: CampaignGoal): boolean {
-  return goal.text.trim() !== "";
-}
-
 /** "+20% organic sessions": how far and what counts it, or "" with neither. */
 export function goalMeasure(goal: CampaignGoal, t: TFunction): string {
   return [
@@ -52,16 +47,17 @@ export function goalMeasure(goal: CampaignGoal, t: TFunction): string {
     .join(" ");
 }
 
-/** The goal on one line, where a campaign is listed; nothing when it has none. */
+/** A campaign's goals on one line, where it is listed: the first, and how many more. */
 export function GoalLine({
-  goal,
+  goals,
   className,
 }: {
-  goal: CampaignGoal;
+  goals: readonly CampaignGoal[];
   className?: string;
 }) {
   const t = useT();
-  if (!hasGoal(goal)) return null;
+  const [goal, ...more] = goals;
+  if (!goal) return null;
   const measure = goalMeasure(goal, t);
   return (
     <p
@@ -76,27 +72,36 @@ export function GoalLine({
         {measure && (
           <span className="font-medium text-foreground"> · {measure}</span>
         )}
+        {more.length > 0 && <span> · +{more.length}</span>}
       </span>
     </p>
   );
 }
 
-/** A campaign's goal, set by a person. Mounted only while open, so it starts from the goal it is given. */
+/**
+ * One of a campaign's goals, set by a person; `goal` null adds one. Mounted
+ * only while open, so it starts from the goal it is given.
+ */
 export function GoalDialog({
   goal,
   pending,
   onSave,
+  onDelete,
   onClose,
 }: {
-  goal: CampaignGoal;
+  goal: CampaignGoal | null;
   pending: boolean;
   onSave: (goal: CampaignGoal) => void;
+  /** Present for a goal the campaign already has. */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const t = useT();
-  const [text, setText] = useState(goal.text);
-  const [metric, setMetric] = useState<CampaignGoalMetric | null>(goal.metric);
-  const [target, setTarget] = useState(goal.target);
+  const [text, setText] = useState(goal?.text ?? "");
+  const [metric, setMetric] = useState<CampaignGoalMetric | null>(
+    goal?.metric ?? null,
+  );
+  const [target, setTarget] = useState(goal?.target ?? "");
   return (
     <Dialog
       open
@@ -166,11 +171,22 @@ export function GoalDialog({
           </div>
         </div>
         <DialogFooter>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              className="mr-auto text-destructive"
+              disabled={pending}
+              onClick={onDelete}
+            >
+              <Trash01 size={14} />
+              {t("contentTrack.campaign.deleteGoal")}
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose}>
             {t("contentTrack.new.cancel")}
           </Button>
           <Button
-            disabled={pending}
+            disabled={pending || text.trim() === ""}
             onClick={() =>
               onSave({ text: text.trim(), metric, target: target.trim() })
             }

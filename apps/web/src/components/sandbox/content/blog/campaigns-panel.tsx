@@ -435,7 +435,7 @@ function CampaignCard({
             </span>
           )}
         </div>
-        <GoalLine goal={campaign.goal} className="mt-2" />
+        <GoalLine goals={campaign.goals} className="mt-2" />
       </button>
     </div>
   );

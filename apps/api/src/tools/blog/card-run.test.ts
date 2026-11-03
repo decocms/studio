@@ -229,10 +229,10 @@ describe("blogCardRunInstructions", () => {
     expect(text).toContain("never publish");
     expect(text).toContain("mcp__studio__BLOG_CARD_UPDATE");
   });
-  test("shapes the card's campaign, leaving its goal and status to a person", () => {
+  test("shapes the card's campaign, leaving its goals and status to a person", () => {
     expect(text).toContain("`campaigns.md`");
     expect(text).toContain("BLOG_CAMPAIGN_UPDATE");
-    expect(text).toContain("never `status` or `goal`");
+    expect(text).toContain("never `status` or `goals`");
   });
 });
 

@@ -3,7 +3,9 @@ import {
   CampaignBriefingOptionSchema,
   CampaignBriefingSchema,
   campaignDeveloped,
+  campaignGoals,
   campaignNextStep,
+  MAX_CAMPAIGN_GOALS,
 } from "./blog-campaign";
 
 describe("campaign briefings", () => {
@@ -89,5 +91,39 @@ describe("campaignNextStep", () => {
       }),
     ).toBeNull();
     expect(campaignNextStep({ ...shell, status: "active" })).toBeNull();
+  });
+});
+
+describe("campaignGoals", () => {
+  test("reads the list, keeping words over a metric it does not know", () => {
+    expect(
+      campaignGoals({
+        goals: [
+          { text: " Mais sessões ", metric: "sessions", target: "+20%" },
+          { text: "Mais curtidas", metric: "likes", target: "+5%" },
+          { text: "  ", metric: "revenue", target: "+1%" },
+          "corrupt",
+        ],
+      }),
+    ).toEqual([
+      { text: "Mais sessões", metric: "sessions", target: "+20%" },
+      { text: "Mais curtidas", metric: null, target: "+5%" },
+    ]);
+  });
+
+  test("an older record's single goal is a list of one, and the list wins over it", () => {
+    const goal = { text: "Antiga", metric: null, target: "" };
+    expect(campaignGoals({ goal })).toEqual([goal]);
+    expect(campaignGoals({ goal, goals: [] })).toEqual([]);
+    expect(campaignGoals({})).toEqual([]);
+  });
+
+  test("keeps no more goals than a campaign holds", () => {
+    const goals = Array.from({ length: 7 }, (_, i) => ({
+      text: `Meta ${i}`,
+      metric: null,
+      target: "",
+    }));
+    expect(campaignGoals({ goals })).toHaveLength(MAX_CAMPAIGN_GOALS);
   });
 });
