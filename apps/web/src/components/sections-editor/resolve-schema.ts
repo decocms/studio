@@ -60,6 +60,8 @@ export interface SchemaProperty {
     schema?: SchemaProperty;
     /** Value of the union discriminator field (e.g. `image-card`). */
     discriminatorValue?: string;
+    /** The branch lists its discriminator in `required`. */
+    discriminatorRequired?: boolean;
   }>;
   /** Property used to pick the active union branch (e.g. `type`). */
   discriminatorKey?: string;
@@ -1039,6 +1041,11 @@ function buildSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
+              // Read here, not from `schema`: a cyclic or deep branch has none.
+              discriminatorRequired: [
+                def,
+                ...((def.allOf as RawSchema[]) ?? []),
+              ].some((part) => asStringArray(part.required).includes("type")),
               // Type-discriminated branches have no module resolveType to
               // re-resolve from, so keep them eager regardless of union size.
               schema: eagerBranchSchema(def, depth + 1, nonNull.length, false),
