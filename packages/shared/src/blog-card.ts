@@ -73,6 +73,107 @@ const KeywordSchema = z
   })
   .loose();
 
+/** A page a person opens to check a figure: https only, since it is rendered as a link. */
+const HttpsUrlSchema = z
+  .string()
+  .max(2_000)
+  .regex(/^https:\/\/\S+$/i);
+
+/**
+ * A figure opened up: the series behind it, the numbers beside it, what it is
+ * compared with, the products or dates it is about. Every part is copied from
+ * what the tool returned, and a part it did not return is left out.
+ */
+export const BlogEvidenceDetailSchema = z
+  .object({
+    trend: z
+      .object({
+        points: z
+          .array(z.number().finite())
+          .min(2)
+          .max(90)
+          .describe("The series, oldest first, as the tool returned it."),
+        label: z
+          .string()
+          .max(80)
+          .optional()
+          .describe("What it counts, such as `impressões por semana`."),
+        from: z.string().max(20).optional().describe("The first point's date."),
+        to: z.string().max(20).optional().describe("The last point's date."),
+      })
+      .loose()
+      .optional(),
+    stats: z
+      .array(
+        z
+          .object({
+            label: z.string().min(1).max(40),
+            value: z.string().min(1).max(40),
+          })
+          .loose(),
+      )
+      .max(4)
+      .optional()
+      .describe("Key numbers beside the figure, such as clicks and position."),
+    compare: z
+      .array(
+        z
+          .object({
+            label: z.string().min(1).max(60),
+            value: z.number().finite().nonnegative(),
+            display: z.string().min(1).max(30),
+          })
+          .loose(),
+      )
+      .min(2)
+      .max(5)
+      .optional()
+      .describe(
+        "Bars, the subject first: `value` sizes each, `display` is how it reads.",
+      ),
+    products: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1).max(160),
+            note: z
+              .string()
+              .max(80)
+              .optional()
+              .describe("Its price or stock, as the catalog gave it."),
+            image: HttpsUrlSchema.optional(),
+          })
+          .loose(),
+      )
+      .max(5)
+      .optional(),
+    timeline: z
+      .array(
+        z
+          .object({
+            date: z.string().min(1).max(20),
+            label: z.string().max(60).optional(),
+            now: z.boolean().optional().describe("Marks today."),
+          })
+          .loose(),
+      )
+      .min(2)
+      .max(6)
+      .optional()
+      .describe("Dates in order."),
+    link: z
+      .object({
+        url: HttpsUrlSchema,
+        label: z.string().max(60).optional(),
+      })
+      .loose()
+      .optional()
+      .describe("The report or page the figure came from."),
+  })
+  .loose();
+
+export type BlogEvidenceDetail = z.infer<typeof BlogEvidenceDetailSchema>;
+
 /** One figure a system reported, and what it says. A card's hypothesis and a campaign cite the same shape. */
 export const BlogEvidenceSchema = z
   .object({
@@ -82,7 +183,7 @@ export const BlogEvidenceSchema = z
       .max(80)
       .optional()
       .describe(
-        "The number exactly as the tool reported it, such as `1.240 impressões` or `posição 8`.",
+        "One number as the tool reported it, written as a reader reads it, such as `1.240 impressões` or `posição 8`.",
       ),
     fact: z
       .string()
@@ -94,6 +195,7 @@ export const BlogEvidenceSchema = z
       .max(120)
       .optional()
       .describe("The tool the figure came from, so a person can check it."),
+    detail: BlogEvidenceDetailSchema.optional(),
   })
   .loose();
 

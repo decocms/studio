@@ -87,6 +87,56 @@ describe("BlogCardSchema", () => {
     ).toBe(false);
   });
 
+  test("carries a figure's detail, and refuses one that cannot be drawn", () => {
+    const detail = {
+      trend: { points: [3100, 3400, 3900], label: "impressões por semana" },
+      stats: [{ label: "Cliques", value: "0" }],
+      compare: [
+        { label: "Malas", value: 2.1, display: "2,1%" },
+        { label: "Site", value: 1, display: "1,0%" },
+      ],
+      products: [
+        {
+          name: "Mala de bordo",
+          note: "R$ 499",
+          image: "https://img.example/m.jpg",
+        },
+      ],
+      timeline: [
+        { date: "2026-11-03", label: "Hoje", now: true },
+        { date: "2026-11-27", label: "Black Friday" },
+      ],
+      link: { url: "https://analytics.google.com/analytics/web/" },
+    };
+    const parsed = BlogCardSchema.parse({
+      ...CARD,
+      hypothesis: { evidence: [{ source: "ga4", fact: "Converte", detail }] },
+    });
+    expect(parsed.hypothesis?.evidence?.[0]?.detail).toEqual(detail);
+
+    const refused = (bad: Record<string, unknown>) =>
+      BlogCardSchema.safeParse({
+        ...CARD,
+        hypothesis: { evidence: [{ source: "ga4", fact: "x", detail: bad }] },
+      }).success;
+    expect(refused({ trend: { points: [1] } })).toBe(false);
+    expect(refused({ compare: [{ label: "a", value: 1, display: "1" }] })).toBe(
+      false,
+    );
+    expect(refused({ link: { url: "http://example.com" } })).toBe(false);
+    expect(
+      refused({ products: [{ name: "x", image: "javascript:alert(1)" }] }),
+    ).toBe(false);
+    expect(
+      refused({
+        stats: Array.from({ length: 5 }, (_, i) => ({
+          label: `s${i}`,
+          value: "1",
+        })),
+      }),
+    ).toBe(false);
+  });
+
   test("converts to JSON Schema, as a tool's output must", () => {
     expect(() => z.toJSONSchema(BlogCardSchema)).not.toThrow();
     expect(() => z.toJSONSchema(BlogCardPatchSchema)).not.toThrow();

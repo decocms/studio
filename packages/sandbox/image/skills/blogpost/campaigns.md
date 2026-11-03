@@ -72,9 +72,9 @@ One update, before any briefing:
 
 - `source` is the system: `gsc`, `ga4`, `vtex`, `calendar` (a date from the
   brand's special dates or the web) or `brand` (the brand guide).
-- Three to eight items, strongest first. `figure` exactly as the tool gave it,
-  or left out. No item for a system that did not answer: the page shows it as
-  missing.
+- Three to eight items, strongest first. `figure`, `fact` and `detail`
+  follow "Evidence" in `SKILL.md`; no number, no `figure`. No item for a
+  system that did not answer: the page shows it as missing.
 
 ## 4. Suggest three briefings
 
@@ -96,6 +96,8 @@ idea are worse than one good briefing.
   ]
 }
 ```
+
+`figure` is written as "Evidence" says: one number, as a reader reads it.
 
 Present them in the chat — each title, its idea and the figure it stands on —
 then say the person can pick one on the page or write their own, and wait.

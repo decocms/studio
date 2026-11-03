@@ -141,6 +141,33 @@ describe("applyCampaignPatch", () => {
     expect(next.goal).toEqual({ text: "Crescer", metric: null, target: "" });
   });
 
+  test("evidence carries each figure's detail, and refuses one that cannot be drawn", () => {
+    const evidence: CampaignPatch["evidence"] = [
+      {
+        source: "gsc",
+        figure: "22.140 impressões",
+        fact: "Ninguém clica.",
+        detail: {
+          trend: { points: [3100, 3400, 3900] },
+          link: { url: "https://search.google.com/search-console" },
+        },
+      },
+    ];
+    const next = applyCampaignPatch(DEVELOPED, { evidence }, NOW);
+    expect(next.evidence).toEqual(evidence);
+    expect(() =>
+      applyCampaignPatch(
+        DEVELOPED,
+        {
+          evidence: [
+            { source: "gsc", fact: "x", detail: { trend: { points: [1] } } },
+          ],
+        },
+        NOW,
+      ),
+    ).toThrow();
+  });
+
   test("a touched field that is invalid once merged is refused", () => {
     const legacy = {
       campaignName: "Antiga",

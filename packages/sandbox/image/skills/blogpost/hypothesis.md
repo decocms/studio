@@ -62,9 +62,10 @@ ground the hypothesis stands on:
     "evidence": [
       {
         "source": "gsc",
-        "figure": "1.240 impressões, CTR 0,8%",
+        "figure": "1.240 impressões",
         "fact": "Buscam 'sofá para sala pequena' e quase ninguém clica.",
-        "tool": "<the tool's name>"
+        "tool": "<the tool's name>",
+        "detail": { "stats": [{ "label": "CTR", "value": "0,8%" }] }
       }
     ]
   }
@@ -76,8 +77,9 @@ ground the hypothesis stands on:
 - One item per finding, three to eight in all, the strongest first.
 - `source` is the system: `gsc`, `ga4`, `vtex`, `calendar` (a date from the
   brand's special dates or the campaign's period) or `brand` (the guide).
-- `figure` is the number exactly as the tool gave it. No figure, no `figure`:
-  a fact without a number is still evidence, an invented number is not.
+- `figure`, `fact` and `detail` follow "Evidence" in `SKILL.md`. No figure,
+  no `figure`: a fact without a number is still evidence, an invented number
+  is not.
 - A system that did not answer gets no item. The card shows it as missing.
 
 ## 4. Save the hypothesis

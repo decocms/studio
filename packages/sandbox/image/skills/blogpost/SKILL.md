@@ -62,6 +62,47 @@ For the web, use your own `WebSearch` and `WebFetch`. Studio's `web_search`
 needs the organization's model, which a run on a person's Claude plan does not
 have.
 
+## Evidence
+
+A hypothesis and a campaign cite the same shape: one item per finding, each
+from one system. Every item is shown as a small card with its `figure` as the
+headline, and opens up to its `detail`.
+
+```json
+{
+  "source": "gsc",
+  "figure": "22.140 impressões",
+  "fact": "Buscam 'mala de bordo' e quase ninguém clica: o blog não aparece.",
+  "tool": "<the tool's name>",
+  "detail": {
+    "trend": { "points": [3100, 3400, 3900, 4600], "label": "impressões por semana", "from": "2026-10-06", "to": "2026-10-27" },
+    "stats": [{ "label": "Cliques", "value": "0" }, { "label": "Posição média", "value": "14,2" }],
+    "link": { "url": "https://search.google.com/search-console/performance/search-analytics?resource_id=sc-domain%3Aexample.com" }
+  }
+}
+```
+
+- **`figure` is one number, written the way a reader reads it** in the
+  brand's language: thousands separators, at most two decimals, its unit
+  after it (`172.631 sessões`, `1,49 itens por pedido`, `R$ 232.081,52`). It
+  stays the tool's number: format it, never compute it. A second number goes
+  in `stats`, or in an item of its own.
+- **`fact`** says what the number means, in one sentence.
+- **`detail`**, when the tool gave the data for it. Each part is optional:
+  - Search Console: `trend` (the query's impressions or clicks by day or week,
+    oldest first), `stats` (impressions, clicks, average position, CTR) and
+    `link` (the Performance report).
+  - GA4: `compare` (the subject beside the site, such as a category's
+    conversion rate and the site's: `value` sizes the bar, `display` is how it
+    reads, the subject first), `stats` and `link`.
+  - VTEX: `products` (`name`, price or stock as `note`, and the product's
+    image URL as `image`).
+  - Calendar: `timeline` (today with `now: true`, the dates that matter, the
+    period's end).
+- **Leave out a part the tool did not give.** Never draw a trend from numbers
+  you remember, and add a `link` only when you know the address of the report
+  or page the figure came from.
+
 ## How to call the tools
 
 Small calls go through your Studio tools as usual, prefixed `mcp__studio__`:
@@ -92,8 +133,8 @@ the fields you need. A call that fails prints the error and leaves the output em
 - **Keep each Studio call short.** An edge proxy hangs up on requests past
   about 100 seconds: draw one image per `BLOG_POST_ILLUSTRATE` call.
 - **Retry a failed call once at most**, then save `error` and stop.
-- **Figures are copied, never computed or rounded**, and every one names the
-  tool it came from.
+- **Figures are copied, never computed**, written as "Evidence" says, and
+  every one names the tool it came from.
 - **Write in the brand's language** (`brand.language` in `BLOG_STATE_GET`),
   whatever language you are spoken to in.
 - **Publishing is a person's.** The draft you commit is a planning block the

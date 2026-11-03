@@ -2321,6 +2321,58 @@ export interface StudioToolIO {
                     fact: string;
                     figure?: string | undefined;
                     tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
                   }[]
                 | undefined;
               briefings?:
@@ -2438,6 +2490,58 @@ export interface StudioToolIO {
                     fact: string;
                     figure?: string | undefined;
                     tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
                   }[]
                 | undefined;
               guardrails?:
@@ -2561,6 +2665,58 @@ export interface StudioToolIO {
                     fact: string;
                     figure?: string | undefined;
                     tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
                   }[]
                 | undefined;
               guardrails?:
@@ -2690,6 +2846,58 @@ export interface StudioToolIO {
                     fact: string;
                     figure?: string | undefined;
                     tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
                   }[]
                 | undefined;
               guardrails?:
@@ -2808,6 +3016,58 @@ export interface StudioToolIO {
                     fact: string;
                     figure?: string | undefined;
                     tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
                   }[]
                 | undefined;
               guardrails?:
@@ -2923,6 +3183,58 @@ export interface StudioToolIO {
                     fact: string;
                     figure?: string | undefined;
                     tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
                   }[]
                 | undefined;
               guardrails?:
@@ -3056,6 +3368,58 @@ export interface StudioToolIO {
                     fact: string;
                     figure?: string | undefined;
                     tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
                   }[]
                 | undefined;
               guardrails?:
@@ -3218,6 +3582,54 @@ export interface StudioToolIO {
               fact: string;
               figure?: string | undefined;
               tool?: string | undefined;
+              detail?:
+                | {
+                    [x: string]: unknown;
+                    trend?:
+                      | {
+                          [x: string]: unknown;
+                          points: number[];
+                          label?: string | undefined;
+                          from?: string | undefined;
+                          to?: string | undefined;
+                        }
+                      | undefined;
+                    stats?:
+                      | { [x: string]: unknown; label: string; value: string }[]
+                      | undefined;
+                    compare?:
+                      | {
+                          [x: string]: unknown;
+                          label: string;
+                          value: number;
+                          display: string;
+                        }[]
+                      | undefined;
+                    products?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          note?: string | undefined;
+                          image?: string | undefined;
+                        }[]
+                      | undefined;
+                    timeline?:
+                      | {
+                          [x: string]: unknown;
+                          date: string;
+                          label?: string | undefined;
+                          now?: boolean | undefined;
+                        }[]
+                      | undefined;
+                    link?:
+                      | {
+                          [x: string]: unknown;
+                          url: string;
+                          label?: string | undefined;
+                        }
+                      | undefined;
+                  }
+                | undefined;
             }[]
           | null
           | undefined;
