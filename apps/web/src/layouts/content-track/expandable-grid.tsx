@@ -4,8 +4,15 @@
  * the detail sits beside it, so the links and actions inside it work.
  */
 
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "@decocms/ui/lib/utils.ts";
+
+/** The dialog's timing, so a card opens the way a goal does. */
+const DURATION = 300;
+const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+/** The cards' corner, kept while a growing card is uncovered. */
+const RADIUS = "11px";
 
 export interface ExpandableItem {
   id: string;
@@ -20,21 +27,87 @@ export interface ExpandableItem {
   muted?: boolean;
 }
 
+/**
+ * Applies `change` as motion: each card starts where it was drawn and slides
+ * to its new place, a card that grew is uncovered from its old size, and the
+ * grid's height follows, so what sits below it glides instead of jumping.
+ */
+function moveCards(grid: HTMLElement, change: () => void) {
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    change();
+    return;
+  }
+  const cards = [...grid.children].filter(
+    (card) => card instanceof HTMLElement,
+  );
+  const before = new Map(
+    cards.map((card) => [card, card.getBoundingClientRect()]),
+  );
+  const height = grid.getBoundingClientRect().height;
+  // Measured first, so a click mid-move starts from where the cards are drawn.
+  for (const element of [grid, ...cards]) {
+    for (const animation of element.getAnimations()) animation.cancel();
+  }
+  flushSync(change);
+
+  const timing = { duration: DURATION, easing: EASE };
+  grid.animate(
+    [
+      { height: `${height}px` },
+      { height: `${grid.getBoundingClientRect().height}px` },
+    ],
+    timing,
+  );
+  for (const card of cards) {
+    const from = before.get(card);
+    if (!from || !card.isConnected) continue;
+    const to = card.getBoundingClientRect();
+    const dx = from.left - to.left;
+    const dy = from.top - to.top;
+    const right = Math.max(0, to.width - from.width);
+    const bottom = Math.max(0, to.height - from.height);
+    if (Math.abs(dx) + Math.abs(dy) + right + bottom < 1) continue;
+    card.animate(
+      [
+        {
+          transform: `translate(${dx}px, ${dy}px)`,
+          clipPath: `inset(0px ${right}px ${bottom}px 0px round ${RADIUS})`,
+        },
+        {
+          transform: "none",
+          clipPath: `inset(0px 0px 0px 0px round ${RADIUS})`,
+        },
+      ],
+      timing,
+    );
+  }
+}
+
 export function ExpandableGrid({
   items,
   columns = 2,
 }: {
   items: readonly ExpandableItem[];
-  columns?: 2 | 3;
+  columns?: 1 | 2 | 3;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const baseId = useId();
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  const toggle = (id: string | null) => {
+    const grid = gridRef.current;
+    if (grid) moveCards(grid, () => setOpen(id));
+    else setOpen(id);
+  };
 
   return (
     <div
+      ref={gridRef}
       className={cn(
-        "grid gap-[9px]",
-        columns === 3 ? "md:grid-cols-3" : "sm:grid-cols-2",
+        // Rows stay at the top while the grid's height is still catching up.
+        "grid content-start gap-[9px]",
+        columns === 3 && "md:grid-cols-3",
+        columns === 2 && "sm:grid-cols-2",
       )}
     >
       {items.map((item) => {
@@ -58,7 +131,7 @@ export function ExpandableGrid({
                 type="button"
                 aria-expanded={expanded}
                 aria-controls={item.detail === null ? undefined : detailId}
-                onClick={() => setOpen(expanded ? null : item.id)}
+                onClick={() => toggle(expanded ? null : item.id)}
                 className="block w-full rounded-[11px] px-[13px] py-3 text-left transition-colors hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
                 {item.summary(expanded)}

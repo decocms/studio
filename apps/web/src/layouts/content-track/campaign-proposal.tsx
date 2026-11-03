@@ -14,6 +14,7 @@ import {
 import { MAX_CAMPAIGN_GOALS } from "@decocms/shared/blog-campaign";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import type { CampaignEntry } from "@/components/sandbox/content/blog/blog-data";
 import { campaignIsDeveloped } from "@/components/sandbox/content/blog/campaign-model";
 import {
@@ -23,9 +24,13 @@ import {
 } from "@/components/sandbox/content/blog/campaign-labels";
 import { useT } from "@/i18n/use-t.ts";
 import { FrameLine, KeywordChips, Pending, Section } from "./detail-parts";
+import { ExpandableGrid } from "./expandable-grid";
 import { RoleAtWork } from "./newsroom";
 import { ProductShelf } from "./product-shelf";
 import { goalNodes, goalsHint, WhereItSits } from "./where-it-sits";
+
+/** A brief longer than this can be cut at three lines, so the card opens to show it whole. */
+const SHORT_NOTE = 140;
 
 export function CampaignProposal({
   campaign,
@@ -64,23 +69,40 @@ export function CampaignProposal({
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-2.5 rounded-[11px] border border-border bg-card p-4 text-[13px]">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-          {t("contentTrack.campaign.whyNow")} ·{" "}
-          {t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type])}
-        </span>
-        {campaign.trigger.note && (
-          <p className="text-[15px] leading-[1.5] text-foreground">
-            {campaign.trigger.note}
-          </p>
-        )}
-        <FrameLine
-          icon={<Calendar size={13} />}
-          label={t("contentTrack.campaign.period")}
-        >
-          {period || t("contentTrack.campaign.noPeriod")}
-        </FrameLine>
-      </section>
+      <ExpandableGrid
+        columns={1}
+        items={[
+          {
+            id: "why-now",
+            detail: null,
+            opens: campaign.trigger.note.length > SHORT_NOTE,
+            summary: (open) => (
+              <div className="flex flex-col gap-2.5 text-[13px]">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                  {t("contentTrack.campaign.whyNow")} ·{" "}
+                  {t(CAMPAIGN_TRIGGER_LABEL[campaign.trigger.type])}
+                </span>
+                {campaign.trigger.note && (
+                  <p
+                    className={cn(
+                      "text-[13.5px] leading-[1.55] text-foreground",
+                      !open && "line-clamp-3",
+                    )}
+                  >
+                    {campaign.trigger.note}
+                  </p>
+                )}
+                <FrameLine
+                  icon={<Calendar size={13} />}
+                  label={t("contentTrack.campaign.period")}
+                >
+                  {period || t("contentTrack.campaign.noPeriod")}
+                </FrameLine>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <WhereItSits
         title={t("contentTrack.sits.campaignTitle")}
