@@ -386,7 +386,7 @@ describe("withBranchDiscriminator", () => {
   const equals: BlockRefOption = {
     resolveType: "Equals",
     discriminatorValue: "Equals",
-    schema: { type: "object", required: ["type", "value"] },
+    discriminatorRequired: true,
   };
 
   test("writes the shown branch's discriminator the hidden field never sets", () => {
@@ -398,7 +398,7 @@ describe("withBranchDiscriminator", () => {
 
   test("leaves out a discriminator the branch doesn't require", () => {
     const value = { value: "x" };
-    const optional = { ...equals, schema: { type: "object" } };
+    const optional = { ...equals, discriminatorRequired: false };
     expect(withBranchDiscriminator(value, "type", optional)).toBe(value);
   });
 

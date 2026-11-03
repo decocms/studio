@@ -20,6 +20,7 @@ export type BlockRefOption = {
   description?: string;
   schema?: SchemaProperty;
   discriminatorValue?: string;
+  discriminatorRequired?: boolean;
 };
 
 /** Module resolve type used to pick JSON Schema (unwraps lazy wrappers). */
@@ -218,7 +219,7 @@ export function withBranchDiscriminator(
   if (!next || typeof next !== "object" || Array.isArray(next)) return next;
   const discriminatorValue = ref?.discriminatorValue;
   if (discriminatorValue === undefined) return next;
-  if (!ref?.schema?.required?.includes(discriminatorKey)) return next;
+  if (!ref?.discriminatorRequired) return next;
   const obj = next as Record<string, unknown>;
   // One the schema doesn't list (an older copy of it) is kept, not overwritten.
   if (obj[discriminatorKey] !== undefined) return next;

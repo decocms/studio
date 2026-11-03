@@ -109,6 +109,15 @@ describe("a union discriminated by a hidden const `type`", () => {
     expect(field.anyOfRefs?.[0]?.schema?.properties?.type?.hidden).toBe(true);
   });
 
+  test("a branch resolved without its form (cyclic or too deep) still gets its `type`", () => {
+    const resolved = schema();
+    const field = resolved.properties!.conditions!.items!.properties!.case!;
+    for (const ref of field.anyOfRefs ?? []) delete ref.schema;
+    expect(
+      applySchemaDefaults(resolved, block([{ value: "gold" }]), META),
+    ).toEqual(block([{ type: "Equals", value: "gold" }]));
+  });
+
   test("opening a saved block rewrites nothing, hidden fields included", () => {
     const value = block([
       { type: "Equals", value: "gold" },
