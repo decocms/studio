@@ -206,9 +206,9 @@ export function blockRefValueForBranch(
 
 /**
  * A branch value of a `type`-discriminated union (`discriminatorKey`) with the
- * branch's discriminator written when it is missing. The form hides that
- * field, so an edit never writes it; a value without it shows the first
- * branch, and deco rejects it (`type: required`).
+ * branch's discriminator written when it is missing and the branch requires
+ * it. The form hides that field, so an edit never writes it, and deco rejects
+ * a value without it (`type: required`). An optional one is left out.
  */
 export function withBranchDiscriminator(
   next: unknown,
@@ -218,6 +218,7 @@ export function withBranchDiscriminator(
   if (!next || typeof next !== "object" || Array.isArray(next)) return next;
   const discriminatorValue = ref?.discriminatorValue;
   if (discriminatorValue === undefined) return next;
+  if (!ref?.schema?.required?.includes(discriminatorKey)) return next;
   const obj = next as Record<string, unknown>;
   // One the schema doesn't list (an older copy of it) is kept, not overwritten.
   if (obj[discriminatorKey] !== undefined) return next;

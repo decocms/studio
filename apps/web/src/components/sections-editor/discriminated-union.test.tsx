@@ -143,6 +143,22 @@ describe("a union discriminated by a hidden const `type`", () => {
     expect(applySchemaDefaults(schema(), value, META)).toBe(value);
   });
 
+  test("an optional `type` stays unwritten", () => {
+    const optional = {
+      ...META,
+      schema: structuredClone(META.schema),
+    } as LiveMeta;
+    const def = (optional.schema as any).definitions[DEF];
+    for (const branch of def.properties.conditions.items.properties.case
+      .anyOf) {
+      branch.required = branch.required.filter((k: string) => k !== "type");
+    }
+    const value = block([{ value: "gold" }]);
+    expect(
+      applySchemaDefaults(resolveSchema(RT, optional), value, optional),
+    ).toBe(value);
+  });
+
   test("an empty case gets the first branch's `type`", () => {
     expect(applySchemaDefaults(schema(), block([{}]), META)).toEqual(
       block([{ type: "Equals" }]),
