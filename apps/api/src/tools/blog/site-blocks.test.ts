@@ -67,10 +67,10 @@ describe("what one returns is what the next one takes", () => {
     );
   });
 
-  test("categories and authors come back as the brief takes them", () => {
+  test("categories, authors and exemplars come back as the brief takes them", () => {
     const read = shapeOf(BLOG_SITE_BLOCKS.outputSchema);
     const draft = shapeOf(BLOG_POST_BRIEF.inputSchema);
-    for (const field of ["categories", "authors"] as const) {
+    for (const field of ["categories", "authors", "exemplars"] as const) {
       expect(Object.keys(shapeOf(elementOf(read[field]))).sort()).toEqual(
         Object.keys(shapeOf(elementOf(draft[field]))).sort(),
       );

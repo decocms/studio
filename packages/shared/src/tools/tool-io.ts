@@ -3702,6 +3702,7 @@ export interface StudioToolIO {
         schema: Record<string, unknown>;
         example?: Record<string, unknown> | undefined;
       }[];
+      exemplars: { title: string; slug: string; text: string }[];
       categories: { name: string; slug: string }[];
       authors: { name: string; email: string; bio?: string | undefined }[];
       branch: string;
@@ -3753,6 +3754,7 @@ export interface StudioToolIO {
         language?: string | undefined;
         storeUrl?: string | undefined;
         targetAudience?: string | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
         tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
@@ -3837,6 +3839,7 @@ export interface StudioToolIO {
         schema: Record<string, unknown>;
         example?: Record<string, unknown> | undefined;
       }[];
+      exemplars?: { title: string; slug: string; text: string }[] | undefined;
       categories?: { name: string; slug: string }[] | undefined;
       authors?:
         | { name: string; email: string; bio?: string | undefined }[]

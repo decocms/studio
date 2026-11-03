@@ -86,6 +86,13 @@ export {
   reconciledSchema,
 } from "./block-schema";
 export {
+  brandExemplars,
+  type Exemplar,
+  exemplarText,
+  MAX_EXEMPLAR_CHARS,
+  MAX_EXEMPLARS,
+} from "./exemplar";
+export {
   citedSections,
   formatExampleSlugs,
   FORMATS_BLOCK_KEY,

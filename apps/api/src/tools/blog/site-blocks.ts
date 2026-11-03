@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   blocksForFormat,
+  brandExemplars,
+  formatExampleSlugs,
   type LiveMeta,
   listAuthorRefs,
   listBlogPayloads,
@@ -48,10 +50,16 @@ const BlockSchema = z.object({
     ),
 });
 
+const ExemplarSchema = z.object({
+  title: z.string(),
+  slug: z.string(),
+  text: z.string().describe("The post's blocks, one line each, as it reads."),
+});
+
 export const BLOG_SITE_BLOCKS = defineTool({
   name: "BLOG_SITE_BLOCKS",
   description:
-    "The blocks this site can actually render a post out of, each with its own JSON Schema and an example of how the site already stores it: the ones a format cites, then the basic text and product blocks. Returns the blog's categories and authors with them. Pass `blocks` straight into BLOG_POST_BRIEF.",
+    "The blocks this site can actually render a post out of, each with its own JSON Schema and an example of how the site already stores it: the ones a format cites, then the basic text and product blocks. Returns the brand's own posts in the format as `exemplars`, and the blog's categories and authors. Pass `blocks` and `exemplars` straight into BLOG_POST_BRIEF.",
   annotations: {
     title: "Read the Site's Post Blocks",
     readOnlyHint: true,
@@ -86,6 +94,11 @@ export const BLOG_SITE_BLOCKS = defineTool({
 
   outputSchema: z.object({
     blocks: z.array(BlockSchema),
+    exemplars: z
+      .array(ExemplarSchema)
+      .describe(
+        "The brand's own posts in this format — the ones it cites as examples, or else the newest the brand published itself — as a writer reads them.",
+      ),
     categories: z.array(z.object({ name: z.string(), slug: z.string() })),
     authors: z.array(
       z.object({
@@ -136,6 +149,10 @@ export const BLOG_SITE_BLOCKS = defineTool({
 
     return {
       blocks,
+      exemplars: brandExemplars(
+        decofile,
+        formatExampleSlugs(input.format.value),
+      ),
       categories: listBlogPayloads(decofile, "categories")
         .map(({ payload }) => ({
           name: str(payload.name),

@@ -14,12 +14,17 @@ Read the card and `BLOG_STATE_GET` first. You need from them: the site
 - **The store**, through `CONNECTION_TOOL_CALL`: each of the campaign's
   products (`VTEX_GET_PRODUCT`: its name, price, availability and address),
   and anything the post will claim that the hypothesis's evidence does not
-  already carry. Write what you learn to `/tmp/blog/grounding.txt`, one fact
-  per line, each figure exactly as reported and the tool it came from. The
-  evidence on the card goes in too.
+  already carry. Write to `/tmp/blog/grounding.txt` only what the post may
+  state to a reader: product facts, rules and limits, policies. One fact per
+  line, each figure exactly as reported, with the tool's name and no list of
+  the fields you read. Traffic and sales figures (sessions, entrances,
+  purchases, conversion, items per order) chose the post's angle and are not
+  for the reader: they stay out, and so does any of the card's evidence a
+  reader could not use.
 - **The site**: `BLOG_SITE_BLOCKS` with `virtualMcpId`, `branch` and the
   hypothesis's `format`, through a file. It returns `blocks` (the only ones a
-  post may be built from, with their schemas), `categories` and `authors`.
+  post may be built from, with their schemas), `exemplars` (the brand's own
+  posts in the format), `categories` and `authors`.
 
 ## 2. `drafting` — the post, written by you
 
@@ -30,8 +35,8 @@ Read the card and `BLOG_STATE_GET` first. You need from them: the site
   "brand": { "...": "brand and context from BLOG_STATE_GET, merged" },
   "campaign": { "...": "the campaign's data", "name": "<its campaignName>" },
   "format": { "name": "...", "value": "...", "length": "<when the hypothesis has one>" },
-  "blocks": [], "categories": [], "authors": [],
-  "extraInstructions": "<the statement, the angle, the objective, the keywords and the guardrails, as the hypothesis has them>",
+  "blocks": [], "exemplars": [], "categories": [], "authors": [],
+  "extraInstructions": "<the statement, the angle, the keywords and the guardrails, as the hypothesis has them, and the pages its objective sends readers to, without its figures>",
   "grounding": "<the contents of /tmp/blog/grounding.txt>"
 }
 ```

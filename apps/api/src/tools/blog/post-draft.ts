@@ -34,6 +34,7 @@ const MAX_BLOCKS = 40;
 const MAX_SCHEMA_CHARS = 8_000;
 const MAX_PRODUCTS = 40;
 const MAX_TARGETS = 20;
+const MAX_EXEMPLARS = 2;
 
 /**
  * One block this post may use, as the writer sees it.
@@ -256,6 +257,19 @@ export const WritingInputSchema = z.object({
     .describe(
       "The only blocks this post may be built from, each with the schema its props must match.",
     ),
+  exemplars: z
+    .array(
+      z.object({
+        title: z.string().max(MAX_NAME_CHARS),
+        slug: z.string().max(MAX_NAME_CHARS),
+        text: z.string().max(MAX_BODY_CHARS),
+      }),
+    )
+    .max(MAX_EXEMPLARS)
+    .default([])
+    .describe(
+      "The brand's own posts in this format, as BLOG_SITE_BLOCKS returns them: what a post like this reads like.",
+    ),
   categories: z
     .array(
       z.object({
@@ -323,9 +337,20 @@ function writingContext(input: WritingInput, grounding: string): string {
       "The brand's own words — use these, not the words they displace",
       brand.vocabulary,
     ),
+    renderRules(
+      "Commercial policies — state them exactly as written, or not at all",
+      brand.commercialPolicies,
+    ),
     renderVoiceExamples(brand.voiceExamples),
     renderCampaign(campaign),
     `## Format: ${input.format.name}${input.format.length ? `\nLength: ${input.format.length}` : ""}\n${input.format.value}`,
+    input.exemplars.length > 0 &&
+      `## How this brand writes a post like this — match its density and structure, never copy its sentences\n\n${input.exemplars
+        .map(
+          (exemplar) =>
+            `### ${exemplar.title} (${exemplar.slug})\n${exemplar.text}`,
+        )
+        .join("\n\n")}`,
     renderRules(
       "How this brand fills its blocks — these values win over the examples below",
       brand.blocks,

@@ -271,4 +271,5 @@ export const ReducedContextSchema = BlogContextSchema.pick({
   vocabulary: true,
   voiceExamples: true,
   blocks: true,
+  commercialPolicies: true,
 });

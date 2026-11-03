@@ -55,4 +55,5 @@ those its own posts already use: a post is built from the blocks cited here.>
 
 ## Exemplos / Examples
 
-- <a post of the brand in this format, with its URL>
+- <one of the brand's best posts in this format, with its URL: the writer
+  reads it whole as the model for the post>

@@ -180,6 +180,7 @@ describe("agentWritingBrief", () => {
         schema: { type: "object", properties: { html: { type: "string" } } },
       },
     ],
+    exemplars: [],
     categories: [],
     authors: [],
   };
@@ -231,6 +232,35 @@ describe("agentWritingBrief", () => {
     expect(notes).toBeLessThan(brief.indexOf("## Blocks available"));
     expect(agentWritingBrief(input, "")).not.toContain(
       "## How this brand fills its blocks",
+    );
+  });
+
+  test("shows the brand's own post in the format, and its commercial policies", () => {
+    const brief = agentWritingBrief(
+      {
+        ...input,
+        brand: {
+          ...input.brand,
+          commercialPolicies: [
+            { name: "Retirada na loja", value: "grátis, em 200 lojas." },
+          ],
+        },
+        exemplars: [
+          {
+            title: "Mala de bordo: medidas",
+            slug: "mala-de-bordo-medidas",
+            text: "## Medidas\n\nAté 55 x 35 x 25 cm.",
+          },
+        ],
+      },
+      "",
+    );
+    expect(brief).toContain(
+      "### Mala de bordo: medidas (mala-de-bordo-medidas)\n## Medidas",
+    );
+    expect(brief).toContain("- Retirada na loja: grátis, em 200 lojas.");
+    expect(agentWritingBrief(input, "")).not.toContain(
+      "## How this brand writes a post like this",
     );
   });
 

@@ -52,8 +52,15 @@ reads it only while `formats/` is empty.
   the most sessions and conversions in GA4.
 - **Each one complete.** Fill every section of the template from evidence: a
   structure a writer can follow, the site blocks its posts use, cited as
-  `@ComponentName`, title patterns taken from its posts, and two or three
-  example URLs. A section you have no evidence for says so in one line.
+  `@ComponentName`, and title patterns taken from its posts. A section you
+  have no evidence for says so in one line.
+- **Examples are the model.** List two or three of the brand's best posts in
+  the format, by URL: recent, dense and specific. The writer reads them whole
+  before it writes, so a generic SEO post there teaches generic writing, however
+  many visits it has.
+- **Images need a block.** When the format asks for images in the body, cite
+  the site's image block too: the writer only draws an image where one of the
+  format's blocks takes it.
 - **Only blocks the site renders.** A post is built from the blocks its format
   cites. When the ask names the site's `virtualMcpId`, list them with
   `BLOG_SITE_BLOCKS` (an empty `format` and the site's default branch) and cite
