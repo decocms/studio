@@ -85,7 +85,6 @@ export const contentTrack = {
   "contentTrack.card.proposed": "Strategist proposed",
   "contentTrack.card.approved": "approved",
   "contentTrack.card.nowIn": "now in {status}",
-  "contentTrack.card.campaign": "Campaign",
   "contentTrack.card.activity.researching": "reading the store's data…",
   "contentTrack.card.activity.strategizing": "forming the hypothesis…",
   "contentTrack.card.activity.cover": "generating the cover…",
@@ -99,7 +98,7 @@ export const contentTrack = {
   "contentTrack.card.runFailed": "Could not start the agent: {error}",
   "contentTrack.card.moveFailed": "Could not move the card: {error}",
   "contentTrack.card.postNotMoved":
-    "The card moved, but the post on the site did not: this site does not let Studio read the branch.",
+    "The card moved, but the post on the site did not: Studio could not read the branch.",
   "contentTrack.card.postMissing":
     "The post is not on the card's branch, so there is nothing to schedule or publish.",
   "contentTrack.card.missingTitle": "This card is gone",
@@ -164,6 +163,8 @@ export const contentTrack = {
   "contentTrack.publish.seoDescription": "Search description",
   "contentTrack.publish.save": "Save",
   "contentTrack.publish.discard": "Discard",
+  "contentTrack.publish.incomplete":
+    "Not saved: every post needs its slug, and one on the site also needs its title, category, summary and cover.",
   "contentTrack.publish.saved": "Saved to the site.",
   "contentTrack.publish.failed": "Could not save: {error}",
   "contentTrack.publish.conflict":
@@ -248,6 +249,8 @@ export const contentTrack = {
     "Move the period to the last week of November and drop the outlet products.",
   "contentTrack.campaign.send": "Send",
   "contentTrack.campaign.runFailed": "Could not start the agent: {error}",
+  "contentTrack.campaign.goalChanged":
+    "This goal changed while you were editing it. Open it again to see it as it is now.",
   "contentTrack.campaign.updateFailed":
     "Could not update the campaign: {error}",
   "contentTrack.phase.campaign": "Campaign",

@@ -93,6 +93,17 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Where a goal opened at `index` is now: there if unchanged, else wherever its twin moved, else -1. */
+export function currentGoalIndex(
+  goals: readonly CampaignGoal[],
+  opened: { index: number; goal: CampaignGoal },
+): number {
+  const same = (goal: CampaignGoal | undefined) =>
+    JSON.stringify(goal) === JSON.stringify(opened.goal);
+  if (same(goals[opened.index])) return opened.index;
+  return goals.findIndex((goal) => same(goal));
+}
+
 export function CampaignPage({
   campaign,
   cards,
@@ -120,8 +131,14 @@ export function CampaignPage({
     reached: CampaignPagePhase;
   } | null>(null);
   const phase = pick?.reached === reached ? pick.phase : reached;
-  /** The goal whose dialog is open: its index, or "new" for one being added. */
-  const [editingGoal, setEditingGoal] = useState<number | "new" | null>(null);
+  /**
+   * The goal whose dialog is open, as it was when opened, or "new". The
+   * campaign's agent can rewrite the list meanwhile, so a save finds the goal
+   * again rather than trusting its old place.
+   */
+  const [editingGoal, setEditingGoal] = useState<
+    { index: number; goal: CampaignGoal } | "new" | null
+  >(null);
   const [adjusting, setAdjusting] = useState(false);
   const [askDelete, setAskDelete] = useState(false);
 
@@ -276,7 +293,15 @@ export function CampaignPage({
             <CampaignProposal
               campaign={campaign}
               working={working}
-              onGoal={setEditingGoal}
+              onGoal={(at) =>
+                setEditingGoal(
+                  at === "new"
+                    ? "new"
+                    : campaign.goals[at]
+                      ? { index: at, goal: campaign.goals[at] }
+                      : null,
+                )
+              }
               canAddGoal
             />
           )}
@@ -349,27 +374,36 @@ export function CampaignPage({
 
       {editingGoal !== null && (
         <GoalDialog
-          goal={
-            editingGoal === "new" ? null : (campaign.goals[editingGoal] ?? null)
-          }
+          goal={editingGoal === "new" ? null : editingGoal.goal}
           pending={update.isPending}
           onClose={() => setEditingGoal(null)}
-          onSave={(goal) =>
+          onSave={(goal) => {
+            if (editingGoal === "new") {
+              saveGoals([...campaign.goals, goal]);
+              return;
+            }
+            const at = currentGoalIndex(campaign.goals, editingGoal);
+            if (at === -1) {
+              toast.error(t("contentTrack.campaign.goalChanged"));
+              setEditingGoal(null);
+              return;
+            }
             saveGoals(
-              editingGoal === "new"
-                ? [...campaign.goals, goal]
-                : campaign.goals.map((each, index) =>
-                    index === editingGoal ? goal : each,
-                  ),
-            )
-          }
+              campaign.goals.map((each, index) => (index === at ? goal : each)),
+            );
+          }}
           onDelete={
             editingGoal === "new"
               ? undefined
-              : () =>
-                  saveGoals(
-                    campaign.goals.filter((_, index) => index !== editingGoal),
-                  )
+              : () => {
+                  const at = currentGoalIndex(campaign.goals, editingGoal);
+                  if (at === -1) {
+                    toast.error(t("contentTrack.campaign.goalChanged"));
+                    setEditingGoal(null);
+                    return;
+                  }
+                  saveGoals(campaign.goals.filter((_, index) => index !== at));
+                }
           }
         />
       )}

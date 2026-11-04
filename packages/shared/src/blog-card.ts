@@ -419,7 +419,28 @@ export function applyBlogCardPatch<T extends Record<string, unknown>>(
   patch: BlogCardPatch,
   now: string,
 ): T {
-  return { ...(mergeJsonPatch(card, patch) as T), updatedAt: now };
+  const merged = mergeJsonPatch(card, patch) as T;
+  // A format is one brief: a new one replaces the last whole, or the old length lingers.
+  const format = patch.hypothesis?.format;
+  const hypothesis = merged.hypothesis;
+  if (
+    format &&
+    typeof format === "object" &&
+    hypothesis &&
+    typeof hypothesis === "object"
+  ) {
+    return {
+      ...merged,
+      hypothesis: {
+        ...hypothesis,
+        format: Object.fromEntries(
+          Object.entries(format).filter(([, value]) => value !== null),
+        ),
+      },
+      updatedAt: now,
+    };
+  }
+  return { ...merged, updatedAt: now };
 }
 
 /**

@@ -79,7 +79,8 @@ const CITATION = /\[@[^\]]{1,200}\]\(([^)\s]{1,500})\)/g;
 /** The posts a format holds up as its examples, by slug: the last path segment of each address it cites. */
 export function formatExampleSlugs(markdown: string): string[] {
   const slugs: string[] = [];
-  for (const [address] of markdown.matchAll(/https?:\/\/[^\s)<>"'`]+/g)) {
+  for (const [match] of markdown.matchAll(/https?:\/\/[^\s)<>"'`]+/g)) {
+    const address = match.replace(/[.,;:!?]+$/, "");
     if (!URL.canParse(address)) continue;
     const slug = new URL(address).pathname.split("/").filter(Boolean).pop();
     if (slug && !slugs.includes(slug)) slugs.push(slug);

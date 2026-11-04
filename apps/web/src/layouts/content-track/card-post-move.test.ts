@@ -101,6 +101,32 @@ describe("cardPostMove", () => {
     expect(move).toEqual({ kind: "incomplete", fields: ["excerpt", "image"] });
   });
 
+  test("a planning block that already claims to be live is still checked before it goes", () => {
+    expect(
+      cardPostMove(
+        card,
+        planning({ ...POST, status: "scheduled", image: "", excerpt: "" }),
+        "scheduled",
+        NOW,
+      ),
+    ).toEqual({ kind: "incomplete", fields: ["excerpt", "image"] });
+  });
+
+  test("a suggestion already past is not used: the post would go live at once", () => {
+    const move = cardPostMove(
+      { ...card, hypothesis: { publishAt: "2026-11-01T09:00:00-03:00" } },
+      planning(),
+      "scheduled",
+      NOW,
+    );
+    if (move.kind !== "move") throw new Error(move.kind);
+    const post = (move.plan.writes[LIVE] as { post: Record<string, unknown> })
+      .post;
+    expect(new Date(String(post.scheduledDatetime)).getTime()).toBeGreaterThan(
+      NOW.getTime(),
+    );
+  });
+
   test("a post already in that status leaves only the card to change", () => {
     expect(cardPostMove(card, planning(), "awaiting_review", NOW)).toEqual({
       kind: "same",

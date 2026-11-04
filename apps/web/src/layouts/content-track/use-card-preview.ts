@@ -14,11 +14,15 @@ import {
   draftPreviewServerUrl,
   resolvePreviewServerUrl,
 } from "@decocms/shared/deco-site-production-url";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   type DecofileDraft,
+  type DecofilePatchBody,
   fetchDecofile,
   getDecofileDraft,
+  patchDecofile,
+  setDecofileDraft,
 } from "@/components/sections-editor/decofile-api";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
@@ -90,6 +94,44 @@ export function cardBranchQuery(
   };
 }
 
+/**
+ * A write to the card's branch, read as `read`. The card moves to the commit it
+ * lands on next, so that commit's read is seeded with the write, not fetched.
+ */
+export async function writeCardBranch(
+  queryClient: QueryClient,
+  orgSlug: string,
+  card: { virtualMcpId: string; branch: string },
+  read: CardBranch,
+  patch: DecofilePatchBody,
+): Promise<DecofileDraft> {
+  const scope = {
+    orgSlug,
+    virtualMcpId: card.virtualMcpId,
+    branch: card.branch,
+  };
+  const pointer = await patchDecofile(scope, patch);
+  setDecofileDraft(queryClient, scope, pointer);
+  const deletes = new Set(patch.delete ?? []);
+  queryClient.setQueryData<CardBranch>(
+    KEYS.blogCardDecofile(
+      orgSlug,
+      card.virtualMcpId,
+      card.branch,
+      pointer.version,
+    ),
+    {
+      decofile: Object.fromEntries(
+        Object.entries({ ...read.decofile, ...patch.set }).filter(
+          ([key]) => !deletes.has(key),
+        ),
+      ),
+      draft: pointer,
+    },
+  );
+  return pointer;
+}
+
 /** The read waits for the commit: a session read creates a missing branch. */
 export function useCardBranch(card: BlogCard, enabled = true) {
   const { org } = useProjectContext();
@@ -133,7 +175,8 @@ export function useCardPreview(
           previewBaseUrl: draftPreviewServerUrl({
             previewServerUrl: previewBaseUrl,
             previewHosts: asRecord(read.decofile.site)?.previewHosts,
-            siteName: site?.metadata?.repository?.name,
+            siteName:
+              resolveAgentSiteSlug(site) ?? site?.metadata?.repository?.name,
           }),
           draftPointer: buildDraftPointer({
             ...read.draft,

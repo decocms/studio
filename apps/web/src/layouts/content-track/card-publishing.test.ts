@@ -37,7 +37,12 @@ describe("publishedPayload", () => {
       [],
     ).payload;
     expect(typeof picked.scheduledDatetime).toBe("string");
-    expect(picked.date).toBe(String(picked.scheduledDatetime).slice(0, 10));
+    expect(picked.date).toBe("2026-11-12");
+    // An evening pick keeps its own day, whatever the UTC day of that instant is.
+    expect(
+      publishedPayload(POST, draft({ goLive: "2026-11-10T22:00" }), []).payload
+        .date,
+    ).toBe("2026-11-10");
     const untouched = publishedPayload(POST, draft({}), []).payload;
     expect("scheduledDatetime" in untouched).toBe(false);
     expect("date" in untouched).toBe(false);

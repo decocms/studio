@@ -8,6 +8,7 @@ import {
   type LiveMeta,
   listBlogPayloads,
   livePostKey,
+  MAX_EXEMPLARS,
   planningPostKey,
   str,
 } from "@decocms/shared/blog";
@@ -31,8 +32,6 @@ import { requireBranch, resolveSiteRepo } from "./site-repo";
  * branch instead of what is published. A planning post renders there too,
  * because the anonymous pull shows one with a slug as published.
  */
-
-const MAX_EXEMPLARS = 2;
 
 const REASONS = ["no-preview-server", "no-post", "no-route"] as const;
 
@@ -172,7 +171,7 @@ export const BLOG_POST_PREVIEW = defineTool({
         previewBaseUrl: draftPreviewServerUrl({
           previewServerUrl: resolvePreviewServerUrl(site.metadata),
           previewHosts: asRecord(decofile.site)?.previewHosts,
-          siteName: site.repository.name,
+          siteName: site.siteSlug,
         }),
         postId: input.postId,
         exemplarSlugs: input.exemplarSlugs,

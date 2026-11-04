@@ -284,10 +284,30 @@ export async function readBlogState(
     brandPath: base,
     brand: read?.brand ?? null,
     context: read?.context ?? null,
-    formats: formats ?? read?.formats ?? null,
+    formats: withGuideFormats(formats, read?.formats),
     campaigns,
     campaignSeeds,
     versions,
+  };
+}
+
+/**
+ * The formats in files, then the guide's not yet moved into one: adding a file
+ * keeps every format the brand had until it moves them, by name.
+ */
+function withGuideFormats(
+  files: BlogFormats | null,
+  guide: BlogFormats | undefined,
+): BlogFormats | null {
+  if (!files) return guide ?? null;
+  const named = new Set(files.formats.map((format) => format.name));
+  const unmoved = (guide?.formats ?? []).filter(
+    (format) => !named.has(format.name),
+  );
+  if (unmoved.length === 0) return files;
+  return {
+    ...files,
+    formats: [...files.formats, ...unmoved].slice(0, MAX_FORMATS),
   };
 }
 

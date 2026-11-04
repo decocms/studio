@@ -79,6 +79,7 @@ import {
   writeOrgFsTextIf,
 } from "@/hooks/use-org-fs";
 import { scopableProjects } from "@/hooks/use-project-scope";
+import { projectRepo } from "@/lib/repository-binding";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
@@ -139,7 +140,10 @@ interface FormatBlocks {
 function useFormatBlocks(enabled: boolean): FormatBlocks {
   const t = useT();
   const { org } = useProjectContext();
-  const sites = scopableProjects(useVirtualMCPsNonBlocking());
+  // Only a site with a repository has blocks to read, as the content track lists them.
+  const sites = scopableProjects(useVirtualMCPsNonBlocking()).filter(
+    (project) => projectRepo(project) !== null,
+  );
   const [chosen, setChosen] = useState<string | null>(null);
   const site = sites.find((entry) => entry.id === chosen) ?? sites[0] ?? null;
   const hideDefaults = useHideDefaultBlogBlocks();
@@ -215,7 +219,8 @@ export function FormatsDrawer({
         className="w-full gap-0 sm:max-w-xl"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {view.kind === "list" || (view.kind === "edit" && !editing) ? (
+        {view.kind === "list" ||
+        (view.kind === "edit" && (!editing || editing.text === null)) ? (
           <FormatList
             brandPath={brandPath}
             files={files}
@@ -284,6 +289,7 @@ function FormatList({
         if (names.has(format.name)) continue;
         const id = newFormatId(format.name, taken);
         taken.push(id);
+        names.add(format.name);
         const result = await writeOrgFsTextIf(
           org.slug,
           HOME_MOUNT_PATH,
@@ -456,6 +462,8 @@ function FormatEditor({
   const refresh = useRefresh();
   const { remove } = useOrgFsMutations(HOME_MOUNT_PATH);
   const [start] = useState(() => draftOf(file, t("library.formats.template")));
+  /** The version the editor opened on: a rewrite since then is a conflict, not something to save over. */
+  const [openedHash] = useState(() => file?.contentHash ?? null);
   const [name, setName] = useState(start.name);
   const [summary, setSummary] = useState(start.summary ?? "");
   const [length, setLength] = useState(start.length ?? "");
@@ -471,8 +479,8 @@ function FormatEditor({
       `${brandPath}/${FORMATS_DIR}/${newFormatId(name, taken)}.md`;
     const expect = !file
       ? { absent: true as const }
-      : file.contentHash
-        ? { contentHash: file.contentHash }
+      : openedHash
+        ? { contentHash: openedHash }
         : null;
     setSaving(true);
     try {

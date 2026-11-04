@@ -204,6 +204,34 @@ describe("applyBlogCardPatch", () => {
     expect(next.hypothesis?.keywords).toEqual([{ term: "c" }]);
   });
 
+  test("a new format replaces the last one whole, its length included", () => {
+    const next = applyBlogCardPatch(
+      {
+        ...CARD,
+        hypothesis: {
+          title: "Guia",
+          format: {
+            id: "guia",
+            name: "Guia",
+            value: "…",
+            length: "1.500 palavras",
+          },
+        },
+      },
+      {
+        hypothesis: { format: { id: "lista", name: "Lista", value: "Itens." } },
+      },
+      NOW,
+    );
+    expect(next.hypothesis?.title).toBe("Guia");
+    expect(Object.keys(next.hypothesis?.format ?? {}).sort()).toEqual([
+      "id",
+      "name",
+      "value",
+    ]);
+    expect(next.hypothesis?.format.name).toBe("Lista");
+  });
+
   test("null removes a field", () => {
     const next = applyBlogCardPatch(
       { ...CARD, error: "timeout" },

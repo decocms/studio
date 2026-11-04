@@ -8,7 +8,14 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { getBlogPayload, listBlogPayloads } from "@decocms/shared/blog";
+import {
+  findBlogPageSlug,
+  firstCategorySlug,
+  getBlogPayload,
+  isPlanningPostKey,
+  listBlogPayloads,
+  missingPostFields,
+} from "@decocms/shared/blog";
 import type { BlogCard } from "@decocms/shared/blog-card";
 import { decoBlockFingerprint } from "@decocms/shared/decofile";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
@@ -25,12 +32,8 @@ import {
   stampPostModified,
   uniquePostSlug,
 } from "@/components/sandbox/content/blog/blog-data";
-import { findBlogPageSlug, firstCategorySlug } from "@decocms/shared/blog";
-import {
-  BlockConflictError,
-  patchDecofile,
-  setDecofileDraft,
-} from "@/components/sections-editor/decofile-api";
+import { dayKey } from "@/components/sandbox/content/blog/post-calendar-data";
+import { BlockConflictError } from "@/components/sections-editor/decofile-api";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
 import { useT } from "@/i18n/use-t.ts";
 import { readProjectProfile } from "@/lib/project-profile";
@@ -40,6 +43,7 @@ import {
   type CardBranch,
   cardWritten,
   useCardBranch,
+  writeCardBranch,
 } from "./use-card-preview";
 import { cardPostKey } from "./card-post-move";
 
@@ -130,8 +134,9 @@ export function publishedPayload(
       slug,
       image: draft.image,
       alt: draft.alt,
-      ...(goLive
-        ? { scheduledDatetime: goLive, date: goLive.slice(0, 10) }
+      // The day the person picked, as the calendar reads it; the UTC day can be the next one.
+      ...(goLive && picked
+        ? { scheduledDatetime: goLive, date: dayKey(picked) }
         : {}),
       seo: {
         ...seo,
@@ -258,11 +263,6 @@ function PublishingForm({
 
   const save = async () => {
     if (!card.branch) return;
-    const scope = {
-      orgSlug: org.slug,
-      virtualMcpId: card.virtualMcpId,
-      branch: card.branch,
-    };
     setSaving(true);
     try {
       const taken = listBlogPayloads(read.decofile, "posts")
@@ -274,23 +274,24 @@ function PublishingForm({
         slug,
         renamed,
       } = publishedPayload(payload, draft, taken);
+      // A slug is every post's address; a live post needs the rest too.
+      const missing = missingPostFields(next);
+      if (
+        missing.includes("slug") ||
+        (!isPlanningPostKey(postKey) && missing.length > 0)
+      ) {
+        toast.error(t("contentTrack.publish.incomplete"));
+        return;
+      }
       const nextBlock = buildPostBlock(postKey, next);
-      const pointer = await patchDecofile(scope, {
-        set: { [postKey]: nextBlock },
-        expect: { [postKey]: await decoBlockFingerprint(block) },
-      });
-      setDecofileDraft(queryClient, scope, pointer);
-      // The card moves to this commit next; its read of the branch is this one.
-      queryClient.setQueryData<CardBranch>(
-        KEYS.blogCardDecofile(
-          org.slug,
-          card.virtualMcpId,
-          card.branch,
-          pointer.version,
-        ),
+      const pointer = await writeCardBranch(
+        queryClient,
+        org.slug,
+        { virtualMcpId: card.virtualMcpId, branch: card.branch },
+        read,
         {
-          decofile: { ...read.decofile, [postKey]: nextBlock },
-          draft: pointer,
+          set: { [postKey]: nextBlock },
+          expect: { [postKey]: await decoBlockFingerprint(block) },
         },
       );
       if (renamed) {

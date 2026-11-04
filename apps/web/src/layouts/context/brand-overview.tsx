@@ -472,12 +472,19 @@ function BrandDetail({ brand }: { brand: OrgFsEntry }) {
     }
   };
 
-  /** The guide without its formats sections, written only over what was read. */
+  /**
+   * The guide without the formats it moved into files, written only over what
+   * was read. A section keeps the prose before its first format; only a
+   * section left with nothing goes.
+   */
   const removeLegacyFormats = async (): Promise<boolean> => {
-    const next = legacyTitles.reduce(
-      (text, title) => removeSection(text, title),
-      raw,
-    );
+    const next = [...new Set(legacyTitles)].reduce((text, title) => {
+      const body = sectionMarkdown(text, title) ?? "";
+      const intro = body.split(/^###\s+/m)[0]?.trim() ?? "";
+      return intro
+        ? writeSection(text, title, intro)
+        : removeSection(text, title);
+    }, raw);
     if (next === raw) return true;
     const outcome = await writeIfUnchanged(org.slug, `${brand.path}/brand.md`, {
       base: raw,

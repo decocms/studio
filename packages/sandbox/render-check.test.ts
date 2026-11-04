@@ -67,6 +67,26 @@ describe("expectedFromPost", () => {
     expect(blocks[3]).toMatchObject({ sample: "Até 10 kg na cabine." });
   });
 
+  it("a video is not an image, and an address is not text", () => {
+    const { blocks } = expectedFromPost({
+      title: "Guia",
+      sections: [
+        {
+          type: "Video",
+          props: { url: "https://youtu.be/x", caption: "Como medir" },
+        },
+        {
+          type: "CardGroup",
+          props: { cards: '[{"image":"https://cdn/a.png","title":"Leve"}]' },
+        },
+      ],
+    });
+    expect(blocks).toMatchObject([
+      { kind: "text", name: "Video", sample: "Como medir" },
+      { kind: "text", name: "CardGroup", sample: "Leve" },
+    ]);
+  });
+
   it("reads an assembled post as the site stores it", () => {
     const { cover, blocks } = expectedFromPost({
       title: "Guia",

@@ -49,6 +49,12 @@ describe("formatIdOf", () => {
     );
   });
 
+  it("reads a file named in the brand's own language, accents and all", () => {
+    expect(formatIdOf("brands/acme/formats/promoção-relâmpago.md")).toBe(
+      "promoção-relâmpago",
+    );
+  });
+
   it("skips anything that is not a format file", () => {
     expect(formatIdOf("brands/acme/formats/notes.txt")).toBeNull();
     expect(formatIdOf("brands/acme/formats/.md")).toBeNull();

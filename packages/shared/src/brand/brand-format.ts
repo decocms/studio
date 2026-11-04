@@ -43,7 +43,7 @@ export type SkippedFormat = {
   reason: "unnamed" | "too-long";
 };
 
-const FORMAT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const FORMAT_ID = /^[\p{L}\p{N}_-]{1,128}$/u;
 
 /** `brands/acme/formats/guia.md` → `guia`; null for anything that is not a format file. */
 export function formatIdOf(path: string): string | null {

@@ -12,11 +12,8 @@ import { decoBlockFingerprint } from "@decocms/shared/decofile";
 import {
   BlockConflictError,
   type DecofileDraft,
-  patchDecofile,
-  setDecofileDraft,
 } from "@/components/sections-editor/decofile-api";
 import { useT } from "@/i18n/use-t.ts";
-import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
 import { cardPostMove } from "./card-post-move";
 import type { CardPatch } from "./card-publishing";
@@ -24,6 +21,7 @@ import {
   type CardBranch,
   cardBranchQuery,
   cardWritten,
+  writeCardBranch,
 } from "./use-card-preview";
 
 const message = (err: unknown) =>
@@ -51,12 +49,20 @@ export function useCardStatusMove(
       return;
     }
 
+    const live = status === "scheduled" || status === "published";
     const query = cardBranchQuery(queryClient, org.slug, card);
     let read: CardBranch | null;
     try {
-      read = await queryClient.fetchQuery(query);
+      // Fresh: a move decided on a stale read refuses a post someone just completed.
+      read = await queryClient.fetchQuery({ ...query, staleTime: 0 });
     } catch (err) {
-      toast.error(t("contentTrack.card.moveFailed", { error: message(err) }));
+      if (live) {
+        toast.error(t("contentTrack.card.moveFailed", { error: message(err) }));
+        return;
+      }
+      // Only putting a post live needs its branch; the board can follow without it.
+      toast.warning(t("contentTrack.card.postNotMoved"));
+      await moveCard({ status });
       return;
     }
     if (!read) {
@@ -68,7 +74,7 @@ export function useCardStatusMove(
 
     const move = cardPostMove(card, read.decofile, status, new Date());
     if (move.kind === "missing") {
-      if (status === "scheduled" || status === "published") {
+      if (live) {
         toast.error(t("contentTrack.card.postMissing"));
         return;
       }
@@ -86,21 +92,22 @@ export function useCardStatusMove(
       return;
     }
 
-    const scope = {
-      orgSlug: org.slug,
-      virtualMcpId: card.virtualMcpId,
-      branch: card.branch,
-    };
     let pointer: DecofileDraft;
     try {
-      pointer = await patchDecofile(scope, {
-        set: move.plan.writes,
-        delete: move.plan.deletes,
-        expect: {
-          [move.from]: await decoBlockFingerprint(read.decofile[move.from]),
-          ...(move.to !== move.from && { [move.to]: null }),
+      pointer = await writeCardBranch(
+        queryClient,
+        org.slug,
+        { virtualMcpId: card.virtualMcpId, branch: card.branch },
+        read,
+        {
+          set: move.plan.writes,
+          delete: move.plan.deletes,
+          expect: {
+            [move.from]: await decoBlockFingerprint(read.decofile[move.from]),
+            ...(move.to !== move.from && { [move.to]: null }),
+          },
         },
-      });
+      );
     } catch (err) {
       if (err instanceof BlockConflictError) {
         toast.error(t("contentTrack.publish.conflict"));
@@ -110,24 +117,6 @@ export function useCardStatusMove(
       }
       return;
     }
-    setDecofileDraft(queryClient, scope, pointer);
-    // The card moves to this commit next; its read of the branch is this one.
-    queryClient.setQueryData<CardBranch>(
-      KEYS.blogCardDecofile(
-        org.slug,
-        card.virtualMcpId,
-        card.branch,
-        pointer.version,
-      ),
-      {
-        decofile: Object.fromEntries(
-          Object.entries({ ...read.decofile, ...move.plan.writes }).filter(
-            ([key]) => !move.plan.deletes.includes(key),
-          ),
-        ),
-        draft: pointer,
-      },
-    );
     await moveCard(
       { status, postKey: move.to, commit: pointer.version },
       "contentTrack.publish.cardBehind",

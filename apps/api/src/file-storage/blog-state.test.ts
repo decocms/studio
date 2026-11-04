@@ -185,7 +185,7 @@ describe("readBlogState", () => {
     );
   });
 
-  it("reads formats from their files, one version each, over the guide's section", async () => {
+  it("reads formats from their files, one version each, then the guide's not moved yet", async () => {
     const { fs } = fakeOrgFs(
       withFiles({
         [`${BASE}/brand.md`]: GUIDE,
@@ -208,6 +208,7 @@ describe("readBlogState", () => {
           summary: "Cinco a dez itens",
           value: "## Estrutura\n\n1. Itens.",
         },
+        { name: "Guia", value: "Passo a passo." },
       ],
     });
     expect(state.versions[`${BASE}/formats/guia.md`]).toBe(

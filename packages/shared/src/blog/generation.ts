@@ -29,11 +29,7 @@ import {
   mentionableSections,
 } from "./formats";
 import type { LiveMeta } from "./live-meta";
-import {
-  PRODUCT_REF,
-  readProductListIds,
-  writeProductListIds,
-} from "./product-loader";
+import { readProductListIds, writeProductListIds } from "./product-loader";
 
 /**
  * One correctly-filled example per block the CMS draws its own editor for.
@@ -136,9 +132,10 @@ const MAX_EXAMPLE_CHARS = 600;
 
 /**
  * The site's own posts, in the order to learn from them: the ones a format
- * holds up as its examples, then the newest. Studio's own posts never count,
- * live or not: a generated post may itself be wrong, and copying our own
- * mistake back in would make it permanent.
+ * holds up as its examples, then the newest. A post a card's run generated
+ * never counts, live or not: it may itself be wrong, and copying our own
+ * mistake back in would make it permanent. A person's post counts even when it
+ * carries a planning brief, as one started from the Posts board does.
  */
 export function referencePosts(
   decofile: Record<string, unknown>,
@@ -150,7 +147,7 @@ export function referencePosts(
   };
   return listBlogPayloads(decofile, "posts")
     .map(({ payload }) => payload)
-    .filter((post) => !post.planning)
+    .filter((post) => asRecord(post.planning)?.generated !== true)
     .sort(
       (a, b) => rank(a) - rank(b) || str(b.date).localeCompare(str(a.date)),
     );
@@ -372,6 +369,24 @@ export function buildPostSections(
   return blocks;
 }
 
+/** The admin's product reference, `vtex:sku:151294` or `vtex:product:151294`. */
+const PRODUCT_REF = /^([a-z]+):(?:sku|product):/i;
+
+/**
+ * A campaign's product id in the reference form the stored slot uses.
+ * Campaign ids are product ids, so they go in as the product kind even where
+ * the site stores SKU refs; written bare, some sites search for the number as
+ * text and show no product.
+ */
+function asStoredRef(id: string, stored: unknown): string {
+  if (!id || PRODUCT_REF.test(id)) return id;
+  const entries = typeof stored === "string" ? [stored] : toArray(stored);
+  const platform = entries
+    .map((entry) => PRODUCT_REF.exec(str(entry))?.[1])
+    .find(Boolean);
+  return platform ? `${platform}:product:${id}` : id;
+}
+
 /** The prop a product block points at, by the name its editor already assumes. */
 const PRODUCT_SLOTS = ["product", "products"] as const;
 
@@ -403,7 +418,13 @@ function withProducts(
   const slot = productSlotOf(shape);
   if (filled.length === 0 || !slot) return props;
   const stored = (shape as Record<string, unknown>)[slot];
-  return { ...props, [slot]: writeProductListIds(stored, filled) };
+  return {
+    ...props,
+    [slot]: writeProductListIds(
+      stored,
+      filled.map((id) => asStoredRef(id, stored)),
+    ),
+  };
 }
 
 /** Longest slug a post may carry, suffix included. */
@@ -521,7 +542,7 @@ export function buildGeneratedPostPayload({
     sections: clearSentinels(
       buildPostSections(draft.sections, resolveTypes, productShapes),
     ),
-    planning: (planning ?? {}) as Record<string, unknown>,
+    planning: { ...planning, generated: true } as Record<string, unknown>,
   };
   return setPostStatus(payload, "awaiting_review", now);
 }

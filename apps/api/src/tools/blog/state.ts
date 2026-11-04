@@ -145,7 +145,7 @@ export const BLOG_STATE_GET = defineTool({
       "How this blog is written — tone, dos, don'ts, vocabulary, example sentences.",
     ),
     formats: LooseRecord.nullable().describe(
-      "`{ formats: { id, name, summary?, length?, value }[], skipped? }` — the shapes of post this blog writes, one per file under `formats/`; `value` is the brief to copy whole. `skipped` names files left out (`unnamed`, or `too-long` past 8000 characters). A brand that has not moved its formats out of the guide reads them from the guide's section, without `id`.",
+      "`{ formats: { id, name, summary?, length?, value }[], skipped? }` — the shapes of post this blog writes, one per file under `formats/`; `value` is the brief to copy whole. `skipped` names files left out (`unnamed`, or `too-long` past 8000 characters). Formats still in the guide's section come after the files, without `id`, until each is moved into one.",
     ),
     campaigns: z.array(z.object({ id: z.string(), data: LooseRecord })),
     campaignSeeds: z.array(z.object({ id: z.string(), data: LooseRecord })),

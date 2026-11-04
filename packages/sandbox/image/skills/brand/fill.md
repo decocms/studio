@@ -45,7 +45,7 @@ lowercase kebab. Follow `templates/format.md` in this skill folder: flat
 frontmatter (`name`, a one-line `summary` an agent chooses the format by, and
 `length`), then the brief as the body, written in the brand's language. A
 `## Formatos` section in `brand.md` is how formats were kept before; the blog
-reads it only while `formats/` is empty.
+reads its formats after the files until each is moved into one.
 
 - **Two to five formats**, from what the brand's blog already publishes and
   what works: its posts in the repository's blocks, and the `/blog` pages with

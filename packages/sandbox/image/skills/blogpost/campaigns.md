@@ -158,7 +158,9 @@ and period first, then the goals, then the intent, then the guardrails:
   `organic_sessions`, `sessions`, `search_clicks`, `search_impressions`,
   `conversions` or `revenue` that the evidence counts it in; `target` is how
   far from where the evidence puts it today ("+20%"). With no baseline in the
-  evidence, keep the goal and leave `target` empty.
+  evidence, keep the goal and leave `target` empty. A campaign that still has
+  a single `goal`, from before `goals`, has that goal: it goes first in the
+  `goals` you send, since sending them replaces it.
 - `intent.objective`: `awareness`, `education`, `conversion`, `retention` or
   `repositioning`.
 - `targets[].kind`: `category` or `collection`.

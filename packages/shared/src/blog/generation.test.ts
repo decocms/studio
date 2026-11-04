@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { blocksForFormat, productShape } from "./generation";
+import {
+  blocksForFormat,
+  buildPostSections,
+  productShape,
+  referencePosts,
+} from "./generation";
 import type { LiveMeta } from "./live-meta";
 import { postLinkTargets } from "./post-meta";
 
@@ -286,5 +291,59 @@ describe("productShape", () => {
         "collections/blog/posts/b": shelf("2026-10-30", ["2"]),
       }),
     ).toMatchObject({ products: ["2"] });
+  });
+});
+
+describe("a campaign's products in a site's stored shape", () => {
+  const SHELF = "site/sections/Blog/Post/ProductShelf.tsx";
+  const build = (stored: unknown, ids: string[]) =>
+    buildPostSections(
+      [{ type: "ProductShelf", props: { title: "Malas" }, productIds: ids }],
+      { ProductShelf: SHELF },
+      { ProductShelf: { products: stored } },
+    )[0];
+
+  test("take the admin's reference form the site stores", () => {
+    expect(
+      build(["vtex:product:1951568"], ["1948858", "1951101"]),
+    ).toMatchObject({
+      products: ["vtex:product:1948858", "vtex:product:1951101"],
+    });
+  });
+
+  test("stay product references where the site stores SKU refs", () => {
+    expect(build(["vtex:sku:151294"], ["1948858"])).toMatchObject({
+      products: ["vtex:product:1948858"],
+    });
+  });
+
+  test("stay bare where the site stores bare ids", () => {
+    expect(build(["1951568"], ["1948858"])).toMatchObject({
+      products: ["1948858"],
+    });
+  });
+});
+
+describe("referencePosts", () => {
+  const post = (slug: string, planning?: Record<string, unknown>) => ({
+    __resolveType: "blog/loaders/Blogpost.ts",
+    post: {
+      title: slug,
+      slug,
+      date: "2026-10-01",
+      ...(planning ? { planning } : {}),
+    },
+  });
+
+  test("a person's post counts even with a planning brief; a generated one never does", () => {
+    expect(
+      referencePosts({
+        "collections/blog/posts/a": post("escrito", {}),
+        "collections/blog/posts/b": post("com-brief", { brief: "Guia" }),
+        "collections/blog/posts/c": post("gerado", { generated: true }),
+      })
+        .map((p) => p.slug)
+        .sort(),
+    ).toEqual(["com-brief", "escrito"]);
   });
 });

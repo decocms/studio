@@ -2406,13 +2406,13 @@ describe("blockExample", () => {
     ).toEqual({ items: "exemplo" });
   });
 
-  /** A promoted post keeps its planning brief; it is still ours, and may be wrong. */
+  /** A promoted post keeps the mark of its run; it is still ours, and may be wrong. */
   test("never learns from a post Studio generated, even once it is live", () => {
     expect(
       blockExample(LIST, {
         "collections/blog/posts/a": dated("2023-02-07", "do-site"),
         "collections/blog/posts/b": dated("2026-11-03", "nosso", {
-          planning: { format: { name: "Guia" } },
+          planning: { generated: true },
         }),
       }),
     ).toEqual({ items: "do-site" });

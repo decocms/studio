@@ -16,7 +16,9 @@ const DEFAULT_VTEX_PRODUCT_LIST =
  * - **plain**: the id itself, or a list of them — `"1948858"`,
  *   `["1948858", "1951207"]`, or the admin's reference, `"vtex:product:1948858"`
  *   (a site whose section resolves the reference in its own loader, so the
- *   decofile carries no loader wiring at all).
+ *   decofile carries no loader wiring at all). Ids are written as given: the
+ *   editor's picker hands SKU ids, the campaign product ids, and only the
+ *   caller knows which.
  *
  * All helpers here accept any of the three and preserve the stored shape on
  * write, so the editor never rewrites a site's loader wiring.
@@ -32,22 +34,6 @@ function idString(value: unknown): string {
   return typeof value === "string" || typeof value === "number"
     ? String(value)
     : "";
-}
-
-/** The admin's product reference, `vtex:sku:151294` or `vtex:product:151294`. */
-export const PRODUCT_REF = /^([a-z]+):(?:sku|product):/i;
-
-/**
- * An id in the reference form the stored entries use. A campaign hands
- * product ids, so they go in as the product kind even where the site stores
- * SKU refs; written bare, the site would search for the number as text.
- */
-function asStoredRef(id: string, stored: readonly string[]): string {
-  if (!id || PRODUCT_REF.test(id)) return id;
-  const platform = stored
-    .map((entry) => PRODUCT_REF.exec(entry)?.[1])
-    .find(Boolean);
-  return platform ? `${platform}:product:${id}` : id;
 }
 
 /** True for a per-product loader ref (`{ __resolveType, productId }`). */
@@ -101,10 +87,10 @@ export function writeProductListIds(
    * A plain reference stays plain: wrapping it in a loader ref hands the site
    * a shape its own section cannot read.
    */
-  if (typeof loader === "string") return asStoredRef(ids[0] ?? "", [loader]);
+  if (typeof loader === "string") return ids[0] ?? "";
   if (Array.isArray(loader)) {
     if (loader.length > 0 && loader.every((item) => typeof item === "string")) {
-      return ids.map((id) => asStoredRef(id, loader as string[]));
+      return ids;
     }
     const template = loader.find(isProductRef);
     if (template) {

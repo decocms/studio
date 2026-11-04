@@ -11,6 +11,7 @@ import {
 } from "@decocms/shared/blog-campaign";
 import { ReducedContextSchema } from "./schema";
 import { IMAGE_SENTINEL } from "./block-props";
+import { MAX_EXEMPLARS } from "@decocms/shared/blog";
 
 /**
  * One blog post, written from a campaign and shaped by a format.
@@ -34,7 +35,6 @@ const MAX_BLOCKS = 40;
 const MAX_SCHEMA_CHARS = 8_000;
 const MAX_PRODUCTS = 40;
 const MAX_TARGETS = 20;
-const MAX_EXEMPLARS = 2;
 
 /**
  * One block this post may use, as the writer sees it.

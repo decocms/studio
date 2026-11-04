@@ -54,14 +54,20 @@ export type CardPostMove =
   /** It cannot go live without these. */
   | { kind: "incomplete"; fields: MissingFieldKey[] };
 
-/** A go-live instant the post lacks, taken from the one the card's agent suggested. */
+/**
+ * A go-live instant the post lacks, taken from the one the card's agent
+ * suggested — while it is still ahead: a past one would put the post live the
+ * moment it is scheduled.
+ */
 function withSuggestedInstant(
   payload: Record<string, unknown>,
   suggested: string | undefined,
+  now: Date,
 ): Record<string, unknown> {
   const valid = (value: string) => !Number.isNaN(new Date(value).getTime());
   const stored = str(payload.scheduledDatetime);
   if (valid(stored) || !suggested || !valid(suggested)) return payload;
+  if (new Date(suggested).getTime() <= now.getTime()) return payload;
   return {
     ...payload,
     scheduledDatetime: new Date(suggested).toISOString(),
@@ -91,9 +97,14 @@ export function cardPostMove(
   }
   const payload =
     next === "scheduled"
-      ? withSuggestedInstant(stored, card.hypothesis?.publishAt)
+      ? withSuggestedInstant(stored, card.hypothesis?.publishAt, now)
       : stored;
-  if (blocksPostStatus(payload, next)) {
+  // Leaving planning is going live, whatever status the planning block claims.
+  const incomplete =
+    live && isPlanningPostKey(key)
+      ? missingPostFields(payload).length > 0
+      : blocksPostStatus(payload, next);
+  if (incomplete) {
     return { kind: "incomplete", fields: missingPostFields(payload) };
   }
   const plan = movePostToStatus({ key, payload }, next, now);

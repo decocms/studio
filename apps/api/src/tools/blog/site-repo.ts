@@ -1,4 +1,5 @@
 import { isSyntheticBranch } from "@decocms/shared/is-synthetic-branch";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import type { RepositoryBinding } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { RepoContentClient } from "@/git-providers/content";
@@ -35,6 +36,8 @@ export interface SiteRepo {
   repository: RepositoryBinding;
   /** The site's own metadata: its preview server, its runtime. */
   metadata: Record<string, unknown> | null;
+  /** The site's name on deco, which its preview hosts carry. */
+  siteSlug: string | null;
 }
 
 /** The site's project, when it is in the caller's organization and scope. */
@@ -82,6 +85,7 @@ export async function resolveSiteRepo(
     projectId: project.id,
     repository,
     metadata,
+    siteSlug: resolveAgentSiteSlug(project) ?? repository.name,
   };
 }
 

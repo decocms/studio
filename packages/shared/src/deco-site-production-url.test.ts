@@ -169,6 +169,9 @@ describe("draftPreviewServerUrl", () => {
         siteName: null,
       }),
     ).toBe("https://www.acme.com/");
-    expect(draft(null)).toBe("https://acme-store.deco.site/");
+  });
+
+  it("with no preview server configured there is none, not a guess", () => {
+    expect(draft(null)).toBeNull();
   });
 });

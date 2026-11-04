@@ -138,6 +138,8 @@ function firstText(value) {
   if (value && typeof value === "object") {
     return Object.values(value).map(firstText).find(Boolean) || "";
   }
+  // An address is not text a reader sees.
+  if (/^(https?:|\/)/.test(String(value ?? "").trim())) return "";
   if (/^\s*[[{]/.test(String(value ?? ""))) {
     try {
       return firstText(JSON.parse(String(value)));
@@ -183,12 +185,14 @@ function expectedFromPost(post) {
       });
       return;
     }
-    const image = Object.entries(props).find(
-      ([key, value]) =>
-        IMAGE_PROP.test(key) &&
-        typeof value === "string" &&
-        /^https?:/.test(value),
-    );
+    const image =
+      !/video/i.test(name) &&
+      Object.entries(props).find(
+        ([key, value]) =>
+          IMAGE_PROP.test(key) &&
+          typeof value === "string" &&
+          /^https?:/.test(value),
+      );
     if (image) {
       blocks.push({ index, kind: "image", name, url: image[1] });
       return;
@@ -211,10 +215,11 @@ function expectedFromPost(post) {
  * function's source, not its scope.
  */
 function inspectPage(expected) {
+  // Spacing is the one thing markup and the page disagree on: a link's tag
+  // turns into a space in the post's text, never in the page's.
   const norm = (value) =>
     String(value || "")
-      .replace(/\s+/g, " ")
-      .trim()
+      .replace(/\s+/g, "")
       .toLowerCase();
   const pageText = norm(document.body ? document.body.innerText : "");
   const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")];

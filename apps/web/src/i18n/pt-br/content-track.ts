@@ -87,7 +87,6 @@ export const contentTrack = {
   "contentTrack.card.proposed": "Estrategista propôs",
   "contentTrack.card.approved": "aprovada",
   "contentTrack.card.nowIn": "agora em {status}",
-  "contentTrack.card.campaign": "Campanha",
   "contentTrack.card.activity.researching": "lendo os dados da loja…",
   "contentTrack.card.activity.strategizing": "formando a hipótese…",
   "contentTrack.card.activity.cover": "gerando a capa…",
@@ -101,7 +100,7 @@ export const contentTrack = {
   "contentTrack.card.runFailed": "Não foi possível iniciar o agente: {error}",
   "contentTrack.card.moveFailed": "Não foi possível mover o card: {error}",
   "contentTrack.card.postNotMoved":
-    "O card mudou, mas o post no site não: este site não deixa o Studio ler o branch.",
+    "O card mudou, mas o post no site não: o Studio não conseguiu ler o branch.",
   "contentTrack.card.postMissing":
     "O post não está no branch do card, então não há o que agendar ou publicar.",
   "contentTrack.card.missingTitle": "Este card não existe mais",
@@ -168,6 +167,8 @@ export const contentTrack = {
   "contentTrack.publish.seoDescription": "Descrição na busca",
   "contentTrack.publish.save": "Salvar",
   "contentTrack.publish.discard": "Descartar",
+  "contentTrack.publish.incomplete":
+    "Não salvei: todo post precisa do slug, e um post no ar precisa também de título, categoria, resumo e capa.",
   "contentTrack.publish.saved": "Salvo no site.",
   "contentTrack.publish.failed": "Não deu para salvar: {error}",
   "contentTrack.publish.conflict":
@@ -253,6 +254,8 @@ export const contentTrack = {
   "contentTrack.campaign.send": "Enviar",
   "contentTrack.campaign.runFailed":
     "Não foi possível iniciar o agente: {error}",
+  "contentTrack.campaign.goalChanged":
+    "Esta meta mudou enquanto você editava. Abra de novo para ver como ela está agora.",
   "contentTrack.campaign.updateFailed":
     "Não foi possível atualizar a campanha: {error}",
   "contentTrack.phase.campaign": "Campanha",

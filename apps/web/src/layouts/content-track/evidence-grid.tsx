@@ -37,8 +37,8 @@ const SOURCE_ICON = {
 /** The four systems evidence is read against, always shown. */
 const SIGNALS = ["gsc", "ga4", "vtex", "calendar"] as const;
 
-/** A fact longer than this is cut on the small card, so the card opens to show it whole. */
-const SHORT_FACT = 140;
+/** A fact longer than this is cut on the narrowest card, a phone's, so the card opens to show it whole. */
+const SHORT_FACT = 80;
 
 /** A system's logo from its connection, in color; the line icon for the rest. */
 function SourceIcon({

@@ -178,6 +178,8 @@ export interface PlanningMeta {
   campaignKey?: string;
   format?: BrandRule;
   brief?: string;
+  /** Written by a card's run rather than by a person, so never an example to learn from. */
+  generated?: boolean;
 }
 
 /**

@@ -105,7 +105,7 @@ function isDecoPreviewHost(hostname: string): boolean {
  * renders the published page anywhere else. A preview server set to the
  * production domain shows every draft as if it did not exist, so this keeps
  * the preview server where it can show one and falls back to the site's
- * deco.site host otherwise.
+ * deco.site host otherwise. With no preview server configured there is none.
  */
 export function draftPreviewServerUrl(args: {
   previewServerUrl: string | null;
@@ -115,16 +115,15 @@ export function draftPreviewServerUrl(args: {
   siteName?: string | null;
 }): string | null {
   const configured = args.previewServerUrl;
-  if (configured) {
-    const { host, hostname } = new URL(configured);
-    const declared =
-      Array.isArray(args.previewHosts) &&
-      args.previewHosts.some(
-        (entry) =>
-          typeof entry === "string" &&
-          entry.trim().toLowerCase() === host.toLowerCase(),
-      );
-    if (declared || isDecoPreviewHost(hostname)) return configured;
-  }
+  if (!configured) return null;
+  const { host, hostname } = new URL(configured);
+  const declared =
+    Array.isArray(args.previewHosts) &&
+    args.previewHosts.some(
+      (entry) =>
+        typeof entry === "string" &&
+        entry.trim().toLowerCase() === host.toLowerCase(),
+    );
+  if (declared || isDecoPreviewHost(hostname)) return configured;
   return defaultPreviewServerUrl(args.siteName) ?? configured;
 }

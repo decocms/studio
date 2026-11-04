@@ -79,7 +79,7 @@ describe("brandExemplars", () => {
     "collections/blog/posts/b": post("guia", "2025-05-05"),
     "collections/blog/posts/c": post("recente", "2026-10-27"),
     "collections/blog/posts/d": post("nosso", "2026-11-03", {
-      planning: { format: { name: "Guia" } },
+      planning: { generated: true },
     }),
   };
 

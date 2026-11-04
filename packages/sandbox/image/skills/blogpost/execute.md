@@ -174,10 +174,12 @@ and `/tmp/blog/brief.txt`.
 
 Fix what the report and the reviewer find, in `post.json`: a heading level
 the block renders, a product block's ids, an image that loads, a block that
-shows nothing. Then assemble, write and render again, and have a reviewer look
-once more. Two rounds at most. Each problem still there goes in the post's
-`gaps` as `{ "code": "visual", "detail": "<what a reader sees, in a
-sentence>" }`, and in the chat.
+shows nothing. Then assemble, save its `post` to `/tmp/blog/assembled.json`
+again, write, and call `BLOG_POST_PREVIEW` again: its address names the commit
+it renders, and the old one still shows the post before your fix. Render the
+new address and have a reviewer look once more. Two rounds at most. Each
+problem still there goes in the post's `gaps` as `{ "code": "visual",
+"detail": "<what a reader sees, in a sentence>" }`, and in the chat.
 
 ## Done
 

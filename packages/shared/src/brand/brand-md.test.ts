@@ -285,6 +285,17 @@ describe("pickBrandDir", () => {
   });
 });
 
+test("a section whose title only contains the letters of 'format' is not the formats", () => {
+  const grouped = groupBrandSections([
+    { title: "Store information", summary: "" },
+    { title: "Formatos de post", summary: "" },
+  ]);
+  const formats = grouped.groups
+    .flatMap((g) => g.items)
+    .find((i) => i.id === "formats");
+  expect(formats?.sections.map((s) => s.title)).toEqual(["Formatos de post"]);
+});
+
 /** The labels the brand page writes as headings when someone fills an empty row. */
 test("every row's own label finds its row again, in both languages", () => {
   const labels: Record<string, string[]> = {

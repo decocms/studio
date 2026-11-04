@@ -159,7 +159,7 @@ const BRAND_GROUPS = [
   {
     id: "content",
     items: [
-      { id: "formats", match: /format/i },
+      { id: "formats", match: /\bformat/i },
       { id: "blocks", match: /\bblocos?\b|\bblocks?\b/i },
     ],
   },
