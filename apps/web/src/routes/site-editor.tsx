@@ -2,9 +2,7 @@
  * `/site-editor#endpoint=…` — the site editor over the `deco serve`
  * on this machine (the link the Blocks CLI prints), without a project.
  *
- * It is not gated, and it always renders in the New Layout, whatever this
- * person's preference says (`ForceProjectFirstNav`, scoped to this route). It
- * is the Site Editor APP, the same one a project launches
+ * It is not gated. It is the Site Editor APP, the same one a project launches
  * (`routes/workspace/agent-site-editor.tsx` and its Preview/Content tabs), in
  * the same app takeover: the org rail (signed in
  * only, as there are no orgs to list otherwise), no sidebar, the app full
@@ -58,7 +56,6 @@ import {
   TabDecoServeConnectionContext,
   useDecoServeConnection,
 } from "@/hooks/use-deco-serve-connection";
-import { ForceProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { ContentTab } from "@/layouts/main-panel-tabs/content-tab";
 import { PreviewTab } from "@/layouts/main-panel-tabs/preview-tab";
@@ -267,31 +264,29 @@ const NOT_CONNECTED = { connection: null, set: noop, clear: noop };
 export default function SiteEditorRoute() {
   const [start] = useState(takeStartFromUrl);
   return (
-    <ForceProjectFirstNav value>
-      <ProjectContextProvider org={NO_ORG} project={LOCAL_PROJECT}>
-        <LocalServeSwitch
-          candidates={start.candidates}
-          invalidLink={start.invalidLink}
-          shell={(guide) => (
-            <TabDecoServeConnectionContext.Provider value={NOT_CONNECTED}>
-              <LocalSiteEditorGuide>{guide}</LocalSiteEditorGuide>
-            </TabDecoServeConnectionContext.Provider>
-          )}
-          editor={(connection, onLost) => (
-            <TabDecoServeConnectionContext.Provider
-              value={{ connection, set: noop, clear: noop }}
-            >
-              <ServeLostWatcher onLost={onLost} />
-              <ChatTaskValueProvider value={LOCAL_TASK}>
-                <BlocksPreviewWorkspaceProvider>
-                  <LocalSiteEditor />
-                </BlocksPreviewWorkspaceProvider>
-              </ChatTaskValueProvider>
-            </TabDecoServeConnectionContext.Provider>
-          )}
-        />
-      </ProjectContextProvider>
-    </ForceProjectFirstNav>
+    <ProjectContextProvider org={NO_ORG} project={LOCAL_PROJECT}>
+      <LocalServeSwitch
+        candidates={start.candidates}
+        invalidLink={start.invalidLink}
+        shell={(guide) => (
+          <TabDecoServeConnectionContext.Provider value={NOT_CONNECTED}>
+            <LocalSiteEditorGuide>{guide}</LocalSiteEditorGuide>
+          </TabDecoServeConnectionContext.Provider>
+        )}
+        editor={(connection, onLost) => (
+          <TabDecoServeConnectionContext.Provider
+            value={{ connection, set: noop, clear: noop }}
+          >
+            <ServeLostWatcher onLost={onLost} />
+            <ChatTaskValueProvider value={LOCAL_TASK}>
+              <BlocksPreviewWorkspaceProvider>
+                <LocalSiteEditor />
+              </BlocksPreviewWorkspaceProvider>
+            </ChatTaskValueProvider>
+          </TabDecoServeConnectionContext.Provider>
+        )}
+      />
+    </ProjectContextProvider>
   );
 }
 

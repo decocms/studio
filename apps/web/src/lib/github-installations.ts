@@ -1,6 +1,3 @@
-export const GITHUB_APP_INSTALL_URL =
-  "https://github.com/apps/deco-cms/installations/new";
-
 export type GithubInstallation = {
   installationId: number;
   login: string;

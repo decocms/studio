@@ -240,12 +240,9 @@ export function AnyOfField({
         r.resolveType.includes("/") &&
         !isEmbeddedUnionResolveType(r.resolveType),
     );
-  /**
-   * A Section slot accepts any section, but its schema names only a handful,
-   * so the catalog is the honest list — the same one "Add section" draws from.
-   * It is long, hence searchable rather than a plain dropdown.
-   */
+  // Plain `Section` names only a few of the sections it accepts, so it offers the catalog; `Section<T>` names them all.
   const sectionSlot = isSectionBlockRefField(schema) && !!meta;
+  const anySectionSlot = sectionSlot && !!schema.acceptsAnySection;
   const sectionOptions = sectionSlot
     ? (() => {
         const seen = new Set<string>();
@@ -256,6 +253,7 @@ export function AnyOfField({
           options.push({ value, label });
         };
         for (const ref of refs) push(ref.resolveType, blockRefOptionLabel(ref));
+        if (!anySectionSlot) return options;
         for (const entry of extractSectionCatalog(meta, decofile ?? {})) {
           push(entry.resolveType, entry.title);
         }
@@ -435,7 +433,7 @@ export function AnyOfField({
                   )}
                   emptyMessage={t("sectionsEditor.anyOfField.noSectionsFound")}
                   renderSearchAction={
-                    onRequestAddSection
+                    anySectionSlot && onRequestAddSection
                       ? (close) => (
                           <Tooltip>
                             <TooltipTrigger asChild>

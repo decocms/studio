@@ -13,11 +13,10 @@
  *      operator view with no tenant policy.
  *      Overview is the home: it polls `live` itself, so "now" is not a tab.
  *
- *   2. Configuration — the lifecycle (register → configure / pause-resume /
- *      unregister) that used to be the whole tab, now one collapsible section.
+ *   2. Configuration — configure, pause-resume or unregister a registered site.
  *
  * Status drives the shell: `configured === false` → collector not wired;
- * `!registered` → the Register card is the whole tab (nothing to chart yet);
+ * `!registered` → a notice to ask the deco team to activate it;
  * `registered` → dashboard sections + a Configuration section. A 401 anywhere
  * shows the calm "not connected" state; the data surface being unset degrades to
  * "dashboard unavailable" while configuration still works.
@@ -1722,7 +1721,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
   );
 }
 
-// --- register (not yet registered) ------------------------------------------
+// --- one-time registration result (key rotation) ----------------------------
 
 /** Copy-to-clipboard button for the one-time snippet/token. */
 export function CopyButton({ text }: { text: string }) {
@@ -1804,202 +1803,6 @@ function RegistrationResult({
         </ul>
       )}
     </section>
-  );
-}
-
-function RegisterCard({
-  base,
-  orgSlug,
-  site,
-  host,
-  onRegistered,
-}: {
-  base: string;
-  orgSlug: string;
-  site: string;
-  host: string | null;
-  onRegistered: (result: AnalyticsRegisterResult) => void;
-}) {
-  const t = useT();
-  const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(["core", "commerce", "vitals"]),
-  );
-  const [hostOverride, setHostOverride] = useState("");
-  // Token (key) mode: an owned site not on our CDN. The token is public and
-  // events are NOT billable, so it is opt-in and clearly marked.
-  const [useKey, setUseKey] = useState(false);
-  const [domainsText, setDomainsText] = useState("");
-
-  const registerMutation = useMutation<
-    AnalyticsRegisterResult,
-    Error,
-    Record<string, unknown>
-  >({
-    mutationFn: (input) =>
-      mutateJson(
-        `${base}/analytics/register`,
-        "POST",
-        input,
-      ) as Promise<AnalyticsRegisterResult>,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({
-        queryKey: KEYS.analyticsStatus(orgSlug, site),
-      });
-      onRegistered(data);
-      toast.success(t("mainPanelTabs.analyticsTab.toastRegistered"));
-    },
-    onError: (err) => toast.error(errorText(err)),
-  });
-
-  const toggle = (key: string) => {
-    if (key === "core") return; // always on
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  // Split on commas/whitespace so a pasted list works either way.
-  const domains = domainsText
-    .split(/[\s,]+/)
-    .map((d) => d.trim())
-    .filter(Boolean);
-
-  const handleRegister = () => {
-    if (useKey) {
-      registerMutation.mutate({
-        key: true,
-        domains,
-        modules: [...selected],
-      });
-      return;
-    }
-    const trimmed = hostOverride.trim();
-    registerMutation.mutate({
-      modules: [...selected],
-      ...(trimmed ? { host: trimmed } : {}),
-    });
-  };
-
-  const effectiveHost =
-    hostOverride.trim() ||
-    host ||
-    t("mainPanelTabs.analyticsTab.registerHostFallback");
-
-  return (
-    <Card title={t("mainPanelTabs.analyticsTab.registerTitle")}>
-      <div className="flex flex-col gap-5">
-        <p className="text-sm text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.registerDescription", {
-            host: useKey ? domains[0] || "your domains" : effectiveHost,
-          })}
-        </p>
-
-        <div className="flex flex-col gap-2">
-          <Label>{t("mainPanelTabs.analyticsTab.modules")}</Label>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {MODULES.map((m) => {
-              const locked = m.key === "core";
-              const on = locked || selected.has(m.key);
-              return (
-                <label
-                  key={m.key}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:border-border/70"
-                >
-                  <Checkbox
-                    checked={on}
-                    disabled={locked}
-                    onCheckedChange={() => toggle(m.key)}
-                    className="mt-0.5"
-                  />
-                  <span className="flex flex-col">
-                    <span className="text-sm font-medium text-foreground">
-                      {t(m.labelKey)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {t(m.hintKey)}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:border-border/70">
-          <Checkbox
-            checked={useKey}
-            onCheckedChange={(v) => setUseKey(Boolean(v))}
-            className="mt-0.5"
-          />
-          <span className="flex flex-col">
-            <span className="text-sm font-medium text-foreground">
-              {t("mainPanelTabs.analyticsTab.registerByKey")}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.registerByKeyHint")}
-            </span>
-          </span>
-        </label>
-
-        {useKey ? (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="analytics-domains">
-              {t("mainPanelTabs.analyticsTab.domainsLabel")}
-            </Label>
-            <Input
-              id="analytics-domains"
-              value={domainsText}
-              onChange={(e) => setDomainsText(e.target.value)}
-              placeholder={t("mainPanelTabs.analyticsTab.domainsPlaceholder")}
-              className="font-mono text-xs"
-            />
-            <span className="text-xs text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.domainsHint")}
-            </span>
-          </div>
-        ) : (
-          !host && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="analytics-host">
-                {t("mainPanelTabs.analyticsTab.hostLabel")}
-              </Label>
-              <Input
-                id="analytics-host"
-                value={hostOverride}
-                onChange={(e) => setHostOverride(e.target.value)}
-                placeholder={t("mainPanelTabs.analyticsTab.hostPlaceholder")}
-                className="font-mono text-xs"
-              />
-              <span className="text-xs text-muted-foreground">
-                {t("mainPanelTabs.analyticsTab.hostHint")}
-              </span>
-            </div>
-          )
-        )}
-
-        <p className="text-xs text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.registerInstallHint")}
-        </p>
-
-        <div className="flex justify-end">
-          <Button
-            onClick={handleRegister}
-            disabled={
-              registerMutation.isPending ||
-              (useKey ? domains.length === 0 : !host && !hostOverride.trim())
-            }
-          >
-            {registerMutation.isPending
-              ? t("mainPanelTabs.analyticsTab.enabling")
-              : t("mainPanelTabs.analyticsTab.enableAnalytics")}
-          </Button>
-        </div>
-      </div>
-    </Card>
   );
 }
 
@@ -2622,13 +2425,6 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
     staleTime: 30_000,
   });
 
-  // The one-time registration result (snippet/notes, and the token for a keyed
-  // site). Held here so it survives the flip to the registered view — a token
-  // shown once must not vanish when the register card unmounts.
-  const [registered, setRegistered] = useState<AnalyticsRegisterResult | null>(
-    null,
-  );
-
   if (!siteSlug) {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
@@ -2662,13 +2458,6 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6">
         {/* No page title here: the breadcrumbs already name the view, and the
             site is named by the status row below. */}
-        {registered && (
-          <RegistrationResult
-            result={registered}
-            onDismiss={() => setRegistered(null)}
-          />
-        )}
-
         {statusQuery.isLoading ? (
           <div className="flex flex-col gap-3">
             <Skeleton className="h-8 w-full" />
@@ -2708,12 +2497,9 @@ export function AnalyticsTab({ virtualMcpId }: { virtualMcpId: string }) {
             status={status}
           />
         ) : (
-          <RegisterCard
-            base={base}
-            orgSlug={org.slug}
-            site={siteSlug}
-            host={status.host ?? null}
-            onRegistered={setRegistered}
+          <EmptyState
+            icon={<BarChartSquare02 className="size-5" />}
+            title={t("mainPanelTabs.analyticsTab.askTeamToActivate")}
           />
         )}
       </div>

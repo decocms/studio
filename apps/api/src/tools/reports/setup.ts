@@ -9,7 +9,10 @@ import {
   WellKnownOrgMCPId,
 } from "@decocms/shared/sdk";
 import { z } from "zod";
-import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
+import {
+  normalizeReportsSiteUrl,
+  siteUrlToHost,
+} from "@decocms/shared/reports/site-url";
 import type { StudioContext } from "../../core/studio-context";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -17,6 +20,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { notifyMcpConfiguration } from "../connection/on-configuration";
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
 import { fetchReportsAuth, resolveReportsMcpUrl } from "./auth-client";
@@ -197,6 +201,63 @@ export const REPORTS_SETUP = defineTool({
           orgId: organization.id,
           cause: "site_changed",
         });
+      }
+      // Reports keeps connection picks per site and only learns them from
+      // ON_MCP_CONFIGURATION, so a site this token newly targets has none until
+      // the stored state is sent again. `picksSentToHost` records the last site
+      // that got them and is written only after a successful send, so a repeat
+      // setup for that site skips the call and a failed send is retried by the
+      // next setup. Best-effort: the claim already landed.
+      const host = siteUrlToHost(normalized.value);
+      const state = connection.configuration_state;
+      if (
+        state &&
+        Object.keys(state).length > 0 &&
+        connection.metadata?.picksSentToHost !== host
+      ) {
+        let sent = false;
+        try {
+          await notifyMcpConfiguration(ctx, connection, {
+            state,
+            scopes: connection.configuration_scopes ?? [],
+            firstRun: false,
+          });
+          sent = true;
+        } catch (error) {
+          console.error(
+            "[reports] ON_MCP_CONFIGURATION after site claim failed",
+            error,
+          );
+        }
+        // A failed marker write only costs one repeat send on the next setup.
+        if (sent) {
+          try {
+            // Re-read: the send above is a remote round-trip, and a setup that
+            // ran meanwhile may have moved the connection to another site. Merge
+            // onto that fresh metadata, and only while it still names this site.
+            // ponytail: read-then-write; a storage-level jsonb merge if two
+            // setups ever race inside these two DB calls.
+            const fresh = await ctx.storage.connections.findById(
+              connection.id,
+              organization.id,
+            );
+            const freshSite = fresh?.metadata?.siteUrl;
+            if (
+              fresh &&
+              typeof freshSite === "string" &&
+              siteUrlToHost(freshSite) === host
+            ) {
+              connection = await ctx.storage.connections.update(fresh.id, {
+                metadata: { ...(fresh.metadata ?? {}), picksSentToHost: host },
+              });
+            }
+          } catch (error) {
+            console.error(
+              "[reports] recording picksSentToHost after the send failed",
+              error,
+            );
+          }
+        }
       }
     } else {
       console.log("[reports] creating connection", {

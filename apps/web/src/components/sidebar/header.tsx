@@ -1,39 +1,17 @@
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { SidebarThreadButton } from "./thread-button";
-
-import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
-import { OrgProjectPicker } from "./org-project-picker";
 import { ProjectSwitcher } from "./project-switcher";
 
 const ICON_SIZE = 16;
 
-/** Project-first navigation names the org or the open project here; classic keeps the picker. */
+/** Names the org or the open project. */
 export function SidebarPickerHeader() {
-  const collapsed = useSidebarCollapsed();
-  const projectFirstNav = useProjectFirstNav();
-
-  if (projectFirstNav) {
-    return (
-      <>
-        <ProjectSwitcher collapsed={collapsed} />
-        <CollapseToggle />
-        <SidebarThreadButton />
-      </>
-    );
-  }
-
   return (
     <>
-      <OrgProjectPicker collapsed={collapsed} />
+      <ProjectSwitcher />
       <CollapseToggle />
       <SidebarThreadButton />
     </>
@@ -48,21 +26,12 @@ export function SidebarPickerHeaderMobile({
   onClose: () => void;
 }) {
   const t = useT();
-  const projectFirstNav = useProjectFirstNav();
 
   return (
     <>
       {/* Picking closes the sheet, or the thing you just chose stays hidden
           behind it. */}
-      {/* The switcher grows to fill the row itself; the classic picker does not. */}
-      {projectFirstNav ? (
-        <ProjectSwitcher onNavigate={onClose} />
-      ) : (
-        <>
-          <OrgProjectPicker onNavigate={onClose} />
-          <div className="flex-1" />
-        </>
-      )}
+      <ProjectSwitcher onNavigate={onClose} />
       <SidebarThreadButton />
       <ToolbarIconButton
         onClick={onClose}
@@ -74,28 +43,19 @@ export function SidebarPickerHeaderMobile({
   );
 }
 
+/** No tooltip: it sits next to a picker that already names the place. The
+ *  collapsed sidebar has zero width, so reopening is the page header's toggle. */
 function CollapseToggle() {
   const t = useT();
-  const collapsed = useSidebarCollapsed();
   const { toggleSidebar } = useSidebar();
-  const label = t(collapsed ? "page.expandSidebar" : "page.collapseSidebar");
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          aria-label={label}
-          onClick={toggleSidebar}
-          className="shrink-0 group-data-[state=collapsed]/sidebar:mx-auto size-7 group-data-[state=collapsed]/sidebar:size-8"
-        >
-          <LayoutLeft size={ICON_SIZE} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      {/* Expanded, this sits next to a picker that already names the place, so
-          a tooltip repeating the button is noise. */}
-      <TooltipContent side="right" hidden={!collapsed}>
-        {label}
-      </TooltipContent>
-    </Tooltip>
+    <ToolbarIconButton
+      aria-label={t("page.collapseSidebar")}
+      onClick={toggleSidebar}
+      className="shrink-0 size-7"
+    >
+      <LayoutLeft size={ICON_SIZE} />
+    </ToolbarIconButton>
   );
 }

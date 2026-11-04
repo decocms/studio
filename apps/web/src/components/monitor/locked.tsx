@@ -17,6 +17,11 @@ import { Check } from "@untitledui/icons";
 import { ListRow } from "@decocms/ui/components/list-row.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { toast } from "sonner";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
@@ -399,14 +404,18 @@ function useInstallableProjects(
 
 export function AnalyticsGuide({
   projects = NO_PROJECTS,
+  more = NO_PROJECTS,
 }: {
   /** The org's site projects; those with a connected repository are offered
    *  to the Super Agent. */
   projects?: readonly SiteProject[];
+  /** Projects "Add another site" offers before falling back to a new project. */
+  more?: readonly SiteProject[];
 }) {
   const t = useT();
   const install = useInstallAnalytics();
   const installable = useInstallableProjects(projects);
+  const installableMore = useInstallableProjects(more);
   const [domain, setDomain] = useState("");
   // The site hosting knows no domain for, asked where it's live.
   const [asking, setAsking] = useState<string | null>(null);
@@ -435,7 +444,7 @@ export function AnalyticsGuide({
         {t("monitor.analyticsGuide.intro")}
       </p>
       <div className={LIST}>
-        {installable.map((project, i) =>
+        {installable.map((project) =>
           asking === project.site ? (
             <form
               key={project.id}
@@ -491,7 +500,7 @@ export function AnalyticsGuide({
               trailing={
                 <Button
                   size="sm"
-                  variant={i === 0 ? "default" : "outline"}
+                  variant="outline"
                   className="shrink-0"
                   disabled={install.isPending}
                   onClick={() => {
@@ -522,15 +531,29 @@ export function AnalyticsGuide({
         <p className="text-xs text-muted-foreground">
           {t("monitor.analyticsGuide.manual")}
         </p>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="shrink-0 gap-1"
-          onClick={() => openNewProjectDialog("monitor")}
-        >
-          <Plus size={14} />
-          {t("monitor.analyticsGuide.addAnother")}
-        </Button>
+        {installableMore && installableMore.length > 0 ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button size="sm" variant="ghost" className="shrink-0 gap-1">
+                <Plus size={14} />
+                {t("monitor.analyticsGuide.addAnother")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-96">
+              <AnalyticsGuide projects={installableMore} />
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 gap-1"
+            onClick={() => openNewProjectDialog("monitor")}
+          >
+            <Plus size={14} />
+            {t("monitor.analyticsGuide.addAnother")}
+          </Button>
+        )}
       </div>
     </div>
   );
