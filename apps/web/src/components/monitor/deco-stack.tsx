@@ -13,8 +13,7 @@ import {
 } from "./deco-analytics";
 import type { SectionRange } from "./audience-view";
 import type { SiteProject } from "./org-insights";
-import { AnalyticsEmpty, TurnOnAnalytics } from "./turn-on-analytics";
-import { AnalyticsPreview, PickProject } from "./locked";
+import { AnalyticsPreview, AnalyticsSoon, PickProject } from "./locked";
 
 /** One of a site's sections. Nothing when the site isn't on Deco Analytics. */
 export function DecoStack({
@@ -55,7 +54,6 @@ export function HeatmapScreen({
 }) {
   const { org } = useProjectContext();
   const [configure, setConfigure] = useState(false);
-  const [turnOn, setTurnOn] = useState(false);
   const status = useAnalyticsStatus(
     org.slug,
     { site: project?.site ?? "" },
@@ -73,27 +71,7 @@ export function HeatmapScreen({
   } else if (status.isLoading) {
     body = <Skeleton className="h-64" />;
   } else if (!status.data?.registered) {
-    const data = status.data;
-    body = (
-      <>
-        <AnalyticsEmpty
-          onTurnOn={
-            data && data.configured !== false
-              ? () => setTurnOn(true)
-              : undefined
-          }
-        />
-        {data && (
-          <TurnOnAnalytics
-            orgSlug={org.slug}
-            project={project}
-            status={data}
-            open={turnOn}
-            onOpenChange={setTurnOn}
-          />
-        )}
-      </>
-    );
+    body = <AnalyticsSoon />;
   } else {
     body = (
       <>

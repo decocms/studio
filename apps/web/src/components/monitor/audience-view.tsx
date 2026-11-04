@@ -43,8 +43,8 @@ import { useProjectContext } from "@/sdk";
 import { TopbarSelect } from "./topbar-select";
 import type { SiteProject } from "./org-insights";
 import { weightedMean } from "./aggregate";
-import { AnalyticsGuide, AnalyticsPreview, Locked } from "./locked";
-import { connectLink, Spread, Trend } from "./parts";
+import { AnalyticsSoon } from "./locked";
+import { Spread, Trend } from "./parts";
 import {
   ConfigureButton,
   ConfigureDialog,
@@ -54,12 +54,6 @@ import { Group } from "./analytics/panels";
 import { DecoSection } from "./analytics/sections";
 import { SegmentActions, SegmentChips } from "./analytics/segment-bar";
 import { useAnalyticsSegment } from "./analytics/segment";
-import {
-  AnalyticsEmpty,
-  InstallCheck,
-  TurnOnAnalytics,
-  TurnOnCard,
-} from "./turn-on-analytics";
 
 const COLOR_VISITORS = "var(--chart-1)";
 
@@ -570,9 +564,7 @@ function ProjectAudience({
   const t = useT();
   const { org } = useProjectContext();
   const status = useAnalyticsStatus(org.slug, project);
-  const [dialog, setDialog] = useState<
-    "configure" | "register" | "review" | null
-  >(null);
+  const [dialog, setDialog] = useState<"configure" | null>(null);
   // Deco Analytics reads down to the last minutes; the last five are the live view.
   const [decoRange, setDecoRange] = useState<SectionRange>("24h");
   const { segment } = useAnalyticsSegment();
@@ -590,18 +582,6 @@ function ProjectAudience({
     !!deco && legacy?.available === true && legacy.source === "onedollar";
   const [source, setSource] = useState<AudienceSource>("deco-analytics");
   const onDeco = !!deco && (!both || source === "deco-analytics");
-  const canRegister =
-    status.data !== undefined &&
-    status.data.configured !== false &&
-    !status.data.registered;
-  // A site already reporting to OneDollarStats can move to Deco Analytics.
-  const reporting = useAudience(org.slug, project, "summary", range).data
-    ?.available;
-  const empty = (
-    <AnalyticsEmpty
-      onTurnOn={canRegister ? () => setDialog("register") : undefined}
-    />
-  );
 
   return (
     <>
@@ -648,13 +628,6 @@ function ProjectAudience({
         )}
         {deco && <ConfigureButton onClick={() => setDialog("configure")} />}
       </RangeAction>
-      {deco && (
-        <InstallCheck
-          orgSlug={org.slug}
-          site={project.site}
-          onReview={() => setDialog("review")}
-        />
-      )}
       {onDeco && <SegmentChips />}
       {onDeco && deco ? (
         <>
@@ -690,17 +663,12 @@ function ProjectAudience({
           })}
         </>
       ) : (
-        <>
-          {canRegister && reporting && (
-            <TurnOnCard onTurnOn={() => setDialog("register")} />
-          )}
-          <AudienceOverview
-            project={project}
-            range={range}
-            empty={empty}
-            source={both ? "onedollar" : undefined}
-          />
-        </>
+        <AudienceOverview
+          project={project}
+          range={range}
+          empty={<AnalyticsSoon />}
+          source={both ? "onedollar" : undefined}
+        />
       )}
       {status.data?.registered && (
         <ConfigureDialog
@@ -709,25 +677,6 @@ function ProjectAudience({
           status={status.data}
           open={dialog === "configure"}
           onOpenChange={(open) => setDialog(open ? "configure" : null)}
-        />
-      )}
-      {status.data && (canRegister || dialog === "register") && (
-        <TurnOnAnalytics
-          orgSlug={org.slug}
-          project={project}
-          status={status.data}
-          open={dialog === "register"}
-          onOpenChange={(open) => setDialog(open ? "register" : null)}
-        />
-      )}
-      {deco && (
-        <TurnOnAnalytics
-          orgSlug={org.slug}
-          project={project}
-          status={deco}
-          review
-          open={dialog === "review"}
-          onOpenChange={(open) => setDialog(open ? "review" : null)}
         />
       )}
     </>
@@ -962,21 +911,13 @@ function OrgAudience({
       ? [{ project, points: d.data.points }]
       : [];
   });
-  const silent = rows.filter((r) => !r.loading && !r.summary);
   const action = <RangeAction value={range} onChange={onRange}></RangeAction>;
 
   if (!loading && reporting.length === 0) {
     return (
       <>
         {action}
-        <Locked
-          kind="analytics"
-          title={t("monitor.locked.analytics.title")}
-          guide={<AnalyticsGuide projects={projects} />}
-          link={connectLink(org.slug, null)}
-        >
-          <AnalyticsPreview />
-        </Locked>
+        <AnalyticsSoon />
       </>
     );
   }
@@ -1136,14 +1077,6 @@ function OrgAudience({
           </tbody>
         </table>
       </section>
-      {reporting.length > 0 && silent.length > 0 && (
-        <section className="surface flex flex-col gap-3 px-4 pt-4 pb-5">
-          <h3 className="text-sm text-foreground/70">
-            {t("monitor.audience.silentTitle")}
-          </h3>
-          <AnalyticsGuide projects={silent.map((r) => r.project)} />
-        </section>
-      )}
     </>
   );
 }

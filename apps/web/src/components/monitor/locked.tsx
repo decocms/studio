@@ -11,6 +11,7 @@
 import { type ReactNode, useState } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
 import { Plus } from "@untitledui/icons";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Check } from "@untitledui/icons";
 import { ListRow } from "@decocms/ui/components/list-row.tsx";
@@ -378,7 +379,7 @@ const NO_PROJECTS: readonly SiteProject[] = [];
  * repositories load: it opens its PR in the project's repository, so only a
  * project bound to one the org has connected can take the tag.
  */
-export function useInstallableProjects(
+function useInstallableProjects(
   projects: readonly SiteProject[],
 ): SiteProject[] | null {
   const repositoriesQuery = useRepositories();
@@ -654,6 +655,43 @@ export function PickProject({
       }
     >
       {children}
+    </Locked>
+  );
+}
+
+/** A site without Deco Analytics yet: the same card, saying it is on its way. */
+export function AnalyticsSoon() {
+  const t = useT();
+  const { org } = useProjectContext();
+  return (
+    <Locked
+      kind="analytics"
+      title={t("monitor.analyticsSoon.title")}
+      link={connectLink(org.slug, null)}
+      guide={
+        <div>
+          <ListRow
+            variant="divided"
+            lead={
+              <IntegrationIcon
+                icon="/logos/deco%20logo.svg"
+                name={t("monitor.audience.source.decoAnalytics")}
+                size="xs"
+                fit="contain"
+              />
+            }
+            title={t("monitor.audience.source.decoAnalytics")}
+            meta={t("monitor.analyticsSoon.powers")}
+            trailing={
+              <Badge variant="outline" className="shrink-0">
+                {t("monitor.analyticsSoon.badge")}
+              </Badge>
+            }
+          />
+        </div>
+      }
+    >
+      <AnalyticsPreview />
     </Locked>
   );
 }

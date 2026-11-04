@@ -308,20 +308,38 @@ export const mainPanelTabs = {
     "The analytics collector isn't wired to this environment yet.",
   // Register
   "mainPanelTabs.analyticsTab.registerTitle": "Start collecting analytics",
+  "mainPanelTabs.analyticsTab.registerDescription":
+    "Registers {host} with the Deco Analytics collector to start recording traffic.",
+  "mainPanelTabs.analyticsTab.registerHostFallback": "this site's domain",
+  "mainPanelTabs.analyticsTab.modules": "Modules",
+  "mainPanelTabs.analyticsTab.moduleCore": "Core",
+  "mainPanelTabs.analyticsTab.moduleCoreHint":
+    "Pageviews + custom events (always on)",
+  "mainPanelTabs.analyticsTab.moduleCommerce": "Commerce",
+  "mainPanelTabs.analyticsTab.moduleCommerceHint":
+    "view_item, add_to_cart, purchase…",
+  "mainPanelTabs.analyticsTab.moduleVitals": "Web vitals",
+  "mainPanelTabs.analyticsTab.moduleVitalsHint": "LCP, INP, CLS, TTFB, FCP",
+  "mainPanelTabs.analyticsTab.moduleErrors": "Errors",
+  "mainPanelTabs.analyticsTab.moduleErrorsHint":
+    "Errors from onerror / rejections",
+  "mainPanelTabs.analyticsTab.moduleEngagement": "Engagement",
+  "mainPanelTabs.analyticsTab.moduleEngagementHint": "Scroll depth, dwell",
+  "mainPanelTabs.analyticsTab.registerInstallHint":
+    "Once enabled, traffic is collected automatically — no code to add.",
+  "mainPanelTabs.analyticsTab.editModules": "Modules",
+  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
+  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
+    "Clicks, scroll and attention per page",
+  "mainPanelTabs.analyticsTab.registerByKey":
+    "Register by token (site not on our CDN)",
+  "mainPanelTabs.analyticsTab.registerByKeyHint":
+    "For a dev, staging, or off-CDN site. The tag carries a public token and events are not billable.",
   "mainPanelTabs.analyticsTab.hostLabel": "Hostname",
   "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
   "mainPanelTabs.analyticsTab.hostHint":
-    "No production domain on record. Enter the one to collect under.",
-  "mainPanelTabs.analyticsTab.whereLabel": "Where the site runs",
-  "mainPanelTabs.analyticsTab.whereCdn": "On deco's CDN",
-  "mainPanelTabs.analyticsTab.whereElsewhere": "Somewhere else",
-  "mainPanelTabs.analyticsTab.cdnHint":
-    "Collects on {host} by itself. No code to add.",
-  "mainPanelTabs.analyticsTab.cdnHintNoHost":
-    "Collects by itself. No code to add.",
-  "mainPanelTabs.analyticsTab.elsewhereHint":
-    "You get a tag to paste on the site. It carries a public token, and its events aren't billed.",
-  "mainPanelTabs.analyticsTab.enableAnalytics": "Turn on analytics",
+    "This site has no production domain on record — enter the hostname to collect under.",
+  "mainPanelTabs.analyticsTab.enableAnalytics": "Enable analytics",
   "mainPanelTabs.analyticsTab.enabling": "Enabling…",
   "mainPanelTabs.analyticsTab.toastRegistered": "Analytics enabled",
   // Registered view
@@ -588,7 +606,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.domainsPlaceholder":
     "loja.com.br, staging.loja.com.br",
   "mainPanelTabs.analyticsTab.domainsHint":
-    "The collector only accepts these. The first one is the main domain.",
+    "Domains the collector accepts (Origin check); the first is primary. Required for a token.",
   "mainPanelTabs.analyticsTab.tokenTitle": "Token created — copy it now",
   "mainPanelTabs.analyticsTab.tokenOnce":
     "Shown once. It is public (it ships in the script), so it identifies but never authenticates — events are not billable.",

@@ -20,7 +20,7 @@ const count = z.coerce.number().catch(0);
 const text = z.string().catch("");
 
 /** The `live` view's panels this section draws, as queries.mjs selects them. */
-export const LivePayload = z.object({
+const LivePayload = z.object({
   liveVisitors: z
     .array(
       z.object({
