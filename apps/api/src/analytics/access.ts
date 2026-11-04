@@ -54,13 +54,23 @@ export async function ownedAnalyticsSiteId(
   | { status: "unregistered" }
   | { status: "error" }
 > {
-  const project = await lookupOwnedProject(ctx, organizationId, site).catch(
-    () => undefined,
+  const lookup = await lookupOwnedProject(ctx, organizationId, site).then(
+    (project) => ({ ok: true as const, project }),
+    (error: unknown) => ({ ok: false as const, error }),
   );
-  const stored = storedExternalRegistration(project?.metadata);
+  const stored =
+    lookup.ok && storedExternalRegistration(lookup.project?.metadata);
   if (stored) return { status: "registered", id: stored.id };
   const registration = await readAnalyticsRegistration(site);
   if (registration.status === "error") return { status: "error" };
+  // Unhosted, so only the project could have said where its analytics is.
+  if (registration.status === "unhosted" && !lookup.ok) {
+    console.error(
+      `[analytics] registration lookup failed for site="${site}":`,
+      lookup.error,
+    );
+    return { status: "error" };
+  }
   return registration.status === "registered"
     ? { status: "registered", id: registration.id }
     : { status: "unregistered" };

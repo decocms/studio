@@ -146,6 +146,39 @@ describe("ownedAnalyticsSiteId", () => {
     }
   });
 
+  it("falls back to the control-plane when the project lookup fails, and errors when it has no record either", async () => {
+    const failing = ctx({ owned: true, listFails: true });
+    const fetchSpy = spyOn(globalThis, "fetch");
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      fetchSpy.mockResolvedValueOnce(
+        Response.json({
+          registered: true,
+          host: "acme.com",
+          key: null,
+          config: { id: "s42", modules: ["core"] },
+        }),
+      );
+      expect(await ownedAnalyticsSiteId(failing, ORG, "acme")).toEqual({
+        status: "registered",
+        id: "s42",
+      });
+      fetchSpy.mockResolvedValueOnce(
+        Response.json(
+          { error: "not_found", message: "unknown site: acme" },
+          { status: 404 },
+        ),
+      );
+      expect(await ownedAnalyticsSiteId(failing, ORG, "acme")).toEqual({
+        status: "error",
+      });
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
   it("answers unregistered for a slug the control-plane has no record of, and error on an outage", async () => {
     const fetchSpy = spyOn(globalThis, "fetch");
     try {
