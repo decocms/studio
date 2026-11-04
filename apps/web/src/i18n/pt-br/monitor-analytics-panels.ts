@@ -36,7 +36,6 @@ export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.regions": "Regiões",
   "monitor.analytics.panels.cities": "Cidades",
   "monitor.analytics.panels.devices": "Dispositivos",
-  "monitor.analytics.panels.browsers": "Navegadores",
   "monitor.analytics.panels.os": "Sistemas operacionais",
   "monitor.analytics.panels.channels": "Canais",
   "monitor.analytics.panels.campaigns": "Campanhas",

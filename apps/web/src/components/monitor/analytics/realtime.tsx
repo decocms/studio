@@ -7,7 +7,7 @@ import {
 } from "@decocms/ui/components/chart.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { usePreferences } from "@/hooks/use-preferences.ts";
-import type { Locale } from "@/i18n/locale.ts";
+import { LOCALE_TAG } from "@/i18n/locale.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { isNotConfigured } from "@/layouts/main-panel-tabs/analytics-tab";
 import { AXIS_TICK } from "@/layouts/task-board/analytics-sections";
@@ -49,8 +49,6 @@ export const LivePayload = z.object({
     )
     .catch([]),
 });
-
-const LOCALE_TAG: Record<Locale, string> = { en: "en-US", "pt-BR": "pt-BR" };
 
 /** The read surface's timestamps are UTC `YYYY-MM-DD HH:MM:SS` with no zone. */
 function parseUtc(value: string | null): Date | null {

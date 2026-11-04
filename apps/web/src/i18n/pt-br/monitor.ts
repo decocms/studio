@@ -1,7 +1,6 @@
 import type { monitor as monitorEn } from "../en/monitor.ts";
 
 export const monitor = {
-  "monitor.connectSource": "Conectar fonte",
   "monitor.statusOk": "OK",
   "monitor.signals.allClear": "Nada precisa de atenção",
   "monitor.signals.watching":
@@ -172,7 +171,6 @@ export const monitor = {
   "monitor.audience.silentTitle": "Sites que ainda não mandam analytics",
   "monitor.turnOn.upgrade": "Tempo real, funil, eventos e heatmap",
   "monitor.audience.activate": "Ativar Deco Analytics",
-  "monitor.audience.org.pageviews": "Pageviews, todos os sites",
   "monitor.audience.org.site": "Site",
   "monitor.audience.org.source": "Fonte",
   "monitor.audience.org.noSource": "Sem fonte",
@@ -226,8 +224,6 @@ export const monitor = {
   "monitor.analyticsGuide.manual":
     "Prefere adicionar você mesmo? A aba Analytics de cada site mostra a tag dele.",
   "monitor.analyticsGuide.add": "Adicionar seu site",
-  "monitor.analyticsGuide.uncounted":
-    "Estes sites recebem tráfego, mas ainda não contam pageviews.",
   "monitor.analyticsGuide.addAnother": "Adicionar outro site",
   "monitor.powers.orders": "Pedidos, cancelamentos e canais de venda",
   "monitor.powers.site": "Audiência, erros e tempo de resposta",

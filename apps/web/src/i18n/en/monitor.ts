@@ -1,5 +1,4 @@
 export const monitor = {
-  "monitor.connectSource": "Connect a source",
   "monitor.statusOk": "OK",
   "monitor.signals.allClear": "Nothing needs attention",
   "monitor.signals.watching":
@@ -167,7 +166,6 @@ export const monitor = {
   "monitor.audience.silentTitle": "Sites not sending analytics yet",
   "monitor.turnOn.upgrade": "Realtime, funnel, events and heatmap",
   "monitor.audience.activate": "Turn on Deco Analytics",
-  "monitor.audience.org.pageviews": "Pageviews, all sites",
   "monitor.audience.org.site": "Site",
   "monitor.audience.org.source": "Source",
   "monitor.audience.org.noSource": "No source",
@@ -219,8 +217,6 @@ export const monitor = {
   "monitor.analyticsGuide.manual":
     "Prefer to add it yourself? Each site's Analytics tab has its tag.",
   "monitor.analyticsGuide.add": "Add your site",
-  "monitor.analyticsGuide.uncounted":
-    "These sites get traffic but don't count pageviews yet.",
   "monitor.analyticsGuide.addAnother": "Add another site",
   "monitor.powers.orders": "Orders, cancellations and sales channels",
   "monitor.powers.site": "Audience, errors and response time",

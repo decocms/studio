@@ -34,7 +34,7 @@ import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
-import type { Locale } from "@/i18n/locale.ts";
+import { LOCALE_TAG } from "@/i18n/locale.ts";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { CopyButton, fetchJson } from "@/layouts/main-panel-tabs/analytics-tab";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
@@ -56,8 +56,6 @@ import {
 } from "./site-events-contract";
 import { TopbarSelect } from "./topbar-select";
 import { ViewSwitch } from "./view-switch";
-
-const LOCALE_TAG: Record<Locale, string> = { en: "en-US", "pt-BR": "pt-BR" };
 
 /** How often Live reads again. */
 const LIVE_MS = 5_000;
