@@ -201,7 +201,7 @@ describe("REPORTS_SETUP", () => {
     expect(params.state).toEqual(state);
   });
 
-  test("a notify failure does not fail the setup", async () => {
+  test("a failed send does not fail the setup, and the next setup for the same site retries it", async () => {
     notifyMock.mockClear();
     notifyMock.mockImplementationOnce(async () => {
       throw new Error("downstream unreachable");
@@ -210,6 +210,7 @@ describe("REPORTS_SETUP", () => {
       existingConnection: {
         id: "conn_1",
         connection_token: "dgn_old_site_token",
+        metadata: { siteUrl: "https://old-site.com" },
         configuration_state: { gsc: { __type: "x", value: "conn_gsc" } },
       },
     });
@@ -217,23 +218,28 @@ describe("REPORTS_SETUP", () => {
     await expect(
       REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx),
     ).resolves.toBeDefined();
+    // siteUrl now says new-site.com, but the picks never got there.
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(notifyMock).toHaveBeenCalledTimes(2);
   });
 
-  test("same site again ⇒ no notify (its picks are already there)", async () => {
+  test("same site after a successful send ⇒ no second send", async () => {
     notifyMock.mockClear();
     const ctx = makeCtx({
       existingConnection: {
         id: "conn_1",
         connection_token: "dgn_old",
-        // Same hostname, different spelling: still the same diagnostic.
-        metadata: { siteUrl: "https://new-site.com/" },
+        metadata: { siteUrl: "https://old-site.com" },
         configuration_state: { ga4: { __type: "x", value: "conn_ga" } },
       },
     });
 
     await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+    // Same hostname, different spelling: still the same diagnostic.
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com/" }, ctx);
 
-    expect(notifyMock).not.toHaveBeenCalled();
+    expect(notifyMock).toHaveBeenCalledTimes(1);
   });
 
   test("nothing to re-send ⇒ no notify", async () => {

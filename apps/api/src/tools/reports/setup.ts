@@ -9,7 +9,10 @@ import {
   WellKnownOrgMCPId,
 } from "@decocms/shared/sdk";
 import { z } from "zod";
-import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
+import {
+  normalizeReportsSiteUrl,
+  siteUrlToHost,
+} from "@decocms/shared/reports/site-url";
 import type { StudioContext } from "../../core/studio-context";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -183,8 +186,10 @@ export const REPORTS_SETUP = defineTool({
         siteUrl: normalized.value,
         connectionId,
       });
-      const previousSite = connection.metadata?.siteUrl;
-      const leftBehind = siteLeftBehind(previousSite, normalized.value);
+      const leftBehind = siteLeftBehind(
+        connection.metadata?.siteUrl,
+        normalized.value,
+      );
       connection = await ctx.storage.connections.update(connection.id, {
         connection_url: mcpUrl,
         connection_token: auth.authorizationToken,
@@ -199,19 +204,25 @@ export const REPORTS_SETUP = defineTool({
       }
       // Reports keeps connection picks per site and only learns them from
       // ON_MCP_CONFIGURATION, so a site this token newly targets has none until
-      // the stored state is sent again. Same site ⇒ it already has them. An
-      // unknown previous site (no metadata.siteUrl) counts as a change.
-      // Best-effort: the claim already landed, and a later config save
-      // re-sends it anyway.
-      const siteChanged =
-        leftBehind !== null || typeof previousSite !== "string";
+      // the stored state is sent again. `picksSentToHost` records the last site
+      // that got them and is written only after a successful send, so a repeat
+      // setup for that site skips the call and a failed send is retried by the
+      // next setup. Best-effort: the claim already landed.
+      const host = siteUrlToHost(normalized.value);
       const state = connection.configuration_state;
-      if (siteChanged && state && Object.keys(state).length > 0) {
+      if (
+        state &&
+        Object.keys(state).length > 0 &&
+        connection.metadata?.picksSentToHost !== host
+      ) {
         try {
           await notifyMcpConfiguration(ctx, connection, {
             state,
             scopes: connection.configuration_scopes ?? [],
             firstRun: false,
+          });
+          connection = await ctx.storage.connections.update(connection.id, {
+            metadata: { ...(connection.metadata ?? {}), picksSentToHost: host },
           });
         } catch (error) {
           console.error(
