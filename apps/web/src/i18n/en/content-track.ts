@@ -130,6 +130,15 @@ export const contentTrack = {
   "contentTrack.card.stage.illustrating": "Illustrating",
   "contentTrack.card.stage.assembling": "Assembling",
   "contentTrack.card.stage.writing": "Saving the draft",
+  "contentTrack.card.stage.reviewing": "Reviewing the page",
+  "contentTrack.card.gaps": "Left for you to check",
+  "contentTrack.card.gap.noBucket": "No image bucket, so no image was drawn.",
+  "contentTrack.card.gap.noImageModel":
+    "The organization has no image model, so no image was drawn.",
+  "contentTrack.card.gap.imagesFailed": "The images could not be drawn.",
+  "contentTrack.card.gap.sectionsDropped":
+    "Sections left out because they did not fit their block: {count}.",
+  "contentTrack.card.gap.noPreview": "Not reviewed on the site: {detail}",
   "contentTrack.card.shopTheLook": "Shop the look",
   "contentTrack.card.saved":
     "Draft saved on {branch}, waiting for review in the Site Editor.",

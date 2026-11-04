@@ -41,6 +41,7 @@ export const BLOG_CARD_STAGES = [
   "illustrating",
   "assembling",
   "writing",
+  "reviewing",
   "done",
 ] as const;
 export type BlogCardStage = (typeof BLOG_CARD_STAGES)[number];
@@ -297,7 +298,17 @@ export const BlogCardPostSchema = z
         .loose(),
     ),
     gaps: z.array(
-      z.object({ code: z.string(), count: z.number().optional() }).loose(),
+      z
+        .object({
+          code: z.string(),
+          count: z.number().optional(),
+          detail: z
+            .string()
+            .max(400)
+            .optional()
+            .describe("What a reader would see, in a sentence."),
+        })
+        .loose(),
     ),
   })
   .partial()

@@ -1,0 +1,513 @@
+#!/usr/bin/env node
+/**
+ * render-check — render a written blog post as its site serves it, and say
+ * what looks wrong.
+ *
+ *   node render-check <url> <outdir> [--post=<post.json>]
+ *
+ * Opens the page at desktop (1280) and phone (390) widths and saves the whole
+ * article as slices (`desktop-1.png`, `mobile-1.png`, …): one full-page shot
+ * of a long post is too tall to read. With `--post`, it also checks each of
+ * the post's blocks against the page and writes `report.json`: a block is
+ * found by its own text, never by the site's markup, so this works on any
+ * site. Without `--post` it only takes the slices, for a page to compare with.
+ *
+ * What it reports as `problems` is what a reader would see broken: an image
+ * of the post that does not load, a heading rendered at another level than
+ * the one written, a block whose text is not on the page, a product block
+ * that shows no product, two headings of one size with nothing between them,
+ * a page wider than the phone. The look of the rest is for whoever reads the
+ * slices.
+ */
+const fs = require("node:fs");
+const path = require("node:path");
+
+const GLOBAL_MODULES =
+  process.env.QA_SCREENSHOT_MODULES || "/usr/local/lib/node_modules";
+const playwright = () => require(path.join(GLOBAL_MODULES, "playwright-core"));
+const CHROMIUM_PATH = process.env.QA_CHROMIUM || "/usr/bin/chromium";
+
+const USAGE = "usage: render-check <url> <outdir> [--post=<post.json>]";
+
+/** One slice's height: about two phone screens, short enough to read. */
+const SLICE_HEIGHT = 1600;
+/** Slices per width; a post taller than this has shown its pattern. */
+const MAX_SLICES = 10;
+/** How much of a block's text identifies it on the page. */
+const SAMPLE_CHARS = 48;
+
+const VIEWPORTS = {
+  desktop: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
+  mobile: {
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 1,
+    isMobile: true,
+    hasTouch: true,
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+  },
+};
+
+function parseArgs(argv) {
+  const opts = {};
+  const positional = [];
+  for (const arg of argv) {
+    if (arg.startsWith("--")) {
+      const [key, ...value] = arg.slice(2).split("=");
+      opts[key] = value.length ? value.join("=") : true;
+    } else positional.push(arg);
+  }
+  const [url, outdir] = positional;
+  if (!url || !outdir) return { error: USAGE };
+  return {
+    url,
+    outdir,
+    post: typeof opts.post === "string" ? opts.post : null,
+  };
+}
+
+/** A section's block name, from a draft (`type`) or an assembled block (`__resolveType`). */
+function blockName(section) {
+  if (typeof section.type === "string") return section.type;
+  const resolveType = String(section.__resolveType || "");
+  return (resolveType.split("/").pop() || "").replace(/\.(tsx?|jsx?)$/, "");
+}
+
+function blockProps(section) {
+  if (section.props && typeof section.props === "object") return section.props;
+  const { __resolveType: _type, ...props } = section;
+  return props;
+}
+
+/** "h3", "3" and 3 are all level 3; anything else is no level at all. */
+function headingLevel(value) {
+  const digits = String(value ?? "").replace(/^h/i, "");
+  return /^[1-6]$/.test(digits) ? Number(digits) : null;
+}
+
+function plainText(value) {
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map(plainText).join(" ");
+  if (value && typeof value === "object") {
+    return Object.values(value).map(plainText).join(" ");
+  }
+  let text = String(value ?? "");
+  if (/^\s*[[{]/.test(text)) {
+    try {
+      return plainText(JSON.parse(text));
+    } catch {
+      // Not JSON after all.
+    }
+  }
+  text = text.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
+  text = text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+  return text
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const TEXT_PROPS = [
+  "text",
+  "html",
+  "body",
+  "quote",
+  "items",
+  "steps",
+  "stats",
+  "cards",
+  "left",
+  "right",
+  "rows",
+  "title",
+  "caption",
+];
+
+const IMAGE_PROP = /^(url|src|image|imageUrl)$/i;
+
+/**
+ * A block's first piece of text. A block of several parts (a comparison's two
+ * columns, a list of steps) renders each in its own element, with markers and
+ * labels between them, so only one part reads as one run on the page.
+ */
+function firstText(value) {
+  if (Array.isArray(value)) return value.map(firstText).find(Boolean) || "";
+  if (value && typeof value === "object") {
+    return Object.values(value).map(firstText).find(Boolean) || "";
+  }
+  if (/^\s*[[{]/.test(String(value ?? ""))) {
+    try {
+      return firstText(JSON.parse(String(value)));
+    } catch {
+      // Not JSON after all.
+    }
+  }
+  return plainText(value);
+}
+
+/** What the post says should be on the page, block by block. */
+function expectedFromPost(post) {
+  const cover =
+    (post.cover && typeof post.cover.url === "string" && post.cover.url) ||
+    (typeof post.image === "string" && post.image) ||
+    null;
+  const blocks = [];
+  (Array.isArray(post.sections) ? post.sections : []).forEach((raw, index) => {
+    if (!raw || typeof raw !== "object") return;
+    const name = blockName(raw);
+    const props = blockProps(raw);
+    const products =
+      (Array.isArray(raw.productIds) && raw.productIds.length > 0) ||
+      "products" in props ||
+      "product" in props;
+    if (/heading/i.test(name)) {
+      blocks.push({
+        index,
+        kind: "heading",
+        name,
+        text: plainText(props.text),
+        level: headingLevel(props.level) ?? 2,
+        written: props.level ?? null,
+      });
+      return;
+    }
+    if (products) {
+      blocks.push({
+        index,
+        kind: "products",
+        name,
+        title: plainText(props.title),
+      });
+      return;
+    }
+    const image = Object.entries(props).find(
+      ([key, value]) =>
+        IMAGE_PROP.test(key) &&
+        typeof value === "string" &&
+        /^https?:/.test(value),
+    );
+    if (image) {
+      blocks.push({ index, kind: "image", name, url: image[1] });
+      return;
+    }
+    const text = TEXT_PROPS.map((prop) => firstText(props[prop])).find(Boolean);
+    if (text) {
+      blocks.push({
+        index,
+        kind: "text",
+        name,
+        sample: text.slice(0, SAMPLE_CHARS),
+      });
+    }
+  });
+  return { title: plainText(post.title), cover, blocks };
+}
+
+/**
+ * Runs in the page, so it carries everything it needs: Playwright sends the
+ * function's source, not its scope.
+ */
+function inspectPage(expected) {
+  const norm = (value) =>
+    String(value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  const pageText = norm(document.body ? document.body.innerText : "");
+  const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")];
+  const byText = (text) => {
+    const want = norm(text);
+    return (
+      headings.find((el) => norm(el.textContent) === want) ||
+      headings.find((el) => want && norm(el.textContent).includes(want))
+    );
+  };
+  const imageState = (url) => {
+    // A site's image proxy may take the address without its host, so the file
+    // name is enough when it is long enough to be the one.
+    const file = decodeURIComponent(url.split("?")[0].split("/").pop() || "");
+    const wanted = [url, ...(file.length >= 12 ? [file] : [])];
+    const matches = [...document.images].filter((img) => {
+      const sources = [
+        img.currentSrc,
+        img.src,
+        img.getAttribute("srcset") || "",
+      ];
+      return sources.some((src) => {
+        if (!src) return false;
+        let decoded = src;
+        try {
+          decoded = decodeURIComponent(src);
+        } catch {
+          // Keep the raw address.
+        }
+        return wanted.some((w) => src.includes(w) || decoded.includes(w));
+      });
+    });
+    if (matches.length === 0) return "missing";
+    return matches.some((img) => img.complete && img.naturalWidth > 0)
+      ? "loaded"
+      : "broken";
+  };
+  const isProductLink = (a) => {
+    try {
+      const { pathname } = new URL(a.href, location.href);
+      return /\/p\/?$/.test(pathname);
+    } catch {
+      return false;
+    }
+  };
+  const productNodes = [
+    ...[...document.querySelectorAll("a[href]")].filter(isProductLink),
+    ...document.querySelectorAll('[itemtype*="schema.org/Product"]'),
+  ];
+  const between = (node, start, end) =>
+    (!start ||
+      start.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+    (!end ||
+      end.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING);
+
+  const found = expected.blocks.map((block) => {
+    if (block.kind === "heading") {
+      const el = byText(block.text);
+      return el
+        ? {
+            ...block,
+            found: true,
+            tag: el.tagName.toLowerCase(),
+            fontSize: getComputedStyle(el).fontSize,
+            el,
+          }
+        : { ...block, found: false };
+    }
+    if (block.kind === "image")
+      return { ...block, state: imageState(block.url) };
+    if (block.kind === "text")
+      return { ...block, found: pageText.includes(norm(block.sample)) };
+    return { ...block };
+  });
+  found.forEach((block, at) => {
+    if (block.kind !== "products") return;
+    const before = found
+      .slice(0, at)
+      .reverse()
+      .find((b) => b.el);
+    const after = found.slice(at + 1).find((b) => b.el);
+    block.products = productNodes.filter((node) =>
+      between(node, before && before.el, after && after.el),
+    ).length;
+    block.titleFound = !block.title || pageText.includes(norm(block.title));
+  });
+  return {
+    title: !expected.title || Boolean(byText(expected.title)),
+    cover: expected.cover ? imageState(expected.cover) : null,
+    blocks: found.map(({ el, ...block }) => block),
+    overflow: document.documentElement.scrollWidth > window.innerWidth + 2,
+    height: document.documentElement.scrollHeight,
+  };
+}
+
+/** What a reader would see broken, from one width's findings. */
+function problemsOf(width, findings) {
+  const problems = [];
+  const add = (kind, section, detail) =>
+    problems.push({ width, kind, section, detail });
+  if (findings.status && findings.status >= 400) {
+    add("status", null, `the page answered ${findings.status}`);
+  }
+  if (!findings.title)
+    add("missing-title", null, "the post's title is not on the page");
+  if (findings.cover && findings.cover !== "loaded") {
+    add("cover", null, `the cover is ${findings.cover}`);
+  }
+  const blocks = findings.blocks || [];
+  blocks.forEach((block, at) => {
+    if (block.kind === "heading") {
+      if (!block.found)
+        add(
+          "missing-block",
+          block.index,
+          `heading "${block.text}" is not on the page`,
+        );
+      else if (block.tag !== `h${block.level}`) {
+        add(
+          "heading-level",
+          block.index,
+          `heading "${block.text}" was written as level ${JSON.stringify(block.written)} and renders as ${block.tag} (${block.fontSize})`,
+        );
+      }
+      const next = blocks[at + 1];
+      if (
+        block.found &&
+        next &&
+        next.kind === "heading" &&
+        next.index === block.index + 1 &&
+        next.found &&
+        next.tag === block.tag
+      ) {
+        add(
+          "stacked-headings",
+          block.index,
+          `"${block.text}" and "${next.text}" render at one size with nothing between them`,
+        );
+      }
+    }
+    if (block.kind === "image" && block.state !== "loaded") {
+      add("image", block.index, `the ${block.name} image is ${block.state}`);
+    }
+    if (block.kind === "text" && !block.found) {
+      add(
+        "missing-block",
+        block.index,
+        `the ${block.name} starting "${block.sample}" is not on the page`,
+      );
+    }
+    if (block.kind === "products" && block.products === 0) {
+      add(
+        "empty-products",
+        block.index,
+        `the ${block.name}${block.title ? ` "${block.title}"` : ""} shows no product`,
+      );
+    }
+  });
+  if (findings.overflow)
+    add("overflow", null, "the page is wider than the screen");
+  return problems;
+}
+
+/** Where each slice starts, down the page. */
+function sliceOffsets(height) {
+  const offsets = [];
+  for (
+    let y = 0;
+    y < height && offsets.length < MAX_SLICES;
+    y += SLICE_HEIGHT
+  ) {
+    offsets.push(y);
+  }
+  return offsets;
+}
+
+/** Scroll the whole page so lazy images and shelves mount, then back to the top. */
+async function settle(page) {
+  await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const step = Math.round((window.innerHeight || 800) * 0.85);
+    for (let y = 0, i = 0; i < 80; i++) {
+      window.scrollTo(0, y);
+      await sleep(200);
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      if (y >= max) break;
+      y = Math.min(y + step, max);
+    }
+    window.scrollTo(0, 0);
+    await sleep(800);
+  });
+}
+
+async function renderAt(browser, opts, width, expected) {
+  const context = await browser.newContext(VIEWPORTS[width]);
+  const page = await context.newPage();
+  const failed = [];
+  page.on("requestfailed", (request) => {
+    if (request.resourceType() === "image") failed.push(request.url());
+  });
+  const response = await page.goto(opts.url, {
+    waitUntil: "load",
+    timeout: 45000,
+  });
+  await settle(page);
+  const findings = expected
+    ? await page.evaluate(inspectPage, expected)
+    : {
+        height: await page.evaluate(
+          () => document.documentElement.scrollHeight,
+        ),
+      };
+  const { width: pageWidth } = VIEWPORTS[width].viewport;
+  const slices = [];
+  for (const [i, y] of sliceOffsets(findings.height).entries()) {
+    const file = path.join(opts.outdir, `${width}-${i + 1}.png`);
+    await page.screenshot({
+      path: file,
+      fullPage: true,
+      clip: {
+        x: 0,
+        y,
+        width: pageWidth,
+        height: Math.min(SLICE_HEIGHT, findings.height - y),
+      },
+    });
+    slices.push(file);
+  }
+  await context.close();
+  return {
+    ...findings,
+    status: response ? response.status() : null,
+    failedImages: failed.length,
+    slices,
+  };
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  if (opts.error) {
+    console.error(opts.error);
+    process.exit(2);
+  }
+  fs.mkdirSync(opts.outdir, { recursive: true });
+  const expected = opts.post
+    ? expectedFromPost(JSON.parse(fs.readFileSync(opts.post, "utf8")))
+    : null;
+  const browser = await playwright().chromium.launch({
+    executablePath: CHROMIUM_PATH,
+    args: ["--no-sandbox"],
+  });
+  try {
+    const widths = {};
+    for (const width of Object.keys(VIEWPORTS)) {
+      widths[width] = await renderAt(browser, opts, width, expected);
+    }
+    const problems = expected
+      ? Object.entries(widths).flatMap(([width, findings]) =>
+          problemsOf(width, findings),
+        )
+      : [];
+    const report = { widths, problems };
+    if (expected) {
+      fs.writeFileSync(
+        path.join(opts.outdir, "report.json"),
+        JSON.stringify(report, null, 2),
+      );
+    }
+    const shots = Object.values(widths).flatMap((findings) => findings.slices);
+    console.log(`${shots.length} slice(s): ${shots.join(", ")}`);
+    if (expected) {
+      console.log(
+        problems.length === 0
+          ? "No problems found."
+          : `${problems.length} problem(s):\n${problems.map((p) => `- [${p.width}] ${p.detail}`).join("\n")}`,
+      );
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`render-check failed: ${err?.message ?? err}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  expectedFromPost,
+  headingLevel,
+  parseArgs,
+  problemsOf,
+  sliceOffsets,
+};

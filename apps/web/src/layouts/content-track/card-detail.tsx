@@ -109,6 +109,7 @@ const STAGE_LABEL = {
   illustrating: "contentTrack.card.stage.illustrating",
   assembling: "contentTrack.card.stage.assembling",
   writing: "contentTrack.card.stage.writing",
+  reviewing: "contentTrack.card.stage.reviewing",
 } as const satisfies Record<
   Exclude<(typeof BLOG_CARD_STAGES)[number], "done">,
   TranslationKey
@@ -736,6 +737,10 @@ function PostContent({
         )
       )}
 
+      {!working && (post.gaps?.length ?? 0) > 0 && (
+        <PostGaps gaps={post.gaps ?? []} />
+      )}
+
       {(post.sections?.length ?? 0) > 0 && (
         <PostBody
           sections={post.sections ?? []}
@@ -743,6 +748,41 @@ function PostContent({
         />
       )}
     </>
+  );
+}
+
+const GAP_LABEL = {
+  "no-bucket": "contentTrack.card.gap.noBucket",
+  "no-image-model": "contentTrack.card.gap.noImageModel",
+  "images-failed": "contentTrack.card.gap.imagesFailed",
+  "sections-dropped": "contentTrack.card.gap.sectionsDropped",
+  "no-preview": "contentTrack.card.gap.noPreview",
+} as const satisfies Record<string, TranslationKey>;
+
+type PostGap = NonNullable<NonNullable<BlogCard["post"]>["gaps"]>[number];
+
+/** What the run could not do or could not fix, for whoever reviews the post. */
+function PostGaps({ gaps }: { gaps: PostGap[] }) {
+  const t = useT();
+  const text = (gap: PostGap) => {
+    const label = GAP_LABEL[gap.code as keyof typeof GAP_LABEL];
+    if (label) {
+      return t(label, { count: gap.count ?? 0, detail: gap.detail ?? "" });
+    }
+    return gap.detail || gap.code;
+  };
+  return (
+    <div className="flex items-start gap-2 rounded-xl bg-warning/10 p-3 text-sm text-warning">
+      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="font-medium">{t("contentTrack.card.gaps")}</span>
+        <ul className="flex flex-col gap-0.5">
+          {gaps.map((gap, index) => (
+            <li key={`${gap.code}-${index}`}>{text(gap)}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 

@@ -138,6 +138,7 @@ export const CORE_TOOLS = [
   BlogTools.BLOG_POST_BRIEF,
   BlogTools.BLOG_POST_WRITE,
   BlogTools.BLOG_POST_ILLUSTRATE,
+  BlogTools.BLOG_POST_PREVIEW,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_ADD,
   OrganizationTools.ORGANIZATION_DOMAIN_UPDATE,

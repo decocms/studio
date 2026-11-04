@@ -2475,6 +2475,7 @@ export interface StudioToolIO {
           | "illustrating"
           | "assembling"
           | "writing"
+          | "reviewing"
           | undefined;
         hypothesis?:
           | {
@@ -2605,6 +2606,7 @@ export interface StudioToolIO {
                     [x: string]: unknown;
                     code: string;
                     count?: number | undefined;
+                    detail?: string | undefined;
                   }[]
                 | undefined;
             }
@@ -2652,6 +2654,7 @@ export interface StudioToolIO {
           | "illustrating"
           | "assembling"
           | "writing"
+          | "reviewing"
           | undefined;
         hypothesis?:
           | {
@@ -2782,6 +2785,7 @@ export interface StudioToolIO {
                     [x: string]: unknown;
                     code: string;
                     count?: number | undefined;
+                    detail?: string | undefined;
                   }[]
                 | undefined;
             }
@@ -2835,6 +2839,7 @@ export interface StudioToolIO {
           | "illustrating"
           | "assembling"
           | "writing"
+          | "reviewing"
           | undefined;
         hypothesis?:
           | {
@@ -2965,6 +2970,7 @@ export interface StudioToolIO {
                     [x: string]: unknown;
                     code: string;
                     count?: number | undefined;
+                    detail?: string | undefined;
                   }[]
                 | undefined;
             }
@@ -3006,6 +3012,7 @@ export interface StudioToolIO {
           | "illustrating"
           | "assembling"
           | "writing"
+          | "reviewing"
           | null
           | undefined;
         hypothesis?:
@@ -3138,6 +3145,7 @@ export interface StudioToolIO {
                     [x: string]: unknown;
                     code: string;
                     count?: number | undefined;
+                    detail?: string | undefined;
                   }[]
                 | undefined;
             }
@@ -3176,6 +3184,7 @@ export interface StudioToolIO {
           | "illustrating"
           | "assembling"
           | "writing"
+          | "reviewing"
           | undefined;
         hypothesis?:
           | {
@@ -3306,6 +3315,7 @@ export interface StudioToolIO {
                     [x: string]: unknown;
                     code: string;
                     count?: number | undefined;
+                    detail?: string | undefined;
                   }[]
                 | undefined;
             }
@@ -3363,6 +3373,7 @@ export interface StudioToolIO {
           | "illustrating"
           | "assembling"
           | "writing"
+          | "reviewing"
           | undefined;
         hypothesis?:
           | {
@@ -3493,6 +3504,7 @@ export interface StudioToolIO {
                     [x: string]: unknown;
                     code: string;
                     count?: number | undefined;
+                    detail?: string | undefined;
                   }[]
                 | undefined;
             }
@@ -3873,6 +3885,20 @@ export interface StudioToolIO {
       referenced: number;
       sections: { type: string; props: Record<string, unknown> }[];
       bodyImages: number;
+    };
+  };
+  BLOG_POST_PREVIEW: {
+    input: {
+      virtualMcpId: string;
+      postId: string;
+      branch?: string | undefined;
+      exemplarSlugs?: string[] | undefined;
+    };
+    output: {
+      url: string | null;
+      reason: "no-preview-server" | "no-post" | "no-route" | null;
+      exemplars: { slug: string; url: string }[];
+      version: string;
     };
   };
   ORGANIZATION_DOMAIN_LIST: {

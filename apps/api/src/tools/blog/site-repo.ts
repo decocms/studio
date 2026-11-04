@@ -33,6 +33,8 @@ export interface SiteRepo {
   projectId: string;
   /** The binding the repository was resolved from. */
   repository: RepositoryBinding;
+  /** The site's own metadata: its preview server, its runtime. */
+  metadata: Record<string, unknown> | null;
 }
 
 /** The site's project, when it is in the caller's organization and scope. */
@@ -79,6 +81,7 @@ export async function resolveSiteRepo(
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
     projectId: project.id,
     repository,
+    metadata,
   };
 }
 

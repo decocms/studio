@@ -25,7 +25,9 @@ wrote.
 
 Read the file for the phase you were asked for, and follow it. Writing the
 post also reads `writing.md`, how a post reads like the brand rather than a
-model, and hands the draft to an editor that follows `review-prose.md`.
+model, and hands the draft to an editor that follows `review-prose.md`. Once
+the post is on its branch, `render-check` renders it and a reviewer that
+follows `review-visual.md` looks at it.
 
 ## The card
 

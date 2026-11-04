@@ -1,6 +1,6 @@
 # Writing a card's post
 
-The hypothesis is approved; now the post, which you write yourself. Five
+The hypothesis is approved; now the post, which you write yourself. Six
 stages, in order. At the start of each, save its name as the card's `stage`,
 so the board shows where you are, and save each stage's result as soon as you
 have it. The card arrives in `generating` at `grounding`.
@@ -143,7 +143,45 @@ answers with is the card's.
 A `BlockConflictError` means someone edited the same post meanwhile: read the
 card again and write once more.
 
-Then, in one update: `stage: "done"`, `status: "awaiting_review"`, `postKey`
-(the `key`) and `commit` (the `version`). In the chat, say what was written,
-what was dropped or left without an image, and that the draft is waiting for
-review in the Site Editor.
+Save `postKey` (the `key`) and `commit` (the `version`) on the card.
+
+## 6. `reviewing` — the post as its reader sees it
+
+`BLOG_POST_PREVIEW` with `virtualMcpId`, `postId`, `branch`, and the `slug` of
+each of `BLOG_SITE_BLOCKS`'s `exemplars` as `exemplarSlugs`. A null `url` ends
+this stage: add `{ "code": "no-preview", "detail": "<its reason>" }` to the
+post's `gaps` and go to "Done". The address carries a grant to read the
+branch: never paste it in the chat.
+
+Save the last assembly's `post` to `/tmp/blog/assembled.json`, then render
+both pages with `render-check` (in this skill folder):
+
+```bash
+node <this skill folder>/render-check "<url>" /tmp/blog/render/post --post=/tmp/blog/assembled.json
+node <this skill folder>/render-check "<an exemplar's url>" /tmp/blog/render/exemplar
+```
+
+The first writes `report.json` and the post's slices; the second, the
+example's slices. A page that answers 404, or shows none of the post's blocks,
+is a preview that does not reach this branch, not a broken post: add
+`{ "code": "no-preview", "detail": "<what it showed>" }` to `gaps` and go to
+"Done".
+
+Then one subagent (the `Agent` tool) reviews it: tell it to follow
+`review-visual.md`, and hand it the absolute paths of that file, the slices of
+both pages, `/tmp/blog/render/post/report.json`, `/tmp/blog/assembled.json`
+and `/tmp/blog/brief.txt`.
+
+Fix what the report and the reviewer find, in `post.json`: a heading level
+the block renders, a product block's ids, an image that loads, a block that
+shows nothing. Then assemble, write and render again, and have a reviewer look
+once more. Two rounds at most. Each problem still there goes in the post's
+`gaps` as `{ "code": "visual", "detail": "<what a reader sees, in a
+sentence>" }`, and in the chat.
+
+## Done
+
+In one update: `stage: "done"`, `status: "awaiting_review"`, `postKey` (the
+last `key`) and `commit` (the last `version`). In the chat, say what was
+written, what was dropped or left without an image, what the review fixed and
+what it left, and that the draft is waiting for review in the Site Editor.

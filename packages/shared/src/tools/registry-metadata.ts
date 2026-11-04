@@ -76,6 +76,7 @@ const ALL_TOOL_NAMES = [
   "BLOG_POST_BRIEF",
   "BLOG_POST_WRITE",
   "BLOG_POST_ILLUSTRATE",
+  "BLOG_POST_PREVIEW",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -507,6 +508,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "BLOG_POST_ILLUSTRATE",
     description:
       "Draw a drafted post's images, conditioned on the product's own photographs",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_PREVIEW",
+    description:
+      "Find where a post written on a branch renders on its site, to look at it",
     category: "Blog",
   },
   {
