@@ -14,7 +14,11 @@ import {
 } from "@/git-providers";
 import type { KVStorage } from "@/storage/kv";
 import type { DeliveryPurge } from "./delivery-purge";
-import { type DeliveryStore, ObjectChangedError } from "./delivery-store";
+import {
+  type DeliveryStore,
+  ObjectChangedError,
+  type PutCondition,
+} from "./delivery-store";
 
 export function memoryDeliveryStore() {
   const objects = new Map<
@@ -28,28 +32,63 @@ export function memoryDeliveryStore() {
   >();
   const log: string[] = [];
   let n = 0;
+  /** Runs before each write: a test throws here (an R2 429, a crash). */
+  const hooks: {
+    beforePut?: (key: string, condition: PutCondition | undefined) => void;
+  } = {};
+  const put = (
+    key: string,
+    text: string,
+    cacheControl: string,
+    metadata: Record<string, string> | undefined,
+    condition: PutCondition | undefined,
+  ) => {
+    hooks.beforePut?.(key, condition);
+    // Conditional writes as R2 checks them: against the object right now.
+    const current = objects.get(key);
+    if (
+      condition &&
+      ("ifMatch" in condition
+        ? current?.etag !== condition.ifMatch
+        : current !== undefined)
+    ) {
+      log.push(`refused ${key}`);
+      throw new ObjectChangedError(key);
+    }
+    const etag = `"etag${++n}"`;
+    objects.set(key, {
+      text,
+      etag,
+      cacheControl,
+      ...(metadata ? { metadata: { ...metadata } } : {}),
+    });
+    log.push(`put ${key}`);
+    return { etag };
+  };
   const store: DeliveryStore = {
+    async putText(key, text, cacheControl, condition) {
+      return put(key, text, cacheControl, undefined, condition);
+    },
+    async listPage(prefix, { maxKeys, continuationToken }) {
+      const folders = [
+        ...new Set(
+          [...objects.keys()]
+            .filter(
+              (k) => k.startsWith(prefix) && k.indexOf("/", prefix.length) > 0,
+            )
+            .map((k) => k.slice(0, k.indexOf("/", prefix.length) + 1)),
+        ),
+      ].sort();
+      const start = continuationToken ? Number(continuationToken) : 0;
+      const prefixes = folders.slice(start, start + maxKeys);
+      const next = start + maxKeys;
+      return {
+        prefixes,
+        nextToken: next < folders.length ? String(next) : null,
+      };
+    },
     async putJson(key, value, cacheControl, metadata, condition) {
-      // Conditional writes as R2 checks them: against the object right now.
-      const current = objects.get(key);
-      if (
-        condition &&
-        ("ifMatch" in condition
-          ? current?.etag !== condition.ifMatch
-          : current !== undefined)
-      ) {
-        log.push(`refused ${key}`);
-        throw new ObjectChangedError(key);
-      }
-      const etag = `"etag${++n}"`;
-      objects.set(key, {
-        text: JSON.stringify(value),
-        etag,
-        cacheControl,
-        ...(metadata ? { metadata: { ...metadata } } : {}),
-      });
-      log.push(`put ${key}`);
-      return { etag };
+      return put(key, JSON.stringify(value), cacheControl, metadata, condition);
     },
     async get(key) {
       const o = objects.get(key);
@@ -81,6 +120,7 @@ export function memoryDeliveryStore() {
     store,
     objects,
     log,
+    hooks,
     purge,
     failPurge: (fail: boolean) => {
       purgeState.fail = fail;
