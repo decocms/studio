@@ -261,6 +261,8 @@ describe("one v8 detector", () => {
         "fetchMainSchemaV8",
       "apps/web/src/hooks/use-main-schema-v8.ts#useProjectMainSchemaV8":
         "fetchMainSchemaV8, for a project already in hand",
+      "apps/web/src/hooks/use-main-schema-v8.ts#useProjectsMainSchemaV8":
+        "fetchMainSchemaV8, for several projects in hand",
       "apps/web/src/hooks/use-main-schema-v8.ts#fetchMainSchemaV8":
         "isV8Schema on main's schema (rpc schema.get)",
       "apps/web/src/hooks/use-main-schema-v8.ts#useLastFoundV8":

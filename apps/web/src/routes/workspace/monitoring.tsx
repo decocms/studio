@@ -21,6 +21,7 @@ import {
   PROJECT_ROUTE,
 } from "@/hooks/use-destination-route";
 import { useScopeId } from "@/hooks/use-project-scope";
+import { isScopableProject } from "@decocms/shared/sdk";
 import { useProjectContext } from "@/sdk";
 
 function useMonitorSearch(): MonitorSelection {
@@ -89,11 +90,13 @@ function useSegmentSearch(): Record<string, unknown> {
 function LiveMonitoring({
   orgSlug,
   scopeId,
+  orgWide,
   selection,
   onSelect,
 }: {
   orgSlug: string;
   scopeId: string | null;
+  orgWide: boolean;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
@@ -113,6 +116,7 @@ function LiveMonitoring({
       error={error}
       orgSlug={orgSlug}
       scopeId={scopeId}
+      orgWide={orgWide}
       selection={selection}
       onSelect={onSelect}
     />
@@ -121,7 +125,10 @@ function LiveMonitoring({
 
 function MonitoringContent() {
   const { org } = useProjectContext();
-  const scopeId = useScopeId();
+  const routeId = useScopeId();
+  // The Super Agent's route is org-wide: it owns no store or site.
+  const scopeId =
+    routeId && isScopableProject({ id: routeId }) ? routeId : null;
   const navigate = useNavigate();
   const selection = useMonitorSearch();
   const segment = useSegmentSearch();
@@ -134,10 +141,10 @@ function MonitoringContent() {
       selected.project === selection.project
         ? { ...selected, ...segment }
         : selected;
-    if (scopeId) {
+    if (routeId) {
       void navigate({
         to: PROJECT_ROUTE.monitoring,
-        params: { org: org.slug, agentId: scopeId },
+        params: { org: org.slug, agentId: routeId },
         search: next,
       });
     } else {
@@ -153,6 +160,7 @@ function MonitoringContent() {
     <LiveMonitoring
       orgSlug={org.slug}
       scopeId={scopeId}
+      orgWide={routeId !== null && scopeId === null}
       selection={selection}
       onSelect={onSelect}
     />

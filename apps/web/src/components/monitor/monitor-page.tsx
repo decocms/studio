@@ -140,6 +140,7 @@ export function MonitorPage({
   error,
   orgSlug,
   scopeId: routeScope,
+  orgWide = false,
   selection,
   onSelect,
 }: {
@@ -149,12 +150,19 @@ export function MonitorPage({
   orgSlug: string;
   /** The project the route is in; null across the org. */
   scopeId: string | null;
+  /** The route is in an agent that spans the org, not in a project. */
+  orgWide?: boolean;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
   const t = useT();
   const projects = useSiteProjects();
-  const scopeId = monitorScope(routeScope, projects, selection.project);
+  const scopeId = monitorScope(
+    routeScope,
+    projects,
+    selection.project,
+    orgWide,
+  );
   const onProject = (project: string | null) =>
     onSelect({ view: selection.view, project: project ?? undefined });
   const board = scopeBoard(orgBoard, scopeId);
