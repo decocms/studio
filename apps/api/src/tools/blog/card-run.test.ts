@@ -239,10 +239,16 @@ describe("blogCardRunInstructions", () => {
 });
 
 describe("phaseEffort", () => {
-  test("writing the post thinks harder; the other phases keep the runner's low", () => {
-    expect(phaseEffort("execute")).toBe("high");
-    expect(phaseEffort("hypothesis")).toBeUndefined();
-    expect(phaseEffort("campaign")).toBeUndefined();
+  test("writing the post thinks harder where the organization turned it on", () => {
+    const on = { blog_writing_high_effort: true };
+    expect(phaseEffort("execute", on)).toBe("high");
+    expect(phaseEffort("hypothesis", on)).toBeUndefined();
+    expect(phaseEffort("campaign", on)).toBeUndefined();
+  });
+
+  test("off by default: every phase keeps the runner's low", () => {
+    expect(phaseEffort("execute", undefined)).toBeUndefined();
+    expect(phaseEffort("execute", {})).toBeUndefined();
   });
 });
 

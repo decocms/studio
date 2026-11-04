@@ -334,6 +334,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Previewing more than one app of a monorepo: an Apps list in project settings, app tabs with a split view in the preview, and a dev server per extra app in the sandbox, served at its own preview host. Off by default.",
     ),
+  blog_writing_high_effort: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run a blogpost card's execute phase at high reasoning effort instead of a run's usual low. Off by default: the whole run, from grounding to review, reasons longer and costs more, and it takes a sandbox image new enough to read the effort.",
+    ),
   hide_default_blog_blocks: z
     .boolean()
     .optional()

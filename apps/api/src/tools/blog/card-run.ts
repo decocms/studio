@@ -11,6 +11,7 @@ import {
   CampaignBriefingSchema,
   campaignNextStep,
 } from "@decocms/shared/blog-campaign";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { getDecopilotId } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { resolveOrCreateHead } from "@/decofile/read-decofile";
@@ -202,12 +203,17 @@ export function blogCardRunInstructions(card: {
 
 /**
  * How hard a phase thinks. Writing the post is the one a reader judges, so it
- * gets more reasoning than the runner's low; the others keep it.
+ * gets more reasoning than the runner's low where the organization turned that
+ * on; every other phase keeps low.
  */
 export function phaseEffort(
   phase: BlogCardPhase,
+  flags: Parameters<typeof orgFlagEnabled>[0],
 ): ClaudeCodeEffort | undefined {
-  return phase === "execute" ? "high" : undefined;
+  return phase === "execute" &&
+    orgFlagEnabled(flags, "blog_writing_high_effort")
+    ? "high"
+    : undefined;
 }
 
 /** The turn that starts a phase: a fixed ask, then the person's words. */
@@ -550,7 +556,10 @@ export const BLOG_CARD_RUN = defineTool({
         instructions,
         fence: `blog-card:${threadId}:${input.phase}:${requestedAt}`,
         requestedAt,
-        effort: phaseEffort(input.phase),
+        effort: phaseEffort(
+          input.phase,
+          (await ctx.storage.organizationSettings.get(organizationId))?.flags,
+        ),
       });
     } catch (err) {
       await rollBack(err);
