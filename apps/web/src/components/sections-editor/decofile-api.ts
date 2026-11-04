@@ -14,12 +14,17 @@
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
+import type {
+  DecofilePatchBody,
+  DecofileScopeParams,
+} from "./content-write-keys";
 
-export interface DecofileScopeParams {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-}
+export {
+  type DecofilePatchBody,
+  type DecofileScopeParams,
+  decofileWriteMutationKey,
+  decofileWriteScope,
+} from "./content-write-keys";
 
 export interface DecofileDraft {
   /** Branch head commit sha. */
@@ -32,13 +37,6 @@ export interface DecofileDraft {
    * not guaranteed to be an origin a deployed site can reach.
    */
   apiHost: string;
-}
-
-export interface DecofilePatchBody {
-  set?: Record<string, unknown>;
-  delete?: string[];
-  /** Per block: fingerprint of the version the edit was made against, `null` for none. */
-  expect?: Record<string, string | null>;
 }
 
 /** The branch's copy of `blocks` changed after the edit was made; nothing was written. */
@@ -61,36 +59,6 @@ export class BlockConflictError extends Error {
 
 function decofileCacheKey(params: DecofileScopeParams): string {
   return `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`;
-}
-
-/**
- * Mutation key for block save/delete writes. Lets observers (the preview's
- * autosave indicator via useIsMutating) see an in-flight write without any
- * bespoke wiring — same pattern as SANDBOX_START_MUTATION_KEY.
- */
-export function decofileWriteMutationKey(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-) {
-  return ["decofile-write", orgSlug, virtualMcpId, branch] as const;
-}
-
-/**
- * Serialization scope for those writes. TanStack runs mutations sharing a
- * `scope.id` one at a time; `mutationKey` alone only identifies them. Every
- * hook that WRITES the decofile must pass this, or it races the others — an
- * autosave landing after a delete resurrects the block that was just removed.
- * Observers (`useIsMutating`) need the key only.
- */
-export function decofileWriteScope(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-) {
-  return {
-    id: decofileWriteMutationKey(orgSlug, virtualMcpId, branch).join(":"),
-  };
 }
 
 function decofileApiUrl(params: DecofileScopeParams): string {

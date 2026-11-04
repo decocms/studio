@@ -53,7 +53,7 @@ import {
   type DecofilePatchBody,
   type DecofileScopeParams,
   decofileWriteMutationKey,
-} from "./decofile-api";
+} from "./content-write-keys";
 import type { LiveMeta } from "./resolve-schema";
 import { isSchemaAbsent, noSchemaMeta } from "./schemaless";
 
