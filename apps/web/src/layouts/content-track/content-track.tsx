@@ -16,10 +16,6 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
-import {
-  CAMPAIGN_KEY_PREFIX,
-  scanCampaigns,
-} from "@/components/sandbox/content/blog/blog-data";
 import { BlogConnectionsGate } from "@/components/sandbox/content/blog/blog-connections-gate";
 import { readyCampaigns } from "@/components/sandbox/content/blog/campaign-model";
 import { useCampaignActions } from "@/components/sandbox/content/blog/use-campaign-actions";
@@ -168,9 +164,7 @@ function CampaignsView({
   const t = useT();
   const { cards } = useBlogCards();
   if (!campaignId) return <Campaigns onOpen={onOpen} />;
-  const campaign = scanCampaigns(blog.blocks).find(
-    (entry) => entry.id === campaignId,
-  );
+  const campaign = blog.campaigns.find((entry) => entry.id === campaignId);
   if (!campaign) {
     return blog.ready ? (
       <>
@@ -201,10 +195,9 @@ function CampaignsView({
       onClose={() => onOpen(undefined)}
       onOpenCard={onOpenCard}
       onRemove={() =>
-        blog.remove.mutate(
-          { blockKey: campaign.key },
-          { onSuccess: () => onOpen(undefined) },
-        )
+        blog.remove.mutate(campaign.id, {
+          onSuccess: () => onOpen(undefined),
+        })
       }
     />
   );
@@ -229,12 +222,9 @@ function Blogposts({
   const openChat = useOpenCardChat();
   const [creating, setCreating] = useState(false);
 
-  const campaigns = scanCampaigns(blog.blocks);
+  const campaigns = blog.campaigns;
   const campaignById = new Map(
-    campaigns.map((campaign) => [
-      campaign.key.slice(CAMPAIGN_KEY_PREFIX.length),
-      campaign,
-    ]),
+    campaigns.map((campaign) => [campaign.id, campaign]),
   );
   const campaignNames = new Map(
     [...campaignById].map(([id, campaign]) => [id, campaign.name]),

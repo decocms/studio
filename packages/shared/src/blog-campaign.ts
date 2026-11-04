@@ -139,9 +139,6 @@ export const MAX_OFFERED_PHOTOS = 12;
 /** A campaign's key in the editor's decofile view; its file is named by the rest. */
 export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
 
-/** A seed's key, and what a campaign generated from it stores as `seedKey`. */
-export const CAMPAIGN_SEED_KEY_PREFIX = "blog-manager/campaign-seeds/";
-
 /** How many briefings one suggestion offers. */
 export const MAX_CAMPAIGN_BRIEFINGS = 3;
 

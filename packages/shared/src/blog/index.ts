@@ -116,7 +116,6 @@ export {
 export {
   citedSections,
   formatExampleSlugs,
-  FORMATS_BLOCK_KEY,
   type MentionableSection,
   mentionableSections,
 } from "./formats";

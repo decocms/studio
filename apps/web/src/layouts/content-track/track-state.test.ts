@@ -1,8 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import {
-  BRAND_BLOCK_KEY,
-  CONTEXT_BLOCK_KEY,
-} from "@/components/sandbox/content/blog/blog-data";
 import { contentTrackGate, resolveExecuteTrack } from "./track-state";
 
 const OPEN = {
@@ -67,16 +63,13 @@ describe("contentTrackGate", () => {
   };
 
   test("waits while the brand is read", () => {
-    expect(contentTrackGate({ ready: false, blocks: {} })).toEqual({
+    expect(contentTrackGate({ ready: false, brand: {} })).toEqual({
       gate: "loading",
     });
   });
 
   test("shows the setup, with what is missing, before the connections", () => {
-    const state = contentTrackGate({
-      ready: true,
-      blocks: { [BRAND_BLOCK_KEY]: BRAND },
-    });
+    const state = contentTrackGate({ ready: true, brand: BRAND });
     expect(state.gate).toBe("setup");
     expect(state.gate === "setup" && state.missing).toEqual([
       "tone",
@@ -88,10 +81,7 @@ describe("contentTrackGate", () => {
 
   test("opens once the guide has what a post needs", () => {
     expect(
-      contentTrackGate({
-        ready: true,
-        blocks: { [BRAND_BLOCK_KEY]: BRAND, [CONTEXT_BLOCK_KEY]: CONTEXT },
-      }),
+      contentTrackGate({ ready: true, brand: { ...BRAND, ...CONTEXT } }),
     ).toEqual({ gate: "open" });
   });
 });

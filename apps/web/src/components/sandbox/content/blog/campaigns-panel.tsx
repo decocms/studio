@@ -52,7 +52,6 @@ import {
   CAMPAIGN_STATUSES,
   type CampaignEntry,
   type CampaignStatus,
-  scanCampaigns,
 } from "./blog-data";
 import {
   CAMPAIGN_PROGRESS_LABEL,
@@ -84,10 +83,9 @@ export function CampaignsPanel({
 }) {
   const t = useT();
   /** Campaigns are the organization's records, written through its blog state. */
-  const { remove: deleteBlock } = blog;
+  const { campaigns, remove: deleteCampaign } = blog;
   const { update } = useCampaignActions();
   const now = useClockTick();
-  const decofile = blog.blocks;
 
   const openChat = useOpenBlogChat();
   const studio = useStudioTools();
@@ -117,7 +115,6 @@ export function CampaignsPanel({
   /** Campaigns with a status write in flight — they refuse a second drop. */
   const [movingKeys, setMovingKeys] = useState<ReadonlySet<string>>(new Set());
 
-  const campaigns = scanCampaigns(decofile);
   const isLaneCollapsed = (lane: string, empty: boolean) =>
     laneOverrides[lane] ?? empty;
   const setLaneCollapsed = (lane: string, collapsed: boolean) =>
@@ -149,10 +146,6 @@ export function CampaignsPanel({
   const [pendingDelete, setPendingDelete] = useState<CampaignEntry | null>(
     null,
   );
-
-  const removeCampaign = (key: string) => {
-    deleteBlock.mutate({ blockKey: key });
-  };
 
   const term = query.trim().toLowerCase();
   const listed = term
@@ -190,8 +183,8 @@ export function CampaignsPanel({
             {t("sandbox.campaigns.suggest")}
           </Button>
           <SaveStatus
-            isPending={update.isPending || deleteBlock.isPending}
-            isError={update.isError || deleteBlock.isError}
+            isPending={update.isPending || deleteCampaign.isPending}
+            isError={update.isError || deleteCampaign.isError}
           />
         </div>
       </div>
@@ -365,7 +358,7 @@ export function CampaignsPanel({
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
-                if (pendingDelete) removeCampaign(pendingDelete.key);
+                if (pendingDelete) deleteCampaign.mutate(pendingDelete.id);
                 setPendingDelete(null);
               }}
             >

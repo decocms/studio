@@ -23,17 +23,11 @@ const MAX_CAMPAIGN_EVIDENCE = 20;
 
 /**
  * A campaign as stored: what its agent develops, plus the bookkeeping the board
- * keeps. `campaignName` and not `name` because the CMS stores these as decofile
- * blocks too, where `name` is the block's own key.
+ * keeps. Its name is `campaignName`, the field stored campaigns have always used.
  */
 export const StoredCampaignSchema = CampaignDraftSchema.omit({ name: true })
   .extend({
     campaignName: z.string().describe("What someone calls this campaign."),
-    seedKey: z
-      .string()
-      .describe(
-        "The seed an older campaign was generated from, as `blog-manager/campaign-seeds/<id>`. Empty otherwise.",
-      ),
     goals: z
       .array(CampaignGoalSchema)
       .max(MAX_CAMPAIGN_GOALS)
@@ -166,7 +160,6 @@ export function campaignShell(
   return {
     campaignName: "",
     status: "draft",
-    seedKey: "",
     threadId,
     run,
     ...(briefing ? { briefing } : {}),
@@ -175,17 +168,15 @@ export function campaignShell(
   };
 }
 
-/** Why an agent may not make this BLOG_STATE_SET call: a campaign changes through BLOG_CAMPAIGN_UPDATE, and seeds and removals are a person's. */
+/** Why an agent may not make this BLOG_STATE_SET call: a campaign changes through BLOG_CAMPAIGN_UPDATE, and removals are a person's. */
 export function agentStateWriteRefusal(
   runThreadId: string | null,
-  counts: { campaigns: number; seeds: number; removals: number },
+  counts: { campaigns: number; removals: number },
 ): string | null {
   if (!runThreadId) return null;
   if (counts.campaigns > 0) {
     return "A chat changes a campaign with BLOG_CAMPAIGN_UPDATE, and only the campaign it shapes.";
   }
-  if (counts.seeds > 0 || counts.removals > 0) {
-    return "Seeds and removals are a person's.";
-  }
+  if (counts.removals > 0) return "Removals are a person's.";
   return null;
 }

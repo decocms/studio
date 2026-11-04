@@ -9,9 +9,8 @@
  * from these files and never writes them: a person edits them on the page, an
  * agent edits them as files.
  *
- * Campaigns and their seeds sit beside it, one file per record under
- * `campaigns/` and `campaign-seeds/`, keyed by the id the web app mints. One
- * file each so a write never clobbers the campaign being edited, which a single
+ * Campaigns sit beside it, one file per record under `campaigns/`, keyed by
+ * the id the web app mints. One file each so a write never clobbers the campaign being edited, which a single
  * array file would bring back under last-write-wins. Blogpost cards follow the
  * same rule under `cards/`, and are changed by merging into what is stored
  * (`updateBlogRecord`), since a card's agent and a person write the same one.
@@ -48,7 +47,6 @@ import {
 import type { OrgFsEntry } from "../storage/org-fs";
 
 export const CAMPAIGNS_DIR = "campaigns";
-export const CAMPAIGN_SEEDS_DIR = "campaign-seeds";
 export const CARDS_DIR = "cards";
 
 const BRAND_FILE = "brand.md";
@@ -61,8 +59,7 @@ const BRAND_FILE = "brand.md";
  * enough that no real brand reaches it, low enough that a pathological folder
  * cannot make a request read forever.
  */
-const MAX_CAMPAIGNS = 500;
-export const MAX_CAMPAIGN_SEEDS = 200;
+export const MAX_CAMPAIGNS = 500;
 const MAX_CARDS = 500;
 
 /** The volume every path below is read from and written to. */
@@ -73,10 +70,7 @@ export function brandPath(brand: string): string {
   return `${BRANDS_DIR}/${brand}`;
 }
 
-type RecordDir =
-  | typeof CAMPAIGNS_DIR
-  | typeof CAMPAIGN_SEEDS_DIR
-  | typeof CARDS_DIR;
+type RecordDir = typeof CAMPAIGNS_DIR | typeof CARDS_DIR;
 
 export function recordPath(brand: string, dir: RecordDir, id: string): string {
   return `${brandPath(brand)}/${dir}/${id}.json`;
@@ -117,7 +111,6 @@ export interface BlogState {
   context: BlogContext | null;
   formats: BlogFormats | null;
   campaigns: BlogRecord[];
-  campaignSeeds: BlogRecord[];
   /**
    * `path -> contentHash` for every file read, so a caller can write back
    * conditionally. A file with no hash (written before hashes existed) is
@@ -263,16 +256,10 @@ export async function readBlogState(
     (entry) => entry.kind === "file" && entry.path === guidePath,
   );
 
-  const [guide, formats, campaigns, campaignSeeds] = await Promise.all([
+  const [guide, formats, campaigns] = await Promise.all([
     guideEntry ? readText(orgFs, guidePath) : Promise.resolve(null),
     readFormats(orgFs, `${base}/${FORMATS_DIR}`, versions),
     readRecords(orgFs, `${base}/${CAMPAIGNS_DIR}`, MAX_CAMPAIGNS, versions),
-    readRecords(
-      orgFs,
-      `${base}/${CAMPAIGN_SEEDS_DIR}`,
-      MAX_CAMPAIGN_SEEDS,
-      versions,
-    ),
   ]);
 
   if (guide !== null && guideEntry?.contentHash) {
@@ -286,7 +273,6 @@ export async function readBlogState(
     context: read?.context ?? null,
     formats: withGuideFormats(formats, read?.formats),
     campaigns,
-    campaignSeeds,
     versions,
   };
 }

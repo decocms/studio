@@ -1,4 +1,3 @@
-import { BLOG_STATE_CONFLICT } from "@decocms/shared/blog-state";
 import { HOME_MOUNT_PATH } from "@decocms/shared/organization/home-mount";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
@@ -10,7 +9,6 @@ import {
   type StudioContext,
 } from "../../core/studio-context";
 import {
-  CAMPAIGN_SEEDS_DIR,
   CAMPAIGNS_DIR,
   deleteBlogRecords,
   readBlogState,
@@ -33,9 +31,8 @@ import {
  * The state is the organization's: its brand guide, read as the blog's brand
  * and writing rules, its post formats, and the campaigns kept beside them.
  * The guide and the formats are edited on the brand page or as files, never
- * through here — these tools read them and write only campaigns and their
- * seeds. The file layout and its
- * hazards live in `file-storage/blog-state.ts`; what is here is the contract.
+ * through here — these tools read them and write only campaigns. The file
+ * layout and its hazards live in `file-storage/blog-state.ts`; what is here is the contract.
  */
 
 /** Ceilings on one call, so a single write cannot be unbounded. */
@@ -47,17 +44,6 @@ const MAX_REMOVALS_PER_CALL = 50;
  * the CMS, which carries fields this schema does not know about yet, and a
  * strict parse would quietly delete them on every agent write.
  */
-
-const StoredSeedSchema = z
-  .object({
-    seedName: z.string(),
-    keywords: z.array(z.string()),
-    prompt: z.string(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-  })
-  .partial()
-  .loose();
 
 const LooseRecord = z.record(z.string(), z.unknown());
 
@@ -112,6 +98,13 @@ export async function resolveBlogScope(ctx: StudioContext): Promise<{
   };
 }
 
+/**
+ * Prefix on the error a refused write produces: the file changed since the
+ * version the write started from, the normal outcome of a person and a run
+ * editing the same record. Anything without it is storage failing.
+ */
+const BLOG_STATE_CONFLICT = "blog-state-conflict:";
+
 export function conflictOrRethrow(err: unknown): unknown {
   return err instanceof OrgFsConflictError
     ? new Error(`${BLOG_STATE_CONFLICT} ${err.message}`)
@@ -121,7 +114,7 @@ export function conflictOrRethrow(err: unknown): unknown {
 export const BLOG_STATE_GET = defineTool({
   name: "BLOG_STATE_GET",
   description:
-    "Read the organization's blog editorial state: the brand profile and writing rules, read from its brand guide (`home/brands/<brand>/brand.md`); its post formats, one file each under `home/brands/<brand>/formats/`; and the campaigns and seeds kept beside them. Returns `versions` — pass the entries back to BLOG_STATE_SET so a write refuses rather than overwriting an edit made meanwhile. An organization with none of this reads as empty, which is not an error. To change the brand or writing rules, edit the guide's sections; to change a format, edit its file.",
+    "Read the organization's blog editorial state: the brand profile and writing rules, read from its brand guide (`home/brands/<brand>/brand.md`); its post formats, one file each under `home/brands/<brand>/formats/`; and the campaigns kept beside them. Returns `versions` — pass the entries back to BLOG_STATE_SET so a write refuses rather than overwriting an edit made meanwhile. An organization with none of this reads as empty, which is not an error. To change the brand or writing rules, edit the guide's sections; to change a format, edit its file.",
   annotations: {
     title: "Read Blog State",
     readOnlyHint: true,
@@ -148,7 +141,6 @@ export const BLOG_STATE_GET = defineTool({
       "`{ formats: { id, name, summary?, length?, value }[], skipped? }` — the shapes of post this blog writes, one per file under `formats/`; `value` is the brief to copy whole. `skipped` names files left out (`unnamed`, or `too-long` past 8000 characters). Formats still in the guide's section come after the files, without `id`, until each is moved into one.",
     ),
     campaigns: z.array(z.object({ id: z.string(), data: LooseRecord })),
-    campaignSeeds: z.array(z.object({ id: z.string(), data: LooseRecord })),
     versions: z
       .record(z.string(), z.string())
       .describe(
@@ -157,7 +149,7 @@ export const BLOG_STATE_GET = defineTool({
   }),
 
   modelSummary: (r) =>
-    `Blog state: ${r.brand ? "brand" : "no brand"}, ${r.context ? "writing rules" : "no writing rules"}, ${r.campaigns.length} campaign(s), ${r.campaignSeeds.length} seed(s).`,
+    `Blog state: ${r.brand ? "brand" : "no brand"}, ${r.context ? "writing rules" : "no writing rules"}, ${r.campaigns.length} campaign(s).`,
 
   handler: async (_input, ctx) => {
     const { orgFs, brand } = await resolveBlogScope(ctx);
@@ -168,7 +160,7 @@ export const BLOG_STATE_GET = defineTool({
 export const BLOG_STATE_SET = defineTool({
   name: "BLOG_STATE_SET",
   description:
-    "Write the organization's blog campaigns and campaign seeds, beside its brand guide. Every field is optional and only what is given is touched. Campaigns and seeds are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand and writing rules are the guide's sections, and formats are files beside it; both are edited there, not here. A chat never writes here: it changes the campaign it shapes with BLOG_CAMPAIGN_UPDATE.",
+    "Write the organization's blog campaigns, beside its brand guide. Every field is optional and only what is given is touched. Campaigns are upserted by id. Pass `expect` from BLOG_STATE_GET's `versions` and a write over something that changed meanwhile is refused instead of landing. The brand and writing rules are the guide's sections, and formats are files beside it; both are edited there, not here. A chat never writes here: it changes the campaign it shapes with BLOG_CAMPAIGN_UPDATE.",
   annotations: {
     title: "Write Blog State",
     readOnlyHint: false,
@@ -181,19 +173,11 @@ export const BLOG_STATE_SET = defineTool({
     campaigns: RecordListSchema(StoredCampaignSchema, "campaign").describe(
       "Campaigns to create or replace, by id. One file each, so writing one never touches another.",
     ),
-    campaignSeeds: RecordListSchema(StoredSeedSchema, "seed").describe(
-      "Campaign seeds to create or replace, by id.",
-    ),
     removeCampaigns: z
       .array(z.string().min(1).max(128))
       .max(MAX_REMOVALS_PER_CALL)
       .optional()
       .describe("Campaign ids to delete. Already gone counts as deleted."),
-    removeCampaignSeeds: z
-      .array(z.string().min(1).max(128))
-      .max(MAX_REMOVALS_PER_CALL)
-      .optional()
-      .describe("Seed ids to delete."),
     expect: z
       .record(z.string(), z.string())
       .optional()
@@ -224,10 +208,7 @@ export const BLOG_STATE_SET = defineTool({
 
     const refusal = agentStateWriteRefusal(callerRunThread(ctx), {
       campaigns: input.campaigns?.length ?? 0,
-      seeds: input.campaignSeeds?.length ?? 0,
-      removals:
-        (input.removeCampaigns?.length ?? 0) +
-        (input.removeCampaignSeeds?.length ?? 0),
+      removals: input.removeCampaigns?.length ?? 0,
     });
     if (refusal) throw new Error(refusal);
 
@@ -240,10 +221,6 @@ export const BLOG_STATE_SET = defineTool({
       const path = recordPath(target, CAMPAIGNS_DIR, id);
       writes.push({ path, data, expect: conditional(path) });
     }
-    for (const { id, data } of input.campaignSeeds ?? []) {
-      const path = recordPath(target, CAMPAIGN_SEEDS_DIR, id);
-      writes.push({ path, data, expect: conditional(path) });
-    }
 
     let entries: Awaited<ReturnType<typeof writeBlogFiles>>;
     try {
@@ -253,7 +230,6 @@ export const BLOG_STATE_SET = defineTool({
     }
 
     const removedCampaigns = input.removeCampaigns ?? [];
-    const removedSeeds = input.removeCampaignSeeds ?? [];
     await deleteBlogRecords(
       orgFs,
       target,
@@ -261,19 +237,11 @@ export const BLOG_STATE_SET = defineTool({
       CAMPAIGNS_DIR,
       removedCampaigns,
     );
-    await deleteBlogRecords(
-      orgFs,
-      target,
-      actor,
-      CAMPAIGN_SEEDS_DIR,
-      removedSeeds,
-    );
 
     // Announced so a brand page or the content track shows what an agent wrote.
     const touched = [
       ...entries.map((entry) => entry.path),
       ...removedCampaigns.map((id) => recordPath(target, CAMPAIGNS_DIR, id)),
-      ...removedSeeds.map((id) => recordPath(target, CAMPAIGN_SEEDS_DIR, id)),
     ];
     if (touched.length > 0) {
       await notifyOrgFsChangeFromServer(
@@ -288,7 +256,7 @@ export const BLOG_STATE_SET = defineTool({
         path: entry.path,
         contentHash: entry.contentHash ?? "",
       })),
-      removed: [...removedCampaigns, ...removedSeeds],
+      removed: removedCampaigns,
     };
   },
 });

@@ -5,12 +5,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-/**
- * The organization's brand folder is the only store. A site that still carries
- * the old `blog-manager-*` blocks must not have them read: a form filling
- * itself from a store nothing writes to any more is worse than an empty one,
- * because the person edits it and the edit lands somewhere else.
- */
+/** The organization's brand folder is the only store: the guide and the campaigns beside it. */
 
 const BASE = "brands/acme";
 
@@ -19,7 +14,6 @@ let remote: {
   context: Record<string, unknown> | null;
   formats: Record<string, unknown> | null;
   campaigns: { id: string; data: Record<string, unknown> }[];
-  campaignSeeds: { id: string; data: Record<string, unknown> }[];
   versions: Record<string, string>;
 };
 
@@ -38,7 +32,7 @@ mock.module("@/lib/studio-tools", () => ({
   useStudioTools: () => ({ orgSlug: "org", call: studioCall }),
 }));
 
-const { useBlogState, withoutBlogState } = await import("./use-blog-state");
+const { useBlogState } = await import("./use-blog-state");
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -58,39 +52,14 @@ beforeEach(() => {
   sets = [];
   remote = {
     brand: { companyName: "Acme" },
-    context: null,
+    context: { tone: "Direto." },
     formats: null,
     campaigns: [{ id: "c1", data: { campaignName: "Natal" } }],
-    campaignSeeds: [],
     versions: {
       [`${BASE}/brand.md`]: "g0",
       [`${BASE}/campaigns/c1.json`]: "h0",
     },
   };
-});
-
-describe("a site that still carries the old blocks", () => {
-  const LEGACY = {
-    "blog-manager-brand": { companyName: "Loja antiga" },
-    "blog-manager-context": { tone: "antigo" },
-    "blog-manager-formats": { formats: [] },
-    "blog-manager/campaigns/old": { campaignName: "Páscoa" },
-    "blog-manager/campaign-seeds/old": { seedName: "Datas" },
-    "blog-manager/posts/p1": { posts: { title: "Rascunho" } },
-    "site/sections/Header.tsx": { __resolveType: "x" },
-  };
-
-  test("drops every one of them, and keeps the drafts and the site", () => {
-    expect(Object.keys(withoutBlogState(LEGACY)).sort()).toEqual([
-      "blog-manager/posts/p1",
-      "site/sections/Header.tsx",
-    ]);
-  });
-
-  test("leaves a decofile with none of them alone", () => {
-    const clean = { "site/sections/Header.tsx": {} };
-    expect(withoutBlogState(clean)).toEqual(clean);
-  });
 });
 
 describe("an organization with the feature off", () => {
@@ -100,14 +69,29 @@ describe("an organization with the feature off", () => {
   });
 });
 
-describe("a site with none of it yet", () => {
-  test("reads the library and presents it as decofile blocks", async () => {
+describe("an organization's state", () => {
+  test("reads the brand and its writing rules as one record", async () => {
     const { result } = mount();
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(result.current.blocks).toEqual({
-      "blog-manager-brand": { companyName: "Acme" },
-      "blog-manager/campaigns/c1": { campaignName: "Natal" },
+    expect(result.current.brand).toEqual({
+      companyName: "Acme",
+      tone: "Direto.",
     });
+  });
+
+  test("a brand with no guide yet reads as empty", async () => {
+    remote = { ...remote, brand: null, context: null };
+    const { result } = mount();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.brand).toEqual({});
+  });
+
+  test("lists its campaigns by id", async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(
+      result.current.campaigns.map(({ id, name }) => ({ id, name })),
+    ).toEqual([{ id: "c1", name: "Natal" }]);
   });
 
   test("asks for the organization's state, with no project", async () => {
@@ -120,10 +104,8 @@ describe("a site with none of it yet", () => {
     const { result } = mount();
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    await result.current.remove.mutateAsync({
-      blockKey: "blog-manager/campaigns/c1",
-    });
+    await result.current.remove.mutateAsync("c1");
 
-    expect(sets[0]).toMatchObject({ removeCampaigns: ["c1"] });
+    expect(sets[0]).toEqual({ removeCampaigns: ["c1"] });
   });
 });

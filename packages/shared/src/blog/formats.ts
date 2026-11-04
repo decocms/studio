@@ -12,14 +12,6 @@ import {
 } from "./block-discovery";
 import type { LiveMeta } from "./live-meta";
 
-/**
- * A format is a name plus a markdown brief, injected into the generation
- * prompt — deliberately loose, so it cites sections rather than sequencing
- * them. Same `{ name, value }` shape as a brand rule, so `normalizeBrandRules`
- * already reads the list.
- */
-export const FORMATS_BLOCK_KEY = "blog-manager-formats";
-
 export interface MentionableSection {
   /** The label a citation shows: `ProductShelf`. */
   name: string;

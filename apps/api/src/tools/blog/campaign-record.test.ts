@@ -208,19 +208,16 @@ describe("campaignShell", () => {
 });
 
 describe("agentStateWriteRefusal", () => {
-  const none = { campaigns: 0, seeds: 0, removals: 0 };
+  const none = { campaigns: 0, removals: 0 };
 
   test("a person writes the blog state as before", () => {
     expect(agentStateWriteRefusal(null, { ...none, campaigns: 2 })).toBeNull();
   });
 
-  test("a chat changes campaigns elsewhere, and never seeds or removals", () => {
+  test("a chat changes campaigns elsewhere, and never removes one", () => {
     expect(
       agentStateWriteRefusal("thrd_1", { ...none, campaigns: 1 }),
     ).toContain("BLOG_CAMPAIGN_UPDATE");
-    expect(agentStateWriteRefusal("thrd_1", { ...none, seeds: 1 })).toContain(
-      "a person's",
-    );
     expect(
       agentStateWriteRefusal("thrd_1", { ...none, removals: 1 }),
     ).toContain("a person's");

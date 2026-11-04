@@ -48,13 +48,6 @@ import {
   buildPostSections,
   citedSections,
   missingBrandForGeneration,
-  splitBlogContext,
-  pickBlogFields,
-  BRAND_FIELDS,
-  CONTEXT_FIELDS,
-  readBlogContext,
-  BRAND_BLOCK_KEY,
-  CONTEXT_BLOCK_KEY,
   sectionResolveTypes,
   maskSlugInput,
   scanBlogEntries,
@@ -692,7 +685,6 @@ describe("scanCampaigns", () => {
     const [campaign] = scanCampaigns({
       [key]: {
         campaignName: "Black Friday 2026",
-        seedKey: "blog-manager/campaign-seeds/s1",
         status: "active",
         threadId: "thrd_1",
         evidence: [
@@ -749,7 +741,6 @@ describe("scanCampaigns", () => {
       key,
       id: "a",
       name: "Black Friday 2026",
-      seedKey: "blog-manager/campaign-seeds/s1",
       status: "active",
       threadId: "thrd_1",
       evidence: [
@@ -2079,79 +2070,6 @@ describe("buildGeneratedPostPayload", () => {
   });
 });
 
-describe("splitBlogContext", () => {
-  const brandFields = {
-    companyName: "Marca",
-    description: "Vende roupa",
-    language: "pt-BR",
-    targetAudience: "Quem procura linho",
-    values: [{ name: "Origem", value: "Tecido nacional" }],
-    competitors: [{ name: "Outra", value: "Fala de preço" }],
-  };
-  const contextFields = {
-    tone: "Segunda pessoa, sem humor",
-    dos: [{ name: "Abertura", value: "Comece pelo leitor" }],
-    avoid: [{ name: "Preço", value: "Nunca em bloco de texto" }],
-    categories: ["Moda"],
-  };
-
-  test("splits a block written after the split", () => {
-    const { brand, context } = splitBlogContext(brandFields, contextFields);
-    expect(brand).toEqual(brandFields);
-    expect(context).toEqual(contextFields);
-  });
-
-  test("a legacy brand block seeds the writing rules", () => {
-    const legacy = { ...brandFields, ...contextFields };
-    const { brand, context } = splitBlogContext(legacy, undefined);
-    expect(brand).toEqual(brandFields);
-    expect(context).toEqual(contextFields);
-  });
-
-  test("the context block wins over the legacy copies in the brand block", () => {
-    const legacy = { ...brandFields, tone: "Tom antigo", dos: [], avoid: [] };
-    const { brand, context } = splitBlogContext(legacy, contextFields);
-    expect(context).toEqual(contextFields);
-    expect(brand).not.toHaveProperty("tone");
-  });
-
-  test("the brand half never carries a writing-rule field", () => {
-    const legacy = { ...brandFields, ...contextFields };
-    const { brand } = splitBlogContext(legacy, contextFields);
-    for (const field of ["tone", "dos", "avoid", "categories"]) {
-      expect(brand).not.toHaveProperty(field);
-    }
-  });
-
-  test("an empty context block is a real answer, not a reason to fall back", () => {
-    const legacy = { ...brandFields, ...contextFields };
-    const { context } = splitBlogContext(legacy, {});
-    expect(context).toEqual({});
-  });
-
-  test("absent blocks give two empty halves", () => {
-    expect(splitBlogContext(undefined, undefined)).toEqual({
-      brand: {},
-      context: {},
-      merged: {},
-    });
-  });
-
-  test("merged holds both halves", () => {
-    const { merged } = splitBlogContext(brandFields, contextFields);
-    expect(merged).toEqual({ ...brandFields, ...contextFields });
-  });
-
-  test("readBlogContext reads both keys off the decofile", () => {
-    const { merged } = readBlogContext({
-      [BRAND_BLOCK_KEY]: brandFields,
-      [CONTEXT_BLOCK_KEY]: contextFields,
-      "site/pages/home": { path: "/" },
-    });
-    expect(merged).toEqual({ ...brandFields, ...contextFields });
-  });
-});
-
 describe("normalizeTerms", () => {
   test("passes a plain term list through", () => {
     expect(normalizeTerms(["linho", "vestido de festa"])).toEqual([
@@ -2179,56 +2097,6 @@ describe("normalizeTerms", () => {
     expect(normalizeTerms(undefined)).toEqual([]);
     expect(normalizeTerms("linho")).toEqual([]);
     expect(normalizeTerms([42, null])).toEqual([]);
-  });
-});
-
-describe("missingBrandForGeneration, across the two blocks", () => {
-  test("is satisfied by the merged view, never by one half alone", () => {
-    const brandBlock = {
-      companyName: "Marca",
-      language: "pt-BR",
-      description: "Vende roupa",
-      targetAudience: "Quem procura linho",
-    };
-    const contextBlock = {
-      tone: "Seco",
-      dos: [{ name: "Abertura", value: "Pelo leitor" }],
-      avoid: [{ name: "Preço", value: "Nunca em texto" }],
-    };
-    const { brand, merged } = splitBlogContext(brandBlock, contextBlock);
-    expect(missingBrandForGeneration(brand)).toEqual(["tone", "dos", "avoid"]);
-    expect(missingBrandForGeneration(merged)).toEqual([]);
-  });
-});
-
-describe("pickBlogFields", () => {
-  test("narrowing to the brand half leaves the writing rules behind", () => {
-    const legacy = {
-      companyName: "Marca",
-      tone: "Seco",
-      dos: [{ name: "Abertura", value: "Pelo leitor" }],
-    };
-    expect(pickBlogFields(legacy, BRAND_FIELDS)).toEqual({
-      companyName: "Marca",
-    });
-  });
-
-  test("the same legacy block saved as context keeps only the rules", () => {
-    const legacy = {
-      companyName: "Marca",
-      tone: "Seco",
-      dos: [{ name: "Abertura", value: "Pelo leitor" }],
-    };
-    expect(pickBlogFields(legacy, CONTEXT_FIELDS)).toEqual({
-      tone: "Seco",
-      dos: [{ name: "Abertura", value: "Pelo leitor" }],
-    });
-  });
-
-  test("a field the block never had stays absent, rather than becoming undefined", () => {
-    expect(pickBlogFields({ tone: "Seco" }, CONTEXT_FIELDS)).toEqual({
-      tone: "Seco",
-    });
   });
 });
 

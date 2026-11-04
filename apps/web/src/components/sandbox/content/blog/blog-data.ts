@@ -35,7 +35,6 @@ import {
   DEFAULT_SCHEDULE_HOUR,
   defaultScheduledDatetime,
   discoverBlogBlockTypes,
-  FORMATS_BLOCK_KEY,
   type GenerationBlock,
   getBlogPayload,
   isBlogKind,
@@ -87,7 +86,6 @@ import {
   CampaignRunSchema,
   CAMPAIGN_KEY_PREFIX,
   CAMPAIGN_OBJECTIVES,
-  CAMPAIGN_SEED_KEY_PREFIX,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
   CAMPAIGN_TRIGGERS,
@@ -609,106 +607,6 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
   }
 }
 
-/** Where the editorial brand context lives, as Spire named it. */
-export const BRAND_BLOCK_KEY = "blog-manager-brand";
-
-/** Where the blog's writing rules live, apart from the brand's identity. */
-export const CONTEXT_BLOCK_KEY = "blog-manager-context";
-
-/**
- * The split between the two blocks, in one place.
- *
- * Who the brand IS outlives any one channel and is worth stating once;
- * how the blog is WRITTEN belongs to the blog and changes with it. Keeping them
- * in separate files means a rewrite of the editorial rules never risks the
- * company's own facts, and each half is inferred by its own pass.
- */
-export const BRAND_FIELDS = [
-  "companyName",
-  "description",
-  "language",
-  "storeUrl",
-  "targetAudience",
-  "values",
-  "competitors",
-  "keywords",
-  "commercialPolicies",
-  "specialDates",
-] as const;
-
-export const CONTEXT_FIELDS = [
-  "tone",
-  "dos",
-  "avoid",
-  "categories",
-  "vocabulary",
-  "voiceExamples",
-] as const;
-
-/**
- * A draft narrowed to the fields its block owns.
- *
- * The editor seeds each draft from a whole stored block — which, on a site
- * written before the split, is the one block holding both halves. Narrowing on
- * the way out is what keeps a save from writing a field into the wrong file,
- * and what makes the legacy block shed the rules it no longer owns.
- */
-export function pickBlogFields(
-  source: Record<string, unknown>,
-  fields: readonly string[],
-): Record<string, unknown> {
-  const picked: Record<string, unknown> = {};
-  for (const field of fields) {
-    if (field in source) picked[field] = source[field];
-  }
-  return picked;
-}
-
-export interface BlogContextBlocks {
-  brand: Record<string, unknown>;
-  context: Record<string, unknown>;
-  /** Both halves together — what every generation tool is fed. */
-  merged: Record<string, unknown>;
-}
-
-/**
- * Both halves of the editorial context, from the two raw blocks. The one place
- * either is interpreted.
- *
- * Sites written before the split hold everything in `blog-manager-brand`, so
- * the writing rules fall back to it while `blog-manager-context` is absent —
- * the same tolerance {@link normalizeBrandRules} gives the older `string[]`
- * rule lists, and for the same reason: a read that copes costs one function,
- * a migration costs a pass over every site's repository. Once the context block
- * exists it wins outright, and the brand half is read by its own fields only,
- * so the legacy copies are ignored from then on and the brand block sheds them
- * on its next save.
- *
- * Takes the blocks rather than the decofile so a caller holding them as state
- * can memoize on their identity: it returns fresh objects, and the editor's
- * autosave re-seeds on reference change.
- */
-export function splitBlogContext(
-  brandBlock: unknown,
-  contextBlock: unknown,
-): BlogContextBlocks {
-  const stored = asRecord(brandBlock) ?? {};
-  const storedContext = asRecord(contextBlock);
-  const brand = pickBlogFields(stored, BRAND_FIELDS);
-  const context = storedContext ?? pickBlogFields(stored, CONTEXT_FIELDS);
-  return { brand, context, merged: { ...brand, ...context } };
-}
-
-/** {@link splitBlogContext} for the callers that hold the whole decofile. */
-export function readBlogContext(
-  decofile: Record<string, unknown>,
-): BlogContextBlocks {
-  return splitBlogContext(
-    decofile[BRAND_BLOCK_KEY],
-    decofile[CONTEXT_BLOCK_KEY],
-  );
-}
-
 /**
  * Read a plain term list, tolerating the `{name, value}` rows this field held
  * before it became a list of search terms. The object's `name` was the term, so
@@ -847,8 +745,6 @@ export interface CampaignEntry {
   /** The record's id: its key without the prefix. */
   id: string;
   name: string;
-  /** The seed this campaign was generated from; "" when written by hand. */
-  seedKey: string;
   status: CampaignStatus;
   /** The chat that shapes it, a card's or its own; "" for one written by hand. */
   threadId: string;
@@ -977,7 +873,6 @@ export function scanCampaigns(
       key,
       id: key.slice(CAMPAIGN_KEY_PREFIX.length),
       name: str(record.campaignName),
-      seedKey: str(record.seedKey),
       status: oneOf(CAMPAIGN_STATUSES, record.status, "draft"),
       threadId: str(record.threadId),
       evidence: validItems(record.evidence, BlogEvidenceSchema),
@@ -1009,10 +904,6 @@ export function scanCampaigns(
       b.createdAt.localeCompare(a.createdAt) || a.name.localeCompare(b.name),
   );
 }
-
-// ------------------ Campaign seeds (what a generation starts from) -----------
-
-export { CAMPAIGN_SEED_KEY_PREFIX };
 
 // ------------------ Checks before saving or generating ----------------------
 
@@ -1057,13 +948,11 @@ const REQUIRED_BRAND_TEXT = [
 ] as const satisfies readonly BrandRequirement[];
 
 /**
- * What the merged context ({@link readBlogContext}) still lacks before anything may be generated.
- *
- * These are the three tabs that decide how a post reads — the basics, the
- * generation instructions and the guardrails. Without them the model falls back
- * on what a brand in this category usually sounds like, which is the one
- * outcome the whole feature exists to avoid, so this blocks rather than warns.
- * `values`, `categories` and `competitors` are genuinely extra.
+ * What the brand and its writing rules, read as one record, still lack before
+ * anything may be generated: who the brand is, how it writes and what it
+ * refuses. Without them the model falls back on what a brand in this category
+ * usually sounds like, the one outcome the whole feature exists to avoid, so
+ * this blocks rather than warns.
  */
 export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
   const brand = asRecord(block) ?? {};
@@ -1137,7 +1026,6 @@ export {
   DEFAULT_SCHEDULE_HOUR,
   defaultScheduledDatetime,
   discoverBlogBlockTypes,
-  FORMATS_BLOCK_KEY,
   type GenerationBlock,
   getBlogPayload,
   isBlogKind,

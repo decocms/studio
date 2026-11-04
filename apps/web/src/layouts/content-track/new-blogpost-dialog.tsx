@@ -26,10 +26,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import {
-  CAMPAIGN_KEY_PREFIX,
-  scanCampaigns,
-} from "@/components/sandbox/content/blog/blog-data";
+import { CAMPAIGN_KEY_PREFIX } from "@/components/sandbox/content/blog/blog-data";
 import { CampaignList } from "@/components/sandbox/content/blog/campaign-list";
 import { readyCampaigns } from "@/components/sandbox/content/blog/campaign-model";
 import type { BlogState } from "@/components/sandbox/content/blog/use-blog-state";
@@ -70,7 +67,7 @@ export function NewBlogpostDialog({
   const [pickedSite, setPickedSite] = useState("");
   const [prompt, setPrompt] = useState("");
 
-  const openCampaigns = readyCampaigns(scanCampaigns(blog.blocks));
+  const openCampaigns = readyCampaigns(blog.campaigns);
   const virtualMcpId =
     siteId ?? (sites.length === 1 ? (sites[0]?.id ?? "") : pickedSite);
   const shapeNew = campaignKey === NEW_CAMPAIGN;

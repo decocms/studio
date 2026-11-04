@@ -6,7 +6,6 @@
 import {
   type BrandRequirement,
   missingBrandForGeneration,
-  readBlogContext,
 } from "@/components/sandbox/content/blog/blog-data";
 import type { BlogState } from "@/components/sandbox/content/blog/use-blog-state";
 
@@ -50,13 +49,11 @@ export function resolveExecuteTrack(input: {
  * while the guide lacks what a post needs, or the track itself.
  */
 export function contentTrackGate(
-  blog: Pick<BlogState, "ready" | "blocks">,
+  blog: Pick<BlogState, "ready" | "brand">,
 ):
   | { gate: "loading" | "open" }
   | { gate: "setup"; missing: BrandRequirement[] } {
   if (!blog.ready) return { gate: "loading" };
-  const missing = missingBrandForGeneration(
-    readBlogContext(blog.blocks).merged,
-  );
+  const missing = missingBrandForGeneration(blog.brand);
   return missing.length > 0 ? { gate: "setup", missing } : { gate: "open" };
 }

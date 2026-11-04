@@ -2242,7 +2242,6 @@ export interface StudioToolIO {
       context: Record<string, unknown> | null;
       formats: Record<string, unknown> | null;
       campaigns: { id: string; data: Record<string, unknown> }[];
-      campaignSeeds: { id: string; data: Record<string, unknown> }[];
       versions: Record<string, string>;
     };
   };
@@ -2300,7 +2299,6 @@ export interface StudioToolIO {
                   }
                 | undefined;
               campaignName?: string | undefined;
-              seedKey?: string | undefined;
               goals?:
                 | {
                     text: string;
@@ -2427,21 +2425,7 @@ export interface StudioToolIO {
             };
           }[]
         | undefined;
-      campaignSeeds?:
-        | {
-            id: string;
-            data: {
-              [x: string]: unknown;
-              seedName?: string | undefined;
-              keywords?: string[] | undefined;
-              prompt?: string | undefined;
-              createdAt?: string | undefined;
-              updatedAt?: string | undefined;
-            };
-          }[]
-        | undefined;
       removeCampaigns?: string[] | undefined;
-      removeCampaignSeeds?: string[] | undefined;
       expect?: Record<string, string> | undefined;
     };
     output: {

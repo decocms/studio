@@ -1,4 +1,3 @@
-import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -141,7 +140,6 @@ import {
   scheduledPostPayload,
 } from "./blog/post-calendar-data";
 import { usePostStatusMove } from "./blog/use-post-status-move";
-import { useBlogState, withoutBlogState } from "./blog/use-blog-state";
 import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
 import { SavedPageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
@@ -481,7 +479,7 @@ function ContentBrowserReady({
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
-  const { data: rawDecofile, isLoading: decofileLoading } = useDecofile(
+  const { data: decofile, isLoading: decofileLoading } = useDecofile(
     fetchParams,
     { fetchEnabled: devServerReady },
   );
@@ -497,18 +495,7 @@ function ContentBrowserReady({
       deepLinkCollection(contentDeepLink.contentCollection, !runsSiteCode) ??
       "pages",
   );
-  const blogAi = useBlogAi();
   const activeCollection = visibleCollection(storedCollection, !runsSiteCode);
-  /**
-   * The blog's brand, writing rules, formats and campaigns come from the org
-   * library, not from this site's blocks. Stripping before merging is what
-   * stops a site that still carries the old blocks from filling its forms with
-   * them — see `withoutBlogState`.
-   */
-  const blogState = useBlogState({ orgSlug, enabled: blogAi });
-  const decofile = rawDecofile
-    ? { ...withoutBlogState(rawDecofile), ...blogState.blocks }
-    : rawDecofile;
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
   // Calendar views. Both keep the open thread, so they work in this same draft.

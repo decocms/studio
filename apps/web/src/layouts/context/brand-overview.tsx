@@ -90,7 +90,6 @@ import {
 } from "@decocms/shared/brand";
 import { parseFrontmatterDoc } from "@decocms/shared/harness/skill-md";
 import { useBlogAi } from "@/hooks/use-blog-ai";
-import { scanCampaigns } from "@/components/sandbox/content/blog/blog-data";
 import { useBlogState } from "@/components/sandbox/content/blog/use-blog-state";
 import { FormatsDrawer, useBrandFormats } from "./brand-formats";
 
@@ -171,7 +170,7 @@ function CampaignsRow() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const blog = useBlogState({ orgSlug: org.slug });
-  const live = scanCampaigns(blog.blocks).filter(
+  const live = blog.campaigns.filter(
     (campaign) => campaign.status !== "finished",
   );
   return (

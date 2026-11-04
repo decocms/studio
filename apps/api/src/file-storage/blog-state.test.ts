@@ -3,7 +3,7 @@ import type { OrgFsEntry } from "../storage/org-fs";
 import {
   brandPath,
   deleteBlogRecords,
-  MAX_CAMPAIGN_SEEDS,
+  MAX_CAMPAIGNS,
   readBlogState,
   recordPath,
   resolveBrandDir,
@@ -158,7 +158,6 @@ describe("readBlogState", () => {
       withFiles({
         [`${BASE}/brand.md`]: GUIDE,
         [`${BASE}/campaigns/c1.json`]: { campaignName: "Black Friday" },
-        [`${BASE}/campaign-seeds/s1.json`]: { seedName: "Datas" },
       }),
     );
 
@@ -175,9 +174,6 @@ describe("readBlogState", () => {
     ]);
     expect(state.campaigns).toEqual([
       { id: "c1", data: { campaignName: "Black Friday" } },
-    ]);
-    expect(state.campaignSeeds).toEqual([
-      { id: "s1", data: { seedName: "Datas" } },
     ]);
     expect(state.versions[`${BASE}/brand.md`]).toBe(`hash-of-${BASE}/brand.md`);
     expect(state.versions[`${BASE}/campaigns/c1.json`]).toBe(
@@ -247,7 +243,6 @@ describe("readBlogState", () => {
       context: null,
       formats: null,
       campaigns: [],
-      campaignSeeds: [],
       versions: {},
     });
   });
@@ -299,12 +294,12 @@ describe("readBlogState", () => {
 
   it("stops at the ceiling rather than reading a folder forever", async () => {
     const many: Record<string, unknown> = {};
-    for (let i = 0; i < MAX_CAMPAIGN_SEEDS + 10; i += 1) {
-      many[`${BASE}/campaign-seeds/s${i}.json`] = { seedName: `s${i}` };
+    for (let i = 0; i < MAX_CAMPAIGNS + 10; i += 1) {
+      many[`${BASE}/campaigns/c${i}.json`] = { campaignName: `c${i}` };
     }
     const { fs } = fakeOrgFs(withFiles(many));
     const state = await readBlogState(fs, BRAND);
-    expect(state.campaignSeeds).toHaveLength(MAX_CAMPAIGN_SEEDS);
+    expect(state.campaigns).toHaveLength(MAX_CAMPAIGNS);
   });
 
   it("ignores a file whose name is not an id", async () => {
