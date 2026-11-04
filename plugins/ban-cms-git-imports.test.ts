@@ -62,14 +62,27 @@ describe("ban-cms-git-imports", () => {
     expect(await lint(f)).toHaveLength(1);
   });
 
-  test("bans the repo readers and the v8 git path from hosted/cms-*", async () => {
+  test("bans the repo readers from hosted/cms-*", async () => {
     const f = fixture(
       "apps/api/src/hosted/cms-publish.ts",
       `import { gitBlobSha } from "@/decofile/read-decofile";\n` +
-        `import { publishDraft } from "./publish";\n` +
-        `export const x = [gitBlobSha, publishDraft];\n`,
+        `import { createRepoContentReader } from "../decofile/repo-content-storage";\n` +
+        `export const x = [gitBlobSha, createRepoContentReader];\n`,
     );
     expect(await lint(f)).toHaveLength(2);
+  });
+
+  test("covers every hosted/ module, tests included", async () => {
+    const f = fixture(
+      "apps/api/src/hosted/preview-hosts.ts",
+      `import { requireBranchHead } from "@/git-providers";\nexport const x = requireBranchHead;\n`,
+    );
+    expect(await lint(f)).toHaveLength(1);
+    const t = fixture(
+      "apps/api/src/hosted/claim-site.test.ts",
+      `import type { RepoContentClient } from "../git-providers";\nexport type X = RepoContentClient;\n`,
+    );
+    expect(await lint(t)).toHaveLength(1);
   });
 
   test("bans the git decofile client from the web cms client", async () => {
@@ -87,7 +100,7 @@ describe("ban-cms-git-imports", () => {
     );
     expect(await lint(ok)).toEqual([]);
     const other = fixture(
-      "apps/api/src/hosted/publish.ts",
+      "apps/api/src/api/routes/decofile.ts",
       `import { requireBranchHead } from "@/git-providers";\nexport const x = requireBranchHead;\n`,
     );
     expect(await lint(other)).toEqual([]);
