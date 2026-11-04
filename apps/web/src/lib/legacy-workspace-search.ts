@@ -69,6 +69,8 @@ export const librarySearchShape = {
   expanded: z.coerce.boolean().optional().catch(undefined),
   skill: z.string().optional(),
   brand: z.string().optional(),
+  /** The skills package open in Context's Skills, like a folder. */
+  bundle: z.string().optional(),
   /** Context's menu (project-first nav), and the state of the settings pages
    *  it hosts: Memory's scope and the Connections create dialog. */
   section: z.enum(CONTEXT_SECTIONS).catch("files").optional(),

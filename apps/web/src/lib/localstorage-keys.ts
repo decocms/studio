@@ -74,4 +74,7 @@ export const LOCALSTORAGE_KEYS = {
    *  Localhost is turned off so choosing it again goes back there. */
   decoServeEndpoint: (userId: string, virtualMcpId: string) =>
     `studio:deco-serve-endpoint:${userId}:${virtualMcpId}`,
+  /** A project's skill picks while the skills UI runs on mock data. */
+  mockProjectSkills: (projectId: string) =>
+    `studio:skills:mock-project-picks:${projectId}`,
 } as const;

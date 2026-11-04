@@ -45,6 +45,7 @@ import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
 import { sandbox } from "./sandbox.ts";
 import { settings } from "./settings.ts";
+import { skills } from "./skills.ts";
 import { announcements } from "./announcements.ts";
 import { assets } from "./assets.ts";
 
@@ -97,6 +98,7 @@ export const en = {
   ...admin,
   ...sandbox,
   ...settings,
+  ...skills,
   ...announcements,
   ...assets,
   ...projects,

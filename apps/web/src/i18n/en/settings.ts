@@ -428,7 +428,6 @@ export const settings = {
     "Pick a folder, not individual files — this browser may not support folder upload.",
   "settings.skills.searchPlaceholder": "Search skills...",
   "settings.skills.noDescription": "No description",
-  "settings.skills.filterAll": "All",
   "settings.skills.emptyTitle": "No skills yet",
   "settings.skills.emptyDescription":
     "Import a folder with a SKILL.md to give your agents reusable instructions they can load on demand.",

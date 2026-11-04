@@ -299,7 +299,13 @@ export function useOrgFsSkills(opts?: { enabled?: boolean }) {
 export interface OrgFsSkillCatalogEntry {
   id: string;
   name: string;
+  /** Frontmatter `title`, the name people see. */
+  title?: string | null;
   description: string | null;
+  /** Frontmatter `category`, a `SKILL_CATEGORY_IDS` id. */
+  category?: string | null;
+  /** Frontmatter `bundles`: the bundle ids the skill belongs to. */
+  bundles?: string[];
   source: string;
   volume: string;
   path: string;
