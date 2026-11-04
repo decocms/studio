@@ -725,11 +725,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
   "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
-  "settings.planUsage.noPlan": "Nenhum plano ativo",
-  "settings.planUsage.noPlanDescription":
-    "Esta organização não tem um plano ativo. Escolha um abaixo — o primeiro mês do Starter é grátis.",
   "settings.planUsage.included": "Incluído no plano",
-  "settings.planUsage.credits": "Créditos",
+  "settings.planUsage.credits": "Créditos adicionados",
   "settings.planUsage.creditsInUse": "Em uso",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
   "settings.planUsage.portalFailed":
@@ -790,12 +787,6 @@ export const settings = {
     "Esta organização usou todo o limite mensal de IA. O chat e as tarefas ficam pausados até fazer upgrade ou adicionar créditos.",
 
   "settings.decoCreditsHero.topUpFailed": "Recarga falhou: {message}",
-  "settings.decoNudgeCard.connectDeco": "Conectar Deco",
-  "settings.decoNudgeCard.connecting": "Conectando\u2026",
-  "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
-  "settings.decoNudgeCard.description":
-    "100+ modelos, uma conex\u00e3o \u2014 pague conforme usa, sem APIs para gerenciar.",
-  "settings.decoNudgeCard.recommended": "Recomendado",
   "settings.deleteOrganizationSection.cancel": "Cancelar",
   "settings.deleteOrganizationSection.dangerZone": "Zona de risco",
   "settings.deleteOrganizationSection.deleteButton": "Deletar",
@@ -1249,10 +1240,6 @@ export const settings = {
     "OpenAI-compat\u00edvel personalizado",
   "settings.aiProviders.customOpenAiDescription":
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
-  "settings.aiProviders.decoConnectSuccess":
-    "Deco AI Gateway conectado com sucesso",
-  "settings.aiProviders.decoConnectError":
-    "Falha ao conectar o Deco AI Gateway: {error}",
 
   "settings.infraBilling.noSites":
     "Esta organização ainda não é dona de nenhum site deco.cx.",
