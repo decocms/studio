@@ -90,11 +90,13 @@ function useSegmentSearch(): Record<string, unknown> {
 function LiveMonitoring({
   orgSlug,
   scopeId,
+  orgWide,
   selection,
   onSelect,
 }: {
   orgSlug: string;
   scopeId: string | null;
+  orgWide: boolean;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
@@ -114,6 +116,7 @@ function LiveMonitoring({
       error={error}
       orgSlug={orgSlug}
       scopeId={scopeId}
+      orgWide={orgWide}
       selection={selection}
       onSelect={onSelect}
     />
@@ -157,6 +160,7 @@ function MonitoringContent() {
     <LiveMonitoring
       orgSlug={org.slug}
       scopeId={scopeId}
+      orgWide={routeId !== null && scopeId === null}
       selection={selection}
       onSelect={onSelect}
     />

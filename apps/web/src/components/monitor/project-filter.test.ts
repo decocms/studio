@@ -21,6 +21,11 @@ describe("monitorScope", () => {
     expect(monitorScope(null, [project("a")], undefined)).toBe("a");
   });
 
+  it("stays org-wide on an org-wide route, even with one project", () => {
+    expect(monitorScope(null, [project("a")], undefined, true)).toBeNull();
+    expect(monitorScope(null, two, "b", true)).toBe("b");
+  });
+
   it("follows the filter's pick when it names a project here", () => {
     expect(monitorScope(null, two, "b")).toBe("b");
   });

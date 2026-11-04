@@ -39,14 +39,16 @@ export function ProjectFilter({
 
 /**
  * The project every tab reads: the route's own, the org's only one, or the
- * filter's pick. Null is every project at once.
+ * filter's pick. Null is every project at once. An `orgWide` route (the Super
+ * Agent's) never narrows to the org's only project.
  */
 export function monitorScope(
   routeScope: string | null,
   projects: readonly SiteProject[],
   picked: string | undefined,
+  orgWide = false,
 ): string | null {
   if (routeScope) return routeScope;
-  if (projects.length === 1) return projects[0]?.id ?? null;
+  if (!orgWide && projects.length === 1) return projects[0]?.id ?? null;
   return projects.some((p) => p.id === picked) ? (picked ?? null) : null;
 }
