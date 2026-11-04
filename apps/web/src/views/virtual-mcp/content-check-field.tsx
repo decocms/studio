@@ -70,7 +70,7 @@ export function ContentCheckField<T extends FieldValues>({
             </p>
           </div>
           <Select
-            value={(field.value as ContentCheck | null) ?? "changes"}
+            value={(field.value as ContentCheck | null) ?? "none"}
             onValueChange={(value) => {
               field.onChange(value);
               onCommit();

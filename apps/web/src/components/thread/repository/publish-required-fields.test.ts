@@ -194,7 +194,7 @@ describe("publishRequiredFieldsGate", () => {
   ) =>
     publishRequiredFieldsGate({
       meta: META,
-      check: undefined,
+      check: "all",
       changes: unfilled,
       contentPending: false,
       contentFailed: false,
@@ -247,7 +247,7 @@ describe("the site's content check", () => {
       review: false,
     }).blocks;
 
-  test("`changes` (the default) only lists a field the published version already left missing", () => {
+  test("`changes` only lists a field the published version already left missing", () => {
     const edited = [
       change(
         "Example listing",
@@ -256,7 +256,6 @@ describe("the site's content check", () => {
       ),
     ];
     expect(blocking("changes", edited)).toBe(false);
-    expect(blocking(undefined, edited)).toBe(false);
     const found = publishRequiredFields(edited, META, "changes");
     expect(found[0]!.fields.map(requiredFieldLabel)).toEqual([
       "Promo cards › 1 › Headline",
@@ -283,6 +282,10 @@ describe("the site's content check", () => {
       published,
     );
     expect(blocking("changes", [moved])).toBe(false);
+  });
+
+  test("unset checks nothing", () => {
+    expect(blocking(undefined, [change("New listing", published)])).toBe(false);
   });
 
   test("`none` checks nothing", () => {

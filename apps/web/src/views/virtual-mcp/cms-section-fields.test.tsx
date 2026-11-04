@@ -100,11 +100,9 @@ describe("ContentCheckField", () => {
     );
   });
 
-  test("shows the selected check in the trigger, `Only changes` when unset", () => {
+  test("shows the selected check in the trigger, `None` when unset", () => {
     expect(renderField(<CheckHarness check="all" />).trigger).toBe("All");
     expect(renderField(<CheckHarness check="none" />).trigger).toBe("None");
-    expect(renderField(<CheckHarness check={null} />).trigger).toBe(
-      "Only changes",
-    );
+    expect(renderField(<CheckHarness check={null} />).trigger).toBe("None");
   });
 });

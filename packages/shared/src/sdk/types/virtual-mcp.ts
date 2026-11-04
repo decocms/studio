@@ -741,10 +741,10 @@ const publishPolicyMetadataField = PublishPolicySchema.nullable()
 /**
  * What a CMS Publish checks in the content it publishes: required fields left
  * missing, which a site running `deco check` rejects at build time.
- * - `changes` (default): a field the change leaves missing holds the Publish;
+ * - `none` (default): nothing is checked.
+ * - `changes`: a field the change leaves missing holds the Publish;
  *   one that was already missing is only listed.
  * - `all`: any missing required field holds it.
- * - `none`: nothing is checked.
  */
 const ContentCheckSchema = z.enum(["none", "changes", "all"]);
 export type ContentCheck = z.infer<typeof ContentCheckSchema>;
@@ -752,7 +752,7 @@ export type ContentCheck = z.infer<typeof ContentCheckSchema>;
 const contentCheckMetadataField = ContentCheckSchema.nullable()
   .optional()
   .describe(
-    "What a CMS Publish checks for required fields left missing. 'changes' (default) holds it only for fields the change leaves missing; 'all' holds it for any missing required field; 'none' checks nothing.",
+    "What a CMS Publish checks for required fields left missing. 'none' (default) checks nothing; 'changes' holds it only for fields the change leaves missing; 'all' holds it for any missing required field.",
   );
 
 /**

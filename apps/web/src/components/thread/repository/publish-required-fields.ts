@@ -134,7 +134,7 @@ export function requiredFieldsBlockPublish(
 
 /**
  * The Publish dialog's required-fields check, per the site's `contentCheck`
- * (`changes` when unset). Without a schema, or with `none`, nothing is
+ * (`none` when unset). Without a schema, or with `none`, nothing is
  * judged. While the changes' content loads (and hasn't failed to), a Publish
  * waits for it. A review submission publishes nothing, so it is never held.
  */
@@ -147,7 +147,7 @@ export function publishRequiredFieldsGate(args: {
   review: boolean;
 }): { found: PublishRequiredFields[]; checking: boolean; blocks: boolean } {
   const { meta, changes, contentPending, contentFailed, review } = args;
-  const check = args.check ?? "changes";
+  const check = args.check ?? "none";
   if (!meta || check === "none") {
     return { found: [], checking: false, blocks: false };
   }
