@@ -67,7 +67,7 @@ export function matchesLibraryFileView(
   );
 }
 
-export const LIBRARY_MODIFIED = ["any", "today", "week", "month"] as const;
+const LIBRARY_MODIFIED = ["any", "today", "week", "month"] as const;
 export type LibraryModified = (typeof LIBRARY_MODIFIED)[number];
 
 const MODIFIED_WINDOW_DAYS: Record<Exclude<LibraryModified, "any">, number> = {

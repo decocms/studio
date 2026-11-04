@@ -10,23 +10,15 @@ import {
   navigateToTabLocation,
   tabRouteLocation,
 } from "@/layouts/main-panel-tabs/tab-route";
-import {
-  fetchVirtualMCPs,
-  useProjectContext,
-  useVirtualMCPsNonBlocking,
-} from "@/sdk";
+import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
 import { type LinkProps, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { getActiveRepository } from "@/lib/repository-binding";
 import { useBaseBranch } from "@/components/thread/repository/use-version-gate";
-import {
-  defaultThreadRuntime,
-  type ThreadRuntime,
-} from "@decocms/shared/thread/session-runtime";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { writeThreadIntent } from "@/lib/thread-intent";
 
 const NO_THREADS: Task[] = [];
@@ -45,9 +37,8 @@ interface NavigateToAgentOptions {
 export function useNavigateToAgent() {
   const navigate = useNavigate();
   const { org, locator } = useProjectContext();
-  const queryClient = useQueryClient();
-  /** NON-BLOCKING, deliberately. This list answers exactly one question — the
-   *  agent's default runtime — and only at CLICK time. Reading it with
+  /** NON-BLOCKING, deliberately. This list answers exactly one question —
+   *  whether the agent is repo-backed — and only at CLICK time. Reading it with
    *  `useVirtualMCPs()` put a suspense read in the sidebar, which has no
    *  boundary of its own, so a re-suspend blanked the whole shell. `[]` here is
    *  not a wrong answer; it means "ask again on click". */
@@ -61,12 +52,11 @@ export function useNavigateToAgent() {
   const baseBranch = useBaseBranch(undefined, null);
   const { remember: rememberProject } = useRecentProjects(org.slug);
 
-  /** The navigation to a view, once the wanted runtime is known. */
+  /** The navigation to a view. */
   const go = (
     virtualMcpId: string,
     tabId: string,
     runtime: ThreadRuntime | undefined,
-    wantedRuntime: ThreadRuntime | undefined,
   ) => {
     /** Organization destinations do not belong to an agent session. Navigate
      * there without minting a thread whose identity the route cannot encode. */
@@ -82,7 +72,7 @@ export function useNavigateToAgent() {
 
     /** Resume the agent's ENTRY thread — its last branch for a repo-backed
      *  agent, otherwise its empty chat — and mint a fresh id only when there is
-     *  none. `wantedRuntime` narrows which empty chat qualifies, so "open the
+     *  none. `runtime` narrows which empty chat qualifies, so "open the
      *  CMS" cannot resume a sandbox session. */
     const target = (cachedAgents ?? []).find((a) => a.id === virtualMcpId);
     const hasBranch = !!(target && getActiveRepository(target));
@@ -103,8 +93,7 @@ export function useNavigateToAgent() {
           manager?.threads.get() ?? NO_THREADS,
           virtualMcpId,
           session?.user?.id,
-          wantedRuntime ??
-            (target ? defaultThreadRuntime(target.metadata) : undefined),
+          runtime,
           hasBranch,
           { baseBranch },
         );
@@ -139,39 +128,7 @@ export function useNavigateToAgent() {
       void navigate(projectWorkspaceLink(org.slug, virtualMcpId));
       return;
     }
-    const runtime = options?.runtime;
-    if (tabRouteLocation(tabId).kind === "org-destination") {
-      return go(virtualMcpId, tabId, runtime, undefined);
-    }
-    // Both of these answer without awaiting, in the click's own task.
-    const cached = cachedAgents.find((a) => a.id === virtualMcpId);
-    if (runtime) {
-      return go(virtualMcpId, tabId, runtime, runtime);
-    }
-    if (cached) {
-      return go(
-        virtualMcpId,
-        tabId,
-        runtime,
-        defaultThreadRuntime(cached.metadata),
-      );
-    }
-    /** Cold cache — a click in the first beat after load. Fetch rather than
-     *  pass `undefined`: an absent expected runtime makes `runtimeMatches` match
-     *  ANY empty chat, which is how a click on a CMS project lands in a
-     *  leftover sandbox session. On failure fall back to that unfiltered
-     *  behaviour, which is the status quo. */
-    void fetchVirtualMCPs(queryClient, org)
-      .then((agents) => agents.find((a) => a.id === virtualMcpId))
-      .catch(() => undefined)
-      .then((target) =>
-        go(
-          virtualMcpId,
-          tabId,
-          runtime,
-          target ? defaultThreadRuntime(target.metadata) : undefined,
-        ),
-      );
+    go(virtualMcpId, tabId, options?.runtime);
   };
 }
 

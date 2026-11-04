@@ -67,7 +67,7 @@ export interface SettingsNavGroup {
 
 /** Your account, then the three groups of org screens people work in, then
  *  everything rare behind a collapsed "Advanced". Repositories, connections,
- *  skills and memory live in a project's Context, not here. */
+ *  skills and memory live in the org Context, not here. */
 export function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const t = useT();
   const { capabilities, isPrivileged, loading, error } = useCapabilities();

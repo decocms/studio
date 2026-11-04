@@ -338,7 +338,6 @@ export const settings = {
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
   "settings.nav.memory": "Memory",
@@ -414,7 +413,6 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
   "settings.skills.importing": "Importing…",
   "settings.skills.importSuccess": 'Imported "{name}"',
@@ -446,15 +444,10 @@ export const settings = {
   "settings.skills.errorDescription":
     "The skill catalog could not be loaded. You may not have access to this org's files.",
   "settings.skills.retry": "Try again",
-  "settings.memory.pageTitle": "Memory",
   "settings.memory.tabOrg": "Organization",
   "settings.memory.tabUser": "Just you",
   "settings.memory.orgHeading": "Shared with everyone in {org}",
-  "settings.memory.orgDescription":
-    "Deco reads this at the start of every chat and adds to it as it learns. Fix anything wrong or out of date.",
   "settings.memory.userHeading": "Your personal memory",
-  "settings.memory.userDescription":
-    "Loaded only into your chats. Good for how you like to work, what you own and what to skip.",
   "settings.memory.orgPlaceholder":
     "Facts everyone's chats should know. For example: we ship on Thursdays, prices are in BRL, the brand voice is informal.",
   "settings.memory.userPlaceholder":

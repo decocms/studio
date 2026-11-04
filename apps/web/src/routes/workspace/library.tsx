@@ -98,7 +98,7 @@ export default function LibraryRoute() {
       {/* Beside the list: a main-panel tab would carry the org's drive into
           an agent's workspace. */}
       <ContextShell section="files">
-        <LibraryTab filePreview="side" context />
+        <LibraryTab filePreview="side" />
       </ContextShell>
     </ChatLayout.Content>
   );

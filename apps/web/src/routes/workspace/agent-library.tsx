@@ -40,7 +40,6 @@ export default function AgentLibraryRoute() {
       root={project ? projectFolderPath(project) : undefined}
       rootLabel={t("sidebar.navDestinations.context")}
       filePreview="dialog"
-      context
     />
   );
 

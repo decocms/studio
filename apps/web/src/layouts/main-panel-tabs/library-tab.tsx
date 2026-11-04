@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { LibraryPage } from "@/layouts/library";
 import { LibraryPreviewDialog } from "@/layouts/library/preview-dialog";
 import { SkillPreviewDialog } from "@/layouts/library/skill-preview";
@@ -10,39 +11,41 @@ export function LibraryTab({
   root,
   rootLabel,
   filePreview,
-  context,
 }: {
   /** Top of the tree — one project's folder, or the org's drive by default. */
   root?: string;
   rootLabel?: string;
   /**
-   * How a clicked file opens. `dialog` previews the file in place, over the
+   * Where `?preview=` opens. `dialog` previews the file in place, over the
    * files it came from. `side` leaves it to the Library, which opens it beside
    * the list.
    */
   filePreview: FilePreviewMode;
-  /** Drawn inside Context. */
-  context?: boolean;
 }) {
-  const [openFile, setOpenFile] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { preview } = useSearch({ strict: false }) as { preview?: string };
   const [openSkill, setOpenSkill] = useState<string | null>(null);
   const [openBrand, setOpenBrand] = useState<string | null>(null);
+  const setPreview = (path: string | undefined) =>
+    void navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({ ...prev, preview: path }),
+    });
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       <LibraryPage
         root={root}
         rootLabel={rootLabel}
-        context={context}
-        onOpenFile={filePreview === "dialog" ? setOpenFile : undefined}
+        onOpenFile={filePreview === "dialog" ? setPreview : undefined}
         onOpenSkill={setOpenSkill}
         onOpenBrand={setOpenBrand}
       />
-      {openFile && (
+      {filePreview === "dialog" && preview && (
         <LibraryPreviewDialog
-          key={openFile}
-          previewPath={openFile}
-          onClose={() => setOpenFile(null)}
+          key={preview}
+          previewPath={preview}
+          onClose={() => setPreview(undefined)}
         />
       )}
       {openSkill && (

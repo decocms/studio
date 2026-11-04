@@ -12,10 +12,8 @@ import { useProjectContext } from "@/sdk";
 import { OrgLabel } from "./org-label";
 
 export function ProjectSwitcher({
-  collapsed = false,
   onNavigate,
 }: {
-  collapsed?: boolean;
   /** Closes the mobile sheet, or the org you went back to stays behind it. */
   onNavigate?: () => void;
 }) {
@@ -24,7 +22,7 @@ export function ProjectSwitcher({
   const { project } = useProjectScope();
   const exitToOrg = useExitProjectScope();
 
-  if (!project) return <OrgLabel collapsed={collapsed} />;
+  if (!project) return <OrgLabel />;
 
   const back = t("sidebar.scope.backTo", { name: org.name });
   return (
@@ -40,11 +38,9 @@ export function ProjectSwitcher({
       className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pr-1.5 pl-2 text-left transition-colors hover:bg-sidebar-accent md:h-[34px] md:py-0"
     >
       <ArrowLeft size={16} className="shrink-0 text-muted-foreground" />
-      {!collapsed && (
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground text-sm">
-          {project.title}
-        </span>
-      )}
+      <span className="min-w-0 flex-1 truncate font-medium text-foreground text-sm">
+        {project.title}
+      </span>
     </button>
   );
 }
