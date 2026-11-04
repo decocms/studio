@@ -73,6 +73,7 @@ import {
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { sandboxContentHandler } from "../../sandbox/content-storage";
 import { projectPackagePath } from "../../hosted/blocks-major";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import {
   GitPushAuthError,
   parseRepositoryBinding,
@@ -794,6 +795,27 @@ function isSetupStep(value: string): value is SetupStep {
   return (SETUP_STEPS as readonly string[]).includes(value);
 }
 
+/**
+ * A sandbox-less session of a Blocks v8 site (its `blocksMajor` marker) has
+ * no git-shaped popover: its content lives on the hosted CMS
+ * (`/api/:org/cms/:site`), so its `/git/*` routes answer 404 without reaching
+ * GitHub. A sandbox's own git (the daemon) and v7 sessions keep theirs.
+ */
+export const hostedV8GitGone = createMiddleware<VmEnv>(async (c, next) => {
+  const claim = c.get("vmClaim");
+  if (claim.runtime === "cms" && isBlocksV8Project(claim.virtualMcpMetadata)) {
+    return c.json(
+      {
+        error: "A Blocks v8 site's content is on the hosted CMS, not git",
+        code: "hosted_cms",
+      },
+      404,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
+  }
+  return next();
+});
+
 // ---- Route factory ----------------------------------------------------------
 
 export const createSandboxRoutes = () => {
@@ -801,6 +823,7 @@ export const createSandboxRoutes = () => {
 
   // Apply middleware to all sub-routes
   app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
+  app.use("/:virtualMcpId/:branch/git/*", hostedV8GitGone);
 
   // -- File write/read (base64-encoded body) --------------------------------
   app.post("/:virtualMcpId/:branch/write", (c) =>
