@@ -44,6 +44,7 @@ describe("ThreadAnalyticsStorage (real Postgres)", () => {
     org: string,
     threadId: string,
     usage: { cost?: number; totalTokens: number },
+    persistedAt?: string,
   ) => {
     await database.db
       .insertInto("thread_message_parts")
@@ -72,6 +73,7 @@ describe("ThreadAnalyticsStorage (real Postgres)", () => {
           },
         }),
         created_at: new Date().toISOString(),
+        ...(persistedAt ? { persisted_at: persistedAt } : {}),
       })
       .execute();
   };
@@ -85,6 +87,18 @@ describe("ThreadAnalyticsStorage (real Postgres)", () => {
   let automationId = "";
   let taskId = "";
   let otherOrgId = "";
+  const today = new Date();
+  const lastMonth = new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 15),
+  ).toISOString();
+  const monthColumn = (back: number) =>
+    `${new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - back, 1),
+    ).toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    })} USD`;
 
   beforeAll(async () => {
     database = await connectTestPgDatabase();
@@ -165,6 +179,7 @@ describe("ThreadAnalyticsStorage (real Postgres)", () => {
     await finish(ORG_A, automationId, { cost: 2, totalTokens: 200 });
     await finish(ORG_A, taskId, { cost: 4, totalTokens: 400 });
     await finish(ORG_B, otherOrgId, { cost: 10, totalTokens: 1000 });
+    await finish(ORG_B, otherOrgId, { cost: 3, totalTokens: 30 }, lastMonth);
   });
 
   afterAll(async () => {
@@ -191,8 +206,40 @@ describe("ThreadAnalyticsStorage (real Postgres)", () => {
   it("the all-orgs aggregate includes every tenant", async () => {
     const sections = await analytics.usage({ orgIds: null, ...range() });
     expect(stat(sections, "Total spend")).toBe(17.5);
-    const top = tableRows(sections, "Top orgs by spend (fixed windows)");
+    const top = tableRows(sections, "Top orgs by spend (last 3 months)");
     expect(top[0]?.Org).toBe("thread-analytics-b");
+  });
+
+  it("top spenders get one column per calendar month, oldest first", async () => {
+    const window = range();
+    const sections = await analytics.usage({ orgIds: [ORG_B], ...window });
+    const section = sections.find(
+      (s) => s.title === "Top orgs by spend (last 3 months)",
+    );
+    if (section?.kind !== "table") throw new Error("no top orgs table");
+    expect(section.columns).toEqual([
+      "Org",
+      monthColumn(2),
+      monthColumn(1),
+      monthColumn(0),
+    ]);
+    expect(section.range?.from.slice(0, 7)).toBe(
+      new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 2, 1))
+        .toISOString()
+        .slice(0, 7),
+    );
+    expect(tableRows(sections, "Top orgs by spend (last 3 months)")).toEqual([
+      {
+        Org: "thread-analytics-b",
+        [monthColumn(2)]: 0,
+        [monthColumn(1)]: 3,
+        [monthColumn(0)]: 10,
+      },
+    ]);
+    // The range-bound tables carry the report's range; last month is outside it.
+    const byOrg = sections.find((s) => s.title === "Spend by org");
+    expect(byOrg?.kind === "table" && byOrg.range).toEqual(window);
+    expect(stat(sections, "Total spend")).toBe(10);
   });
 
   it("live feed is org-scoped, filters by kind, and sums each thread's spend", async () => {

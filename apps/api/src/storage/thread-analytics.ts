@@ -197,29 +197,52 @@ export class ThreadAnalyticsStorage {
       from spend group by 1 order by 1
     `);
 
-    // Fixed windows, independent of the range: "who is burning money right now".
-    const topQuery: AnalyticsQuery = {
-      orgIds: q.orgIds,
-      from: new Date(Date.now() - 30 * 86400_000).toISOString(),
-      to: new Date().toISOString(),
+    // Fixed UTC calendar months, independent of the range: this one and the two before.
+    const now = new Date();
+    const month = (back: number) => {
+      const start = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1),
+      );
+      const label = start.toLocaleString("en-US", {
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+      return { start: start.toISOString(), column: `${label} USD` };
     };
-    const windows = sql`
-      round(coalesce(sum(usd) filter (where at >= now() - interval '1 day'), 0), 2)  as "Last 24h USD",
-      round(coalesce(sum(usd) filter (where at >= now() - interval '7 days'), 0), 2) as "Last 7d USD",
-      round(coalesce(sum(usd), 0), 2) as "Last 30d USD"`;
+    const m0 = month(2);
+    const m1 = month(1);
+    const m2 = month(0);
+    const monthColumns = [m0.column, m1.column, m2.column];
+    const monthsRange = { from: m0.start, to: now.toISOString() };
+    const monthCols = sql`
+      round(coalesce(sum(usd) filter (where at < ${m1.start}::timestamptz), 0), 2) as m0,
+      round(coalesce(sum(usd) filter (where at >= ${m1.start}::timestamptz and at < ${m2.start}::timestamptz), 0), 2) as m1,
+      round(coalesce(sum(usd) filter (where at >= ${m2.start}::timestamptz), 0), 2) as m2`;
+    const byMonth = (rows: Row[]) =>
+      rows.map(({ m0: a, m1: b, m2: c, ...rest }) => ({
+        ...rest,
+        [m0.column]: a,
+        [m1.column]: b,
+        [m2.column]: c,
+      }));
 
-    const topOrgs = await this.rows(sql`
-      with spend as (${spendCte(topQuery)})
-      select org_slug as "Org", ${windows}
-      from spend group by 1 order by 2 desc, 3 desc, 4 desc limit 25
-    `);
+    const topOrgs = byMonth(
+      await this.rows(sql`
+        with spend as (${spendCte({ orgIds: q.orgIds, ...monthsRange })})
+        select org_slug as "Org", ${monthCols}
+        from spend group by 1 order by m2 desc, m1 desc, m0 desc limit 25
+      `),
+    );
 
-    const topUsers = await this.rows(sql`
-      with spend as (${spendCte(topQuery)})
-      select coalesce(u.email, s.user_id) as "User", s.org_slug as "Org", ${windows}
-      from spend s left join "user" u on u.id = s.user_id
-      group by 1, 2 order by 3 desc, 4 desc, 5 desc limit 25
-    `);
+    const topUsers = byMonth(
+      await this.rows(sql`
+        with spend as (${spendCte({ orgIds: q.orgIds, ...monthsRange })})
+        select coalesce(u.email, s.user_id) as "User", s.org_slug as "Org", ${monthCols}
+        from spend s left join "user" u on u.id = s.user_id
+        group by 1, 2 order by m2 desc, m1 desc, m0 desc limit 25
+      `),
+    );
 
     const byKindCols = sql`
       round(coalesce(sum(usd) filter (where kind = 'chat'), 0), 2)       as "Chats USD",
@@ -299,65 +322,69 @@ export class ThreadAnalyticsStorage {
           Output: num(r.output_tokens),
         })),
       },
-      table(
-        "Top orgs by spend (fixed windows)",
-        ["Org", "Last 24h USD", "Last 7d USD", "Last 30d USD"],
-        topOrgs,
-      ),
-      table(
-        "Top users by spend (fixed windows)",
-        ["User", "Org", "Last 24h USD", "Last 7d USD", "Last 30d USD"],
-        topUsers,
-      ),
-      table(
-        "Spend by org",
-        [
-          "Org",
-          "Chats USD",
-          "Automations USD",
-          "Task board USD",
-          "Total USD",
-          "Tokens",
-          "Threads",
-          "Users",
-        ],
-        byOrg,
-      ),
-      table(
-        "Spend by user",
-        [
-          "User",
-          "Email",
-          "Org",
-          "Chats USD",
-          "Automations USD",
-          "Task board USD",
-          "Total USD",
-          "Tokens",
-          "Threads",
-        ],
-        byUser,
-      ),
-      table(
-        "Spend by agent",
-        ["Agent", "Org", "Total USD", "Tokens", "Threads"],
-        byAgent,
-      ),
-      table(
-        "Priciest threads",
-        [
-          "Last turn",
-          "Org",
-          "User",
-          "Kind",
-          "Title",
-          "USD",
-          "Tokens",
-          "Turns",
-          "Thread",
-        ],
-        priciest,
-      ),
+      ...[
+        table(
+          "Top orgs by spend (last 3 months)",
+          ["Org", ...monthColumns],
+          topOrgs,
+        ),
+        table(
+          "Top users by spend (last 3 months)",
+          ["User", "Org", ...monthColumns],
+          topUsers,
+        ),
+      ].map((section) => ({ ...section, range: monthsRange })),
+      ...[
+        table(
+          "Spend by org",
+          [
+            "Org",
+            "Chats USD",
+            "Automations USD",
+            "Task board USD",
+            "Total USD",
+            "Tokens",
+            "Threads",
+            "Users",
+          ],
+          byOrg,
+        ),
+        table(
+          "Spend by user",
+          [
+            "User",
+            "Email",
+            "Org",
+            "Chats USD",
+            "Automations USD",
+            "Task board USD",
+            "Total USD",
+            "Tokens",
+            "Threads",
+          ],
+          byUser,
+        ),
+        table(
+          "Spend by agent",
+          ["Agent", "Org", "Total USD", "Tokens", "Threads"],
+          byAgent,
+        ),
+        table(
+          "Priciest threads",
+          [
+            "Last turn",
+            "Org",
+            "User",
+            "Kind",
+            "Title",
+            "USD",
+            "Tokens",
+            "Turns",
+            "Thread",
+          ],
+          priciest,
+        ),
+      ].map((section) => ({ ...section, range: { from: q.from, to: q.to } })),
     ];
   }
 

@@ -52,6 +52,8 @@ export interface TableSection {
   units?: Record<string, string>;
   /** Per row, the drill listing that row's cards. */
   drills?: (string | null)[];
+  /** The window the rows cover, for a table with no time column of its own. */
+  range?: { from: string; to: string };
 }
 
 /** Nested stages: each one is a subset of the stage before it. */
