@@ -174,7 +174,8 @@ function mainSchemaQuery(
         }
         return read;
       },
-      enabled: asks,
+      // The marker decides (`answerOf`): main's schema is never read.
+      enabled: false,
       staleTime: Number.POSITIVE_INFINITY,
       gcTime: Number.POSITIVE_INFINITY,
       retry: 2,
@@ -184,19 +185,22 @@ function mainSchemaQuery(
   };
 }
 
+/**
+ * The hosted CMS gates Studio's editor and hosted screens on the project's
+ * `blocksMajor` marker alone, which `deco schema push` sets (design table,
+ * row 23): no read of main's schema, no git. The query below stays disabled
+ * until the v8 git path is deleted.
+ */
 function answerOf(
   project: VirtualMCPEntity | null | undefined,
   read: ReturnType<typeof mainSchemaQuery>,
-  query: UseQueryResult<MainSchemaRead>,
+  _query: UseQueryResult<MainSchemaRead>,
 ): MainSchemaAnswer {
   return mainSchemaAnswer({
-    asks: read.asks,
+    asks: !!project,
     hasProject: !!project,
-    data: query.data?.isV8,
-    // A re-poll of a failed read puts the query back to `pending` (no data
-    // yet): the answer stays the failure's until a read succeeds, so the
-    // editor and preview never flip back to loading every few seconds.
-    isError: query.isError || query.errorUpdateCount > 0,
+    data: read.marked,
+    isError: false,
     marked: read.marked,
   });
 }

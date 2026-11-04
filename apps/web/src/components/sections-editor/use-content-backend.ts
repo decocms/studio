@@ -8,7 +8,8 @@ import {
   type DescribeResult,
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { cmsDraftRpcEndpoint, cmsSiteOf } from "./cms-api";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -128,16 +129,18 @@ export async function probeGithub(
 /** How often a failed probe is retried, so a backend recovers on its own. */
 const PROBE_RETRY_MS = 5_000;
 
-/** The Studio GitHub backend's endpoint for one project and branch. */
-function githubContentEndpoint(params: {
+/**
+ * Studio's hosted backend for one project and branch: the hosted CMS's
+ * draft named after the branch, on the project's site (`cms-api.ts`). A
+ * project that names no site has no hosted draft to edit.
+ */
+function hostedContentEndpoint(params: {
   orgSlug: string;
-  virtualMcpId: string;
+  site: string | null;
   branch: string;
 }): string {
-  return new URL(
-    `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/rpc`,
-    window.location.origin,
-  ).href;
+  if (!params.site) throw new Error("this project names no site");
+  return cmsDraftRpcEndpoint(params.orgSlug, params.site, params.branch);
 }
 
 /**
@@ -250,6 +253,8 @@ export function useContentBackend(
   // The server's last answer for main: only whether a sandbox that never
   // answered is waited on (see `selectContentBackend`), never v8 itself.
   const markedV8 = useLastFoundV8(virtualMcpId);
+  // The hosted CMS keys its drafts on the project's site.
+  const site = cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
   const mode = contentMode({ hasServeConnection: !!connection, runtime });
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The sandbox answers once its working tree is there. Before its first
@@ -276,9 +281,9 @@ export function useContentBackend(
     ),
     queryFn: () =>
       probeGithub(
-        githubContentEndpoint({
+        hostedContentEndpoint({
           orgSlug: org.slug,
-          virtualMcpId: virtualMcpId!,
+          site,
           branch: branch!,
         }),
         undefined,
@@ -415,7 +420,7 @@ export function useContentBackend(
   }
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
-    return toBackend("github", github.data as Probe, "");
+    return { ...toBackend("github", github.data as Probe, ""), site };
   }
   // A v8 site another project owns: the editor guides (no retry).
   if (decision === "site-not-owned-github") {

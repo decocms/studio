@@ -7,6 +7,7 @@ import { act, fireEvent, render as renderBare } from "@testing-library/react";
 import type { ReactNode } from "react";
 import "@testing-library/jest-dom";
 import { en } from "@/i18n/en/index.ts";
+import { rememberConflictEditor } from "./conflict-author";
 import { conflictFields, planFormConflict } from "./form-conflict";
 import {
   askDeletedConflict,
@@ -60,7 +61,7 @@ describe("askDeletedConflict", () => {
 });
 
 describe("askNamedRuleConflict on a hosted v8 draft", () => {
-  test('opens once it knows who changed it: their name from the start, never "Someone else" first', async () => {
+  test('names who changed it from the refusal: their name from the start, never "Someone else"', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["acme", "members"], {
       data: {
@@ -70,12 +71,18 @@ describe("askNamedRuleConflict on a hosted v8 draft", () => {
         ],
       },
     });
-    let answer!: (res: Response) => void;
+    const theirs = { experiments: { hero: 10 } };
+    // The refused save carried the block's editor (`draft[name].editor`).
+    rememberConflictEditor(queryClient, "experiments", {
+      block: theirs,
+      editor: { userId: "u-demo2", at: Math.floor(Date.now() / 1000) },
+    });
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (() =>
-      new Promise<Response>((resolve) => {
-        answer = resolve;
-      })) as unknown as typeof fetch;
+    const fetched: string[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL) => {
+      fetched.push(String(input));
+      return Promise.reject(new Error("no read"));
+    }) as unknown as typeof fetch;
     try {
       const screen = renderBare(<NamedRuleConflictHost />, {
         wrapper: ({ children }: { children: ReactNode }) => (
@@ -87,7 +94,7 @@ describe("askNamedRuleConflict on a hosted v8 draft", () => {
       const plan = planFormConflict({
         ancestor: { experiments: { hero: 50 } },
         mine: { experiments: { hero: 60 } },
-        theirs: { experiments: { hero: 10 } },
+        theirs,
       });
       act(() => {
         void askNamedRuleConflict(
@@ -104,32 +111,14 @@ describe("askNamedRuleConflict on a hosted v8 draft", () => {
           },
         );
       });
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-      // Still reading who changed it: nothing shown yet.
-      expect(screen.queryByTestId("form-conflict-dialog")).toBeNull();
-      expect(screen.queryByText(/Someone else/)).toBeNull();
-      await act(async () => {
-        answer(
-          new Response(
-            JSON.stringify({
-              changedBy: {
-                experiments: {
-                  userId: "u-demo2",
-                  at: new Date().toISOString(),
-                },
-              },
-            }),
-            { headers: { "content-type": "application/json" } },
-          ),
-        );
-      });
       expect(
         await screen.findByText(
           'Demo 2 changed the A/B test "hero" while you were editing',
         ),
       ).toBeInTheDocument();
+      expect(screen.queryByText(/Someone else/)).toBeNull();
+      // Nothing was read to say who.
+      expect(fetched).toEqual([]);
     } finally {
       globalThis.fetch = realFetch;
     }

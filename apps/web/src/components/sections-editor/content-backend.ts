@@ -26,6 +26,8 @@ export interface ProtocolBackend {
   cacheKeySuffix: string;
   /** Whether the endpoint has a schema (`deco schema` was run). */
   hasSchema?: boolean;
+  /** Studio's hosted backend: the hosted CMS site the draft lives on. */
+  site?: string | null;
 }
 
 export type ContentBackend =
