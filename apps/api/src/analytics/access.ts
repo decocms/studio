@@ -1,6 +1,7 @@
 import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import type { StudioContext } from "../core/studio-context";
 import { lookupOwnedProject } from "../tools/experiments/ownership";
+import { readAnalyticsRegistration } from "./registration";
 
 /**
  * How the org may read `site`'s analytics: its project carries the
@@ -37,4 +38,30 @@ export async function analyticsAccess(
     return { kind: "error" };
   }
   return owned ? { kind: "owned" } : null;
+}
+
+/**
+ * The warehouse id an owned slug's analytics reads: the registration its
+ * project carries when the control-plane doesn't host it, else the
+ * control-plane's. The caller has already checked that the org owns `site`.
+ */
+export async function ownedAnalyticsSiteId(
+  ctx: StudioContext,
+  organizationId: string,
+  site: string,
+): Promise<
+  | { status: "registered"; id: string }
+  | { status: "unregistered" }
+  | { status: "error" }
+> {
+  const project = await lookupOwnedProject(ctx, organizationId, site).catch(
+    () => undefined,
+  );
+  const stored = storedExternalRegistration(project?.metadata);
+  if (stored) return { status: "registered", id: stored.id };
+  const registration = await readAnalyticsRegistration(site);
+  if (registration.status === "error") return { status: "error" };
+  return registration.status === "registered"
+    ? { status: "registered", id: registration.id }
+    : { status: "unregistered" };
 }

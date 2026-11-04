@@ -1,6 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import type { StudioContext } from "../core/studio-context";
-import { analyticsAccess } from "./access";
+import { getSettings, setGlobalSettings } from "../settings";
+import { analyticsAccess, ownedAnalyticsSiteId } from "./access";
 
 const ORG = "org-1";
 const registration = { id: "s123", key: "dq_abc" };
@@ -84,5 +85,85 @@ describe("analyticsAccess", () => {
     expect(
       await analyticsAccess(ctx({ listFails: true }), ORG, "acme"),
     ).toEqual({ kind: "error" });
+  });
+});
+
+describe("ownedAnalyticsSiteId", () => {
+  const original = getSettings();
+  beforeAll(() =>
+    setGlobalSettings({
+      ...original,
+      controlplaneRestUrl: "https://cp.test/api/v1",
+      controlplaneServiceToken: "test-token",
+    }),
+  );
+  afterAll(() => setGlobalSettings(original));
+
+  const hosted = ctx({
+    owned: true,
+    projects: [{ id: "p1", title: "acme", metadata: { siteSlug: "acme" } }],
+  });
+
+  it("reads the registration an unhosted slug's project carries, without the control-plane", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      const c = ctx({
+        owned: true,
+        projects: [
+          {
+            id: "p1",
+            title: "acme",
+            metadata: { siteSlug: "acme", decoAnalytics: registration },
+          },
+        ],
+      });
+      expect(await ownedAnalyticsSiteId(c, ORG, "acme")).toEqual({
+        status: "registered",
+        id: "s123",
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("falls back to the control-plane's registration for a hosted slug", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        registered: true,
+        host: "acme.com",
+        key: null,
+        config: { id: "s42", modules: ["core"] },
+      }),
+    );
+    try {
+      expect(await ownedAnalyticsSiteId(hosted, ORG, "acme")).toEqual({
+        status: "registered",
+        id: "s42",
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("answers unregistered for a slug the control-plane has no record of, and error on an outage", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      fetchSpy.mockResolvedValueOnce(
+        Response.json(
+          { error: "not_found", message: "unknown site: acme" },
+          { status: 404 },
+        ),
+      );
+      expect(await ownedAnalyticsSiteId(hosted, ORG, "acme")).toEqual({
+        status: "unregistered",
+      });
+      fetchSpy.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+      expect(await ownedAnalyticsSiteId(hosted, ORG, "acme")).toEqual({
+        status: "error",
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
