@@ -30,6 +30,7 @@ import { filePicker } from "./file-picker.ts";
 import { details } from "./details.ts";
 import { deck } from "./deck.ts";
 import { discover } from "./discover.ts";
+import { services } from "./services.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
 import { experiments } from "./experiments.ts";
@@ -88,6 +89,7 @@ export const en = {
   ...details,
   ...deck,
   ...discover,
+  ...services,
   ...commandPalette,
   ...connections,
   ...common,
