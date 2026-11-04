@@ -93,6 +93,21 @@ describe("ban-cms-git-imports", () => {
     expect(await lint(f)).toHaveLength(1);
   });
 
+  test("covers the web editor's content backend and the hosted Publish and Releases clients", async () => {
+    for (const file of [
+      "apps/web/src/components/sections-editor/use-content-backend.ts",
+      "apps/web/src/components/sections-editor/content-protocol-api.ts",
+      "apps/web/src/components/thread/repository/hosted-publish-api.ts",
+      "apps/web/src/layouts/main-panel-tabs/releases-api.ts",
+    ]) {
+      const f = fixture(
+        file,
+        `import { patchDecofile } from "@/components/sections-editor/decofile-api";\nexport const x = patchDecofile;\n`,
+      );
+      expect(await lint(f)).toHaveLength(1);
+    }
+  });
+
   test("allows R2 modules, and leaves files it doesn't cover alone", async () => {
     const ok = fixture(
       "apps/api/src/hosted/cms-storage.ts",
