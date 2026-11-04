@@ -3764,18 +3764,18 @@ export interface StudioToolIO {
   BLOG_POST_BRIEF: {
     input: {
       brand: {
-        description?: string | undefined;
         companyName?: string | undefined;
+        description?: string | undefined;
         language?: string | undefined;
         storeUrl?: string | undefined;
         targetAudience?: string | undefined;
-        commercialPolicies?: { name: string; value: string }[] | undefined;
         tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
         vocabulary?: { name: string; value: string }[] | undefined;
         voiceExamples?: { text: string; sounds: boolean }[] | undefined;
         blocks?: { name: string; value: string }[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
       };
       campaign: {
         name: string;

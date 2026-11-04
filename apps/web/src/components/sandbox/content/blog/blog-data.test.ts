@@ -49,8 +49,6 @@ import {
   citedSections,
   missingBrandForGeneration,
   splitBlogContext,
-  normalizeVoiceExamples,
-  filledVoiceExamples,
   pickBlogFields,
   BRAND_FIELDS,
   CONTEXT_FIELDS,
@@ -2231,52 +2229,6 @@ describe("pickBlogFields", () => {
     expect(pickBlogFields({ tone: "Seco" }, CONTEXT_FIELDS)).toEqual({
       tone: "Seco",
     });
-  });
-});
-
-describe("normalizeVoiceExamples", () => {
-  test("reads the stored shape", () => {
-    expect(
-      normalizeVoiceExamples([
-        { text: "do rio pro mundo", sounds: true },
-        { text: "Adquira já o seu produto", sounds: false },
-      ]),
-    ).toEqual([
-      { text: "do rio pro mundo", sounds: true },
-      { text: "Adquira já o seu produto", sounds: false },
-    ]);
-  });
-
-  test("tolerates the `{ name, value }` shape this field briefly had", () => {
-    expect(
-      normalizeVoiceExamples([
-        { name: "collections/blog/posts/a", value: "do rio pro mundo" },
-      ]),
-    ).toEqual([{ text: "do rio pro mundo", sounds: true }]);
-  });
-
-  test("a bare string is a sentence to imitate", () => {
-    expect(normalizeVoiceExamples(["do rio pro mundo"])).toEqual([
-      { text: "do rio pro mundo", sounds: true },
-    ]);
-  });
-
-  test("defaults to `sounds` — only an explicit false is a counter-example", () => {
-    expect(normalizeVoiceExamples([{ text: "oi" }])).toEqual([
-      { text: "oi", sounds: true },
-    ]);
-  });
-
-  test("keeps the blank row the add button just created", () => {
-    expect(normalizeVoiceExamples([{ text: "", sounds: true }])).toHaveLength(
-      1,
-    );
-    expect(filledVoiceExamples([{ text: "", sounds: true }])).toEqual([]);
-  });
-
-  test("anything that is not a list is no examples", () => {
-    expect(normalizeVoiceExamples(undefined)).toEqual([]);
-    expect(normalizeVoiceExamples("nope")).toEqual([]);
   });
 });
 

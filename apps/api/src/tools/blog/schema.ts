@@ -136,9 +136,11 @@ const VoiceExampleSchema = z.object({
 });
 
 /**
- * Who the brand is, in `blog-manager-brand.json` — facts that hold whether or not it ever blogs.
+ * What writing one post needs from the brand: who it is, who reads it, how it
+ * sounds, which words it uses, what it refuses and how it fills its blocks.
+ * The campaign brings the rest: its own keywords, its products, its dates.
  */
-const BlogBrandSchema = z.object({
+export const ReducedContextSchema = z.object({
   companyName: z
     .string()
     .describe(
@@ -164,39 +166,6 @@ const BlogBrandSchema = z.object({
     .describe(
       "Who reads this brand's content and what they came looking for. Infer from who the copy addresses and what it assumes the reader already cares about. Say so plainly rather than reaching for marketing personas.",
     ),
-  values: z
-    .array(BrandRuleSchema)
-    .describe(
-      "Brand values the content should carry, as the brand itself states them. `name` is the value ('Biodiversidade brasileira'), `value` explains what the copy actually claims and the evidence for it — stated numbers, sourcing commitments. Prefer a value the copy argues for over a generic virtue like 'quality' or 'innovation'.",
-    ),
-  competitors: z
-    .array(BrandRuleSchema)
-    .describe(
-      "Competitors named explicitly in the content. A brand rarely names them in its own copy — return an empty array unless a name is actually there, and never guess from the market segment. When one is named, `name` is the competitor and `value` is what the content says about it.",
-    ),
-  keywords: z
-    .array(z.string())
-    .describe(
-      "Search terms this brand should be found by: what a customer types when looking for what it sells. One term per entry, written exactly as someone would search it, in the brand's language — nothing else, no explanation. Take them from what the site sells and how it names things: product and category terms belong here, and so do the questions its audience asks around them. Not a list of the brand's themes, and never the brand's own name alone.",
-    ),
-  commercialPolicies: z
-    .array(BrandRuleSchema)
-    .describe(
-      "Exchange, shipping, warranty and payment terms, as the site states them. `name` is the policy ('Frete grátis'), `value` the terms with their actual numbers and conditions. These are facts a post may need to state correctly, never a source of voice. Copy the numbers exactly; a wrong threshold in a post is a promise the brand did not make.",
-    ),
-  specialDates: z
-    .array(BrandRuleSchema)
-    .describe(
-      "The commercial moments this brand's calendar turns around — both its own ('Semana Granado') and the general retail dates that matter to its country and segment (Black Friday, Dia das Mães, 8/8). `name` is the date's name, `value` explains what that date means FOR THIS BRAND: what it sells then, what it says then, who it is aimed at. Not a calendar pin — no exact day is wanted, because these move year to year.",
-    ),
-});
-
-/**
- * How this blog is written: the rules a generated post must follow. Persisted
- * to the site's `blog-manager-context.json`, separately from the brand, because
- * these evolve with the blog while the brand's identity does not.
- */
-const BlogGenerationSchema = z.object({
   tone: z
     .string()
     .describe(
@@ -212,64 +181,24 @@ const BlogGenerationSchema = z.object({
     .describe(
       "Things a blogpost writer must not do — banned words, claims, formats, topics. `name` names the guardrail, `value` states the prohibition and why the copy suggests it. Derive them from what the copy consistently never does and from claims the brand is visibly careful about. Do not restate a `dos` entry inverted.",
     ),
-  categories: z
-    .array(z.string())
-    .describe(
-      "Content categories that fit this brand's blog, as plain names — this is a taxonomy, not a rule, so no body. Take existing category blocks first; with no blog, derive them from the themes the site's own pages keep returning to. Editorial subjects, not the product taxonomy.",
-    ),
   vocabulary: z
     .array(BrandRuleSchema)
     .describe(
       "The brand's own words, and the ordinary ones they replace. `name` is the word to use, `value` says what it names and which word it displaces — for a Portuguese site, \"mochila: a sacola de compras; nunca 'carrinho'\". Take these verbatim from the copy, in the brand's language. A generated post using the displaced word reads as an impostor, which is the whole reason this field exists.",
-    ),
-  blocks: z
-    .array(BrandRuleSchema)
-    .describe(
-      'How this brand fills each blog block it uses. `name` is the block as a format cites it (\'@Heading\'), `value` its default props — values the block\'s own code accepts, such as `{"level":"h2"}` for a section and `"h3"` for a question inside one — and when to use it. Where it gives a value, that value wins over the block\'s stored example.',
     ),
   voiceExamples: z
     .array(VoiceExampleSchema)
     .describe(
       "Sentences that show the voice by example, where a description of it would be argued with. Quote VERBATIM from the site — never paraphrased, never improved — and pick sentences a customer actually reads: never an editor's internal annotation, never a shipping term. At most 6, each earning its place by showing something the others do not. Always `sounds: true`: the counter-examples are a human's judgement call, not yours.",
     ),
-});
-
-/**
- * The whole editorial context, brand and generation rules together — what a
- * post is actually written from.
- *
- * The two halves are stored and inferred apart, but every tool downstream of
- * the extract needs both, and takes this `.partial()`: a half-filled context is
- * the normal case, since the extract leaves unevidenced fields blank and a
- * human fills the rest. `normalizeBrandRules` (web) reads the older `string[]`
- * rule lists too.
- */
-const BlogContextSchema = BlogBrandSchema.merge(BlogGenerationSchema);
-
-/**
- * What writing one post actually needs.
- *
- * A prompt is not a filing cabinet. The whole context carries sixteen fields
- * and four of them were already being dropped unread by the post prompt; the
- * rest competes for the model's attention with the brief it is meant to follow.
- * So a post takes the fields that change how a sentence comes out — who the
- * brand is, who reads it, how it sounds, which words it uses, what it refuses —
- * and the campaign brings the rest: its own keywords, its products, its dates.
- *
- * Picked from {@link BlogContextSchema} rather than restated, so a description
- * improved in one place is improved here too.
- */
-export const ReducedContextSchema = BlogContextSchema.pick({
-  companyName: true,
-  description: true,
-  language: true,
-  storeUrl: true,
-  targetAudience: true,
-  tone: true,
-  dos: true,
-  avoid: true,
-  vocabulary: true,
-  voiceExamples: true,
-  blocks: true,
-  commercialPolicies: true,
+  blocks: z
+    .array(BrandRuleSchema)
+    .describe(
+      'How this brand fills each blog block it uses. `name` is the block as a format cites it (\'@Heading\'), `value` its default props — values the block\'s own code accepts, such as `{"level":"h2"}` for a section and `"h3"` for a question inside one — and when to use it. Where it gives a value, that value wins over the block\'s stored example.',
+    ),
+  commercialPolicies: z
+    .array(BrandRuleSchema)
+    .describe(
+      "Exchange, shipping, warranty and payment terms, as the site states them. `name` is the policy ('Frete grátis'), `value` the terms with their actual numbers and conditions. These are facts a post may need to state correctly, never a source of voice. Copy the numbers exactly; a wrong threshold in a post is a promise the brand did not make.",
+    ),
 });

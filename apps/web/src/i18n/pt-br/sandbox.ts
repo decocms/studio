@@ -44,11 +44,9 @@ export const sandbox = {
   "sandbox.blogBrand.companyNameLabel": "Nome da marca",
   "sandbox.blogBrand.descriptionLabel": "O que a marca faz",
   "sandbox.blogBrand.languageLabel": "Idioma de escrita",
-  "sandbox.blogBrand.removeItem": "Remover item",
   "sandbox.blogBrand.tabDos": "Instruções de geração",
   "sandbox.blogBrand.tabGuardrails": "Guardrails",
   "sandbox.blogBrand.toneLabel": "Tom de voz",
-  "sandbox.blogBrand.untitledRule": "Sem título",
   "sandbox.blockRegistry.backToFields": "Voltar para a lista de campos",
   "sandbox.blockRegistry.breadcrumbLabel": "Trilha de campos",
   "sandbox.blockRegistry.unknownBlockType":
@@ -403,11 +401,6 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "Novo arquivo",
   "sandbox.fileTreeRow.newFolder": "Nova pasta",
   "sandbox.fileTreeRow.rename": "Renomear",
-  "sandbox.blogState.conflictBody":
-    "Outra pessoa salvou isso enquanto você editava. Recarregar descarta o que você não salvou; manter o seu substitui o dela.",
-  "sandbox.blogState.conflictTitle": "Isso mudou em outro lugar",
-  "sandbox.blogState.keepMine": "Manter o meu",
-  "sandbox.blogState.reloadTheirs": "Recarregar o deles",
   "sandbox.generatePost.campaignProducts": "{count} produto(s)",
   "sandbox.generatePost.campaignNoProducts": "Sem produtos",
   "sandbox.itemActions.addVariant": "Adicionar variante",

@@ -41,11 +41,9 @@ export const sandbox = {
   "sandbox.blogBrand.companyNameLabel": "Brand name",
   "sandbox.blogBrand.descriptionLabel": "What the brand does",
   "sandbox.blogBrand.languageLabel": "Writing language",
-  "sandbox.blogBrand.removeItem": "Remove item",
   "sandbox.blogBrand.tabDos": "Generation rules",
   "sandbox.blogBrand.tabGuardrails": "Guardrails",
   "sandbox.blogBrand.toneLabel": "Tone of voice",
-  "sandbox.blogBrand.untitledRule": "Untitled",
   "sandbox.blockRegistry.backToFields": "Back to the field list",
   "sandbox.blockRegistry.breadcrumbLabel": "Field trail",
   "sandbox.blockRegistry.unknownBlockType":
@@ -390,11 +388,6 @@ export const sandbox = {
   "sandbox.fileTreeRow.newFile": "New File",
   "sandbox.fileTreeRow.newFolder": "New Folder",
   "sandbox.fileTreeRow.rename": "Rename",
-  "sandbox.blogState.conflictBody":
-    "Someone else saved this while you were editing. Reloading drops your unsaved changes; keeping yours replaces theirs.",
-  "sandbox.blogState.conflictTitle": "This changed somewhere else",
-  "sandbox.blogState.keepMine": "Keep mine",
-  "sandbox.blogState.reloadTheirs": "Reload theirs",
   "sandbox.generatePost.campaignProducts": "{count} product(s)",
   "sandbox.generatePost.campaignNoProducts": "No products",
   "sandbox.itemActions.addVariant": "Add variant",

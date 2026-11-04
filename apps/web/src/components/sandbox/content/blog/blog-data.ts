@@ -710,49 +710,6 @@ export function readBlogContext(
 }
 
 /**
- * One editorial rule: a short name plus a markdown body. Replaces the flat
- * strings these fields used to hold — a rule worth writing down needs more
- * room than a single-line input, and a competitor is useless without the
- * context of why it matters.
- */
-
-/**
- * One example sentence, with the side of the line it sits on. Not a
- * {@link BrandRule}: there is no rule to name here, only the sentence and
- * whether it is one to imitate or one to avoid.
- */
-export interface VoiceExample {
-  text: string;
-  sounds: boolean;
-}
-
-/**
- * Read example sentences from a block, tolerating the `{ name, value }` shape
- * this field briefly had — those rows carried the sentence in `value`, so they
- * survive as sentences to imitate rather than being dropped.
- */
-export function normalizeVoiceExamples(value: unknown): VoiceExample[] {
-  if (!Array.isArray(value)) return [];
-  const examples: VoiceExample[] = [];
-  for (const entry of value) {
-    if (typeof entry === "string") {
-      if (entry.trim()) examples.push({ text: entry, sounds: true });
-      continue;
-    }
-    const record = asRecord(entry);
-    if (!record) continue;
-    const text = str(record.text) || str(record.value);
-    examples.push({ text, sounds: record.sounds !== false });
-  }
-  return examples;
-}
-
-/** Examples a reader would consider written — a blank row is editor state. */
-export function filledVoiceExamples(examples: VoiceExample[]): VoiceExample[] {
-  return examples.filter((example) => example.text.trim());
-}
-
-/**
  * Read a plain term list, tolerating the `{name, value}` rows this field held
  * before it became a list of search terms. The object's `name` was the term, so
  * it carries over and the block picks up the new shape on the next save — no

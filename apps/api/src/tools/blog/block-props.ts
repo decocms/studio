@@ -25,13 +25,6 @@ export { clearSentinels, IMAGE_SENTINEL, sentinelRequests };
 
 type Schema = Record<string, unknown>;
 
-export interface BlockDef {
-  name: string;
-  title: string;
-  description: string;
-  schema: Schema;
-}
-
 function asSchema(value: unknown): Schema | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Schema)
