@@ -844,6 +844,9 @@ export const KEYS = {
   blogCards: (orgSlug: string) => ["blog-cards", orgSlug] as const,
 
   // A card's post as its site renders it, per commit: a new commit is a new URL.
+  /** A content-track chat's status, for whether its agent is still at work. */
+  contentTrackChat: (orgSlug: string, threadId: string) =>
+    ["content-track-chat", orgSlug, threadId] as const,
   blogCardDecofile: (
     orgSlug: string,
     virtualMcpId: string,

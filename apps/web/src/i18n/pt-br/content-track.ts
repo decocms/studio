@@ -99,6 +99,8 @@ export const contentTrack = {
   "contentTrack.card.approve": "Aprovar → Executar",
   "contentTrack.card.runFailed": "Não foi possível iniciar o agente: {error}",
   "contentTrack.card.moveFailed": "Não foi possível mover o card: {error}",
+  "contentTrack.card.agentBusy":
+    "O agente ainda está trabalhando. Isto libera quando ele terminar.",
   "contentTrack.card.postNotMoved":
     "O card mudou, mas o post no site não: o Studio não conseguiu ler o branch.",
   "contentTrack.card.postMissing":

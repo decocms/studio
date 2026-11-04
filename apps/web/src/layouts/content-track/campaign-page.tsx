@@ -75,6 +75,7 @@ import { useCampaignActions } from "@/components/sandbox/content/blog/use-campai
 import { useOpenBlogChat } from "@/hooks/use-open-blog-chat";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
+import { useChatRunning } from "./use-chat-running";
 import { CampaignProposal } from "./campaign-proposal";
 import { BriefingPicker } from "./campaign-briefing";
 import { cardTitle } from "./card-model";
@@ -143,7 +144,9 @@ export function CampaignPage({
   const [askDelete, setAskDelete] = useState(false);
 
   const progress = campaignProgress(campaign, now);
-  const working = campaignAgentWorking(campaign, now);
+  // The record says what the agent was asked; its chat says whether it is still at it.
+  const chatBusy = useChatRunning(campaign.threadId, campaign.run?.requestedAt);
+  const working = campaignAgentWorking(campaign, now) || chatBusy;
   const developed = campaignIsDeveloped(campaign);
   const owner = campaignOwnerCard(campaign, cards);
   const posts = linkedCards(campaign, cards);
@@ -223,7 +226,7 @@ export function CampaignPage({
           <Button
             variant="outline"
             size="sm"
-            disabled={run.isPending}
+            disabled={run.isPending || working}
             onClick={() => startAgent({})}
           >
             <Stars02 size={14} />
@@ -239,11 +242,12 @@ export function CampaignPage({
             {t("contentTrack.campaign.adjust")}
           </Button>
         )}
-        {draft && developed && !working && (
+        {draft && developed && (
           <Button
             variant="brand"
             size="sm"
-            disabled={update.isPending}
+            disabled={update.isPending || working}
+            title={working ? t("contentTrack.card.agentBusy") : undefined}
             onClick={() => setStatus("active")}
           >
             <CheckCircle size={14} />
@@ -409,7 +413,7 @@ export function CampaignPage({
       )}
       {adjusting && (
         <AdjustDialog
-          pending={run.isPending}
+          pending={run.isPending || working}
           onClose={() => setAdjusting(false)}
           onSend={(text) => {
             setAdjusting(false);

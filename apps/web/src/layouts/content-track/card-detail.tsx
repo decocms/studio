@@ -62,6 +62,7 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { CompareFrame } from "@/components/thread/repository/cms-publish-compare";
 import { type TranslationKey, useT } from "@/i18n/use-t.ts";
 import { useClockTick } from "@/lib/use-clock-tick";
+import { useChatRunning } from "./use-chat-running";
 import { CARD_STATUS_LABEL } from "./blogposts-board";
 import { CampaignPhase } from "./card-campaign-phase";
 import { type CardPatch, CardPublishing } from "./card-publishing";
@@ -166,6 +167,9 @@ export function CardDetail({
   const shaping = cardCampaignState(card, campaign) === "shaping";
   const campaignWorking =
     shaping && !!campaign && campaignAgentWorking(campaign, now);
+  /** The card's chat still running, whatever phase it is in: no next step starts until it ends. */
+  const chatBusy = useChatRunning(card.threadId, card.run?.requestedAt);
+  const busy = working || campaignWorking || chatBusy;
   const crumb = cardTitle(card) || t("contentTrack.card.untitled");
   const title =
     (phase === "campaign"
@@ -174,20 +178,19 @@ export function CardDetail({
         ? card.hypothesis?.title
         : card.post?.title) || crumb;
   const hasThesis = !!card.hypothesis?.statement?.trim();
+  // Each next step shows as soon as it is the next one, and opens once the agent is done.
   const canBring =
     card.status === "ideas" &&
     !hasThesis &&
-    !working &&
     !!campaign &&
     campaign.status !== "draft";
-  const canApprove =
-    card.status === "ideas" && hasThesis && !!card.campaignId && !working;
+  const canApprove = card.status === "ideas" && hasThesis && !!card.campaignId;
   const canApproveCampaign =
     card.status === "ideas" &&
     shaping &&
     !!campaign &&
-    campaignIsDeveloped(campaign) &&
-    !campaignWorking;
+    campaignIsDeveloped(campaign);
+  const waitTitle = busy ? t("contentTrack.card.agentBusy") : undefined;
   const sections = card.post?.sections?.length ?? 0;
   // The Campaign phase is titled with the campaign's name, which is not the post's.
   const meta =
@@ -219,7 +222,8 @@ export function CardDetail({
           <Button
             variant="brand"
             size="sm"
-            disabled={executing}
+            disabled={executing || busy}
+            title={waitTitle}
             onClick={() => {
               onApproveCampaign();
               open("hypothesis");
@@ -232,7 +236,8 @@ export function CardDetail({
           <Button
             variant="brand"
             size="sm"
-            disabled={executing}
+            disabled={executing || busy}
+            title={waitTitle}
             onClick={() => onRun("hypothesis")}
           >
             {t("contentTrack.card.bring")}
@@ -242,7 +247,8 @@ export function CardDetail({
           <Button
             variant="brand"
             size="sm"
-            disabled={executing}
+            disabled={executing || busy}
+            title={waitTitle}
             onClick={() => {
               onRun("execute");
               open("execute");
@@ -303,7 +309,7 @@ export function CardDetail({
               card={card}
               campaign={campaign}
               ready={ready}
-              working={campaignWorking}
+              working={campaignWorking || chatBusy}
               pending={executing}
               onLink={onLink}
               onShape={onShape}
@@ -336,7 +342,7 @@ export function CardDetail({
             card={card}
             campaign={campaign}
             site={site}
-            working={working || campaignWorking}
+            working={busy}
             onMove={onMove}
             onOpenCampaign={onOpenCampaign}
             onUpdate={onUpdate}
