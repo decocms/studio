@@ -535,6 +535,7 @@ export function AnalyticsGuide({
   const t = useT();
   const install = useInstallAnalytics();
   const installable = useInstallableProjects(projects);
+  const installableMore = useInstallableProjects(more);
   const [domain, setDomain] = useState("");
   // The site hosting knows no domain for, asked where it's live.
   const [asking, setAsking] = useState<string | null>(null);
@@ -650,7 +651,7 @@ export function AnalyticsGuide({
         <p className="text-xs text-muted-foreground">
           {t("monitor.analyticsGuide.manual")}
         </p>
-        {more.length > 0 ? (
+        {installableMore && installableMore.length > 0 ? (
           <Popover>
             <PopoverTrigger asChild>
               <Button size="sm" variant="ghost" className="shrink-0 gap-1">
@@ -659,7 +660,7 @@ export function AnalyticsGuide({
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-96">
-              <AnalyticsGuide projects={more} />
+              <AnalyticsGuide projects={installableMore} />
             </PopoverContent>
           </Popover>
         ) : (
