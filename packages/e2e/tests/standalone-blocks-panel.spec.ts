@@ -91,7 +91,8 @@ test.describe("Blocks preview mode", () => {
     await expect(contentTab).toBeVisible();
     await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toBeVisible();
-    await expect(chat).toBeVisible();
+    // An app opens with the chat closed.
+    await expect(chat).toHaveCount(0);
     await expect(main).toBeVisible();
   });
 
@@ -147,7 +148,7 @@ test.describe("Blocks preview mode", () => {
     await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
     await page
-      .getByRole("button", { name: "Toggle sidebar", exact: true })
+      .getByRole("button", { name: /^(Expand|Toggle) sidebar$/ })
       .click();
     await page
       .getByRole("dialog", { name: "Navigation", exact: true })

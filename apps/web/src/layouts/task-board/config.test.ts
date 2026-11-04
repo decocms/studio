@@ -358,6 +358,16 @@ describe("boardCollisions", () => {
     expect(collide(closestCorners, { x: 420, y: 70 })).toBe("card_in_review");
   });
 
+  test("lands in the lane whose header the pointer is over", () => {
+    // Above the wells, where a lane's header and swimlane label sit.
+    expect(collide(boardCollisions, { x: 420, y: -30 })).toBe("lane:approved");
+    expect(collide(closestCorners, { x: 420, y: -30 })).toBe("card_in_review");
+  });
+
+  test("over a header of a lane with cards, lands next to its top card", () => {
+    expect(collide(boardCollisions, { x: 100, y: -30 })).toBe("card_in_review");
+  });
+
   test("prefers a card over the lane that holds it, so reordering works", () => {
     expect(collide(boardCollisions, { x: 100, y: 50 })).toBe("card_in_review");
   });
@@ -600,6 +610,45 @@ describe("dropSwimlane", () => {
   test("nothing under the pointer is no swimlane", () => {
     expect(over(undefined)).toBeNull();
     expect(over("gone")).toBeNull();
+  });
+
+  test("over a dragged card, the group keeps the well its preview put the grabbed card in", () => {
+    const previewed = new Map([
+      [
+        "moved",
+        {
+          ...item("moved", 0),
+          status: "in_progress",
+          priority: "urgent" as const,
+        },
+      ],
+      ["plain", item("plain", 1)],
+    ]);
+    const overDragged = (
+      overId: string,
+      fromStatus: string,
+      toStatus: string,
+    ) =>
+      dropSwimlane({
+        overId,
+        itemOf: (id) => previewed.get(id),
+        fromStatus,
+        toStatus,
+        dragged: ["moved", "plain"],
+      });
+    expect(overDragged("moved", "todo", "in_progress")).toBe("critical");
+    expect(overDragged("plain", "todo", "in_progress")).toBe("critical");
+    // The grabbed card decides, not a selected critical card under the pointer.
+    const grabbedPlain = (toStatus: string) =>
+      dropSwimlane({
+        overId: "moved",
+        itemOf: (id) => previewed.get(id),
+        fromStatus: "todo",
+        toStatus,
+        dragged: ["plain", "moved"],
+      });
+    expect(grabbedPlain("in_progress")).toBeNull();
+    expect(grabbedPlain("todo")).toBe("improvements");
   });
 
   test("a lane change keeps the card's well unless dropped on Critical", () => {

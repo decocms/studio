@@ -10,7 +10,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@decocms/ui/components/sidebar.tsx";
-import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t";
 import { useProjectContext } from "@/sdk";
 import { PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
@@ -22,7 +21,6 @@ export function SidebarLinkClaude() {
   const t = useT();
   const { org } = useProjectContext();
   const { setOpenMobile } = useSidebar();
-  const collapsed = useSidebarCollapsed();
   const { status, connected, expired } = useClaudeSubscription();
 
   if (!status.isSuccess || connected) return null;
@@ -33,7 +31,7 @@ export function SidebarLinkClaude() {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild tooltip={collapsed ? label : undefined}>
+      <SidebarMenuButton asChild>
         <Link
           to="/$org/settings/ai-providers"
           params={{ org: org.slug }}

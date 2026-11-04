@@ -315,7 +315,7 @@ const chooseEditorRoute = createRoute({
 // The site editor over `deco serve`, which prints
 // `/site-editor#endpoint=…&token=…`. No org, no project, no sign-in needed.
 // Its tabs carry the project Site Editor's `staticData` (plus `local`): the
-// same app. Always in the New Layout, whatever the preference says.
+// same app.
 // It wins over `/$org`, so an organization whose slug is `site-editor` would
 // lose its URL. PRE-DEPLOY CHECK (every environment, before this route first
 // ships): `SELECT id FROM organization WHERE slug = 'site-editor'` must return
@@ -1198,7 +1198,7 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
-/** Plan and Monitoring: announced in the new navigation, a placeholder until built. */
+/** Plan and Monitoring: announced in the navigation, a placeholder until built. */
 const planRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1366,18 +1366,24 @@ const settingsIndexRoute = createRoute({
   ),
 });
 
-// Operations: Connections
+// Redirects old /settings/connections links to Context, which hosts the page.
 const connectionsRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.connections" },
   getParentRoute: () => settingsRoute,
   path: "/connections",
-  component: lazyRouteComponent(() => import("./routes/orgs/connections.tsx")),
   validateSearch: z.lazy(() =>
     z.object({
       action: z.enum(["create"]).optional(),
       tab: z.enum(["all", "connected"]).optional(),
     }),
   ),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/library",
+      params: { org: params.org },
+      search: { section: "connections", ...search },
+      replace: true,
+    });
+  },
 });
 
 const connectionDetailRoute = createRoute({
@@ -1636,12 +1642,16 @@ const settingsProfileRoute = createRoute({
 // UNIFIED CHAT SUB-ROUTES
 // ============================================
 
-// Agents list (view all)
+// Redirects old /settings/agents links to the projects index that replaced it.
 const settingsAgentsRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.agents" },
   getParentRoute: () => settingsRoute,
   path: "/agents",
-  component: lazyRouteComponent(() => import("./routes/agents-list.tsx")),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/settings/projects",
+      params: { org: params.org },
+    });
+  },
 });
 
 const settingsAutomationsRoute = createRoute({
@@ -1653,25 +1663,34 @@ const settingsAutomationsRoute = createRoute({
   ),
 });
 
+// Redirects old /settings/skills and /settings/memory links to Context.
 const settingsSkillsRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.skills" },
   getParentRoute: () => settingsRoute,
   path: "/skills",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/skills.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/library",
+      params: { org: params.org },
+      search: { section: "skills" },
+      replace: true,
+    });
+  },
 });
 
 const settingsMemoryRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.memory" },
   getParentRoute: () => settingsRoute,
   path: "/memory",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/memory.tsx"),
-  ),
   validateSearch: z.lazy(() =>
     z.object({ scope: z.enum(["user"]).optional() }),
   ),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/library",
+      params: { org: params.org },
+      search: { section: "memory", ...search },
+      replace: true,
+    });
+  },
 });
 
 // ============================================

@@ -1,10 +1,6 @@
 import type { home as homeEn } from "../en/home.ts";
 
 export const home = {
-  "home.orgAgents.importFromGitHub": "Novo projeto",
-  "home.orgAgents.importToGetStarted":
-    "Importe um reposit\u00f3rio para come\u00e7ar.",
-  "home.orgHome.searchPlaceholder": "Buscar projetos, chats e tarefas\u2026",
   "home.orgHome.connectPill": "Conecte seu agente ao Studio",
   "home.orgHome.greetingMorning": "Bom dia, {name}.",
   "home.orgHome.greetingAfternoon": "Boa tarde, {name}.",
@@ -12,11 +8,6 @@ export const home = {
   "home.orgHome.greetingMorningBare": "Bom dia!",
   "home.orgHome.greetingAfternoonBare": "Boa tarde!",
   "home.orgHome.greetingEveningBare": "Boa noite!",
-  "home.orgHome.trainingEyebrow": "Treinamento do CMS",
-  "home.orgHome.trainingTitle": "Aprenda a usar o Editor de Site",
-  "home.orgHome.trainingDescription":
-    "Uma playlist rápida em vídeo pra você e seu time tirarem o máximo do CMS.",
-  "home.orgHome.trainingThumbnailAlt": "Playlist de treinamento do CMS da deco",
   "home.overview.mentioned": "{actor} te mencionou",
   "home.overview.commented": "{actor} comentou",
   "home.overview.someone": "Alguém",
@@ -34,29 +25,6 @@ export const home = {
   "home.needsYou.reasonAnswer": "Esperando resposta",
   "home.needsYou.reasonReview": "Precisa de revis\u00e3o",
   "home.needsYou.reasonAssigned": "Atribu\u00edda a voc\u00ea",
-  "home.projects.heading": "Projetos",
-  "home.projects.seeAll": "Ver todos os projetos",
-  "home.projectFeed.heading": "Feed",
-  "home.newTask.placeholder": "O que precisa ser feito neste projeto?",
-  "home.newTask.submit": "Criar tarefa",
-  "home.newTask.descriptionPlaceholder": "Adicionar descri\u00e7\u00e3o\u2026",
-  "home.newTask.heading": "Nova tarefa",
-  "home.newTask.createFailed": "N\u00e3o foi poss\u00edvel criar a tarefa",
-  "home.newTask.status": "Status",
-  "home.newTask.priority": "Prioridade",
-  "home.newTask.type": "Tipo",
-  "home.projectFeed.filterAll": "Todos os projetos",
-  "home.projectFeed.empty": "Nada no quadro por aqui ainda.",
-  "home.projectCard.lastUsed": "Último uso {time}",
-  "home.projectCard.updated": "Atualizado {time}",
-  "home.projects.headlineWaiting": "{count} esperando você",
-  "home.projects.headlineFailed": "{count} falharam",
-  "home.projects.headlineShipped": "{count} entregues",
-  "home.projects.headlineOpen": "{count} abertas",
-  "home.projects.rhythm":
-    "{name}: mudanças entregues por dia, últimas duas semanas",
-  "home.projects.shippedCaption": "entregues · 2s",
-  "home.projects.quiet": "Nada aberto",
   "home.comingSoon.badge": "Em breve",
   "home.comingSoon.planHeading": "Metas para os seus agentes perseguirem",
   "home.comingSoon.planDescription":

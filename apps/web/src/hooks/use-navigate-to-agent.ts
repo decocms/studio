@@ -9,32 +9,23 @@ import { useRecentProjects } from "@/hooks/use-recent-projects";
 import {
   navigateToTabLocation,
   tabRouteLocation,
-  tabRouteTarget,
 } from "@/layouts/main-panel-tabs/tab-route";
-import {
-  fetchVirtualMCPs,
-  useProjectContext,
-  useVirtualMCPsNonBlocking,
-} from "@/sdk";
+import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
 import { type LinkProps, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import { getActiveRepository } from "@/lib/repository-binding";
 import { useBaseBranch } from "@/components/thread/repository/use-version-gate";
-import {
-  defaultThreadRuntime,
-  type ThreadRuntime,
-} from "@decocms/shared/thread/session-runtime";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { writeThreadIntent } from "@/lib/thread-intent";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 const NO_THREADS: Task[] = [];
 
 interface NavigateToAgentOptions {
-  /** Main view to land on, as a tab id. Resolved to its owning route. */
+  /** Main view to land on, as a tab id. Resolved to its owning route. Without
+   *  one, the project's workspace opens. */
   panel?: string;
   /** The runtime the landed-on session must be. A thread's runtime is stamped
    *  once at creation and immutable, so this both picks which empty chat can be
@@ -46,9 +37,8 @@ interface NavigateToAgentOptions {
 export function useNavigateToAgent() {
   const navigate = useNavigate();
   const { org, locator } = useProjectContext();
-  const queryClient = useQueryClient();
-  /** NON-BLOCKING, deliberately. This list answers exactly one question — the
-   *  agent's default runtime — and only at CLICK time. Reading it with
+  /** NON-BLOCKING, deliberately. This list answers exactly one question —
+   *  whether the agent is repo-backed — and only at CLICK time. Reading it with
    *  `useVirtualMCPs()` put a suspense read in the sidebar, which has no
    *  boundary of its own, so a re-suspend blanked the whole shell. `[]` here is
    *  not a wrong answer; it means "ask again on click". */
@@ -60,25 +50,14 @@ export function useNavigateToAgent() {
   const manager = useOptionalThreadManager();
   /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
   const baseBranch = useBaseBranch(undefined, null);
-  const projectFirstNav = useProjectFirstNav();
   const { remember: rememberProject } = useRecentProjects(org.slug);
 
-  /** The navigation proper, once the wanted runtime is known. */
+  /** The navigation to a view. */
   const go = (
     virtualMcpId: string,
-    options: NavigateToAgentOptions | undefined,
-    wantedRuntime: ThreadRuntime | undefined,
+    tabId: string,
+    runtime: ThreadRuntime | undefined,
   ) => {
-    /** "Open this project" enters its workspace, and the sidebar follows it.
-     *  Naming a VIEW is a different ask ("open its settings", "open this
-     *  automation") and keeps the path below. Recorded here because this is
-     *  the single funnel every "open this project" caller goes through. */
-    if (projectFirstNav && !options?.panel) {
-      rememberProject(virtualMcpId);
-      void navigate(projectWorkspaceLink(org.slug, virtualMcpId));
-      return;
-    }
-    const tabId = options?.panel ?? "overview";
     /** Organization destinations do not belong to an agent session. Navigate
      * there without minting a thread whose identity the route cannot encode. */
     if (tabRouteLocation(tabId).kind === "org-destination") {
@@ -93,7 +72,7 @@ export function useNavigateToAgent() {
 
     /** Resume the agent's ENTRY thread — its last branch for a repo-backed
      *  agent, otherwise its empty chat — and mint a fresh id only when there is
-     *  none. `wantedRuntime` narrows which empty chat qualifies, so "open the
+     *  none. `runtime` narrows which empty chat qualifies, so "open the
      *  CMS" cannot resume a sandbox session. */
     const target = (cachedAgents ?? []).find((a) => a.id === virtualMcpId);
     const hasBranch = !!(target && getActiveRepository(target));
@@ -107,15 +86,14 @@ export function useNavigateToAgent() {
      *  loading-guarded resolver (ThreadSessionRoute), which runs in the project's
      *  own scope, own it. We keep resolving here only when a specific runtime was
      *  requested: that path parks a runtime intent the shell resolver can't read. */
-    const delegateEntryToShell = !options?.runtime;
+    const delegateEntryToShell = !runtime;
     const entry = delegateEntryToShell
       ? undefined
       : findAgentEntryThread(
           manager?.threads.get() ?? NO_THREADS,
           virtualMcpId,
           session?.user?.id,
-          wantedRuntime ??
-            (target ? defaultThreadRuntime(target.metadata) : undefined),
+          runtime,
           hasBranch,
           { baseBranch },
         );
@@ -125,10 +103,8 @@ export function useNavigateToAgent() {
     /** Park the runtime for the create the route loader will run. Only for a
      *  fresh id — a resumed thread is already stamped, and re-parking would
      *  leave an unclaimed key behind. `taskId` is undefined when delegating. */
-    if (taskId && !entry && options?.runtime) {
-      writeThreadIntent(sessionStorage, locator, taskId, {
-        runtime: options.runtime,
-      });
+    if (taskId && !entry && runtime) {
+      writeThreadIntent(sessionStorage, locator, taskId, { runtime });
     }
     navigateToTabLocation(navigate, {
       tabId,
@@ -142,39 +118,21 @@ export function useNavigateToAgent() {
   };
 
   return (virtualMcpId: string, options?: NavigateToAgentOptions) => {
-    if (
-      tabRouteLocation(options?.panel ?? "overview").kind === "org-destination"
-    ) {
-      return go(virtualMcpId, options, undefined);
+    /** "Open this project" enters its workspace, and the sidebar follows it.
+     *  Naming a VIEW is a different ask ("open its settings", "open this
+     *  automation") and keeps the path below. Recorded here because this is
+     *  the single funnel every "open this project" caller goes through. */
+    const tabId = options?.panel;
+    if (!tabId) {
+      rememberProject(virtualMcpId);
+      void navigate(projectWorkspaceLink(org.slug, virtualMcpId));
+      return;
     }
-    // Both of these answer without awaiting, in the click's own task.
-    const cached = cachedAgents.find((a) => a.id === virtualMcpId);
-    if (options?.runtime) {
-      return go(virtualMcpId, options, options.runtime);
-    }
-    if (cached) {
-      return go(virtualMcpId, options, defaultThreadRuntime(cached.metadata));
-    }
-    /** Cold cache — a click in the first beat after load. Fetch rather than
-     *  pass `undefined`: an absent expected runtime makes `runtimeMatches` match
-     *  ANY empty chat, which is how a click on a CMS project lands in a
-     *  leftover sandbox session. On failure fall back to that unfiltered
-     *  behaviour, which is the status quo. */
-    void fetchVirtualMCPs(queryClient, org)
-      .then((agents) => agents.find((a) => a.id === virtualMcpId))
-      .catch(() => undefined)
-      .then((target) =>
-        go(
-          virtualMcpId,
-          options,
-          target ? defaultThreadRuntime(target.metadata) : undefined,
-        ),
-      );
+    go(virtualMcpId, tabId, options?.runtime);
   };
 }
 
-/** A project's workspace, under the new navigation: entering it scopes the
- *  sidebar to the project. */
+/** A project's workspace: entering it scopes the sidebar to the project. */
 function projectWorkspaceLink(
   orgSlug: string,
   virtualMcpId: string,
@@ -190,29 +148,5 @@ function projectWorkspaceLink(
       thread: undefined,
       mainpanel: undefined,
     }),
-  };
-}
-
-/**
- * The same destination `useNavigateToAgent` lands on, as `LinkProps` for a real
- * anchor — so middle-click and "open in new tab" work. Only for callers that
- * request no `runtime`: then no thread id is minted at click time and the
- * target project's shell resolves its own entry thread, so the URL is fully
- * knowable at render time.
- */
-export function useAgentLink() {
-  const { org } = useProjectContext();
-  const projectFirstNav = useProjectFirstNav();
-
-  return (virtualMcpId: string, panel?: string): LinkProps => {
-    if (projectFirstNav && !panel) {
-      return projectWorkspaceLink(org.slug, virtualMcpId);
-    }
-    const target = tabRouteTarget({
-      tabId: panel ?? "overview",
-      org: org.slug,
-      agentId: virtualMcpId,
-    });
-    return { to: target.to, params: target.params, search: target.search };
   };
 }
