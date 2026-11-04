@@ -253,8 +253,8 @@ export function HeatmapView({
         </p>
       ) : (
         <Viewer
-          // A new page or device is a new document: remount the frame and its handshake.
-          key={`${device}|${src ?? page}`}
+          // A new page, device or domain list is a new document: remount the frame and its handshake.
+          key={`${device}|${src ?? page}|${origins.join(" ")}`}
           t={t}
           locale={locale}
           model={model}
@@ -402,9 +402,7 @@ function Viewer({
   const [{ frameRef, stageRef, post }] = useState(() => {
     let frame: HTMLIFrameElement | null = null;
     let timer = 0;
-    // The origin that answered `ready`. Until then only `init` goes out, to
-    // every registered origin: the browser delivers it to the one the frame
-    // is actually on and drops the rest.
+    // Pinned by `ready`; until then only `init` goes out, to every registered origin.
     let peer: string | null = null;
     const post = (m: Record<string, unknown>) => {
       const targets = peer ? [peer] : m.t === "init" ? origins : [];
