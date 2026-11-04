@@ -52,7 +52,7 @@ import {
 } from "../../deco-legacy/clickhouse-analytics";
 import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
 import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
-import { readAnalyticsRegistration } from "@/analytics/registration";
+import { ownedAnalyticsSiteId } from "@/analytics/access";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadDecoAudience } from "@/monitoring/deco-audience";
 import { isTimezone } from "@/monitoring/timezone";
@@ -1268,19 +1268,25 @@ export const createMonitorRoutes = () => {
     const tz = c.req.query("tz") ?? "UTC";
     if (!isTimezone(tz)) return c.json({ error: "unknown tz" }, 400);
 
-    const registration = await readAnalyticsRegistration(guard.slug);
+    const ctx = c.get("studioContext");
+    const organizationId = requireOrganization(ctx).id;
+    const registration = await ownedAnalyticsSiteId(
+      ctx,
+      organizationId,
+      guard.slug,
+    );
     if (registration.status === "error") {
       return c.json({ error: "Failed to resolve analytics registration" }, 502);
     }
     if (registration.status === "unregistered") {
       return c.json({ available: false });
     }
+    const siteId = registration.id;
 
-    const organizationId = requireOrganization(c.get("studioContext")).id;
     const read = (w: { since: string; until: string }) =>
       loadDecoAudience(
         organizationId,
-        registration.id,
+        siteId,
         report,
         { ...w, granularity: window.granularity },
         tz,
