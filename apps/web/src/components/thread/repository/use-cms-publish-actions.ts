@@ -8,8 +8,8 @@
  * content protocol: `changes.discard` drops the entries back to the source's
  * base (main on GitHub, the last commit in a sandbox), in the editor's own
  * write queue, guarded by the versions the list showed. On a hosted v8 site
- * a publish or "Try again" refreshes the editor, the preview and the
- * releases the same way an edit does. v7 sites keep their git paths.
+ * a publish refreshes the editor, the preview and the releases the same way
+ * an edit does. v7 sites keep their git paths.
  */
 
 import type { MutableRefObject } from "react";
@@ -29,8 +29,6 @@ import {
   isOutdatedServerError,
 } from "@/components/sections-editor/content-changes.ts";
 import { KEYS } from "@/lib/query-keys.ts";
-import { MAIN_SCHEMA_CHANGED } from "@decocms/shared/blocks-major";
-import { resetMainSchemaAnswer } from "@/hooks/main-schema-changed";
 import type { PublishChange } from "./publish-change-summary.ts";
 import {
   describePublishFailure,
@@ -42,16 +40,12 @@ import {
 } from "./publish-flow.ts";
 import { discardGitFiles } from "./sandbox-git-api.ts";
 import {
-  HostedPublishError,
   type HostedPublishResult,
-  keptDraftOf,
   publishHostedDraft,
-  retryRelease,
 } from "./hosted-publish-api.ts";
 import {
   hostedPublishFailure,
   notifyHostedPublish,
-  notifySavedNotPublished,
 } from "./hosted-publish-feedback.ts";
 import {
   errorDetail,
@@ -191,7 +185,6 @@ export function useCmsPublishActions(
     protocol,
   } = args;
   const t = useT();
-  const queryClient = useQueryClient();
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string>();
   const [publishErrorDetail, setPublishErrorDetail] = useState<string | null>(
@@ -225,30 +218,9 @@ export function useCmsPublishActions(
     branch: target.branch,
   });
 
-  /**
-   * "Try again": release the saved changes (main's head), same toast. The
-   * draft Publish kept is emptied once they are live.
-   */
-  const retryPublish = async (
-    keptDraft: { branch: string; draftEtag: string } | null,
-  ) => {
-    try {
-      await runContentChange(content, {
-        kind: "publish",
-        reread: !!keptDraft,
-        refreshOnError: true,
-        write: () => retryRelease(target, keptDraft),
-      });
-      toastPublished(t);
-    } catch (error) {
-      notifySavedNotPublished(t, error, () => void retryPublish(keptDraft));
-    }
-  };
-
-  /** Saved on main is done: the popover closes with one toast. */
+  /** Published: the popover closes with one toast. */
   const settleHosted = async (result: HostedPublishResult) => {
-    const keptDraft = keptDraftOf(result, target.branch);
-    notifyHostedPublish(t, result, () => void retryPublish(keptDraft));
+    notifyHostedPublish(t, result);
     onOpenChange(false);
     await quietly(onPublished);
   };
@@ -281,14 +253,6 @@ export function useCmsPublishActions(
       await settleHosted(result);
       return true;
     } catch (error) {
-      // Main is no longer v8: the editor goes back to waiting and decides
-      // again on main's new answer.
-      if (
-        error instanceof HostedPublishError &&
-        error.code === MAIN_SCHEMA_CHANGED
-      ) {
-        resetMainSchemaAnswer(queryClient, target.orgSlug, target.virtualMcpId);
-      }
       const failure = hostedPublishFailure(t, error);
       setPublishError(failure.message);
       setPublishErrorDetail(failure.detail);

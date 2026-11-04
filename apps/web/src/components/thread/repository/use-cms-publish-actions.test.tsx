@@ -722,10 +722,13 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
   it("a failed publish clears the pending state and shows the error", async () => {
     const { backend } = hostedBackend();
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ error: "main-moved" }), {
-        status: 409,
-        headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
+      new Response(
+        JSON.stringify({ error: "production moved", code: "production_moved" }),
+        {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        },
+      )) as unknown as typeof fetch;
     const { result } = render(backend, { hosted: true });
     await act(() => result.current.submit());
     expect(result.current.publishError).toBeTruthy();

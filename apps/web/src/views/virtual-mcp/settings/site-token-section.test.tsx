@@ -34,9 +34,11 @@ describe("SiteTokenSection", () => {
     "clipboard",
   );
   let written: string[];
+  let requested: string[];
 
   beforeEach(() => {
     written = [];
+    requested = [];
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
@@ -45,15 +47,17 @@ describe("SiteTokenSection", () => {
         },
       },
     });
-    globalThis.fetch = (async (_url: string, init?: RequestInit) =>
-      new Response(
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      requested.push(url);
+      return new Response(
         JSON.stringify(
           init?.method === "POST"
             ? { token: TOKEN }
             : { site: "acme-store", tokens: [] },
         ),
         { status: init?.method === "POST" ? 201 : 200 },
-      )) as typeof fetch;
+      );
+    }) as typeof fetch;
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -63,9 +67,16 @@ describe("SiteTokenSection", () => {
   });
 
   it("shows the site id read-only with a hover copy button that copies it", async () => {
-    renderBare(<SiteTokenSection orgSlug="acme" virtualMcpId="vir_1" />, {
-      wrapper,
-    });
+    renderBare(
+      <SiteTokenSection
+        orgSlug="acme"
+        virtualMcpId="vir_1"
+        site="acme-store"
+      />,
+      {
+        wrapper,
+      },
+    );
     const input = await screen().findByLabelText("Site ID", { exact: true });
     expect(input).toHaveValue("acme-store");
     expect(input).toHaveAttribute("readonly");
@@ -87,6 +98,8 @@ describe("SiteTokenSection", () => {
       fireEvent.click(button);
     });
     expect(written).toEqual(["acme-store"]);
+    // Keyed by the site on the hosted CMS, never the project.
+    expect(requested).toContain("/api/acme/cms/acme-store/site-tokens");
     expect(
       screen().getByText("Site ID copied to the clipboard"),
     ).toBeInTheDocument();
@@ -95,9 +108,16 @@ describe("SiteTokenSection", () => {
   });
 
   it("copies the exact site token from the one-time dialog", async () => {
-    renderBare(<SiteTokenSection orgSlug="acme" virtualMcpId="vir_1" />, {
-      wrapper,
-    });
+    renderBare(
+      <SiteTokenSection
+        orgSlug="acme"
+        virtualMcpId="vir_1"
+        site="acme-store"
+      />,
+      {
+        wrapper,
+      },
+    );
     await screen().findByLabelText("Site ID", { exact: true });
     await act(async () => {
       fireEvent.click(screen().getByRole("button", { name: "Issue token" }));

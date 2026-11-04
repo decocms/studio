@@ -17,7 +17,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { mainSchemaRead } from "@/hooks/main-schema-changed";
 import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
@@ -31,8 +30,6 @@ import {
 import {
   DRAFT_TOMBSTONE_VERSION,
   type DraftConflictBlocks,
-  hostedRevision,
-  hostedRevisionParts,
 } from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
@@ -251,10 +248,9 @@ function markDraftTombstone(
 }
 
 /**
- * A hosted save's answer, kept with no read: its revision takes the main
- * part of the revision last read (a save never reads main, so it answers an
- * empty one: `hostedRevision`), so the next poll is "not modified" unless
- * someone else wrote; the draft's changes list gets the saved blocks (each
+ * A hosted save's answer, kept with no read: its revision is the draft's
+ * new ETag (the hosted CMS's protocol revision), so the next poll is "not
+ * modified" unless someone else wrote; the draft's changes list gets the saved blocks (each
  * one's "before" is the copy the editor read from main, its version in
  * `KEYS.contentVersions` until now); and the preview's pointer moves to the
  * draft's new version, so the preview reloads.
@@ -265,15 +261,7 @@ function adoptHostedSave(
   cacheKey: string,
   result: BlocksApplyResult,
 ): string {
-  const revisionParts = hostedRevisionParts(result.revision);
-  const seen = queryClient.getQueryData<ContentRevisions>(
-    KEYS.contentRevision(cacheKey),
-  )?.revision;
-  const read = seen ? hostedRevisionParts(seen) : null;
-  const revision =
-    revisionParts && !revisionParts.main && read
-      ? hostedRevision(read.main, revisionParts.draft)
-      : result.revision;
+  const revision = result.revision;
   const versions = queryClient.getQueryData<Record<string, string>>(
     KEYS.contentVersions(cacheKey),
   );
@@ -330,9 +318,8 @@ function adoptHostedSave(
       markDraftTombstone(queryClient, cacheKey, name, true);
     }
   }
-  // The hosted CMS answers the draft's bare ETag as the revision (the v8
-  // git path answered `<main>~<draft>`).
-  const draftEtag = revisionParts ? revisionParts.draft : result.revision;
+  // The hosted CMS answers the draft's ETag as the revision.
+  const draftEtag = result.revision;
   if (draftEtag && draftEtag !== "none") {
     queryClient.setQueryData<HostedDraftPointer>(
       KEYS.protocolDraftRead(
@@ -513,20 +500,9 @@ async function readContent(
   const currentVersions =
     queryClient.getQueryData<Record<string, string>>(versionsKey);
   const cachedMeta = queryClient.getQueryData<LiveMeta>(metaKey);
-  const cachedRevisions =
+  const currentMeta = cachedMeta;
+  const seen =
     queryClient.getQueryData<ContentRevisions>(revisionsKey) ?? undefined;
-  // Studio's GitHub backend serves main's schema, which the page already read
-  // to decide v8 (`mainSchemaRead`): the first poll starts from it and asks
-  // only whether it changed.
-  const main =
-    backend.source === "github" && !cachedMeta
-      ? mainSchemaRead(queryClient, params.orgSlug, params.virtualMcpId)
-      : undefined;
-  const seeded = main?.isV8 && main.schema && main.version ? main : undefined;
-  const currentMeta = cachedMeta ?? (seeded?.schema as LiveMeta | undefined);
-  const seen: ContentRevisions | undefined = seeded
-    ? { ...cachedRevisions, schemaVersion: seeded.version! }
-    : cachedRevisions;
   const blocksIfNoneMatch =
     conditional && currentBlocks && currentVersions
       ? seen?.revision

@@ -10,7 +10,7 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 const sessionRef: { current: { user: { id: string } } | null } = {
   current: null,
 };
-/** Main's schema answer (`useMainSchemaV8`), never the project's marker. */
+/** The v8 answer (`useMainSchemaV8`). */
 const mainRef: { current: "v8" | "v7" | "loading" | "error" } = {
   current: "v8",
 };
@@ -18,7 +18,10 @@ const mainRef: { current: "v8" | "v7" | "loading" | "error" } = {
 mock.module("@/lib/auth-client", () => ({
   authClient: { useSession: () => ({ data: sessionRef.current }) },
 }));
+// The module's other exports stay real: the mock outlives this file.
+const realMainSchema = await import("./use-main-schema-v8");
 mock.module("./use-main-schema-v8", () => ({
+  ...realMainSchema,
   useMainSchemaV8: () => mainRef.current,
 }));
 

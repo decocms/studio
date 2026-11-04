@@ -1,14 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import {
   hasPreviewOptions,
-  isReleaseSha,
+  isReleaseRevision,
   releasePreviewUrl,
   withPreviewOptions,
   withPreviewOptionsInDraftUrl,
 } from "./preview-link";
 import { withForcedVariants } from "./variant-draft-pointer";
 
-const SHA = "0123456789abcdef0123456789abcdef01234567";
+const SHA = "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55";
 const POINTER = "delivery.decocms.com/sites/demo/drafts/d1.json@etag1";
 
 describe("withPreviewOptions", () => {
@@ -36,7 +36,7 @@ describe("withPreviewOptions", () => {
     expect(withPreviewOptions(twice, {})).toBe(forced);
   });
 
-  it("puts them after a release's commit SHA", () => {
+  it("puts them after a release's revision id", () => {
     expect(withPreviewOptions(SHA, { at: "2026-11-27T00:00:00Z" })).toBe(
       `${SHA}?__at=2026-11-27T00%3A00%3A00Z`,
     );
@@ -83,10 +83,14 @@ describe("withPreviewOptionsInDraftUrl", () => {
 });
 
 describe("helpers", () => {
-  it("knows a release SHA and when options are set", () => {
-    expect(isReleaseSha(SHA)).toBe(true);
-    expect(isReleaseSha(SHA.toUpperCase())).toBe(false);
-    expect(isReleaseSha("abc")).toBe(false);
+  it("knows a release revision id and when options are set", () => {
+    expect(isReleaseRevision(SHA)).toBe(true);
+    expect(isReleaseRevision(SHA.toUpperCase())).toBe(false);
+    expect(isReleaseRevision("abc")).toBe(false);
+    // A git commit SHA is no release any more.
+    expect(isReleaseRevision("0123456789abcdef0123456789abcdef01234567")).toBe(
+      false,
+    );
     expect(hasPreviewOptions({})).toBe(false);
     expect(hasPreviewOptions({ tests: {} })).toBe(false);
     expect(hasPreviewOptions({ at: "x" })).toBe(true);
