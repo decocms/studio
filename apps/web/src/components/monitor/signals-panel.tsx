@@ -17,7 +17,7 @@ import { formatCount } from "@/layouts/main-panel-tabs/monitor-v8";
 import type { ImpactMetric, Signal, SignalSeverity } from "./board";
 import { connectLink, formatPct, projectLink } from "./parts";
 
-function metricLabel(metric: ImpactMetric, t: TFunction): string {
+export function metricLabel(metric: ImpactMetric, t: TFunction): string {
   switch (metric) {
     case "orders":
       return t("monitor.metric.orders");

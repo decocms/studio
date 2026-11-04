@@ -30,7 +30,9 @@ import {
   PerformanceView,
   useSiteProjects,
 } from "./monitor-views";
+import { DeploysView } from "./deploys-view";
 import { LogsView } from "./logs-view";
+import { MonitoredRepos } from "./monitored-repos";
 import { monitorScope, ProjectFilter } from "./project-filter";
 import { connectLink, localDay } from "./parts";
 import { ConnectMore, Locked } from "./locked";
@@ -182,6 +184,47 @@ export function MonitorPage({
     </>
   );
   // Every tab but the Overview is its own screen, with its frame.
+  if (view === "deploys") {
+    const deploysState = stateOf("deploys");
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-auto">
+        {tabs}
+        {deploysState !== "off" && (
+          <Page.Actions>
+            <MonitoredRepos />
+          </Page.Actions>
+        )}
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+          {loading ? (
+            <Skeleton className="h-64" />
+          ) : board.deploys ? (
+            <DeploysView
+              deploys={board.deploys}
+              history={board.deployHistory}
+              orgSlug={orgSlug}
+              scopeId={scopeId}
+            />
+          ) : (
+            <Locked
+              kind="metrics"
+              title={t("monitor.locked.deploys.title")}
+              {...(deploysState === "partial"
+                ? { guide: <MonitoredRepos /> }
+                : { steps: [{ source: "deploys", state: deploysState }] })}
+              link={connectLink(orgSlug, scopeId)}
+            >
+              <DeploysView
+                deploys={[]}
+                history={null}
+                orgSlug={orgSlug}
+                scopeId={scopeId}
+              />
+            </Locked>
+          )}
+        </div>
+      </div>
+    );
+  }
   if (view === "logs") {
     return (
       <>
