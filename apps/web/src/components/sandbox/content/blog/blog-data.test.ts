@@ -6,8 +6,10 @@ import {
   DEFAULT_SCHEDULE_HOUR,
   defaultScheduledDatetime,
   blogBlockTypeFor,
+  customBlogSectionPaths,
   discoverBlogBlockTypes,
   emptyBlogPayload,
+  isBlogPostBlockResolveType,
   KNOWN_BLOG_BLOCK_EXAMPLES,
   listPostsWithMeta,
   missingPostFields,
@@ -292,6 +294,94 @@ describe("discoverBlogBlockTypes", () => {
     ]);
   });
 
+  test("customPaths opens another app's sections under those folders", () => {
+    const out = discoverBlogBlockTypes(
+      metaWith([
+        "acme-ui/sections/Blog/Hero.tsx",
+        "acme-ui/sections/Blog/Post/Gallery.tsx",
+        "acme-ui/sections/Blogger/Card.tsx",
+        "acme-ui/sections/Header.tsx",
+        "site/sections/Blog/Post/Paragraph.tsx",
+      ]),
+      { customPaths: ["acme-ui/sections/Blog"] },
+    );
+    expect(out.map((b) => b.resolveType).sort()).toEqual([
+      "acme-ui/sections/Blog/Hero.tsx",
+      "acme-ui/sections/Blog/Post/Gallery.tsx",
+      "site/sections/Blog/Post/Paragraph.tsx",
+    ]);
+  });
+
+  test("customPaths ignores case and accepts a single section's own path", () => {
+    const out = discoverBlogBlockTypes(
+      metaWith(["acme-ui/sections/Blog/Hero.tsx", "acme-ui/sections/Cta.tsx"]),
+      { customPaths: ["acme-ui/sections/blog", "acme-ui/sections/Cta.tsx"] },
+    );
+    expect(out.map((b) => b.resolveType).sort()).toEqual([
+      "acme-ui/sections/Blog/Hero.tsx",
+      "acme-ui/sections/Cta.tsx",
+    ]);
+  });
+
+  test("customPaths only opens sections, never the app's loaders or actions", () => {
+    const out = discoverBlogBlockTypes(
+      {
+        manifest: {
+          blocks: {
+            sections: { "acme-ui/sections/Hero.tsx": {} },
+            loaders: { "acme-ui/loaders/products.ts": {} },
+            actions: { "acme-ui/actions/subscribe.ts": {} },
+          },
+        },
+        schema: {},
+      },
+      { customPaths: ["acme-ui"] },
+    );
+    expect(out.map((b) => b.resolveType)).toEqual([
+      "acme-ui/sections/Hero.tsx",
+    ]);
+  });
+
+  test("customPaths blocks are custom: kept by hideDefaults, labelled by their schema", () => {
+    const out = discoverBlogBlockTypes(
+      metaWithSchemas([
+        { resolveType: "blog/sections/blocks/Heading.tsx" },
+        {
+          resolveType: "acme-ui/sections/Blog/Heading.tsx",
+          title: "Acme heading",
+          description: "Heading in the brand's type scale",
+        },
+      ]),
+      { hideDefaults: true, customPaths: ["acme-ui/sections/Blog"] },
+    );
+    expect(out).toEqual([
+      {
+        resolveType: "acme-ui/sections/Blog/Heading.tsx",
+        title: "Acme heading",
+        description: "Heading in the brand's type scale",
+        iconName: "HeadingSquare",
+        iconUrl: undefined,
+        source: "site",
+      },
+    ]);
+  });
+
+  test("a block under both a built-in prefix and a custom path is listed once", () => {
+    const out = discoverBlogBlockTypes(
+      metaWith(["site/sections/Blog/Post/Paragraph.tsx"]),
+      { customPaths: ["site/sections/Blog"] },
+    );
+    expect(out.map((b) => b.resolveType)).toEqual([
+      "site/sections/Blog/Post/Paragraph.tsx",
+    ]);
+  });
+
+  test("custom-path sections never get a built-in editor, even with a known file name", () => {
+    expect(
+      isBlogPostBlockResolveType("acme-ui/sections/Blog/Paragraph.tsx"),
+    ).toBe(false);
+  });
+
   test("site blocks: @icon as plain string is treated as untitled icon name", () => {
     const block = discoverBlogBlockTypes(
       metaWithSchemas([
@@ -348,6 +438,74 @@ describe("blogBlockTypeFor", () => {
     expect(blogBlockTypeFor("site/sections/Blog/Post/Promo.tsx", meta)).toEqual(
       discoverBlogBlockTypes(meta)[0]!,
     );
+  });
+});
+
+describe("customBlogSectionPaths", () => {
+  const blogApp = (customSectionPaths: unknown) => ({
+    "deco-blog": {
+      __resolveType: "site/apps/deco/blog.ts",
+      customSectionPaths,
+    },
+  });
+
+  test("reads the blog app block's folders", () => {
+    expect(
+      customBlogSectionPaths(
+        blogApp(["acme-ui/sections/Blog", "shared-ui/sections/Post"]),
+      ),
+    ).toEqual(["acme-ui/sections/Blog", "shared-ui/sections/Post"]);
+  });
+
+  test("is empty without a blog app block or with the prop unset", () => {
+    expect(customBlogSectionPaths({})).toEqual([]);
+    expect(customBlogSectionPaths(blogApp(undefined))).toEqual([]);
+    expect(
+      customBlogSectionPaths({
+        "deco-blog": { __resolveType: "site/apps/deco/blog.ts" },
+      }),
+    ).toEqual([]);
+  });
+
+  test("ignores a value that is not an array", () => {
+    expect(customBlogSectionPaths(blogApp("acme-ui/sections/Blog"))).toEqual(
+      [],
+    );
+    expect(
+      customBlogSectionPaths(blogApp({ 0: "acme-ui/sections/Blog" })),
+    ).toEqual([]);
+  });
+
+  test("drops blank and non-string entries, trims slashes and dedupes", () => {
+    expect(
+      customBlogSectionPaths(
+        blogApp([
+          42,
+          null,
+          "",
+          "   ",
+          "/",
+          " ./acme-ui/sections/Blog/ ",
+          "/acme-ui/sections/Blog",
+          "acme-ui/sections/Blog//",
+        ]),
+      ),
+    ).toEqual(["acme-ui/sections/Blog"]);
+  });
+
+  test("ignores the same prop on blocks that are not the blog app", () => {
+    expect(
+      customBlogSectionPaths({
+        "other-app": {
+          __resolveType: "site/apps/deco/website.ts",
+          customSectionPaths: ["acme-ui/sections/Blog"],
+        },
+        "collections/blog/posts/a": {
+          __resolveType: "site/apps/deco/blog.ts",
+          customSectionPaths: ["acme-ui/sections/Blog"],
+        },
+      }),
+    ).toEqual([]);
   });
 });
 

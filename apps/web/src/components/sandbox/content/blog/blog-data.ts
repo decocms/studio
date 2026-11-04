@@ -1022,7 +1022,10 @@ export interface BlogBlockType {
   iconName: string;
   /** URL when the section declares `@icon` as an image (http(s)/data/absolute). */
   iconUrl?: string;
-  /** "app" = deco-cms/blog built-ins; "site" = section defined by this site. */
+  /**
+   * "app" = deco-cms/blog built-ins; "site" = any other section — the site's
+   * own, or another app's that the blog app's `customSectionPaths` opened.
+   */
   source: BlogBlockSource;
 }
 
@@ -1030,6 +1033,8 @@ export interface BlogBlockType {
 export interface BlogBlockDiscoveryOptions {
   /** Drop the `deco-cms/blog` built-ins — the `hide_default_blog_blocks` flag. */
   hideDefaults?: boolean;
+  /** Extra section folders, as {@link customBlogSectionPaths} reads them. */
+  customPaths?: readonly string[];
 }
 
 /**
@@ -1148,8 +1153,10 @@ const KNOWN_BLOG_BLOCK_CATALOG: Record<
 
 const FALLBACK_BLOG_BLOCK_ICON = "Box";
 
+const DEFAULT_BLOG_BLOCK_PREFIX = "blog/sections/blocks/";
+
 function blogBlockSource(resolveType: string): BlogBlockSource {
-  return resolveType.startsWith("site/") ? "site" : "app";
+  return resolveType.startsWith(DEFAULT_BLOG_BLOCK_PREFIX) ? "app" : "site";
 }
 
 /**
@@ -1241,20 +1248,23 @@ export function blogBlockTypeFor(
  * manifest, with title/icon metadata for the inserter UI. Recognizes both
  * the `deco-cms/blog` app blocks (`blog/sections/blocks/*`) and
  * site-defined blog blocks (`site/sections/Blog/Post/*`), matching the
- * same set that `isBlogPostBlockResolveType` accepts everywhere else.
+ * same set that `isBlogPostBlockResolveType` accepts everywhere else, plus
+ * the sections under `customPaths`.
  */
 export function discoverBlogBlockTypes(
   meta: LiveMeta,
-  { hideDefaults = false }: BlogBlockDiscoveryOptions = {},
+  { hideDefaults = false, customPaths = [] }: BlogBlockDiscoveryOptions = {},
 ): BlogBlockType[] {
   const seen = new Set<string>();
   const out: BlogBlockType[] = [];
   const groups = meta.manifest?.blocks ?? {};
-  for (const group of Object.values(groups)) {
+  for (const [groupName, group] of Object.entries(groups)) {
     for (const resolveType of Object.keys(group)) {
-      if (!isBlogPostBlockResolveType(resolveType) || seen.has(resolveType)) {
-        continue;
-      }
+      if (seen.has(resolveType)) continue;
+      // A broad path (`acme-ui`) must not offer the app's loaders or actions.
+      const custom =
+        groupName === "sections" && isInSectionPaths(resolveType, customPaths);
+      if (!custom && !isBlogPostBlockResolveType(resolveType)) continue;
       if (hideDefaults && blogBlockSource(resolveType) === "app") continue;
       seen.add(resolveType);
       out.push(blogBlockTypeFor(resolveType, meta));
@@ -1270,15 +1280,77 @@ export function blockComponentName(resolveType: string): string {
 }
 
 const BLOG_POST_BLOCK_PREFIXES = [
-  "blog/sections/blocks/",
+  DEFAULT_BLOG_BLOCK_PREFIX,
   "site/sections/Blog/Post/",
 ] as const;
 
-/** True when resolveType points at a blog post content block editor. */
+/**
+ * True when resolveType points at a blog post content block editor. Sections
+ * opened by `customSectionPaths` stay out: their props are the other app's,
+ * so they get the generic editor, never a built-in one picked by file name.
+ */
 export function isBlogPostBlockResolveType(resolveType: string): boolean {
   return BLOG_POST_BLOCK_PREFIXES.some((prefix) =>
     resolveType.startsWith(prefix),
   );
+}
+
+/**
+ * Whole path segments only (`…/Blog` holds `…/Blog/Hero.tsx`, not
+ * `…/Blogger/X.tsx`), ignoring case so `…/sections/blog` finds `…/Blog/`.
+ */
+function isInSectionPaths(
+  resolveType: string,
+  paths: readonly string[],
+): boolean {
+  const rt = resolveType.toLowerCase();
+  return paths.some((path) => {
+    const p = path.toLowerCase();
+    return rt === p || rt.startsWith(`${p}/`);
+  });
+}
+
+/** The blog app block's resolveType (`site/apps/<vendor>/blog.ts`). */
+const BLOG_APP_RESOLVE_TYPE = /\/blog\.tsx?$/;
+
+/** The top-level decofile blocks that configure the blog app, normally one. */
+export function blogAppBlocks(
+  decofile: Record<string, unknown>,
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const [key, val] of Object.entries(decofile)) {
+    if (key.includes("/")) continue;
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+    const obj = val as Record<string, unknown>;
+    if (typeof obj.__resolveType !== "string") continue;
+    if (BLOG_APP_RESOLVE_TYPE.test(obj.__resolveType)) out.push(obj);
+  }
+  return out;
+}
+
+/**
+ * The section folders the blog app's `customSectionPaths` opens to posts and
+ * categories (e.g. `acme-ui/sections/Blog`), without leading `./` or `/` or
+ * trailing `/`. Entries that aren't non-empty strings are dropped, so a
+ * hand-edited decofile can't widen the picker to every section.
+ */
+export function customBlogSectionPaths(
+  decofile: Record<string, unknown>,
+): string[] {
+  const out = new Set<string>();
+  for (const block of blogAppBlocks(decofile)) {
+    const paths = block.customSectionPaths;
+    if (!Array.isArray(paths)) continue;
+    for (const path of paths) {
+      if (typeof path !== "string") continue;
+      const normalized = path
+        .trim()
+        .replace(/^(?:\.?\/)+/, "")
+        .replace(/\/+$/, "");
+      if (normalized) out.add(normalized);
+    }
+  }
+  return [...out];
 }
 
 // ------------------ Brand rules (dos / guardrails / values / competitors) ----
