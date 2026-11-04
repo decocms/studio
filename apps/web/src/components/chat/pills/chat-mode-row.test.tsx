@@ -117,27 +117,35 @@ describe("branchPickAction", () => {
     ).toEqual({ kind: "new-chat", runtime: "sandbox" });
   });
 
-  it("opens a CMS chat when a CMS draft is picked from a coding chat", () => {
+  // A CMS draft continued in a coding chat keeps its `cms` stamp but holds code.
+  it("keeps a coding chat in place when a CMS draft is picked", () => {
     expect(
       branchPickAction({
         locked: false,
         sessionRuntime: "sandbox",
         draftRuntime: "cms",
       }),
-    ).toEqual({ kind: "new-chat", runtime: "cms" });
+    ).toEqual({ kind: "switch" });
   });
 
-  it("opens a new chat in the draft's runtime from a locked chat", () => {
+  it("opens a coding chat for a coding draft from a locked chat", () => {
     expect(
       branchPickAction({
         locked: true,
-        sessionRuntime: "cms",
+        sessionRuntime: "sandbox",
         draftRuntime: "sandbox",
       }),
     ).toEqual({ kind: "new-chat", runtime: "sandbox" });
   });
 
-  it("leaves the runtime to the project default for a legacy draft from a locked chat", () => {
+  it("never forces a CMS chat from a locked chat", () => {
+    expect(
+      branchPickAction({
+        locked: true,
+        sessionRuntime: "sandbox",
+        draftRuntime: "cms",
+      }),
+    ).toEqual({ kind: "new-chat" });
     expect(branchPickAction({ locked: true, sessionRuntime: "cms" })).toEqual({
       kind: "new-chat",
     });

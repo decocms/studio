@@ -35,25 +35,21 @@ export function ChatModeRowPure({ branchPill }: PureProps) {
 
 export type BranchPickAction =
   | { kind: "switch" }
-  | { kind: "new-chat"; runtime?: ThreadRuntime };
+  | { kind: "new-chat"; runtime?: "sandbox" };
 
-/**
- * What picking a branch does. A locked chat's branch is fixed, and a chat's
- * runtime is immutable, so a draft made in another runtime (a PR's coding
- * session picked from a CMS chat) needs a new chat in that runtime: switching
- * in place would render production's code over the branch.
- */
+/** Only escalates to sandbox: a `cms` stamp doesn't mean the branch has no code. */
 export function branchPickAction(input: {
   locked: boolean;
   sessionRuntime: ThreadRuntime;
   draftRuntime?: ThreadRuntime;
 }): BranchPickAction {
   const { locked, sessionRuntime, draftRuntime } = input;
-  if (!locked && (!draftRuntime || draftRuntime === sessionRuntime)) {
+  const needsCoding = draftRuntime === "sandbox";
+  if (!locked && !(needsCoding && sessionRuntime === "cms")) {
     return { kind: "switch" };
   }
-  return draftRuntime
-    ? { kind: "new-chat", runtime: draftRuntime }
+  return needsCoding
+    ? { kind: "new-chat", runtime: "sandbox" }
     : { kind: "new-chat" };
 }
 
@@ -78,13 +74,16 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
   const createTask = taskCtx?.createTask;
+  const sessionRuntime = readThreadRuntime(
+    taskCtx?.activeTask?.metadata,
+    virtualMcp?.metadata,
+  );
   /** A new branch only lands in CMS through a NEW (unstamped) thread: the
    *  runtime is per-thread and immutable, so a coding session on a CMS-default
    *  project has to start one rather than switch in place. */
   const createBranchAsCms =
     defaultThreadRuntime(virtualMcp?.metadata) === "cms" &&
-    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
-      "sandbox";
+    sessionRuntime === "sandbox";
 
   const repository = getActiveRepository(virtualMcp);
   const repoTarget = repoToolTarget(repository);
@@ -102,15 +101,8 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   // A CMS session on a Blocks v8 main edits a hosted draft even on the base
   // branch: the switcher shows it as that draft, not as "Production". v7 (and
   // a coding session) keeps main's labels.
-  const baseIsDraft =
-    mainSchema === "v8" &&
-    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
-      "cms";
+  const baseIsDraft = mainSchema === "v8" && sessionRuntime === "cms";
 
-  const sessionRuntime = readThreadRuntime(
-    taskCtx?.activeTask?.metadata,
-    virtualMcp?.metadata,
-  );
   const onChange = (next: string, draftRuntime?: ThreadRuntime) => {
     const action = branchPickAction({ locked, sessionRuntime, draftRuntime });
     if (action.kind === "new-chat" && createTask) {

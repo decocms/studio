@@ -345,9 +345,11 @@ export function BranchPicker({
     const r = pendingDelete;
     setPendingDelete(null);
     if (!r) return;
-    // Deleting the active draft: switch to a sibling draft, else read-only production.
+    // Deleting the active draft: switch to a sibling (non-`sandbox` first, so a CMS chat stays put), else production.
     if (r.branch === value) {
-      const sibling = releases.find((x) => x.branch !== r.branch);
+      const siblings = releases.filter((x) => x.branch !== r.branch);
+      const sibling =
+        siblings.find((x) => x.runtime !== "sandbox") ?? siblings[0];
       if (sibling) pick(sibling.branch);
       else if (baseBranch) pick(baseBranch);
       else setOpen(false);

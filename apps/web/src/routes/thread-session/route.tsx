@@ -232,17 +232,20 @@ function VmEventsBridge({
   }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
 
   const sessionState = useSessionRuntime(virtualMcpId);
+  /** `null` until the answer is real — never act on the project default. */
+  const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
 
   // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
   const draftsVm = useVirtualMCP(virtualMcpId);
   const draftsBase = useBaseBranch(draftsVm, currentBranch);
-  const { releases: draftReleases, createRelease: createDraftRelease } =
-    useReleases(virtualMcpId);
+  const {
+    releases: draftReleases,
+    createRelease: createDraftRelease,
+    markSandbox: markDraftSandbox,
+  } = useReleases(virtualMcpId);
   const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
-  /** Stamped on the draft (`Release.runtime`), so never the unresolved default. */
-  const draftRuntime = sessionState.resolved ? sessionState.runtime : null;
   const currentIsUnnamedDraft =
-    !!draftRuntime &&
+    !!sessionRuntime &&
     isOwnDraftThread &&
     !!currentBranch &&
     currentBranch !== draftsBase &&
@@ -250,7 +253,7 @@ function VmEventsBridge({
   const namedDraftForBranchRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
   useEffect(() => {
-    if (!currentIsUnnamedDraft || !currentBranch || !draftRuntime) return;
+    if (!currentIsUnnamedDraft || !currentBranch || !sessionRuntime) return;
     if (namedDraftForBranchRef.current === currentBranch) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't create twice
     namedDraftForBranchRef.current = currentBranch;
@@ -263,17 +266,34 @@ function VmEventsBridge({
       color: nextReleaseColor(draftReleases.length),
       createdBy: userId,
       createdAt: new Date().toISOString(),
-      runtime: draftRuntime,
+      runtime: sessionRuntime,
     }).catch(() => {});
   }, [
     currentIsUnnamedDraft,
     currentBranch,
-    draftRuntime,
+    sessionRuntime,
     draftReleases,
     createDraftRelease,
     userId,
     t,
   ]);
+
+  /** A CMS draft continued in a coding chat may now hold code: stamp it `sandbox`. */
+  const currentDraftNeedsSandboxStamp =
+    sessionRuntime === "sandbox" &&
+    isOwnDraftThread &&
+    draftReleases.some(
+      (r) => r.branch === currentBranch && r.runtime !== "sandbox",
+    );
+  const stampedSandboxForBranchRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a draft entered by a coding chat; no render-time equivalent
+  useEffect(() => {
+    if (!currentDraftNeedsSandboxStamp || !currentBranch) return;
+    if (stampedSandboxForBranchRef.current === currentBranch) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't write twice
+    stampedSandboxForBranchRef.current = currentBranch;
+    markDraftSandbox(currentBranch).catch(() => {});
+  }, [currentDraftNeedsSandboxStamp, currentBranch, markDraftSandbox]);
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -281,8 +301,6 @@ function VmEventsBridge({
   // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
   // auto-start shares this mutation key, so `useIsSandboxStartPending`
   // observes it).
-  /** `null` until the answer is real — never act on the project default. */
-  const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
   const isStartPending = useIsSandboxStartPending(
     virtualMcpId,
     currentBranch ?? undefined,
