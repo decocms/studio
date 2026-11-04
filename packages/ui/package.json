@@ -1,6 +1,6 @@
 {
   "name": "@decocms/ui",
-  "version": "1.28.1",
+  "version": "1.29.0",
   "description": "decocms product design system — React components, hooks, and Tailwind v4 tokens",
   "license": "MIT",
   "type": "module",
