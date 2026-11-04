@@ -215,36 +215,48 @@ export const REPORTS_SETUP = defineTool({
         Object.keys(state).length > 0 &&
         connection.metadata?.picksSentToHost !== host
       ) {
+        let sent = false;
         try {
           await notifyMcpConfiguration(ctx, connection, {
             state,
             scopes: connection.configuration_scopes ?? [],
             firstRun: false,
           });
-          // Re-read: the send above is a remote round-trip, and a setup that
-          // ran meanwhile may have moved the connection to another site. Merge
-          // onto that fresh metadata, and only while it still names this site.
-          // ponytail: read-then-write; a storage-level jsonb merge if two
-          // setups ever race inside these two DB calls.
-          const fresh = await ctx.storage.connections.findById(
-            connection.id,
-            organization.id,
-          );
-          const freshSite = fresh?.metadata?.siteUrl;
-          if (
-            fresh &&
-            typeof freshSite === "string" &&
-            siteUrlToHost(freshSite) === host
-          ) {
-            connection = await ctx.storage.connections.update(fresh.id, {
-              metadata: { ...(fresh.metadata ?? {}), picksSentToHost: host },
-            });
-          }
+          sent = true;
         } catch (error) {
           console.error(
             "[reports] ON_MCP_CONFIGURATION after site claim failed",
             error,
           );
+        }
+        // A failed marker write only costs one repeat send on the next setup.
+        if (sent) {
+          try {
+            // Re-read: the send above is a remote round-trip, and a setup that
+            // ran meanwhile may have moved the connection to another site. Merge
+            // onto that fresh metadata, and only while it still names this site.
+            // ponytail: read-then-write; a storage-level jsonb merge if two
+            // setups ever race inside these two DB calls.
+            const fresh = await ctx.storage.connections.findById(
+              connection.id,
+              organization.id,
+            );
+            const freshSite = fresh?.metadata?.siteUrl;
+            if (
+              fresh &&
+              typeof freshSite === "string" &&
+              siteUrlToHost(freshSite) === host
+            ) {
+              connection = await ctx.storage.connections.update(fresh.id, {
+                metadata: { ...(fresh.metadata ?? {}), picksSentToHost: host },
+              });
+            }
+          } catch (error) {
+            console.error(
+              "[reports] recording picksSentToHost after the send failed",
+              error,
+            );
+          }
         }
       }
     } else {

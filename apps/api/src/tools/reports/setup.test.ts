@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
 
 const USER_ID = "user_1";
@@ -267,6 +267,38 @@ describe("REPORTS_SETUP", () => {
 
     expect(final?.metadata?.siteUrl).toBe("https://other-site.com");
     expect(final?.metadata?.picksSentToHost).toBeUndefined();
+  });
+
+  test("a DB error after a successful send is logged as bookkeeping, not as a failed send", async () => {
+    notifyMock.mockClear();
+    // The send succeeds, then the re-read for the marker hits a DB error.
+    notifyMock.mockImplementationOnce(async (ctx) => {
+      (ctx as StudioContext).storage.connections.findById = async () => {
+        throw new Error("db down");
+      };
+    });
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: { ga4: { __type: "x", value: "conn_ga" } },
+      },
+    });
+
+    await expect(
+      REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx),
+    ).resolves.toBeDefined();
+
+    const messages = errors.mock.calls.map((c) => String(c[0]));
+    errors.mockRestore();
+    expect(messages).toContain(
+      "[reports] recording picksSentToHost after the send failed",
+    );
+    expect(messages.some((m) => m.includes("ON_MCP_CONFIGURATION"))).toBe(
+      false,
+    );
   });
 
   test("nothing to re-send ⇒ no notify", async () => {
