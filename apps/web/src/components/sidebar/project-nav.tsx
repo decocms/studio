@@ -11,6 +11,7 @@ import {
   ClockRewind,
   BarChartSquare02,
   Beaker02,
+  Briefcase01,
   Calendar,
   CheckDone01,
   Globe02,
@@ -20,6 +21,7 @@ import {
   Monitor01,
   Server01,
 } from "@untitledui/icons";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PROJECT_APPS } from "@/components/projects/project-apps";
@@ -69,6 +71,7 @@ interface ProjectView {
   isActive: (tabId: string | undefined) => boolean;
   /** `data-tour` anchor, for the one row a product tour highlights. */
   dataTour?: string;
+  badge?: string;
 }
 
 export function ProjectNav({
@@ -222,6 +225,15 @@ export function ProjectNav({
       isActive: (tabId) => tabId === panel,
     });
   }
+  // ponytail: always on during the test; make it a configurable sidebar view to ship.
+  views.push({
+    key: "services",
+    label: t("services.title"),
+    icon: <Briefcase01 size={16} />,
+    panel: "services",
+    isActive: (tabId) => tabId === "services",
+    badge: t("services.new"),
+  });
   if (selectedViews.has("automations")) {
     views.push({
       key: "automations",
@@ -268,6 +280,10 @@ export function ProjectNav({
           trailing={
             isLocked(view.panel) ? (
               <Lock01 size={14} className="text-muted-foreground" />
+            ) : view.badge ? (
+              <Badge variant="lime" size="sm">
+                {view.badge}
+              </Badge>
             ) : undefined
           }
           /** No `link`, so this renders a button: these resolve a SESSION,

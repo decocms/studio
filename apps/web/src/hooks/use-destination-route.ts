@@ -58,6 +58,7 @@ export const PROJECT_ROUTE = {
   analytics: "/$org/projects/$agentId/analytics",
   experiments: "/$org/projects/$agentId/experiments",
   calendar: "/$org/projects/$agentId/calendar",
+  services: "/$org/projects/$agentId/services",
   monitor: "/$org/projects/$agentId/cdn",
   plan: "/$org/projects/$agentId/plan",
   monitoring: "/$org/projects/$agentId/monitoring",

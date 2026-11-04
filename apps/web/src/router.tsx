@@ -927,6 +927,21 @@ const agentCalendarRoute = createRoute({
   ),
 });
 
+const agentServicesRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/services",
+  staticData: {
+    pageTitle: "services.title",
+    defaultMain: "services",
+    mainView: "services",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-services.tsx"),
+  ),
+});
+
 const agentMonitorRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1735,6 +1750,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   projectTaskBoardAnalyticsRoute,
   agentExperimentsRoute,
   agentCalendarRoute,
+  agentServicesRoute,
   agentMonitorRoute,
   agentAppRoute,
   agentViewRoute,
