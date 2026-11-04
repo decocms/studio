@@ -165,17 +165,44 @@ describe("getSectionDisplayTitle", () => {
     expect(getSectionDisplayTitle(raw, meta())).toBe("Hero");
   });
 
-  test("uses a plain @title registered in the manifest", () => {
-    const rt = "site/sections/Promo.tsx";
-    const m: LiveMeta = {
+  // deco titles a definition with its file path; a plain @title lands on Props.
+  function generatedMeta(rt: string, propsTitle: string): LiveMeta {
+    const propsKey = `${btoa(rt)}@Props`;
+    return {
       manifest: {
-        blocks: { sections: { [rt]: { $ref: "#/definitions/PromoDef" } } },
+        blocks: { sections: { [rt]: { $ref: `#/definitions/${btoa(rt)}` } } },
       },
-      schema: { definitions: { PromoDef: { title: "Black Friday Promo" } } },
+      schema: {
+        definitions: {
+          [btoa(rt)]: {
+            title: rt,
+            type: "object",
+            allOf: [{ $ref: `#/definitions/${propsKey}` }],
+          },
+          [propsKey]: { title: propsTitle, type: "object" },
+        },
+      },
     };
-    expect(getSectionDisplayTitle({ __resolveType: rt }, m)).toBe(
-      "Black Friday Promo",
-    );
+  }
+
+  test("reads a plain @title from Props past the path-titled definition", () => {
+    const rt = "site/sections/ChangeLevel.tsx";
+    expect(
+      getSectionDisplayTitle(
+        { __resolveType: rt },
+        generatedMeta(rt, "Level change"),
+      ),
+    ).toBe("Level change");
+  });
+
+  test("ignores generated path titles on an untitled section", () => {
+    const rt = "site/sections/UI/VerticalCards.tsx";
+    expect(
+      getSectionDisplayTitle(
+        { __resolveType: rt },
+        generatedMeta(rt, `${rt}@Props`),
+      ),
+    ).toBeUndefined();
   });
 
   test("unwraps a lazy-wrapped plain-titled section", () => {
