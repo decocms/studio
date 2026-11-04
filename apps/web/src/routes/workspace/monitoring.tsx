@@ -12,12 +12,6 @@ import {
 } from "@/components/monitor/monitor-page";
 import { SEGMENT_SEARCH_KEYS } from "@/components/monitor/analytics/segment";
 import {
-  ERRORS_SECTIONS,
-  EVENTS_SECTIONS,
-  EXPERIMENTS_SECTIONS,
-  PERFORMANCE_SECTIONS,
-} from "@/components/monitor/analytics/sections";
-import {
   MONITOR_VIEWS,
   type MonitorView,
 } from "@/components/monitor/monitor-views";
@@ -32,25 +26,20 @@ import { useProjectContext } from "@/sdk";
 
 function useMonitorSearch(): MonitorSelection {
   const search = useSearch({ strict: false });
-  // `analytics` was the CDN tab's name before it became Performance.
   const requested =
-    "view" in search && search.view === "analytics"
-      ? "performance"
-      : "view" in search
-        ? search.view
-        : undefined;
-  const asked =
-    typeof requested === "string"
-      ? MONITOR_VIEWS.find((v) => v === requested)
+    "view" in search && typeof search.view === "string"
+      ? search.view
       : undefined;
   const section =
     "section" in search && typeof search.section === "string"
       ? search.section
       : undefined;
-  // Analytics links from before its sections moved to their own tabs.
-  const moved =
-    asked === "audience" && section ? movedSection(section) : undefined;
-  const view = moved ?? asked;
+  const view =
+    requested === "audience" && section
+      ? movedSection(section)
+      : requested
+        ? movedView(requested)
+        : undefined;
   return {
     view,
     date:
@@ -69,15 +58,23 @@ function useMonitorSearch(): MonitorSelection {
   };
 }
 
-function movedSection(section: string): MonitorView | undefined {
-  if (section === "live") return "realtime";
-  if (section === "behaviour") return "pages";
+/** Tabs that were folded into others; ones that left the Monitor open the Overview. */
+function movedView(view: string): MonitorView | undefined {
+  // `analytics` was the CDN tab's name before it became Performance.
+  if (view === "analytics") return "performance";
+  if (view === "errors") return "logs";
+  if (view === "realtime" || view === "pages" || view === "events") {
+    return "audience";
+  }
+  return MONITOR_VIEWS.find((v) => v === view);
+}
+
+/** Analytics links from when its sections had tabs of their own. */
+function movedSection(section: string): MonitorView {
   if (section === "heatmap") return "heatmap";
-  if (EVENTS_SECTIONS.some((s) => s === section)) return "events";
-  if (ERRORS_SECTIONS.some((s) => s === section)) return "errors";
-  if (EXPERIMENTS_SECTIONS.some((s) => s === section)) return "experiments";
-  if (PERFORMANCE_SECTIONS.some((s) => s === section)) return "performance";
-  return undefined;
+  if (section === "errors") return "logs";
+  if (section === "vitals") return "performance";
+  return "audience";
 }
 
 /** The Analytics segment's search keys, as they are. */

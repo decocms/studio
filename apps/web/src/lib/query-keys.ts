@@ -824,7 +824,21 @@ export const KEYS = {
     trafficSite: string,
     view: string,
     range: string,
-  ) => ["monitor", org, "audience", site, trafficSite, view, range] as const,
+    source: string,
+  ) =>
+    [
+      "monitor",
+      org,
+      "audience",
+      site,
+      trafficSite,
+      view,
+      range,
+      source,
+    ] as const,
+  /** One read of a site's logs and spans, by its query string. */
+  monitorSiteEvents: (org: string, site: string, params: string) =>
+    ["monitor", org, "site-events", site, params] as const,
   /** Every Monitor audience read for one site, whichever source answers it. */
   monitorAudienceSite: (org: string, site: string) =>
     ["monitor", org, "audience", site] as const,

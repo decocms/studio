@@ -1,16 +1,6 @@
-/**
- * The Deco Analytics overview: the five KPIs against the prior window, traffic
- * over time, the commerce funnel and where visitors come from. On a Deco site it
- * stands in for the Audience overview, so it also carries the pages, countries
- * and devices breakdowns, read from the `behaviour` view.
- */
+/** The top of the Analytics tab on a Deco site: KPIs, traffic and the funnel. */
 
 import { useState } from "react";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@decocms/ui/components/toggle-group.tsx";
-import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { TrendChart } from "./charts";
 import {
@@ -18,20 +8,17 @@ import {
   fmtDuration,
   fmtInt,
   fmtPct,
-  kn,
   num,
   Panel,
   PrevChange,
-  RankedChoice,
-  RankedList,
   rowsOf,
   SectionError,
   SectionSkeleton,
   useSectionView,
   WithheldBadge,
 } from "./panels";
-import { countryOptions, deviceOptions } from "./behaviour";
 import type { SectionProps } from "./types";
+import { ViewSwitch } from "../view-switch";
 
 const METRICS = ["visitors", "pageviews", "events"] as const;
 type Metric = (typeof METRICS)[number];
@@ -54,7 +41,6 @@ function metricLabel(metric: Metric, t: TFunction): string {
 export function DecoOverview(props: SectionProps) {
   const t = useT();
   const view = useSectionView(props, "overview");
-  const breakdown = useSectionView(props, "behaviour");
   const [metric, setMetric] = useState<Metric>("visitors");
 
   if (view.isLoading) return <SectionSkeleton tiles={5} />;
@@ -127,7 +113,6 @@ export function DecoOverview(props: SectionProps) {
   ];
 
   const funnel = firstRow(data, "funnel");
-  const b = breakdown.data;
 
   return (
     <>
@@ -168,26 +153,17 @@ export function DecoOverview(props: SectionProps) {
                 />
               )}
               {shown.length > 1 && (
-                <ToggleGroup
-                  type="single"
-                  variant="outline"
-                  size="sm"
-                  value={active}
-                  onValueChange={(v) => {
-                    const m = METRICS.find((x) => x === v);
-                    if (m) setMetric(m);
-                  }}
-                >
+                <ViewSwitch>
                   {shown.map((m) => (
-                    <ToggleGroupItem
+                    <ViewSwitch.Item
                       key={m}
-                      value={m}
-                      className="flex-none px-2.5 text-xs font-normal"
+                      pressed={m === active}
+                      onClick={() => setMetric(m)}
                     >
                       {metricLabel(m, t)}
-                    </ToggleGroupItem>
+                    </ViewSwitch.Item>
                   ))}
-                </ToggleGroup>
+                </ViewSwitch>
               )}
             </div>
           }
@@ -199,43 +175,7 @@ export function DecoOverview(props: SectionProps) {
           />
         </Panel>
       )}
-      <div className="grid gap-4 md:grid-cols-2">
-        {funnel && <ConversionFunnel row={funnel} />}
-        <RankedList
-          title={t("monitor.analytics.panels.sources")}
-          rows={kn(rowsOf(data, "sources"))}
-          dim="source"
-        />
-      </div>
-      {breakdown.isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-64" />
-          ))}
-        </div>
-      ) : (
-        b && (
-          <div className="grid gap-4 lg:grid-cols-3">
-            <RankedList
-              title={t("monitor.analytics.panels.pages")}
-              rows={kn(rowsOf(b, "pages"))}
-              dim="path"
-            />
-            <RankedChoice
-              title={t("monitor.analytics.panels.countries")}
-              options={countryOptions(rowsOf(b, "countries"), t)}
-            />
-            <RankedChoice
-              title={t("monitor.analytics.panels.devices")}
-              options={deviceOptions(
-                kn(rowsOf(b, "devices")),
-                kn(rowsOf(b, "os")),
-                t,
-              )}
-            />
-          </div>
-        )
-      )}
+      {funnel && <ConversionFunnel row={funnel} />}
     </>
   );
 }

@@ -5,15 +5,18 @@
  * Audience cards so the sections read as one screen with the rest.
  */
 
-import { type ReactNode, useState } from "react";
-import { BarChart10, Check } from "@untitledui/icons";
+import { type ComponentProps, type ReactNode, useState } from "react";
+import { BarChart10, Check, Maximize01 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
-import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
-import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@decocms/ui/components/toggle-group.tsx";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Table,
   TableBody,
@@ -157,19 +160,6 @@ export function fmtMs(v: unknown): string {
     : `${Math.round(n)} ms`;
 }
 
-export function fmtBytes(v: unknown): string {
-  const n = num(v);
-  if (n === null) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let x = n;
-  let i = 0;
-  while (x >= 1024 && i < units.length - 1) {
-    x /= 1024;
-    i++;
-  }
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(x)} ${units[i]}`;
-}
-
 /** Warehouse timestamps are UTC `YYYY-MM-DD hh:mm:ss`. */
 function utcDate(v: unknown): Date | null {
   const s = str(v);
@@ -177,18 +167,6 @@ function utcDate(v: unknown): Date | null {
   const iso = s.length === 10 ? `${s}T00:00:00Z` : `${s.replace(" ", "T")}Z`;
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-export function fmtWhen(v: unknown): string {
-  const d = utcDate(v);
-  return d
-    ? d.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "—";
 }
 
 /** A series bucket as an axis tick: a time within a day, else the date. */
@@ -296,8 +274,57 @@ export function WithheldBadge({ label, tip }: { label: string; tip: string }) {
 
 // --- layout -----------------------------------------------------------------
 
-/** A titled card: the Monitor's MetricCard. */
-export const Panel = MetricCard;
+/**
+ * A titled card: the Monitor's MetricCard. One holding a chart or a list opens
+ * full screen from its corner, so a busy breakdown can be read at size.
+ */
+export function Panel(props: ComponentProps<typeof MetricCard>) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  if (!props.children || props.onClick) return <MetricCard {...props} />;
+  return (
+    <>
+      <MetricCard
+        {...props}
+        aside={
+          <div className="flex shrink-0 items-center gap-1">
+            {props.aside}
+            <IconButton
+              label={t("monitor.analytics.panels.expand")}
+              onClick={() => setOpen(true)}
+            >
+              <Maximize01 />
+            </IconButton>
+          </div>
+        }
+      />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          aria-describedby={undefined}
+          className="flex h-[90vh] flex-col gap-6 sm:max-w-[min(1400px,calc(100%-4rem))]"
+        >
+          <DialogHeader className="flex-row items-start justify-between gap-4 pr-10">
+            <div className="flex min-w-0 flex-col gap-1">
+              <DialogTitle className="text-sm font-normal text-foreground/70">
+                {props.title}
+              </DialogTitle>
+              {props.value !== undefined && (
+                <span className="tnum text-4xl font-normal text-foreground">
+                  {props.value}
+                </span>
+              )}
+              {props.caption}
+            </div>
+            {props.aside}
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto [&_[data-slot=chart]]:h-[min(60vh,40rem)]!">
+            {props.children}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 /** A labelled block of panels on a long section. */
 export function Group({
@@ -423,59 +450,6 @@ export function RankedList({
   );
 }
 
-export interface RankedOption extends RankedRowsProps {
-  id: string;
-  /** The option's name in the card's corner. */
-  name: string;
-  /** Drawn instead of the rows, e.g. the countries on a map. */
-  body?: ReactNode;
-}
-
-/**
- * One card for several cuts of the same people (device, browser, OS), picked
- * in its corner instead of a card each.
- */
-export function RankedChoice({
-  title,
-  options,
-}: {
-  title: string;
-  options: RankedOption[];
-}) {
-  const [picked, setPicked] = useState(options[0]?.id);
-  const current = options.find((o) => o.id === picked) ?? options[0];
-  if (!current) return null;
-  const { id: _id, name: _name, body, ...rows } = current;
-  return (
-    <Panel
-      title={title}
-      aside={
-        options.length > 1 && (
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            value={current.id}
-            onValueChange={(v) => v && setPicked(v)}
-          >
-            {options.map((o) => (
-              <ToggleGroupItem
-                key={o.id}
-                value={o.id}
-                className="flex-none px-2.5 text-xs font-normal"
-              >
-                {o.name}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        )
-      }
-    >
-      {body ?? <RankedRows {...rows} />}
-    </Panel>
-  );
-}
-
 /** The rows of a ranked list, for a card that holds more than the list. */
 function RankedRows({
   rows,
@@ -564,20 +538,6 @@ function RankedRows({
   );
 }
 
-/** `mobile · Chrome` rows summed by the part a filter can match. */
-export function splitRows(
-  rows: RankedRow[],
-  part: "first" | "second",
-): RankedRow[] {
-  const sums = new Map<string, number>();
-  for (const r of rows) {
-    const [a, b = ""] = r.k.split(" · ");
-    const k = part === "first" ? (a ?? "") : b;
-    if (k) sums.set(k, (sums.get(k) ?? 0) + r.n);
-  }
-  return [...sums].map(([k, n]) => ({ k, n })).sort((x, y) => y.n - x.n);
-}
-
 // --- table ------------------------------------------------------------------
 
 export interface Column<T> {
@@ -608,14 +568,15 @@ export function PanelTable<T>({
   if (rows.length === 0) return <NoRows />;
   return (
     <div className="overflow-x-auto">
-      <Table variant="flush">
+      {/* Separate borders: rounded corners on cells need them. */}
+      <Table variant="flush" className="border-separate border-spacing-0">
         <TableHeader>
-          <TableRow className="border-border hover:bg-transparent">
+          <TableRow className="hover:bg-transparent">
             {columns.map((c) => (
               <TableHead
                 key={c.id}
                 className={cn(
-                  "h-8 whitespace-nowrap px-2 text-xs font-normal text-muted-foreground first:pl-0 last:pr-0",
+                  "h-8 whitespace-nowrap border-b border-border px-2 text-xs font-normal text-muted-foreground",
                   c.numeric && "text-right",
                 )}
               >
@@ -633,17 +594,17 @@ export function PanelTable<T>({
                 key={rowKey(row, i)}
                 {...props}
                 className={cn(
-                  "group border-border/50",
-                  props
-                    ? "focus-ring cursor-pointer aria-pressed:bg-accent"
-                    : "hover:bg-transparent",
+                  "group hover:bg-transparent aria-pressed:bg-transparent",
+                  props && "cursor-pointer outline-none",
                 )}
               >
                 {columns.map((c) => (
                   <TableCell
                     key={c.id}
                     className={cn(
-                      "px-2 py-2 text-sm text-foreground first:pl-0 last:pr-0",
+                      "px-2 py-2 text-sm text-foreground first:rounded-l-md last:rounded-r-md",
+                      props &&
+                        "group-hover:bg-accent/60 group-focus-visible:bg-accent/60 group-aria-pressed:bg-accent",
                       c.numeric && "tnum text-right",
                       c.className,
                     )}

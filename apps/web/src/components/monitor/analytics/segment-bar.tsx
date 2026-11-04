@@ -102,10 +102,6 @@ function filterLabel(f: AnalyticsFilter, t: TFunction): string {
 
 /** What the read surface says about the segment, on every view's payload. */
 const SegmentPayload = z.object({
-  goals: z
-    .array(z.object({ id: z.string(), name: z.string().optional() }))
-    .catch([]),
-  goal: z.string().nullish().catch(null),
   currencies: z
     .array(z.object({ k: z.string(), revenue: z.coerce.number().catch(0) }))
     .catch([]),
@@ -223,7 +219,7 @@ function FilterBuilder({
   );
 }
 
-/** Top-bar controls for the segment: goal, currency and the filter builder. */
+/** Top-bar controls for the segment: currency and the filter builder. */
 export function SegmentActions({
   orgSlug,
   site,
@@ -238,9 +234,7 @@ export function SegmentActions({
   const payload = SegmentPayload.safeParse(view.data?.data ?? {});
   const meta = payload.success
     ? payload.data
-    : { goals: [], goal: null, currencies: [], currency: null };
-  const defaultGoal = meta.goals[0]?.id;
-  const goal = segment.goal ?? meta.goal ?? defaultGoal;
+    : { currencies: [], currency: null };
   const currencies = meta.currencies.filter(
     (c) => c.k !== "(none)" && c.revenue > 0,
   );
@@ -267,23 +261,6 @@ export function SegmentActions({
           />
         </PopoverContent>
       </Popover>
-      {meta.goals.length > 1 && goal && (
-        <TopbarSelect
-          label={t("monitor.analytics.filters.goal")}
-          value={goal}
-          options={meta.goals.map((g) => ({
-            value: g.id,
-            // The read surface's built-in goal; a site's own goals carry their names.
-            label:
-              g.id === "purchase"
-                ? t("monitor.analytics.filters.goalPurchase")
-                : (g.name ?? g.id),
-          }))}
-          onChange={(next) =>
-            setSegment({ goal: next === defaultGoal ? undefined : next })
-          }
-        />
-      )}
       {currencies.length > 1 && currency && (
         <TopbarSelect
           label={t("monitor.analytics.filters.currency")}

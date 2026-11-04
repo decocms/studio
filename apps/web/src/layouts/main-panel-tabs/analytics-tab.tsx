@@ -43,9 +43,13 @@ import {
 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
 import {
   Table,
   TableBody,
@@ -1722,7 +1726,7 @@ function InstallPanel({ status }: { status: AnalyticsStatus }) {
 // --- register (not yet registered) ------------------------------------------
 
 /** Copy-to-clipboard button for the one-time snippet/token. */
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   return (
@@ -1752,7 +1756,7 @@ function CopyButton({ text }: { text: string }) {
 /** The one-time registration result: the server-built snippet, any notes, and —
  *  for a token registration only — the public token, shown ONCE. Rendered at the
  *  tab level so it survives the flip to the registered view. */
-export function RegistrationResult({
+function RegistrationResult({
   result,
   onDismiss,
 }: {
@@ -1804,53 +1808,109 @@ export function RegistrationResult({
   );
 }
 
-export function RegisterCard({
-  base,
-  orgSlug,
-  site,
-  host,
-  onRegistered,
+/** The modules as switches, one per row; Core is always on. */
+export function ModuleSwitches({
+  selected,
+  onToggle,
 }: {
-  base: string;
-  orgSlug: string;
-  site: string;
-  host: string | null;
-  onRegistered: (result: AnalyticsRegisterResult) => void;
+  selected: ReadonlySet<string>;
+  onToggle: (key: string) => void;
 }) {
   const t = useT();
-  const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(["core", "commerce", "vitals"]),
+  return (
+    <ul className="surface divide-y divide-border/70 overflow-hidden">
+      {MODULES.map((m) => {
+        const locked = m.key === "core";
+        return (
+          <li key={m.key}>
+            <label
+              className={cn(
+                "flex items-center gap-4 px-4 py-3",
+                !locked && "cursor-pointer",
+              )}
+            >
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium text-foreground">
+                  {t(m.labelKey)}
+                </span>
+                <span className="text-meta">{t(m.hintKey)}</span>
+              </span>
+              {locked ? (
+                <span className="text-meta">
+                  {t("mainPanelTabs.analyticsTab.alwaysOn")}
+                </span>
+              ) : (
+                <Switch
+                  checked={selected.has(m.key)}
+                  onCheckedChange={() => onToggle(m.key)}
+                />
+              )}
+            </label>
+          </li>
+        );
+      })}
+    </ul>
   );
-  const [hostOverride, setHostOverride] = useState("");
-  // Token (key) mode: an owned site not on our CDN. The token is public and
-  // events are NOT billable, so it is opt-in and clearly marked.
-  const [useKey, setUseKey] = useState(false);
-  const [domainsText, setDomainsText] = useState("");
+}
 
-  const registerMutation = useMutation<
-    AnalyticsRegisterResult,
-    Error,
-    Record<string, unknown>
-  >({
+/** The modules a new registration starts with. */
+export const DEFAULT_MODULES = ["core", "commerce", "vitals"] as const;
+
+/** Registers a site with the collector; the status refetches so the page flips to the registered view. */
+export function useRegisterAnalytics(
+  base: string,
+  orgSlug: string,
+  site: string,
+) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  return useMutation<AnalyticsRegisterResult, Error, Record<string, unknown>>({
     mutationFn: (input) =>
       mutateJson(
         `${base}/analytics/register`,
         "POST",
         input,
       ) as Promise<AnalyticsRegisterResult>,
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: KEYS.analyticsStatus(orgSlug, site),
       });
-      onRegistered(data);
       toast.success(t("mainPanelTabs.analyticsTab.toastRegistered"));
     },
     onError: (err) => toast.error(errorText(err)),
   });
+}
+
+/** Turning analytics on: where the site runs, then what to collect. */
+function RegisterForm({
+  base,
+  orgSlug,
+  site,
+  host,
+  onRegistered,
+  onCancel,
+}: {
+  base: string;
+  orgSlug: string;
+  site: string;
+  host: string | null;
+  onRegistered: (result: AnalyticsRegisterResult) => void;
+  /** Shown as a Cancel button beside the submit, inside a dialog. */
+  onCancel?: () => void;
+}) {
+  const t = useT();
+  const [selected, setSelected] = useState<Set<string>>(
+    new Set(DEFAULT_MODULES),
+  );
+  const [hostOverride, setHostOverride] = useState("");
+  // Off our CDN the tag carries a public token and its events aren't billed.
+  const [useKey, setUseKey] = useState(false);
+  const [domainsText, setDomainsText] = useState("");
+
+  const registerMutation = useRegisterAnalytics(base, orgSlug, site);
 
   const toggle = (key: string) => {
-    if (key === "core") return; // always on
+    if (key === "core") return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -1867,135 +1927,115 @@ export function RegisterCard({
 
   const handleRegister = () => {
     if (useKey) {
-      registerMutation.mutate({
-        key: true,
-        domains,
-        modules: [...selected],
-      });
+      registerMutation.mutate(
+        { key: true, domains, modules: [...selected] },
+        { onSuccess: onRegistered },
+      );
       return;
     }
     const trimmed = hostOverride.trim();
-    registerMutation.mutate({
-      modules: [...selected],
-      ...(trimmed ? { host: trimmed } : {}),
-    });
+    registerMutation.mutate(
+      { modules: [...selected], ...(trimmed ? { host: trimmed } : {}) },
+      { onSuccess: onRegistered },
+    );
   };
 
-  const effectiveHost =
-    hostOverride.trim() ||
-    host ||
-    t("mainPanelTabs.analyticsTab.registerHostFallback");
+  const cdnHost = hostOverride.trim() || host;
 
   return (
-    <Card title={t("mainPanelTabs.analyticsTab.registerTitle")}>
-      <div className="flex flex-col gap-5">
-        <p className="text-sm text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.registerDescription", {
-            host: useKey ? domains[0] || "your domains" : effectiveHost,
-          })}
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <Label>{t("mainPanelTabs.analyticsTab.whereLabel")}</Label>
+        <ToggleGroup
+          type="single"
+          variant="segmented"
+          value={useKey ? "elsewhere" : "cdn"}
+          onValueChange={(v) => {
+            if (v) setUseKey(v === "elsewhere");
+          }}
+        >
+          <ToggleGroupItem value="cdn">
+            {t("mainPanelTabs.analyticsTab.whereCdn")}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="elsewhere">
+            {t("mainPanelTabs.analyticsTab.whereElsewhere")}
+          </ToggleGroupItem>
+        </ToggleGroup>
+        <p className="text-meta">
+          {useKey
+            ? t("mainPanelTabs.analyticsTab.elsewhereHint")
+            : cdnHost
+              ? t("mainPanelTabs.analyticsTab.cdnHint", { host: cdnHost })
+              : t("mainPanelTabs.analyticsTab.cdnHintNoHost")}
         </p>
+      </div>
 
-        <div className="flex flex-col gap-2">
-          <Label>{t("mainPanelTabs.analyticsTab.modules")}</Label>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {MODULES.map((m) => {
-              const locked = m.key === "core";
-              const on = locked || selected.has(m.key);
-              return (
-                <label
-                  key={m.key}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:border-border/70"
-                >
-                  <Checkbox
-                    checked={on}
-                    disabled={locked}
-                    onCheckedChange={() => toggle(m.key)}
-                    className="mt-0.5"
-                  />
-                  <span className="flex flex-col">
-                    <span className="text-sm font-medium text-foreground">
-                      {t(m.labelKey)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {t(m.hintKey)}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:border-border/70">
-          <Checkbox
-            checked={useKey}
-            onCheckedChange={(v) => setUseKey(Boolean(v))}
-            className="mt-0.5"
+      {useKey ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="analytics-domains">
+            {t("mainPanelTabs.analyticsTab.domainsLabel")}
+          </Label>
+          <Input
+            id="analytics-domains"
+            value={domainsText}
+            onChange={(e) => setDomainsText(e.target.value)}
+            placeholder={t("mainPanelTabs.analyticsTab.domainsPlaceholder")}
           />
-          <span className="flex flex-col">
-            <span className="text-sm font-medium text-foreground">
-              {t("mainPanelTabs.analyticsTab.registerByKey")}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.registerByKeyHint")}
-            </span>
+          <span className="text-meta">
+            {t("mainPanelTabs.analyticsTab.domainsHint")}
           </span>
-        </label>
-
-        {useKey ? (
+        </div>
+      ) : (
+        !host && (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="analytics-domains">
-              {t("mainPanelTabs.analyticsTab.domainsLabel")}
+            <Label htmlFor="analytics-host">
+              {t("mainPanelTabs.analyticsTab.hostLabel")}
             </Label>
             <Input
-              id="analytics-domains"
-              value={domainsText}
-              onChange={(e) => setDomainsText(e.target.value)}
-              placeholder={t("mainPanelTabs.analyticsTab.domainsPlaceholder")}
-              className="font-mono text-xs"
+              id="analytics-host"
+              value={hostOverride}
+              onChange={(e) => setHostOverride(e.target.value)}
+              placeholder={t("mainPanelTabs.analyticsTab.hostPlaceholder")}
             />
-            <span className="text-xs text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.domainsHint")}
+            <span className="text-meta">
+              {t("mainPanelTabs.analyticsTab.hostHint")}
             </span>
           </div>
-        ) : (
-          !host && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="analytics-host">
-                {t("mainPanelTabs.analyticsTab.hostLabel")}
-              </Label>
-              <Input
-                id="analytics-host"
-                value={hostOverride}
-                onChange={(e) => setHostOverride(e.target.value)}
-                placeholder={t("mainPanelTabs.analyticsTab.hostPlaceholder")}
-                className="font-mono text-xs"
-              />
-              <span className="text-xs text-muted-foreground">
-                {t("mainPanelTabs.analyticsTab.hostHint")}
-              </span>
-            </div>
-          )
-        )}
+        )
+      )}
 
-        <p className="text-xs text-muted-foreground">
-          {t("mainPanelTabs.analyticsTab.registerInstallHint")}
-        </p>
-
-        <div className="flex justify-end">
-          <Button
-            onClick={handleRegister}
-            disabled={
-              registerMutation.isPending ||
-              (useKey ? domains.length === 0 : !host && !hostOverride.trim())
-            }
-          >
-            {registerMutation.isPending
-              ? t("mainPanelTabs.analyticsTab.enabling")
-              : t("mainPanelTabs.analyticsTab.enableAnalytics")}
-          </Button>
-        </div>
+      <div className="flex flex-col gap-2">
+        <Label>{t("mainPanelTabs.analyticsTab.collectLabel")}</Label>
+        <ModuleSwitches selected={selected} onToggle={toggle} />
       </div>
+
+      <div className="flex justify-end gap-2">
+        {onCancel && (
+          <Button variant="outline" onClick={onCancel}>
+            {t("mainPanelTabs.analyticsTab.cancel")}
+          </Button>
+        )}
+        <Button
+          onClick={handleRegister}
+          disabled={
+            registerMutation.isPending ||
+            (useKey ? domains.length === 0 : !host && !hostOverride.trim())
+          }
+        >
+          {registerMutation.isPending
+            ? t("mainPanelTabs.analyticsTab.enabling")
+            : t("mainPanelTabs.analyticsTab.enableAnalytics")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function RegisterCard(props: Parameters<typeof RegisterForm>[0]) {
+  const t = useT();
+  return (
+    <Card title={t("mainPanelTabs.analyticsTab.registerTitle")}>
+      <RegisterForm {...props} />
     </Card>
   );
 }
@@ -2088,27 +2128,7 @@ function EditAnalyticsDialog({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label>{t("mainPanelTabs.analyticsTab.editModules")}</Label>
-            <div className="grid grid-cols-1 gap-2">
-              {MODULES.map((m) => {
-                const locked = m.key === "core";
-                const on = locked || selected.has(m.key);
-                return (
-                  <label
-                    key={m.key}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border px-3 py-2 hover:border-border/70"
-                  >
-                    <Checkbox
-                      checked={on}
-                      disabled={locked}
-                      onCheckedChange={() => toggle(m.key)}
-                    />
-                    <span className="text-sm text-foreground">
-                      {t(m.labelKey)}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+            <ModuleSwitches selected={selected} onToggle={toggle} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="analytics-sampling">

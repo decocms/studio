@@ -1,156 +1,109 @@
-/**
- * Deco Analytics sections as Monitor tabs of their own (Realtime, Pages &
- * sources, Heatmap, Errors, Events, Experiments), one under the other when a
- * tab holds several, and the bottom of Performance (Web Vitals).
- */
+/** Deco Analytics outside the Analytics tab: Web Vitals under Performance, and the Heatmap tab. */
 
-import { Fragment, useState } from "react";
-import { BarChart10 } from "@untitledui/icons";
-import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { useState } from "react";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
-import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { RANGE_PILLS } from "@/layouts/main-panel-tabs/analytics-tab";
 import { useProjectContext } from "@/sdk";
-import { Group } from "./analytics/panels";
 import { useAnalyticsSegment } from "./analytics/segment";
-import { SegmentActions, SegmentChips } from "./analytics/segment-bar";
 import { DecoSection, type DecoSectionId } from "./analytics/sections";
 import {
   ConfigureButton,
   ConfigureDialog,
   useAnalyticsStatus,
 } from "./deco-analytics";
-import { type SectionRange, sectionRangeLabel } from "./audience-view";
+import type { SectionRange } from "./audience-view";
 import type { SiteProject } from "./org-insights";
-import { TopbarSelect } from "./topbar-select";
+import { AnalyticsEmpty, TurnOnAnalytics } from "./turn-on-analytics";
+import { AnalyticsPreview, PickProject } from "./locked";
 
-function sectionTitle(section: DecoSectionId, t: TFunction): string {
-  switch (section) {
-    case "overview":
-      return t("mainPanelTabs.analyticsTab.viewOverview");
-    case "live":
-      return t("monitor.view.realtime");
-    case "behaviour":
-      return t("mainPanelTabs.analyticsTab.viewBehaviour");
-    case "events":
-      return t("mainPanelTabs.analyticsTab.viewEvents");
-    case "errors":
-      return t("mainPanelTabs.analyticsTab.viewErrors");
-    case "experiments":
-      return t("mainPanelTabs.analyticsTab.viewExperiments");
-    case "vitals":
-      return t("mainPanelTabs.analyticsTab.viewVitals");
-    case "heatmap":
-      return t("mainPanelTabs.analyticsTab.viewHeatmap");
-    case "quality":
-      return t("mainPanelTabs.analyticsTab.viewQuality");
-    case "usage":
-      return t("mainPanelTabs.analyticsTab.viewUsage");
-    default: {
-      const unhandled: never = section;
-      return unhandled;
-    }
-  }
-}
-
-/**
- * A site's sections one under the other, each under its name. Nothing when the
- * site isn't on Deco Analytics.
- */
+/** One of a site's sections. Nothing when the site isn't on Deco Analytics. */
 export function DecoStack({
   project,
-  sections,
+  section,
   range,
-  onConfigure,
 }: {
   project: SiteProject;
-  sections: readonly DecoSectionId[];
+  section: DecoSectionId;
   range: SectionRange;
-  /** Only the heatmap asks to open the settings. */
-  onConfigure?: () => void;
 }) {
-  const t = useT();
   const { org } = useProjectContext();
   const status = useAnalyticsStatus(org.slug, project);
   const { segment } = useAnalyticsSegment();
   if (!status.data?.registered) return null;
   return (
-    <>
-      {sections.map((section) => {
-        const body = (
-          <DecoSection
-            orgSlug={org.slug}
-            site={project.site}
-            status={status.data}
-            segment={segment}
-            section={section}
-            range={range}
-            onConfigure={onConfigure ?? (() => undefined)}
-          />
-        );
-        // A tab of one section is already named by the tab.
-        return sections.length === 1 ? (
-          <Fragment key={section}>{body}</Fragment>
-        ) : (
-          <Group key={section} title={sectionTitle(section, t)}>
-            {body}
-          </Group>
-        );
-      })}
-    </>
+    <DecoSection
+      orgSlug={org.slug}
+      site={project.site}
+      status={status.data}
+      segment={segment}
+      section={section}
+      range={range}
+      onConfigure={() => undefined}
+    />
   );
 }
 
-/** A Monitor tab drawn from a project's Deco Analytics sections. */
-export function DecoScreen({
+/** The Heatmap tab: where visitors click and scroll on one of the project's pages. */
+export function HeatmapScreen({
   project,
-  sections,
+  projects,
+  onProject,
 }: {
   project: SiteProject | undefined;
-  sections: readonly DecoSectionId[];
+  projects: readonly SiteProject[];
+  onProject: (projectId: string) => void;
 }) {
-  const t = useT();
   const { org } = useProjectContext();
-  const [range, setRange] = useState<SectionRange>("24h");
   const [configure, setConfigure] = useState(false);
+  const [turnOn, setTurnOn] = useState(false);
   const status = useAnalyticsStatus(
     org.slug,
     { site: project?.site ?? "" },
     project !== undefined,
   );
   const { segment } = useAnalyticsSegment();
-  // Realtime is always "now" and the heatmap picks its own period and filters.
-  const live = sections.every((s) => s === "live");
-  const heatmap = sections.includes("heatmap");
-  const read = live ? "5m" : range;
 
   let body;
   if (!project) {
     body = (
-      <EmptyState
-        icon={<BarChart10 size={20} />}
-        title={t("monitor.deco.pickProject")}
-      />
+      <PickProject projects={projects} onProject={onProject}>
+        <AnalyticsPreview />
+      </PickProject>
     );
   } else if (status.isLoading) {
     body = <Skeleton className="h-64" />;
   } else if (!status.data?.registered) {
+    const data = status.data;
     body = (
-      <EmptyState
-        icon={<BarChart10 size={20} />}
-        title={t("monitor.audience.empty.title")}
-        description={t("monitor.audience.empty.desc")}
-      />
+      <>
+        <AnalyticsEmpty
+          onTurnOn={
+            data && data.configured !== false
+              ? () => setTurnOn(true)
+              : undefined
+          }
+        />
+        {data && (
+          <TurnOnAnalytics
+            orgSlug={org.slug}
+            project={project}
+            status={data}
+            open={turnOn}
+            onOpenChange={setTurnOn}
+          />
+        )}
+      </>
     );
   } else {
     body = (
       <>
-        {!heatmap && <SegmentChips />}
-        <DecoStack
-          project={project}
-          sections={sections}
-          range={read}
+        <DecoSection
+          orgSlug={org.slug}
+          site={project.site}
+          status={status.data}
+          segment={segment}
+          section="heatmap"
+          range="7d"
           onConfigure={() => setConfigure(true)}
         />
         <ConfigureDialog
@@ -166,28 +119,9 @@ export function DecoScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
-      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-6 md:px-10">
         {project && status.data?.registered && (
           <Page.Actions>
-            {!live && !heatmap && (
-              <TopbarSelect
-                label={t("monitor.audience.range")}
-                value={range}
-                options={RANGE_PILLS.map((r) => ({
-                  value: r,
-                  label: sectionRangeLabel(r, t),
-                }))}
-                onChange={setRange}
-              />
-            )}
-            {!heatmap && (
-              <SegmentActions
-                orgSlug={org.slug}
-                site={project.site}
-                range={read}
-                segment={segment}
-              />
-            )}
             <ConfigureButton onClick={() => setConfigure(true)} />
           </Page.Actions>
         )}

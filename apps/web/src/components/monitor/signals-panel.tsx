@@ -1,27 +1,23 @@
-/**
- * What needs a person, worst first, in the home's "For you" shape: one quiet
- * line each that reads on its own (a tinted icon for how bad, then what moved
- * and by how much: "Orders 59% below expected"; in grey the counts, since when
- * and what it may have come from), where it happened on the right with its
- * platform's icon, as the chart cards show it, and the whole line is the next
- * step. No buttons, no pills.
- */
+/** What needs a person, worst first: one line per alert, marked by how bad, that opens where to act. */
 
 import { useState } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
-import { AlertCircle, AlertTriangle, CheckCircle } from "@untitledui/icons";
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle,
+  ChevronRight,
+} from "@untitledui/icons";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { taskKey } from "@decocms/shared/task-key";
 import { ruleLabel } from "@/components/order-monitor/order-monitor-day";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time";
 import { formatCount } from "@/layouts/main-panel-tabs/monitor-v8";
-import { IntegrationIcon } from "@/components/integration-icon";
-import type { ImpactMetric, Signal, SignalSeverity, SourceId } from "./board";
+import type { ImpactMetric, Signal, SignalSeverity } from "./board";
 import { connectLink, formatPct, projectLink } from "./parts";
-import { sourceName } from "./sources-panel";
 
-export function metricLabel(metric: ImpactMetric, t: TFunction): string {
+function metricLabel(metric: ImpactMetric, t: TFunction): string {
   switch (metric) {
     case "orders":
       return t("monitor.metric.orders");
@@ -36,13 +32,25 @@ export function metricLabel(metric: ImpactMetric, t: TFunction): string {
   }
 }
 
-const SEVERITY_ICON: Record<
+const SEVERITY: Record<
   SignalSeverity,
-  { icon: typeof AlertCircle; tone: string }
+  { icon: typeof AlertCircle; tone: string; mark: string }
 > = {
-  alert: { icon: AlertCircle, tone: "text-destructive" },
-  warning: { icon: AlertTriangle, tone: "text-warning" },
-  ready: { icon: CheckCircle, tone: "text-success" },
+  alert: {
+    icon: AlertCircle,
+    tone: "text-destructive",
+    mark: "bg-destructive/10",
+  },
+  warning: {
+    icon: AlertTriangle,
+    tone: "text-warning",
+    mark: "bg-warning/10",
+  },
+  ready: {
+    icon: CheckCircle,
+    tone: "text-success",
+    mark: "bg-success/10",
+  },
 };
 
 function severityName(severity: SignalSeverity, t: TFunction): string {
@@ -62,13 +70,11 @@ function severityName(severity: SignalSeverity, t: TFunction): string {
 
 interface Row {
   title: string;
-  /** How far off and since when, then what it may have come from. */
+  /** Since when, and what it may have come from. */
   reason: string;
   /** Where it happened: the store or the project. */
   place: string;
-  /** The source it came from, for the icon beside the place. */
-  source: SourceId;
-  /** The line itself is the next step. */
+  /** The next step. */
   go: { link: LinkProps } | { onClick: () => void };
 }
 
@@ -96,7 +102,6 @@ function rowOf(
   switch (signal.kind) {
     case "orders": {
       const metric = ruleLabel(signal.rule, t);
-      const expected = Math.round(signal.expected);
       return {
         title:
           signal.rule === "orders_drop"
@@ -113,10 +118,6 @@ function rowOf(
                 ),
               }),
         reason: [
-          t("monitor.signal.vsExpected", {
-            observed: signal.observed,
-            expected,
-          }),
           since,
           signal.after &&
             t("monitor.signal.afterDeploy", {
@@ -127,7 +128,6 @@ function rowOf(
           .filter(Boolean)
           .join(" · "),
         place: storeName(signal.storeTitle),
-        source: "orders",
         go: { onClick: () => onOpenStore(signal.storeId) },
       };
     }
@@ -139,7 +139,6 @@ function rowOf(
         }),
         reason: `“${signal.message}” · ${since}`,
         place: signal.projectTitle,
-        source: "deploys",
         go: taskLink(signal.task?.keySeq) ?? {
           link: projectLink(orgSlug, signal.projectId, "releases"),
         },
@@ -152,7 +151,6 @@ function rowOf(
           count: formatCount(signal.participants),
         }),
         place: "",
-        source: "site",
         go: { link: projectLink(orgSlug, signal.projectId, "experiments") },
       };
     case "source":
@@ -160,7 +158,6 @@ function rowOf(
         title: t("monitor.signal.source"),
         reason: t("monitor.signal.sourceDetail", { minutes: signal.minutes }),
         place: storeName(signal.title),
-        source: "orders",
         go: { link: connectLink(orgSlug, scopeId) },
       };
     default: {
@@ -177,97 +174,109 @@ function rowOf(
 const storeName = (title: string) => title.replace(/\s·\s(VTEX|Shopify)$/i, "");
 
 /** Signals shown before "show more": the worst ones, the rest a click away. */
-const VISIBLE = 3;
+const VISIBLE = 5;
 
-const LINE =
-  "group flex h-10 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-accent/50";
+const ROW =
+  "focus-ring group flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-accent/30";
 
 export function SignalsPanel({
   signals,
   orgSlug,
   scopeId,
   onOpenStore,
-  iconOf,
 }: {
   signals: readonly Signal[];
   orgSlug: string;
   scopeId: string | null;
   onOpenStore: (connectionId: string) => void;
-  /** Each source's icon, as the chart cards show it. */
-  iconOf: (source: SourceId) => string | null;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const shown = open ? signals : signals.slice(0, VISIBLE);
   const hidden = signals.length - shown.length;
   return (
-    <section className="surface flex flex-col gap-2 p-3">
-      <h2 className="flex items-center gap-2 px-2 pt-1 pb-1 text-sm font-medium text-foreground">
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-medium text-foreground">
         {t("monitor.signals.title")}
-        <span className="text-muted-foreground tabular-nums">
-          {signals.length}
-        </span>
       </h2>
-      <div className="flex flex-col">
+      <ul className="surface divide-y divide-border/70 overflow-hidden">
         {shown.map((signal) => {
           const row = rowOf(signal, t, orgSlug, scopeId, onOpenStore);
-          const { icon: Icon, tone } = SEVERITY_ICON[signal.severity];
+          const { icon: Icon, tone, mark } = SEVERITY[signal.severity];
           const content = (
             <>
               <span
                 role="img"
                 aria-label={severityName(signal.severity, t)}
-                className={cn("flex size-4 shrink-0 items-center", tone)}
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-full",
+                  mark,
+                  tone,
+                )}
               >
-                <Icon size={16} />
+                <Icon size={18} />
               </span>
-              <span className="min-w-0 shrink-0 truncate text-sm text-foreground">
-                {row.title}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                {row.reason}
-              </span>
-              {row.place && (
-                <span className="hidden max-w-56 shrink-0 items-center gap-1.5 text-xs text-muted-foreground md:flex">
-                  <IntegrationIcon
-                    icon={iconOf(row.source)}
-                    name={sourceName(row.source, t)}
-                    size="xs"
-                    fit="cover"
-                  />
-                  <span className="truncate">{row.place}</span>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-sm font-medium text-foreground">
+                  {row.title}
                 </span>
-              )}
+                <span className="text-meta truncate">
+                  {[row.place, row.reason].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <ChevronRight
+                size={16}
+                className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+              />
             </>
           );
-          return "link" in row.go ? (
-            <Link key={signal.id} {...row.go.link} className={LINE}>
-              {content}
-            </Link>
-          ) : (
-            <button
-              key={signal.id}
-              type="button"
-              onClick={row.go.onClick}
-              className={LINE}
-            >
-              {content}
-            </button>
+          const go = row.go;
+          return (
+            <li key={signal.id}>
+              {"link" in go ? (
+                <Link {...go.link} className={ROW}>
+                  {content}
+                </Link>
+              ) : (
+                <button type="button" onClick={go.onClick} className={ROW}>
+                  {content}
+                </button>
+              )}
+            </li>
           );
         })}
-        {signals.length > VISIBLE && (
-          <button
-            type="button"
-            onClick={() => setOpen(!open)}
-            className={cn(LINE, "text-sm text-muted-foreground")}
-          >
-            <span className="size-4 shrink-0" />
-            {open
-              ? t("monitor.signals.less")
-              : t("monitor.signals.more", { count: hidden })}
-          </button>
+        {(hidden > 0 || open) && (
+          <li>
+            <button
+              type="button"
+              onClick={() => setOpen(!open)}
+              className="focus-ring w-full px-5 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
+            >
+              {open
+                ? t("monitor.signals.less")
+                : t("monitor.signals.more", { count: hidden })}
+            </button>
+          </li>
         )}
-      </div>
+      </ul>
     </section>
+  );
+}
+
+/** The same place when every rule is quiet: what is watched, so an empty Overview still says the stores are covered. */
+export function AllClear() {
+  const t = useT();
+  return (
+    <div className="surface flex items-center gap-4 px-5 py-4">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+        <CheckCircle size={18} />
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm font-medium text-foreground">
+          {t("monitor.signals.allClear")}
+        </span>
+        <span className="text-meta">{t("monitor.signals.watching")}</span>
+      </span>
+    </div>
   );
 }

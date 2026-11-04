@@ -4,7 +4,7 @@
  * a form select, so the bar reads as one row of the same parts.
  */
 
-import { ChevronDown } from "@untitledui/icons";
+import { Calendar, ChevronDown } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -19,12 +19,15 @@ export function TopbarSelect<T extends string>({
   value,
   options,
   onChange,
+  period = false,
 }: {
   /** For assistive tech; the button shows the chosen option. */
   label: string;
   value: T;
   options: readonly { value: T; label: string }[];
   onChange: (value: T) => void;
+  /** A time window: drawn with the calendar, like the day picker beside it. */
+  period?: boolean;
 }) {
   const current = options.find((o) => o.value === value);
   return (
@@ -36,6 +39,7 @@ export function TopbarSelect<T extends string>({
           aria-label={label}
           className="gap-1 font-normal"
         >
+          {period && <Calendar size={14} />}
           {current?.label ?? value}
           <ChevronDown size={14} className="text-muted-foreground" />
         </Button>

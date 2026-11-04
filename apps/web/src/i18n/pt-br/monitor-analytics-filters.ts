@@ -11,8 +11,6 @@ export const monitorAnalyticsFilters = {
   "monitor.analytics.filters.apply": "Aplicar",
   "monitor.analytics.filters.remove": "Remover filtro {filter}",
   "monitor.analytics.filters.clear": "Limpar",
-  "monitor.analytics.filters.goalPurchase": "Compra",
-  "monitor.analytics.filters.goal": "Meta de conversão",
   "monitor.analytics.filters.currency": "Moeda",
   "monitor.analytics.filters.dim.path": "Página",
   "monitor.analytics.filters.dim.source": "Origem",

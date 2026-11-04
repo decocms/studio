@@ -1546,7 +1546,7 @@ function ReviewPanel({
  * One experiment in the list. Across the org the Monitor draws the same row,
  * naming the project instead of offering the project's own actions.
  */
-export function ExperimentRow({
+function ExperimentRow({
   experiment,
   onOpen,
   actions,

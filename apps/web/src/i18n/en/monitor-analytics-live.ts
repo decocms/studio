@@ -7,18 +7,9 @@ export const monitorAnalyticsLive = {
   "monitor.analytics.live.loadError": "Couldn't load realtime data.",
   "monitor.analytics.live.notConfigured":
     "Realtime data isn't available for this project yet.",
-  "monitor.analytics.live.empty": "No visits in the last 5 minutes",
   "monitor.analytics.live.trendTitle": "Last 5 minutes",
   "monitor.analytics.live.trendVisitors": "Visitors",
   "monitor.analytics.live.pagesTitle": "Pages right now",
-  "monitor.analytics.live.pagesPage": "Page",
   "monitor.analytics.live.pagesVisitors": "Visitors",
-  "monitor.analytics.live.feedTitle": "Live feed",
-  "monitor.analytics.live.feedWhen": "When",
-  "monitor.analytics.live.feedEvent": "Event",
-  "monitor.analytics.live.feedPage": "Page",
-  "monitor.analytics.live.feedWhere": "Where",
-  "monitor.analytics.live.feedDevice": "Device",
-  "monitor.analytics.live.feedSource": "Source",
   "monitor.analytics.live.title": "Live map",
 };

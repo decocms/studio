@@ -1,9 +1,4 @@
-/**
- * The segment every Deco Analytics section reads with: filters, the conversion
- * goal, the currency money is shown in and the property the events section
- * lists. It lives in the URL (`f`, `goal`, `currency`, `prop`) so a segmented
- * screen is a link, and it carries across sections of the same project.
- */
+/** The segment every Deco Analytics section reads with, kept in the URL so a segmented screen is a link. */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -42,7 +37,6 @@ export interface AnalyticsFilter {
 
 export interface AnalyticsSegment {
   filters: AnalyticsFilter[];
-  goal?: string;
   currency?: string;
   prop?: string;
 }
@@ -69,7 +63,6 @@ function sameFilter(a: AnalyticsFilter, b: AnalyticsFilter): boolean {
 function segmentParams(segment: AnalyticsSegment): URLSearchParams {
   const params = new URLSearchParams();
   for (const f of segment.filters) params.append("f", encodeFilter(f));
-  if (segment.goal) params.set("goal", segment.goal);
   if (segment.currency) params.set("currency", segment.currency);
   if (segment.prop) params.set("prop", segment.prop);
   return params;
@@ -84,14 +77,13 @@ function readSegment(search: Record<string, unknown>): AnalyticsSegment {
       const f = typeof r === "string" ? parseFilter(r) : null;
       return f ? [f] : [];
     }),
-    goal: str(search.goal),
     currency: str(search.currency),
     prop: str(search.prop),
   };
 }
 
 /** The URL search keys the segment owns, for callers that rebuild the search. */
-export const SEGMENT_SEARCH_KEYS = ["f", "goal", "currency", "prop"] as const;
+export const SEGMENT_SEARCH_KEYS = ["f", "currency", "prop"] as const;
 
 export function useAnalyticsSegment() {
   const search = useSearch({ strict: false }) as Record<string, unknown>;
@@ -104,7 +96,6 @@ export function useAnalyticsSegment() {
       search: (prev: Record<string, unknown>) => ({
         ...prev,
         f: next.filters.length ? next.filters.map(encodeFilter) : undefined,
-        goal: next.goal || undefined,
         currency: next.currency || undefined,
         prop: next.prop || undefined,
       }),

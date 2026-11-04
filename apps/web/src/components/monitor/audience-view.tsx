@@ -5,9 +5,9 @@
  * a site on Deco Analytics also gets its other views (`./deco-analytics`).
  */
 
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { BarChart10, Plus } from "@untitledui/icons";
+import { BarChart10 } from "@untitledui/icons";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import type {
   AudiencePoint,
@@ -20,24 +20,12 @@ import type {
 } from "./audience-contract";
 import { AUDIENCE_RANGES } from "./audience-contract";
 import { Badge } from "@decocms/ui/components/badge.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Page } from "@/components/page";
@@ -47,11 +35,7 @@ import {
   formatCountry,
   formatNumber,
 } from "@/layouts/main-panel-tabs/cdn-tab";
-import {
-  type AnalyticsRegisterResult,
-  RANGE_PILLS,
-  RegistrationResult,
-} from "@/layouts/main-panel-tabs/analytics-tab";
+import { RANGE_PILLS } from "@/layouts/main-panel-tabs/analytics-tab";
 import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
@@ -64,12 +48,17 @@ import { connectLink, Spread, Trend } from "./parts";
 import {
   ConfigureButton,
   ConfigureDialog,
-  RegisterAnalytics,
   useAnalyticsStatus,
 } from "./deco-analytics";
+import { Group } from "./analytics/panels";
 import { DecoSection } from "./analytics/sections";
 import { SegmentActions, SegmentChips } from "./analytics/segment-bar";
 import { useAnalyticsSegment } from "./analytics/segment";
+import {
+  AnalyticsEmpty,
+  TurnOnAnalytics,
+  TurnOnCard,
+} from "./turn-on-analytics";
 
 const COLOR_VISITORS = "var(--chart-1)";
 
@@ -78,11 +67,14 @@ function audienceQuery(
   project: Pick<SiteProject, "site" | "analyticsSite">,
   view: AudienceView,
   range: AudienceRange,
+  /** Read this source even when the site has the other; the server picks when absent. */
+  source?: AudienceSource,
 ) {
   const params = new URLSearchParams({ view, range });
   if (project.analyticsSite !== project.site) {
     params.set("trafficSite", project.analyticsSite);
   }
+  if (source) params.set("source", source);
   return {
     queryKey: KEYS.monitorAudience(
       orgSlug,
@@ -90,6 +82,7 @@ function audienceQuery(
       project.analyticsSite,
       view,
       range,
+      source ?? "auto",
     ),
     queryFn: async () =>
       (await fetchJson(
@@ -100,13 +93,18 @@ function audienceQuery(
   };
 }
 
-function useAudience(
+export function useAudience(
   orgSlug: string,
   project: Pick<SiteProject, "site" | "analyticsSite">,
   view: AudienceView,
   range: AudienceRange,
+  enabled = true,
+  source?: AudienceSource,
 ) {
-  return useQuery(audienceQuery(orgSlug, project, view, range));
+  return useQuery({
+    ...audienceQuery(orgSlug, project, view, range, source),
+    enabled,
+  });
 }
 
 function sourceLabel(source: AudienceSource, t: TFunction): string {
@@ -139,10 +137,10 @@ function rangeLabel(range: AudienceRange, t: TFunction): string {
 
 export type SectionRange = (typeof RANGE_PILLS)[number];
 
-export function sectionRangeLabel(range: SectionRange, t: TFunction): string {
+function sectionRangeLabel(range: SectionRange, t: TFunction): string {
   switch (range) {
     case "5m":
-      return t("monitor.audience.range.5m");
+      return t("monitor.audience.rightNow");
     case "15m":
       return t("monitor.audience.range.15m");
     case "30m":
@@ -165,19 +163,24 @@ function RangeAction({
   value,
   onChange,
   hideRange = false,
+  lead,
   children,
 }: {
   value: AudienceRange;
   onChange: (range: AudienceRange) => void;
   hideRange?: boolean;
+  /** Drawn before the period, such as which source to read. */
+  lead?: ReactNode;
   children?: ReactNode;
 }) {
   const t = useT();
   return (
     <Page.Actions>
+      {lead}
       {!hideRange && (
         <TopbarSelect
           label={t("monitor.audience.range")}
+          period
           value={value}
           options={AUDIENCE_RANGES.map((range) => ({
             value: range,
@@ -397,14 +400,16 @@ function RankedPanel({
   view,
   range,
   title,
+  source,
 }: {
   orgSlug: string;
   project: SiteProject;
   view: "pages" | "sources" | "countries" | "devices";
   range: AudienceRange;
   title: string;
+  source?: AudienceSource;
 }) {
-  const query = useAudience(orgSlug, project, view, range);
+  const query = useAudience(orgSlug, project, view, range, true, source);
   if (query.isLoading) return <Skeleton className="h-64" />;
   const body = query.data;
   const rows =
@@ -439,17 +444,33 @@ function displayKey(view: AudienceView, key: string): string {
 function AudienceOverview({
   project,
   range,
-  register,
+  empty,
+  source,
 }: {
   project: SiteProject;
   range: AudienceRange;
-  /** Shown instead of the empty state when the site can turn Deco Analytics on. */
-  register: ReactNode;
+  /** Shown when the site reports no traffic. */
+  empty: ReactNode;
+  source?: AudienceSource;
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  const summary = useAudience(org.slug, project, "summary", range);
-  const timeline = useAudience(org.slug, project, "timeline", range);
+  const summary = useAudience(
+    org.slug,
+    project,
+    "summary",
+    range,
+    true,
+    source,
+  );
+  const timeline = useAudience(
+    org.slug,
+    project,
+    "timeline",
+    range,
+    true,
+    source,
+  );
   const [chart, setChart] = useState<ChartMetric>("visitors");
 
   if (summary.isLoading) {
@@ -475,15 +496,7 @@ function AudienceOverview({
   }
   const body = summary.data;
   if (!body?.available) {
-    return (
-      register ?? (
-        <EmptyState
-          icon={<BarChart10 size={20} />}
-          title={t("monitor.audience.empty.title")}
-          description={t("monitor.audience.empty.desc")}
-        />
-      )
-    );
+    return empty;
   }
 
   const points =
@@ -509,6 +522,7 @@ function AudienceOverview({
         <RankedPanel
           orgSlug={org.slug}
           project={project}
+          source={source}
           view="pages"
           range={range}
           title={t("monitor.audience.pages")}
@@ -516,6 +530,7 @@ function AudienceOverview({
         <RankedPanel
           orgSlug={org.slug}
           project={project}
+          source={source}
           view="sources"
           range={range}
           title={t("monitor.audience.sources")}
@@ -523,6 +538,7 @@ function AudienceOverview({
         <RankedPanel
           orgSlug={org.slug}
           project={project}
+          source={source}
           view="countries"
           range={range}
           title={t("monitor.audience.countries")}
@@ -530,6 +546,7 @@ function AudienceOverview({
         <RankedPanel
           orgSlug={org.slug}
           project={project}
+          source={source}
           view="devices"
           range={range}
           title={t("monitor.audience.devices")}
@@ -539,10 +556,7 @@ function AudienceOverview({
   );
 }
 
-/**
- * One project's analytics: the overview from whichever source it reports to
- * and, on Deco Analytics, its settings. Its other views are tabs of their own.
- */
+/** One project's analytics; on Deco Analytics, every section one under the other. */
 function ProjectAudience({
   project,
   range,
@@ -556,13 +570,23 @@ function ProjectAudience({
   const { org } = useProjectContext();
   const status = useAnalyticsStatus(org.slug, project);
   const [dialog, setDialog] = useState<"configure" | "register" | null>(null);
-  // Deco Analytics reads down to the last minutes.
+  // Deco Analytics reads down to the last minutes; the last five are the live view.
   const [decoRange, setDecoRange] = useState<SectionRange>("24h");
   const { segment } = useAnalyticsSegment();
   const deco = status.data?.registered ? status.data : undefined;
-  const [registered, setRegistered] = useState<AnalyticsRegisterResult | null>(
-    null,
-  );
+  // A registered site that still reports to OneDollarStats can be read from either.
+  const legacy = useAudience(
+    org.slug,
+    project,
+    "summary",
+    range,
+    !!deco,
+    "onedollar",
+  ).data;
+  const both =
+    !!deco && legacy?.available === true && legacy.source === "onedollar";
+  const [source, setSource] = useState<AudienceSource>("deco-analytics");
+  const onDeco = !!deco && (!both || source === "deco-analytics");
   const canRegister =
     status.data !== undefined &&
     status.data.configured !== false &&
@@ -570,24 +594,36 @@ function ProjectAudience({
   // A site already reporting to OneDollarStats can move to Deco Analytics.
   const reporting = useAudience(org.slug, project, "summary", range).data
     ?.available;
-  const register = status.data && canRegister && (
-    <RegisterAnalytics
-      orgSlug={org.slug}
-      project={project}
-      status={status.data}
-      onRegistered={(result) => {
-        setRegistered(result);
-        setDialog(null);
-      }}
+  const empty = (
+    <AnalyticsEmpty
+      onTurnOn={canRegister ? () => setDialog("register") : undefined}
     />
   );
 
   return (
     <>
-      <RangeAction value={range} onChange={onRange} hideRange={!!deco}>
-        {deco && (
+      <RangeAction
+        value={range}
+        onChange={onRange}
+        hideRange={onDeco}
+        lead={
+          both && (
+            <TopbarSelect
+              label={t("monitor.audience.sourceLabel")}
+              value={source}
+              options={(["deco-analytics", "onedollar"] as const).map((s) => ({
+                value: s,
+                label: sourceLabel(s, t),
+              }))}
+              onChange={setSource}
+            />
+          )
+        }
+      >
+        {onDeco && (
           <TopbarSelect
             label={t("monitor.audience.range")}
+            period
             value={decoRange}
             options={RANGE_PILLS.map((r) => ({
               value: r,
@@ -596,7 +632,7 @@ function ProjectAudience({
             onChange={setDecoRange}
           />
         )}
-        {deco && (
+        {onDeco && (
           <SegmentActions
             orgSlug={org.slug}
             site={project.site}
@@ -608,36 +644,53 @@ function ProjectAudience({
           <Badge variant="outline">{t("monitor.audience.paused")}</Badge>
         )}
         {deco && <ConfigureButton onClick={() => setDialog("configure")} />}
-        {canRegister && reporting && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="font-normal"
-            onClick={() => setDialog("register")}
-          >
-            {t("monitor.audience.activate")}
-          </Button>
-        )}
       </RangeAction>
-      {registered && (
-        <RegistrationResult
-          result={registered}
-          onDismiss={() => setRegistered(null)}
-        />
-      )}
-      {deco && <SegmentChips />}
-      {deco ? (
-        <DecoSection
-          orgSlug={org.slug}
-          site={project.site}
-          status={deco}
-          segment={segment}
-          section="overview"
-          range={decoRange}
-          onConfigure={() => setDialog("configure")}
-        />
+      {onDeco && <SegmentChips />}
+      {onDeco && deco ? (
+        <>
+          {(
+            [
+              decoRange === "5m" ? "live" : "overview",
+              "behaviour",
+              "events",
+            ] as const
+          ).map((section) => {
+            const body = (
+              <DecoSection
+                orgSlug={org.slug}
+                site={project.site}
+                status={deco}
+                segment={segment}
+                section={section}
+                range={section === "live" ? "5m" : decoRange}
+                onConfigure={() => setDialog("configure")}
+              />
+            );
+            // Pages & sources names its own groups.
+            return section === "events" ? (
+              <Group
+                key={section}
+                title={t("mainPanelTabs.analyticsTab.viewEvents")}
+              >
+                {body}
+              </Group>
+            ) : (
+              <Fragment key={section}>{body}</Fragment>
+            );
+          })}
+        </>
       ) : (
-        <AudienceOverview project={project} range={range} register={register} />
+        <>
+          {canRegister && reporting && (
+            <TurnOnCard onTurnOn={() => setDialog("register")} />
+          )}
+          <AudienceOverview
+            project={project}
+            range={range}
+            empty={empty}
+            source={both ? "onedollar" : undefined}
+          />
+        </>
       )}
       {status.data?.registered && (
         <ConfigureDialog
@@ -648,18 +701,14 @@ function ProjectAudience({
           onOpenChange={(open) => setDialog(open ? "configure" : null)}
         />
       )}
-      {reporting && (
-        <Dialog
+      {status.data && (canRegister || dialog === "register") && (
+        <TurnOnAnalytics
+          orgSlug={org.slug}
+          project={project}
+          status={status.data}
           open={dialog === "register"}
           onOpenChange={(open) => setDialog(open ? "register" : null)}
-        >
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{t("monitor.audience.activate")}</DialogTitle>
-            </DialogHeader>
-            {register}
-          </DialogContent>
-        </Dialog>
+        />
       )}
     </>
   );
@@ -894,23 +943,7 @@ function OrgAudience({
       : [];
   });
   const silent = rows.filter((r) => !r.loading && !r.summary);
-  const action = (
-    <RangeAction value={range} onChange={onRange}>
-      {reporting.length > 0 && silent.length > 0 && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button size="sm" variant="outline" className="gap-1 font-normal">
-              <Plus size={14} />
-              {t("monitor.analyticsGuide.addAnother")}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-96">
-            <AnalyticsGuide projects={silent.map((r) => r.project)} />
-          </PopoverContent>
-        </Popover>
-      )}
-    </RangeAction>
-  );
+  const action = <RangeAction value={range} onChange={onRange}></RangeAction>;
 
   if (!loading && reporting.length === 0) {
     return (
@@ -1083,6 +1116,14 @@ function OrgAudience({
           </tbody>
         </table>
       </section>
+      {reporting.length > 0 && silent.length > 0 && (
+        <section className="surface flex flex-col gap-3 px-4 pt-4 pb-5">
+          <h3 className="text-sm text-foreground/70">
+            {t("monitor.audience.silentTitle")}
+          </h3>
+          <AnalyticsGuide projects={silent.map((r) => r.project)} />
+        </section>
+      )}
     </>
   );
 }

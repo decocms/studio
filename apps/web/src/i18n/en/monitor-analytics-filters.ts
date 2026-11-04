@@ -9,8 +9,6 @@ export const monitorAnalyticsFilters = {
   "monitor.analytics.filters.apply": "Apply",
   "monitor.analytics.filters.remove": "Remove filter {filter}",
   "monitor.analytics.filters.clear": "Clear",
-  "monitor.analytics.filters.goal": "Conversion goal",
-  "monitor.analytics.filters.goalPurchase": "Purchase",
   "monitor.analytics.filters.currency": "Currency",
   "monitor.analytics.filters.dim.path": "Page",
   "monitor.analytics.filters.dim.source": "Source",

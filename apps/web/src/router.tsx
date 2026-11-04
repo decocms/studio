@@ -1219,22 +1219,24 @@ const planRoute = createRoute({
 /** Monitor: the tab, the past day, and the store (ingest connection id) and
  *  instant under review. A malformed day is dropped, not a broken page. */
 const monitoringSearch = z.object({
-  // `analytics` is the old name of `performance`, kept so saved links still open.
+  // The names after `heatmap` are tabs that were renamed, merged or removed, kept so saved links still open.
   view: z
     .enum([
       "metrics",
       "performance",
-      "errors",
+      "logs",
       "audience",
+      "heatmap",
+      "analytics",
+      "errors",
       "realtime",
       "pages",
-      "heatmap",
       "events",
       "deploys",
       "experiments",
-      "analytics",
     ])
-    .optional(),
+    .optional()
+    .catch(undefined),
   date: z.iso.date().optional().catch(undefined),
   store: z.string().optional(),
   at: z.string().optional(),
@@ -1242,7 +1244,6 @@ const monitoringSearch = z.object({
   section: z.string().optional(),
   // The Analytics segment (components/monitor/analytics/segment.ts).
   f: z.array(z.string()).optional().catch(undefined),
-  goal: z.string().optional(),
   currency: z.string().optional(),
   prop: z.string().optional(),
 });

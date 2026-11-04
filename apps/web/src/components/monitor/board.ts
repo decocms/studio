@@ -29,8 +29,6 @@ export type KpiId =
 
 /** What today is compared with: yesterday, a week ago, a year ago. */
 export type Comparison = "d1" | "w1" | "y1";
-export const COMPARISONS: readonly Comparison[] = ["d1", "w1", "y1"];
-
 /** One 5-minute bucket of the local day, and the same bucket on each reference day. */
 export interface MetricPoint {
   /** Bucket index, 0 = 00:00 to 00:05. */
@@ -40,9 +38,6 @@ export interface MetricPoint {
   w1: number | null;
   y1: number | null;
 }
-
-export const BUCKET_MINUTES = 5;
-export const BUCKETS_PER_DAY = (24 * 60) / BUCKET_MINUTES;
 
 export interface Kpi {
   id: KpiId;
@@ -383,6 +378,3 @@ export function groupChannels(
     },
   ];
 }
-
-/** Below this many orders on either day, a channel's change is noise, not news. */
-export const CHANNEL_CHANGE_MIN_ORDERS = 20;

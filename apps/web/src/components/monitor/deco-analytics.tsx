@@ -1,6 +1,6 @@
 /** A site's Deco Analytics status, registration and settings. */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Settings01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -11,11 +11,9 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import {
-  type AnalyticsRegisterResult,
   type AnalyticsStatus,
   ConfigurationPanel,
   fetchJson,
-  RegisterCard,
 } from "@/layouts/main-panel-tabs/analytics-tab";
 import { KEYS } from "@/lib/query-keys";
 import type { SiteProject } from "./org-insights";
@@ -90,34 +88,5 @@ export function ConfigureButton({ onClick }: { onClick: () => void }) {
       <Settings01 size={14} />
       {t("mainPanelTabs.analyticsTab.configSectionTitle")}
     </Button>
-  );
-}
-
-/** Turning Deco Analytics on for a site; the overview then reads it. */
-export function RegisterAnalytics({
-  orgSlug,
-  project,
-  status,
-  onRegistered,
-}: {
-  orgSlug: string;
-  project: SiteProject;
-  status: AnalyticsStatus;
-  onRegistered: (result: AnalyticsRegisterResult) => void;
-}) {
-  const queryClient = useQueryClient();
-  return (
-    <RegisterCard
-      base={hostingBase(orgSlug, project)}
-      orgSlug={orgSlug}
-      site={project.site}
-      host={status.host ?? null}
-      onRegistered={(result) => {
-        onRegistered(result);
-        void queryClient.invalidateQueries({
-          queryKey: KEYS.monitorAudienceSite(orgSlug, project.site),
-        });
-      }}
-    />
   );
 }

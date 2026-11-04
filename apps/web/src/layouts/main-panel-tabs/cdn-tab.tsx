@@ -525,11 +525,7 @@ const MAP_PATH = geoPath(MAP_PROJECTION);
 /** Choropleth of a country breakdown — the Map view of the Countries panel.
  *  The topojson keys countries by numeric ISO id; convert it to alpha-2
  *  (i18n-iso-countries) to join the alpha-2 breakdown data. */
-export function CountryMap({
-  rows,
-}: {
-  rows: { key: string; value: number }[];
-}) {
+function CountryMap({ rows }: { rows: { key: string; value: number }[] }) {
   const t = useT();
   const byCode = new Map<string, number>();
   for (const r of rows) if (r.key) byCode.set(r.key.toUpperCase(), r.value);

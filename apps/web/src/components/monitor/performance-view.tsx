@@ -25,17 +25,15 @@ import {
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@decocms/ui/components/toggle-group.tsx";
 import { Page } from "@/components/page";
-import { resolveAnalyticsSiteSlug } from "@decocms/shared/site-slug";
+import {
+  resolveAgentSiteSlug,
+  resolveAnalyticsSiteSlug,
+} from "@decocms/shared/site-slug";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import {
   type BreakdownRow,
-  CdnTab,
   type CdnSummary,
   cacheColor,
   fetchJson,
@@ -50,17 +48,19 @@ import {
   monitorKind,
   relativeChange,
 } from "@/layouts/main-panel-tabs/monitor-v8";
+import { SiteTelemetryMonitor } from "@/layouts/main-panel-tabs/monitor-v8-tab";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { weightedMean } from "./aggregate";
 import { RankedList } from "./analytics/panels";
-import { PERFORMANCE_SECTIONS } from "./analytics/sections";
 import type { SectionRange } from "./audience-view";
+import { SegmentChips } from "./analytics/segment-bar";
 import { DecoStack } from "./deco-stack";
 import { TopbarSelect } from "./topbar-select";
 import type { SiteProject } from "./org-insights";
 import { Spread, Trend } from "./parts";
+import { ViewSwitch } from "./view-switch";
 
 const RANGES = ["today", "yesterday", "7d", "30d", "90d"] as const;
 type Range = (typeof RANGES)[number];
@@ -145,6 +145,7 @@ function RangeAction({
     <Page.Actions>
       <TopbarSelect
         label={t("monitor.audience.range")}
+        period
         value={value}
         options={RANGES.map((range) => ({
           value: range,
@@ -340,21 +341,12 @@ function UsageChart({ points }: { points: TimelinePoint[] }) {
     <MetricCard
       title={t("mainPanelTabs.cdnTab.usageOverTime")}
       aside={
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          value={view}
-          onValueChange={(v) => {
-            const next = USAGE_VIEWS.find((m) => m === v);
-            if (next) setView(next);
-          }}
-        >
+        <ViewSwitch label={t("mainPanelTabs.cdnTab.usageOverTime")}>
           {USAGE_VIEWS.map((m) => (
-            <ToggleGroupItem
+            <ViewSwitch.Item
               key={m}
-              value={m}
-              className="flex-none gap-1.5 px-2.5 text-xs font-normal"
+              pressed={m === view}
+              onClick={() => setView(m)}
             >
               {m !== "all" && (
                 <span
@@ -363,9 +355,9 @@ function UsageChart({ points }: { points: TimelinePoint[] }) {
                 />
               )}
               {usageLabel(m, t)}
-            </ToggleGroupItem>
+            </ViewSwitch.Item>
           ))}
-        </ToggleGroup>
+        </ViewSwitch>
       }
     >
       <ChartContainer
@@ -497,13 +489,19 @@ function CdnPerformance({
       </>
     );
   }
-  if (summary.data === null) {
+  // Off deco's CDN there is nothing to count, and connecting one is deco's cost, so only the vitals show.
+  const offCdn =
+    summary.data === null ||
+    (summary.data !== undefined &&
+      summary.data.total_requests === 0 &&
+      !timeline.data?.some((p) => p.requests > 0));
+  if (offCdn) {
     return (
-      <EmptyState
-        icon={<Globe01 className="size-5" />}
-        title={t("mainPanelTabs.cdnTab.unconfiguredTitle")}
-        description={t("mainPanelTabs.cdnTab.unconfiguredBody")}
-      />
+      <>
+        {action}
+        <p className="text-meta">{t("monitor.performance.offCdn")}</p>
+        {after?.(range)}
+      </>
     );
   }
 
@@ -565,28 +563,20 @@ function CdnPerformance({
       )}
       <div className="flex items-center gap-2">
         <span className="text-meta">{t("mainPanelTabs.cdnTab.measureBy")}</span>
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          value={measure}
-          onValueChange={(v) => {
-            if (v === "requests" || v === "bandwidth") setMeasure(v);
-          }}
-        >
-          <ToggleGroupItem
-            value="requests"
-            className="flex-none px-2.5 text-xs font-normal"
+        <ViewSwitch label={t("mainPanelTabs.cdnTab.measureBy")}>
+          <ViewSwitch.Item
+            pressed={measure === "requests"}
+            onClick={() => setMeasure("requests")}
           >
             {t("mainPanelTabs.cdnTab.requests")}
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="bandwidth"
-            className="flex-none px-2.5 text-xs font-normal"
+          </ViewSwitch.Item>
+          <ViewSwitch.Item
+            pressed={measure === "bandwidth"}
+            onClick={() => setMeasure("bandwidth")}
           >
             {t("mainPanelTabs.cdnTab.bandwidth")}
-          </ToggleGroupItem>
-        </ToggleGroup>
+          </ViewSwitch.Item>
+        </ViewSwitch>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         {panel(cache, t("mainPanelTabs.cdnTab.cacheStatus"), {
@@ -651,7 +641,29 @@ function SitePerformance({
       </Frame>
     );
   }
-  if (kind !== "v7") return <CdnTab virtualMcpId={projectId} />;
+  if (kind !== "v7") {
+    // A v8 site reports under the site its token was issued for.
+    const v8Site = resolveAgentSiteSlug(entity);
+    if (!v8Site) {
+      return (
+        <Frame>
+          <EmptyState
+            icon={<Globe01 className="size-5" />}
+            title={t("mainPanelTabs.cdnTab.noSiteTitle")}
+            description={t("mainPanelTabs.monitorV8.noSiteBody")}
+          />
+        </Frame>
+      );
+    }
+    return (
+      <SiteTelemetryMonitor
+        key={v8Site}
+        base={`/api/${org.slug}/monitor/${encodeURIComponent(v8Site)}`}
+        site={v8Site}
+        embedded
+      />
+    );
+  }
   const site = resolveAnalyticsSiteSlug(entity);
   if (!site) {
     return (
@@ -671,11 +683,14 @@ function SitePerformance({
         base={`/api/${org.slug}/monitor/${encodeURIComponent(site)}`}
         after={(range) =>
           project && (
-            <DecoStack
-              project={project}
-              sections={PERFORMANCE_SECTIONS}
-              range={DECO_RANGE[range]}
-            />
+            <>
+              <SegmentChips />
+              <DecoStack
+                project={project}
+                section="vitals"
+                range={DECO_RANGE[range]}
+              />
+            </>
           )
         }
       />
