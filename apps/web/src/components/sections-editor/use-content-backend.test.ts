@@ -15,6 +15,7 @@ import {
   probe,
   GITHUB_SITE_NOT_OWNED,
   probeGithub,
+  probeHosted,
   probeSandbox,
   sandboxSiteAnswer,
   V8_PROBE_RETRY,
@@ -387,5 +388,92 @@ describe("Localhost (localServeBackend)", () => {
       ),
     ).toBe("unavailable:not-answering");
     expect(kind(localServeBackend({ ...base, probed }))).toBe("protocol");
+  });
+});
+
+describe("the hosted probe on a draft that doesn't exist yet", () => {
+  /** The CMS rpc route: 404 draft_not_found before JSON-RPC while the row is absent. */
+  function cms() {
+    const rows = new Set<string>();
+    const calls: string[] = [];
+    const rpc = async (request: Request) => {
+      const body = (await request.json()) as
+        | { id: number; method: string }
+        | Array<{ id: number; method: string }>;
+      calls.push(`rpc ${rows.has("main") ? "row" : "no-row"}`);
+      if (!rows.has("main")) {
+        return Response.json(
+          { error: "Draft not found", code: "draft_not_found" },
+          { status: 404 },
+        );
+      }
+      const answer = (call: { id: number; method: string }) => ({
+        jsonrpc: "2.0",
+        id: call.id,
+        result:
+          call.method === "describe"
+            ? { protocol: PROTOCOL_NAME, version: PROTOCOL_VERSION }
+            : call.method === "schema.get"
+              ? {
+                  notModified: false,
+                  version: "s",
+                  resolvedRef: null,
+                  schema: { blocksMajor: 8, definitions: {}, root: {} },
+                }
+              : { revision: "e2", versions: { home: "v" } },
+      });
+      return Response.json(
+        Array.isArray(body) ? body.map(answer) : answer(body),
+      );
+    };
+    const ensure = async () => {
+      calls.push("ensure");
+      rows.add("main");
+    };
+    return { rpc, ensure, calls };
+  }
+  const endpoint = "http://studio.test/api/org/cms/acme/drafts/main/rpc";
+
+  test("probing alone never gets past the missing row", async () => {
+    const { rpc } = cms();
+    await expect(probeGithub(endpoint, rpc)).rejects.toThrow();
+  });
+
+  test("the probe ensures the draft first, then answers v8, and a save lands", async () => {
+    const { rpc, ensure, calls } = cms();
+    const answer = await probeHosted(endpoint, ensure, rpc);
+    expect(answer).not.toBeNull();
+    expect(answer).not.toBe(GITHUB_SITE_NOT_OWNED);
+    expect(calls[0]).toBe("ensure");
+    expect(calls.slice(1).every((c) => c === "rpc row")).toBe(true);
+    const save = await rpc(
+      new Request(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 9,
+          method: "blocks.apply",
+          params: { set: { home: {} }, ifMatch: { home: null } },
+        }),
+      }),
+    );
+    expect(save.status).toBe(200);
+    expect(((await save.json()) as { result: unknown }).result).toMatchObject({
+      revision: "e2",
+    });
+  });
+
+  test("a failed ensure fails the probe (retried), with no rpc", async () => {
+    const { rpc, calls } = cms();
+    await expect(
+      probeHosted(
+        endpoint,
+        async () => {
+          throw new Error("offline");
+        },
+        rpc,
+      ),
+    ).rejects.toThrow("offline");
+    expect(calls).toEqual([]);
   });
 });
