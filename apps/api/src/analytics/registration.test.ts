@@ -53,6 +53,15 @@ test("a site the control-plane has no record of reads as unhosted, not as an out
     expect(await readAnalyticsRegistration("loja")).toEqual({
       status: "unhosted",
     });
+    fetchSpy.mockResolvedValueOnce(
+      Response.json(
+        { error: "not_found", message: "unknown route" },
+        { status: 404 },
+      ),
+    );
+    expect(await readAnalyticsRegistration("loja")).toEqual({
+      status: "error",
+    });
     fetchSpy.mockResolvedValueOnce(new Response("boom", { status: 500 }));
     expect(await readAnalyticsRegistration("loja")).toEqual({
       status: "error",

@@ -52,6 +52,7 @@ import {
 } from "../../deco-legacy/clickhouse-analytics";
 import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
 import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
+import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadDecoAudience } from "@/monitoring/deco-audience";
@@ -1268,19 +1269,32 @@ export const createMonitorRoutes = () => {
     const tz = c.req.query("tz") ?? "UTC";
     if (!isTimezone(tz)) return c.json({ error: "unknown tz" }, 400);
 
-    const registration = await readAnalyticsRegistration(guard.slug);
-    if (registration.status === "error") {
-      return c.json({ error: "Failed to resolve analytics registration" }, 502);
-    }
-    if (registration.status !== "registered") {
-      return c.json({ available: false });
+    const ctx = c.get("studioContext");
+    const organizationId = requireOrganization(ctx).id;
+    // An owned slug the control-plane doesn't host reads the registration its
+    // project carries; a hosted one reads the control-plane's.
+    const access = await analyticsAccess(ctx, organizationId, guard.slug);
+    let siteId: string;
+    if (access?.kind === "external") {
+      siteId = access.siteId;
+    } else {
+      const registration = await readAnalyticsRegistration(guard.slug);
+      if (registration.status === "error") {
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+      if (registration.status !== "registered") {
+        return c.json({ available: false });
+      }
+      siteId = registration.id;
     }
 
-    const organizationId = requireOrganization(c.get("studioContext")).id;
     const read = (w: { since: string; until: string }) =>
       loadDecoAudience(
         organizationId,
-        registration.id,
+        siteId,
         report,
         { ...w, granularity: window.granularity },
         tz,

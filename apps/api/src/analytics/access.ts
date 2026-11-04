@@ -19,17 +19,22 @@ export async function analyticsAccess(
   | { kind: "error" }
   | null
 > {
-  const owned = await ctx.storage.orgSites.isOwnedBy(site, organizationId);
-  try {
-    const project = await lookupOwnedProject(ctx, organizationId, site);
-    const stored = storedExternalRegistration(project?.metadata);
+  const [owned, lookup] = await Promise.all([
+    ctx.storage.orgSites.isOwnedBy(site, organizationId),
+    lookupOwnedProject(ctx, organizationId, site).then(
+      (project) => ({ ok: true as const, project }),
+      (error: unknown) => ({ ok: false as const, error }),
+    ),
+  ]);
+  if (lookup.ok) {
+    const stored = storedExternalRegistration(lookup.project?.metadata);
     if (stored) return { kind: "external", siteId: stored.id };
-  } catch (err) {
+  } else if (!owned) {
     console.error(
       `[analytics] registration lookup failed for site="${site}":`,
-      err,
+      lookup.error,
     );
-    if (!owned) return { kind: "error" };
+    return { kind: "error" };
   }
   return owned ? { kind: "owned" } : null;
 }
