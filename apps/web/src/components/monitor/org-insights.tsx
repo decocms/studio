@@ -354,6 +354,7 @@ export function OrgAnalytics({
   const counted = new Set(
     sites.filter((s) => s.summary.pageviews > 0).map((s) => s.project.site),
   );
+  const notCounted = projects.filter((p) => !counted.has(p.site));
   return (
     <>
       <Page.Actions>
@@ -365,9 +366,7 @@ export function OrgAnalytics({
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-96">
-            <AnalyticsGuide
-              projects={projects.filter((p) => !counted.has(p.site))}
-            />
+            <AnalyticsGuide projects={notCounted} />
           </PopoverContent>
         </Popover>
         <DayInput value={date} max={today} onChange={onDate} />
@@ -377,7 +376,10 @@ export function OrgAnalytics({
           <p className="text-sm font-medium text-foreground">
             {t("monitor.analyticsGuide.uncounted")}
           </p>
-          <AnalyticsGuide projects={uncounted} />
+          <AnalyticsGuide
+            projects={uncounted}
+            more={notCounted.filter((p) => !uncounted.includes(p))}
+          />
         </Card>
       )}
       <SitesMonitor
