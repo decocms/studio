@@ -17,7 +17,6 @@ import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { AnalyticsTab } from "@/layouts/main-panel-tabs/analytics-tab";
-import { CdnTab } from "@/layouts/main-panel-tabs/cdn-tab";
 import { ExperimentsTab } from "@/layouts/main-panel-tabs/experiments-tab";
 import { MetricCard } from "@/layouts/task-board/analytics-sections";
 import {
@@ -216,16 +215,7 @@ function ProjectScreen({
       </div>
     );
   }
-  if (!scopeId) {
-    // The board's frame: same width, gutters and rhythm as Metrics.
-    return (
-      <div className="flex h-full min-h-0 flex-col overflow-auto">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
-          {org(projects)}
-        </div>
-      </div>
-    );
-  }
+  if (!scopeId) return <BoardFrame>{org(projects)}</BoardFrame>;
   return (
     <div key={scopeId} className="flex h-full min-h-0 flex-col">
       {render(scopeId)}
@@ -247,20 +237,46 @@ export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
   );
 }
 
-/**
- * A project's analytics. A site deco doesn't host never reaches the CDN, so
- * its Deco Analytics tag is the only data it has.
- */
-function ProjectAnalytics({ virtualMcpId }: { virtualMcpId: string }) {
-  const project = useVirtualMCP(virtualMcpId);
-  return storedExternalRegistration(project?.metadata) ? (
-    <AnalyticsTab virtualMcpId={virtualMcpId} />
-  ) : (
-    <CdnTab virtualMcpId={virtualMcpId} />
+/** The board's frame: same width, gutters and rhythm as Metrics. */
+function BoardFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-auto">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+        {children}
+      </div>
+    </div>
   );
 }
 
-/** A site's Monitor (CDN traffic and audience), gated as its own route is. */
+/**
+ * A project's analytics. A site deco doesn't host never reaches the CDN, so
+ * its Deco Analytics tag is the only data it has. Any other site gets the
+ * org's analytics narrowed to it: the install guide until pageviews arrive.
+ * Its site Monitor is its own route (`cdn`), and on a v8 site that is the
+ * telemetry Monitor, which has no install.
+ */
+function ProjectAnalytics({
+  virtualMcpId,
+  date,
+  onDate,
+}: {
+  virtualMcpId: string;
+  date: string;
+  onDate: (date: string) => void;
+}) {
+  const project = useVirtualMCP(virtualMcpId);
+  const projects = useSiteProjects().filter((p) => p.id === virtualMcpId);
+  if (storedExternalRegistration(project?.metadata)) {
+    return <AnalyticsTab virtualMcpId={virtualMcpId} />;
+  }
+  return (
+    <BoardFrame>
+      <OrgAnalytics projects={projects} date={date} onDate={onDate} />
+    </BoardFrame>
+  );
+}
+
+/** Analytics, gated as the site Monitor's own route is. */
 export function AnalyticsView({
   scopeId,
   date,
@@ -281,7 +297,9 @@ export function AnalyticsView({
         (config.monitorEnabled === true || config.auth.localMode === true)
       }
       empty="analytics"
-      render={(id) => <ProjectAnalytics virtualMcpId={id} />}
+      render={(id) => (
+        <ProjectAnalytics virtualMcpId={id} date={date} onDate={onDate} />
+      )}
       org={(projects) => (
         <OrgAnalytics projects={projects} date={date} onDate={onDate} />
       )}
