@@ -9,7 +9,7 @@ import {
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { cmsDraftRpcEndpoint, cmsSiteOf } from "./cms-api";
+import { cmsDraftRpcEndpoint, cmsSiteOf, ensureCmsDraft } from "./cms-api";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -93,6 +93,23 @@ export async function probeGithub(
     if (error instanceof SiteNotOwnedError) return GITHUB_SITE_NOT_OWNED;
     throw error;
   }
+}
+
+/**
+ * The hosted backend's probe. Its rpc route answers 404 `draft_not_found`
+ * while the draft has no row (contract §4.8), and only `POST /drafts`
+ * creates one (§4.5, idempotent), so the editor's draft is ensured first:
+ * on a new thread branch, or after `deco drafts discard` of it, the probe
+ * would otherwise fail forever, since the pointer read that also ensures
+ * the draft waits for the probe to succeed.
+ */
+export async function probeHosted(
+  endpoint: string,
+  ensureDraft: () => Promise<unknown>,
+  doFetch?: (request: Request) => Promise<Response>,
+): ReturnType<typeof probeGithub> {
+  await ensureDraft();
+  return probeGithub(endpoint, doFetch);
 }
 
 /** How often a failed probe is retried, so a backend recovers on its own. */
@@ -236,12 +253,13 @@ export function useContentBackend(
       "github",
     ),
     queryFn: () =>
-      probeGithub(
+      probeHosted(
         hostedContentEndpoint({
           orgSlug: org.slug,
           site,
           branch: branch!,
         }),
+        () => ensureCmsDraft(org.slug, site!, branch!),
       ),
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
