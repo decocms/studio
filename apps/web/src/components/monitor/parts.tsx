@@ -14,9 +14,9 @@ import {
   PROJECT_ROUTE,
 } from "@/hooks/use-destination-route";
 import { type SiteValue, spread } from "./aggregate";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { changeTone } from "@/layouts/main-panel-tabs/monitor-v8";
-import type { MonitorStatus } from "./board";
+import type { DeployVerdict, MonitorStatus } from "./board";
 
 export function MonitorStatusMark({ status }: { status: MonitorStatus }) {
   const t = useT();
@@ -184,3 +184,34 @@ export function Spread({
     </span>
   );
 }
+
+export function verdictName(verdict: DeployVerdict, t: TFunction): string {
+  switch (verdict) {
+    case "improvement":
+      return t("monitor.verdict.improvement");
+    case "neutral":
+      return t("monitor.verdict.neutral");
+    case "regression":
+      return t("monitor.verdict.regression");
+    case "settling":
+      return t("monitor.verdict.settling");
+    case "unmeasured":
+      return t("monitor.verdict.unmeasured");
+    default: {
+      const unhandled: never = verdict;
+      return unhandled;
+    }
+  }
+}
+
+export const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+export const minutesSince = (iso: string) =>
+  Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+
+export const minutesUntil = (iso: string) =>
+  Math.round((Date.parse(iso) - Date.now()) / 60_000);

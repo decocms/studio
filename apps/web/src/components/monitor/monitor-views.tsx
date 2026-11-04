@@ -26,12 +26,14 @@ export type MonitorView =
   | "metrics"
   | "performance"
   | "logs"
+  | "deploys"
   | "audience"
   | "heatmap";
 export const MONITOR_VIEWS: readonly MonitorView[] = [
   "metrics",
   "performance",
   "logs",
+  "deploys",
   "audience",
   "heatmap",
 ];
@@ -44,6 +46,8 @@ function viewLabel(view: MonitorView, t: TFunction): string {
       return t("monitor.view.performance");
     case "logs":
       return t("monitor.view.logs");
+    case "deploys":
+      return t("monitor.view.deploys");
     case "audience":
       return t("monitor.view.audience");
     case "heatmap":
