@@ -10,7 +10,10 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 const mainRef: { current: "v8" | "v7" | "loading" | "error" } = {
   current: "v7",
 };
+// The module's other exports stay real: the mock outlives this file.
+const realMainSchema = await import("@/hooks/use-main-schema-v8");
 mock.module("@/hooks/use-main-schema-v8", () => ({
+  ...realMainSchema,
   useMainSchemaV8: () => mainRef.current,
 }));
 

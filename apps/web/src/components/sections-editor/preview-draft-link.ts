@@ -3,7 +3,7 @@
  * carry it. The preview frame, its "Open in new tab", the publish dialog's
  * Preview and the compare's "Open draft" all send exactly this value: the
  * current draft's pointer (`<draft>@<etag>`), with the frame's forced variants
- * and "Preview as" options. Never `off` and never a release's commit SHA: a
+ * and "Preview as" options. Never `off` and never a release's revision id: a
  * draft always exists while the editor is open (the server creates it empty
  * on open, and Publish empties it at the same address), and the site layers
  * it over the release it serves.
@@ -16,7 +16,7 @@
 
 import { useSyncExternalStore } from "react";
 import {
-  isReleaseSha,
+  isReleaseRevision,
   type PreviewOptions,
   withPreviewOptions,
 } from "./preview-link";
@@ -34,7 +34,7 @@ export interface PreviewDraftModifiers {
 /**
  * The exact `__draft` value: the pointer with these forced variants and
  * preview options. `null` without a draft pointer, and for anything that
- * isn't one (`off`, a release's SHA): a hosted preview never asks for those.
+ * isn't one (`off`, a release's revision id): a hosted preview never asks for those.
  */
 export function previewDraftValue(
   input: { pointer: string | null | undefined } & PreviewDraftModifiers,
@@ -42,7 +42,7 @@ export function previewDraftValue(
   const { pointer } = input;
   if (!pointer || pointer === DRAFT_OFF) return null;
   const q = pointer.indexOf("?");
-  if (isReleaseSha(q === -1 ? pointer : pointer.slice(0, q))) return null;
+  if (isReleaseRevision(q === -1 ? pointer : pointer.slice(0, q))) return null;
   if (pointer.lastIndexOf("@") <= 0) return null;
   return withPreviewOptions(
     withForcedVariants(pointer, input.forcedVariants),

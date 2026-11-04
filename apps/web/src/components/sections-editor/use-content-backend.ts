@@ -30,13 +30,6 @@ import {
 } from "./content-backend";
 import { useLastFoundV8, useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import {
-  isMainSchemaChangedResponse,
-  MainSchemaChangedError,
-  mainSchemaHeaders,
-  mainSchemaRead,
-  resetMainSchemaAnswer,
-} from "@/hooks/main-schema-changed";
-import {
   classifyServeProbeError,
   NotDecoServeError,
   probeRetryDelay,
@@ -73,50 +66,26 @@ async function isSiteNotOwnedResponse(response: Response): Promise<boolean> {
 }
 
 /**
- * Probes Studio's GitHub backend (main plus the CDN draft; asked only once
- * main's schema is known to be v8): the probe when its schema is a v8 one,
- * null when it isn't (legacy), or {@link GITHUB_SITE_NOT_OWNED} when the
- * project doesn't own its site.
+ * Probes Studio's hosted backend (the latest release plus the CDN draft;
+ * asked only once the project is marked v8): the probe when its schema is a
+ * v8 one, null when it isn't (legacy), or {@link GITHUB_SITE_NOT_OWNED} when
+ * the project doesn't own its site.
  */
 export async function probeGithub(
   endpoint: string,
   doFetch: (request: Request) => Promise<Response> = (request) =>
     fetch(request),
-  /**
-   * Studio answered 409 `main_schema_changed` (main is no longer v8): called
-   * before the call throws, so the editor re-reads main's answer.
-   */
-  onMainSchemaChanged?: () => void,
-  /**
-   * Main's schema as the page already read it (`mainSchemaRead`): this
-   * route's `schema.get` reads main whatever the branch, so a v8 one is
-   * reused and only `describe` is sent.
-   */
-  knownMainSchema?: unknown,
 ): Promise<Probe | null | typeof GITHUB_SITE_NOT_OWNED> {
   const client = createContentClient({
     endpoint,
     fetch: async (request) => {
-      // This backend exists only for a v8 main: say so, so a main that
-      // changed since is told apart from any other failure.
-      const sent = new Request(request);
-      for (const [name, value] of Object.entries(mainSchemaHeaders("v8"))) {
-        sent.headers.set(name, value);
-      }
-      const response = await doFetch(sent);
+      const response = await doFetch(request);
       if (await isSiteNotOwnedResponse(response)) throw new SiteNotOwnedError();
-      if (await isMainSchemaChangedResponse(response)) {
-        onMainSchemaChanged?.();
-        throw new MainSchemaChangedError();
-      }
       return response;
     },
   });
   try {
-    const result = await probe(
-      client,
-      isV8Schema(knownMainSchema) ? { schema: knownMainSchema } : undefined,
-    );
+    const result = await probe(client);
     // Only a committed schema with `"blocksMajor": 8` is a v8 site; no
     // schema, or one without the field (a v7 `meta.gen.json`), is legacy.
     return result.v8Schema ? result : null;
@@ -158,30 +127,17 @@ function sandboxContentEndpoint(params: {
 
 /**
  * `describe` plus the schema, in one request. Throws `NotDecoServeError` when
- * something else answered (see `classifyServeProbeError`). With `known`, the
- * schema the caller already read for this endpoint, only `describe` is sent.
+ * something else answered (see `classifyServeProbeError`).
  */
-export async function probe(
-  client: ContentClient,
-  known?: { schema: unknown },
-): Promise<Probe> {
-  const [described, schema] = await client.batch(
-    known
-      ? [{ method: "describe" }]
-      : [{ method: "describe" }, { method: "schema.get" }],
-  );
+export async function probe(client: ContentClient): Promise<Probe> {
+  const [described, schema] = await client.batch([
+    { method: "describe" },
+    { method: "schema.get" },
+  ]);
   if (!described?.ok) throw described?.error ?? new Error("no describe");
   const result = described.result as Partial<DescribeResult> | null;
   if (result?.protocol !== PROTOCOL_NAME) throw new NotDecoServeError();
   const describe = assertSupportedEndpoint(described.result as DescribeResult);
-  if (known) {
-    return {
-      client,
-      describe,
-      hasSchema: known.schema != null,
-      v8Schema: isV8Schema(known.schema),
-    };
-  }
   if (!schema) throw new Error("no schema.get");
   // `schema: null`, or NotFound from an older deco serve: no schema yet.
   if (isSchemaAbsent(schema)) {
@@ -286,9 +242,6 @@ export function useContentBackend(
           site,
           branch: branch!,
         }),
-        undefined,
-        () => resetMainSchemaAnswer(queryClient, org.slug, virtualMcpId!),
-        mainSchemaRead(queryClient, org.slug, virtualMcpId!)?.schema,
       ),
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,

@@ -17,7 +17,7 @@ import {
 
 const POINTER = "delivery.decocms.com/sites/acme/drafts/s1.json@e1";
 const SITE = "https://www.acme.com";
-const SHA = "0123456789abcdef0123456789abcdef01234567";
+const SHA = "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55";
 const SCOPE = "org/vm-1";
 
 afterEach(() => publishPreviewDraft(SCOPE, null));

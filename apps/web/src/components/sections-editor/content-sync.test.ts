@@ -184,11 +184,11 @@ describe("content-sync pending state", () => {
     registerContentPreview(SCOPE);
     const before = { ...reads };
     const gate = deferred<void>();
-    // As Studio's hosted save answers: the draft's new ETag, no main part.
+    // As the hosted CMS's save answers: the draft's new ETag.
     backend.client.blocksApply = async (patch) => {
       state.applied.push(patch);
       await gate.promise;
-      return { revision: "~e2", versions: { Home: "v2" } };
+      return { revision: "e2", versions: { Home: "v2" } };
     };
 
     const saving = applyProtocolPatch(
@@ -242,7 +242,7 @@ describe("content-sync pending state", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     registerContentPreview(SCOPE);
     backend.client.blocksApply = async () => ({
-      revision: "~e2",
+      revision: "e2",
       versions: {},
     });
     await applyProtocolPatch(
