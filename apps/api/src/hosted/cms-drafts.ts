@@ -143,7 +143,6 @@ export async function writeDraftObject(
     deliveryKeys.draft(site, slug),
     { set: body.set, delete: body.delete, editors: body.editors },
     CACHE_DRAFT,
-    undefined,
     etag ? { ifMatch: etag } : { ifNoneMatch: "*" },
   );
   return written;

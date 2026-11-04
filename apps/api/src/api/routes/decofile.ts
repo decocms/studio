@@ -7,9 +7,7 @@
  *   GET    /api/:org/decofile/:virtualMcpId/:branch           read (session OR ?token=)
  *   PATCH  /api/:org/decofile/:virtualMcpId/:branch           write blocks (session; 409 block-conflict on a stale `expect`)
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
- *   GET    /api/:org/decofile/:virtualMcpId/:branch/publish/review   hosted v8: draft names main also changed (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
- *   POST   /api/:org/decofile/:virtualMcpId/:branch/rpc       content protocol (session; main's schema for any site)
  *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
@@ -17,23 +15,8 @@
  * does NOT gate it; that switch only picks the runtime a NEW thread is stamped
  * with, and gating this on it would strand an already-stamped session.
  *
- * The content-protocol routes serve Blocks v8 sites on the hosted Deco CMS
- * (see `hosted/`): projects whose main schema passes `isV8Schema`
- * (`@decocms/shared/blocks-major`), in any org. A v7 project keeps every
- * answer it has on main; its `rpc` only answers main's schema (`schema.get`
- * → `schema: null`, read only), which is how the editor learns, for any
- * site, whether main is v8 (no route of its own). The editor's draft is an object on the delivery CDN
- * (`hosted/draft-content-storage.ts`), never a git branch: `rpc` reads main
- * with the draft layered on, and a save (`blocks.apply` alone) writes the
- * draft with no GitHub read (`serveDraftSave`); the session GET answers
- * a v8 project's `?__draft=` pointer (`{ draft, version, changedBy }`) instead of the
- * decofile; publish commits the draft to main and releases it. `rpc` doesn't
- * need a preview server: the protocol never renders.
- *
- * The editor says which main answer it acts on (`MAIN_SCHEMA_HEADER`); when
- * main changed during its session the GET, publish and `rpc` answer 409
- * `main_schema_changed` instead of the other generation's shape, and the
- * editor reads main's answer again.
+ * The Blocks v8 hosted CMS is not served here: its content lives on R2
+ * behind `/api/:org/cms/:site` (`cms.ts`), which reads no repository.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -73,44 +56,7 @@ import {
   repoGitRebase,
 } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
-import {
-  bareEtag,
-  deliveryStore,
-  draftPointerTarget,
-} from "@/hosted/delivery-store";
-import { deliveryPurge } from "@/hosted/delivery-purge";
-import {
-  createDraftContentStorage,
-  createDraftWriteStorage,
-  createV7MainStorage,
-} from "@/hosted/draft-content-storage";
-import {
-  applyOnlyCalls,
-  refuseUnguardedSave,
-  saveRequestBody,
-  withDraftConflicts,
-} from "@/hosted/draft-save-request";
-import type { DraftEditors } from "@/hosted/draft-editors";
-import type { DraftStore, HostedDraftRef } from "@/hosted/draft-store";
-import type { KVStorage } from "@/storage/kv";
-import {
-  type SiteDomainsReader,
-  sitePreviewHosts,
-} from "@/hosted/preview-hosts";
-import {
-  draftNamesChangedOnMain,
-  MainMovedError,
-  publishDraft,
-} from "@/hosted/publish";
-import { projectMainIsV8, projectPackagePath } from "@/hosted/blocks-major";
-import { hostedDrafts, ownedProjectSite, SITE_NOT_OWNED } from "@/hosted/scope";
-import {
-  isBlocksV8Project,
-  HOSTED_DELIVERY_UNCONFIGURED,
-  MAIN_SCHEMA_CHANGED,
-  MAIN_SCHEMA_HEADER,
-} from "@decocms/shared/blocks-major";
-import { createContentHandler } from "@decocms/blocks/protocol/server";
+import { projectPackagePath } from "@/hosted/blocks-major";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
@@ -124,10 +70,6 @@ interface DecofileScope {
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
   previewServerUrl: string | null;
-  /** The public site id (`metadata.siteSlug`), the hosted CMS's key. */
-  site: string | null;
-  /** The project's metadata, for the Blocks v8 marker write-through. */
-  metadata: Record<string, unknown> | null;
 }
 
 /** Opens the project repository's content client (tests pass a fake). */
@@ -137,8 +79,6 @@ type DecofileEnv = Env & {
   Variables: Env["Variables"] & {
     decofileScope: DecofileScope;
     repoClientFor: RepoClientFor;
-    siteDomains: SiteDomainsReader | undefined;
-    hostedDrafts: (kv: KVStorage) => DraftStore | null;
   };
 };
 
@@ -250,8 +190,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     // Anonymous: only the plain GET is reachable, and only with a valid token.
     const token = c.req.query("token");
     const isPlainGet =
-      c.req.method === "GET" &&
-      !c.req.path.match(/\/(publish|publish\/review|status)$/);
+      c.req.method === "GET" && !c.req.path.match(/\/(publish|status)$/);
     if (!isPlainGet) return c.json({ error: "Unauthorized" }, 401);
     if (
       !token ||
@@ -291,7 +230,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
    *  threads, and gating the data plane on it would strand a session already
    *  stamped `cms` the moment someone flips the switch off. */
   const previewServerUrl = resolvePreviewServerUrl(metadata);
-  if (!previewServerUrl && !isContentProtocolPath(c.req.path)) {
+  if (!previewServerUrl) {
     return c.json({ error: "Project has no preview server configured" }, 404);
   }
 
@@ -313,231 +252,9 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     repository,
     userId,
     previewServerUrl,
-    site: await ownedProjectSite(
-      ctx.storage.orgSites,
-      virtualMcpId,
-      organization.id,
-    ),
-    metadata,
   });
   return next();
 });
-
-/** A draft's editors as the session read answers them: ISO times. */
-function draftChangedBy(
-  editors: DraftEditors,
-): Record<string, { userId: string; at: string }> {
-  // fromEntries: a name like "__proto__" stays an entry.
-  return Object.fromEntries(
-    Object.entries(editors).map(([name, { userId, at }]) => [
-      name,
-      { userId, at: new Date(at * 1000).toISOString() },
-    ]),
-  );
-}
-
-/** Content-protocol routes that work without a preview server. */
-function isContentProtocolPath(path: string): boolean {
-  return path.endsWith("/rpc");
-}
-
-/**
- * The draft store and this session's draft, for a member of a project that
- * owns its site id, with a delivery bucket configured. Null otherwise;
- * whether the project is a v8 one is the caller's question (`scopeIsV8`).
- */
-function hostedScope(
-  c: Context<DecofileEnv>,
-): { drafts: DraftStore; ref: HostedDraftRef } | null {
-  const scope = c.get("decofileScope");
-  if (!scope.userId || !scope.site) return null;
-  const drafts = c.var.hostedDrafts(c.var.studioContext.storage.kv);
-  if (!drafts) return null;
-  return {
-    drafts,
-    ref: {
-      organizationId: scope.organizationId,
-      virtualMcpId: scope.virtualMcpId,
-      branch: scope.branch,
-      site: scope.site,
-      editor: scope.userId,
-    },
-  };
-}
-
-/**
- * Whether this project is a Blocks v8 site right now: `isV8Schema` on main's
- * schema (`projectMainIsV8`: at most one head read per minute per repository,
- * so a v7 site's decofile reads stay as cheap as on main). Never the marker
- * alone: a missing marker (repo seeded after create) or a stale one (main
- * went back to v7) still gets main's answer, written through to the marker.
- */
-function scopeIsV8(
-  c: Context<DecofileEnv>,
-  client: RepoContentClient,
-  mainBranch: string,
-  options: { fresh?: boolean } = {},
-): Promise<boolean> {
-  const scope = c.get("decofileScope");
-  return projectMainIsV8({
-    projects: c.var.studioContext.storage.virtualMcps,
-    project: {
-      id: scope.virtualMcpId,
-      organizationId: scope.organizationId,
-      metadata: scope.metadata,
-    },
-    by: scope.userId,
-    client,
-    mainBranch,
-    fresh: options.fresh,
-  });
-}
-
-/**
- * A Blocks v8 project that doesn't own its site id: its content lives on the
- * hosted CMS, which only the owning project can reach, so these routes answer
- * {@link SITE_NOT_OWNED} instead of serving the v7 decofile. Free for an
- * owner and for an anonymous (draft token) read.
- */
-async function unownedV8(
-  c: Context<DecofileEnv>,
-  client: RepoContentClient,
-  mainBranch: () => Promise<string>,
-): Promise<boolean> {
-  const scope = c.get("decofileScope");
-  if (!scope.userId || scope.site) return false;
-  try {
-    return await scopeIsV8(c, client, await mainBranch());
-  } catch (error) {
-    // Advisory: /rpc and the hosted routes are the real gates and still
-    // fail closed. A main that can't be read here must not fail a v7 read
-    // or publish that never needed main.
-    console.warn("decofile: main's schema unreadable, not an unowned v8", {
-      organizationId: scope.organizationId,
-      virtualMcpId: scope.virtualMcpId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  }
-}
-
-/** The 409 body for a request made on a main answer that is out of date. */
-const MAIN_CHANGED_BODY = {
-  code: MAIN_SCHEMA_CHANGED,
-  error: "main's schema changed: read it again",
-} as const;
-
-/**
- * The main answer the editor says it acts on (`MAIN_SCHEMA_HEADER`), or
- * null when it doesn't say (the site's own draft pull, older clients).
- */
-function expectedMain(c: Context<DecofileEnv>): "v8" | "v7" | null {
-  const value = c.req.header(MAIN_SCHEMA_HEADER);
-  return value === "v8" || value === "v7" ? value : null;
-}
-
-/**
- * Main's answer for a GET or publish, read only when it matters: a signed-in
- * owner of its site id (a v8 site's hosted draft could be served), or an
- * editor that said it acts on a v8 main. `null` when not read (any other v7
- * request: as cheap as on main). A failed read is v7 (as on main, which
- * never read main here) unless a v8 answer could be at stake: an editor
- * that said it acts on v8, or a request that didn't say on a project the
- * server last found v8 (its `blocksMajor` marker). Those fail instead of
- * serving or merging the v7 shape on a v8 site.
- */
-async function mainAnswerFor(
-  c: Context<DecofileEnv>,
-  client: RepoContentClient,
-  mainBranch: () => Promise<string>,
-): Promise<boolean | null> {
-  const expected = expectedMain(c);
-  const scope = c.get("decofileScope");
-  const ownsSite = !!scope.userId && !!scope.site;
-  if (!ownsSite && expected !== "v8") return null;
-  try {
-    return await scopeIsV8(c, client, await mainBranch());
-  } catch (error) {
-    if (expected === "v8") throw error;
-    if (expected === null && isBlocksV8Project(scope.metadata)) throw error;
-    console.warn("decofile: main's schema unreadable, serving v7", {
-      organizationId: scope.organizationId,
-      virtualMcpId: scope.virtualMcpId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  }
-}
-
-/**
- * Whether the editor's main answer (`expectedMain`) differs from the
- * server's (`mainV8`, when read): main changed during its session.
- */
-function mainChanged(c: Context<DecofileEnv>, mainV8: boolean | null): boolean {
-  const expected = expectedMain(c);
-  return expected !== null && mainV8 !== null && (expected === "v8") !== mainV8;
-}
-
-function protocolErrorLogger(scope: DecofileScope) {
-  return (error: unknown) =>
-    console.error("content protocol: internal error", {
-      organizationId: scope.organizationId,
-      virtualMcpId: scope.virtualMcpId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-}
-
-/**
- * A hosted v8 editor's save (`blocks.apply` calls only), served from the
- * draft alone: no GitHub read (no repository client, default branch or
- * main's schema), only the draft object (`createDraftWriteStorage`). For an
- * editor acting on a v8 main (`MAIN_SCHEMA_HEADER`) of a project the server
- * last found v8 (its marker; the editor's open and poll read main itself and
- * keep it current). Null for any other request: the caller serves it.
- */
-async function serveDraftSave(
-  c: Context<DecofileEnv>,
-): Promise<Response | null> {
-  const scope = c.get("decofileScope");
-  if (expectedMain(c) !== "v8") return null;
-  const hosted = hostedScope(c);
-  if (!hosted) return null;
-  const body = await saveRequestBody(c.req.raw);
-  if (body === undefined) return null;
-  if (!applyOnlyCalls(body)) return null;
-  // No marker (a best-effort write that failed, or not written yet): ask
-  // main once, which writes it. Never the layered save: its guards compare
-  // with main under the draft, so an editor's "not in the draft yet" would
-  // be refused for a block only main has.
-  if (!isBlocksV8Project(scope.metadata)) {
-    const client = await contentClientForScope(c);
-    if (!(await scopeIsV8(c, client, await client.getDefaultBranch()))) {
-      return null;
-    }
-  }
-  // Every block a hosted save touches carries its precondition.
-  const unguarded = refuseUnguardedSave(body, "draft");
-  if (unguarded) return unguarded;
-  const handler = createContentHandler(
-    createDraftWriteStorage({
-      packagePath: scope.packagePath,
-      drafts: hosted.drafts,
-      ref: hosted.ref,
-    }),
-    {
-      server: { name: "studio-github", version: "1" },
-      bodyCacheBytes: 0,
-      onError: protocolErrorLogger(scope),
-    },
-  );
-  // A refused save carries the draft's copy of each refused block: the
-  // editor's reconcile flow opens from it, with no other read.
-  return withDraftConflicts(
-    await handler(c.req.raw),
-    async () =>
-      (await hosted.drafts.load(hosted.ref))?.body ?? { set: {}, delete: [] },
-  );
-}
 
 function signScopeDraftToken(scope: DecofileScope): string {
   return signDraftToken({
@@ -595,20 +312,12 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
 }
 
 export function createDecofileRoutes(
-  options: {
-    repoClientFor?: RepoClientFor;
-    /** The site's deco.cx domains, for its preview hosts (tests pass a fake). */
-    siteDomains?: SiteDomainsReader;
-    /** The draft store over the delivery bucket (tests pass one in memory). */
-    hostedDrafts?: (kv: KVStorage) => DraftStore | null;
-  } = {},
+  options: { repoClientFor?: RepoClientFor } = {},
 ) {
   const app = new Hono<DecofileEnv>();
   const repoClientFor = options.repoClientFor ?? contentClientForProjectRepo;
   app.use("*", async (c, next) => {
     c.set("repoClientFor", repoClientFor);
-    c.set("siteDomains", options.siteDomains);
-    c.set("hostedDrafts", options.hostedDrafts ?? hostedDrafts);
     await next();
   });
 
@@ -619,38 +328,6 @@ export function createDecofileRoutes(
     const scope = c.get("decofileScope");
     try {
       const client = await contentClientForScope(c);
-      // OPEN: O-S3 — a v8 project's editor reads its `?__draft=` pointer
-      // here, in place of v7's decofile, token and API host.
-      if (await unownedV8(c, client, () => client.getDefaultBranch())) {
-        return c.json(SITE_NOT_OWNED, 409);
-      }
-      const hosted = hostedScope(c);
-      const mainV8 = await mainAnswerFor(c, client, () =>
-        client.getDefaultBranch(),
-      );
-      // The editor acts on another main answer: never the other shape.
-      if (mainChanged(c, mainV8)) return c.json(MAIN_CHANGED_BODY, 409);
-      if (hosted && mainV8) {
-        // An editor session always has a draft (created empty on open), so
-        // the preview always sends its pointer, never the bare site: the
-        // same address before and after a Publish, which empties it.
-        const draft = await hosted.drafts.ensure(hosted.ref);
-        const version = bareEtag(draft.etag);
-        return c.json(
-          {
-            draft: version
-              ? draftPointerTarget(hosted.ref.site, draft.slug)
-              : null,
-            version,
-            // Who last changed each block the draft holds, from the draft
-            // object's metadata (no extra request): Studio user ids; the
-            // editor resolves the people from the org's members.
-            changedBy: draftChangedBy(draft.editors),
-          },
-          200,
-          { "Cache-Control": "no-store" },
-        );
-      }
       const snapshot = await readDecofileSnapshot(
         client,
         scope.branch,
@@ -801,52 +478,6 @@ export function createDecofileRoutes(
     try {
       const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
-      if (await unownedV8(c, client, async () => baseBranch)) {
-        return c.json(SITE_NOT_OWNED, 409);
-      }
-      const hosted = hostedScope(c);
-      const mainV8 = await mainAnswerFor(c, client, async () => baseBranch);
-      // A v8 editor's Publish on a main that went back to v7 (or the
-      // reverse) is refused, never merged or published as the other kind.
-      if (mainChanged(c, mainV8)) return c.json(MAIN_CHANGED_BODY, 409);
-      if (hosted && mainV8) {
-        const store = deliveryStore();
-        if (!store) {
-          return c.json({ error: "hosted delivery not configured" }, 503);
-        }
-        const body = (await c.req.json().catch(() => ({}))) as {
-          note?: unknown;
-        };
-        try {
-          const result = await publishDraft(
-            {
-              client,
-              packagePath: scope.packagePath,
-              mainBranch: baseBranch,
-              store,
-              purge: deliveryPurge(),
-              site: hosted.ref.site,
-              previewHosts: await sitePreviewHosts({
-                site: hosted.ref.site,
-                metadata: scope.metadata,
-                domains: c.var.siteDomains,
-              }),
-            },
-            hosted.drafts,
-            hosted.ref,
-            {
-              message: typeof body.note === "string" ? body.note : "",
-              coAuthor: coAuthorFromStudioContext(c.var.studioContext),
-            },
-          );
-          return c.json(result);
-        } catch (err) {
-          if (err instanceof MainMovedError) {
-            return c.json({ error: "main-moved" }, 409);
-          }
-          throw err;
-        }
-      }
       if (baseBranch === scope.branch) {
         return c.json({ error: "Branch is already the default branch" }, 400);
       }
@@ -894,39 +525,6 @@ export function createDecofileRoutes(
     }
   });
 
-  /**
-   * A hosted v8 Publish's review: the draft's names a developer changed on
-   * main since the live release (`alsoChanged`). Publish keeps the draft's
-   * version of each; the review says so. Read when the review opens, never
-   * on a save. Empty for any other project.
-   */
-  app.get("/:virtualMcpId/:branch/publish/review", async (c) => {
-    const scope = c.get("decofileScope");
-    const hosted = hostedScope(c);
-    const store = deliveryStore();
-    if (!hosted || !store || !isBlocksV8Project(scope.metadata)) {
-      return c.json({ alsoChanged: [] });
-    }
-    try {
-      const draft = await hosted.drafts.load(hosted.ref);
-      if (!draft) return c.json({ alsoChanged: [] });
-      const client = await contentClientForScope(c);
-      const alsoChanged = await draftNamesChangedOnMain(
-        {
-          client,
-          packagePath: scope.packagePath,
-          mainBranch: await client.getDefaultBranch(),
-          store,
-          site: hosted.ref.site,
-        },
-        draft.body,
-      );
-      return c.json({ alsoChanged }, 200, { "Cache-Control": "no-store" });
-    } catch (err) {
-      return errorResponse(c, err);
-    }
-  });
-
   app.get("/:virtualMcpId/:branch/status", async (c) => {
     const scope = c.get("decofileScope");
     try {
@@ -951,82 +549,6 @@ export function createDecofileRoutes(
     } catch (err) {
       return errorResponse(c, err);
     }
-  });
-
-  app.post("/:virtualMcpId/:branch/rpc", async (c) => {
-    const scope = c.get("decofileScope");
-    try {
-      const saved = await serveDraftSave(c);
-      if (saved) return saved;
-    } catch (err) {
-      return errorResponse(c, err);
-    }
-    let client: RepoContentClient;
-    let mainBranch: string;
-    let mainV8: boolean;
-    try {
-      client = await contentClientForScope(c);
-      mainBranch = await client.getDefaultBranch();
-      // Without the main-answer header this is the editor reading main's
-      // schema as a project opens: read main's head fresh (a 304 when it is
-      // unchanged), so a push to main and the marker are picked up at once.
-      mainV8 = await scopeIsV8(c, client, mainBranch, {
-        fresh: expectedMain(c) === null,
-      });
-    } catch (err) {
-      return errorResponse(c, err);
-    }
-    if (!mainV8) {
-      // An editor that acts on a v8 main: main changed since, and it
-      // re-reads main's answer instead of failing as unavailable.
-      if (expectedMain(c) === "v8") return c.json(MAIN_CHANGED_BODY, 409);
-      // Anyone else is reading main's answer (the editor's first read, any
-      // site, v7 included): a read-only "no v8 schema" (`schema.get` →
-      // `schema: null`), from the cached answer above alone.
-      return createContentHandler(
-        createV7MainStorage({ packagePath: scope.packagePath, mainBranch }),
-        { server: { name: "studio-github", version: "1" }, bodyCacheBytes: 0 },
-      )(c.req.raw);
-    }
-    // Main is v8 past this point: the editor reads these answers as "v8".
-    if (scope.userId && !scope.site) return c.json(SITE_NOT_OWNED, 409);
-    const hosted = hostedScope(c);
-    if (!hosted) {
-      return c.json(
-        {
-          error: "hosted delivery not configured",
-          code: HOSTED_DELIVERY_UNCONFIGURED,
-        },
-        503,
-      );
-    }
-    // A save through main (no main answer) needs its preconditions too.
-    const unguarded = refuseUnguardedSave(
-      await saveRequestBody(c.req.raw),
-      "site",
-    );
-    if (unguarded) return unguarded;
-    // Per request: the storage carries this caller's repository credential.
-    // The body cache is off for the same reason, and the blob cache under
-    // the storage already makes repeated reads cheap.
-    const handler = createContentHandler(
-      createDraftContentStorage({
-        client,
-        packagePath: scope.packagePath,
-        mainBranch,
-        drafts: hosted.drafts,
-        ref: hosted.ref,
-      }),
-      {
-        server: { name: "studio-github", version: "1" },
-        preview: scope.previewServerUrl
-          ? { url: new URL(scope.previewServerUrl).origin }
-          : null,
-        bodyCacheBytes: 0,
-        onError: protocolErrorLogger(scope),
-      },
-    );
-    return handler(c.req.raw);
   });
 
   return app;

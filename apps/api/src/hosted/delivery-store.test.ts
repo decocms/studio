@@ -4,20 +4,21 @@ import {
   CACHE_DRAFT,
   createS3DeliveryStore,
   deliveryKeys,
-  listRevisionShas,
   newDraftSlug,
   ObjectChangedError,
 } from "./delivery-store";
-import { memoryDeliveryStore } from "./hosted-test-helpers";
 
-const SHA = "a".repeat(40);
+const REVISION = "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55";
 
 describe("deliveryKeys", () => {
-  it("builds the three object keys under the site's prefix", () => {
+  it("builds the object keys under the site's prefix", () => {
     const slug = newDraftSlug();
     expect(deliveryKeys.latest("acme")).toBe("sites/acme/latest.json");
-    expect(deliveryKeys.revision("acme", SHA)).toBe(
-      `sites/acme/revisions/${SHA}.json`,
+    expect(deliveryKeys.revisionData("acme", REVISION)).toBe(
+      `sites/acme/revisions/${REVISION}/data.json`,
+    );
+    expect(deliveryKeys.revisionMeta("acme", REVISION)).toBe(
+      `sites/acme/revisions/${REVISION}/meta.json`,
     );
     expect(deliveryKeys.draft("acme", slug)).toBe(
       `sites/acme/drafts/${slug}.json`,
@@ -27,8 +28,8 @@ describe("deliveryKeys", () => {
   it("refuses a site, revision or slug that could leave the prefix", () => {
     expect(() => deliveryKeys.latest("../acme")).toThrow();
     expect(() => deliveryKeys.latest("Acme")).toThrow();
-    expect(() => deliveryKeys.revision("acme", "main")).toThrow();
-    expect(() => deliveryKeys.revision("acme", "A".repeat(40))).toThrow();
+    expect(() => deliveryKeys.revisionData("acme", "main")).toThrow();
+    expect(() => deliveryKeys.revisionData("acme", "a".repeat(40))).toThrow();
     expect(() => deliveryKeys.draft("acme", "x/../y")).toThrow();
   });
 });
@@ -46,20 +47,6 @@ describe("bareEtag", () => {
     expect(bareEtag('"abc"')).toBe("abc");
     expect(bareEtag('W/"abc"')).toBe("abc");
     expect(bareEtag(null)).toBeNull();
-  });
-});
-
-describe("listRevisionShas", () => {
-  it("lists only the site's revision objects", async () => {
-    const { store } = memoryDeliveryStore();
-    await store.putJson(deliveryKeys.revision("acme", SHA), {}, "x");
-    await store.putJson(deliveryKeys.latest("acme"), {}, "x");
-    await store.putJson(
-      deliveryKeys.revision("acme-2", "b".repeat(40)),
-      {},
-      "x",
-    );
-    expect([...(await listRevisionShas(store, "acme"))]).toEqual([SHA]);
   });
 });
 
@@ -102,19 +89,19 @@ describe("createS3DeliveryStore: conditional writes", () => {
     const { store, seen, stop } = s3Endpoint();
     try {
       const key = deliveryKeys.draft("acme", newDraftSlug());
-      const created = await store.putJson(key, {}, CACHE_DRAFT, undefined, {
+      const created = await store.putJson(key, {}, CACHE_DRAFT, {
         ifNoneMatch: "*",
       });
       expect(created.etag).toBe('"e1"');
       await expect(
-        store.putJson(key, {}, CACHE_DRAFT, undefined, { ifNoneMatch: "*" }),
+        store.putJson(key, {}, CACHE_DRAFT, { ifNoneMatch: "*" }),
       ).rejects.toBeInstanceOf(ObjectChangedError);
-      const next = await store.putJson(key, { a: 1 }, CACHE_DRAFT, undefined, {
+      const next = await store.putJson(key, { a: 1 }, CACHE_DRAFT, {
         ifMatch: created.etag!,
       });
       expect(next.etag).toBe('"e2"');
       await expect(
-        store.putJson(key, { a: 2 }, CACHE_DRAFT, undefined, {
+        store.putJson(key, { a: 2 }, CACHE_DRAFT, {
           ifMatch: created.etag!,
         }),
       ).rejects.toBeInstanceOf(ObjectChangedError);

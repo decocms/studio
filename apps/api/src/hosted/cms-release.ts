@@ -99,7 +99,6 @@ export function writeLatestPointer(
     deliveryKeys.latest(site),
     { revision: pointer.revision, previewHosts: [...pointer.previewHosts] },
     CACHE_LATEST,
-    undefined,
     condition,
   );
 }
@@ -250,7 +249,6 @@ export async function writeRevision(
     deliveryKeys.revisionMeta(site, id),
     meta,
     CACHE_REVISION,
-    undefined,
     { ifNoneMatch: "*" },
   );
 }

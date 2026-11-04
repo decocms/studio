@@ -1,6 +1,6 @@
 /**
  * Linking a project to its site in `org_sites` (`link`), so the hosted
- * ownership check (`ownedProjectSite`, which reads the link) works for it.
+ * CMS (`/api/:org/cms/:site`, resolved through `org_sites`) works for it.
  *
  * The site id is public and immutable: a project is linked once, and a slug
  * never leaves its org (a deleted org's slug stays reserved). After its
