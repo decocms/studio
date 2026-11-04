@@ -45,13 +45,7 @@ import {
   releaseCommit,
 } from "./publish";
 import { NotV8Site, schemaHashAt } from "./release-objects";
-import {
-  datedReleaseNote,
-  LEGACY_MADE_CURRENT_PREFIX,
-  MADE_CURRENT_PREFIX,
-  NO_NOTE_TITLE,
-  UNKNOWN_RELEASE_NOTE,
-} from "@decocms/shared/release-notes";
+import { reapplyTitle } from "./cms-publish";
 
 /** The commit has no companion release: there is nothing to reapply. */
 export class NotPublishedError extends Error {
@@ -64,41 +58,8 @@ export class NotPublishedError extends Error {
 const REAPPLIED_FROM = "Reapplied-From";
 const REAPPLIED_FROM_LINE = /^Reapplied-From:\s*([0-9a-f]{40})\s*$/im;
 
-/** `2026-10-14 13:05 UTC`, or null for an unreadable date. */
-function utcMinute(date: string): string | null {
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return null;
-  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
-
-/**
- * The new version's title for reapplying a version whose commit has
- * `message` and `date`: `Made current: <its note>`. Reapplying a reapplied
- * version keeps the one prefix (it names the same content; an older
- * `Reapply: ` becomes `Made current: `); a version without a note is named by its date, in the Releases screen's words
- * (`release from <date>`; older notes say `version from <date>`).
- */
-export function reapplyTitle(original: {
-  message: string;
-  date: string;
-}): string {
-  const title = original.message.split("\n")[0]?.trim() ?? "";
-  if (
-    title.startsWith(MADE_CURRENT_PREFIX) &&
-    title.length > MADE_CURRENT_PREFIX.length
-  )
-    return title;
-  if (
-    title.startsWith(LEGACY_MADE_CURRENT_PREFIX) &&
-    title.length > LEGACY_MADE_CURRENT_PREFIX.length
-  ) {
-    return `${MADE_CURRENT_PREFIX}${title.slice(LEGACY_MADE_CURRENT_PREFIX.length)}`;
-  }
-  if (title && !NO_NOTE_TITLE.test(title))
-    return `${MADE_CURRENT_PREFIX}${title}`;
-  const when = utcMinute(original.date);
-  return `${MADE_CURRENT_PREFIX}${when ? datedReleaseNote(when) : UNKNOWN_RELEASE_NOTE}`;
-}
+/** Shared with the hosted CMS's rollback (cms-publish.ts). */
+export { reapplyTitle };
 
 /** The full commit message: title, then the trailers (one block). */
 export function reapplyMessage(

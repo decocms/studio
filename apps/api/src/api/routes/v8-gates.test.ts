@@ -808,7 +808,11 @@ describe("decofile routes", () => {
       // its reconcile flow from it, with no other read.
       expect(body.error?.code).toBe(-32002);
       expect(body.error?.data?.draft).toEqual({
-        "pages-home": { block: { v: 1 }, version: expect.any(String) },
+        "pages-home": {
+          block: { v: 1 },
+          version: expect.any(String),
+          editor: null,
+        },
       });
       expect(repo.calls).toEqual([]);
       // A block deleted in the draft is in it: "must not exist" is refused.

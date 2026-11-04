@@ -28,54 +28,17 @@ import { delay } from "@decocms/shared/std";
 import type { RepoContentClient } from "@/git-providers";
 import { mainIsV8 } from "./scope";
 
-/** The one storage call the marker needs (`VirtualMCPStorage.patchMetadata`). */
-export interface BlocksMajorStorage {
-  patchMetadata(params: {
-    id: string;
-    organizationId: string;
-    set: Record<string, unknown>;
-    unset: string[];
-    by: string;
-  }): Promise<boolean>;
-}
+import {
+  type BlocksMajorProject,
+  type BlocksMajorStorage,
+  syncBlocksMajorMarker,
+} from "./blocks-major-marker";
 
-export interface BlocksMajorProject {
-  id: string;
-  organizationId: string;
-  metadata: Record<string, unknown> | null | undefined;
-}
-
-/**
- * Bring the marker in line with `mainIsV8`'s answer. A no-op when it already
- * matches. Single-key patch, so a concurrent `sandboxMap` write is never lost.
- * Whether the stored marker now matches the answer: true on a no-op or a
- * successful write, false when the write failed (logged, never thrown).
- */
-export async function syncBlocksMajorMarker(
-  projects: BlocksMajorStorage,
-  project: BlocksMajorProject,
-  isV8: boolean,
-  by: string,
-): Promise<boolean> {
-  if (isBlocksV8Project(project.metadata) === isV8) return true;
-  try {
-    return await projects.patchMetadata({
-      id: project.id,
-      organizationId: project.organizationId,
-      set: isV8 ? { [BLOCKS_MAJOR_METADATA_KEY]: BLOCKS_V8_MAJOR } : {},
-      unset: isV8 ? [] : [BLOCKS_MAJOR_METADATA_KEY],
-      by,
-    });
-  } catch (error) {
-    console.warn("hosted: blocks v8 marker write failed", {
-      organizationId: project.organizationId,
-      projectId: project.id,
-      isV8,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return false;
-  }
-}
+export {
+  type BlocksMajorProject,
+  type BlocksMajorStorage,
+  syncBlocksMajorMarker,
+};
 
 /**
  * `isV8Schema` on main's schema, read fresh (`mainIsV8`), with the marker
