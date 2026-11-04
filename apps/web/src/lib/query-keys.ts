@@ -918,6 +918,10 @@ export const KEYS = {
   // per version of theirs.
   conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
     ["conflict-author", draftKey, blockKey, theirs] as const,
+  // Who last changed a block, as a refused hosted save carried it, per
+  // version of theirs (`rememberConflictEditor`).
+  conflictEditor: (blockKey: string, theirs: string) =>
+    ["conflict-editor", blockKey, theirs] as const,
   // The published copies of the blocks a draft deletes (`changes.get`), per
   // set of deletions (names and base versions), so a save elsewhere in the
   // draft doesn't read them again.
@@ -927,7 +931,7 @@ export const KEYS = {
   contentChangeSides: (cacheKey: string, revision: string) =>
     ["content-changes", cacheKey, "sides", revision] as const,
   // A hosted v8 project's draft pointer ({ draft, version }), from the
-  // session decofile read (GitHub backend).
+  // hosted CMS's `POST /drafts` on open.
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
   // Main's schema answer (`isV8Schema` on main, from the server), once per
