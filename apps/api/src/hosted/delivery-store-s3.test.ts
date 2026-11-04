@@ -58,7 +58,6 @@ async function putWith(status: number, code: string, conditional: boolean) {
       "sites/acme/latest.json",
       {},
       "",
-      undefined,
       conditional ? { ifMatch: '"e0"' } : undefined,
     )
     .then(

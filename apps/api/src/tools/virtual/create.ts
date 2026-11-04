@@ -22,10 +22,7 @@ import {
   persistProjectFolderName,
 } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
-import { refreshBlocksMajorMarker } from "../../hosted/blocks-major";
 import { ensureManagedSiteFileConfig } from "../../file-storage/managed-site-config";
-import { contentClientForProjectRepo } from "../../git-providers";
-import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 import {
   claimProjectSite,
   decoSiteExists,
@@ -195,33 +192,6 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
           }),
         );
       }
-    }
-
-    // A Blocks v8 site (main's schema passes `isV8Schema`) gets the
-    // server-managed `blocksMajor` marker (hosted/blocks-major.ts). Off the
-    // request path (it never throws): creating a project never waits on
-    // GitHub, v7 included. A miss is covered by the refresh when the project
-    // is opened and by the check when its first thread is created.
-    if (virtualMcp.id) {
-      const project = {
-        id: virtualMcp.id,
-        organizationId: organization.id,
-        metadata: metadata ?? null,
-      };
-      void refreshBlocksMajorMarker({
-        projects: ctx.storage.virtualMcps,
-        project,
-        by: userId,
-        client: async () => {
-          const repository = parseRepositoryBinding(
-            project.metadata,
-            createData.connections.map((c) => c.connection_id),
-          );
-          return repository
-            ? contentClientForProjectRepo(ctx, organization.id, repository)
-            : null;
-        },
-      });
     }
 
     // Seed kickstart prompts into org-fs so the agent's gateway serves them as

@@ -2,7 +2,7 @@
  * The project's Blocks v8 marker, `metadata.blocksMajor: 8`, and its one
  * writer that reads nothing: given an answer, bring the marker in line with
  * it. The hosted CMS's `deco schema push` sets it from the schema pushed
- * (no git read); the v8 git path (`blocks-major.ts`) from main's schema.
+ * (no git read).
  */
 
 import {
@@ -29,7 +29,7 @@ export interface BlocksMajorProject {
 }
 
 /**
- * Bring the marker in line with `mainIsV8`'s answer. A no-op when it already
+ * Bring the marker in line with the pushed schema's answer. A no-op when it already
  * matches. Single-key patch, so a concurrent `sandboxMap` write is never lost.
  * Whether the stored marker now matches the answer: true on a no-op or a
  * successful write, false when the write failed (logged, never thrown).

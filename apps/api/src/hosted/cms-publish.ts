@@ -272,10 +272,7 @@ function utcMinute(date: string): string | null {
  * version keeps the one prefix (an older `Reapply: ` becomes `Made
  * current: `); a version without a note is named by its date.
  */
-export function reapplyTitle(original: {
-  message: string;
-  date: string;
-}): string {
+function reapplyTitle(original: { message: string; date: string }): string {
   const title = original.message.split("\n")[0]?.trim() ?? "";
   if (
     title.startsWith(MADE_CURRENT_PREFIX) &&

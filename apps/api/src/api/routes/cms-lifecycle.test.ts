@@ -33,10 +33,8 @@ async function throwingModule(path: string) {
 }
 
 const gitProviders = await throwingModule("@/git-providers");
-const repoContent = await throwingModule("@/decofile/repo-content-storage");
 const readDecofile = await throwingModule("@/decofile/read-decofile");
 mock.module("@/git-providers", () => gitProviders);
-mock.module("@/decofile/repo-content-storage", () => repoContent);
 mock.module("@/decofile/read-decofile", () => readDecofile);
 
 const { cmsTestApp } = await import("./cms-test-app");
