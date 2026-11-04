@@ -14,7 +14,7 @@ export interface ApplyCall {
   };
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
@@ -24,13 +24,6 @@ export function isApplyCall(value: unknown): value is ApplyCall {
     value.method === "blocks.apply" &&
     (value.params === undefined || isRecord(value.params))
   );
-}
-
-/** The request's calls when every one is a `blocks.apply`; null otherwise. */
-export function applyOnlyCalls(body: unknown): ApplyCall[] | null {
-  const calls = Array.isArray(body) ? body : [body];
-  if (calls.length === 0 || !calls.every(isApplyCall)) return null;
-  return calls as ApplyCall[];
 }
 
 /** The protocol's InvalidParams (`ErrorCode.InvalidParams`). */

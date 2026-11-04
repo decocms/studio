@@ -7,9 +7,8 @@
  *   sites/<site>/revisions/<id>/meta.json        { previous, draft?, reapplyOf?, author, via, message, publishedAt }
  *   sites/<site>/drafts/<slug>.json              { set, delete, editors }
  *
- * (The v8 git path still writes its flat `revisions/<sha>.json`, until it is
- * deleted.) Keys are only ever built here, from a validated site slug,
- * revision id, commit sha or draft slug, so no caller can address anything
+ * Keys are only ever built here, from a validated site slug, revision id or
+ * draft slug, so no caller can address anything
  * outside its site's prefix. Every key starts with the `DELIVERY_KEY_PREFIX`
  * setting (test-only, empty in production).
  */
@@ -27,8 +26,6 @@ import { isRevisionId } from "./revision-id";
 
 export const DELIVERY_ORIGIN = "https://delivery.decocms.com";
 
-/** A git commit sha (SHA-1): a revision id. */
-const COMMIT_SHA_RE = /^[0-9a-f]{40}$/;
 /** 16 random bytes, base64url without padding. */
 const DRAFT_SLUG_RE = /^[A-Za-z0-9_-]{22}$/;
 
@@ -39,10 +36,6 @@ const DRAFT_SLUG_RE = /^[A-Za-z0-9_-]{22}$/;
 export const CACHE_LATEST = "public, max-age=0, s-maxage=3600, must-revalidate";
 export const CACHE_REVISION = "public, max-age=31536000, immutable";
 export const CACHE_DRAFT = "no-cache, max-age=0, must-revalidate";
-
-export function isCommitSha(value: string): boolean {
-  return COMMIT_SHA_RE.test(value);
-}
 
 /** The test-only key prefix (`DELIVERY_KEY_PREFIX`), `""` in production. */
 function keyPrefix(): string {
@@ -68,11 +61,6 @@ export const deliveryKeys = {
   /** A revision's meta (immutable): `revisions/<id>/meta.json`. */
   revisionMeta: (site: string, id: string) =>
     `${revisionFolder(site, id)}meta.json`,
-  /** The v8 git path's flat companion release (deleted with that path). */
-  revision: (site: string, sha: string) => {
-    if (!isCommitSha(sha)) throw new Error(`invalid revision: ${sha}`);
-    return `${siteKey(site)}/revisions/${sha}.json`;
-  },
   draft: (site: string, slug: string) => {
     if (!DRAFT_SLUG_RE.test(slug)) throw new Error("invalid draft slug");
     return `${siteKey(site)}/drafts/${slug}.json`;
@@ -95,8 +83,6 @@ export function bareEtag(etag: string | null | undefined): string | null {
 export interface StoredObject {
   text: string;
   etag: string | null;
-  /** User-defined metadata (`x-amz-meta-*`), keys lowercased; absent when none. */
-  metadata?: Record<string, string>;
 }
 
 /**
@@ -147,8 +133,6 @@ export interface DeliveryStore {
     key: string,
     value: unknown,
     cacheControl: string,
-    /** User-defined metadata (`x-amz-meta-*`): ASCII values, 2 KB in all. */
-    metadata?: Record<string, string>,
     /** Write only if the object is still as read; else {@link ObjectChangedError}. */
     condition?: PutCondition,
   ): Promise<{ etag: string | null }>;
@@ -165,8 +149,6 @@ export interface DeliveryStore {
   /** The object, or null when there is none. */
   get(key: string): Promise<StoredObject | null>;
   delete(key: string): Promise<void>;
-  /** Every key under `prefix`, paging through the whole listing. */
-  listKeys(prefix: string): Promise<string[]>;
   /**
    * One page of the "folders" right under `prefix` (a delimiter listing,
    * ascending key order), at most `maxKeys` of them.
@@ -179,29 +161,6 @@ export interface DeliveryStore {
       continuationToken?: string | null;
     },
   ): Promise<ListPage>;
-}
-
-/** The commit shas that have a revision object for `site`: one paged listing. */
-export async function listRevisionShas(
-  store: DeliveryStore,
-  site: string,
-): Promise<Set<string>> {
-  const prefix = deliveryKeys.revisions(site);
-  const shas = new Set<string>();
-  for (const key of await store.listKeys(prefix)) {
-    const sha = key.slice(prefix.length).replace(/\.json$/, "");
-    if (isCommitSha(sha)) shas.add(sha);
-  }
-  return shas;
-}
-
-export async function getJson(
-  store: DeliveryStore,
-  key: string,
-): Promise<{ value: unknown; etag: string | null } | null> {
-  const object = await store.get(key);
-  if (!object) return null;
-  return { value: JSON.parse(object.text) as unknown, etag: object.etag };
 }
 
 function isConditionFailed(error: unknown): boolean {
@@ -255,7 +214,6 @@ export function createS3DeliveryStore(config: {
     key: string,
     body: string,
     cacheControl: string,
-    metadata: Record<string, string> | undefined,
     condition: PutCondition | undefined,
   ) => {
     try {
@@ -266,9 +224,6 @@ export function createS3DeliveryStore(config: {
           Body: Buffer.from(body, "utf-8"),
           ContentType: "application/json; charset=utf-8",
           CacheControl: cacheControl,
-          ...(metadata && Object.keys(metadata).length > 0
-            ? { Metadata: metadata }
-            : {}),
           ...(condition && "ifMatch" in condition
             ? { IfMatch: condition.ifMatch }
             : {}),
@@ -289,21 +244,17 @@ export function createS3DeliveryStore(config: {
     }
   };
   return {
-    putJson: (key, value, cacheControl, metadata, condition) =>
-      put(key, JSON.stringify(value), cacheControl, metadata, condition),
+    putJson: (key, value, cacheControl, condition) =>
+      put(key, JSON.stringify(value), cacheControl, condition),
     putText: (key, text, cacheControl, condition) =>
-      put(key, text, cacheControl, undefined, condition),
+      put(key, text, cacheControl, condition),
     async get(key) {
       try {
         const res = await client.send(
           new GetObjectCommand({ Bucket, Key: key }),
         );
         const text = (await res.Body?.transformToString("utf-8")) ?? "";
-        return {
-          text,
-          etag: res.ETag ?? null,
-          ...(res.Metadata ? { metadata: res.Metadata } : {}),
-        };
+        return { text, etag: res.ETag ?? null };
       } catch (error) {
         if (isNotFound(error)) return null;
         if (isUnavailable(error))
@@ -313,24 +264,6 @@ export function createS3DeliveryStore(config: {
     },
     async delete(key) {
       await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
-    },
-    async listKeys(prefix) {
-      const keys: string[] = [];
-      let token: string | undefined;
-      do {
-        const res = await client.send(
-          new ListObjectsV2Command({
-            Bucket,
-            Prefix: prefix,
-            ContinuationToken: token,
-          }),
-        );
-        for (const object of res.Contents ?? []) {
-          if (object.Key) keys.push(object.Key);
-        }
-        token = res.IsTruncated ? res.NextContinuationToken : undefined;
-      } while (token);
-      return keys;
     },
     async listPage(prefix, { delimiter, maxKeys, continuationToken }) {
       const res = await client.send(

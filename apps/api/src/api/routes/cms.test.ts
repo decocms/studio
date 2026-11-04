@@ -127,7 +127,7 @@ describe("drafts", () => {
 });
 
 describe("schema push", () => {
-  it("writes schema.json and sets the blocksMajor marker from it", async () => {
+  it("writes schema.json and sets the v8 marker from it", async () => {
     const t = cmsTestApp();
     const res = await t.call("PUT", "acme/schema", undefined, SCHEMA_TEXT);
     expect(res.status).toBe(200);

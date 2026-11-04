@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { TreeEntry } from "@/git-providers";
-import { fakeRepo } from "@/hosted/hosted-test-helpers";
+import type { RepoContentClient, TreeEntry } from "@/git-providers";
 import {
   buildDiscardPlan,
   buildMergeReplayPlan,
@@ -213,16 +212,20 @@ describe("buildPublishStatus", () => {
   });
 });
 
+/** The guard reads only the default branch before refusing. */
+const mainRepo = () =>
+  ({ getDefaultBranch: async () => "main" }) as unknown as RepoContentClient;
+
 describe("writes to the default branch", () => {
   it("repoGitRebase refuses the default branch, even onto another base", async () => {
-    const { client } = fakeRepo({ "a.json": "{}" });
+    const client = mainRepo();
     await expect(repoGitRebase(client, "main", "staging")).rejects.toThrow(
       DefaultBranchWriteError,
     );
   });
 
   it("repoGitDiscard refuses the default branch", async () => {
-    const { client } = fakeRepo({ "a.json": "{}" });
+    const client = mainRepo();
     await expect(repoGitDiscard(client, "main", ["a.json"])).rejects.toThrow(
       DefaultBranchWriteError,
     );
