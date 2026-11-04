@@ -5,9 +5,11 @@
  * the filters, the modes and the lists; the framed page owns matching and
  * painting, because only it can read its own DOM.
  *
- * Trust: messages are accepted only from the frame's window AND the site's
- * registered origin, and every message to the frame is addressed to that
- * origin — a frame that navigated away gets nothing.
+ * Trust: messages are accepted only from the frame's window AND one of the
+ * site's registered origins. `init` goes to each of them, since a domain may
+ * redirect to another (`loja.com` → `www.loja.com`); the origin that answers
+ * `ready` is pinned, and every later message is addressed to it alone — a
+ * frame that navigated away gets nothing.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -98,15 +100,15 @@ export function HeatmapView({
   orgSlug,
   site,
   modules,
-  domain,
+  domains,
   onConfigure,
 }: {
   base: string;
   orgSlug: string;
   site: string;
   modules: string[];
-  /** The site's registered domain: the only origin the frame may load and talk to. */
-  domain: string | null;
+  /** The site's registered domains: the only origins the frame may load and talk to. */
+  domains: string[];
   onConfigure: () => void;
 }) {
   const t = useT();
@@ -119,7 +121,8 @@ export function HeatmapView({
   const [clickType, setClickType] = useState<ClickType>("all");
   const [sample, setSample] = useState("");
   const enabled = modules.includes("heatmap");
-  const origin = siteOrigin(domain);
+  const origins = [...new Set(domains.flatMap((d) => siteOrigin(d) ?? []))];
+  const origin = origins[0];
 
   const query = useQuery({
     queryKey: KEYS.analyticsHeatmap(orgSlug, site, range, page, device),
@@ -250,12 +253,12 @@ export function HeatmapView({
         </p>
       ) : (
         <Viewer
-          // A new page or device is a new document: remount the frame and its handshake.
-          key={`${device}|${src ?? page}`}
+          // A new page, device or domain list is a new document: remount the frame and its handshake.
+          key={`${device}|${src ?? page}|${origins.join(" ")}`}
           t={t}
           locale={locale}
           model={model}
-          origin={origin}
+          origins={origins}
           src={src}
           templatePage={template ? page : null}
           onSample={setSample}
@@ -353,7 +356,7 @@ function Viewer({
   t,
   locale,
   model,
-  origin,
+  origins,
   src,
   templatePage,
   onSample,
@@ -368,7 +371,7 @@ function Viewer({
   t: TFunction;
   locale: string;
   model: HeatmapModel;
-  origin: string;
+  origins: string[];
   src: string | null;
   templatePage: string | null;
   onSample: (path: string) => void;
@@ -399,15 +402,26 @@ function Viewer({
   const [{ frameRef, stageRef, post }] = useState(() => {
     let frame: HTMLIFrameElement | null = null;
     let timer = 0;
-    const post = (m: Record<string, unknown>) =>
-      frame?.contentWindow?.postMessage(
-        { dq: "hm", v: VIEW_PROTOCOL, ...m },
-        origin,
-      );
+    // Pinned by `ready`; until then only `init` goes out, to every registered origin.
+    let peer: string | null = null;
+    const post = (m: Record<string, unknown>) => {
+      const targets = peer ? [peer] : m.t === "init" ? origins : [];
+      for (const target of targets) {
+        frame?.contentWindow?.postMessage(
+          { dq: "hm", v: VIEW_PROTOCOL, ...m },
+          target,
+        );
+      }
+    };
     const onMessage = (e: MessageEvent) => {
-      const m = readViewMessage(e, frame?.contentWindow, origin);
-      if (!m) return;
+      const m = readViewMessage(
+        e,
+        frame?.contentWindow,
+        peer ? [peer] : origins,
+      );
+      if (!m || (!peer && m.t !== "ready")) return;
       if (m.t === "ready") {
+        peer = e.origin;
         window.clearInterval(timer);
         setStatus("ready");
       } else if (m.t === "placed") {
