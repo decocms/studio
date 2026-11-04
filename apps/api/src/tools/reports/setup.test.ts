@@ -219,6 +219,23 @@ describe("REPORTS_SETUP", () => {
     ).resolves.toBeDefined();
   });
 
+  test("same site again ⇒ no notify (its picks are already there)", async () => {
+    notifyMock.mockClear();
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old",
+        // Same hostname, different spelling: still the same diagnostic.
+        metadata: { siteUrl: "https://new-site.com/" },
+        configuration_state: { ga4: { __type: "x", value: "conn_ga" } },
+      },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
   test("nothing to re-send ⇒ no notify", async () => {
     notifyMock.mockClear();
     const ctx = makeCtx({

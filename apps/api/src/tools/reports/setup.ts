@@ -183,10 +183,8 @@ export const REPORTS_SETUP = defineTool({
         siteUrl: normalized.value,
         connectionId,
       });
-      const leftBehind = siteLeftBehind(
-        connection.metadata?.siteUrl,
-        normalized.value,
-      );
+      const previousSite = connection.metadata?.siteUrl;
+      const leftBehind = siteLeftBehind(previousSite, normalized.value);
       connection = await ctx.storage.connections.update(connection.id, {
         connection_url: mcpUrl,
         connection_token: auth.authorizationToken,
@@ -200,11 +198,15 @@ export const REPORTS_SETUP = defineTool({
         });
       }
       // Reports keeps connection picks per site and only learns them from
-      // ON_MCP_CONFIGURATION, so the site this token now targets has none until
-      // the stored state is sent again. Best-effort: the claim already landed,
-      // and a later config save re-sends it anyway.
+      // ON_MCP_CONFIGURATION, so a site this token newly targets has none until
+      // the stored state is sent again. Same site ⇒ it already has them. An
+      // unknown previous site (no metadata.siteUrl) counts as a change.
+      // Best-effort: the claim already landed, and a later config save
+      // re-sends it anyway.
+      const siteChanged =
+        leftBehind !== null || typeof previousSite !== "string";
       const state = connection.configuration_state;
-      if (state && Object.keys(state).length > 0) {
+      if (siteChanged && state && Object.keys(state).length > 0) {
         try {
           await notifyMcpConfiguration(ctx, connection, {
             state,
