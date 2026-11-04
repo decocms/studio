@@ -10,18 +10,27 @@ import {
 
 const LISTING = "site/sections/Listing.tsx";
 const SECRET = "website/loaders/secret.ts";
+const WRAPPER = "site/sections/Wrapper.tsx";
 const def = (rt: string) => ({ $ref: `#/definitions/${btoa(rt)}` });
 
 /** A listing section whose promo cards need a headline, an image and a link. */
 const META = {
   manifest: {
     blocks: {
-      sections: { [LISTING]: def(LISTING) },
+      sections: { [LISTING]: def(LISTING), [WRAPPER]: def(WRAPPER) },
       loaders: { [SECRET]: def(SECRET) },
     },
   },
   schema: {
     definitions: {
+      [btoa(WRAPPER)]: {
+        title: WRAPPER,
+        type: "object",
+        properties: {
+          __resolveType: { type: "string", enum: [WRAPPER], default: WRAPPER },
+          inner: { type: "object", title: "Inner section" },
+        },
+      },
       [btoa(SECRET)]: {
         title: SECRET,
         type: "object",
@@ -36,6 +45,15 @@ const META = {
         type: "object",
         properties: {
           __resolveType: { type: "string", enum: [LISTING], default: LISTING },
+          apiKey: {
+            type: "object",
+            title: "API key",
+            required: ["__resolveType", "ciphertext"],
+            properties: {
+              __resolveType: { type: "string" },
+              ciphertext: { type: "string" },
+            },
+          },
           promoCards: {
             type: "array",
             title: "Promo cards",
@@ -105,6 +123,21 @@ describe("publishRequiredFields", () => {
       "Promo cards › 2 › Button › Link",
     ]);
     expect(requiredFieldsBlockPublish(found)).toBe(true);
+  });
+
+  test("the way to a nested block is labeled by its parent's prop titles", () => {
+    const found = publishRequiredFields(
+      [
+        change("Example wrapper", {
+          __resolveType: WRAPPER,
+          inner: { __resolveType: LISTING, promoCards: [EMPTY_CARD] },
+        }),
+      ],
+      META,
+    );
+    expect(found[0]!.fields.map(requiredFieldLabel)).toContain(
+      "Inner section › Promo cards › 1 › Headline",
+    );
   });
 
   test("a section inside a page, lazy-wrapped or not, is judged by its own schema", () => {
@@ -218,9 +251,14 @@ describe("publishRequiredFieldsGate", () => {
       checking: true,
       blocks: true,
     });
-    expect(gate({ contentPending: true, contentFailed: true }).checking).toBe(
-      false,
-    );
+    // A failed load leaves the changes without content: nothing to judge.
+    expect(
+      gate({
+        changes: [change("Example listing", null)],
+        contentPending: true,
+        contentFailed: true,
+      }),
+    ).toEqual({ found: [], checking: false, blocks: false });
   });
 
   test("without the site schema nothing is judged", () => {
@@ -285,7 +323,44 @@ describe("the site's content check", () => {
   });
 
   test("unset checks nothing", () => {
-    expect(blocking(undefined, [change("New listing", published)])).toBe(false);
+    expect(
+      publishRequiredFieldsGate({
+        meta: META,
+        check: undefined,
+        changes: [change("New listing", published)],
+        contentPending: false,
+        contentFailed: false,
+        review: false,
+      }),
+    ).toEqual({ found: [], checking: false, blocks: false });
+  });
+
+  test("`changes` holds a new item that takes an already-broken item's index", () => {
+    const inserted = change(
+      "Example listing",
+      { __resolveType: LISTING, promoCards: [EMPTY_CARD, EMPTY_CARD] },
+      published,
+    );
+    const found = publishRequiredFields([inserted], META, "changes");
+    expect(
+      found[0]!.fields.filter((f) => f.blocks).map(requiredFieldLabel),
+    ).toEqual([
+      "Promo cards › 2 › Headline",
+      "Promo cards › 2 › Image",
+      "Promo cards › 2 › Button › Link",
+    ]);
+  });
+
+  test("`changes` only lists an already-broken item edited in place", () => {
+    const edited = change(
+      "Example listing",
+      {
+        __resolveType: LISTING,
+        promoCards: [{ cta: { variant: "outline" } }],
+      },
+      published,
+    );
+    expect(blocking("changes", [edited])).toBe(false);
   });
 
   test("`none` checks nothing", () => {

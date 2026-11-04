@@ -20,7 +20,7 @@ export function useCachedSiteMeta(scope: {
       queryKey: KEYS.liveMeta(scope.orgSlug, scope.virtualMcpId, scope.branch),
     })) {
       const { data, dataUpdatedAt } = query.state;
-      if (data && (!newest || dataUpdatedAt > newest.at)) {
+      if (data && (!newest || dataUpdatedAt >= newest.at)) {
         newest = { data: data as LiveMeta, at: dataUpdatedAt };
       }
     }

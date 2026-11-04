@@ -61,6 +61,23 @@ describe("hasMissingRequiredField", () => {
     );
   });
 
+  test("doesn't recurse into a hidden object or a secret", () => {
+    const schema = obj({
+      cta: { ...obj({ href: { type: "string" } }, ["href"]), hidden: true },
+      apiKey: obj({ ciphertext: { type: "string" } }, ["ciphertext"]),
+    });
+    expect(
+      hasMissingRequiredField(schema, {
+        cta: {},
+        apiKey: {
+          __resolveType: "website/loaders/secret.ts",
+          name: "apiKey",
+          encrypted: "ab12",
+        },
+      }),
+    ).toBe(false);
+  });
+
   test("recurses into plain-object array items with an empty required field", () => {
     const schema = obj({
       items: {

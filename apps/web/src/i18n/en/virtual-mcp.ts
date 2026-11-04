@@ -232,7 +232,7 @@ Define step-by-step how the agent should handle requests.
     "Hold Publish when a change leaves a required field missing. Fields that were already missing are only listed.",
   "virtualMcp.contentCheck.all": "All",
   "virtualMcp.contentCheck.allDescription":
-    "Hold Publish while any published block has a required field missing. Suits sites whose build runs deco check.",
+    "Hold Publish when a changed block has any required field missing, including ones it already lacked. Suits sites whose build runs deco check.",
   "virtualMcp.virtualMcp.publishing": "Publishing",
   "virtualMcp.virtualMcp.publishingDescription":
     "Control when this project's changes can be published directly, skipping pull-request review.",

@@ -1,4 +1,5 @@
 import { isV8Schema } from "@decocms/shared/blocks-major";
+import { isSecretBlock } from "@decocms/shared/decofile";
 import { arrayItemDisplayValue } from "./array-item-hidden";
 import { cachedResolveSchema } from "./fields/resolved-schema-cache";
 import { isEmptyFieldValue } from "./fields/required-field-context";
@@ -53,7 +54,7 @@ export interface MissingRequiredField {
 /**
  * Every required prop an object's config leaves empty, by the open form's
  * per-object `required && isEmptyFieldValue(value[key])` rule (skipping hidden
- * props), recursing through nested plain-object properties and plain-object
+ * props and secrets), recursing through nested plain-object properties and plain-object
  * array items — the same places the form renders a required marker.
  * Block-ref/section arrays (whose items are wrappers, not plain objects) are
  * skipped via the `items.properties` guard, so their null-hole `required`
@@ -87,7 +88,9 @@ export function missingRequiredFields(
   }
   for (const [key, childSchema] of Object.entries(properties)) {
     const childValue = obj[key];
-    if (childValue == null) continue;
+    // Older sites store a secret as `encrypted`, not the schema's `ciphertext`.
+    if (childValue == null || childSchema.hidden === true) continue;
+    if (isSecretBlock(childValue)) continue;
     if (
       childSchema.properties &&
       typeof childValue === "object" &&

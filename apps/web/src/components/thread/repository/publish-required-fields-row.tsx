@@ -40,6 +40,12 @@ export function PublishRequiredFieldsRow({
   }
   if (found.length === 0) return null;
   const missing = found.some(({ fields }) => fields.some((f) => f.blocks));
+  // Changes with missing fields first, so "and N more" never hides one that holds the Publish.
+  const listed = [...found].sort(
+    (a, b) =>
+      Number(b.fields.some((f) => f.blocks)) -
+      Number(a.fields.some((f) => f.blocks)),
+  );
   const more = (count: number) =>
     count > 0 ? t("thread.publishPopover.requiredFieldsMore", { count }) : null;
   return (
@@ -61,7 +67,7 @@ export function PublishRequiredFieldsRow({
         </span>
       </div>
       <ul className="space-y-1 pl-5.5">
-        {found.slice(0, LISTED_CHANGES).map(({ change, fields }) => {
+        {listed.slice(0, LISTED_CHANGES).map(({ change, fields }) => {
           // Missing fields first: they are the ones that stop a Publish.
           const ordered = [...fields].sort(
             (a, b) => Number(b.blocks) - Number(a.blocks),

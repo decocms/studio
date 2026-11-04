@@ -2,7 +2,10 @@ import { isSecretBlock } from "@decocms/shared/decofile";
 import type { ContentCheck } from "@decocms/shared/sdk/types/virtual-mcp";
 import { isManifestBlockResolveType } from "@/components/sections-editor/block-type-utils.ts";
 import { cachedResolveSchema } from "@/components/sections-editor/fields/resolved-schema-cache.ts";
-import type { LiveMeta } from "@/components/sections-editor/resolve-schema.ts";
+import type {
+  LiveMeta,
+  SchemaProperty,
+} from "@/components/sections-editor/resolve-schema.ts";
 import {
   type MissingRequiredField,
   missingRequiredFields,
@@ -28,9 +31,10 @@ const MAX_DEPTH = 32;
  *
  * With `changes`, a field the published version already left missing is only
  * listed: the site runs with it, and holding the Publish would block every
- * later edit of that block. It counts as already missing at the same path, or
- * when an identical object lacked it anywhere before (items added ahead of it
- * move it to another index).
+ * later edit of that block. It counts as already missing at the same path when
+ * no list on the way changed length (so the item there is the same one), or
+ * when an identical object lacked it before (items added ahead of it move it to
+ * another index); each earlier one excuses one field.
  */
 export function publishRequiredFields(
   changes: readonly PublishChange[],
@@ -38,23 +42,31 @@ export function publishRequiredFields(
   check: Exclude<ContentCheck, "none"> = "all",
 ): PublishRequiredFields[] {
   return changes.flatMap((change) => {
-    if (!change.toJson) return [];
-    let fields = blockMissingFields(change.toJson, meta, [], [], 0);
-    const fromJson = change.fromJson;
+    const { fromJson, toJson } = change;
+    if (!toJson) return [];
+    let fields = blockMissingFields(toJson, meta, [], [], 0);
     if (check === "changes" && fromJson) {
       const before = blockMissingFields(fromJson, meta, [], [], 0).filter(
         (field) => field.blocks,
       );
-      const paths = new Set(before.map((field) => pathKey(field.path)));
-      const owners = new Set(
-        before.map((field) => ownerKey(fromJson, field.path)),
+      const samePath = new Set(
+        before
+          .filter((field) => sameItems(fromJson, toJson, field.path))
+          .map((field) => pathKey(field.path)),
       );
+      const owners = new Map<string, number>();
+      for (const field of before) {
+        const key = ownerKey(fromJson, field.path);
+        owners.set(key, (owners.get(key) ?? 0) + 1);
+      }
+      const excuse = (field: MissingRequiredField) => {
+        const owner = ownerKey(toJson, field.path);
+        const left = owners.get(owner) ?? 0;
+        if (left > 0) owners.set(owner, left - 1);
+        return samePath.has(pathKey(field.path)) || left > 0;
+      };
       fields = fields.map((field) =>
-        field.blocks &&
-        (paths.has(pathKey(field.path)) ||
-          owners.has(ownerKey(change.toJson, field.path)))
-          ? { ...field, blocks: false }
-          : field,
+        field.blocks && excuse(field) ? { ...field, blocks: false } : field,
       );
     }
     return fields.length > 0 ? [{ change, fields }] : [];
@@ -63,21 +75,45 @@ export function publishRequiredFields(
 
 const pathKey = (path: ReadonlyArray<string | number>) => path.join("\u0000");
 
+const step = (value: unknown, key: string | number): unknown =>
+  value !== null && typeof value === "object"
+    ? (value as Record<string | number, unknown>)[key]
+    : undefined;
+
 /** The missing field's name and the object that lacks it, by content. */
 function ownerKey(root: unknown, path: ReadonlyArray<string | number>): string {
-  let owner = root;
-  for (const key of path.slice(0, -1)) {
-    owner = (owner as Record<string | number, unknown> | null)?.[key];
-  }
+  const owner = path.slice(0, -1).reduce<unknown>(step, root);
   return `${String(path.at(-1))}\u0000${JSON.stringify(owner)}`;
 }
 
+/** Whether every list on the way to the field kept its length. */
+function sameItems(
+  from: unknown,
+  to: unknown,
+  path: ReadonlyArray<string | number>,
+): boolean {
+  let a = from;
+  let b = to;
+  for (const key of path.slice(0, -1)) {
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    if (Array.isArray(a) && a.length !== (b as unknown[]).length) return false;
+    a = step(a, key);
+    b = step(b, key);
+  }
+  return true;
+}
+
+/**
+ * `schema` is the one for `value` when its parent's is known, so the labels on
+ * the way to a nested block read as its parent's prop titles.
+ */
 function blockMissingFields(
   value: unknown,
   meta: LiveMeta,
   path: Array<string | number>,
   labels: Array<string | number>,
   depth: number,
+  schema?: SchemaProperty,
 ): MissingRequiredField[] {
   if (
     depth > MAX_DEPTH ||
@@ -88,18 +124,15 @@ function blockMissingFields(
     return [];
   }
   const own: MissingRequiredField[] = [];
+  let here = schema;
   const resolveType = (value as Record<string, unknown>).__resolveType;
   if (
     !Array.isArray(value) &&
     typeof resolveType === "string" &&
     isManifestBlockResolveType(meta, resolveType)
   ) {
-    own.push(
-      ...missingRequiredFields(cachedResolveSchema(resolveType, meta), value, {
-        path,
-        labels,
-      }),
-    );
+    here = cachedResolveSchema(resolveType, meta) ?? undefined;
+    own.push(...missingRequiredFields(here, value, { path, labels }));
   }
   const nested = Array.isArray(value)
     ? value.flatMap((item, index) =>
@@ -109,17 +142,20 @@ function blockMissingFields(
           [...path, index],
           [...labels, index],
           depth + 1,
+          here?.items,
         ),
       )
-    : Object.entries(value).flatMap(([key, item]) =>
-        blockMissingFields(
+    : Object.entries(value).flatMap(([key, item]) => {
+        const child = here?.properties?.[key];
+        return blockMissingFields(
           item,
           meta,
           [...path, key],
-          [...labels, key],
+          [...labels, child?.title?.trim() || key],
           depth + 1,
-        ),
-      );
+          child,
+        );
+      });
   // A block in an object-typed prop is also reached by its parent's schema.
   const seen = new Set(own.map((field) => pathKey(field.path)));
   return [...own, ...nested.filter((field) => !seen.has(pathKey(field.path)))];

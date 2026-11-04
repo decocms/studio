@@ -91,6 +91,19 @@ describe("PublishRequiredFieldsRow", () => {
     ).toContain("Promo cards › 4 › Headline, and 3 more");
   });
 
+  test("a change that holds the Publish is listed ahead of blank-only ones", () => {
+    const blank = (name: string): PublishRequiredFields => ({
+      change: change(name),
+      fields: [field(["Promo cards", 0, "Headline"], false)],
+    });
+    const text = rowText({
+      found: [1, 2, 3, 4, 5].map((n) => blank(`Blank ${n}`)).concat(listing),
+      blocking: true,
+    });
+    expect(text).toContain("Example listing:");
+    expect(text).not.toContain("Blank 5:");
+  });
+
   test("says it is checking while the changes load, and nothing when all is filled", () => {
     expect(rowText({ checking: true, blocking: true })).toBe(
       "Checking required fields…",
