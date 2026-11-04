@@ -4,12 +4,16 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  asRecord,
   buildBlogPostPreviewUrl,
   buildDraftPointer,
   getBlogPayload,
 } from "@decocms/shared/blog";
 import type { BlogCard } from "@decocms/shared/blog-card";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import {
+  draftPreviewServerUrl,
+  resolvePreviewServerUrl,
+} from "@decocms/shared/deco-site-production-url";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   type DecofileDraft,
@@ -101,7 +105,8 @@ export function useCardBranch(card: BlogCard, enabled = true) {
  *
  * The site pulls the branch through the draft pointer Fast Preview uses, and
  * the decofile API shows that pull a planning post as published, so no sandbox
- * runs.
+ * runs. It renders on a host the site honors drafts on, which the production
+ * domain is not.
  */
 export function useCardPreview(
   card: BlogCard,
@@ -125,7 +130,11 @@ export function useCardPreview(
               : undefined,
             "posts",
           ),
-          previewBaseUrl,
+          previewBaseUrl: draftPreviewServerUrl({
+            previewServerUrl: previewBaseUrl,
+            previewHosts: asRecord(read.decofile.site)?.previewHosts,
+            siteName: site?.metadata?.repository?.name,
+          }),
           draftPointer: buildDraftPointer({
             ...read.draft,
             orgSlug: org.slug,

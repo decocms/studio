@@ -11,7 +11,10 @@ import {
   planningPostKey,
   str,
 } from "@decocms/shared/blog";
-import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import {
+  draftPreviewServerUrl,
+  resolvePreviewServerUrl,
+} from "@decocms/shared/deco-site-production-url";
 import { signDraftToken } from "@/decofile/draft-token";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import { defineTool } from "../../core/define-tool";
@@ -161,11 +164,16 @@ export const BLOG_POST_PREVIEW = defineTool({
       version: snapshot.sha,
     });
 
+    const decofile = JSON.parse(snapshot.decofile) as Record<string, unknown>;
     return {
       ...postPreviewUrls({
-        decofile: JSON.parse(snapshot.decofile) as Record<string, unknown>,
+        decofile,
         meta,
-        previewBaseUrl: resolvePreviewServerUrl(site.metadata),
+        previewBaseUrl: draftPreviewServerUrl({
+          previewServerUrl: resolvePreviewServerUrl(site.metadata),
+          previewHosts: asRecord(decofile.site)?.previewHosts,
+          siteName: site.repository.name,
+        }),
         postId: input.postId,
         exemplarSlugs: input.exemplarSlugs,
         draftPointer,

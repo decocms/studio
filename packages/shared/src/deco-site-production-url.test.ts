@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   defaultPreviewServerUrl,
+  draftPreviewServerUrl,
   pickProductionDomain,
   productionUrlFromDomain,
   resolvePreviewServerUrl,
@@ -128,5 +129,46 @@ describe("resolvePreviewServerUrl", () => {
     expect(resolvePreviewServerUrl({})).toBeNull();
     expect(resolvePreviewServerUrl(null)).toBeNull();
     expect(resolvePreviewServerUrl(undefined)).toBeNull();
+  });
+});
+
+describe("draftPreviewServerUrl", () => {
+  const draft = (previewServerUrl: string | null, previewHosts?: unknown) =>
+    draftPreviewServerUrl({
+      previewServerUrl,
+      previewHosts,
+      siteName: "acme-store",
+    });
+
+  it("keeps a preview server the runtime renders drafts on", () => {
+    expect(draft("https://acme-store.deco.site/")).toBe(
+      "https://acme-store.deco.site/",
+    );
+    expect(draft("https://pr1-acme-store.deco-cx.workers.dev/")).toBe(
+      "https://pr1-acme-store.deco-cx.workers.dev/",
+    );
+    expect(draft("http://localhost:3100/")).toBe("http://localhost:3100/");
+  });
+
+  it("moves a draft off the production domain, where the runtime drops it", () => {
+    expect(draft("https://www.acme.com/")).toBe(
+      "https://acme-store.deco.site/",
+    );
+  });
+
+  it("keeps a production domain the site declares as a preview host", () => {
+    expect(draft("https://www.acme.com/", ["www.acme.com"])).toBe(
+      "https://www.acme.com/",
+    );
+  });
+
+  it("without a name to guess from, keeps what was configured", () => {
+    expect(
+      draftPreviewServerUrl({
+        previewServerUrl: "https://www.acme.com/",
+        siteName: null,
+      }),
+    ).toBe("https://www.acme.com/");
+    expect(draft(null)).toBe("https://acme-store.deco.site/");
   });
 });

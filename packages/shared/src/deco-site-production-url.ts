@@ -84,3 +84,47 @@ export function defaultPreviewServerUrl(
   if (!slug) return null;
   return productionUrlFromDomain(`${slug}.deco.site`);
 }
+
+/** A host a deco runtime renders a draft on without being told to: its own preview hosts, and loopback. */
+function isDecoPreviewHost(hostname: string): boolean {
+  return (
+    hostname.endsWith(".deco.site") ||
+    hostname.endsWith(".deco-cx.workers.dev") ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".localhost")
+  );
+}
+
+/**
+ * Where a draft of the site can render.
+ *
+ * A deco runtime honors `?__draft=` only on its preview hosts — the
+ * `<site>.deco.site` and `<site>.deco-cx.workers.dev` it infers from its own
+ * name, and whatever its `site` block lists in `previewHosts` — and quietly
+ * renders the published page anywhere else. A preview server set to the
+ * production domain shows every draft as if it did not exist, so this keeps
+ * the preview server where it can show one and falls back to the site's
+ * deco.site host otherwise.
+ */
+export function draftPreviewServerUrl(args: {
+  previewServerUrl: string | null;
+  /** What the site's `site` block declares under `previewHosts`. */
+  previewHosts?: unknown;
+  /** The site's name on deco, which its preview hosts carry. */
+  siteName?: string | null;
+}): string | null {
+  const configured = args.previewServerUrl;
+  if (configured) {
+    const { host, hostname } = new URL(configured);
+    const declared =
+      Array.isArray(args.previewHosts) &&
+      args.previewHosts.some(
+        (entry) =>
+          typeof entry === "string" &&
+          entry.trim().toLowerCase() === host.toLowerCase(),
+      );
+    if (declared || isDecoPreviewHost(hostname)) return configured;
+  }
+  return defaultPreviewServerUrl(args.siteName) ?? configured;
+}
