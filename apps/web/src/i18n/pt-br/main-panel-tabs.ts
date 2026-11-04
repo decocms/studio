@@ -325,38 +325,20 @@ export const mainPanelTabs = {
     "O coletor de análises ainda não está conectado a este ambiente.",
   // Registro
   "mainPanelTabs.analyticsTab.registerTitle": "Começar a coletar análises",
-  "mainPanelTabs.analyticsTab.registerDescription":
-    "Registra {host} no coletor do Deco Analytics para começar a registrar o tráfego.",
-  "mainPanelTabs.analyticsTab.registerHostFallback": "o domínio deste site",
-  "mainPanelTabs.analyticsTab.modules": "Módulos",
-  "mainPanelTabs.analyticsTab.moduleCore": "Core",
-  "mainPanelTabs.analyticsTab.moduleCoreHint":
-    "Pageviews + eventos personalizados (sempre ativo)",
-  "mainPanelTabs.analyticsTab.moduleCommerce": "Commerce",
-  "mainPanelTabs.analyticsTab.moduleCommerceHint":
-    "view_item, add_to_cart, purchase…",
-  "mainPanelTabs.analyticsTab.moduleVitals": "Web vitals",
-  "mainPanelTabs.analyticsTab.moduleVitalsHint": "LCP, INP, CLS, TTFB, FCP",
-  "mainPanelTabs.analyticsTab.moduleErrors": "Erros",
-  "mainPanelTabs.analyticsTab.moduleErrorsHint": "Erros de onerror / rejeições",
-  "mainPanelTabs.analyticsTab.moduleEngagement": "Engajamento",
-  "mainPanelTabs.analyticsTab.moduleEngagementHint":
-    "Profundidade de rolagem, permanência",
-  "mainPanelTabs.analyticsTab.registerInstallHint":
-    "Depois de habilitar, o tráfego é coletado automaticamente — nada de código pra adicionar.",
-  "mainPanelTabs.analyticsTab.editModules": "Módulos",
-  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
-    "Cliques, rolagem e atenção por página",
-  "mainPanelTabs.analyticsTab.registerByKey":
-    "Registrar por token (site fora do nosso CDN)",
-  "mainPanelTabs.analyticsTab.registerByKeyHint":
-    "Para dev, staging ou site fora do CDN. A tag carrega um token público e os eventos não são faturáveis.",
   "mainPanelTabs.analyticsTab.hostLabel": "Nome do host",
   "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
   "mainPanelTabs.analyticsTab.hostHint":
-    "Este site não tem domínio de produção registrado — informe o host para coletar.",
-  "mainPanelTabs.analyticsTab.enableAnalytics": "Habilitar análises",
+    "Nenhum domínio de produção registrado. Informe o domínio da coleta.",
+  "mainPanelTabs.analyticsTab.whereLabel": "Onde o site roda",
+  "mainPanelTabs.analyticsTab.whereCdn": "Na CDN da deco",
+  "mainPanelTabs.analyticsTab.whereElsewhere": "Em outro lugar",
+  "mainPanelTabs.analyticsTab.cdnHint":
+    "Coleta em {host} sozinho. Sem código pra adicionar.",
+  "mainPanelTabs.analyticsTab.cdnHintNoHost":
+    "Coleta sozinho. Sem código pra adicionar.",
+  "mainPanelTabs.analyticsTab.elsewhereHint":
+    "Você recebe uma tag pra colar no site. Ela leva um token público, e os eventos não são cobrados.",
+  "mainPanelTabs.analyticsTab.enableAnalytics": "Ativar analytics",
   "mainPanelTabs.analyticsTab.enabling": "Habilitando…",
   "mainPanelTabs.analyticsTab.toastRegistered": "Análises habilitadas",
   // Visão registrada
@@ -629,7 +611,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.domainsPlaceholder":
     "loja.com.br, staging.loja.com.br",
   "mainPanelTabs.analyticsTab.domainsHint":
-    "Domínios que o collector aceita (checagem de Origin); o primeiro é o principal. Obrigatório para um token.",
+    "O coletor só aceita estes. O primeiro é o domínio principal.",
   "mainPanelTabs.analyticsTab.tokenTitle": "Token criado — copie agora",
   "mainPanelTabs.analyticsTab.tokenOnce":
     "Mostrado uma vez. É público (vai no script), então identifica mas nunca autentica — os eventos não são faturáveis.",
