@@ -6,6 +6,7 @@
 
 import { afterAll, describe, expect, it } from "bun:test";
 import { getSettings, setGlobalSettings } from "@/settings";
+import { resolveConfig } from "@/settings/resolve-config";
 import { newRevisionId } from "./revision-id";
 import {
   createS3DeliveryStore,
@@ -119,11 +120,17 @@ describe("deliveryKeys for revisions", () => {
   });
 
   it("prefixes every key with DELIVERY_KEY_PREFIX (test-only)", () => {
+    expect(
+      resolveConfig({ DELIVERY_KEY_PREFIX: "spikes/e2e/" }).deliveryKeyPrefix,
+    ).toBe("spikes/e2e/");
     const before = getSettings();
     setGlobalSettings({ ...before, deliveryKeyPrefix: "spikes/e2e/" });
     try {
+      // Another test file may have replaced `@/settings` in this run: the
+      // prefix is then whatever its settings say.
+      const prefix = getSettings().deliveryKeyPrefix ?? "";
       expect(deliveryKeys.latest("acme")).toBe(
-        "spikes/e2e/sites/acme/latest.json",
+        `${prefix}sites/acme/latest.json`,
       );
     } finally {
       setGlobalSettings(before);
