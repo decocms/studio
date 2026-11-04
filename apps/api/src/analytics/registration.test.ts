@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { getSettings, setGlobalSettings } from "../settings";
 import {
   AnalyticsRegistrationError,
+  readExternalAnalyticsConfig,
   registerAnalyticsSite,
   registerExternalAnalyticsSite,
   siteDomains,
@@ -90,6 +91,22 @@ test("an external site registers by domain and keeps the key only when it create
       key: null,
       created: false,
     });
+  } finally {
+    fetchSpy.mockRestore();
+  }
+});
+
+test("an external site's config is read by id, and a miss is null", async () => {
+  const config = { enabled: true, modules: ["core", "heatmap"] };
+  const fetchSpy = spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(Response.json({ id: "d-loja-1a2b", config }))
+    .mockResolvedValueOnce(Response.json({}, { status: 404 }));
+  try {
+    expect(await readExternalAnalyticsConfig("d-loja-1a2b")).toEqual(config);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toEndWith(
+      "/analytics/external/d-loja-1a2b",
+    );
+    expect(await readExternalAnalyticsConfig("d-loja-1a2b")).toBeNull();
   } finally {
     fetchSpy.mockRestore();
   }

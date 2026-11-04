@@ -115,6 +115,21 @@ export function findPageForPath(
   return [...matches].sort((a, b) => a.key.localeCompare(b.key))[0] ?? null;
 }
 
+/**
+ * `findPageForPath`, but `/` falls back to the first page: a site without a
+ * home page (e.g. `/` redirects to `/en` or `/pt`) would otherwise open on
+ * "No page found".
+ */
+export function findPageForPathOrFirst(
+  pages: PageEntry[],
+  path: string,
+  preferredKey?: string | null,
+): PageEntry | null {
+  const page = findPageForPath(pages, path, preferredKey);
+  if (page || normalizePagePath(path) !== "/") return page;
+  return pages[0] ?? null;
+}
+
 /** Canonical decofile block id for the site app (matches admin `SITE_APP_ID`). */
 const SITE_APP_BLOCK_KEY = "site";
 

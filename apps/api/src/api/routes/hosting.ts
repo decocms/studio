@@ -17,7 +17,9 @@
  *                to the control-plane; PLUS analytics/data — the tenant-scoped
  *                dashboard views read straight from the Analytics read surface
  *                (a different upstream), scoped by a warehouse site_id this BFF
- *                resolves from an owned slug and never from the client.
+ *                resolves from an owned slug — or, for a site deco doesn't
+ *                host, from its project's registration — and never from the
+ *                client.
  *
  * Required env vars (see settings/resolve-config.ts):
  *   CONTROLPLANE_REST_URL        – control-plane REST base, e.g.
@@ -42,12 +44,16 @@ import {
   isAuthenticated,
   requireOrganization,
 } from "../../core/studio-context";
-import { readAnalyticsRegistration } from "../../analytics/registration";
+import {
+  readAnalyticsRegistration,
+  readExternalAnalyticsConfig,
+} from "../../analytics/registration";
 import {
   isCustomerLakeConfigured,
   linkAnalyticsSite,
 } from "../../customer-lake/client";
 import { getSettings } from "../../settings";
+import { analyticsAccess } from "../../analytics/access";
 
 type Variables = { studioContext: StudioContext };
 
@@ -407,6 +413,12 @@ export function toTenantAnalyticsPayload(
   return out;
 }
 
+function registrationLookupFailed(
+  c: import("hono").Context<{ Variables: Variables }>,
+) {
+  return c.json({ error: "Failed to resolve analytics registration" }, 502);
+}
+
 async function resolveWarehouseSiteId(
   org: { id: string },
   site: string,
@@ -652,9 +664,33 @@ export const createHostingRoutes = () => {
   // GET /api/:org/hosting/:site/analytics/status — `{ configured, registered,
   // host, config }`. `configured:false` means the collector isn't wired to the
   // environment; `registered:false` means the site can be registered here.
-  app.get("/:site/analytics/status", (c) =>
-    proxyControlplane(c, "analytics/status"),
-  );
+  // The control-plane has no record of a site deco doesn't host.
+  app.get("/:site/analytics/status", async (c) => {
+    const ctx = c.get("studioContext");
+    const site = c.req.param("site");
+    if (isAuthenticated(ctx) && site) {
+      const org = requireOrganization(ctx);
+      const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+      if (access?.kind === "error") return registrationLookupFailed(c);
+      if (access?.kind === "external") {
+        const { analyticsDataUrl, analyticsMasterToken } = getSettings();
+        return c.json({
+          // Only the read surface serves an external site.
+          configured: !!analyticsDataUrl && !!analyticsMasterToken,
+          registered: true,
+          external: true,
+          host: null,
+          // Its modules gate the tab's views (Heatmap); without them the
+          // data views still work from the id alone.
+          config: {
+            ...(await readExternalAnalyticsConfig(access.siteId)),
+            id: access.siteId,
+          },
+        });
+      }
+    }
+    return proxyControlplane(c, "analytics/status");
+  });
 
   // GET /api/:org/hosting/:site/analytics/usage (?from&to&granularity passthrough)
   // Upstream may answer 503 `not_configured` when analytics isn't set up; that
@@ -725,13 +761,10 @@ export const createHostingRoutes = () => {
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
 
-    // Same ownership guard as proxyControlplane: the org must own this slug.
     // 404 (not 403) so an unowned slug looks like a non-existent one.
-    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!ownsSite) {
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
 
@@ -741,7 +774,10 @@ export const createHostingRoutes = () => {
       analyticsDataUrl,
       analyticsMasterToken,
     } = getSettings();
-    if (!controlplaneRestUrl || !controlplaneServiceToken) {
+    if (
+      access.kind === "owned" &&
+      (!controlplaneRestUrl || !controlplaneServiceToken)
+    ) {
       return c.json({ error: "Hosting integration is not configured" }, 503);
     }
     if (!analyticsDataUrl || !analyticsMasterToken) {
@@ -768,14 +804,20 @@ export const createHostingRoutes = () => {
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
     // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
     // tab reports a data-load failure instead of a misleading Configuration screen.
-    const resolution = await resolveWarehouseSiteId(org, site);
-    if (resolution.status === "error") {
-      return c.json({ error: "Failed to resolve analytics registration" }, 502);
+    let siteId = access.kind === "external" ? access.siteId : null;
+    if (!siteId) {
+      const resolution = await resolveWarehouseSiteId(org, site);
+      if (resolution.status === "error") {
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+      if (resolution.status === "unregistered") {
+        return c.json({ registered: false, view, range });
+      }
+      siteId = resolution.id;
     }
-    if (resolution.status === "unregistered") {
-      return c.json({ registered: false, view, range });
-    }
-    const siteId = resolution.id;
 
     const upstream = new URL(`${analyticsDataUrl}/data`);
     upstream.searchParams.set("view", view);
@@ -871,11 +913,9 @@ export const createHostingRoutes = () => {
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
 
-    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!ownsSite) {
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
 

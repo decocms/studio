@@ -18,15 +18,14 @@ import {
 } from "../../customer-lake/client";
 import { findOwnedProject } from "../experiments/ownership";
 import { resolveRepositoryForProject } from "../experiments/resolve-site-repository";
-import { DECO_ANALYTICS_METADATA_KEY } from "../strip-server-managed-metadata";
+import {
+  DECO_ANALYTICS_METADATA_KEY,
+  storedExternalRegistration,
+} from "@decocms/shared/deco-analytics";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
 import { buildInstruction } from "./instruction";
 
 const MODULES = ["core", "commerce", "vitals"];
-
-/** What a site the control-plane doesn't host keeps of its registration: the
- *  key is only returned when it's created. */
-const ExternalRegistration = z.object({ id: z.string(), key: z.string() });
 
 export const ANALYTICS_INSTALL = defineTool({
   name: "ANALYTICS_INSTALL",
@@ -133,13 +132,9 @@ export const ANALYTICS_INSTALL = defineTool({
       }
       registration = hostedRegistration;
     } else {
-      const stored = ExternalRegistration.safeParse(
-        (project.metadata as Record<string, unknown> | null)?.[
-          DECO_ANALYTICS_METADATA_KEY
-        ],
-      );
-      if (stored.success) {
-        registration = { ...stored.data, modules: MODULES };
+      const stored = storedExternalRegistration(project.metadata);
+      if (stored) {
+        registration = { ...stored, modules: MODULES };
       } else {
         const host = typedHost(input.domain);
         if (!host) return { status: "needs_domain" as const };

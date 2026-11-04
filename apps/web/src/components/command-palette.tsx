@@ -49,6 +49,7 @@ import {
 } from "@/layouts/main-panel-tabs/tab-route";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useProjectScope } from "@/hooks/use-project-scope";
+import { useRecentProjects } from "@/hooks/use-recent-projects";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import {
@@ -131,6 +132,7 @@ export function CommandPalette({
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { projects, hasProjects } = useProjectScope();
+  const { remember: rememberProject } = useRecentProjects(org.slug);
   const [term, setTerm] = useState("");
   const deferredTerm = useDeferredValue(term);
   const hits = useGlobalSearch(deferredTerm);
@@ -293,14 +295,15 @@ export function CommandPalette({
                 key={project.id}
                 value={`project ${project.title}`}
                 onSelect={() =>
-                  go(
-                    () =>
-                      navigate({
-                        to: DESTINATION_ROUTE.projects,
-                        params: { org: org.slug, agentId: project.id },
-                      }),
-                    "project",
-                  )
+                  go(() => {
+                    /** Opening a project puts it on the rail, the same as
+                     *  `useNavigateToAgent` does for every other entry point. */
+                    rememberProject(project.id);
+                    navigate({
+                      to: DESTINATION_ROUTE.projects,
+                      params: { org: org.slug, agentId: project.id },
+                    });
+                  }, "project")
                 }
               >
                 <ProjectIcon
