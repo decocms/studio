@@ -239,7 +239,10 @@ function VmEventsBridge({
   const { releases: draftReleases, createRelease: createDraftRelease } =
     useReleases(virtualMcpId);
   const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
+  /** Stamped on the draft (`Release.runtime`), so never the unresolved default. */
+  const draftRuntime = sessionState.resolved ? sessionState.runtime : null;
   const currentIsUnnamedDraft =
+    !!draftRuntime &&
     isOwnDraftThread &&
     !!currentBranch &&
     currentBranch !== draftsBase &&
@@ -247,7 +250,7 @@ function VmEventsBridge({
   const namedDraftForBranchRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
   useEffect(() => {
-    if (!currentIsUnnamedDraft || !currentBranch) return;
+    if (!currentIsUnnamedDraft || !currentBranch || !draftRuntime) return;
     if (namedDraftForBranchRef.current === currentBranch) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't create twice
     namedDraftForBranchRef.current = currentBranch;
@@ -260,10 +263,12 @@ function VmEventsBridge({
       color: nextReleaseColor(draftReleases.length),
       createdBy: userId,
       createdAt: new Date().toISOString(),
+      runtime: draftRuntime,
     }).catch(() => {});
   }, [
     currentIsUnnamedDraft,
     currentBranch,
+    draftRuntime,
     draftReleases,
     createDraftRelease,
     userId,

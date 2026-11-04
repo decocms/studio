@@ -20,7 +20,7 @@ mock.module("../../thread/repository/branch-picker", () => ({
   ),
 }));
 
-import { ChatModeRowPure } from "./chat-mode-row";
+import { branchPickAction, ChatModeRowPure } from "./chat-mode-row";
 import { BranchPill } from "./branch-pill";
 
 // BranchPill resolves the locked-tooltip copy via useT(), which reads the
@@ -87,5 +87,59 @@ describe("BranchPill", () => {
       <BranchPill {...BRANCH_PILL_PROPS} locked={false} />,
     );
     expect(getByRole("button")).toHaveTextContent("branch-picker");
+  });
+});
+
+describe("branchPickAction", () => {
+  it("switches an unlocked chat in place for a draft without a runtime", () => {
+    expect(branchPickAction({ locked: false, sessionRuntime: "cms" })).toEqual({
+      kind: "switch",
+    });
+  });
+
+  it("switches an unlocked chat in place for a draft in its own runtime", () => {
+    expect(
+      branchPickAction({
+        locked: false,
+        sessionRuntime: "sandbox",
+        draftRuntime: "sandbox",
+      }),
+    ).toEqual({ kind: "switch" });
+  });
+
+  it("opens a coding chat when a PR's coding draft is picked from a CMS chat", () => {
+    expect(
+      branchPickAction({
+        locked: false,
+        sessionRuntime: "cms",
+        draftRuntime: "sandbox",
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "sandbox" });
+  });
+
+  it("opens a CMS chat when a CMS draft is picked from a coding chat", () => {
+    expect(
+      branchPickAction({
+        locked: false,
+        sessionRuntime: "sandbox",
+        draftRuntime: "cms",
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "cms" });
+  });
+
+  it("opens a new chat in the draft's runtime from a locked chat", () => {
+    expect(
+      branchPickAction({
+        locked: true,
+        sessionRuntime: "cms",
+        draftRuntime: "sandbox",
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "sandbox" });
+  });
+
+  it("leaves the runtime to the project default for a legacy draft from a locked chat", () => {
+    expect(branchPickAction({ locked: true, sessionRuntime: "cms" })).toEqual({
+      kind: "new-chat",
+    });
   });
 });

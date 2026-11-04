@@ -13,6 +13,7 @@ import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
   readThreadRuntime,
+  type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { authClient } from "@/lib/auth-client";
@@ -30,6 +31,30 @@ interface PureProps {
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;
   return <>{branchPill}</>;
+}
+
+export type BranchPickAction =
+  | { kind: "switch" }
+  | { kind: "new-chat"; runtime?: ThreadRuntime };
+
+/**
+ * What picking a branch does. A locked chat's branch is fixed, and a chat's
+ * runtime is immutable, so a draft made in another runtime (a PR's coding
+ * session picked from a CMS chat) needs a new chat in that runtime: switching
+ * in place would render production's code over the branch.
+ */
+export function branchPickAction(input: {
+  locked: boolean;
+  sessionRuntime: ThreadRuntime;
+  draftRuntime?: ThreadRuntime;
+}): BranchPickAction {
+  const { locked, sessionRuntime, draftRuntime } = input;
+  if (!locked && (!draftRuntime || draftRuntime === sessionRuntime)) {
+    return { kind: "switch" };
+  }
+  return draftRuntime
+    ? { kind: "new-chat", runtime: draftRuntime }
+    : { kind: "new-chat" };
 }
 
 interface SmartProps {
@@ -82,10 +107,20 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
       "cms";
 
-  // Locked chat's branch is fixed: open a new chat on the picked branch.
-  const onChange = (next: string) => {
-    if (locked && createTask) createTask({ branch: next });
-    else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+  const sessionRuntime = readThreadRuntime(
+    taskCtx?.activeTask?.metadata,
+    virtualMcp?.metadata,
+  );
+  const onChange = (next: string, draftRuntime?: ThreadRuntime) => {
+    const action = branchPickAction({ locked, sessionRuntime, draftRuntime });
+    if (action.kind === "new-chat" && createTask) {
+      createTask({
+        branch: next,
+        ...(action.runtime ? { runtime: action.runtime } : {}),
+      });
+    } else if (setCurrentTaskBranch) {
+      void setCurrentTaskBranch(next);
+    }
   };
   // Locked or CMS→sandbox: branch off into a fresh thread, don't re-point.
   const onCreateBranch = (next: string) => {
