@@ -28,8 +28,9 @@ import {
   deliveryKeys,
   newDraftSlug,
 } from "./delivery-store";
+import { listCmsReleases } from "./cms-releases";
 import { memoryDeliveryStore } from "./hosted-test-helpers";
-import { newRevisionId } from "./revision-id";
+import { newRevisionId, revisionTimeMs } from "./revision-id";
 
 const SITE = "acme";
 
@@ -350,5 +351,52 @@ describe("rollbackToRevision", () => {
     await expect(rollbackToRevision(deps, orphan, "")).rejects.toBeInstanceOf(
       NeverLiveError,
     );
+  });
+});
+
+describe("clock skew between Studio instances", () => {
+  it("a publish from an instance whose clock runs behind still sorts before the revision it follows", async () => {
+    const { delivery, deps, draft, saveDraft } = setup();
+    let nowMs = Date.parse("2026-11-04T12:00:00.000Z");
+    const skewed: CmsPublishDeps = {
+      ...deps,
+      now: () => new Date(nowMs),
+      newId: undefined,
+    };
+    // Instance A publishes R0 and R1.
+    await saveDraft({ a: { v: 0 } });
+    const r0 = (await publishCmsDraft(skewed, draft, "")) as {
+      revision: string;
+    };
+    nowMs += 1000;
+    await saveDraft({ a: { v: 1 } });
+    const r1 = (await publishCmsDraft(skewed, draft, "")) as {
+      revision: string;
+    };
+    // Instance B, 5 s behind, publishes R2 over R1.
+    nowMs -= 5000;
+    await saveDraft({ a: { v: 2 } });
+    const r2 = (await publishCmsDraft(skewed, draft, "")) as {
+      revision: string;
+      previous: string;
+    };
+    expect(r2.previous).toBe(r1.revision);
+    expect(revisionTimeMs(r2.revision)).toBe(revisionTimeMs(r1.revision) + 1);
+    // R2 lists first (newest), then R1, then R0: the chain in listing order.
+    expect([r0.revision, r1.revision, r2.revision].sort()).toEqual([
+      r2.revision,
+      r1.revision,
+      r0.revision,
+    ]);
+    const page = await listCmsReleases(delivery.store, SITE, null);
+    expect(page.revisions.map((r) => [r.id, r.status])).toEqual([
+      [r2.revision, "current"],
+      [r1.revision, "was-live"],
+      [r0.revision, "was-live"],
+    ]);
+    // publishedAt is still this instance's clock.
+    expect(
+      (await readRevisionMeta(delivery.store, SITE, r2.revision))?.publishedAt,
+    ).toBe(new Date(nowMs).toISOString());
   });
 });

@@ -17,6 +17,28 @@ export function isRevisionId(value: unknown): value is string {
 
 const MAX48 = 2n ** 48n - 1n;
 
+/** The millisecond timestamp a revision id's UUIDv7 starts with. */
+export function revisionTimeMs(id: string): number {
+  const uuid = id.slice(13);
+  return Number.parseInt(uuid.slice(0, 8) + uuid.slice(9, 13), 16);
+}
+
+/**
+ * The time to mint the id of a revision that follows `previous`: now, but
+ * never earlier than 1 ms after `previous`'s own time. So a revision always
+ * sorts before (newer than) the one it follows, even when this instance's
+ * clock runs behind the one that wrote `previous`, and the Releases walk,
+ * which meets them in listing order, finds the chain in order.
+ */
+export function revisionTimeAfter(
+  previous: string | null,
+  nowMs: number,
+): number {
+  return previous === null
+    ? nowMs
+    : Math.max(nowMs, revisionTimeMs(previous) + 1);
+}
+
 export function newRevisionId(
   nowMs: number = Date.now(),
   rand: Uint8Array = crypto.getRandomValues(new Uint8Array(10)),
