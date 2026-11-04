@@ -17,7 +17,7 @@ import {
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
 import { AXIS_TICK } from "@/layouts/task-board/analytics-sections";
-import { bucketTick, fmtInt } from "./panels";
+import { bucketTick, fmtInt, num } from "./panels";
 
 export interface Threshold {
   value: number;
@@ -44,7 +44,7 @@ export function TrendChart({
 }) {
   const data = points.map((p) => ({
     t: String(p.t ?? ""),
-    [metric]: Number(p[metric]) || 0,
+    [metric]: num(p[metric]),
   }));
   return (
     <ChartContainer

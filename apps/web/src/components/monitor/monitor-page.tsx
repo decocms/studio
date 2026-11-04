@@ -1,8 +1,14 @@
 /** The Monitor, org or project: ask about the data, what needs attention, the numbers that matter. */
 
 import type { ReactNode } from "react";
-import { Activity } from "@untitledui/icons";
+import { Activity, GitBranch01 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   DayInput,
@@ -89,6 +95,7 @@ function Board({
   board,
   orgSlug,
   scopeId,
+  today,
   selection,
   onSelect,
   ask,
@@ -98,6 +105,8 @@ function Board({
   board: MonitorBoard;
   orgSlug: string;
   scopeId: string | null;
+  /** A past day has no verdicts of its own, so it can't be all clear. */
+  today: boolean;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
   ask: ReactNode;
@@ -117,7 +126,7 @@ function Board({
           onOpenStore={(store) => onSelect({ ...selection, store })}
         />
       ) : (
-        board.stores.length > 0 && <AllClear />
+        today && board.stores.length > 0 && <AllClear />
       )}
       {numbers}
       {more}
@@ -190,9 +199,19 @@ export function MonitorPage({
     return (
       <div className="flex h-full min-h-0 flex-col overflow-auto">
         {tabs}
-        {deploysState !== "off" && (
+        {!loading && board.deploys && (
           <Page.Actions>
-            <MonitoredRepos />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1">
+                  <GitBranch01 size={14} />
+                  {t("monitor.repos.button")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 p-3">
+                <MonitoredRepos />
+              </PopoverContent>
+            </Popover>
           </Page.Actions>
         )}
         <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
@@ -354,6 +373,7 @@ export function MonitorPage({
         selection={selection}
         orgSlug={orgSlug}
         scopeId={scopeId}
+        today={today}
         onSelect={onSelect}
         ask={<AskData project={scopeProject?.title ?? null} />}
         numbers={

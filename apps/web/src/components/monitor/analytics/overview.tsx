@@ -50,11 +50,12 @@ export function DecoOverview(props: SectionProps) {
   const k = firstRow(data, "kpis") ?? {};
   const p = firstRow(data, "kpisPrev") ?? {};
   const covered = num(p.covered);
-  const built = (num(k.sessions_built) ?? 0) > 0;
+  // A payload without the flag predates it and is taken as built.
+  const built = (num(k.sessions_built) ?? 1) > 0;
   const sampling = num(k.min_sampling);
   const series = rowsOf(data, "series");
   const shown = METRICS.filter((m) => series.some((r) => m in r));
-  const active = shown.includes(metric) ? metric : "visitors";
+  const active = shown.includes(metric) ? metric : (shown[0] ?? "visitors");
 
   const tiles: {
     key: string;
@@ -96,8 +97,11 @@ export function DecoOverview(props: SectionProps) {
     {
       key: "bounce",
       title: t("monitor.analytics.panels.kpi.bounce"),
-      value: num(k.bounce_pct) === null ? "—" : fmtPct(num(k.bounce_pct), 0),
-      current: num(k.bounce_pct),
+      value:
+        !built || num(k.bounce_pct) === null
+          ? "—"
+          : fmtPct(num(k.bounce_pct), 0),
+      current: built ? num(k.bounce_pct) : null,
       previous: num(p.bounce_pct),
       better: "down",
       points: true,
@@ -105,8 +109,8 @@ export function DecoOverview(props: SectionProps) {
     {
       key: "duration",
       title: t("monitor.analytics.panels.kpi.duration"),
-      value: fmtDuration(k.duration_s),
-      current: num(k.duration_s),
+      value: built ? fmtDuration(k.duration_s) : "—",
+      current: built ? num(k.duration_s) : null,
       previous: num(p.duration_s),
       better: "up",
     },
@@ -153,7 +157,7 @@ export function DecoOverview(props: SectionProps) {
                 />
               )}
               {shown.length > 1 && (
-                <ViewSwitch>
+                <ViewSwitch label={t("monitor.analytics.panels.chartMetric")}>
                   {shown.map((m) => (
                     <ViewSwitch.Item
                       key={m}
@@ -195,12 +199,17 @@ function ConversionFunnel({ row }: { row: Record<string, unknown> }) {
       label: t("monitor.analytics.panels.funnel.addToCart"),
     },
     { key: "purchase", label: t("monitor.analytics.panels.funnel.purchase") },
-  ].map((s) => ({ ...s, n: num(row[s.key]) ?? 0 }));
+  ]
+    // An absent step isn't instrumented, which a zero would misreport.
+    .filter((s) => s.key in row)
+    .map((s) => ({ ...s, n: num(row[s.key]) ?? 0 }));
   const top = Math.max(1, steps[0]?.n ?? 0);
-  const viewed = steps[0]?.n ?? 0;
-  const bought = steps[3]?.n ?? 0;
+  const viewed = steps.find((s) => s.key === "viewed")?.n ?? 0;
+  const bought = steps.find((s) => s.key === "purchase")?.n ?? null;
   const overall =
-    bought <= viewed && viewed > 0 ? (100 * bought) / viewed : null;
+    bought !== null && bought <= viewed && viewed > 0
+      ? (100 * bought) / viewed
+      : null;
   return (
     <Panel
       title={t("monitor.analytics.panels.funnel.title")}

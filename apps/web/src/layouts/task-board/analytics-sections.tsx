@@ -191,7 +191,7 @@ export function MetricCard({
         <div className="flex min-w-0 flex-col gap-1">
           <h3 className="text-sm text-foreground/70">{title}</h3>
           {value !== undefined && (
-            <span className="tnum whitespace-nowrap text-4xl font-normal text-foreground @max-xs:text-3xl">
+            <span className="tnum whitespace-nowrap text-4xl font-normal text-foreground @max-xs:text-3xl @max-3xs:text-2xl">
               {value}
             </span>
           )}

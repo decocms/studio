@@ -13,6 +13,7 @@ import { SEGMENT_SEARCH_KEYS } from "@/components/monitor/analytics/segment";
 import {
   MONITOR_VIEWS,
   type MonitorView,
+  useSiteProjects,
 } from "@/components/monitor/monitor-views";
 import { useLiveBoard } from "@/components/monitor/use-live-board";
 import {
@@ -96,9 +97,13 @@ function LiveMonitoring({
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
+  // The filter's pick narrows the whole board, its totals included.
+  const picked = useSiteProjects().some((p) => p.id === selection.project)
+    ? selection.project
+    : undefined;
   const { board, loading, error } = useLiveBoard(
     orgSlug,
-    scopeId,
+    scopeId ?? picked ?? null,
     selection.date,
   );
   return (

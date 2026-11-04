@@ -4,7 +4,8 @@ export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.empty": "Nada neste período",
   "monitor.analytics.panels.error": "Não foi possível carregar esta visão",
   "monitor.analytics.panels.withheld": "Omitida",
-  "monitor.analytics.panels.sampled": "Amostrado a {pct}%",
+  "monitor.analytics.panels.sampled": "Amostragem de {pct}%",
+  "monitor.analytics.panels.chartMetric": "Métrica do gráfico",
   "monitor.analytics.panels.sampledTip":
     "Parte dos eventos deste período foi coletada a uma taxa menor. Visitantes, pageviews e sessões são exatos; taxas calculadas sobre eventos customizados ou de comércio ficam subestimadas.",
   "monitor.analytics.panels.prev.vsPrior": "vs período anterior",
@@ -67,7 +68,7 @@ export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.col.revenueIn": "Receita ({currency})",
   "monitor.analytics.panels.col.item": "Item",
   "monitor.analytics.panels.col.viewed": "Viram",
-  "monitor.analytics.panels.col.carted": "Carrinho",
+  "monitor.analytics.panels.col.carted": "Adicionaram ao carrinho",
   "monitor.analytics.panels.col.bought": "Compraram",
   "monitor.analytics.panels.col.orders": "Pedidos",
   "monitor.analytics.panels.col.viewToCart": "Visto → carrinho",
@@ -85,6 +86,9 @@ export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.engagementOff": "Nada medido automaticamente",
   "monitor.analytics.panels.engagementOffDesc":
     "Profundidade de rolagem, buscas, links externos e downloads precisam do módulo de engajamento.",
+  "monitor.analytics.panels.engagementEmpty": "Nada medido ainda",
+  "monitor.analytics.panels.engagementEmptyDesc":
+    "Profundidade de rolagem, buscas, links externos e downloads aparecem aqui assim que os visitantes começarem a usá-los.",
   "monitor.analytics.panels.exp.variant": "Variante",
   "monitor.analytics.panels.vitals.assessment": "Avaliação dos Core Web Vitals",
   "monitor.analytics.panels.vitals.loads": "{n} carregamentos medidos",

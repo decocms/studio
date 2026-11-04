@@ -1,6 +1,8 @@
 /** The Monitor's tabs: Overview, Performance, Logs, Analytics and Heatmap. */
 
 import type { ReactNode } from "react";
+import { BarChart10 } from "@untitledui/icons";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
@@ -148,6 +150,17 @@ export function ProjectScreen({
   );
 }
 
+/** A project route on an agent without a site: nothing to read, and no other project to pick. */
+export function NoSite() {
+  const t = useT();
+  return (
+    <EmptyState
+      icon={<BarChart10 size={20} />}
+      title={t("mainPanelTabs.cdnTab.noSiteTitle")}
+    />
+  );
+}
+
 /** Requests, cache and errors: the CDN on v7 sites, the site's own telemetry on v8. */
 export function PerformanceView({
   scopeId,
@@ -186,13 +199,20 @@ export function MonitorHeatmap({
 }) {
   const views = useControlPlaneViews();
   const projects = useSiteProjects();
+  const project = projects.find((p) => p.id === scopeId);
   return (
     <ProjectScreen scopeId={scopeId} enabled={views.monitor}>
-      <HeatmapScreen
-        project={projects.find((p) => p.id === scopeId)}
-        projects={projects}
-        onProject={onProject}
-      />
+      {scopeId && !project ? (
+        <div className="mx-auto w-full max-w-[1200px] px-4 pt-6 pb-10 md:px-10">
+          <NoSite />
+        </div>
+      ) : (
+        <HeatmapScreen
+          project={project}
+          projects={projects}
+          onProject={onProject}
+        />
+      )}
     </ProjectScreen>
   );
 }

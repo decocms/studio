@@ -21,16 +21,18 @@ export function weightedMean(values: readonly SiteValue[]): number | null {
 
 /**
  * Up to three sites spelled out; more than that, only the best and the worst,
- * where "best" is the lowest value when `lowerIsBetter`.
+ * where "best" is the lowest value when `lowerIsBetter`. A site without weight
+ * adds nothing to the average, so it isn't named either.
  */
 export function spread(
-  values: readonly SiteValue[],
+  all: readonly SiteValue[],
   format: (value: number) => string,
   lowerIsBetter: boolean,
 ):
   | { kind: "all"; items: string[] }
   | { kind: "range"; best: string; worst: string }
   | null {
+  const values = all.filter((v) => v.weight > 0);
   if (values.length < 2) return null;
   if (values.length <= 3) {
     return {

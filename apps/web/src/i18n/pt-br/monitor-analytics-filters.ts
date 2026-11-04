@@ -23,7 +23,7 @@ export const monitorAnalyticsFilters = {
   "monitor.analytics.filters.dim.city": "Cidade",
   "monitor.analytics.filters.dim.device": "Dispositivo",
   "monitor.analytics.filters.dim.browser": "Navegador",
-  "monitor.analytics.filters.dim.os": "Sistema",
+  "monitor.analytics.filters.dim.os": "Sistema operacional",
   "monitor.analytics.filters.dim.name": "Evento",
   "monitor.analytics.filters.dim.prop": "Propriedade",
   "monitor.analytics.filters.dim.exp": "Variante",

@@ -35,7 +35,14 @@
  * marker is only a hint here, never a v8 answer on its own.
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type Query,
+  type QueryClient,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import {
   HOSTED_DELIVERY_UNCONFIGURED,
   isBlocksV8Project,
@@ -141,14 +148,12 @@ export function useMainSchemaV8(
   return useProjectMainSchemaV8(useVirtualMCP(virtualMcpId));
 }
 
-/** {@link useMainSchemaV8} for a caller that already holds the project. Never
- *  suspends, so the sidebar can use it: reading the row by id there suspended
- *  the whole org frame on the first visit to a project. */
-export function useProjectMainSchemaV8(
+/** The read of one project's main schema, and what decides its answer. */
+function mainSchemaQuery(
+  org: { id: string; slug: string },
   project: VirtualMCPEntity | null | undefined,
-): MainSchemaAnswer {
-  const { org } = useProjectContext();
-  const queryClient = useQueryClient();
+  queryClient: QueryClient,
+) {
   const projectId = project?.id ?? "";
   const marked = isBlocksV8Project(project?.metadata);
   const asks =
@@ -156,32 +161,69 @@ export function useProjectMainSchemaV8(
     !!org.slug &&
     !!projectId &&
     agentHasClonableSource(project?.metadata);
-  const query = useQuery({
-    queryKey: KEYS.mainSchemaV8(org.slug, projectId),
-    queryFn: async () => {
-      const read = await fetchMainSchemaV8(org.slug, projectId);
-      // The server just rewrote its cached answer: re-read the project.
-      if (read.isV8 !== marked) {
-        invalidateCollectionQueries(queryClient, org.id, "VIRTUAL_MCP");
-      }
-      return read;
-    },
-    enabled: asks,
-    staleTime: Number.POSITIVE_INFINITY,
-    gcTime: Number.POSITIVE_INFINITY,
-    retry: 2,
-    refetchInterval: (q) =>
-      q.state.status === "error" ? MAIN_SCHEMA_RETRY_MS : false,
-  });
-  return mainSchemaAnswer({
+  return {
     asks,
+    marked,
+    options: {
+      queryKey: KEYS.mainSchemaV8(org.slug, projectId),
+      queryFn: async () => {
+        const read = await fetchMainSchemaV8(org.slug, projectId);
+        // The server just rewrote its cached answer: re-read the project.
+        if (read.isV8 !== marked) {
+          invalidateCollectionQueries(queryClient, org.id, "VIRTUAL_MCP");
+        }
+        return read;
+      },
+      enabled: asks,
+      staleTime: Number.POSITIVE_INFINITY,
+      gcTime: Number.POSITIVE_INFINITY,
+      retry: 2,
+      refetchInterval: (q: Query<MainSchemaRead>) =>
+        q.state.status === "error" ? MAIN_SCHEMA_RETRY_MS : false,
+    },
+  };
+}
+
+function answerOf(
+  project: VirtualMCPEntity | null | undefined,
+  read: ReturnType<typeof mainSchemaQuery>,
+  query: UseQueryResult<MainSchemaRead>,
+): MainSchemaAnswer {
+  return mainSchemaAnswer({
+    asks: read.asks,
     hasProject: !!project,
     data: query.data?.isV8,
     // A re-poll of a failed read puts the query back to `pending` (no data
     // yet): the answer stays the failure's until a read succeeds, so the
     // editor and preview never flip back to loading every few seconds.
     isError: query.isError || query.errorUpdateCount > 0,
-    marked,
+    marked: read.marked,
+  });
+}
+
+/** {@link useMainSchemaV8} for a caller that already holds the project. Never
+ *  suspends, so the sidebar can use it: reading the row by id there suspended
+ *  the whole org frame on the first visit to a project. */
+export function useProjectMainSchemaV8(
+  project: VirtualMCPEntity | null | undefined,
+): MainSchemaAnswer {
+  const { org } = useProjectContext();
+  const read = mainSchemaQuery(org, project, useQueryClient());
+  return answerOf(project, read, useQuery(read.options));
+}
+
+/** {@link useProjectMainSchemaV8} for several projects at once, in their order. */
+export function useProjectsMainSchemaV8(
+  projects: readonly (VirtualMCPEntity | undefined)[],
+): MainSchemaAnswer[] {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  const reads = projects.map((p) => mainSchemaQuery(org, p, queryClient));
+  const queries = useQueries({ queries: reads.map((r) => r.options) });
+  return projects.map((p, i) => {
+    const read = reads[i];
+    const query = queries[i];
+    return read && query ? answerOf(p, read, query) : "loading";
   });
 }
 

@@ -12,7 +12,7 @@ function ViewSwitchRoot({
   className,
   children,
 }: {
-  label?: string;
+  label: string;
   className?: string;
   children: ReactNode;
 }) {

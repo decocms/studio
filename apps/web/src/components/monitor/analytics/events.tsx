@@ -36,6 +36,8 @@ export function EventsSection(props: SectionProps) {
   const downloads = kn(rowsOf(data, "downloads"));
   const engagement =
     scroll.length + searches.length + outbound.length + downloads.length > 0;
+  const engagementOn =
+    props.status.config?.modules?.includes("engagement") ?? false;
   const propFilter = (key: string) => (k: string) => `${key}=${k}`;
 
   return (
@@ -84,6 +86,12 @@ export function EventsSection(props: SectionProps) {
             filterValue={propFilter("target")}
           />
         </div>
+      ) : engagementOn ? (
+        <SectionEmpty
+          icon={<CursorClick01 size={20} />}
+          title={t("monitor.analytics.panels.engagementEmpty")}
+          description={t("monitor.analytics.panels.engagementEmptyDesc")}
+        />
       ) : (
         <SectionEmpty
           icon={<CursorClick01 size={20} />}

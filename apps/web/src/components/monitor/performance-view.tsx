@@ -25,13 +25,17 @@ import {
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { Page } from "@/components/page";
 import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import {
+  useMainSchemaV8,
+  useProjectsMainSchemaV8,
+} from "@/hooks/use-main-schema-v8";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import {
   type BreakdownRow,
@@ -52,7 +56,11 @@ import {
 import { SiteTelemetryMonitor } from "@/layouts/main-panel-tabs/monitor-v8-tab";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
-import { useProjectContext, useVirtualMCP } from "@/sdk";
+import {
+  useProjectContext,
+  useVirtualMCP,
+  useVirtualMCPsNonBlocking,
+} from "@/sdk";
 import { weightedMean } from "./aggregate";
 import { RankedList } from "./analytics/panels";
 import type { SectionRange } from "./audience-view";
@@ -111,6 +119,22 @@ function previousWindow(range: Range): { since: string; until: string } | null {
   };
 }
 
+function cdnQuery<T>(base: string, view: string, range: string, extra = "") {
+  return {
+    queryKey: KEYS.cdnData(base, `cdn:${view}${extra}`, range),
+    queryFn: async () => {
+      const body = (await fetchJson(
+        `${base}/cdn/data?view=${view}&range=${range}${extra}`,
+      )) as { available?: boolean; error?: string; data?: T };
+      // An unwired warehouse is a setup problem, not a site without traffic.
+      if (body.available === false) throw new Error(body.error);
+      return (body.data ?? null) as T | null;
+    },
+    retry: false,
+    staleTime: 30_000,
+  };
+}
+
 function useCdnView<T>(
   base: string,
   view: string,
@@ -118,20 +142,7 @@ function useCdnView<T>(
   extra = "",
   enabled = true,
 ) {
-  return useQuery({
-    queryKey: KEYS.cdnData(base, `cdn:${view}${extra}`, range),
-    queryFn: async () => {
-      const body = (await fetchJson(
-        `${base}/cdn/data?view=${view}&range=${range}${extra}`,
-      )) as { available?: boolean; data?: T };
-      return body.available === false
-        ? null
-        : ((body.data ?? null) as T | null);
-    },
-    enabled,
-    retry: false,
-    staleTime: 30_000,
-  });
+  return useQuery({ ...cdnQuery<T>(base, view, range, extra), enabled });
 }
 
 function RangeAction({
@@ -720,22 +731,6 @@ function Frame({ children }: { children: ReactNode }) {
   );
 }
 
-function cdnQuery<T>(base: string, view: string, range: string, extra = "") {
-  return {
-    queryKey: KEYS.cdnData(base, `cdn:${view}${extra}`, range),
-    queryFn: async () => {
-      const body = (await fetchJson(
-        `${base}/cdn/data?view=${view}&range=${range}${extra}`,
-      )) as { available?: boolean; data?: T };
-      return body.available === false
-        ? null
-        : ((body.data ?? null) as T | null);
-    },
-    retry: false,
-    staleTime: 30_000,
-  };
-}
-
 const SITE_COLORS = [
   "var(--chart-1)",
   "var(--chart-2)",
@@ -860,15 +855,19 @@ function OrgPerformance({
   const { org } = useProjectContext();
   const [range, setRange] = useState<Range>("7d");
   const prev = previousWindow(range);
+  const entities = useVirtualMCPsNonBlocking();
+  // A Blocks v8 site's traffic is its own telemetry, read in the project, not the CDN's.
+  const kinds = useProjectsMainSchemaV8(
+    projects.map((p) => entities.find((e) => e.id === p.id)),
+  ).map(monitorKind);
+  const onCdn = projects.filter((_, i) => kinds[i] === "v7");
   const base = (p: SiteProject) =>
     `/api/${org.slug}/monitor/${encodeURIComponent(p.analyticsSite)}`;
   const summaries = useQueries({
-    queries: projects.map((p) =>
-      cdnQuery<CdnSummary>(base(p), "summary", range),
-    ),
+    queries: onCdn.map((p) => cdnQuery<CdnSummary>(base(p), "summary", range)),
   });
   const previous = useQueries({
-    queries: projects.map((p) => ({
+    queries: onCdn.map((p) => ({
       ...cdnQuery<CdnSummary>(
         base(p),
         "summary",
@@ -879,20 +878,26 @@ function OrgPerformance({
     })),
   });
   const timelines = useQueries({
-    queries: projects.map((p) =>
+    queries: onCdn.map((p) =>
       cdnQuery<TimelinePoint[]>(base(p), "timeline", range),
     ),
   });
   const action = <RangeAction value={range} onChange={setRange} />;
-  const loading = summaries.some((q) => q.isLoading);
+  const loading =
+    kinds.includes("loading") || summaries.some((q) => q.isLoading);
 
   const rows = projects
-    .map((project, i) => ({
-      project,
-      loading: summaries[i]?.isLoading ?? false,
-      summary: summaries[i]?.data ?? null,
-      previous: previous[i]?.data ?? null,
-    }))
+    .map((project, i) => {
+      const at = onCdn.indexOf(project);
+      return {
+        project,
+        kind: kinds[i],
+        loading: kinds[i] === "loading" || !!summaries[at]?.isLoading,
+        error: summaries[at]?.error ?? null,
+        summary: summaries[at]?.data ?? null,
+        previous: previous[at]?.data ?? null,
+      };
+    })
     .sort(
       (a, b) =>
         (b.summary?.total_requests ?? -1) - (a.summary?.total_requests ?? -1),
@@ -900,14 +905,24 @@ function OrgPerformance({
   const serving = rows.filter((r) => (r.summary?.total_requests ?? 0) > 0);
 
   if (!loading && serving.length === 0) {
+    const failed = rows.find((r) => r.error)?.error;
     return (
       <>
         {action}
-        <EmptyState
-          icon={<Globe01 className="size-5" />}
-          title={t("monitor.performance.org.emptyTitle")}
-          description={t("monitor.performance.org.emptyDesc")}
-        />
+        {failed ? (
+          <EmptyState
+            icon={<Globe01 className="size-5" />}
+            tone="error"
+            title={t("mainPanelTabs.cdnTab.errorTitle")}
+            description={failed.message}
+          />
+        ) : (
+          <EmptyState
+            icon={<Globe01 className="size-5" />}
+            title={t("monitor.performance.org.emptyTitle")}
+            description={t("monitor.performance.org.emptyDesc")}
+          />
+        )}
       </>
     );
   }
@@ -925,7 +940,7 @@ function OrgPerformance({
     }));
   const cache = weighted((s) => s.cache_hit_ratio);
   const latency = weighted((s) => s.avg_latency_ms);
-  const sites = projects.flatMap((project, i) => {
+  const sites = onCdn.flatMap((project, i) => {
     const points = timelines[i]?.data;
     return points && points.some((p) => p.requests > 0)
       ? [{ project, points }]
@@ -1068,9 +1083,16 @@ function OrgPerformance({
                   ) : (
                     <td
                       colSpan={4}
-                      className="text-meta px-4 py-2.5 text-right"
+                      className={cn(
+                        "text-meta px-4 py-2.5 text-right",
+                        row.error && "text-destructive",
+                      )}
                     >
-                      {t("monitor.performance.org.noCdn")}
+                      {row.kind === "v8"
+                        ? t("monitor.performance.org.blocks8")
+                        : row.error
+                          ? t("mainPanelTabs.cdnTab.errorTitle")
+                          : t("monitor.performance.org.noCdn")}
                     </td>
                   )}
                 </tr>

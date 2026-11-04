@@ -117,7 +117,8 @@ export function HeatmapView({
   modules: string[];
   /** The site's registered domain: the only origin the frame may load and talk to. */
   domain: string | null;
-  onConfigure: () => void;
+  /** Absent for a site whose settings can't be changed here. */
+  onConfigure?: () => void;
   /** Grow into the parent's height instead of a share of the viewport. */
   fill?: boolean;
 }) {
@@ -154,10 +155,12 @@ export function HeatmapView({
         title={t(k("offTitle"))}
         description={t(k("offDescription"))}
         buttonComponent={
-          <Button size="sm" variant="outline" onClick={onConfigure}>
-            <Settings01 className="size-4" />
-            {t(k("openConfig"))}
-          </Button>
+          onConfigure ? (
+            <Button size="sm" variant="outline" onClick={onConfigure}>
+              <Settings01 className="size-4" />
+              {t(k("openConfig"))}
+            </Button>
+          ) : undefined
         }
       />
     );
@@ -311,8 +314,9 @@ function PageInput({
     options.push({ value, label: value, views: null });
   }
   return (
-    <div aria-label={label} className="min-w-0 max-sm:basis-full sm:w-48">
+    <div className="min-w-0 max-sm:basis-full sm:w-48">
       <Combobox
+        ariaLabel={label}
         options={options}
         value={value}
         onChange={(v) => {
@@ -897,6 +901,7 @@ function Viewer({
                   <label className="flex flex-col gap-2">
                     <span className="text-meta">{t(k("opacity"))}</span>
                     <Slider
+                      thumbLabel={t(k("opacity"))}
                       min={0.2}
                       max={1}
                       step={0.05}

@@ -3,6 +3,7 @@ export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.error": "Couldn't load this view",
   "monitor.analytics.panels.withheld": "Withheld",
   "monitor.analytics.panels.sampled": "Sampled at {pct}%",
+  "monitor.analytics.panels.chartMetric": "Chart metric",
   "monitor.analytics.panels.sampledTip":
     "Some events in this period were collected at a lower rate. Visitors, pageviews and sessions are exact; rates built on custom or commerce events are understated.",
   "monitor.analytics.panels.prev.vsPrior": "vs prior period",
@@ -83,6 +84,9 @@ export const monitorAnalyticsPanels = {
   "monitor.analytics.panels.engagementOff": "Nothing measured automatically",
   "monitor.analytics.panels.engagementOffDesc":
     "Scroll depth, site search, outbound links and downloads need the engagement module.",
+  "monitor.analytics.panels.engagementEmpty": "Nothing measured yet",
+  "monitor.analytics.panels.engagementEmptyDesc":
+    "Scroll depth, site search, outbound links and downloads appear here once visitors start using them.",
   "monitor.analytics.panels.exp.variant": "Variant",
   "monitor.analytics.panels.vitals.assessment": "Core Web Vitals assessment",
   "monitor.analytics.panels.vitals.loads": "{n} measured loads",

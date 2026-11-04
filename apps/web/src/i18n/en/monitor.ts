@@ -122,6 +122,7 @@ export const monitor = {
   "monitor.audience.range.30m": "Last 30 minutes",
   "monitor.audience.range.1h": "Last hour",
   "monitor.audience.range.24h": "Last 24 hours",
+  "monitor.audience.range.today": "Today so far",
   "monitor.audience.range.7d": "Last 7 days",
   "monitor.audience.range.30d": "Last 30 days",
   "monitor.audience.visitors": "Visitors",
@@ -240,4 +241,10 @@ export const monitor = {
   "monitor.org.unreadable": "Couldn't read {names}",
   "monitor.powers.siteExperiments": "A/B tests on real traffic",
   "monitor.view.experiments": "Experiments",
+  "monitor.repos.button": "Repositories",
+  "monitor.select.current": "{label}: {value}",
+  "monitor.performance.org.blocks8":
+    "Blocks v8 site: open it to see its telemetry",
+  "monitor.org.blocks8Experiments":
+    "{names} keep their experiments in their own project",
 } as const;

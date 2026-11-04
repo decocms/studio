@@ -266,11 +266,7 @@ export function SegmentActions({
           label={t("monitor.analytics.filters.currency")}
           value={currency}
           options={currencies.map((c) => ({ value: c.k, label: c.k }))}
-          onChange={(next) =>
-            setSegment({
-              currency: next === currencies[0]?.k ? undefined : next,
-            })
-          }
+          onChange={(next) => setSegment({ currency: next })}
         />
       )}
     </>

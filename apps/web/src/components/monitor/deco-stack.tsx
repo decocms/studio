@@ -1,8 +1,12 @@
 /** Deco Analytics outside the Analytics tab: Web Vitals under Performance, and the Heatmap tab. */
 
 import { useState } from "react";
+import { BarChart10 } from "@untitledui/icons";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
+import { useT } from "@/i18n/use-t.ts";
+import { isNotConfigured } from "@/layouts/main-panel-tabs/analytics-tab";
 import { useProjectContext } from "@/sdk";
 import { useAnalyticsSegment } from "./analytics/segment";
 import { DecoSection, type DecoSectionId } from "./analytics/sections";
@@ -52,6 +56,7 @@ export function HeatmapScreen({
   projects: readonly SiteProject[];
   onProject: (projectId: string) => void;
 }) {
+  const t = useT();
   const { org } = useProjectContext();
   const [configure, setConfigure] = useState(false);
   const status = useAnalyticsStatus(
@@ -60,6 +65,9 @@ export function HeatmapScreen({
     project !== undefined,
   );
   const { segment } = useAnalyticsSegment();
+  // An external site has no hosted registration for the settings to change.
+  const configurable =
+    status.data?.registered === true && !status.data.external;
 
   let body;
   if (!project) {
@@ -70,6 +78,21 @@ export function HeatmapScreen({
     );
   } else if (status.isLoading) {
     body = <Skeleton className="h-64" />;
+  } else if (status.error) {
+    body = isNotConfigured(status.error) ? (
+      <EmptyState
+        icon={<BarChart10 size={20} />}
+        title={t("mainPanelTabs.analyticsTab.backendNotConfiguredTitle")}
+        description={t(
+          "mainPanelTabs.analyticsTab.backendNotConfiguredDescription",
+        )}
+      />
+    ) : (
+      <EmptyState
+        icon={<BarChart10 size={20} />}
+        title={t("mainPanelTabs.analyticsTab.statusError")}
+      />
+    );
   } else if (!status.data?.registered) {
     body = <AnalyticsSoon />;
   } else {
@@ -84,13 +107,15 @@ export function HeatmapScreen({
           range="7d"
           onConfigure={() => setConfigure(true)}
         />
-        <ConfigureDialog
-          orgSlug={org.slug}
-          project={project}
-          status={status.data}
-          open={configure}
-          onOpenChange={setConfigure}
-        />
+        {configurable && (
+          <ConfigureDialog
+            orgSlug={org.slug}
+            project={project}
+            status={status.data}
+            open={configure}
+            onOpenChange={setConfigure}
+          />
+        )}
       </>
     );
   }
@@ -98,7 +123,7 @@ export function HeatmapScreen({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-6 md:px-10">
-        {project && status.data?.registered && (
+        {project && configurable && (
           <Page.Actions>
             <ConfigureButton onClick={() => setConfigure(true)} />
           </Page.Actions>

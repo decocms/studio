@@ -29,11 +29,35 @@ describe("spread", () => {
         [
           { title: "Norte", value: 38, weight: 1 },
           { title: "Sul", value: 44, weight: 1 },
+          { title: "Leste", value: 41, weight: 1 },
         ],
         pct,
         true,
       ),
-    ).toEqual({ kind: "all", items: ["Norte 38%", "Sul 44%"] });
+    ).toEqual({ kind: "all", items: ["Norte 38%", "Sul 44%", "Leste 41%"] });
+  });
+
+  it("leaves out sites that carry no weight", () => {
+    const values = [
+      { title: "A", value: 40, weight: 1 },
+      { title: "B", value: 0, weight: 0 },
+      { title: "C", value: 50, weight: 1 },
+      { title: "D", value: 45, weight: 1 },
+    ];
+    expect(spread(values, pct, true)).toEqual({
+      kind: "all",
+      items: ["A 40%", "C 50%", "D 45%"],
+    });
+    expect(
+      spread(
+        [
+          { title: "A", value: 40, weight: 1 },
+          { title: "B", value: 0, weight: 0 },
+        ],
+        pct,
+        true,
+      ),
+    ).toBeNull();
   });
 
   it("keeps the best and worst past three, by the metric's direction", () => {

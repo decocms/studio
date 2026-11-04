@@ -41,11 +41,13 @@ export function DeploysView({
         />
       </div>
       {history && <DeployTimeline deploys={history} showProject={!scopeId} />}
-      <DeploysTable
-        deploys={deploys}
-        orgSlug={orgSlug}
-        showProject={!scopeId}
-      />
+      <div className="mt-6">
+        <DeploysTable
+          deploys={deploys}
+          orgSlug={orgSlug}
+          showProject={!scopeId}
+        />
+      </div>
     </div>
   );
 }

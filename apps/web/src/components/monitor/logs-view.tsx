@@ -1,6 +1,12 @@
 /** The Logs tab: the site's own logs and spans, drawn with the Monitor's cards, chart panel and list. */
 
-import { type ReactNode, useDeferredValue, useState } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useDeferredValue,
+  useRef,
+  useState,
+} from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -42,7 +48,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
 import { Panel } from "./analytics/panels";
 import { Locked, PickProject } from "./locked";
-import { ProjectScreen, useSiteProjects } from "./monitor-views";
+import { NoSite, ProjectScreen, useSiteProjects } from "./monitor-views";
 import { connectLink } from "./parts";
 import {
   SITE_EVENT_KINDS,
@@ -229,12 +235,22 @@ export function LogsView({
   const views = useControlPlaneViews();
   const projects = useSiteProjects();
   const project = projects.find((p) => p.id === scopeId);
+  const scroller = useRef<HTMLDivElement>(null);
   return (
     <ProjectScreen scopeId={scopeId} enabled={views.monitor}>
-      <div className="flex h-full min-h-0 flex-col overflow-auto">
+      <div
+        ref={scroller}
+        className="flex h-full min-h-0 flex-col overflow-auto"
+      >
         <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
           {project ? (
-            <Explorer key={project.site} site={project.site} />
+            <Explorer
+              key={project.site}
+              site={project.site}
+              scroller={scroller}
+            />
+          ) : scopeId ? (
+            <NoSite />
           ) : (
             <PickProject projects={projects} onProject={onProject}>
               <LogsPreview />
@@ -246,7 +262,13 @@ export function LogsView({
   );
 }
 
-function Explorer({ site }: { site: string }) {
+function Explorer({
+  site,
+  scroller,
+}: {
+  site: string;
+  scroller: RefObject<HTMLElement | null>;
+}) {
   const t = useT();
   const { org } = useProjectContext();
   const [range, setRange] = useState<SiteEventRange>("1h");
@@ -370,7 +392,11 @@ function Explorer({ site }: { site: string }) {
         })
       : null;
   const rows = events.data?.pages.flatMap((p) => p?.events ?? []) ?? [];
-  const filtered = q.length > 0 || filters.level !== ALL;
+  const filtered =
+    q.length > 0 ||
+    filters.level !== ALL ||
+    filters.kind !== ALL ||
+    filters.service !== ALL;
 
   return (
     <>
@@ -429,6 +455,7 @@ function Explorer({ site }: { site: string }) {
             fetching: events.isFetchingNextPage,
             next: () => void events.fetchNextPage(),
           }}
+          scroller={scroller}
         />
       </section>
     </>
@@ -528,22 +555,25 @@ function EventList({
   rows,
   empty,
   more,
+  scroller,
 }: {
   rows: SiteEvent[];
   empty: string;
   more: { has: boolean; fetching: boolean; next: () => void };
+  scroller: RefObject<HTMLElement | null>;
 }) {
   const t = useT();
   const [preferences] = usePreferences();
   const tag = LOCALE_TAG[preferences.language];
   const selection = useIdSelection(rows);
   const selected = selection.selected;
-  const lastRef = useInfiniteScroll(
+  const sentinelRef = useInfiniteScroll(
     () => {
       if (more.has && !more.fetching) more.next();
     },
     more.has,
     more.fetching,
+    scroller,
   );
   const stamp = new Intl.DateTimeFormat(tag, {
     month: "short",
@@ -576,10 +606,9 @@ function EventList({
             <span>{t("monitor.logs.service")}</span>
             <span>{t("monitor.logs.col.message")}</span>
           </div>
-          {rows.map((event, i) => (
+          {rows.map((event) => (
             <button
               key={event.id}
-              ref={i === rows.length - 1 ? lastRef : undefined}
               type="button"
               onClick={() => selection.select(event.id)}
               className={cn(
@@ -598,7 +627,7 @@ function EventList({
               <span
                 className={cn("text-sm lowercase", LEVEL[event.level].text)}
               >
-                {event.level}
+                {levelLabel(event.level, t)}
               </span>
               <span className="truncate text-sm text-muted-foreground">
                 {event.service}
@@ -610,6 +639,7 @@ function EventList({
           ))}
         </div>
       </div>
+      <div ref={sentinelRef} aria-hidden />
       {more.fetching && (
         <div className="flex justify-center py-3">
           <Spinner className="size-4 text-muted-foreground" />

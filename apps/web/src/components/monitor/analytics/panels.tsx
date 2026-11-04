@@ -147,8 +147,9 @@ export function fmtMoney(
 export function fmtDuration(v: unknown): string {
   const n = num(v);
   if (n === null) return "—";
-  const m = Math.floor(n / 60);
-  const s = Math.round(n % 60);
+  const total = Math.round(n);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 

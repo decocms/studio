@@ -92,7 +92,7 @@ export const monitor = {
     "Pedidos cancelados nas suas lojas hoje, pelo monitor de pedidos.",
   "monitor.overview.conversion": "Conversão",
   "monitor.overview.conversionHelp":
-    "Parte das visitas que comprou hoje, pelo analytics conectado.",
+    "Proporção de visitas que compraram hoje, pelo analytics conectado.",
   "monitor.overview.visitors": "Visitantes",
   "monitor.overview.visitorsHelp":
     "Pessoas que visitaram o site nas últimas 24 horas.",
@@ -126,13 +126,14 @@ export const monitor = {
   "monitor.audience.range.30m": "Últimos 30 minutos",
   "monitor.audience.range.1h": "Última hora",
   "monitor.audience.range.24h": "Últimas 24 horas",
+  "monitor.audience.range.today": "Hoje até agora",
   "monitor.audience.range.7d": "Últimos 7 dias",
   "monitor.audience.range.30d": "Últimos 30 dias",
   "monitor.audience.visitors": "Visitantes",
   "monitor.audience.pageviews": "Pageviews",
   "monitor.audience.sessions": "Sessões",
   "monitor.audience.bounceRate": "Taxa de rejeição",
-  "monitor.audience.visitDuration": "Visita média",
+  "monitor.audience.visitDuration": "Duração média da visita",
   "monitor.audience.overTime": "Visitantes ao longo do tempo",
   "monitor.audience.pageviewsOverTime": "Pageviews ao longo do tempo",
   "monitor.audience.paused": "Coleta pausada",
@@ -246,4 +247,10 @@ export const monitor = {
   "monitor.org.unreadable": "Não deu para ler {names}",
   "monitor.powers.siteExperiments": "Testes A/B com tráfego real",
   "monitor.view.experiments": "Experimentos",
+  "monitor.repos.button": "Repositórios",
+  "monitor.select.current": "{label}: {value}",
+  "monitor.performance.org.blocks8":
+    "Site Blocks v8: abra para ver a telemetria",
+  "monitor.org.blocks8Experiments":
+    "{names} mantêm os experimentos no próprio projeto",
 } satisfies Record<keyof typeof monitorEn, string>;

@@ -38,7 +38,27 @@ const SiteEvent = z.object({
   durationMs: z.number().nullable().catch(null),
   traceId: z.string().nullable().catch(null),
   spanId: z.string().nullable().catch(null),
-  attributes: z.record(z.string(), z.string()).catch({}),
+  /** OTel attribute values are scalars or arrays; the panel shows each as text. */
+  attributes: z
+    .record(z.string(), z.unknown())
+    .transform((attributes) =>
+      Object.fromEntries(
+        Object.entries(attributes).flatMap(
+          ([key, value]): [string, string][] =>
+            value === null || value === undefined
+              ? []
+              : [
+                  [
+                    key,
+                    typeof value === "object"
+                      ? JSON.stringify(value)
+                      : String(value),
+                  ],
+                ],
+        ),
+      ),
+    )
+    .catch({}),
 });
 export type SiteEvent = z.infer<typeof SiteEvent>;
 

@@ -148,11 +148,10 @@ function hourly(
 }
 
 /** Today so far and last week up to the same moment, from the buckets both have. */
-function soFar(points: readonly MetricPoint[] | null, rate: boolean) {
+function soFar(points: readonly MetricPoint[] | null) {
   const both = (points ?? []).filter((p) => p.value !== null && p.w1 !== null);
   if (both.length === 0) return null;
-  const add = (k: "value" | "w1") =>
-    both.reduce((a, p) => a + (p[k] ?? 0), 0) / (rate ? both.length : 1);
+  const add = (k: "value" | "w1") => both.reduce((a, p) => a + (p[k] ?? 0), 0);
   return { current: add("value"), previous: add("w1") };
 }
 
@@ -230,6 +229,19 @@ export function OverviewNumbers({
     help: string,
   ): OverviewNumber | false => {
     if (trafficLoading) return pending(metric, label, help);
+    // Across the org, or on a past day, the board's own visitors stand in.
+    if (!kpis && !otherSummary) {
+      return (
+        metric === "visitors" &&
+        boardCard(
+          "audience",
+          label,
+          t("monitor.overview.visitorsHelpToday"),
+          fmtInt,
+          { whole: true },
+        )
+      );
+    }
     const current = kpis
       ? num(kpis[metric])
       : (otherSummary?.summary[metric] ?? null);
@@ -272,12 +284,22 @@ export function OverviewNumbers({
     {
       rate = false,
       better = "up",
-    }: { rate?: boolean; better?: "up" | "down" } = {},
+      whole = rate,
+    }: {
+      rate?: boolean;
+      better?: "up" | "down";
+      /** The figure and last week's already cover the same span: a rate's hours don't average into its day. */
+      whole?: boolean;
+    } = {},
   ): OverviewNumber | false => {
     const k = board.find((x) => x.id === id);
     const v = k ? (k.soFar ?? k.value) : null;
     if (!k || v === null) return false;
-    const compared = soFar(k.points, rate);
+    const compared = whole
+      ? k.references.w1 === null
+        ? null
+        : { current: v, previous: k.references.w1 }
+      : soFar(k.points);
     return {
       key: id,
       label,

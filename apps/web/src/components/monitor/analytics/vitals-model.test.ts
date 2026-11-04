@@ -5,6 +5,7 @@ describe("bandOf", () => {
   test("thresholds are inclusive of good and poor edges", () => {
     expect(bandOf("lcp", 2500)).toBe("good");
     expect(bandOf("lcp", 2501)).toBe("needs work");
+    expect(bandOf("lcp", 4000)).toBe("needs work");
     expect(bandOf("lcp", 4001)).toBe("poor");
     expect(bandOf("cls", 0.1)).toBe("good");
   });

@@ -78,7 +78,7 @@ export function AskData({ project }: { project: string | null }) {
         />
         <form
           onSubmit={onSubmit}
-          className="@container/chat-bottom relative flex items-center gap-1.5 rounded-2xl bg-card p-2.5 pl-[18px] shadow-edge dark:bg-muted"
+          className="@container/chat-bottom focus-within-ring relative flex items-center gap-1.5 rounded-2xl bg-card p-2.5 pl-[18px] shadow-edge dark:bg-muted"
         >
           <input
             value={shown}

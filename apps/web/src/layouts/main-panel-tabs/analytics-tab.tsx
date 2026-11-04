@@ -2141,14 +2141,17 @@ export function ConfigurationPanel({
 
       <InstallPanel status={status} />
 
-      <EditAnalyticsDialog
-        base={base}
-        orgSlug={orgSlug}
-        site={site}
-        config={cfg}
-        open={editOpen}
-        onOpenChange={setEditOpen}
-      />
+      {/* Mounted only while open, so a cancelled draft doesn't come back. */}
+      {editOpen && (
+        <EditAnalyticsDialog
+          base={base}
+          orgSlug={orgSlug}
+          site={site}
+          config={cfg}
+          open
+          onOpenChange={setEditOpen}
+        />
+      )}
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

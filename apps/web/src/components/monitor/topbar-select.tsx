@@ -13,6 +13,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
+import { useT } from "@/i18n/use-t.ts";
 
 export function TopbarSelect<T extends string>({
   label,
@@ -21,7 +22,7 @@ export function TopbarSelect<T extends string>({
   onChange,
   period = false,
 }: {
-  /** For assistive tech; the button shows the chosen option. */
+  /** For assistive tech, with the chosen option the button shows. */
   label: string;
   value: T;
   options: readonly { value: T; label: string }[];
@@ -29,6 +30,7 @@ export function TopbarSelect<T extends string>({
   /** A time window: drawn with the calendar, like the day picker beside it. */
   period?: boolean;
 }) {
+  const t = useT();
   const current = options.find((o) => o.value === value);
   return (
     <DropdownMenu>
@@ -36,7 +38,10 @@ export function TopbarSelect<T extends string>({
         <Button
           variant="outline"
           size="sm"
-          aria-label={label}
+          aria-label={t("monitor.select.current", {
+            label,
+            value: current?.label ?? value,
+          })}
           className="gap-1 font-normal"
         >
           {period && <Calendar size={14} />}

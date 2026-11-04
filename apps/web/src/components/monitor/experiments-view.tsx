@@ -7,13 +7,14 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { ProjectIcon } from "@/components/project-icon";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { type Experiment, experimentsQuery } from "@/hooks/use-experiments";
+import { useProjectsMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useT } from "@/i18n/use-t.ts";
 import {
   ExperimentRow,
   ExperimentsTab,
 } from "@/layouts/main-panel-tabs/experiments-tab";
 import { useStudioTools } from "@/lib/studio-tools";
-import { useProjectContext } from "@/sdk";
+import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
 import { Locked } from "./locked";
 import { useSiteProjects } from "./monitor-views";
 import type { SiteProject } from "./org-insights";
@@ -61,21 +62,36 @@ function OrgExperiments({ projects }: { projects: readonly SiteProject[] }) {
   const { org, locator } = useProjectContext();
   const studio = useStudioTools();
   const navigate = useNavigate();
+  const entities = useVirtualMCPsNonBlocking();
+  // A Blocks v8 site keeps its experiments in its draft, read in the project's own tab.
+  const majors = useProjectsMainSchemaV8(
+    projects.map((p) => entities.find((e) => e.id === p.id)),
+  );
+  const listed = projects.filter((_, i) => majors[i] === "v7");
+  const blocks8 = projects.filter(
+    (_, i) => majors[i] === "v8" || majors[i] === "error",
+  );
   const results = useQueries({
-    queries: projects.map((p) => ({
+    queries: listed.map((p) => ({
       ...experimentsQuery(locator, studio, p.site),
       retry: false,
     })),
   });
-  const loading = results.some((r) => r.isLoading);
-  const failed = projects.filter((_, i) => results[i]?.isError);
-  const rows = projects
+  const loading =
+    majors.includes("loading") || results.some((r) => r.isLoading);
+  const failed = listed.filter((_, i) => results[i]?.isError);
+  const rows = listed
     .flatMap((project, i) =>
       (results[i]?.data ?? []).map((experiment) => ({ project, experiment })),
     )
     .sort(byRunningThenRecent);
 
-  if (!loading && rows.length === 0 && failed.length === 0) {
+  if (
+    !loading &&
+    rows.length === 0 &&
+    failed.length === 0 &&
+    blocks8.length === 0
+  ) {
     const first = projectLink(org.slug, projects[0]?.id ?? "", "experiments");
     return (
       <Locked
@@ -99,31 +115,40 @@ function OrgExperiments({ projects }: { projects: readonly SiteProject[] }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Card
-        size="flush"
-        className="gap-0 divide-y divide-border overflow-hidden"
-      >
-        {loading && rows.length === 0 && (
-          <div className="flex flex-col gap-3 px-5 py-4">
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-4 w-1/3" />
-          </div>
-        )}
-        {rows.map(({ project, experiment }) => (
-          <ExperimentRow
-            key={`${project.id}:${experiment.id}`}
-            experiment={experiment}
-            onOpen={() =>
-              navigate(projectLink(org.slug, project.id, "experiments"))
-            }
-            project={<ProjectName project={project} />}
-          />
-        ))}
-      </Card>
+      {(loading || rows.length > 0) && (
+        <Card
+          size="flush"
+          className="gap-0 divide-y divide-border overflow-hidden"
+        >
+          {loading && rows.length === 0 && (
+            <div className="flex flex-col gap-3 px-5 py-4">
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-1/3" />
+            </div>
+          )}
+          {rows.map(({ project, experiment }) => (
+            <ExperimentRow
+              key={`${project.id}:${experiment.id}`}
+              experiment={experiment}
+              onOpen={() =>
+                navigate(projectLink(org.slug, project.id, "experiments"))
+              }
+              project={<ProjectName project={project} />}
+            />
+          ))}
+        </Card>
+      )}
       {failed.length > 0 && (
         <p className="text-meta px-2 pb-1">
           {t("monitor.org.unreadable", {
             names: failed.map((p) => p.title).join(", "),
+          })}
+        </p>
+      )}
+      {blocks8.length > 0 && (
+        <p className="text-meta px-2 pb-1">
+          {t("monitor.org.blocks8Experiments", {
+            names: blocks8.map((p) => p.title).join(", "),
           })}
         </p>
       )}

@@ -117,8 +117,9 @@ function sourceLabel(source: AudienceSource, t: TFunction): string {
 
 function rangeLabel(range: AudienceRange, t: TFunction): string {
   switch (range) {
+    // The audience reads whole UTC days, so its 24h is today so far.
     case "24h":
-      return t("monitor.audience.range.24h");
+      return t("monitor.audience.range.today");
     case "7d":
       return t("monitor.audience.range.7d");
     case "30d":
@@ -143,6 +144,7 @@ function sectionRangeLabel(range: SectionRange, t: TFunction): string {
     case "1h":
       return t("monitor.audience.range.1h");
     case "24h":
+      return t("monitor.audience.range.24h");
     case "7d":
     case "30d":
       return rangeLabel(range, t);
@@ -190,13 +192,23 @@ function RangeAction({
 }
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
+  const total = Math.round(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 function delta(current: number, previous: number | null | undefined) {
   return previous ? relativeChange(current, previous) : null;
+}
+
+/** A summary answer, without its comparison when the window is today so far:
+ *  a partial day against a whole one reads as a drop. */
+function summaryOf(res: AudienceResponse | undefined) {
+  if (!res?.available || res.data.view !== "summary") return null;
+  const partialDay =
+    res.window.kind === "calendar" && res.window.since === res.window.until;
+  return partialDay ? { ...res.data, previous: null } : res.data;
 }
 
 type ChartMetric = "visitors" | "pageviews";
@@ -404,8 +416,16 @@ function RankedPanel({
   title: string;
   source?: AudienceSource;
 }) {
+  const t = useT();
   const query = useAudience(orgSlug, project, view, range, true, source);
   if (query.isLoading) return <Skeleton className="h-64" />;
+  if (query.error) {
+    return (
+      <MetricCard title={title}>
+        <p className="text-meta">{t("monitor.audience.error")}</p>
+      </MetricCard>
+    );
+  }
   const body = query.data;
   const rows =
     body?.available && "rows" in body.data
@@ -493,6 +513,7 @@ function AudienceOverview({
   if (!body?.available) {
     return empty;
   }
+  const summaryData = summaryOf(body);
 
   const points =
     timeline.data?.available && timeline.data.data.view === "timeline"
@@ -501,15 +522,19 @@ function AudienceOverview({
 
   return (
     <>
-      {body.data.view === "summary" && (
+      {summaryData && (
         <SummaryCards
-          summary={body.data.summary}
-          previous={body.data.previous}
+          summary={summaryData.summary}
+          previous={summaryData.previous}
           onChart={setChart}
         />
       )}
       {timeline.isLoading ? (
         <Skeleton className="h-64" />
+      ) : timeline.error ? (
+        <MetricCard title={t("monitor.audience.overTime")}>
+          <p className="text-meta">{t("monitor.audience.error")}</p>
+        </MetricCard>
       ) : (
         points.length > 1 && <VisitorsChart points={points} metric={chart} />
       )}
@@ -569,6 +594,8 @@ function ProjectAudience({
   const [decoRange, setDecoRange] = useState<SectionRange>("24h");
   const { segment } = useAnalyticsSegment();
   const deco = status.data?.registered ? status.data : undefined;
+  // An external site has no hosted registration for the settings to change.
+  const configurable = !!deco && !deco.external;
   // A registered site that still reports to OneDollarStats can be read from either.
   const legacy = useAudience(
     org.slug,
@@ -626,7 +653,9 @@ function ProjectAudience({
         {status.data?.config?.enabled === false && (
           <Badge variant="outline">{t("monitor.audience.paused")}</Badge>
         )}
-        {deco && <ConfigureButton onClick={() => setDialog("configure")} />}
+        {configurable && (
+          <ConfigureButton onClick={() => setDialog("configure")} />
+        )}
       </RangeAction>
       {onDeco && <SegmentChips />}
       {onDeco && deco ? (
@@ -670,11 +699,11 @@ function ProjectAudience({
           source={both ? "onedollar" : undefined}
         />
       )}
-      {status.data?.registered && (
+      {deco && configurable && (
         <ConfigureDialog
           orgSlug={org.slug}
           project={project}
-          status={status.data}
+          status={deco}
           open={dialog === "configure"}
           onOpenChange={(open) => setDialog(open ? "configure" : null)}
         />
@@ -864,8 +893,7 @@ function OrgAudience({
         project,
         loading: summaries[i]?.isLoading ?? false,
         data,
-        summary:
-          data?.available && data.data.view === "summary" ? data.data : null,
+        summary: summaryOf(data),
       };
     })
     .sort(

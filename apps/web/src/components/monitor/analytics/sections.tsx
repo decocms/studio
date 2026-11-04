@@ -48,7 +48,7 @@ export function DecoSection({
           domain={
             props.status.config?.domains?.[0] ?? props.status.host ?? null
           }
-          onConfigure={onConfigure}
+          onConfigure={props.status.external ? undefined : onConfigure}
           fill
         />
       );
