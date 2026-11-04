@@ -86,6 +86,27 @@ export {
   reconciledSchema,
 } from "./block-schema";
 export {
+  categoryAncestors,
+  categoryPathSegments,
+  type CategoryTreeRow,
+  descendantSlugs,
+  MAX_CATEGORY_DEPTH,
+  orderCategoryTree,
+} from "./category-tree";
+export {
+  applyBlogCategorySlug,
+  applyBlogPageSlug,
+  buildBlogCategoryPreviewUrl,
+  buildBlogPostPreviewUrl,
+  buildDraftPointer,
+  categoryPath,
+  DRAFT_OFF,
+  findBlogCategorySlug,
+  findBlogPageSlug,
+  firstCategorySlug,
+  withDraftPointer,
+} from "./preview-url";
+export {
   brandExemplars,
   type Exemplar,
   exemplarText,

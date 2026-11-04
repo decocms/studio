@@ -167,7 +167,7 @@ import {
   categoryAncestors,
   type CategoryTreeRow,
   orderCategoryTree,
-} from "./blog/category-tree";
+} from "@decocms/shared/blog";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,

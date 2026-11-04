@@ -71,7 +71,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { buildBlogPostPreviewUrl } from "./blog-preview-url";
+import { buildBlogPostPreviewUrl } from "@decocms/shared/blog";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useNeverPublished } from "@/components/sections-editor/use-never-published";
 import {

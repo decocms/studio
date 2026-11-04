@@ -5,7 +5,7 @@ import {
 } from "./block-type-utils";
 import { type NamedRuleValues, readNamedRuleValues } from "./named-rules";
 import { globalSectionLabel } from "./page-list";
-import { isPageResolveTypeOnBlocksSite } from "./page-types";
+import { isPageResolveTypeOnBlocksSite } from "@decocms/shared/page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
 
 export interface UnwrappedMatcherRule {

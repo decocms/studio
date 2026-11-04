@@ -24,6 +24,7 @@ afterEach(() => publishPreviewDraft(SCOPE, null));
 
 const draftOf = (url: string | null) =>
   url === null ? null : new URL(url).searchParams.get("__draft");
+import { buildBlogPostPreviewUrl } from "@decocms/shared/blog";
 
 describe("previewDraftValue: the one __draft a hosted preview sends", () => {
   test("the pointer with the forced variants and the preview options", () => {
@@ -180,5 +181,44 @@ describe("the frame and every link carry the same __draft, in every display stat
     expect(
       previewDraftValue({ pointer: POINTER, ...getPreviewDraft(SCOPE) }),
     ).toBe(POINTER);
+  });
+});
+
+describe("a blog post's preview link", () => {
+  const decofile = {
+    blog: {
+      __resolveType: "site/apps/deco/blog.ts",
+      pageSlug: "/blogteste/:category/:slug",
+    },
+  };
+
+  test("a hosted draft's link sends exactly the preview frame's __draft (usePreviewLinkDraftPointer)", () => {
+    const modifiers = {
+      forcedVariants: ["pages-home@sections=1"],
+      previewOptions: { at: "2026-10-23T10:00:00-03:00" },
+    };
+    const pointer = "delivery.decocms.com/sites/acme/drafts/s1.json@e2";
+    const frame = hostedPreviewUrls({
+      display: {
+        mode: "production",
+        iframeBase: "https://abc.preview.example.com",
+      },
+      path: "/",
+      pointer,
+      device: "desktop",
+      ...modifiers,
+    });
+    const url = new URL(
+      buildBlogPostPreviewUrl({
+        decofile,
+        post: { slug: "my-post", categories: [{ slug: "news" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+        draftPointer: previewDraftValue({ pointer, ...modifiers }),
+      })!,
+    );
+    expect(url.searchParams.get("__draft")).toBe(
+      new URL(frame.frame!).searchParams.get("__draft"),
+    );
+    expect(url.searchParams.get("__draft")).toBe(frame.value);
   });
 });

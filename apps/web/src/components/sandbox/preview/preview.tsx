@@ -85,12 +85,11 @@ import {
   validatePagePath,
 } from "@/components/sections-editor/page-path-utils";
 import { findLivePageResolveType } from "@/components/sections-editor/section-catalog";
+import { DRAFT_OFF, withDraftPointer } from "@decocms/shared/blog";
 import {
   buildGlobalSectionPreviewUrl,
   buildPageRenderRequest,
-  DRAFT_OFF,
   resolveSectionPreviewBase,
-  withDraftPointer,
 } from "@/components/sections-editor/section-preview-url";
 import { useFastPreviewDraftUrl } from "@/components/sections-editor/use-fast-preview-draft-url";
 import {

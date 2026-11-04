@@ -11,7 +11,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import type { LinkSource } from "@/components/sections-editor/rich-text-link-control";
-import { applyBlogPageSlug, findBlogPageSlug } from "../blog-preview-url";
+import { applyBlogPageSlug, findBlogPageSlug } from "@decocms/shared/blog";
 import { listPostsWithMeta, readBlogContext } from "../blog-data";
 import { str } from "./primitives";
 import { reHome } from "@decocms/shared/store-url";

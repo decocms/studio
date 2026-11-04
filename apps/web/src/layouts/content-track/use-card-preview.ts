@@ -3,17 +3,19 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { getBlogPayload } from "@decocms/shared/blog";
+import {
+  buildBlogPostPreviewUrl,
+  buildDraftPointer,
+  getBlogPayload,
+} from "@decocms/shared/blog";
 import type { BlogCard } from "@decocms/shared/blog-card";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { buildBlogPostPreviewUrl } from "@/components/sandbox/content/blog/blog-preview-url";
 import {
   type DecofileDraft,
   fetchDecofile,
   getDecofileDraft,
 } from "@/components/sections-editor/decofile-api";
-import { buildDraftPointer } from "@/components/sections-editor/section-preview-url";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
 import { cardPostKey } from "./card-post-move";

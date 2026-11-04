@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { BlogEntry } from "./blog-data";
+import type { BlogEntry } from "./decofile-scan";
 import {
   categoryAncestors,
   categoryPathSegments,

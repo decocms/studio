@@ -1,5 +1,5 @@
-import { isV8Schema } from "@decocms/shared/blocks-major";
-import type { LiveMeta } from "./resolve-schema";
+import { isV8Schema } from "./blocks-major";
+import type { LiveMeta } from "./blog/live-meta";
 
 /**
  * v7 (and Fresh/Deno) page block types, known without a schema. The first is

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  DRAFT_OFF,
   applyBlogCategorySlug,
   categoryPath,
   applyBlogPageSlug,
@@ -8,9 +9,8 @@ import {
   findBlogCategorySlug,
   findBlogPageSlug,
   firstCategorySlug,
-} from "./blog-preview-url";
-import { hostedPreviewUrls } from "@/components/sandbox/preview/hosted-preview-urls";
-import { previewDraftValue } from "@/components/sections-editor/preview-draft-link";
+  withDraftPointer,
+} from "./preview-url";
 
 const DRAFT_POINTER = "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc123";
 
@@ -375,36 +375,6 @@ describe("buildBlogPostPreviewUrl", () => {
     expect(url.searchParams.get("__draft")).toBe(DRAFT_POINTER);
   });
 
-  it("a hosted draft's link sends exactly the preview frame's __draft (usePreviewLinkDraftPointer)", () => {
-    const modifiers = {
-      forcedVariants: ["pages-home@sections=1"],
-      previewOptions: { at: "2026-10-23T10:00:00-03:00" },
-    };
-    const pointer = "delivery.decocms.com/sites/acme/drafts/s1.json@e2";
-    const frame = hostedPreviewUrls({
-      display: {
-        mode: "production",
-        iframeBase: "https://abc.preview.example.com",
-      },
-      path: "/",
-      pointer,
-      device: "desktop",
-      ...modifiers,
-    });
-    const url = new URL(
-      buildBlogPostPreviewUrl({
-        decofile,
-        post: { slug: "my-post", categories: [{ slug: "news" }] },
-        previewBaseUrl: "https://abc.preview.example.com",
-        draftPointer: previewDraftValue({ pointer, ...modifiers }),
-      })!,
-    );
-    expect(url.searchParams.get("__draft")).toBe(
-      new URL(frame.frame!).searchParams.get("__draft"),
-    );
-    expect(url.searchParams.get("__draft")).toBe(frame.value);
-  });
-
   it("leaves the url alone when there is no draft grant (sandbox session)", () => {
     expect(
       buildBlogPostPreviewUrl({
@@ -601,5 +571,54 @@ describe("subcategory routes", () => {
         previewBaseUrl: "https://abc.preview.example.com",
       }),
     ).toBe("https://abc.preview.example.com/blog/pai/filho/my-post");
+  });
+});
+
+describe("withDraftPointer", () => {
+  const POINTER = "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc123";
+
+  it("stamps the pointer onto an already-built page url", () => {
+    const url = new URL(
+      withDraftPointer("https://www.example.com/blog/news/post", POINTER),
+    );
+    expect(url.pathname).toBe("/blog/news/post");
+    expect(url.searchParams.get("__draft")).toBe(POINTER);
+  });
+
+  it("keeps query params the page url already carried", () => {
+    const url = new URL(
+      withDraftPointer("https://www.example.com/search?q=chair", POINTER),
+    );
+    expect(url.searchParams.get("q")).toBe("chair");
+    expect(url.searchParams.get("__draft")).toBe(POINTER);
+  });
+
+  it("returns the url untouched without a grant — a sandbox session has none", () => {
+    const url = "https://www.example.com/blog/news/post";
+    expect(withDraftPointer(url, null)).toBe(url);
+    expect(withDraftPointer(url, undefined)).toBe(url);
+  });
+});
+
+describe("DRAFT_OFF", () => {
+  const PAGE = "https://www.example.com/blog/news/post";
+
+  it("asks the site for its published render — what the boot fallback stamps", () => {
+    const url = new URL(withDraftPointer(PAGE, DRAFT_OFF));
+    expect(url.pathname).toBe("/blog/news/post");
+    expect(url.searchParams.get("__draft")).toBe("off");
+  });
+
+  it("replaces a pointer already on the url — the trailing draft is what it kills", () => {
+    const url = new URL(
+      withDraftPointer(
+        withDraftPointer(
+          PAGE,
+          "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc",
+        ),
+        DRAFT_OFF,
+      ),
+    );
+    expect(url.searchParams.getAll("__draft")).toEqual(["off"]);
   });
 });

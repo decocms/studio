@@ -26,11 +26,8 @@ import {
 } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { type ElementSize, useElementSize } from "@/hooks/use-element-size.ts";
-import {
-  DRAFT_OFF,
-  withDraftPointer,
-} from "@/components/sections-editor/section-preview-url.ts";
-import { extractPathParams } from "@/components/sections-editor/page-path-utils.ts";
+import { DRAFT_OFF, withDraftPointer } from "@decocms/shared/blog";
+import { extractPathParams } from "@decocms/shared/page-path";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
 import { GitDiffList } from "./git-diff-list.tsx";

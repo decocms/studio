@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { findBlogPageSlug } from "../sandbox/content/blog/blog-preview-url";
+import { findBlogPageSlug } from "@decocms/shared/blog";
 import { resolveMatcherIconName } from "./matcher-icons";
 import { namedRuleSupport } from "./named-rules";
-import { isPageResolveTypeOnBlocksSite } from "./page-types";
+import { isPageResolveTypeOnBlocksSite } from "@decocms/shared/page-types";
 import type { LiveMeta } from "./resolve-schema";
 import { blockRefLoaderConfigHasData } from "./block-ref-field-utils";
 import {

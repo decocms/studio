@@ -20,7 +20,7 @@ import {
   type PreviewOptions,
   withPreviewOptions,
 } from "./preview-link";
-import { DRAFT_OFF, withDraftPointer } from "./section-preview-url";
+import { DRAFT_OFF, withDraftPointer } from "@decocms/shared/blog";
 import { withForcedVariants } from "./variant-draft-pointer";
 
 /** What the frame adds to the draft's pointer. */

@@ -1,5 +1,5 @@
 import type { LiveMeta } from "./resolve-schema";
-import { isPageResolveTypeOnBlocksSite } from "./page-types";
+import { isPageResolveTypeOnBlocksSite } from "@decocms/shared/page-types";
 import { unwrapSeoConfig, wrapSeoPersistValue } from "./seo-lazy-render";
 import {
   isSeoSectionResolveType,

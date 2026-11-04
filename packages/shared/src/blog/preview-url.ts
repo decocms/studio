@@ -1,9 +1,62 @@
-import { withDraftPointer } from "@/components/sections-editor/section-preview-url";
-import { extractPathParams } from "@/components/sections-editor/page-path-utils";
-import { isPageResolveTypeOnBlocksSite } from "@/components/sections-editor/page-types";
-import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { scanBlogEntries } from "./blog-data";
+import { extractPathParams } from "../page-path";
+import { isPageResolveTypeOnBlocksSite } from "../page-types";
 import { categoryPathSegments } from "./category-tree";
+import { scanBlogEntries } from "./decofile-scan";
+import type { LiveMeta } from "./live-meta";
+
+/** Query param carrying the Fast Preview draft pointer. */
+const DRAFT_PARAM = "__draft";
+
+/**
+ * The `?__draft=` pointer a site's framework resolves to render unpublished
+ * content: it fetches the merged decofile from Studio's decofile API
+ * (`/api/:org/decofile/:virtualMcpId/:branch?token=…`) and renders its own
+ * routes against it, so hydration and in-preview navigation keep working.
+ *
+ * The pointer is `<authority><path>?token=…@<version>` — never a full URL. The
+ * runtime splits on the LAST `@`, validates only the authority against its
+ * configured preview-API domains, and derives the scheme itself, so there is
+ * no SSRF surface. `version` is the branch head commit sha: the site caches
+ * per version, and a new version after a save is what refreshes the frame —
+ * no cache-busting nonce needed.
+ */
+export function buildDraftPointer(input: {
+  /**
+   * Studio API authority (host[:port]) serving /api — reported by the
+   * decofile API itself (DecofileDraft.apiHost). Not window.location.host,
+   * which is not guaranteed to be reachable from the preview server.
+   */
+  apiHost: string;
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  /** Signed draft grant from the decofile API. */
+  token: string;
+  /** Branch head commit sha. */
+  version: string;
+}): string {
+  const pointer = `${input.apiHost}/api/${input.orgSlug}/decofile/${encodeURIComponent(input.virtualMcpId)}/${encodeURIComponent(input.branch)}?token=${input.token}`;
+  return `${pointer}@${input.version}`;
+}
+
+/** `__draft` value asking for the PUBLISHED render — external contract: the site runtime honours it, Studio never reads it back. */
+export const DRAFT_OFF = "off";
+
+/**
+ * Stamp a draft pointer — or {@link DRAFT_OFF} — onto an already-built site
+ * URL. Callers that compute their own path (blog post/category links) build the
+ * URL first and decorate here; a null pointer (Fast Preview off, or no grant
+ * yet) leaves it alone.
+ */
+export function withDraftPointer(
+  url: string,
+  draftPointer: string | null | undefined,
+): string {
+  if (!draftPointer) return url;
+  const next = new URL(url);
+  next.searchParams.set(DRAFT_PARAM, draftPointer);
+  return next.toString();
+}
 
 const str = (value: unknown): string =>
   typeof value === "string" ? value : "";

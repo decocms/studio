@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { findBlogPageSlug } from "../sandbox/content/blog/blog-preview-url";
+import { findBlogPageSlug } from "@decocms/shared/blog";
 import { resolveSectionCandidates } from "../sandbox/preview/section-candidates";
 import {
   hideArrayItem,
@@ -8,7 +8,7 @@ import {
 } from "./array-item-hidden";
 import { wrapAsMultivariate, appendVariant } from "./fields/media-variants";
 import { extractPages } from "./page-list";
-import { isPageResolveType } from "./page-types";
+import { isPageResolveType } from "@decocms/shared/page-types";
 import {
   appendPageVariantSections,
   wrapMultivariateArrayValue,

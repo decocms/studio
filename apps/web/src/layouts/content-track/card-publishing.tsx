@@ -25,10 +25,7 @@ import {
   stampPostModified,
   uniquePostSlug,
 } from "@/components/sandbox/content/blog/blog-data";
-import {
-  findBlogPageSlug,
-  firstCategorySlug,
-} from "@/components/sandbox/content/blog/blog-preview-url";
+import { findBlogPageSlug, firstCategorySlug } from "@decocms/shared/blog";
 import {
   BlockConflictError,
   patchDecofile,

@@ -14,7 +14,7 @@
  * no cap: it answers "may this be a parent", and a descendant past the cap is
  * still a descendant.
  */
-import type { BlogEntry } from "./blog-data";
+import type { BlogEntry } from "./decofile-scan";
 
 /** Matches the blog app's ceiling. Deeper chains are flattened to roots. */
 export const MAX_CATEGORY_DEPTH = 4;

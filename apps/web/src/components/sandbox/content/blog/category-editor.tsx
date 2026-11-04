@@ -59,11 +59,11 @@ import {
   uniqueCategorySlug,
 } from "./blog-data";
 import {
+  buildBlogCategoryPreviewUrl,
   descendantSlugs,
   MAX_CATEGORY_DEPTH,
   orderCategoryTree,
-} from "./category-tree";
-import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
+} from "@decocms/shared/blog";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
 import { HostedKeptTheirsError } from "@/components/sections-editor/hosted-reconcile";

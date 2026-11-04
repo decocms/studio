@@ -4,7 +4,7 @@ import {
   resolveBlockSchemaMetadata,
   type LiveMeta,
 } from "./resolve-schema";
-import { isPageResolveType } from "./page-types";
+import { isPageResolveType } from "@decocms/shared/page-types";
 import { normalizePagePath } from "./page-path-utils";
 import {
   listSavedSectionBlocks,
