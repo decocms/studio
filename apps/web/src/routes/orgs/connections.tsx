@@ -28,6 +28,7 @@ import { useAuthConfig } from "@/providers/auth-config-provider";
 import { useRegistryCatalog } from "@/hooks/use-registry-catalog";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { BulkDeleteDialog } from "./bulk-delete-dialog.tsx";
+import PersonalConnections from "./personal-connections.tsx";
 import { CatalogItemCard } from "./catalog-item-card.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -86,7 +87,8 @@ import {
   projectsByConnection,
 } from "@/components/projects/connection-projects";
 import { scopableProjects } from "@/hooks/use-project-scope";
-import { Suspense, useState } from "react";
+import { Suspense, useState, type ReactNode } from "react";
+import { Panel } from "@/components/panel";
 import { useForm } from "react-hook-form";
 import { track } from "@/lib/posthog-client";
 import {
@@ -261,7 +263,9 @@ function ConnectionResults({
         item,
         org.id,
         session.user.id,
-        { remoteIndex: 0 },
+        {
+          remoteIndex: 0,
+        },
       );
 
       // Validate connection data
@@ -902,7 +906,9 @@ function OrgMcpsContent() {
           form.setValue(
             "env_vars",
             [...current, ...toAdd.map((key) => ({ key, value: "" }))],
-            { shouldDirty: true },
+            {
+              shouldDirty: true,
+            },
           );
         }
       }
@@ -1478,24 +1484,47 @@ function OrgMcpsContent() {
                   </div>
                 )}
               </div>
-              <CollectionTabs
-                placement="page"
-                tabs={[
-                  { id: "all", label: t("orgs.connections.tabAll") },
-                  {
-                    id: "connected",
-                    label: t("orgs.connections.tabConnected"),
-                  },
-                ]}
-                activeTab={activeTab}
-                onTabChange={(id) => {
-                  const next = id as ConnectionTab;
-                  if (next !== activeTab) {
-                    track("connections_page_tab_changed", { to_tab: next });
-                  }
-                  setActiveTab(next);
-                }}
-              />
+              {projectFirstNav ? (
+                <ScopeTabs scope="organization">
+                  <CollectionTabs
+                    placement="inline"
+                    tabs={[
+                      { id: "all", label: t("orgs.connections.tabAll") },
+                      {
+                        id: "connected",
+                        label: t("orgs.connections.tabConnected"),
+                      },
+                    ]}
+                    activeTab={activeTab}
+                    onTabChange={(id) => {
+                      const next = id as ConnectionTab;
+                      if (next !== activeTab) {
+                        track("connections_page_tab_changed", { to_tab: next });
+                      }
+                      setActiveTab(next);
+                    }}
+                  />
+                </ScopeTabs>
+              ) : (
+                <CollectionTabs
+                  placement="page"
+                  tabs={[
+                    { id: "all", label: t("orgs.connections.tabAll") },
+                    {
+                      id: "connected",
+                      label: t("orgs.connections.tabConnected"),
+                    },
+                  ]}
+                  activeTab={activeTab}
+                  onTabChange={(id) => {
+                    const next = id as ConnectionTab;
+                    if (next !== activeTab) {
+                      track("connections_page_tab_changed", { to_tab: next });
+                    }
+                    setActiveTab(next);
+                  }}
+                />
+              )}
               <Suspense
                 fallback={
                   <div className="flex h-full items-center justify-center">
@@ -1528,7 +1557,54 @@ function OrgMcpsContent() {
   );
 }
 
+/** Context splits connections like Memory: the org's, and the signed-in user's own. */
+function ScopeTabs({
+  scope,
+  children,
+}: {
+  scope: "organization" | "user";
+  children?: ReactNode;
+}) {
+  const t = useT();
+  const navigate = useNavigate();
+  const content = (
+    <div className="flex items-center gap-3">
+      <CollectionTabs
+        tabs={[
+          { id: "organization", label: t("orgs.connections.tabOrg") },
+          { id: "user", label: t("orgs.connections.tabUser") },
+        ]}
+        activeTab={scope}
+        onTabChange={(id) =>
+          navigate({
+            to: ".",
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              scope: id === "user" ? "user" : undefined,
+            }),
+            replace: true,
+          })
+        }
+      />
+      {children && (
+        <>
+          <div aria-hidden className="h-5 w-px bg-border" />
+          {children}
+        </>
+      )}
+    </div>
+  );
+  return (
+    <Panel.Toolbar.Left.Portal fallback={content}>
+      {content}
+    </Panel.Toolbar.Left.Portal>
+  );
+}
+
 export default function OrgMcps() {
+  const projectFirstNav = useProjectFirstNav();
+  const search = useSearch({ strict: false });
+  const scope = search.scope === "user" ? "user" : "organization";
   return (
     <ErrorBoundary>
       <Suspense
@@ -1538,7 +1614,14 @@ export default function OrgMcps() {
           </div>
         }
       >
-        <OrgMcpsContent />
+        {projectFirstNav && scope === "user" ? (
+          <>
+            <ScopeTabs scope="user" />
+            <PersonalConnections />
+          </>
+        ) : (
+          <OrgMcpsContent />
+        )}
       </Suspense>
     </ErrorBoundary>
   );
