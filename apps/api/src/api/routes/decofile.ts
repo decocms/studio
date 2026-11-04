@@ -23,6 +23,7 @@
  * self-enforces the signed draft token, mirroring automation-webhooks.ts.
  */
 
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import {
@@ -224,6 +225,20 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     return c.json({ error: "Virtual MCP not found" }, 404);
   }
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
+
+  // A Blocks v8 site (its marker, which `deco schema push` sets) keeps its
+  // content on the hosted CMS (R2, `/api/:org/cms/:site`): a write or a
+  // publish here would commit content to git or merge a branch into main,
+  // which deploys. Refused before any repository lookup, whatever the client.
+  if (c.req.method !== "GET" && isBlocksV8Project(metadata)) {
+    return c.json(
+      {
+        error: "A Blocks v8 site's content is on the hosted CMS, not git",
+        code: "hosted_cms",
+      },
+      409,
+    );
+  }
 
   /** Gated on what the CMS runtime NEEDS — a preview server and (below) a repo.
    *  Never on `metadata.fastPreview`: that is the default runtime for new
