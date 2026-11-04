@@ -63,7 +63,6 @@ import { useDebouncedAutosave } from "@/hooks/use-debounced-autosave.ts";
 import { toast } from "sonner";
 import { Page } from "@/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
-import { FilesSection } from "./files-section";
 import { track } from "@/lib/posthog-client";
 import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ConnectionItem, ConnectionItemSkeleton } from "./connection-item";
@@ -1108,9 +1107,6 @@ function VirtualMcpDetailViewWithData({
                   />
                 </section>
               )}
-
-              {/* Files section — files attached to the agent as reference */}
-              {showInstructions && <FilesSection form={form} />}
 
               {section === "site" && !hasClonableSource && (
                 <SettingsSection>

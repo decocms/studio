@@ -7,6 +7,7 @@
  * daemon) the same way the `<knowledge>` block does.
  */
 
+import { expandSkillRefs } from "@decocms/shared/skills";
 import { buildSkillsBlock } from "@/harnesses/lib/decopilot/skills-block";
 import type { StudioContext } from "../../core/studio-context";
 import { buildSkillCatalog } from "../../file-storage/skill-catalog";
@@ -48,8 +49,12 @@ export async function renderSkillsCatalogBlock(
     );
     if (entries.length === 0) return null;
 
+    // Project picks count as preferred, bundles resolved to today's members.
+    const projectIds = new Set(
+      expandSkillRefs(virtualMcp.metadata?.skills ?? [], all),
+    );
     const configuredIds = entries
-      .filter((e) => attached.has(e.sandboxPath))
+      .filter((e) => attached.has(e.sandboxPath) || projectIds.has(e.id))
       .map((e) => e.id);
 
     return buildSkillsBlock(

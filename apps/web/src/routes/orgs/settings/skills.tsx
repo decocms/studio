@@ -12,28 +12,13 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  AlertTriangle,
-  DotsVertical,
-  GitBranch01,
-  Package,
-  Trash01,
-  Upload01,
-  Zap,
-} from "@untitledui/icons";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { AlertTriangle, Plus, Upload01, Zap } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Card } from "@decocms/ui/components/card.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,10 +29,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import { Page } from "@/components/page";
+import { PAGE_INSET, Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
-import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
-import { FolderIcon } from "@/components/folder-icon";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
@@ -59,6 +42,24 @@ import {
 } from "@/hooks/use-org-fs";
 import { browsePathForEntry } from "@/layouts/library/location";
 import { SkillPreviewDialog } from "@/layouts/library/skill-preview";
+import { useProjectMetadataPatch } from "@/hooks/use-project-metadata-patch";
+import {
+  bundleSummaries,
+  skillDisplayName,
+} from "@/components/skills/skill-catalog";
+import {
+  SkillsLibraryBanner,
+  SkillsLibraryDialog,
+} from "@/components/skills/skills-library-dialog";
+import {
+  DeleteSkillMenu,
+  RowAction,
+  type SkillsRow,
+  SkillsTable,
+  packageRow,
+  skillRow,
+} from "@/components/skills/skills-catalog-view";
+import { bundleIdOfRef, bundleRef } from "@decocms/shared/skills";
 import {
   groupByDestination,
   importable,
@@ -69,146 +70,33 @@ import {
   uploadAllGroups,
 } from "./skills-import.ts";
 
-/** Filter-chip id for "no origin filter". Not a real `source`, so it can't
- *  collide with one. */
-const ALL_SOURCES = "*";
-
 /** Home-volume skills are the org's own — editable. Everything else (public
  *  sets, synced repos) is read-only here, same as in the Library. */
 function isEditable(entry: OrgFsSkillCatalogEntry): boolean {
   return entry.volume === "home";
 }
 
-/**
- * Where a skill comes from — the one axis that actually varies across the
- * catalog, so it names the filter chips and marks the folder body.
- *
- * The catalog's raw `source` is a wire token (`home`, `public:core`,
- * `repo:docs`) which doubles as a stable filter id, but a member has no reason
- * to read it: the prefix is dropped and `home` resolves to the org's own name.
- */
-function skillOrigin(source: string, orgName: string) {
+/** Where a skill syncs from, in words: the org's own, or the set or repo. */
+function originLabel(source: string, orgName: string): string {
   const separator = source.indexOf(":");
-  if (separator === -1) return { label: orgName, glyph: Zap };
-  return {
-    label: source.slice(separator + 1),
-    glyph: source.startsWith("repo:") ? GitBranch01 : Package,
-  };
+  return separator === -1 ? orgName : source.slice(separator + 1);
 }
 
-/**
- * One skill, wearing the Library's folder: same icon a member already
- * associates with these directories, and the same palette rule — Finder blue
- * for folders people make, graphite plus a view-only badge for the ones the
- * product fills. The body glyph names the origin (set, repo, your own).
- */
-function SkillCard({
-  entry,
-  pending,
-  onOpen,
-  onDelete,
+interface SkillsPageProject {
+  id: string;
+  skills: string[];
+}
+
+/** The same page for an org and a project: a project adds its own picks on
+ *  top, and every chat in it reads them with the org's catalog. */
+export default function SettingsSkillsPage({
+  project,
+  context = false,
 }: {
-  entry: OrgFsSkillCatalogEntry;
-  /** Optimistic row whose files are still uploading — inert until they land. */
-  pending?: boolean;
-  onOpen: () => void;
-  onDelete?: () => void;
-}) {
-  const t = useT();
-  const { org } = useProjectContext();
-  const { label, glyph } = skillOrigin(entry.source, org.name);
-  // The predicate that gates delete, so the badge can't contradict the menu.
-  const editable = isEditable(entry);
-
-  return (
-    <Card
-      size="flush"
-      aria-busy={pending}
-      className={cn(
-        "relative transition-colors group overflow-hidden flex flex-col h-full",
-        pending ? "opacity-60" : "hover:bg-accent",
-      )}
-    >
-      {/* Overlay button — the whole card opens the preview. Absent while the
-          upload is in flight: the preview's file reads cache a miss for a
-          minute, so a card opened too early stays empty after the import
-          succeeds. */}
-      {!pending && (
-        <button
-          type="button"
-          onClick={onOpen}
-          className="absolute inset-0 z-0"
-          aria-label={entry.name}
-        />
-      )}
-
-      {/* pointer-events-none lets clicks fall through to the overlay button */}
-      <div className="flex flex-col flex-1 pointer-events-none">
-        <div className="flex flex-col gap-3 p-4.5">
-          <div className="flex items-start justify-between">
-            <FolderIcon
-              glyph={glyph}
-              tone={editable ? "default" : "system"}
-              readOnly={!editable}
-              className="size-8 shrink-0"
-            />
-            {onDelete && (
-              /* pointer-events-auto re-enables the dropdown */
-              <div className="relative z-10 pointer-events-auto transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <DotsVertical size={16} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete();
-                      }}
-                    >
-                      <Trash01 size={16} />
-                      {t("settings.skills.deleteButton")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-medium text-foreground truncate">
-              {entry.name}
-            </h3>
-            <p className="text-sm text-muted-foreground line-clamp-2">
-              {entry.description || t("settings.skills.noDescription")}
-            </p>
-          </div>
-        </div>
-
-        <div className="border-t border-border mt-auto">
-          <div className="h-10 flex items-center px-4.5">
-            <p className="text-xs text-muted-foreground truncate">
-              {pending ? t("settings.skills.importing") : label}
-            </p>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function SkillsGrid({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4 gap-4">
-      {children}
-    </div>
-  );
-}
-
-export default function SettingsSkillsPage() {
+  project?: SkillsPageProject;
+  /** Inside Context: a skill previews beside the table, like a file. */
+  context?: boolean;
+} = {}) {
   const t = useT();
   const { org } = useProjectContext();
   const catalog = useOrgFsSkillCatalog();
@@ -217,8 +105,40 @@ export default function SettingsSkillsPage() {
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState("");
-  const projectFirstNav = useProjectFirstNav();
-  const [source, setSource] = useState(ALL_SOURCES);
+  const navigate = useNavigate();
+  const { bundle: bundleParam, preview } = useSearch({ strict: false }) as {
+    bundle?: string;
+    preview?: string;
+  };
+  const [localBundle, setLocalBundle] = useState<string | null>(null);
+  // In Context the open package is in the URL, so a preview round trip keeps it.
+  const openBundle = context ? (bundleParam ?? null) : localBundle;
+  const setOpenBundle = (id: string | null) => {
+    if (!context) {
+      setLocalBundle(id);
+      return;
+    }
+    void navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        bundle: id ?? undefined,
+        preview: undefined,
+        expanded: undefined,
+      }),
+    });
+  };
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const { patch } = useProjectMetadataPatch(project?.id);
+  const [projectRefs, setProjectRefs] = useState(project?.skills ?? []);
+  const setPicks = (next: string[]) => {
+    const previous = projectRefs;
+    setProjectRefs(next);
+    patch({ skills: next }).catch(() => {
+      setProjectRefs(previous);
+      toast.error(t("settings.skills.projectSaveError"));
+    });
+  };
   const [importing, setImporting] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] =
@@ -315,49 +235,6 @@ export default function SettingsSkillsPage() {
     }
   }
 
-  const lowerSearch = search.toLowerCase();
-  // The org's own skills lead; the rest follow alphabetically.
-  const matching = (catalog.data ?? [])
-    .filter(
-      (e) =>
-        e.name.toLowerCase().includes(lowerSearch) ||
-        (e.description ?? "").toLowerCase().includes(lowerSearch),
-    )
-    .sort(
-      (a, b) =>
-        Number(isEditable(b)) - Number(isEditable(a)) ||
-        a.name.localeCompare(b.name),
-    );
-
-  // Chips come from the whole catalog; only their counts narrow with the search.
-  const allSources = new Set((catalog.data ?? []).map((e) => e.source));
-  const counts = new Map<string, number>();
-  for (const e of matching) {
-    counts.set(e.source, (counts.get(e.source) ?? 0) + 1);
-  }
-  const tabs = [
-    {
-      id: ALL_SOURCES,
-      label: t("settings.skills.filterAll"),
-      count: matching.length,
-    },
-    ...[...allSources].map((entrySource) => ({
-      id: entrySource,
-      label: skillOrigin(entrySource, org.name).label,
-      count: counts.get(entrySource) ?? 0,
-    })),
-  ];
-
-  // Only a source the catalog no longer has at all falls back to All.
-  const activeSource = allSources.has(source) ? source : ALL_SOURCES;
-  const filtered =
-    activeSource === ALL_SOURCES
-      ? matching
-      : matching.filter((e) => e.source === activeSource);
-
-  const openPreview = (entry: OrgFsSkillCatalogEntry) =>
-    setPreviewPath(browsePathForEntry(entry.volume, entry.path));
-
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     const { id, path } = pendingDelete;
@@ -375,6 +252,106 @@ export default function SettingsSkillsPage() {
     }
   };
 
+  const entries = catalog.data ?? [];
+  const lowerSearch = search.trim().toLowerCase();
+  const bundles = bundleSummaries(t, entries).filter(
+    (b) => b.members.length > 0,
+  );
+  const bundled = new Set(bundles.flatMap((b) => b.members.map((m) => m.id)));
+  const sourceOf = (entry: OrgFsSkillCatalogEntry) =>
+    originLabel(entry.source, org.name);
+  const inProject = (ref: string) => projectRefs.includes(ref);
+  const addPick = (ref: string) => setPicks([...projectRefs, ref]);
+  const removePick = (ref: string) =>
+    setPicks(projectRefs.filter((r) => r !== ref));
+  const current = bundles.find((b) => b.id === openBundle) ?? null;
+
+  // The root reads like a folder: packages, then the skills no package holds.
+  const rootRows: SkillsRow[] = [
+    ...bundles.map((b) => packageRow(bundleRef(b.id), b)),
+    ...entries.filter((e) => !bundled.has(e.id)).map(skillRow),
+  ];
+  const projectRows: SkillsRow[] = projectRefs.map((ref) => {
+    const bundleId = bundleIdOfRef(ref);
+    if (bundleId !== null) {
+      const bundle = bundles.find((b) => b.id === bundleId);
+      return bundle
+        ? packageRow(ref, bundle)
+        : {
+            kind: "package",
+            ref,
+            title: bundleId,
+            category: "other",
+            bundle: null,
+          };
+    }
+    const entry = entries.find((e) => e.id === ref);
+    return entry
+      ? skillRow(entry)
+      : { kind: "skill", ref, title: ref, category: "other", entry: null };
+  });
+  const searchRows = entries
+    .filter(
+      (e) =>
+        e.name.toLowerCase().includes(lowerSearch) ||
+        skillDisplayName(e).toLowerCase().includes(lowerSearch) ||
+        (e.description ?? "").toLowerCase().includes(lowerSearch),
+    )
+    .map(skillRow);
+  // A project lists what it uses; the org lists everything it has.
+  const rows = current
+    ? current.members.map(skillRow)
+    : project
+      ? projectRows
+      : lowerSearch
+        ? searchRows
+        : rootRows;
+
+  const previewPathOf = (entry: OrgFsSkillCatalogEntry) =>
+    browsePathForEntry(entry.volume, entry.path);
+  const open = (row: SkillsRow) => {
+    if (row.kind === "package") {
+      if (row.bundle) setOpenBundle(row.bundle.id);
+      return;
+    }
+    if (!row.entry) return;
+    const skillDir = previewPathOf(row.entry);
+    if (!context) {
+      setPreviewPath(skillDir);
+      return;
+    }
+    void navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        preview: `${skillDir}/SKILL.md`,
+        expanded: undefined,
+      }),
+    });
+  };
+
+  const end = (row: SkillsRow) => {
+    if (project) {
+      // A package's skills come with it; the package is removed as a whole.
+      if (current) return null;
+      return (
+        <RowAction
+          label={t("skills.table.remove")}
+          onClick={() => removePick(row.ref)}
+        />
+      );
+    }
+    if (row.kind === "skill" && row.entry && isEditable(row.entry)) {
+      const entry = row.entry;
+      return entry.id === uploadingId ? (
+        <span className="text-meta">{t("settings.skills.importing")}</span>
+      ) : (
+        <DeleteSkillMenu onDelete={() => setPendingDelete(entry)} />
+      );
+    }
+    return null;
+  };
+
   const importButton = (
     <Button
       size="sm"
@@ -387,146 +364,198 @@ export default function SettingsSkillsPage() {
         : t("settings.skills.importButton")}
     </Button>
   );
+  const currentRef = current ? bundleRef(current.id) : null;
+  // Inside a package the page acts on the package; at the root, it adds.
+  const primary = !project ? (
+    importButton
+  ) : currentRef ? (
+    <Button
+      size="sm"
+      variant={inProject(currentRef) ? "outline" : "default"}
+      onClick={() =>
+        inProject(currentRef) ? removePick(currentRef) : addPick(currentRef)
+      }
+    >
+      {inProject(currentRef)
+        ? t("skills.table.removeFromProject")
+        : t("skills.table.addToProject")}
+    </Button>
+  ) : (
+    <Button size="sm" onClick={() => setLibraryOpen(true)}>
+      <Plus size={14} />
+      {t("skills.picker.add")}
+    </Button>
+  );
+
+  const searchBox = (
+    <SearchInput
+      value={search}
+      onChange={setSearch}
+      placeholder={t("settings.skills.searchPlaceholder")}
+      className="w-full min-w-48 md:w-56"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setSearch("");
+          (event.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+
+  const body = catalog.isPending ? (
+    <div className="flex flex-col gap-px">
+      {Array.from({ length: 8 }, (_, i) => (
+        <Skeleton key={i} className="h-10 rounded-lg" />
+      ))}
+    </div>
+  ) : catalog.isError ? (
+    /* Never the empty state: "no skills yet" is a different fact. */
+    <div className="flex items-center justify-center py-20">
+      <EmptyState
+        image={<AlertTriangle size={48} className="text-muted-foreground" />}
+        title={t("settings.skills.errorTitle")}
+        description={
+          catalog.error instanceof Error
+            ? catalog.error.message
+            : t("settings.skills.errorDescription")
+        }
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void catalog.refetch()}
+          >
+            {t("settings.skills.retry")}
+          </Button>
+        }
+      />
+    </div>
+  ) : rows.length === 0 && project ? (
+    <p className="py-10 text-center text-sm text-muted-foreground">
+      {t("skills.catalog.projectEmpty")}
+    </p>
+  ) : rows.length === 0 ? (
+    <div className="flex items-center justify-center py-20">
+      <EmptyState
+        image={<Zap size={48} className="text-muted-foreground" />}
+        title={
+          lowerSearch
+            ? t("settings.skills.noResultsTitle")
+            : t("settings.skills.emptyTitle")
+        }
+        description={
+          lowerSearch
+            ? t("settings.skills.noResultsDescription", { search })
+            : t("settings.skills.emptyDescription")
+        }
+        actions={false}
+      />
+    </div>
+  ) : (
+    <SkillsTable
+      rows={rows}
+      second={current ? "source" : "category"}
+      sourceOf={sourceOf}
+      selected={
+        rows.find(
+          (row) =>
+            row.kind === "skill" &&
+            row.entry &&
+            preview === `${previewPathOf(row.entry)}/SKILL.md`,
+        )?.ref
+      }
+      onOpen={open}
+      end={end}
+    />
+  );
 
   return (
     <Page>
-      <Page.Content>
-        <Page.Container>
-          {/* Title, toolbar, chips and results are siblings of one gap-6
-              column — the Connections page's rhythm. */}
-          <div className="flex flex-col gap-6">
-            {/* Hosted in Context, search sits in the bar like the files'. */}
-            {projectFirstNav ? (
-              <Page.Actions
-                secondary={
-                  <SearchToggle
-                    value={search}
-                    onChange={setSearch}
-                    label={t("library.context.search")}
-                    placeholder={t("settings.skills.searchPlaceholder")}
-                    clearLabel={t("library.library.clearSearch")}
-                  />
-                }
-              >
-                {importButton}
-              </Page.Actions>
-            ) : (
-              <Page.Title actions={importButton}>
-                {t("settings.skills.pageTitle")}
-              </Page.Title>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-3 empty:hidden">
-              {!projectFirstNav && (
-                <SearchInput
+      {context ? (
+        <>
+          {current && (
+            <Page.Breadcrumbs
+              after="context-section"
+              parent={{ onSelect: () => setOpenBundle(null) }}
+              items={[{ key: "skills-package", label: current.title }]}
+            />
+          )}
+          <Page.Actions
+            secondary={
+              !project && (
+                <SearchToggle
                   value={search}
                   onChange={setSearch}
+                  label={t("library.context.search")}
                   placeholder={t("settings.skills.searchPlaceholder")}
-                  className="w-full md:w-[375px]"
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      setSearch("");
-                      (event.target as HTMLInputElement).blur();
-                    }
-                  }}
+                  clearLabel={t("library.library.clearSearch")}
                 />
-              )}
-            </div>
-            <input
-              ref={folderInputRef}
-              type="file"
-              multiple
-              webkitdirectory=""
-              className="hidden"
-              onChange={(e) => void handleImport(e.target.files)}
+              )
+            }
+          >
+            {primary}
+          </Page.Actions>
+        </>
+      ) : null}
+      <Page.Content>
+        <div
+          className={cn(
+            "mx-auto flex w-full flex-col gap-4",
+            context
+              ? cn(PAGE_INSET, "pt-4 pb-8")
+              : "max-w-[1200px] px-4 py-6 md:px-8",
+          )}
+        >
+          {!context && (
+            <>
+              <Page.Title actions={primary}>
+                {current?.title ?? t("settings.skills.pageTitle")}
+              </Page.Title>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {current ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setOpenBundle(null)}
+                  >
+                    {t("settings.skills.pageTitle")}
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                {!project && searchBox}
+              </div>
+            </>
+          )}
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            webkitdirectory=""
+            className="hidden"
+            onChange={(e) => void handleImport(e.target.files)}
+          />
+          {project && !current && (
+            <SkillsLibraryBanner
+              packages={bundles.length}
+              skills={entries.length}
+              onBrowse={() => setLibraryOpen(true)}
             />
-
-            {/* One origin means the chips can only say "All" — hide them. */}
-            {tabs.length > 2 && (
-              <CollectionTabs
-                placement="page"
-                tabs={tabs}
-                activeTab={activeSource}
-                onTabChange={setSource}
-              />
-            )}
-
-            {catalog.isPending ? (
-              <div className="@container">
-                <SkillsGrid>
-                  {Array.from({ length: 8 }, (_, i) => (
-                    <Skeleton key={i} className="h-[168px] rounded-xl" />
-                  ))}
-                </SkillsGrid>
-              </div>
-            ) : catalog.isError ? (
-              /* Never the empty state: "no skills yet" is a different fact. */
-              <div className="flex items-center justify-center py-20">
-                <EmptyState
-                  image={
-                    <AlertTriangle
-                      size={48}
-                      className="text-muted-foreground"
-                    />
-                  }
-                  title={t("settings.skills.errorTitle")}
-                  description={
-                    catalog.error instanceof Error
-                      ? catalog.error.message
-                      : t("settings.skills.errorDescription")
-                  }
-                  actions={
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void catalog.refetch()}
-                    >
-                      {t("settings.skills.retry")}
-                    </Button>
-                  }
-                />
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="flex items-center justify-center py-20">
-                <EmptyState
-                  image={<Zap size={48} className="text-muted-foreground" />}
-                  title={
-                    search
-                      ? t("settings.skills.noResultsTitle")
-                      : t("settings.skills.emptyTitle")
-                  }
-                  description={
-                    search
-                      ? t("settings.skills.noResultsDescription", { search })
-                      : t("settings.skills.emptyDescription")
-                  }
-                  actions={false}
-                />
-              </div>
-            ) : (
-              <div className="@container">
-                <SkillsGrid>
-                  {filtered.map((entry) => {
-                    const pending = entry.id === uploadingId;
-                    return (
-                      <SkillCard
-                        key={entry.id}
-                        entry={entry}
-                        pending={pending}
-                        onOpen={() => openPreview(entry)}
-                        onDelete={
-                          isEditable(entry) && !pending
-                            ? () => setPendingDelete(entry)
-                            : undefined
-                        }
-                      />
-                    );
-                  })}
-                </SkillsGrid>
-              </div>
-            )}
-          </div>
-        </Page.Container>
+          )}
+          {body}
+        </div>
       </Page.Content>
+
+      {project && (
+        <SkillsLibraryDialog
+          open={libraryOpen}
+          onOpenChange={setLibraryOpen}
+          bundles={bundles}
+          entries={entries}
+          taken={projectRefs}
+          onAdd={addPick}
+        />
+      )}
 
       {previewPath && (
         <SkillPreviewDialog

@@ -3,6 +3,7 @@ import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { TASK_SYSTEM_PROMPT_MAX_LENGTH } from "@decocms/shared/task-board";
 import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import { invalidSkillRefs } from "@decocms/shared/skills";
 import { buildSkillCatalog } from "@/file-storage/skill-catalog";
 import { sseHub } from "@/event-bus/sse-hub";
 import { TASK_BOARD_RULES_UPDATED_EVENT } from "@decocms/shared/task-board";
@@ -89,7 +90,8 @@ export const TASK_BOARD_PROMPT_UPSERT = defineTool({
       .optional()
       .describe(
         "Skill ids from the org's skill catalog (the `id` the skill tool " +
-          "takes) that runs on this scope should load.",
+          "takes), or `bundle:<id>` for a whole bundle, that runs on this " +
+          "scope should load.",
       ),
   }),
   outputSchema: z.object({ prompt: TaskBoardPromptSchema }),
@@ -118,21 +120,11 @@ export const TASK_BOARD_PROMPT_UPSERT = defineTool({
     // this deployment's catalog lacks, and re-saving the lane must not fail on it.
     const added = skills?.filter((id) => !current?.skills.includes(id)) ?? [];
     if (added.length > 0) {
-      const catalog = new Map(
-        (await buildSkillCatalog(ctx, organizationId)).map((e) => [e.id, e]),
+      const invalid = invalidSkillRefs(
+        added,
+        await buildSkillCatalog(ctx, organizationId),
       );
-      const unknown = added.filter((id) => !catalog.has(id));
-      if (unknown.length > 0) {
-        throw new Error(`Unknown skill(s): ${unknown.join(", ")}`);
-      }
-      const manual = added.filter(
-        (id) => catalog.get(id)?.disableModelInvocation,
-      );
-      if (manual.length > 0) {
-        throw new Error(
-          `Manual-only skill(s) a run can't load: ${manual.join(", ")}`,
-        );
-      }
+      if (invalid) throw new Error(invalid);
     }
     // Clearing a scope is TASK_BOARD_PROMPT_DELETE's job.
     if (!prompt) {

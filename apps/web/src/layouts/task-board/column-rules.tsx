@@ -8,18 +8,8 @@
 import { useState, type ComponentType } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { ChevronRight, Plus, XClose, Zap } from "@untitledui/icons";
-import { Badge } from "@decocms/ui/components/badge.tsx";
+import { ChevronRight, Plus, Zap } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@decocms/ui/components/command.tsx";
-import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import {
   Sheet,
   SheetContent,
@@ -27,7 +17,6 @@ import {
   SheetTitle,
 } from "@decocms/ui/components/sheet.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useOrgFsSkillCatalog } from "@/hooks/use-org-fs";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { getDecopilotId, useProjectContext } from "@/sdk";
 import {
@@ -257,101 +246,6 @@ function EmptyAutomations({
         <Plus size={14} />
         {t("taskBoard.columnRules.newAutomation")}
       </Button>
-    </div>
-  );
-}
-
-const NO_SKILLS: string[] = [];
-
-/** Skill chips and catalog picker; `inherited` shows read-only. */
-export function SkillsField({
-  value,
-  onChange,
-  inherited = NO_SKILLS,
-  fill = false,
-}: {
-  value: string[];
-  onChange: (skills: string[]) => void;
-  inherited?: string[];
-  /** Grow the picker into the parent's free height instead of a fixed cap. */
-  fill?: boolean;
-}) {
-  const t = useT();
-  const catalog = useOrgFsSkillCatalog();
-  const nameOf = (id: string) =>
-    catalog.data?.find((s) => s.id === id)?.name ?? id;
-  // A run can't load a manual-only skill, so a rule can't ask for one.
-  const options = (catalog.data ?? []).filter(
-    (s) =>
-      !s.disableModelInvocation &&
-      !value.includes(s.id) &&
-      !inherited.includes(s.id),
-  );
-  // Already shown as inherited below; don't render it twice.
-  const ownValue = value.filter((id) => !inherited.includes(id));
-
-  return (
-    <div className={cn("flex flex-col gap-2", fill && "min-h-0 flex-1")}>
-      {ownValue.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {ownValue.map((id) => (
-            <Badge key={id} variant="outline" className="py-0 pr-0 pl-2">
-              {nameOf(id)}
-              <IconButton
-                label={t("taskBoard.columnRules.removeSkill", {
-                  skill: nameOf(id),
-                })}
-                onClick={() => onChange(value.filter((s) => s !== id))}
-                className="size-5 text-muted-foreground"
-              >
-                <XClose size={12} />
-              </IconButton>
-            </Badge>
-          ))}
-        </div>
-      )}
-      <Command className={cn("h-auto border", fill && "min-h-0 flex-1")}>
-        <CommandInput
-          placeholder={t("taskBoard.columnRules.searchSkills")}
-          className="h-9"
-        />
-        <CommandList className={cn(fill ? "max-h-none flex-1" : "max-h-56")}>
-          <CommandEmpty>{t("taskBoard.columnRules.noSkills")}</CommandEmpty>
-          <CommandGroup>
-            {options.map((s) => (
-              <CommandItem
-                key={s.id}
-                value={`${s.name} ${s.id}`}
-                onSelect={() => onChange([...value, s.id])}
-              >
-                <Plus size={14} className="shrink-0 text-muted-foreground" />
-                <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm">{s.name}</span>
-                  {s.description && (
-                    <span className="text-meta line-clamp-1">
-                      {s.description}
-                    </span>
-                  )}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </CommandList>
-      </Command>
-      {inherited.length > 0 && (
-        <>
-          <p className="text-meta">
-            {t("taskBoard.columnRules.inheritedHint")}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {inherited.map((id) => (
-              <Badge key={id} variant="muted">
-                {nameOf(id)}
-              </Badge>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }

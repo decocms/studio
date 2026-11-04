@@ -148,11 +148,6 @@ export const taskBoard = {
   "taskBoard.columnRules.starter.board_pr_merged":
     "Roda quando o pull request é mergeado",
   "taskBoard.columnRules.noAutomations": "Nada roda aqui ainda",
-  "taskBoard.columnRules.removeSkill": "Remover {skill}",
-  "taskBoard.columnRules.searchSkills": "Buscar skills",
-  "taskBoard.columnRules.noSkills": "Nenhuma skill encontrada",
-  "taskBoard.columnRules.inheritedHint":
-    "Também disponíveis aqui, de Configurações → Tarefas:",
   "taskBoard.taskBoard.hiddenColumns": "Colunas ocultas",
   "taskBoard.taskBoard.showColumn": "Mostrar",
   "taskBoard.taskBoard.selectedCount": "{count} selecionado(s)",

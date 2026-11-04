@@ -22,6 +22,7 @@ import {
   orgHasFeature,
 } from "@/core/plan-feature-gate";
 import { emitTaskBoardUpdated } from "./run-reactions";
+import { expandOrgSkillRefs } from "@/file-storage/skill-refs";
 
 /** A demo org's frozen card is a picture of past work: nothing runs on it. */
 export async function assertNotFrozenDemoCard(
@@ -188,7 +189,9 @@ export async function enqueueAgentRunForTask(
 
   // Best-effort: an unreadable row costs the run its house rules, never the dispatch.
   const boardPrompt = await ctx.storage.taskBoardPrompts
-    .promptFor(organizationId, opts.rulesColumn)
+    .promptFor(organizationId, opts.rulesColumn, (refs) =>
+      expandOrgSkillRefs(ctx, organizationId, refs),
+    )
     .catch(() => undefined);
   const appendInstructions = withBoardPrompt(opts.system, boardPrompt);
   const agent = {

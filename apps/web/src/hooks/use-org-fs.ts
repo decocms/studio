@@ -194,9 +194,13 @@ interface OrgFsVolumeFilesPage {
 }
 
 /** A volume's newest files at any depth, a page at a time. */
-export function useOrgFsVolumeFiles(volume: string) {
+export function useOrgFsVolumeFiles(
+  volume: string,
+  opts?: { enabled?: boolean },
+) {
   const { org } = useProjectContext();
   return useInfiniteQuery({
+    enabled: opts?.enabled ?? true,
     queryKey: KEYS.orgFsVolumeFiles(org.id, volume),
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
@@ -259,47 +263,18 @@ export function useOrgFsSearch(query: string, scope?: OrgFsSearchScope) {
   });
 }
 
-/** A skill folder (dir containing SKILL.md) in the org filesystem. */
-export interface OrgFsSkill {
-  volume: string;
-  path: string;
-}
-
-/**
- * The attachable-skill set for agent knowledge — the SAME catalog the runtime
- * surfaces in `<available-skills>` (server-side `buildSkillCatalog`: the org's
- * home root, `home/skills/*`, and the deployment's public sets). Consuming the
- * shared `/fs/skills` endpoint keeps the picker and the run from ever drifting
- * on what counts (and where) as a skill.
- */
-export function useOrgFsSkills(opts?: { enabled?: boolean }) {
-  const { org } = useProjectContext();
-  return useQuery({
-    queryKey: KEYS.orgFsSkills(org.id),
-    enabled: opts?.enabled,
-    queryFn: async (): Promise<OrgFsSkill[]> => {
-      const res = await fsFetch(
-        `/api/${encodeURIComponent(org.slug)}/fs/skills`,
-      );
-      const { skills } = (await res.json()) as {
-        skills: Array<{ volume: string; path: string }>;
-      };
-      return skills.map((s) => ({ volume: s.volume, path: s.path }));
-    },
-  });
-}
-
-/**
- * Full skill catalog entry as returned by `/fs/skills` (the SAME shape the
- * server's `buildSkillCatalog` emits). Unlike `OrgFsSkill` (attach picker,
- * volume+path only) this carries the display + resolution fields the chat
- * slash picker needs: the `id` the `skill` tool takes, the description shown
- * in the dropdown, and the `sandboxPath` referenced files live under.
- */
+/** A `/fs/skills` entry, the same shape the server's `buildSkillCatalog` emits. */
 export interface OrgFsSkillCatalogEntry {
   id: string;
   name: string;
+  /** Frontmatter `title`, the name people see. Optional: a catalog cached
+   *  before the field existed lacks it. */
+  title?: string | null;
   description: string | null;
+  /** Frontmatter `category` (a `SKILL_CATEGORY_IDS` id) or null. */
+  category?: string | null;
+  /** Frontmatter `bundles`: the package ids the skill belongs to. */
+  bundles?: string[];
   source: string;
   volume: string;
   path: string;

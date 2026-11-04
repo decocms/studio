@@ -24,7 +24,10 @@ function entry(name: string): SkillCatalogEntry {
   return {
     id: `home/${name}`,
     name,
+    title: null,
     description: null,
+    category: null,
+    bundles: [],
     disableModelInvocation: false,
     source: "home",
     sandboxPath: `/app/org/home/${name}`,

@@ -874,6 +874,14 @@ const VirtualMcpMetadataFields = {
       "User-pinned runtime config (package manager, dev port). Empty fields = autodetect.",
     ),
   knowledge: knowledgeMetadataField,
+  skills: z
+    .array(z.string().min(1))
+    .max(20)
+    .nullable()
+    .optional()
+    .describe(
+      "Skill references this project's chats prefer: catalog ids or `bundle:<id>` for a whole bundle.",
+    ),
   siteSlug: z
     .string()
     .nullable()

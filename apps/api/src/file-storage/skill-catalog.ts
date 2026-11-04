@@ -37,7 +37,13 @@ export interface SkillCatalogEntry {
   id: string;
   /** Display name (frontmatter `name`, falling back to the dir basename). */
   name: string;
+  /** Frontmatter `title`: what people see; null when the skill has none. */
+  title: string | null;
   description: string | null;
+  /** Frontmatter `category` (a `SKILL_CATEGORY_IDS` id) or null. */
+  category: string | null;
+  /** Frontmatter `bundles`: the bundle ids this skill belongs to. */
+  bundles: string[];
   /** Provenance shown to the model (`public:<set>` or `home`). */
   source: string;
   /**
@@ -90,7 +96,10 @@ export interface DetectedSkill {
   dirPath: string;
   /** Frontmatter `name`, falling back to the dir basename. */
   name: string;
+  title: string | null;
   description: string | null;
+  category: string | null;
+  bundles: string[];
   disableModelInvocation: boolean;
 }
 
@@ -155,7 +164,10 @@ async function readSkills(
         out[index] = {
           ...dir,
           name: meta.name ?? basename(dir.dirPath),
+          title: meta.title,
           description: meta.description,
+          category: meta.category,
+          bundles: meta.bundles,
           disableModelInvocation: meta.disableModelInvocation,
         };
       } catch {
@@ -192,12 +204,25 @@ export async function detectSkills(
   );
   // Drop the volume `readSkills` threads through for the multi-volume caller —
   // a single-volume scan already knows it, and leaking it widens the shape.
-  return read.map(({ dirPath, name, description, disableModelInvocation }) => ({
-    dirPath,
-    name,
-    description,
-    disableModelInvocation,
-  }));
+  return read.map(
+    ({
+      dirPath,
+      name,
+      title,
+      description,
+      category,
+      bundles,
+      disableModelInvocation,
+    }) => ({
+      dirPath,
+      name,
+      title,
+      description,
+      category,
+      bundles,
+      disableModelInvocation,
+    }),
+  );
 }
 
 /** Public sets are org-independent (shared system scope); build once + cache. */
@@ -219,7 +244,10 @@ async function buildPublicEntries(
       entries.push({
         id: `${set}/${s.dirPath}`,
         name: s.name,
+        title: s.title,
         description: s.description,
+        category: s.category,
+        bundles: s.bundles,
         disableModelInvocation: s.disableModelInvocation,
         source: `public:${set}`,
         sandboxPath: orgFsSandboxPath(volume, s.dirPath),
@@ -293,7 +321,10 @@ async function buildOrgEntries(
       ? {
           id: `home/${s.dirPath}`,
           name: s.name,
+          title: s.title,
           description: s.description,
+          category: s.category,
+          bundles: s.bundles,
           disableModelInvocation: s.disableModelInvocation,
           source: "home",
           sandboxPath: orgFsSandboxPath(HOME_VOLUME, s.dirPath),
@@ -303,7 +334,10 @@ async function buildOrgEntries(
       : {
           id: `repo/${s.volume}/${s.dirPath}`,
           name: s.name,
+          title: s.title,
           description: s.description,
+          category: s.category,
+          bundles: s.bundles,
           disableModelInvocation: s.disableModelInvocation,
           source: `repo:${s.volume}`,
           sandboxPath: orgFsSandboxPath(s.volume, s.dirPath),

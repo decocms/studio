@@ -41,39 +41,43 @@ export default function LibraryRoute() {
   const isMobile = useIsMobile();
   const chatBeside = useChatLayout().threadOpen && !isMobile;
 
-  if (projectFirstNav && contextSection !== "files") {
-    return (
-      <ChatLayout.Content>
-        <ContextShell section={contextSection}>
-          <ContextSectionBody section={contextSection} />
-        </ContextShell>
-      </ChatLayout.Content>
-    );
-  }
+  // Skills preview like files; the other sections have nothing to open.
+  const sectionPage = projectFirstNav && contextSection !== "files";
+  const previewing =
+    sectionPage && contextSection !== "skills" ? undefined : preview;
 
-  if (preview && (expanded || chatBeside)) {
-    const folder = preview.slice(0, Math.max(preview.lastIndexOf("/"), 0));
+  if (previewing && (expanded || chatBeside)) {
+    const folder = previewing.slice(
+      0,
+      Math.max(previewing.lastIndexOf("/"), 0),
+    );
     return (
       <ChatLayout.Content>
         <Page.Breadcrumbs
           after="page"
           parent={{ onSelect: close }}
-          items={[
-            ...libraryTrail(folder, HOME_MOUNT_PATH).map((crumb) => ({
-              key: `folder:${crumb.path}`,
-              label: crumb.label,
-              onSelect: () => show({ path: crumb.path }),
-            })),
-            { key: "file", label: basename(preview) },
-          ]}
+          items={
+            sectionPage
+              ? [{ key: "file", label: basename(folder) }]
+              : [
+                  ...libraryTrail(folder, HOME_MOUNT_PATH).map((crumb) => ({
+                    key: `folder:${crumb.path}`,
+                    label: crumb.label,
+                    onSelect: () => show({ path: crumb.path }),
+                  })),
+                  { key: "file", label: basename(previewing) },
+                ]
+          }
         />
         <LibraryPreviewPanel
-          key={preview}
-          previewPath={preview}
+          key={previewing}
+          previewPath={previewing}
           onClose={close}
           expand={{
             expanded: true,
-            onToggle: chatBeside ? undefined : () => show({ preview }),
+            onToggle: chatBeside
+              ? undefined
+              : () => show({ preview: previewing }),
           }}
         />
       </ChatLayout.Content>
@@ -83,15 +87,15 @@ export default function LibraryRoute() {
   return (
     <ChatLayout.Content
       aside={
-        preview && (
+        previewing && (
           <LibraryPreviewPanel
-            key={preview}
+            key={previewing}
             variant="aside"
-            previewPath={preview}
+            previewPath={previewing}
             onClose={close}
             expand={{
               expanded: false,
-              onToggle: () => show({ preview, expanded: true }),
+              onToggle: () => show({ preview: previewing, expanded: true }),
             }}
           />
         )
@@ -99,7 +103,11 @@ export default function LibraryRoute() {
     >
       {/* Beside the list: a main-panel tab would carry the org's drive into
           an agent's workspace. */}
-      {projectFirstNav ? (
+      {sectionPage ? (
+        <ContextShell section={contextSection}>
+          <ContextSectionBody section={contextSection} />
+        </ContextShell>
+      ) : projectFirstNav ? (
         <ContextShell section="files">
           <LibraryTab filePreview="side" context />
         </ContextShell>
