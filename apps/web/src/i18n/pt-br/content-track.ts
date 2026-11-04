@@ -243,8 +243,6 @@ export const contentTrack = {
   "contentTrack.sits.thisCampaign": "Esta campanha",
   "contentTrack.sits.campaign": "Campanha",
   "contentTrack.sits.thisPost": "Este post",
-  "contentTrack.sits.noObjective": "O objetivo vem com a hipótese.",
-  "contentTrack.sits.measuredBy": "medido no Monitor por {metric}",
   "contentTrack.campaign.addGoal": "Adicionar meta",
   "contentTrack.campaign.deleteGoal": "Apagar meta",
   "contentTrack.campaign.bornIn": "Nasceu em",

@@ -239,8 +239,6 @@ export const contentTrack = {
   "contentTrack.sits.thisCampaign": "This campaign",
   "contentTrack.sits.campaign": "Campaign",
   "contentTrack.sits.thisPost": "This post",
-  "contentTrack.sits.noObjective": "Its objective comes with the hypothesis.",
-  "contentTrack.sits.measuredBy": "measured in Monitor by {metric}",
   "contentTrack.campaign.addGoal": "Add goal",
   "contentTrack.campaign.deleteGoal": "Delete goal",
   "contentTrack.campaign.bornIn": "Born in",

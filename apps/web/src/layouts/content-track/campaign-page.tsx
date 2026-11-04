@@ -306,7 +306,6 @@ export function CampaignPage({
                       : null,
                 )
               }
-              canAddGoal
             />
           )}
         </div>

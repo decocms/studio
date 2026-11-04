@@ -93,7 +93,7 @@ import {
   useCardPreview,
 } from "./use-card-preview";
 import { useOpenCardEditor } from "./use-open-card-editor";
-import { goalNodes, type SitsNode, WhereItSits } from "./where-it-sits";
+import { WhereItSits } from "./where-it-sits";
 
 const PHASES = ["campaign", "hypothesis", "execute", "monitor"] as const;
 
@@ -320,7 +320,7 @@ export function CardDetail({
               card={card}
               campaign={campaign}
               working={working}
-              onOpenCampaign={onOpenCampaign}
+              onOpenCampaignStep={() => open("campaign")}
             />
           ) : phase === "execute" ? (
             <ExecutePhase
@@ -357,12 +357,13 @@ function HypothesisPhase({
   card,
   campaign,
   working,
-  onOpenCampaign,
+  onOpenCampaignStep,
 }: {
   card: BlogCard;
   campaign: CampaignEntry | undefined;
   working: boolean;
-  onOpenCampaign: (campaignId: string) => void;
+  /** The card's own Campaign step, so the post stays open. */
+  onOpenCampaignStep: () => void;
 }) {
   const t = useT();
   const hypothesis = card.hypothesis ?? {};
@@ -431,8 +432,7 @@ function HypothesisPhase({
 
       <HypothesisSits
         campaign={campaign}
-        hypothesis={hypothesis}
-        onOpenCampaign={onOpenCampaign}
+        onOpenCampaignStep={onOpenCampaignStep}
       />
 
       <Section title={t("contentTrack.card.signals")}>
@@ -474,37 +474,16 @@ function HypothesisPhase({
   );
 }
 
-/** What the post answers to: the campaign's goals, the campaign, and this post's own objective. */
+/** What the post answers to: its campaign, down to the post itself. */
 function HypothesisSits({
   campaign,
-  hypothesis,
-  onOpenCampaign,
+  onOpenCampaignStep,
 }: {
   campaign: CampaignEntry | undefined;
-  hypothesis: NonNullable<BlogCard["hypothesis"]>;
-  onOpenCampaign: (campaignId: string) => void;
+  onOpenCampaignStep: () => void;
 }) {
   const t = useT();
-  if (!campaign && !hypothesis.objective) return null;
-  const post: SitsNode = {
-    key: "post",
-    kind: "post",
-    onPage: true,
-    title: t("contentTrack.sits.thisPost"),
-    body: hypothesis.objective || t("contentTrack.sits.noObjective"),
-    meta: hypothesis.metric
-      ? [t("contentTrack.sits.measuredBy", { metric: hypothesis.metric })]
-      : [],
-  };
-  if (!campaign) {
-    return (
-      <WhereItSits
-        title={t("contentTrack.sits.hypothesisTitle")}
-        nodes={[post]}
-      />
-    );
-  }
-  const open = () => onOpenCampaign(campaign.id);
+  if (!campaign) return null;
   const period = [campaign.period.start, campaign.period.end]
     .filter(Boolean)
     .join(" → ");
@@ -512,10 +491,6 @@ function HypothesisSits({
     <WhereItSits
       title={t("contentTrack.sits.hypothesisTitle")}
       nodes={[
-        ...goalNodes(campaign.goals, t, open, {
-          title: t("contentTrack.sits.noGoals"),
-          onOpen: open,
-        }),
         {
           key: "campaign",
           kind: "campaign",
@@ -526,10 +501,10 @@ function HypothesisSits({
             t(CAMPAIGN_OBJECTIVE_LABEL[campaign.intent.objective]),
             period,
           ],
-          onOpen: open,
+          onOpen: onOpenCampaignStep,
         },
-        post,
       ]}
+      here={{ kind: "post", label: t("contentTrack.sits.thisPost") }}
     />
   );
 }

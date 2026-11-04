@@ -165,12 +165,7 @@ export function CampaignPhase({
           onChoose={onShape}
         />
       ) : (
-        <CampaignProposal
-          campaign={campaign}
-          working={working}
-          onGoal={() => onOpenCampaign(campaign.id)}
-          canAddGoal={false}
-        />
+        <CampaignProposal campaign={campaign} working={working} />
       )}
       <div className="flex flex-wrap gap-2">
         <Button

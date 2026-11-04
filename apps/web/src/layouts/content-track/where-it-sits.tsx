@@ -1,6 +1,6 @@
 /**
  * Where a campaign or a post sits: what it answers to, as a column of cards
- * joined by a line, from the goals down to the thing on the page.
+ * joined by a line, down to the thing on the page.
  */
 
 import type { ComponentType, ReactNode } from "react";
@@ -22,16 +22,12 @@ export interface SitsNode {
   key: string;
   kind: keyof typeof KIND_ICON;
   title: string;
-  /** A longer line under the title, such as a post's objective. */
-  body?: string;
   /** Short facts, shown joined by "·". */
   meta?: string[];
   /** The card opens something, and shows an arrow. */
   onOpen?: () => void;
   /** Nothing here yet: drawn quieter. */
   muted?: boolean;
-  /** The thing on the page itself. */
-  onPage?: boolean;
 }
 
 function HereIcon({ kind }: { kind: keyof typeof KIND_ICON }) {
@@ -43,7 +39,7 @@ function HereIcon({ kind }: { kind: keyof typeof KIND_ICON }) {
 export function goalNodes(
   goals: readonly CampaignGoal[],
   t: TFunction,
-  open: (goal: number) => void,
+  open: ((goal: number) => void) | undefined,
   empty: { title: string; onOpen?: () => void },
 ): SitsNode[] {
   if (goals.length === 0) {
@@ -62,7 +58,7 @@ export function goalNodes(
     kind: "goal",
     title: goal.text,
     meta: [t("contentTrack.sits.goal"), goalMeasure(goal, t)],
-    onOpen: () => open(index),
+    onOpen: open && (() => open(index)),
   }));
 }
 
@@ -101,11 +97,6 @@ function NodeCard({ node }: { node: SitsNode }) {
         >
           {node.title}
         </span>
-        {node.body && (
-          <span className="text-[12.5px] leading-[1.45] text-foreground">
-            {node.body}
-          </span>
-        )}
         {meta.length > 0 && (
           <span className="text-xs text-muted-foreground">
             {meta.join(" · ")}
@@ -121,8 +112,7 @@ function NodeCard({ node }: { node: SitsNode }) {
     </>
   );
   const frame = cn(
-    "group flex w-full items-start gap-3 rounded-[11px] border px-3 py-2.5 text-left",
-    node.onPage ? "border-primary/60 bg-card" : "border-border bg-card",
+    "group flex w-full items-start gap-3 rounded-[11px] border border-border bg-card px-3 py-2.5 text-left",
     node.muted && "border-dashed bg-transparent",
   );
   return node.onOpen ? (

@@ -36,14 +36,11 @@ export function CampaignProposal({
   campaign,
   working,
   onGoal,
-  canAddGoal,
 }: {
   campaign: CampaignEntry;
   working: boolean;
-  /** Opens one of its goals, or "new" to add one: the goal's dialog on the campaign page, the campaign page elsewhere. */
-  onGoal: (goal: number | "new") => void;
-  /** Goals are added where they are edited, on the campaign page. */
-  canAddGoal: boolean;
+  /** Opens one of its goals, or "new" to add one, in the goal's dialog. Without it, as inside a blog card, the goals are only shown. */
+  onGoal?: (goal: number | "new") => void;
 }) {
   const t = useT();
   if (campaign.status === "draft" && !campaignIsDeveloped(campaign)) {
@@ -109,10 +106,10 @@ export function CampaignProposal({
         hint={goalsHint(campaign.goals.length, t)}
         nodes={goalNodes(campaign.goals, t, onGoal, {
           title: t("contentTrack.sits.noGoals"),
-          onOpen: () => onGoal("new"),
+          onOpen: onGoal && (() => onGoal("new")),
         })}
         action={
-          canAddGoal &&
+          onGoal &&
           campaign.goals.length > 0 &&
           campaign.goals.length < MAX_CAMPAIGN_GOALS ? (
             <Button
