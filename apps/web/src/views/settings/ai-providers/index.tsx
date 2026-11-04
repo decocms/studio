@@ -10,7 +10,6 @@ import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { PlanUsageCard } from "./plan-usage-card";
 import { PlanCatalog } from "./plan-catalog";
-import { DecoNudgeCard } from "./deco-nudge-card";
 import { OwnAccountsSection } from "./own-accounts-section";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
@@ -93,7 +92,6 @@ function OrgAiProvidersContent() {
           <SimpleModeSection />
         </Suspense>
       ) : null}
-      {hasDeco ? null : <DecoNudgeCard />}
       <OwnAccountsSection onAddKey={() => setConnectOpen(true)} />
       <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </>

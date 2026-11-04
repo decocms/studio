@@ -707,11 +707,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
-  "settings.planUsage.noPlan": "No active plan",
-  "settings.planUsage.noPlanDescription":
-    "This organization has no active plan. Pick one below — Starter's first month is free.",
   "settings.planUsage.included": "Included in plan",
-  "settings.planUsage.credits": "Credits",
+  "settings.planUsage.credits": "Added credits",
   "settings.planUsage.creditsInUse": "In use",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
@@ -772,12 +769,6 @@ export const settings = {
     "This organization has used its monthly AI allowance. Chat and tasks pause until you upgrade or top up.",
 
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
-  "settings.decoNudgeCard.connectDeco": "Connect Deco",
-  "settings.decoNudgeCard.connecting": "Connecting…",
-  "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
-  "settings.decoNudgeCard.description":
-    "100+ models, one connection — pay as you go, no API keys to juggle.",
-  "settings.decoNudgeCard.recommended": "Recommended",
   "settings.deleteOrganizationSection.cancel": "Cancel",
   "settings.deleteOrganizationSection.dangerZone": "Danger zone",
   "settings.deleteOrganizationSection.deleteButton": "Delete",
@@ -1196,10 +1187,6 @@ export const settings = {
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.decoConnectSuccess":
-    "Deco AI Gateway connected successfully",
-  "settings.aiProviders.decoConnectError":
-    "Failed to connect Deco AI Gateway: {error}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",

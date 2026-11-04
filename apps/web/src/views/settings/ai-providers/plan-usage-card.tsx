@@ -217,6 +217,9 @@ export function PlanUsageCard() {
     );
   }
 
+  // No plan: the catalog below is the whole story.
+  if (data.plan.id === "free") return null;
+
   // Clamped and finite-checked: the wire is 0..1 but a NaN or a negative
   // arriving here produced `translateX(-NaN%)`, an invalid declaration the
   // browser drops — which renders the indicator FULL and untranslated, i.e. a
@@ -227,11 +230,9 @@ export function PlanUsageCard() {
       ? Math.min(100, Math.max(0, rawPercent))
       : null;
   const state = data.usage?.state ?? "ok";
-  // `free` is the absence of a plan: nothing to measure and nothing renews.
-  const noPlan = data.plan.id === "free";
   // A plan with no chat has no AI envelope at all, so a full red bar would
   // read as "you burned through it" on an org that never had any.
-  const hasAiEnvelope = !noPlan && data.features.chat;
+  const hasAiEnvelope = data.features.chat;
   const creditsUsd = data.credits?.remainingUsd ?? null;
   /** A gateway date as "16 Aug", or null for anything we can't honestly date. */
   const shortDate = (iso: string | null): string | null => {
@@ -264,9 +265,7 @@ export function PlanUsageCard() {
               card and its card agree. Absent until the ladder resolves —
               the wrong plant then the right one is worse than none. */}
           {planIndex >= 0 && <PlanPlant index={planIndex} className="size-6" />}
-          <span className="text-sm font-medium">
-            {noPlan ? t("settings.planUsage.noPlan") : data.plan.name}
-          </span>
+          <span className="text-sm font-medium">{data.plan.name}</span>
         </div>
         <ManageBillingButton />
       </div>
@@ -323,9 +322,7 @@ export function PlanUsageCard() {
           />
         ) : (
           <p className="text-sm text-muted-foreground self-center">
-            {noPlan
-              ? t("settings.planUsage.noPlanDescription")
-              : t("settings.planUsage.noAiIncluded")}
+            {t("settings.planUsage.noAiIncluded")}
           </p>
         )}
 
