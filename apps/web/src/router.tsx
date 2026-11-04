@@ -1366,18 +1366,24 @@ const settingsIndexRoute = createRoute({
   ),
 });
 
-// Operations: Connections
+// Redirects old /settings/connections links to Context, which hosts the page.
 const connectionsRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.connections" },
   getParentRoute: () => settingsRoute,
   path: "/connections",
-  component: lazyRouteComponent(() => import("./routes/orgs/connections.tsx")),
   validateSearch: z.lazy(() =>
     z.object({
       action: z.enum(["create"]).optional(),
       tab: z.enum(["all", "connected"]).optional(),
     }),
   ),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/library",
+      params: { org: params.org },
+      search: { section: "connections", ...search },
+      replace: true,
+    });
+  },
 });
 
 const connectionDetailRoute = createRoute({
@@ -1657,25 +1663,34 @@ const settingsAutomationsRoute = createRoute({
   ),
 });
 
+// Redirects old /settings/skills and /settings/memory links to Context.
 const settingsSkillsRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.skills" },
   getParentRoute: () => settingsRoute,
   path: "/skills",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/skills.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/library",
+      params: { org: params.org },
+      search: { section: "skills" },
+      replace: true,
+    });
+  },
 });
 
 const settingsMemoryRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.memory" },
   getParentRoute: () => settingsRoute,
   path: "/memory",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/memory.tsx"),
-  ),
   validateSearch: z.lazy(() =>
     z.object({ scope: z.enum(["user"]).optional() }),
   ),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/library",
+      params: { org: params.org },
+      search: { section: "memory", ...search },
+      replace: true,
+    });
+  },
 });
 
 // ============================================
