@@ -15,7 +15,6 @@ import { Panel } from "@/components/panel";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { CdnTab } from "@/layouts/main-panel-tabs/cdn-tab";
 import { ExperimentsTab } from "@/layouts/main-panel-tabs/experiments-tab";
 import { MetricCard } from "@/layouts/task-board/analytics-sections";
 import {
@@ -175,7 +174,8 @@ function ProjectScreen({
   enabled: boolean;
   /** Which tab to draw, faded, when there is no site to read. */
   empty: "experiments" | "analytics";
-  render: (projectId: string) => ReactNode;
+  /** The project's own screen; without one, the org's view of that project. */
+  render?: (projectId: string) => ReactNode;
   org: (projects: readonly SiteProject[]) => ReactNode;
 }) {
   const t = useT();
@@ -213,12 +213,12 @@ function ProjectScreen({
       </div>
     );
   }
-  if (!scopeId) {
+  if (!scopeId || !render) {
     // The board's frame: same width, gutters and rhythm as Metrics.
     return (
       <div className="flex h-full min-h-0 flex-col overflow-auto">
         <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
-          {org(projects)}
+          {org(scopeId ? projects.filter((p) => p.id === scopeId) : projects)}
         </div>
       </div>
     );
@@ -244,7 +244,11 @@ export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
   );
 }
 
-/** A site's Monitor (CDN traffic and audience), gated as its own route is. */
+/**
+ * Pageviews and the analytics install guide, inside a project narrowed to it.
+ * The project's site Monitor is its own route (`cdn`); on a v8 site it is the
+ * telemetry Monitor, which has no install.
+ */
 export function AnalyticsView({
   scopeId,
   date,
@@ -265,7 +269,6 @@ export function AnalyticsView({
         (config.monitorEnabled === true || config.auth.localMode === true)
       }
       empty="analytics"
-      render={(id) => <CdnTab virtualMcpId={id} />}
       org={(projects) => (
         <OrgAnalytics projects={projects} date={date} onDate={onDate} />
       )}
