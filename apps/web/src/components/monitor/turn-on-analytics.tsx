@@ -1,8 +1,15 @@
 /** Turning Deco Analytics on, step by step: who adds the tag, the site's details, then the tag and a live check. */
 
-import { type ReactNode, useState } from "react";
+import { createContext, type ReactNode, useContext, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Code02, Plus, Stars02 } from "@untitledui/icons";
+import {
+  AlertTriangle,
+  CheckCircle,
+  Code02,
+  Plus,
+  Stars02,
+  XClose,
+} from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ListRow } from "@decocms/ui/components/list-row.tsx";
@@ -12,8 +19,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   RadioGroup,
   RadioGroupItem,
@@ -25,6 +34,8 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { useInstallAnalytics } from "@/hooks/use-install-analytics";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useClockTick } from "@/lib/use-clock-tick";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
@@ -33,7 +44,6 @@ import {
   type AnalyticsStatus,
   CopyButton,
   DEFAULT_MODULES,
-  ModuleSwitches,
   useRegisterAnalytics,
 } from "@/layouts/main-panel-tabs/analytics-tab";
 import { LivePayload } from "./analytics/realtime";
@@ -135,23 +145,27 @@ export function TurnOnAnalytics({
   status,
   open,
   onOpenChange,
+  review = false,
 }: {
   orgSlug: string;
   project: SiteProject;
   status: AnalyticsStatus;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The site is registered already: straight from who adds the tag to the tag. */
+  review?: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[85vh] overflow-y-auto sm:max-w-lg sm:has-data-[step=setup]:max-w-3xl"
+        className="max-h-[85vh] overflow-y-auto sm:max-w-lg"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <Wizard
           orgSlug={orgSlug}
           project={project}
           status={status}
+          review={review}
           onClose={() => onOpenChange(false)}
         />
       </DialogContent>
@@ -163,64 +177,80 @@ function Wizard({
   orgSlug,
   project,
   status,
+  review,
   onClose,
 }: {
   orgSlug: string;
   project: SiteProject;
   status: AnalyticsStatus;
+  review: boolean;
   onClose: () => void;
 }) {
   const installable = useInstallableProjects([project]);
   const canAgent = (installable?.length ?? 0) > 0;
+  const [, setVerifying] = useVerifying(project.site);
   const [step, setStep] = useState<Step>("how");
   const [how, setHow] = useState<How | null>(null);
-  const [result, setResult] = useState<AnalyticsRegisterResult | null>(null);
+  // A registered site's tag comes from its status; a new one's from registering.
+  const [result, setResult] = useState<AnalyticsRegisterResult | null>(
+    review ? { key: status.key ?? null } : null,
+  );
   const chosen = how ?? (canAgent ? "agent" : "manual");
+  // Once the tag is on its way, the Analytics page watches for the first visit.
+  const finish = () => {
+    setVerifying(Date.now());
+    onClose();
+  };
 
   return (
-    <div data-step={step} className="relative flex flex-col gap-6">
-      {step === "how" && (
-        <HowStep
-          project={project}
-          canAgent={canAgent}
-          how={chosen}
-          onHow={setHow}
-          onManual={() => setStep("setup")}
-          onClose={onClose}
-        />
-      )}
-      {step === "setup" && (
-        <SetupStep
-          orgSlug={orgSlug}
-          project={project}
-          host={status.host ?? null}
-          onBack={() => setStep("how")}
-          onRegistered={(r) => {
-            setResult(r);
-            setStep("install");
-          }}
-        />
-      )}
-      {step === "install" && result && (
-        <InstallStep
-          orgSlug={orgSlug}
-          project={project}
-          result={result}
-          canAgent={canAgent}
-          onClose={onClose}
-        />
-      )}
-    </div>
+    <StepsContext.Provider value={review ? REVIEW_STEPS : STEPS}>
+      <div data-step={step} className="relative flex flex-col gap-6">
+        {step === "how" && (
+          <HowStep
+            project={project}
+            canAgent={canAgent}
+            how={chosen}
+            onHow={setHow}
+            onManual={() => setStep(review ? "install" : "setup")}
+            onClose={onClose}
+            onSent={finish}
+          />
+        )}
+        {step === "setup" && (
+          <SetupStep
+            orgSlug={orgSlug}
+            project={project}
+            host={status.host ?? null}
+            onBack={() => setStep("how")}
+            onRegistered={(r) => {
+              setResult(r);
+              setStep("install");
+            }}
+          />
+        )}
+        {step === "install" && result && (
+          <InstallStep
+            project={project}
+            result={result}
+            canAgent={canAgent}
+            onDone={finish}
+          />
+        )}
+      </div>
+    </StepsContext.Provider>
   );
 }
 
 const STEPS: readonly Step[] = ["how", "setup", "install"];
+const REVIEW_STEPS: readonly Step[] = ["how", "install"];
+const StepsContext = createContext<readonly Step[]>(STEPS);
 
 function Dots({ step }: { step: Step }) {
-  const at = STEPS.indexOf(step);
+  const steps = useContext(StepsContext);
+  const at = steps.indexOf(step);
   return (
     <div className="flex items-center gap-1.5" aria-hidden>
-      {STEPS.map((s, i) => (
+      {steps.map((s, i) => (
         <span
           key={s}
           className={cn(
@@ -291,6 +321,7 @@ function HowStep({
   onHow,
   onManual,
   onClose,
+  onSent,
 }: {
   project: SiteProject;
   canAgent: boolean;
@@ -298,6 +329,8 @@ function HowStep({
   onHow: (how: How) => void;
   onManual: () => void;
   onClose: () => void;
+  /** The agent has the task: the dialog closes and the page starts checking. */
+  onSent: () => void;
 }) {
   const t = useT();
   const install = useInstallAnalytics();
@@ -309,7 +342,7 @@ function HowStep({
       {
         onSuccess: (r) => {
           if (r.status === "needs_domain") setNeedsDomain(true);
-          else onClose();
+          else onSent();
         },
       },
     );
@@ -402,30 +435,20 @@ function SetupStep({
   // A site hosting knows a domain for is on deco's CDN; any other gets a token.
   const [elsewhere, setElsewhere] = useState(!host);
   const [domain, setDomain] = useState(host ?? "");
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(DEFAULT_MODULES),
-  );
 
   const domains = domain
     .split(/[\s,]+/)
     .map((d) => d.trim())
     .filter(Boolean);
   const ready = elsewhere ? domains.length > 0 : !!host || !!domain.trim();
-  const toggle = (key: string) => {
-    if (key === "core") return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  // Deco decides what is collected.
+  const modules = [...DEFAULT_MODULES];
   const submit = () =>
     register.mutate(
       elsewhere
-        ? { key: true, domains, modules: [...selected] }
+        ? { key: true, domains, modules }
         : {
-            modules: [...selected],
+            modules,
             ...(host ? {} : { host: domain.trim() }),
           },
       {
@@ -443,60 +466,53 @@ function SetupStep({
         <DialogTitle>{t("monitor.turnOn.setupTitle")}</DialogTitle>
       </DialogHeader>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <Label>{t("mainPanelTabs.analyticsTab.whereLabel")}</Label>
-            <ToggleGroup
-              type="single"
-              variant="segmented"
-              value={elsewhere ? "elsewhere" : "cdn"}
-              onValueChange={(v) => {
-                if (v) setElsewhere(v === "elsewhere");
-              }}
-            >
-              <ToggleGroupItem value="cdn">
-                {t("mainPanelTabs.analyticsTab.whereCdn")}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="elsewhere">
-                {t("mainPanelTabs.analyticsTab.whereElsewhere")}
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-
-          {!elsewhere && host ? (
-            <div className="flex flex-col gap-1.5">
-              <Label>{t("mainPanelTabs.analyticsTab.hostLabel")}</Label>
-              <p className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
-                {host}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="turn-on-host">
-                {elsewhere
-                  ? t("mainPanelTabs.analyticsTab.domainsLabel")
-                  : t("mainPanelTabs.analyticsTab.hostLabel")}
-              </Label>
-              <Input
-                id="turn-on-host"
-                inputMode="url"
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                placeholder={
-                  elsewhere
-                    ? t("mainPanelTabs.analyticsTab.domainsPlaceholder")
-                    : t("mainPanelTabs.analyticsTab.hostPlaceholder")
-                }
-              />
-            </div>
-          )}
-        </div>
-
+      <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
-          <Label>{t("mainPanelTabs.analyticsTab.collectLabel")}</Label>
-          <ModuleSwitches selected={selected} onToggle={toggle} />
+          <Label>{t("mainPanelTabs.analyticsTab.whereLabel")}</Label>
+          <ToggleGroup
+            type="single"
+            variant="segmented"
+            value={elsewhere ? "elsewhere" : "cdn"}
+            onValueChange={(v) => {
+              if (v) setElsewhere(v === "elsewhere");
+            }}
+          >
+            <ToggleGroupItem value="cdn">
+              {t("mainPanelTabs.analyticsTab.whereCdn")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="elsewhere">
+              {t("mainPanelTabs.analyticsTab.whereElsewhere")}
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
+
+        {!elsewhere && host ? (
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("mainPanelTabs.analyticsTab.hostLabel")}</Label>
+            <p className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
+              {host}
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="turn-on-host">
+              {elsewhere
+                ? t("mainPanelTabs.analyticsTab.domainsLabel")
+                : t("mainPanelTabs.analyticsTab.hostLabel")}
+            </Label>
+            <Input
+              id="turn-on-host"
+              inputMode="url"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder={
+                elsewhere
+                  ? t("mainPanelTabs.analyticsTab.domainsPlaceholder")
+                  : t("mainPanelTabs.analyticsTab.hostPlaceholder")
+              }
+            />
+          </div>
+        )}
       </div>
 
       <Footer step="setup">
@@ -552,17 +568,15 @@ function InstallItem({
 }
 
 function InstallStep({
-  orgSlug,
   project,
   result,
   canAgent,
-  onClose,
+  onDone,
 }: {
-  orgSlug: string;
   project: SiteProject;
   result: AnalyticsRegisterResult;
   canAgent: boolean;
-  onClose: () => void;
+  onDone: () => void;
 }) {
   const t = useT();
   const install = useInstallAnalytics();
@@ -610,15 +624,13 @@ function InstallStep({
         </ul>
       )}
 
-      <LiveCheck orgSlug={orgSlug} site={project.site} />
-
       <Footer step="install">
         {canAgent && (
           <Button
             variant="ghost"
             disabled={install.isPending}
             onClick={() =>
-              install.mutate({ site: project.site }, { onSuccess: onClose })
+              install.mutate({ site: project.site }, { onSuccess: onDone })
             }
           >
             {install.isPending
@@ -626,39 +638,90 @@ function InstallStep({
               : t("monitor.turnOn.agentInstead")}
           </Button>
         )}
-        <Button onClick={onClose}>{t("monitor.turnOn.done")}</Button>
+        <Button onClick={onDone}>{t("monitor.turnOn.done")}</Button>
       </Footer>
     </>
   );
 }
 
-/** Waits for the site's first event, read from the live view every few seconds. */
-function LiveCheck({ orgSlug, site }: { orgSlug: string; site: string }) {
+/** How long a fresh install may stay silent before the check asks for a review. */
+const VERIFY_FOR_MS = 30 * 60_000;
+
+/** When the tag went on its way, per site; null once the check is over. */
+function useVerifying(site: string) {
+  return useLocalStorage<number | null>(
+    `monitor:analytics-verify:${site}`,
+    null,
+  );
+}
+
+/** After an install, watches the live view for the first visit; quiet once it is over or dismissed. */
+export function InstallCheck({
+  orgSlug,
+  site,
+  onReview,
+}: {
+  orgSlug: string;
+  site: string;
+  onReview: () => void;
+}) {
   const t = useT();
+  const [since, setSince] = useVerifying(site);
   const live = useDecoView({
     orgSlug,
     site,
     view: "live",
     range: "5m",
     segment: EMPTY_SEGMENT,
+    enabled: since !== null,
   });
+  const now = useClockTick();
+  if (since === null) return null;
   const headline = LivePayload.parse(live.data?.data ?? {}).liveVisitors[0];
-  const receiving = !!headline?.last_event || (headline?.visitors ?? 0) > 0;
+  const counted = !!headline?.last_event || (headline?.visitors ?? 0) > 0;
+  const late = !counted && now - since > VERIFY_FOR_MS;
+  const state = counted ? "counted" : late ? "late" : "checking";
   return (
-    <div className="surface flex items-center gap-3 px-4 py-3">
-      {receiving ? (
-        <CheckCircle size={18} className="shrink-0 text-success" />
-      ) : (
-        <span className="relative flex size-2.5 shrink-0 items-center justify-center">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-60 motion-reduce:animate-none" />
-          <span className="relative inline-flex size-2 rounded-full bg-brand" />
-        </span>
+    <div
+      className={cn(
+        "flex items-start gap-3 px-4 py-3.5",
+        state === "late" ? "rounded-xl bg-warning/10 shadow-edge" : "surface",
       )}
-      <span className="text-sm text-foreground">
-        {receiving
-          ? t("monitor.turnOn.receiving")
-          : t("monitor.turnOn.waiting")}
+    >
+      <span className="flex size-5 shrink-0 items-center justify-center pt-0.5">
+        {state === "counted" ? (
+          <CheckCircle size={18} className="text-success" />
+        ) : state === "late" ? (
+          <AlertTriangle size={18} className="text-warning" />
+        ) : (
+          <Spinner className="size-4 text-brand-purple" />
+        )}
       </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-sm font-medium text-foreground">
+          {t(`monitor.installCheck.${state}.title`)}
+        </span>
+        <span className="text-meta">
+          {t(`monitor.installCheck.${state}.description`)}
+        </span>
+      </span>
+      {state === "late" && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={onReview}
+        >
+          {t("monitor.installCheck.review")}
+        </Button>
+      )}
+      <IconButton
+        label={t("monitor.installCheck.dismiss")}
+        className="shrink-0"
+        onClick={() => setSince(null)}
+      >
+        <XClose />
+      </IconButton>
     </div>
   );
 }

@@ -325,19 +325,6 @@ export const mainPanelTabs = {
     "O coletor de análises ainda não está conectado a este ambiente.",
   // Registro
   "mainPanelTabs.analyticsTab.registerTitle": "Começar a coletar análises",
-  "mainPanelTabs.analyticsTab.moduleCore": "Core",
-  "mainPanelTabs.analyticsTab.moduleCoreHint":
-    "Pageviews e eventos personalizados",
-  "mainPanelTabs.analyticsTab.moduleCommerce": "Commerce",
-  "mainPanelTabs.analyticsTab.moduleCommerceHint":
-    "view_item, add_to_cart, purchase…",
-  "mainPanelTabs.analyticsTab.moduleVitals": "Web vitals",
-  "mainPanelTabs.analyticsTab.moduleVitalsHint": "LCP, INP, CLS, TTFB, FCP",
-  "mainPanelTabs.analyticsTab.moduleErrors": "Erros",
-  "mainPanelTabs.analyticsTab.moduleErrorsHint": "Erros de onerror / rejeições",
-  "mainPanelTabs.analyticsTab.moduleEngagement": "Engajamento",
-  "mainPanelTabs.analyticsTab.moduleEngagementHint":
-    "Profundidade de rolagem, permanência",
   "mainPanelTabs.analyticsTab.hostLabel": "Nome do host",
   "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
   "mainPanelTabs.analyticsTab.hostHint":
@@ -351,8 +338,6 @@ export const mainPanelTabs = {
     "Coleta sozinho. Sem código pra adicionar.",
   "mainPanelTabs.analyticsTab.elsewhereHint":
     "Você recebe uma tag pra colar no site. Ela leva um token público, e os eventos não são cobrados.",
-  "mainPanelTabs.analyticsTab.collectLabel": "O que coletar",
-  "mainPanelTabs.analyticsTab.alwaysOn": "Sempre ligado",
   "mainPanelTabs.analyticsTab.enableAnalytics": "Ativar analytics",
   "mainPanelTabs.analyticsTab.enabling": "Habilitando…",
   "mainPanelTabs.analyticsTab.toastRegistered": "Análises habilitadas",
@@ -377,7 +362,6 @@ export const mainPanelTabs = {
     "Registro das análises cancelado",
   // Diálogo de edição
   "mainPanelTabs.analyticsTab.editTitle": "Editar análises",
-  "mainPanelTabs.analyticsTab.editModules": "Módulos",
   "mainPanelTabs.analyticsTab.editSampling": "Amostragem (%)",
   "mainPanelTabs.analyticsTab.editSamplingHint":
     "Percentual de eventos a manter, 1–100%.",
@@ -584,9 +568,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.samplePlaceholder": "/produto-exemplo/p",
   "mainPanelTabs.analyticsTab.heatmap.sampleShow": "Mostrar",
   "mainPanelTabs.analyticsTab.viewHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
-    "Cliques, rolagem e atenção por página",
   // Mapa ao vivo. Os quatro substantivos são os que o renderer imprime no
   // próprio cartão de hover — ele os recebe como opção, não guarda inglês.
   "mainPanelTabs.analyticsTab.globe.visitor": "visitante",

@@ -308,18 +308,6 @@ export const mainPanelTabs = {
     "The analytics collector isn't wired to this environment yet.",
   // Register
   "mainPanelTabs.analyticsTab.registerTitle": "Start collecting analytics",
-  "mainPanelTabs.analyticsTab.moduleCore": "Core",
-  "mainPanelTabs.analyticsTab.moduleCoreHint": "Pageviews and custom events",
-  "mainPanelTabs.analyticsTab.moduleCommerce": "Commerce",
-  "mainPanelTabs.analyticsTab.moduleCommerceHint":
-    "view_item, add_to_cart, purchase…",
-  "mainPanelTabs.analyticsTab.moduleVitals": "Web vitals",
-  "mainPanelTabs.analyticsTab.moduleVitalsHint": "LCP, INP, CLS, TTFB, FCP",
-  "mainPanelTabs.analyticsTab.moduleErrors": "Errors",
-  "mainPanelTabs.analyticsTab.moduleErrorsHint":
-    "Errors from onerror / rejections",
-  "mainPanelTabs.analyticsTab.moduleEngagement": "Engagement",
-  "mainPanelTabs.analyticsTab.moduleEngagementHint": "Scroll depth, dwell",
   "mainPanelTabs.analyticsTab.hostLabel": "Hostname",
   "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
   "mainPanelTabs.analyticsTab.hostHint":
@@ -333,8 +321,6 @@ export const mainPanelTabs = {
     "Collects by itself. No code to add.",
   "mainPanelTabs.analyticsTab.elsewhereHint":
     "You get a tag to paste on the site. It carries a public token, and its events aren't billed.",
-  "mainPanelTabs.analyticsTab.collectLabel": "What to collect",
-  "mainPanelTabs.analyticsTab.alwaysOn": "Always on",
   "mainPanelTabs.analyticsTab.enableAnalytics": "Turn on analytics",
   "mainPanelTabs.analyticsTab.enabling": "Enabling…",
   "mainPanelTabs.analyticsTab.toastRegistered": "Analytics enabled",
@@ -357,7 +343,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.toastUnregistered": "Analytics unregistered",
   // Edit dialog
   "mainPanelTabs.analyticsTab.editTitle": "Edit analytics",
-  "mainPanelTabs.analyticsTab.editModules": "Modules",
   "mainPanelTabs.analyticsTab.editSampling": "Sampling (%)",
   "mainPanelTabs.analyticsTab.editSamplingHint":
     "Share of events to keep, 1–100%.",
@@ -557,9 +542,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.samplePlaceholder": "/example-product/p",
   "mainPanelTabs.analyticsTab.heatmap.sampleShow": "Show",
   "mainPanelTabs.analyticsTab.viewHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
-    "Clicks, scroll and attention per page",
   // Live map. The four nouns are the ones the renderer prints inside its own
   // hover card — it takes them as options rather than owning any English.
   // Both forms are spelled out rather than derived. English appends an `s`;

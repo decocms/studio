@@ -45,7 +45,6 @@ import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
-import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -144,42 +143,6 @@ export interface AnalyticsRegisterResult {
   snippet?: string | null;
   notes?: string[];
 }
-
-// The modules a site can enable. `core` is always on (the collector forces it),
-// so it renders checked + locked. Labels/hints come from i18n. `as const` keeps
-// the label/hint keys as literal `TranslationKey`s so `t()` accepts them.
-const MODULES = [
-  {
-    key: "core",
-    labelKey: "mainPanelTabs.analyticsTab.moduleCore",
-    hintKey: "mainPanelTabs.analyticsTab.moduleCoreHint",
-  },
-  {
-    key: "commerce",
-    labelKey: "mainPanelTabs.analyticsTab.moduleCommerce",
-    hintKey: "mainPanelTabs.analyticsTab.moduleCommerceHint",
-  },
-  {
-    key: "vitals",
-    labelKey: "mainPanelTabs.analyticsTab.moduleVitals",
-    hintKey: "mainPanelTabs.analyticsTab.moduleVitalsHint",
-  },
-  {
-    key: "errors",
-    labelKey: "mainPanelTabs.analyticsTab.moduleErrors",
-    hintKey: "mainPanelTabs.analyticsTab.moduleErrorsHint",
-  },
-  {
-    key: "engagement",
-    labelKey: "mainPanelTabs.analyticsTab.moduleEngagement",
-    hintKey: "mainPanelTabs.analyticsTab.moduleEngagementHint",
-  },
-  {
-    key: "heatmap",
-    labelKey: "mainPanelTabs.analyticsTab.moduleHeatmap",
-    hintKey: "mainPanelTabs.analyticsTab.moduleHeatmapHint",
-  },
-] as const;
 
 // The dashboard views, as a horizontal tab bar in the order the internal admin
 // UI shows them. Labels are resolved through i18n at render (this is a
@@ -1811,51 +1774,6 @@ function RegistrationResult({
   );
 }
 
-/** The modules as switches, one per row; Core is always on. */
-export function ModuleSwitches({
-  selected,
-  onToggle,
-}: {
-  selected: ReadonlySet<string>;
-  onToggle: (key: string) => void;
-}) {
-  const t = useT();
-  return (
-    <ul className="surface divide-y divide-border/70 overflow-hidden">
-      {MODULES.map((m) => {
-        const locked = m.key === "core";
-        return (
-          <li key={m.key}>
-            <label
-              className={cn(
-                "flex items-center gap-4 px-4 py-3",
-                !locked && "cursor-pointer",
-              )}
-            >
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm font-medium text-foreground">
-                  {t(m.labelKey)}
-                </span>
-                <span className="text-meta">{t(m.hintKey)}</span>
-              </span>
-              {locked ? (
-                <span className="text-meta">
-                  {t("mainPanelTabs.analyticsTab.alwaysOn")}
-                </span>
-              ) : (
-                <Switch
-                  checked={selected.has(m.key)}
-                  onCheckedChange={() => onToggle(m.key)}
-                />
-              )}
-            </label>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 /** The modules a new registration starts with. */
 export const DEFAULT_MODULES = ["core", "commerce", "vitals"] as const;
 
@@ -1902,25 +1820,12 @@ function RegisterForm({
   onCancel?: () => void;
 }) {
   const t = useT();
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(DEFAULT_MODULES),
-  );
   const [hostOverride, setHostOverride] = useState("");
   // Off our CDN the tag carries a public token and its events aren't billed.
   const [useKey, setUseKey] = useState(false);
   const [domainsText, setDomainsText] = useState("");
 
   const registerMutation = useRegisterAnalytics(base, orgSlug, site);
-
-  const toggle = (key: string) => {
-    if (key === "core") return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
 
   // Split on commas/whitespace so a pasted list works either way.
   const domains = domainsText
@@ -1931,14 +1836,14 @@ function RegisterForm({
   const handleRegister = () => {
     if (useKey) {
       registerMutation.mutate(
-        { key: true, domains, modules: [...selected] },
+        { key: true, domains, modules: [...DEFAULT_MODULES] },
         { onSuccess: onRegistered },
       );
       return;
     }
     const trimmed = hostOverride.trim();
     registerMutation.mutate(
-      { modules: [...selected], ...(trimmed ? { host: trimmed } : {}) },
+      { modules: [...DEFAULT_MODULES], ...(trimmed ? { host: trimmed } : {}) },
       { onSuccess: onRegistered },
     );
   };
@@ -2007,11 +1912,6 @@ function RegisterForm({
         )
       )}
 
-      <div className="flex flex-col gap-2">
-        <Label>{t("mainPanelTabs.analyticsTab.collectLabel")}</Label>
-        <ModuleSwitches selected={selected} onToggle={toggle} />
-      </div>
-
       <div className="flex justify-end gap-2">
         {onCancel && (
           <Button variant="outline" onClick={onCancel}>
@@ -2062,9 +1962,6 @@ function EditAnalyticsDialog({
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(config.modules ?? ["core"]),
-  );
   const [samplingPct, setSamplingPct] = useState<string>(
     String(Math.round((config.sampling ?? 1) * 100)),
   );
@@ -2090,16 +1987,6 @@ function EditAnalyticsDialog({
     onError: (err) => toast.error(errorText(err)),
   });
 
-  const toggle = (key: string) => {
-    if (key === "core") return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
   const quotaNum = quota.trim() === "" ? null : Number(quota);
   const quotaError =
     quotaNum !== null && (!Number.isInteger(quotaNum) || quotaNum < 1)
@@ -2114,7 +2001,8 @@ function EditAnalyticsDialog({
     const sampling =
       Number.isFinite(pct) && pct > 0 ? Math.min(pct, 100) / 100 : 1;
     saveMutation.mutate({
-      modules: [...selected],
+      // Deco decides what is collected: the site keeps the modules it has.
+      modules: config.modules ?? [...DEFAULT_MODULES],
       sampling,
       // Set-only: a blank field can't clear an existing cap (the patch can't
       // carry `undefined`), so only send quota when a positive value is set.
@@ -2129,10 +2017,6 @@ function EditAnalyticsDialog({
           <DialogTitle>{t("mainPanelTabs.analyticsTab.editTitle")}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label>{t("mainPanelTabs.analyticsTab.editModules")}</Label>
-            <ModuleSwitches selected={selected} onToggle={toggle} />
-          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="analytics-sampling">
               {t("mainPanelTabs.analyticsTab.editSampling")}

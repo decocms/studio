@@ -164,12 +164,21 @@ export const monitor = {
   "monitor.turnOn.cspHint": "Adicione {origin} em script-src e connect-src.",
   "monitor.turnOn.purchaseTitle": "Registrar compras",
   "monitor.turnOn.optional": "Opcional",
-  "monitor.turnOn.waiting": "Esperando a primeira visita…",
-  "monitor.turnOn.receiving": "Recebendo dados",
   "monitor.turnOn.agentInstead": "Deixar o agente adicionar",
   "monitor.turnOn.done": "Concluir",
   "monitor.audience.silentTitle": "Sites que ainda não mandam analytics",
   "monitor.turnOn.upgrade": "Tempo real, funil, eventos e heatmap",
+  "monitor.installCheck.checking.title": "Verificando sua instalação",
+  "monitor.installCheck.checking.description":
+    "Estamos conferindo se seus visitantes estão sendo contados.",
+  "monitor.installCheck.counted.title": "Sua instalação funciona",
+  "monitor.installCheck.counted.description":
+    "Os visitantes estão sendo contados.",
+  "monitor.installCheck.late.title": "Ainda não vimos nenhuma visita",
+  "monitor.installCheck.late.description":
+    "Confira se a tag está em todas as páginas e se o site está publicado.",
+  "monitor.installCheck.review": "Revisar instalação",
+  "monitor.installCheck.dismiss": "Dispensar",
   "monitor.audience.activate": "Ativar Deco Analytics",
   "monitor.audience.org.site": "Site",
   "monitor.audience.org.source": "Fonte",

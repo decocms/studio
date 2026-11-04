@@ -56,6 +56,7 @@ import { SegmentActions, SegmentChips } from "./analytics/segment-bar";
 import { useAnalyticsSegment } from "./analytics/segment";
 import {
   AnalyticsEmpty,
+  InstallCheck,
   TurnOnAnalytics,
   TurnOnCard,
 } from "./turn-on-analytics";
@@ -569,7 +570,9 @@ function ProjectAudience({
   const t = useT();
   const { org } = useProjectContext();
   const status = useAnalyticsStatus(org.slug, project);
-  const [dialog, setDialog] = useState<"configure" | "register" | null>(null);
+  const [dialog, setDialog] = useState<
+    "configure" | "register" | "review" | null
+  >(null);
   // Deco Analytics reads down to the last minutes; the last five are the live view.
   const [decoRange, setDecoRange] = useState<SectionRange>("24h");
   const { segment } = useAnalyticsSegment();
@@ -645,6 +648,13 @@ function ProjectAudience({
         )}
         {deco && <ConfigureButton onClick={() => setDialog("configure")} />}
       </RangeAction>
+      {deco && (
+        <InstallCheck
+          orgSlug={org.slug}
+          site={project.site}
+          onReview={() => setDialog("review")}
+        />
+      )}
       {onDeco && <SegmentChips />}
       {onDeco && deco ? (
         <>
@@ -708,6 +718,16 @@ function ProjectAudience({
           status={status.data}
           open={dialog === "register"}
           onOpenChange={(open) => setDialog(open ? "register" : null)}
+        />
+      )}
+      {deco && (
+        <TurnOnAnalytics
+          orgSlug={org.slug}
+          project={project}
+          status={deco}
+          review
+          open={dialog === "review"}
+          onOpenChange={(open) => setDialog(open ? "review" : null)}
         />
       )}
     </>
