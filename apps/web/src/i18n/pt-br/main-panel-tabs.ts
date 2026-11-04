@@ -339,6 +339,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.moduleEngagement": "Engajamento",
   "mainPanelTabs.analyticsTab.moduleEngagementHint":
     "Profundidade de rolagem, permanência",
+  "mainPanelTabs.analyticsTab.editModules": "Módulos",
+  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
+  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
+    "Cliques, rolagem e atenção por página",
   // Visão registrada
   "mainPanelTabs.analyticsTab.collection": "Coleta",
   "mainPanelTabs.analyticsTab.active": "Ativa",
@@ -360,7 +364,6 @@ export const mainPanelTabs = {
     "Registro das análises cancelado",
   // Diálogo de edição
   "mainPanelTabs.analyticsTab.editTitle": "Editar análises",
-  "mainPanelTabs.analyticsTab.editModules": "Módulos",
   "mainPanelTabs.analyticsTab.editSampling": "Amostragem (%)",
   "mainPanelTabs.analyticsTab.editSamplingHint":
     "Percentual de eventos a manter, 1–100%.",
@@ -375,6 +378,16 @@ export const mainPanelTabs = {
     "Envie eventos personalizados do seu código via ",
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
+  "mainPanelTabs.analyticsTab.eventsHelp.title":
+    "Enviar eventos personalizados pelo código",
+  "mainPanelTabs.analyticsTab.eventsHelp.intro":
+    "O Analytics já vem ativo: as visualizações são coletadas sem código. Para eventos personalizados, use a API pública em",
+  "mainPanelTabs.analyticsTab.eventsHelp.pageview":
+    "Registra uma visualização manualmente (troca de rota em SPA).",
+  "mainPanelTabs.analyticsTab.eventsHelp.track":
+    "Um evento personalizado. name usa a–z minúsculas, dígitos e sublinhado, até 40 caracteres; props é um objeto simples opcional.",
+  "mainPanelTabs.analyticsTab.eventsHelp.purchase":
+    "Uma compra. transactionId evita contar duas vezes a mesma venda quando a página de confirmação é recarregada.",
   "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
   "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
   "mainPanelTabs.analyticsTab.viewEvents": "Eventos & props",
@@ -390,6 +403,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.noDomainDescription":
     "Adicione o domínio do site no cadastro do analytics para ver o mapa sobre a página real.",
   "mainPanelTabs.analyticsTab.heatmap.page": "Página",
+  "mainPanelTabs.analyticsTab.heatmap.pageSearch":
+    "Busque uma página ou digite um caminho",
+  "mainPanelTabs.analyticsTab.heatmap.pageEmpty":
+    "Digite um caminho que comece com /",
   "mainPanelTabs.analyticsTab.heatmap.device": "Dispositivo",
   "mainPanelTabs.analyticsTab.heatmap.deviceViews":
     "{device}: {views} visitas na amostra",
@@ -408,9 +425,9 @@ export const mainPanelTabs = {
     "Quanto cada elemento vale, não só quanto é clicado",
   "mainPanelTabs.analyticsTab.heatmap.valueTitle": "Receita por elemento",
   "mainPanelTabs.analyticsTab.heatmap.valueBaseline":
-    "Esta página: {cvr} de {people} pessoas compraram",
+    "Média da página: {cvr} de {people} compraram",
   "mainPanelTabs.analyticsTab.heatmap.valueRowSub":
-    "{conv} de {people} pessoas compraram · {cvr}",
+    "{cvr} de {people} compraram",
   "mainPanelTabs.analyticsTab.heatmap.valueIndex": "{x}x a página",
   "mainPanelTabs.analyticsTab.heatmap.valueIndexHint":
     "Receita por pessoa que clicou, comparada à média da própria página. 1x significa que rende exatamente como a página.",
@@ -418,11 +435,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.valueSmallHint":
     "Ainda não clicaram o suficiente para a taxa significar algo, então fica fora do ranking abaixo.",
   "mainPanelTabs.analyticsTab.heatmap.valueLeaksTitle":
-    "Muito clicado, vende menos",
-  "mainPanelTabs.analyticsTab.heatmap.valueLeaksAside":
-    "pior retorno pelo espaço que ocupam",
-  "mainPanelTabs.analyticsTab.heatmap.valueLeakSub":
-    "{people} pessoas clicaram, {conv} compraram",
+    "Muito clicado, vende pouco",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeakSub": "{conv} compraram",
   "mainPanelTabs.analyticsTab.heatmap.valueNone":
     "Nenhuma compra registrada nesta página no período.",
   "mainPanelTabs.analyticsTab.heatmap.valueOtherGoal":
@@ -461,6 +475,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.frameLoading":
     "Carregando a página real…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "O site não respondeu",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutHint":
+    "Passe o mouse sobre a página ou aceite os cookies dela e tente de novo.",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutRetry": "Tentar de novo",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutWhy": "Por que isso acontece",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
     "A página ainda não iniciou o modo de visualização do analytics. Se o site só carrega o analytics depois de uma interação ou do aceite de cookies, passe o mouse sobre a página ou aceite os cookies. Se não, confira se ele roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle":
@@ -486,6 +504,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.legendMoreTime": "mais tempo",
   "mainPanelTabs.analyticsTab.heatmap.opacity": "Opacidade",
   "mainPanelTabs.analyticsTab.heatmap.colors": "Cores",
+  "mainPanelTabs.analyticsTab.heatmap.allClicks": "Todos os cliques",
+  "mainPanelTabs.analyticsTab.heatmap.display": "Exibição",
+  "mainPanelTabs.analyticsTab.heatmap.zoom": "Zoom",
   "mainPanelTabs.analyticsTab.heatmap.thermal": "Térmica",
   "mainPanelTabs.analyticsTab.heatmap.inferno": "Inferno",
   "mainPanelTabs.analyticsTab.heatmap.infernoHint":
@@ -493,9 +514,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.statClicks": "Cliques",
   "mainPanelTabs.analyticsTab.heatmap.statDepth": "Rolagem média",
   "mainPanelTabs.analyticsTab.heatmap.statFold": "dobra em {pct}",
-  "mainPanelTabs.analyticsTab.heatmap.statActive": "Tempo ativo por visita",
-  "mainPanelTabs.analyticsTab.heatmap.statRageDead": "Raiva e sem resposta",
-  "mainPanelTabs.analyticsTab.heatmap.statErrors": "{n} com erro",
+  "mainPanelTabs.analyticsTab.heatmap.statActive": "Tempo por visita",
   "mainPanelTabs.analyticsTab.heatmap.hideList": "Esconder a lista",
   "mainPanelTabs.analyticsTab.heatmap.showElements":
     "Ver os elementos mais clicados",
@@ -512,18 +531,16 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.ctrMinNote":
     "Só elementos de seções vistas em {n}+ visitas.",
   "mainPanelTabs.analyticsTab.heatmap.funnelTitle": "Depois do clique",
-  "mainPanelTabs.analyticsTab.heatmap.funnelPage": "Página inteira",
+  "mainPanelTabs.analyticsTab.heatmap.backToList": "Todos os elementos",
   "mainPanelTabs.analyticsTab.heatmap.funnelPeople": "{n} pessoas",
-  "mainPanelTabs.analyticsTab.heatmap.funnelVsPage": "página {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.funnelVsPage": "Média da página {pct}",
   "mainPanelTabs.analyticsTab.heatmap.funnel_viewed": "Viu um produto",
   "mainPanelTabs.analyticsTab.heatmap.funnel_carted": "Adicionou ao carrinho",
   "mainPanelTabs.analyticsTab.heatmap.funnel_checkout": "Iniciou o checkout",
   "mainPanelTabs.analyticsTab.heatmap.funnel_bought": "Comprou",
   "mainPanelTabs.analyticsTab.heatmap.topElements": "Elementos mais clicados",
   "mainPanelTabs.analyticsTab.heatmap.topOfType": "Mais cliques: {type}",
-  "mainPanelTabs.analyticsTab.heatmap.nElements": "{n} elementos",
   "mainPanelTabs.analyticsTab.heatmap.noText": "Elemento sem texto",
-  "mainPanelTabs.analyticsTab.heatmap.ofClicks": "{pct} dos cliques",
   "mainPanelTabs.analyticsTab.heatmap.ofVisits": "{pct} das visitas",
   "mainPanelTabs.analyticsTab.heatmap.inSection": "na seção",
   "mainPanelTabs.analyticsTab.heatmap.inSectionHint":
@@ -553,9 +570,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.samplePlaceholder": "/produto-exemplo/p",
   "mainPanelTabs.analyticsTab.heatmap.sampleShow": "Mostrar",
   "mainPanelTabs.analyticsTab.viewHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
-    "Cliques, rolagem e atenção por página",
   // Mapa ao vivo. Os quatro substantivos são os que o renderer imprime no
   // próprio cartão de hover — ele os recebe como opção, não guarda inglês.
   "mainPanelTabs.analyticsTab.globe.visitor": "visitante",

@@ -54,6 +54,11 @@ import {
 } from "../../customer-lake/client";
 import { getSettings } from "../../settings";
 import { analyticsAccess } from "../../analytics/access";
+import {
+  lakeWindow,
+  loadLakeAnalyticsView,
+  loadLakeFilterValues,
+} from "../../monitoring/deco-analytics-lake";
 
 type Variables = { studioContext: StudioContext };
 
@@ -263,6 +268,31 @@ export function heatmapParams(
     ...(page !== undefined ? { page } : {}),
     ...(device !== undefined ? { device } : {}),
   };
+}
+
+const SEGMENT_FILTER = /^[A-Za-z]{1,24}:(is|not|has|starts):[^\r\n]{1,512}$/;
+const CURRENCY = /^[A-Za-z]{3}$/;
+
+/** The segment a view is read with (`f` = `dim:op:value` filters, `currency`,
+ *  `prop`), validated before it reaches the read surface. Null when a value is
+ *  malformed. */
+export function segmentParams(
+  filters: readonly string[],
+  currency: string | undefined,
+  prop: string | undefined,
+): [string, string][] | null {
+  if (filters.length > 20 || !filters.every((f) => SEGMENT_FILTER.test(f))) {
+    return null;
+  }
+  if (currency !== undefined && !CURRENCY.test(currency)) return null;
+  if (prop !== undefined && (prop.length === 0 || prop.length > 128)) {
+    return null;
+  }
+  return [
+    ...filters.map((f): [string, string] => ["f", f]),
+    ...(currency ? [["currency", currency] as [string, string]] : []),
+    ...(prop ? [["prop", prop] as [string, string]] : []),
+  ];
 }
 
 /** The ranges the read surface understands (queries.mjs RANGES). */
@@ -736,6 +766,51 @@ export const createHostingRoutes = () => {
     proxyControlplane(c, "analytics", { method: "DELETE" }),
   );
 
+  // GET /api/:org/hosting/:site/analytics/values?dim=&range= — the values a
+  // segment dimension holds in the range, busiest first, for the filter
+  // builder's suggestions. From the org's customer lake; `values: []` when the
+  // lake isn't configured or doesn't keep the dimension.
+  app.get("/:site/analytics/values", async (c) => {
+    const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+    const dim = c.req.query("dim") ?? "";
+    if (!/^[A-Za-z]{1,24}$/.test(dim)) {
+      return c.json({ error: "invalid dim" }, 400);
+    }
+    const win = lakeWindow(c.req.query("range") ?? "24h");
+    if (!win) return c.json({ error: "unknown range" }, 400);
+    if (!isCustomerLakeConfigured()) return c.json({ values: [] });
+
+    let siteId = access.kind === "external" ? access.siteId : null;
+    if (!siteId) {
+      const resolution = await resolveWarehouseSiteId(org, site);
+      if (resolution.status === "error") return registrationLookupFailed(c);
+      if (resolution.status === "unregistered") return c.json({ values: [] });
+      siteId = resolution.id;
+    }
+    try {
+      return c.json({
+        values: await loadLakeFilterValues(org.id, siteId, dim, win),
+      });
+    } catch (err) {
+      console.error(
+        `[analytics] values ${dim} failed for site="${site}":`,
+        err,
+      );
+      return c.json({ error: "Failed to read Deco Analytics" }, 502);
+    }
+  });
+
   // GET /api/:org/hosting/:site/analytics/data?view=&range= (+ page, device for
   // view=heatmap) — the tenant-scoped
   // dashboard views, read straight from the Analytics read surface (NOT the
@@ -771,7 +846,10 @@ export const createHostingRoutes = () => {
     ) {
       return c.json({ error: "Hosting integration is not configured" }, 503);
     }
-    if (!analyticsDataUrl || !analyticsMasterToken) {
+    // Without the read surface, the org's customer lake answers what its
+    // hourly rollups hold.
+    const readSurface = !!analyticsDataUrl && !!analyticsMasterToken;
+    if (!readSurface && !isCustomerLakeConfigured()) {
       return c.json({ error: "Analytics data surface is not configured" }, 503);
     }
 
@@ -790,6 +868,12 @@ export const createHostingRoutes = () => {
     if (!heatmap) {
       return c.json({ error: "invalid heatmap page or device" }, 400);
     }
+    const segment = segmentParams(
+      c.req.queries("f") ?? [],
+      c.req.query("currency"),
+      c.req.query("prop"),
+    );
+    if (!segment) return c.json({ error: "invalid segment" }, 400);
 
     // Resolve the warehouse site_id from a slug the org owns — never trust a
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
@@ -810,6 +894,29 @@ export const createHostingRoutes = () => {
       siteId = resolution.id;
     }
 
+    if (!readSurface) {
+      // Each lake dimension is its own aggregate, so a filtered read would
+      // show unfiltered numbers under the filter's chip.
+      if (segment.some(([key]) => key === "f")) {
+        return c.json(
+          { error: "Filters need the Analytics read surface" },
+          422,
+        );
+      }
+      const win = lakeWindow(range);
+      if (!win) return c.json({ error: `unknown range: ${range}` }, 400);
+      try {
+        const data = await loadLakeAnalyticsView(org.id, siteId, view, win);
+        return c.json({ registered: true, siteId, view, range, data });
+      } catch (err) {
+        console.error(
+          `[analytics] lake ${view} failed for site="${site}":`,
+          err,
+        );
+        return c.json({ error: "Failed to read Deco Analytics" }, 502);
+      }
+    }
+
     const upstream = new URL(`${analyticsDataUrl}/data`);
     upstream.searchParams.set("view", view);
     upstream.searchParams.set("range", range);
@@ -817,6 +924,8 @@ export const createHostingRoutes = () => {
     for (const [key, value] of Object.entries(heatmap)) {
       upstream.searchParams.set(key, value);
     }
+    for (const [key, value] of segment)
+      upstream.searchParams.append(key, value);
 
     let payload: Record<string, unknown> | null;
     try {

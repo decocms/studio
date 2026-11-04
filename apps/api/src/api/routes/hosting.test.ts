@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   ANALYTICS_PAYLOAD_KEYS,
   ANALYTICS_VIEWS,
+  segmentParams,
   toTenantAnalyticsPayload,
 } from "./hosting";
 
@@ -110,5 +111,29 @@ describe("ANALYTICS_VIEWS", () => {
     expect(views).toContain("live");
     expect(views).toContain("globe");
     expect(views.filter((v) => !ANALYTICS_VIEWS.has(v))).toEqual([]);
+  });
+});
+
+describe("segmentParams", () => {
+  it("forwards valid filters, currency and prop", () => {
+    expect(
+      segmentParams(["path:is:/a:b", "country:not:BR"], "BRL", "sku"),
+    ).toEqual([
+      ["f", "path:is:/a:b"],
+      ["f", "country:not:BR"],
+      ["currency", "BRL"],
+      ["prop", "sku"],
+    ]);
+    expect(segmentParams([], undefined, undefined)).toEqual([]);
+  });
+  it("rejects malformed values", () => {
+    expect(segmentParams(["path:eq:/"], undefined, undefined)).toBeNull();
+    expect(segmentParams(["path:is:"], undefined, undefined)).toBeNull();
+    expect(segmentParams(["path:is:a\nb"], undefined, undefined)).toBeNull();
+    expect(
+      segmentParams(Array(21).fill("os:is:x"), undefined, undefined),
+    ).toBeNull();
+    expect(segmentParams([], "R$", undefined)).toBeNull();
+    expect(segmentParams([], undefined, "x".repeat(129))).toBeNull();
   });
 });

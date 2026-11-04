@@ -6,7 +6,8 @@ export const experiments = {
   "experiments.noSite":
     "Este projeto não tem site vinculado, então não tem experimentos.",
   "experiments.empty.title": "Nenhum experimento ainda",
-  "experiments.empty.desc": "Crie o primeiro teste A/B deste site.",
+  "experiments.empty.desc":
+    "Mostre duas versões de uma página para visitantes reais e veja qual vende mais.",
   "experiments.status.running": "Rodando",
   "experiments.status.paused": "Pausado",
   "experiments.status.draft": "Rascunho",
@@ -109,7 +110,7 @@ export const experiments = {
 
   // Read only by experiments-tab-legacy.tsx; both go when the flag does.
   "experiments.subtitle":
-    "Testes A/B deste site. O sorteio de tráfego vive no conteúdo do site; os resultados vêm do analytics.",
+    "Compare versões deste site com tráfego real e veja qual converte melhor.",
   "experiments.col.name": "Nome",
   "experiments.col.key": "Chave",
   "experiments.col.status": "Status",

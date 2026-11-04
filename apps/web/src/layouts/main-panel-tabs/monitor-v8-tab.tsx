@@ -25,6 +25,9 @@ import {
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Page } from "@/components/page";
+import { TopbarSelect } from "@/components/monitor/topbar-select";
+import { ViewSwitch } from "@/components/monitor/view-switch";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useClockTick } from "@/lib/use-clock-tick";
@@ -810,13 +813,61 @@ function ErrorsSection({ base, range }: { base: string; range: SiteRange }) {
 export function SiteTelemetryMonitor({
   base,
   site,
+  embedded = false,
 }: {
   base: string;
   site: string;
+  /** Inside the Monitor: its frame, the period in the top bar, the sections as its view switch. */
+  embedded?: boolean;
 }) {
   const t = useT();
   const [section, setSection] = useState<SiteSection>("site");
   const [range, setRange] = useState<SiteRange>("24h");
+  const body =
+    section === "site" ? (
+      <SiteSectionView
+        base={base}
+        range={range}
+        onSeeUpstreams={() => setSection("upstreams")}
+      />
+    ) : section === "upstreams" ? (
+      <UpstreamsSection base={base} range={range} />
+    ) : (
+      <ErrorsSection base={base} range={range} />
+    );
+
+  if (embedded) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-auto">
+        <Page.Actions>
+          <TopbarSelect
+            label={t("mainPanelTabs.monitorV8.range.label")}
+            period
+            value={range}
+            options={SITE_RANGES.map((key) => ({
+              value: key,
+              label: t(`mainPanelTabs.monitorV8.range.${key}`),
+            }))}
+            onChange={setRange}
+          />
+        </Page.Actions>
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+          <ViewSwitch label={t("mainPanelTabs.monitorV8.title")}>
+            {(["site", "upstreams", "errors"] as const).map((key) => (
+              <ViewSwitch.Item
+                key={key}
+                pressed={section === key}
+                onClick={() => setSection(key)}
+              >
+                {t(`mainPanelTabs.monitorV8.section.${key}`)}
+              </ViewSwitch.Item>
+            ))}
+          </ViewSwitch>
+          {body}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
@@ -846,17 +897,7 @@ export function SiteTelemetryMonitor({
           }))}
         />
       </div>
-      {section === "site" ? (
-        <SiteSectionView
-          base={base}
-          range={range}
-          onSeeUpstreams={() => setSection("upstreams")}
-        />
-      ) : section === "upstreams" ? (
-        <UpstreamsSection base={base} range={range} />
-      ) : (
-        <ErrorsSection base={base} range={range} />
-      )}
+      {body}
     </div>
   );
 }
