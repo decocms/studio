@@ -132,5 +132,16 @@ export const DRAFT_TOMBSTONE_VERSION = "tombstone";
  * reads it).
  */
 export interface DraftConflictBlocks {
-  draft: Record<string, { block: unknown; version: string } | null>;
+  draft: Record<
+    string,
+    {
+      block: unknown;
+      version: string;
+      /**
+       * Who last changed the block in the draft, and when (Unix seconds),
+       * from the same read as `block` and `version`; null when unknown.
+       */
+      editor: { userId: string; at: number } | null;
+    } | null
+  >;
 }
