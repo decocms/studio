@@ -285,15 +285,20 @@ function VmEventsBridge({
     draftReleases.some(
       (r) => r.branch === currentBranch && r.runtime !== "sandbox",
     );
-  const stampedSandboxForBranchRef = useRef<string | null>(null);
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a draft entered by a coding chat; no render-time equivalent
-  useEffect(() => {
-    if (!currentDraftNeedsSandboxStamp || !currentBranch) return;
-    if (stampedSandboxForBranchRef.current === currentBranch) return;
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't write twice
-    stampedSandboxForBranchRef.current = currentBranch;
-    markDraftSandbox(currentBranch).catch(() => {});
-  }, [currentDraftNeedsSandboxStamp, currentBranch, markDraftSandbox]);
+  const [stampedSandboxBranch, setStampedSandboxBranch] = useState<
+    string | null
+  >(null);
+  if (
+    currentDraftNeedsSandboxStamp &&
+    currentBranch &&
+    stampedSandboxBranch !== currentBranch
+  ) {
+    setStampedSandboxBranch(currentBranch);
+    const branch = currentBranch;
+    queueMicrotask(() => {
+      markDraftSandbox(branch).catch(() => {});
+    });
+  }
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.

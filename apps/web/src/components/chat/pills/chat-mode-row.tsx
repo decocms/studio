@@ -37,7 +37,7 @@ export type BranchPickAction =
   | { kind: "switch" }
   | { kind: "new-chat"; runtime?: "sandbox" };
 
-/** Only escalates to sandbox: a `cms` stamp doesn't mean the branch has no code. */
+/** Never downgrades to CMS: a `cms` stamp doesn't mean the branch has no code. */
 export function branchPickAction(input: {
   locked: boolean;
   /** `null` while unresolved: may still be a CMS chat. */
@@ -45,11 +45,9 @@ export function branchPickAction(input: {
   draftRuntime?: ThreadRuntime;
 }): BranchPickAction {
   const { locked, sessionRuntime, draftRuntime } = input;
-  const needsCoding = draftRuntime === "sandbox";
-  if (!locked && !(needsCoding && sessionRuntime !== "sandbox")) {
-    return { kind: "switch" };
-  }
-  return needsCoding
+  const escalate = draftRuntime === "sandbox" && sessionRuntime !== "sandbox";
+  if (!locked && !escalate) return { kind: "switch" };
+  return draftRuntime === "sandbox" || sessionRuntime === "sandbox"
     ? { kind: "new-chat", runtime: "sandbox" }
     : { kind: "new-chat" };
 }
