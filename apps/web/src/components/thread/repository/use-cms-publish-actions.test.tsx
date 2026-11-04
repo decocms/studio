@@ -124,6 +124,12 @@ function dropFromDraft(names: string[]) {
   };
   server.etag++;
 }
+// The real exports, put back after this file: `mock.module` replaces the
+// module for every later test file in the same run.
+const realGitExports = { ...realGit };
+afterAll(() => {
+  mock.module("./sandbox-git-api", () => realGitExports);
+});
 const discardGitFiles = mock(discardFromDraft);
 const fetchGitDiff = mock(async (..._args: unknown[]) => ({ diffs: {} }));
 mock.module("./sandbox-git-api", () => ({
@@ -216,6 +222,7 @@ function hostedBackend() {
     client,
     describe: {} as DescribeResult,
     cacheKeySuffix: "",
+    site: "acme-site",
   };
   return {
     backend,
@@ -632,7 +639,11 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       calls.push(String(input));
       return new Response(
-        JSON.stringify({ result: "merged", sha: "abc", release: "current" }),
+        JSON.stringify({
+          result: "published",
+          revision: "abc",
+          previous: null,
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as typeof fetch;
@@ -647,7 +658,9 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     await act(() => done);
     // Published: the dialog keeps its list through the close (publish-hold.ts).
     expect(await done).toBe(true);
-    expect(calls).toEqual([`/api/${ORG}/decofile/${VM}/${BRANCH}/publish`]);
+    expect(calls).toEqual([
+      `/api/${ORG}/cms/acme-site/drafts/${BRANCH}/publish`,
+    ]);
     expect(reads.releases).toBe(before.releases + 1);
     expect(reads.pointer).toBe(before.pointer + 1);
     expect(onPublished).toHaveBeenCalledTimes(1);
@@ -666,7 +679,11 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
       server.draft = { set: {}, delete: [] };
       server.etag++;
       return new Response(
-        JSON.stringify({ result: "merged", sha: "abc", release: "current" }),
+        JSON.stringify({
+          result: "published",
+          revision: "abc",
+          previous: null,
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as unknown as typeof fetch;

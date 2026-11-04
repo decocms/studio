@@ -1,13 +1,17 @@
 /**
- * Publish for a hosted v8 site (Blocks v8 on GitHub): commits the project's
- * CDN draft straight to main, writes that commit's companion release and
- * makes it current on the CDN. `release` says how far the CDN steps got:
- * `current`, `created` (making it current failed) or `none` (no release was
- * written). Either way the changes are saved on main, and
- * {@link retryRelease} retries the CDN steps ("Try again").
+ * Publish for a hosted v8 site, on the hosted CMS
+ * (`POST /api/:org/cms/:site/drafts/:branch/publish`, contract §4.9): a new
+ * revision with the draft over the live one, made live, the draft emptied.
+ * A lost race three times over is refused `production_moved`. The answer
+ * keeps the shape the publish UI reads: `merged` with the new revision id
+ * as `sha`, always `current` (the CDN write is the publish).
  */
 
-import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
+import {
+  cmsJson,
+  CmsRequestError,
+  cmsUrl,
+} from "@/components/sections-editor/cms-api";
 
 export type HostedPublishResult =
   | {
@@ -22,7 +26,7 @@ export type HostedPublishResult =
     }
   | { result: "up-to-date" };
 
-/** A refused publish, with the API's error code (`main-moved`). */
+/** A refused publish, with the API's error code (`production_moved`). */
 export class HostedPublishError extends Error {
   constructor(
     message: string,
@@ -33,14 +37,10 @@ export class HostedPublishError extends Error {
   }
 }
 
-async function post<T>(
-  url: string,
-  body: unknown,
-  headers: Record<string, string> = {},
-): Promise<T> {
+async function post<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as {
@@ -54,39 +54,55 @@ async function post<T>(
   return json as T;
 }
 
-export function publishHostedDraft(
-  params: { orgSlug: string; virtualMcpId: string; branch: string },
+/** The hosted CMS's publish answer (contract §4.9). */
+type CmsPublishAnswer =
+  | { result: "published"; revision: string; previous: string | null }
+  | { result: "up-to-date"; revision: string };
+
+export async function publishHostedDraft(
+  params: { orgSlug: string; site: string | null; branch: string },
   note: string,
 ): Promise<HostedPublishResult> {
-  return post<HostedPublishResult>(
-    `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/publish`,
-    { note },
-    // Only a v8 main publishes a hosted draft: a main that changed since is
-    // refused (`main_schema_changed`), never merged as a v7 branch.
-    mainSchemaHeaders("v8"),
-  );
+  if (!params.site) {
+    throw new HostedPublishError("this project names no site", null);
+  }
+  let answer: CmsPublishAnswer;
+  try {
+    answer = await cmsJson<CmsPublishAnswer>(
+      await fetch(
+        cmsUrl(
+          params.orgSlug,
+          params.site,
+          `drafts/${encodeURIComponent(params.branch)}/publish`,
+        ),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ message: note }),
+        },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof CmsRequestError) {
+      throw new HostedPublishError(error.message, error.code);
+    }
+    throw error;
+  }
+  return answer.result === "published"
+    ? { result: "merged", sha: answer.revision, release: "current" }
+    : { result: "up-to-date" };
 }
 
 /**
- * A hosted Publish's review: the draft's blocks a developer changed on main
- * since the live release. Publish keeps the draft's version of each.
+ * A hosted Publish's review. The hosted CMS has none (no developer edits
+ * main under a draft any more): nothing also changed.
  */
-export async function readHostedPublishReview(params: {
+export async function readHostedPublishReview(_params: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
 }): Promise<{ alsoChanged: string[] }> {
-  const res = await fetch(
-    `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/publish/review`,
-    { cache: "no-store", headers: mainSchemaHeaders("v8") },
-  );
-  if (!res.ok) throw new Error(`publish review read failed: ${res.status}`);
-  const body = (await res.json()) as { alsoChanged?: unknown };
-  return {
-    alsoChanged: Array.isArray(body.alsoChanged)
-      ? body.alsoChanged.filter((n): n is string => typeof n === "string")
-      : [],
-  };
+  return { alsoChanged: [] };
 }
 
 /**
