@@ -589,6 +589,7 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
+import { DraftStorage } from "@/storage/cms-drafts";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
@@ -853,6 +854,7 @@ async function authenticateRequest(
   apiKey?: StudioContext["auth"]["apiKey"];
   tokenOrganizationId?: string;
   organization?: OrganizationContext;
+  onBehalfOf?: boolean;
 }> {
   const authHeader = req.headers.get("Authorization");
 
@@ -1122,6 +1124,7 @@ async function authenticateRequest(
 
         return {
           method: "apiKey",
+          onBehalfOf: !!onBehalfOf,
           apiKeyId: result.key.id,
           // On-behalf-of fully replaces the principal (id + role) so user/role
           // stay consistent; the actor never inherits the key owner's role.
@@ -1545,6 +1548,7 @@ export async function createStudioContextFactory(
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
+    cmsDrafts: new DraftStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
     gitProviderAccounts: new GitProviderAccountStorage(config.db),
     gitProviderAccountCredentials: new GitProviderAccountCredentialStorage(
@@ -1650,6 +1654,8 @@ export async function createStudioContextFactory(
       permissionsOrganizationId: authResult.permissions
         ? authResult.organization?.id
         : undefined,
+      ...(authResult.method ? { method: authResult.method } : {}),
+      ...(authResult.onBehalfOf ? { onBehalfOf: true } : {}),
     };
 
     if (authResult.apiKey) {

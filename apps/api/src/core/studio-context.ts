@@ -223,6 +223,19 @@ export interface StudioAuth {
 
   /** Org the {@link permissions} map was resolved for (cross-org reuse guard). */
   permissionsOrganizationId?: string;
+
+  /**
+   * Which credential authenticated the request (`authenticateRequest`):
+   * the hosted CMS derives a revision's `via` from it. Absent when the
+   * request didn't come through it.
+   */
+  method?: "session" | "apiKey" | "mcpOAuth" | "studioJwt";
+
+  /**
+   * An API key call that forwarded the real acting user (`x-studio-token`):
+   * `user` is that user, not the key's creator.
+   */
+  onBehalfOf?: boolean;
 }
 
 // ============================================================================
@@ -305,6 +318,7 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
+import type { DraftStorage } from "@/storage/cms-drafts";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import type { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import type { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
@@ -361,6 +375,8 @@ export interface StudioStorage {
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgSites: OrgSiteStorage;
+  /** The hosted CMS's named drafts (`drafts` table). */
+  cmsDrafts: DraftStorage;
   orgRepoSyncs: OrgRepoSyncStorage;
   gitProviderAccounts: GitProviderAccountStorage;
   gitProviderAccountCredentials: GitProviderAccountCredentialStorage;
