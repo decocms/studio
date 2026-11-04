@@ -152,8 +152,8 @@ export function hasCriticalWell(status: string): boolean {
  * another lane's cards (or on a collapsed lane) keeps the card in its own
  * well, so moving work along never rewrites its priority by accident.
  *
- * Over one of the dragged cards themselves, the card stays in the well the
- * preview already put it in. Reading that card as "another lane's card" would
+ * Over one of the dragged cards themselves, the group stays in the well the
+ * preview already put the grabbed card (`dragged[0]`) in. Reading that card as "another lane's card" would
  * take it back out of a Critical well it was just previewed into, under the
  * pointer again, and the drag would flip between the two wells forever.
  */
@@ -170,14 +170,14 @@ export function dropSwimlane({
   /** The lane the card is saved in. */
   fromStatus: string;
   toStatus: string;
-  /** The ids of the cards being dragged. */
+  /** The ids of the cards being dragged, the grabbed card first. */
   dragged?: readonly string[];
 }): "critical" | "improvements" | null {
   if (overId === undefined || !hasCriticalWell(toStatus)) return null;
   const id = String(overId);
   if (id.startsWith(CRITICAL_DROPPABLE_PREFIX)) return "critical";
   if (dragged.includes(id)) {
-    const card = itemOf(id);
+    const card = itemOf(dragged[0]!);
     if (card && isCriticalTask(card)) return "critical";
     return fromStatus === toStatus ? "improvements" : null;
   }
@@ -501,13 +501,14 @@ export function boardGridColumns({
 export const LANE_DROPPABLE_PREFIX = "lane:";
 
 /**
- * The board's drop target: whatever the pointer is inside, else the lane whose
- * column the pointer is in, else the closest corners. `closestCorners` alone
- * can't pick an empty lane: its droppable runs the lane's full height, so its
- * bottom corners are far from any dragged card and a card in the next lane
- * always measures closer. The column check covers a pointer over a lane's
- * header or swimlane label, which sit above its well. The keyboard sensor has
- * no pointer, so it keeps the corner distance.
+ * The board's drop target: whatever the pointer is inside, else the closest
+ * corners among the droppables in the pointer's column, else the closest
+ * corners. `closestCorners` alone can't pick an empty lane: its droppable runs
+ * the lane's full height, so its bottom corners are far from any dragged card
+ * and a card in the next lane always measures closer. The column check covers a
+ * pointer over a lane's header or swimlane label, which sit above its wells,
+ * and still lands next to that lane's top card or Critical well. The keyboard
+ * sensor has no pointer, so it keeps the corner distance.
  */
 export const boardCollisions: CollisionDetection = (args) => {
   const within = pointerWithin(args);
@@ -517,7 +518,6 @@ export const boardCollisions: CollisionDetection = (args) => {
     ? args.droppableContainers.filter((container) => {
         const rect = args.droppableRects.get(container.id);
         return (
-          String(container.id).startsWith(LANE_DROPPABLE_PREFIX) &&
           rect !== undefined &&
           pointer.x >= rect.left &&
           pointer.x <= rect.right

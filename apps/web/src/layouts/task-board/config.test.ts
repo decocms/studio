@@ -364,6 +364,10 @@ describe("boardCollisions", () => {
     expect(collide(closestCorners, { x: 420, y: -30 })).toBe("card_in_review");
   });
 
+  test("over a header of a lane with cards, lands next to its top card", () => {
+    expect(collide(boardCollisions, { x: 100, y: -30 })).toBe("card_in_review");
+  });
+
   test("prefers a card over the lane that holds it, so reordering works", () => {
     expect(collide(boardCollisions, { x: 100, y: 50 })).toBe("card_in_review");
   });
@@ -608,7 +612,7 @@ describe("dropSwimlane", () => {
     expect(over("gone")).toBeNull();
   });
 
-  test("over a dragged card, the card keeps the well its preview put it in", () => {
+  test("over a dragged card, the group keeps the well its preview put the grabbed card in", () => {
     const previewed = new Map([
       [
         "moved",
@@ -633,8 +637,18 @@ describe("dropSwimlane", () => {
         dragged: ["moved", "plain"],
       });
     expect(overDragged("moved", "todo", "in_progress")).toBe("critical");
-    expect(overDragged("plain", "todo", "in_progress")).toBeNull();
-    expect(overDragged("plain", "todo", "todo")).toBe("improvements");
+    expect(overDragged("plain", "todo", "in_progress")).toBe("critical");
+    // The grabbed card decides, not a selected critical card under the pointer.
+    const grabbedPlain = (toStatus: string) =>
+      dropSwimlane({
+        overId: "moved",
+        itemOf: (id) => previewed.get(id),
+        fromStatus: "todo",
+        toStatus,
+        dragged: ["plain", "moved"],
+      });
+    expect(grabbedPlain("in_progress")).toBeNull();
+    expect(grabbedPlain("todo")).toBe("improvements");
   });
 
   test("a lane change keeps the card's well unless dropped on Critical", () => {
