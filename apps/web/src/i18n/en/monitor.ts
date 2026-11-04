@@ -234,4 +234,10 @@ export const monitor = {
   "monitor.verdict.settling": "Measuring",
   "monitor.verdict.unmeasured": "Not measured",
   "monitor.view.deploys": "Deploys",
+  "monitor.connect.firstExperiment": "Create an experiment",
+  "monitor.locked.experiments.title": "Run experiments on your sites",
+  "monitor.locked.firstExperiment.title": "No experiments yet",
+  "monitor.org.unreadable": "Couldn't read {names}",
+  "monitor.powers.siteExperiments": "A/B tests on real traffic",
+  "monitor.view.experiments": "Experiments",
 } as const;

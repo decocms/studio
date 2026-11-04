@@ -39,7 +39,7 @@ export interface UpdateExperimentInput {
 
 /** One site's experiment list as a query, so a view reading many sites at once
  *  (the org Monitor) shares the cache with {@link useExperiments}. */
-function experimentsQuery(
+export function experimentsQuery(
   locator: Parameters<typeof KEYS.experiments>[0],
   studio: StudioTools,
   site: string,
