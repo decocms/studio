@@ -3,25 +3,25 @@
  * on hosted v8 drafts only (PO: "only have metadata and changed by on v8
  * hosted"). Fast Preview (v7), Localhost and sandboxes show no line.
  *
- * The draft object's storage metadata records, per block, the Studio user id
- * and time of its last change; the session read answers it as `changedBy`
- * next to the draft pointer. The id is resolved to the member's name and
- * avatar from the org's members (`useMembersQuery`'s cache), `you` for the
- * viewer; only the time when the id isn't a member's.
- *
- * Read once per version of theirs the dialog shows (the query key carries
- * it), never per poll; a failure is "unknown", and the dialog then shows no
- * line at all.
+ * The hosted CMS stamps, per block, the Studio user id and time of its last
+ * change in the draft JSON (`editors`), and a refused save carries the
+ * refused block's editor with its value and version, all from the save's
+ * own read (`draft[name].editor`). The refusal's editor is kept here per
+ * version of theirs ({@link rememberConflictEditor}); nothing else is read.
+ * The id is resolved to the member's name and avatar from the org's members
+ * (`useMembersQuery`'s cache), `you` for the viewer; only the time when the
+ * id isn't a member's. Unknown (a version no refusal carried): no line.
  */
 
 import { spellingKey } from "@decocms/blocks/protocol";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
-import { mainSchemaHeaders } from "@/hooks/main-schema-changed";
 import { useMembersQuery } from "@/hooks/use-members";
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
 import type { DecofileScopeParams } from "./decofile-api";
+
+export { rememberConflictEditor, versionTag } from "./conflict-editor";
 
 /** What the dialog shows: a member's name and avatar, or only the time. */
 export interface ConflictAuthor {
@@ -64,40 +64,6 @@ export function draftChangeFor(
   return name === undefined ? null : (changedBy[name] ?? null);
 }
 
-/** The session read's `changedBy` (the draft object's metadata). */
-async function readDraftChange(
-  params: DecofileScopeParams,
-  blockKey: string,
-): Promise<DraftChange | null> {
-  try {
-    const res = await fetch(
-      `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}`,
-      {
-        cache: "no-store",
-        headers: mainSchemaHeaders("v8"),
-        // The A/B test and campaign windows wait for this read before they
-        // open (a section form's opens at once): never for long.
-        signal: AbortSignal.timeout(AUTHOR_READ_TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) return null;
-    const body = (await res.json().catch(() => ({}))) as {
-      changedBy?: Record<string, DraftChange>;
-    };
-    const change = draftChangeFor(body.changedBy ?? {}, blockKey);
-    return change &&
-      typeof change.userId === "string" &&
-      Number.isFinite(Date.parse(change.at))
-      ? change
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-/** How long a dialog waits to name who made the other change. */
-const AUTHOR_READ_TIMEOUT_MS = 2500;
-
 const firstName = (name: string) => name.split(/\s+/)[0] ?? name;
 
 /** An org member, as the members list answers. */
@@ -133,18 +99,6 @@ export function resolveDraftChange(
     at: change.at,
     you: !!viewerId && change.userId === viewerId,
   };
-}
-
-/** A short, stable tag for one version of theirs (part of the query key). */
-export function versionTag(text: string): string {
-  let h1 = 0x811c9dc5;
-  let h2 = 0;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 0x01000193);
-    h2 = (Math.imul(h2, 31) + c) | 0;
-  }
-  return `${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}:${text.length}`;
 }
 
 /**
@@ -210,25 +164,20 @@ function useDraftChange(
   theirs: string | null,
 ): { change: DraftChange | null; pending: boolean } {
   const enabled = !!draft && !!blockKey && theirs !== null;
-  const { data, isPending } = useQuery({
-    queryKey: KEYS.conflictAuthor(
-      draft ? `${draft.orgSlug}/${draft.virtualMcpId}/${draft.branch}` : "",
-      blockKey ?? "",
-      theirs ?? "",
-    ),
-    queryFn: () => readDraftChange(draft!, blockKey!),
-    enabled,
+  // Only what a refusal carried (`rememberConflictEditor`): never fetched.
+  const { data } = useQuery<DraftChange | null>({
+    queryKey: KEYS.conflictEditor(blockKey ?? "", theirs ?? ""),
+    queryFn: () => null,
+    enabled: false,
     // Their version changed again: the block's last answer stays shown
-    // while the new one is read (never "Someone else" in between).
+    // until a refusal carries the new one.
     placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[2] === (blockKey ?? "") ? previous : undefined,
+      previousQuery?.queryKey[1] === (blockKey ?? "") ? previous : undefined,
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: 10 * 60_000,
-    retry: false,
-    refetchOnWindowFocus: false,
   });
   return enabled
-    ? { change: data ?? null, pending: isPending }
+    ? { change: data ?? null, pending: false }
     : { change: null, pending: false };
 }
 

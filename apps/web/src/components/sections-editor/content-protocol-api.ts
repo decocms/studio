@@ -17,13 +17,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
-import {
-  isMainSchemaChangedResponse,
-  MainSchemaChangedError,
-  mainSchemaHeaders,
-  mainSchemaRead,
-  resetMainSchemaAnswer,
-} from "@/hooks/main-schema-changed";
+import { mainSchemaRead } from "@/hooks/main-schema-changed";
 import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
@@ -41,6 +35,9 @@ import {
   hostedRevisionParts,
 } from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
+import { cmsSiteOf, ensureCmsDraft } from "./cms-api";
+import { rememberConflictEditor } from "./conflict-editor";
 import { keepContentBookkeeping } from "./content-bookkeeping";
 import {
   adoptChangesList,
@@ -333,15 +330,17 @@ function adoptHostedSave(
       markDraftTombstone(queryClient, cacheKey, name, true);
     }
   }
-  if (revisionParts && revisionParts.draft !== "none") {
+  // The hosted CMS answers the draft's bare ETag as the revision (the v8
+  // git path answered `<main>~<draft>`).
+  const draftEtag = revisionParts ? revisionParts.draft : result.revision;
+  if (draftEtag && draftEtag !== "none") {
     queryClient.setQueryData<HostedDraftPointer>(
       KEYS.protocolDraftRead(
         params.orgSlug,
         params.virtualMcpId,
         params.branch,
       ),
-      (pointer) =>
-        pointer ? { ...pointer, version: revisionParts.draft } : pointer,
+      (pointer) => (pointer ? { ...pointer, version: draftEtag } : pointer),
     );
   }
   return revision;
@@ -738,7 +737,7 @@ export async function applyProtocolPatch(
 function refusedDraftBlock(
   refusal: unknown,
   blockKey: string,
-): { block: unknown; version: string } | undefined {
+): { block: unknown; version: string; editor?: unknown } | undefined {
   if (!(refusal instanceof ContentProtocolError)) return undefined;
   const draft = (refusal.data as Partial<DraftConflictBlocks> | null)?.draft;
   if (!draft || typeof draft !== "object" || !Object.hasOwn(draft, blockKey)) {
@@ -777,9 +776,10 @@ function adoptRefusedDraftBlock(
   queryClient: QueryClient,
   cacheKey: string,
   blockKey: string,
-  stored: { block: unknown; version: string },
+  stored: { block: unknown; version: string; editor?: unknown },
 ) {
   keepContentBookkeeping(queryClient);
+  rememberConflictEditor(queryClient, blockKey, stored);
   const deleted = stored.block === null;
   const versions = queryClient.getQueryData<Record<string, string>>(
     KEYS.contentVersions(cacheKey),
@@ -947,21 +947,21 @@ interface HostedDraftPointer {
 }
 
 /**
- * The `?__draft=` pointer of a project on the GitHub backend: its draft on
- * the delivery CDN, `<draft>@<etag>`, which the site's SDK revalidates on
- * every render. Read from the session's decofile GET, on load and again
- * after each content change (content-sync.ts). `params` is `null` for any
- * other backend. An editor session's read creates the draft (empty) when
- * there is none, and Publish empties it at the same address, so the pointer
- * is null only before the first answer (`pending`) or when the server has
- * no draft store.
+ * The `?__draft=` pointer of a project on Studio's hosted backend: its draft
+ * on the delivery CDN, `<draft>@<etag>`, which the site's SDK revalidates on
+ * every render. Opening the editor creates the draft (empty) when there is
+ * none (`POST /api/:org/cms/:site/drafts {name: branch}`, `cms-api.ts`), and
+ * each save moves the ETag (`adoptHostedSave`); Publish empties it at the
+ * same address. `params` is `null` for any other backend. The pointer is
+ * null only before the first answer (`pending`) or when the project names
+ * no site.
  */
 export function useProtocolDraftRead(params: DecofileScopeParams | null): {
   pointer: string | null;
   /** The first read hasn't answered yet (no data, no error). */
   pending: boolean;
 } {
-  const queryClient = useQueryClient();
+  const site = cmsSiteOf(useVirtualMCP(params?.virtualMcpId)?.metadata);
   const { data, isPending, isError } = useQuery({
     queryKey: KEYS.protocolDraftRead(
       params?.orgSlug ?? "",
@@ -969,26 +969,21 @@ export function useProtocolDraftRead(params: DecofileScopeParams | null): {
       params?.branch ?? "",
     ),
     queryFn: async (): Promise<HostedDraftPointer> => {
-      const res = await fetch(
-        `/api/${params!.orgSlug}/decofile/${encodeURIComponent(params!.virtualMcpId)}/${encodeURIComponent(params!.branch)}`,
-        { cache: "no-store", headers: mainSchemaHeaders("v8") },
+      const draft = await ensureCmsDraft(
+        params!.orgSlug,
+        site!,
+        params!.branch,
       );
-      // Main is no longer v8: the editor re-reads main's answer.
-      if (await isMainSchemaChangedResponse(res)) {
-        resetMainSchemaAnswer(
-          queryClient,
-          params!.orgSlug,
-          params!.virtualMcpId,
-        );
-        throw new MainSchemaChangedError();
-      }
-      if (!res.ok) throw new Error(`draft pointer read failed: ${res.status}`);
-      return (await res.json()) as HostedDraftPointer;
+      const at = draft.pointer?.lastIndexOf("@") ?? -1;
+      return {
+        draft: draft.pointer && at > 0 ? draft.pointer.slice(0, at) : null,
+        version: draft.etag,
+      };
     },
-    enabled: !!params,
+    enabled: !!params && !!site,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const pending = !!params && isPending && !isError;
+  const pending = !!params && !!site && isPending && !isError;
   if (!params || !data?.draft || !data.version) {
     return { pointer: null, pending };
   }

@@ -21,6 +21,7 @@ import {
 } from "./use-content-backend";
 import { MainSchemaChangedError } from "@/hooks/main-schema-changed";
 import { fetchMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { cmsUrl } from "./cms-api";
 import { KEYS } from "@/lib/query-keys";
 import { QueryClient } from "@tanstack/react-query";
 import { pollProtocolContent } from "./content-protocol-api";
@@ -176,6 +177,34 @@ describe("GitHub probe", () => {
         Response.json({ error: "not configured" }, { status: 503 }),
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe("the hosted backend (the CMS on R2)", () => {
+  test("the editor's probe of a v8 site makes no /decofile/ request", async () => {
+    const seen: string[] = [];
+    await probeGithub(
+      `http://studio.test${cmsUrl("org", "acme", "drafts/main/rpc")}`,
+      async (request) => {
+        seen.push(new URL(request.url).pathname);
+        return Response.json([
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            result: { protocol: "deco-content", protocolVersion: "1.2" },
+          },
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            result: { schema: { blocksMajor: 8 }, version: "s" },
+          },
+        ]);
+      },
+    ).catch(() => {});
+    expect(seen.length).toBeGreaterThan(0);
+    for (const path of seen) {
+      expect(path).toBe("/api/org/cms/acme/drafts/main/rpc");
+    }
   });
 });
 
