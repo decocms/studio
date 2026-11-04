@@ -439,8 +439,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "BLOG_STATE_SET",
-    description:
-      "Write the organization's blog campaigns and campaign seeds to its brand folder",
+    description: "Write the organization's blog campaigns to its brand folder",
     category: "Blog",
   },
   {

@@ -1,8 +1,8 @@
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 
 /**
- * Whether the org turned on the blog's agentic half — the brand context tab,
- * the campaigns inside it, post generation and link suggestions.
+ * Whether the org turned on the content track: the brand's campaigns and the
+ * blogpost cards an agent takes from a hypothesis to a draft on the site.
  *
  * Off by default. This hides the screens; `requireBlogAi` on the API refuses
  * the tools behind them, so the feature is off over MCP too and an agent

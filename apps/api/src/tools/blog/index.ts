@@ -1,7 +1,8 @@
 /**
  * Blog Tools
  *
- * Agentic blogpost generation for the CMS.
+ * The content track: campaigns and the blogpost cards an agent takes from a
+ * hypothesis to a draft on the site.
  */
 
 export { BLOG_STATE_GET, BLOG_STATE_SET } from "./state";
