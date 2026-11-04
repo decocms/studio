@@ -17,6 +17,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { notifyMcpConfiguration } from "../connection/on-configuration";
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
 import { fetchReportsAuth, resolveReportsMcpUrl } from "./auth-client";
@@ -197,6 +198,25 @@ export const REPORTS_SETUP = defineTool({
           orgId: organization.id,
           cause: "site_changed",
         });
+      }
+      // Reports keeps connection picks per site and only learns them from
+      // ON_MCP_CONFIGURATION, so the site this token now targets has none until
+      // the stored state is sent again. Best-effort: the claim already landed,
+      // and a later config save re-sends it anyway.
+      const state = connection.configuration_state;
+      if (state && Object.keys(state).length > 0) {
+        try {
+          await notifyMcpConfiguration(ctx, connection, {
+            state,
+            scopes: connection.configuration_scopes ?? [],
+            firstRun: false,
+          });
+        } catch (error) {
+          console.error(
+            "[reports] ON_MCP_CONFIGURATION after site claim failed",
+            error,
+          );
+        }
       }
     } else {
       console.log("[reports] creating connection", {

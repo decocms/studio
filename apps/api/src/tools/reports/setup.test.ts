@@ -21,12 +21,24 @@ mock.module("./auth-client", () => ({
   unlinkReportsSite: async () => ({ unlinked: true }),
 }));
 
+const notifyMock = mock(
+  async (
+    _ctx: unknown,
+    _connection: unknown,
+    _params: { state: Record<string, unknown> },
+  ) => {},
+);
+mock.module("../connection/on-configuration", () => ({
+  notifyMcpConfiguration: notifyMock,
+}));
+
 const { REPORTS_SETUP } = await import("./setup");
 
 interface StubConnection {
   id: string;
   connection_token?: string | null;
   metadata?: Record<string, unknown> | null;
+  configuration_state?: Record<string, unknown> | null;
 }
 
 interface StubVirtualMcp {
@@ -164,6 +176,58 @@ describe("REPORTS_SETUP", () => {
     expect((update.data.metadata as Record<string, unknown>).siteUrl).toBe(
       "https://new-site.com",
     );
+  });
+
+  test("re-sends the stored connection picks with the new site's token", async () => {
+    notifyMock.mockClear();
+    const state = { ga4: { __type: "google-analytics", value: "conn_ga" } };
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old_site_token",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: state,
+      },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    const [, connection, params] = notifyMock.mock.calls[0]!;
+    // The token decides which site Reports files the picks under.
+    expect((connection as StubConnection).connection_token).toBe(
+      "dgn_fresh_token",
+    );
+    expect(params.state).toEqual(state);
+  });
+
+  test("a notify failure does not fail the setup", async () => {
+    notifyMock.mockClear();
+    notifyMock.mockImplementationOnce(async () => {
+      throw new Error("downstream unreachable");
+    });
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old_site_token",
+        configuration_state: { gsc: { __type: "x", value: "conn_gsc" } },
+      },
+    });
+
+    await expect(
+      REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx),
+    ).resolves.toBeDefined();
+  });
+
+  test("nothing to re-send ⇒ no notify", async () => {
+    notifyMock.mockClear();
+    const ctx = makeCtx({
+      existingConnection: { id: "conn_1", connection_token: "dgn_old" },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 
   test("defaults reports_only on for an org the flow just created", async () => {
