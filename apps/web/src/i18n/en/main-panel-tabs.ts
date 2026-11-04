@@ -294,6 +294,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.noArtifacts": "No artifacts for this run.",
   "mainPanelTabs.e2eTab.openArtifact": "Open",
   "mainPanelTabs.e2eTab.viewScreenshot": "View screenshot",
+  "mainPanelTabs.analyticsTab.askTeamToActivate":
+    "Ask the Deco team to activate your Analytics.",
   "mainPanelTabs.analyticsTab.noSiteTitle": "No site linked",
   "mainPanelTabs.analyticsTab.noSiteDescription":
     "This project isn't linked to a hosted site yet.",
@@ -307,11 +309,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.backendNotConfiguredDescription":
     "The analytics collector isn't wired to this environment yet.",
   // Register
-  "mainPanelTabs.analyticsTab.registerTitle": "Start collecting analytics",
-  "mainPanelTabs.analyticsTab.registerDescription":
-    "Registers {host} with the Deco Analytics collector to start recording traffic.",
-  "mainPanelTabs.analyticsTab.registerHostFallback": "this site's domain",
-  "mainPanelTabs.analyticsTab.modules": "Modules",
   "mainPanelTabs.analyticsTab.moduleCore": "Core",
   "mainPanelTabs.analyticsTab.moduleCoreHint":
     "Pageviews + custom events (always on)",
@@ -325,15 +322,6 @@ export const mainPanelTabs = {
     "Errors from onerror / rejections",
   "mainPanelTabs.analyticsTab.moduleEngagement": "Engagement",
   "mainPanelTabs.analyticsTab.moduleEngagementHint": "Scroll depth, dwell",
-  "mainPanelTabs.analyticsTab.hostLabel": "Hostname",
-  "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
-  "mainPanelTabs.analyticsTab.hostHint":
-    "This site has no production domain on record — enter the hostname to collect under.",
-  "mainPanelTabs.analyticsTab.registerInstallHint":
-    "Once enabled, traffic is collected automatically — no code to add.",
-  "mainPanelTabs.analyticsTab.enableAnalytics": "Enable analytics",
-  "mainPanelTabs.analyticsTab.enabling": "Enabling…",
-  "mainPanelTabs.analyticsTab.toastRegistered": "Analytics enabled",
   // Registered view
   "mainPanelTabs.analyticsTab.collection": "Collection",
   "mainPanelTabs.analyticsTab.active": "Active",
@@ -586,15 +574,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "The analytics data surface isn't wired to this environment yet — configuration below still works.",
   // Token (key) registration
-  "mainPanelTabs.analyticsTab.registerByKey":
-    "Register by token (site not on our CDN)",
-  "mainPanelTabs.analyticsTab.registerByKeyHint":
-    "For a dev, staging, or off-CDN site. The tag carries a public token and events are not billable.",
-  "mainPanelTabs.analyticsTab.domainsLabel": "Domains",
-  "mainPanelTabs.analyticsTab.domainsPlaceholder":
-    "loja.com.br, staging.loja.com.br",
-  "mainPanelTabs.analyticsTab.domainsHint":
-    "Domains the collector accepts (Origin check); the first is primary. Required for a token.",
   "mainPanelTabs.analyticsTab.tokenTitle": "Token created — copy it now",
   "mainPanelTabs.analyticsTab.tokenOnce":
     "Shown once. It is public (it ships in the script), so it identifies but never authenticates — events are not billable.",

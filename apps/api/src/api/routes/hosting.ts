@@ -13,7 +13,7 @@
  *                DELETE) / deploy (POST re-deploy of the current commit)
  *   - E2E:       e2e/runs (list + POST to queue a run) and e2e/runs/:runId
  *                (detail)
- *   - Analytics: lifecycle (status/register/config/disable/usage/delete) proxied
+ *   - Analytics: lifecycle (status/config/disable/usage/delete) proxied
  *                to the control-plane; PLUS analytics/data — the tenant-scoped
  *                dashboard views read straight from the Analytics read surface
  *                (a different upstream), scoped by a warehouse site_id this BFF
@@ -698,15 +698,6 @@ export const createHostingRoutes = () => {
   app.get("/:site/analytics/usage", (c) =>
     proxyControlplane(c, "analytics/usage", {
       forwardQuery: ["from", "to", "granularity"],
-    }),
-  );
-
-  // POST /api/:org/hosting/:site/analytics/register — body `{ modules?, host?,
-  // sampling? }` registers the site with the Deco Analytics collector.
-  app.post("/:site/analytics/register", async (c) =>
-    proxyControlplane(c, "analytics/register", {
-      method: "POST",
-      body: await readJsonBody(c),
     }),
   );
 
