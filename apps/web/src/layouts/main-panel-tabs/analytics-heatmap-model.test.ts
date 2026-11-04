@@ -271,48 +271,49 @@ describe("siteOrigin / frameUrl", () => {
 describe("readViewMessage", () => {
   const frame = {};
   const origin = "https://www.example.com";
+  const origins = ["https://example.com", origin];
   const msg = (data: unknown, o = origin, source: unknown = frame) => ({
     source,
     origin: o,
     data,
   });
 
-  it("accepts the frame's window on the site origin with the protocol tag", () => {
+  it("accepts the frame's window on any registered origin with the protocol tag", () => {
     expect(
       readViewMessage(
-        msg({ dq: "hm", v: 1, t: "select", key: "a|1" }),
+        msg({ dq: "hm", v: 1, t: "select", key: "a|1" }, origins[0]),
         frame,
-        origin,
+        origins,
       ),
     ).toEqual({ t: "select", key: "a|1" });
     expect(
       readViewMessage(
         msg({ dq: "hm", v: 1, t: "ready", anchors: 3 }),
         frame,
-        origin,
+        origins,
       ),
     ).toMatchObject({ t: "ready", anchors: 3 });
   });
 
   it("refuses another window, another origin, another protocol or a malformed body", () => {
     const ok = { dq: "hm", v: 1, t: "select", key: "a|1" };
-    expect(readViewMessage(msg(ok, origin, {}), frame, origin)).toBeNull();
+    expect(readViewMessage(msg(ok, origin, {}), frame, origins)).toBeNull();
     expect(
-      readViewMessage(msg(ok, "https://evil.example"), frame, origin),
+      readViewMessage(msg(ok, "https://evil.example"), frame, origins),
     ).toBeNull();
-    expect(readViewMessage(msg({ ...ok, v: 2 }), frame, origin)).toBeNull();
-    expect(readViewMessage(msg({ ...ok, dq: "x" }), frame, origin)).toBeNull();
+    expect(readViewMessage(msg({ ...ok, v: 2 }), frame, origins)).toBeNull();
+    expect(readViewMessage(msg({ ...ok, dq: "x" }), frame, origins)).toBeNull();
     expect(
-      readViewMessage(msg({ dq: "hm", v: 1, t: "select" }), frame, origin),
+      readViewMessage(msg({ dq: "hm", v: 1, t: "select" }), frame, origins),
     ).toBeNull();
     expect(
       readViewMessage(
         msg({ dq: "hm", v: 1, t: "placed", items: "x" }),
         frame,
-        origin,
+        origins,
       ),
     ).toBeNull();
-    expect(readViewMessage(msg(ok), null, origin)).toBeNull();
+    expect(readViewMessage(msg(ok), null, origins)).toBeNull();
   });
 });
 

@@ -2509,7 +2509,9 @@ function RegisteredView({
           orgSlug={orgSlug}
           site={site}
           modules={modules}
-          domain={cfg.domains?.[0] ?? status.host ?? null}
+          domains={
+            cfg.domains?.length ? cfg.domains : status.host ? [status.host] : []
+          }
           onConfigure={() => setConfigOpen(true)}
         />
       ) : (
