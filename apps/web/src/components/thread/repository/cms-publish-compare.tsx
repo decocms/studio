@@ -26,11 +26,8 @@ import {
 } from "react";
 import { useT } from "@/i18n/use-t.ts";
 import { type ElementSize, useElementSize } from "@/hooks/use-element-size.ts";
-import {
-  DRAFT_OFF,
-  withDraftPointer,
-} from "@/components/sections-editor/section-preview-url.ts";
-import { extractPathParams } from "@/components/sections-editor/page-path-utils.ts";
+import { DRAFT_OFF, withDraftPointer } from "@decocms/shared/blog";
+import { extractPathParams } from "@decocms/shared/page-path";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import { withDeviceHint } from "@/components/sandbox/preview/device-hint.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
@@ -64,7 +61,7 @@ type CompareView = (typeof COMPARE_VIEWS)[number];
 function isCompareView(value: string): value is CompareView {
   return (COMPARE_VIEWS as readonly string[]).includes(value);
 }
-type CompareDevice = "desktop" | "mobile";
+export type CompareDevice = "desktop" | "mobile";
 
 /** Logical render widths — the frames scale down to fit, never reflow. */
 const DEVICE_WIDTH: Record<CompareDevice, number> = {
@@ -528,7 +525,12 @@ interface CompareFrameProps {
   missing: string;
 }
 
-function CompareFrame({ url, device, title, missing }: CompareFrameProps) {
+export function CompareFrame({
+  url,
+  device,
+  title,
+  missing,
+}: CompareFrameProps) {
   const [size, ref] = useElementSize();
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
 

@@ -11,7 +11,6 @@ import {
   LayoutAlt01,
   Settings01,
   Sliders02,
-  Stars02,
   CreditCardSearch,
   Tag01,
   Users01,
@@ -36,7 +35,6 @@ export function CollectionsSidebar({
   counts,
   hidden = NONE_HIDDEN,
   showBlog,
-  showContext,
   onSelect,
 }: {
   active: CollectionId;
@@ -44,8 +42,6 @@ export function CollectionsSidebar({
   /** Collections this site has no use for, left out of the list. */
   hidden?: readonly CollectionId[];
   showBlog: boolean;
-  /** The brand context tab, which the org's AI-blog flag governs. */
-  showContext: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   const t = useT();
@@ -114,14 +110,6 @@ export function CollectionsSidebar({
               icon={BookOpen01}
               label={t("sandbox.collectionsSidebar.blog")}
             />
-            {showContext && (
-              <CollectionRow
-                icon={Stars02}
-                label={t("sandbox.collectionsSidebar.context")}
-                active={active === "context"}
-                onClick={() => onSelect("context")}
-              />
-            )}
             <CollectionRow
               icon={File02}
               label={t("sandbox.collectionsSidebar.posts")}

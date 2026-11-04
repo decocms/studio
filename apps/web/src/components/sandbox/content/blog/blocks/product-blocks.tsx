@@ -29,11 +29,9 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
-import {
-  readProductListIds,
-  writeProductListIds,
-} from "./product-loader-utils";
+import { readProductListIds, writeProductListIds } from "@decocms/shared/blog";
 import { ProductPickerDialog } from "./product-picker-dialog";
+import { loaderCatalogSource } from "./catalog-source";
 import { type ProductLookup, useProductsByIds } from "./use-product-lookup";
 import type { ProductPickerOption } from "./product-picker-source";
 import {
@@ -353,7 +351,8 @@ export function ProductShelfBlock({
   const rawIds = readProductListIds(block.products);
   const ids = [...new Set(rawIds.filter(Boolean))];
   const [pickerOpen, setPickerOpen] = useState(false);
-  const lookup = useProductsByIds(sandboxRef, ids);
+  const source = sandboxRef ? loaderCatalogSource(sandboxRef) : null;
+  const lookup = useProductsByIds(source, ids);
 
   const setIds = (nextIds: string[]) =>
     onChange({
@@ -401,11 +400,11 @@ export function ProductShelfBlock({
         <ProductIdsEditor ids={rawIds} onChange={setIds} />
       )}
 
-      {sandboxRef && (
+      {source && (
         <ProductPickerDialog
           open={pickerOpen}
           onOpenChange={setPickerOpen}
-          sandboxRef={sandboxRef}
+          source={source}
           selectedIds={ids}
           onChange={setIds}
         />
@@ -466,7 +465,8 @@ export function ProductCardBlock({
   const t = useT();
   const productId = readProductListIds(block.product).filter(Boolean)[0] ?? "";
   const [pickerOpen, setPickerOpen] = useState(false);
-  const lookup = useProductsByIds(sandboxRef, productId ? [productId] : []);
+  const source = sandboxRef ? loaderCatalogSource(sandboxRef) : null;
+  const lookup = useProductsByIds(source, productId ? [productId] : []);
 
   const setIds = (nextIds: string[]) =>
     onChange({
@@ -549,11 +549,11 @@ export function ProductCardBlock({
         )}
       </div>
 
-      {sandboxRef && (
+      {source && (
         <ProductPickerDialog
           open={pickerOpen}
           onOpenChange={setPickerOpen}
-          sandboxRef={sandboxRef}
+          source={source}
           selectedIds={productId ? [productId] : []}
           onChange={setIds}
           multiple={false}

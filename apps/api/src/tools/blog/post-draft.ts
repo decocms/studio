@@ -1,32 +1,24 @@
-import { generationFailure, retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import {
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_TRIGGERS,
 } from "@decocms/shared/blog-campaign";
-import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
-import { requireBlogAi } from "./feature-flag";
-import { GroundingInputSchema, resolveGrounding } from "./grounding-input";
-import { renderGrounding, VirtualMcpIdSchema } from "./site-tools";
-import { resolveTier } from "../../core/resolve-tier";
-import { ReducedContextSchema } from "./schema";
+import { renderGrounding } from "./site-tools";
 import {
-  clearUnfilled,
-  IMAGE_SENTINEL,
-  imageRequests,
-  readProps,
-  withImageAt,
-} from "./block-props";
-import { painterFor } from "./cover-image";
+  CampaignGoalSchema,
+  campaignGoals,
+  MAX_CAMPAIGN_GOALS,
+} from "@decocms/shared/blog-campaign";
+import { ReducedContextSchema } from "./schema";
+import { IMAGE_SENTINEL } from "./block-props";
+import { MAX_EXEMPLARS } from "@decocms/shared/blog";
 
 /**
  * One blog post, written from a campaign and shaped by a format.
  *
  * The campaign is what the post is for — a moment, a shelf of products, a slice
  * of the catalogue, a tone the brand takes while it runs. The format is how
- * this brand builds a post of that kind, and the blocks it cites are the only
- * ones this post may be made of.
+ * this brand builds a post of that kind, and the blocks it cites come first.
  *
  * The blocks arrive with their own JSON Schema, which is the whole point: a
  * site that overrides a section with different props used to get the props this
@@ -43,14 +35,6 @@ const MAX_BLOCKS = 40;
 const MAX_SCHEMA_CHARS = 8_000;
 const MAX_PRODUCTS = 40;
 const MAX_TARGETS = 20;
-
-/** Posts one request may write. Beyond this nobody reads them all anyway. */
-const MAX_DRAFTS = 3;
-
-/** Images in the body of one post, over and above its cover. */
-const MAX_BODY_IMAGES = 2;
-
-const GROUNDING_MAX_STEPS = 12;
 
 /**
  * One block this post may use, as the writer sees it.
@@ -84,6 +68,8 @@ const CampaignSchema = z.object({
     type: z.enum(CAMPAIGN_TRIGGERS),
     note: z.string().max(MAX_BODY_CHARS),
   }),
+  goals: z.array(CampaignGoalSchema).max(MAX_CAMPAIGN_GOALS).optional(),
+  goal: CampaignGoalSchema.optional(),
   intent: z.object({
     objective: z.enum(CAMPAIGN_OBJECTIVES),
     targets: z
@@ -123,79 +109,6 @@ const CampaignSchema = z.object({
   }),
 });
 
-/**
- * One section of the post body.
- *
- * `props` is a JSON string rather than an object: a schema the model fills
- * freely becomes `additionalProperties` in structured output, which is the kind
- * of thing that works on three providers and fails on the fourth. The caller
- * validates against the block's real schema either way, so nothing is lost by
- * going through a string.
- */
-const SectionSchema = z.object({
-  type: z
-    .string()
-    .describe("The block's `name`, exactly as given in the available blocks."),
-  props: z
-    .string()
-    .describe(
-      "A JSON object matching that block's schema. Only props the schema declares; anything else is dropped, and a value the schema rejects loses the whole section. Leave the product slot out — it is filled from `productIds`.",
-    ),
-  productIds: z
-    .array(z.string())
-    .default([])
-    .describe(
-      "For a product block only: the `id` of each campaign product this block shows, in order. Empty for every other block.",
-    ),
-});
-
-export const PostSchema = z.object({
-  title: z
-    .string()
-    .describe("The post's headline, in the brand's voice and language"),
-  excerpt: z.string().describe("One sentence that earns the click"),
-  seo: z.object({
-    title: z.string().describe("Search-result title, ~60 characters"),
-    description: z.string().describe("Search-result description, ~155"),
-  }),
-  cover: z.object({
-    prompt: z
-      .string()
-      .describe(
-        "What the cover image shows, as a photographic brief: subject, setting, light, mood. No text in the image, no logos, no brand name — a model renders lettering badly and a cover with words in it cannot be reused.",
-      ),
-    alt: z
-      .string()
-      .describe("The alt text for that image, in the brand's language."),
-  }),
-  categorySlugs: z
-    .array(z.string())
-    .describe("Slugs chosen from the given categories — usually one"),
-  authorEmails: z
-    .array(z.string())
-    .describe("Emails chosen from the given authors — usually one"),
-  sections: z
-    .array(SectionSchema)
-    .describe(
-      `The post body, in reading order. At most ${MAX_SECTIONS}; anything past that is dropped.`,
-    ),
-});
-
-const GAP_CODES = [
-  "no-store-data",
-  "sections-dropped",
-  "no-bucket",
-  "no-image-model",
-  "images-failed",
-  "drafts-failed",
-] as const;
-
-const GapSchema = z.object({
-  code: z.enum(GAP_CODES),
-  count: z.number().int().optional(),
-});
-export type Gap = z.infer<typeof GapSchema>;
-
 const SYSTEM = `You write one blog post for a brand, from a campaign (what the post is for) and a format (how this brand builds a post of that kind).
 
 WRITE THE WHOLE POST IN THE BRAND'S OWN LANGUAGE — the one reported as \`language\` in its profile. These instructions are in English because they are instructions; the post is content, and content follows the brand.
@@ -206,6 +119,8 @@ THE CAMPAIGN IS THE BRIEF, THE FORMAT IS THE SHAPE. The campaign says why this p
 
 THE BLOCKS ARE TYPED, AND THE TYPE IS BINDING. Each available block comes with its JSON Schema. \`props\` is a JSON object matching THAT schema — its property names, its types, its enums, everything it marks required. A prop the schema does not declare is dropped. A value the schema rejects loses the entire section, not just that prop. Read the schema before you write the section: a field called \`items\` that is typed as a string is one string, not a list, however much it sounds like a list.
 
+HOW THIS BRAND FILLS ITS BLOCKS COMES FIRST. Where the brand says which props a block takes by default — a heading level, a shelf's title, a callout's variant — those are the values its blocks render as intended. They win over a block's example.
+
 COPY THE EXAMPLE'S SHAPE. A block that shows one is showing you how this site actually stores it — and a prop the schema leaves untyped is one a stored block already disproved, so the example is the only account of it you have. Follow it: same property names, same shape, your own content.
 
 USE ONLY THE BLOCKS YOU ARE GIVEN, by the \`name\` given. A block that is not listed does not exist on this site.
@@ -214,7 +129,7 @@ THE CAMPAIGN'S PRODUCTS ARE THE ONLY PRODUCTS. Name them with the names given, l
 
 A PRODUCT SLOT IS NOT YOURS TO WRITE. A block that shows products has a prop for them — \`product\` or \`products\` — and you leave it OUT of \`props\` entirely. Put the campaign products' \`id\` values in \`productIds\` instead, in the order they should appear, and the slot is filled for you in whatever shape this site stores. Only ids the campaign listed; never one taken from a block's example, because that example points at a real product and a different one.
 
-IMAGES YOU WANT MADE. A block prop whose schema says \`"format": "image-uri"\` takes an image address. For an image that does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and it is generated and uploaded for you. Use this at most twice in a post, and only where the format's blocks ask for an image. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
+IMAGES YOU WANT MADE. Where a block prop takes an image address and the picture does not exist yet, write \`${IMAGE_SENTINEL}\` followed by what the image should show — \`${IMAGE_SENTINEL}a woman closing a hard-shell suitcase on a hotel bed, morning light\` — and the illustrator draws it after you. Use this at most twice in a post, and only where the format's blocks ask for an image. Never write it into a prop that holds prose — it is an image address, not a sentence. For a product's own photograph, copy the campaign's address instead: a generated picture of a product the brand sells is a picture of something else.
 
 WRITE SOMETHING WORTH READING. Open on the reader's problem or curiosity, never on the company. Make every section carry a specific claim, an example or a number rather than restating the heading. Vary section length. Close with one clear next step.
 
@@ -270,8 +185,18 @@ export function renderCampaign(
     period.start || period.end
       ? `\nRuns ${period.start ?? "from whenever"} to ${period.end ?? "no fixed end"}.`
       : "";
+  const goals = campaignGoals(campaign).map((goal) => {
+    const measure = [goal.target.trim(), goal.metric?.replaceAll("_", " ")]
+      .filter(Boolean)
+      .join(" ");
+    return `${goal.text.trim()}${measure ? ` (${measure})` : ""}`;
+  });
+  const aim =
+    goals.length > 0
+      ? `\nGoals: ${goals.join("; ")}. Every post in this campaign is a step toward them.`
+      : "";
   return [
-    `## The campaign: ${campaign.name}\nWhy now (${trigger.type}): ${trigger.note}\nObjective: ${intent.objective}.${when}`,
+    `## The campaign: ${campaign.name}\nWhy now (${trigger.type}): ${trigger.note}\nObjective: ${intent.objective}.${aim}${when}`,
     intent.targets.length > 0 &&
       `## What it argues for\n${intent.targets
         .map(
@@ -297,32 +222,6 @@ export function renderCampaign(
     .join("\n\n");
 }
 
-/**
- * A block's props as one log line.
- *
- * What a site publishes for its own sections is the one thing this tool cannot
- * see from here, and two rounds of "why did that section come out wrong" went
- * to guessing for want of it. Names, types and widgets only — the descriptions
- * are the bulk and say nothing about shape.
- */
-function describeBlock(block: z.infer<typeof BlockSchema>): string {
-  const properties = block.schema.properties;
-  if (!properties || typeof properties !== "object") {
-    return `${block.name}: no schema`;
-  }
-  const props = Object.entries(properties as Record<string, unknown>).map(
-    ([name, raw]) => {
-      const prop = (raw ?? {}) as Record<string, unknown>;
-      const enumValues = Array.isArray(prop.enum)
-        ? `(${prop.enum.join("|")})`
-        : "";
-      const widget = prop.format ? `:${prop.format}` : "";
-      return `${name}=${prop.type}${enumValues}${widget}`;
-    },
-  );
-  return `${block.name}: ${props.join(" ")}${block.example ? " +example" : ""}`;
-}
-
 /** A block, with its schema and a real one of it, as one prompt section. */
 function renderBlock(block: z.infer<typeof BlockSchema>): string {
   const schema = JSON.stringify(block.schema).slice(0, MAX_SCHEMA_CHARS);
@@ -332,419 +231,178 @@ function renderBlock(block: z.infer<typeof BlockSchema>): string {
   return `### ${block.name} — ${block.title}\n${block.description}\n\`\`\`json\n${schema}\n\`\`\`${example}`;
 }
 
-export const BLOG_POST_DRAFT = defineTool({
-  name: "BLOG_POST_DRAFT",
-  description:
-    "Write blog posts for a campaign, shaped by one of the brand's formats and built only from blocks the site actually renders, each validated against its own schema. Generates a cover image and uploads it to the organization's bucket. Returns up to `count` drafts; does not persist — the caller builds the blocks and schedules them.",
-  annotations: {
-    title: "Draft a Blog Post",
-    /** Not read-only: a generated cover is uploaded to the org's bucket, and
-     *  the address it returns is public. Open world: the grounding pass calls
-     *  whatever connections the virtual MCP carries. */
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  inputSchema: z.object({
-    brand: ReducedContextSchema.partial().describe(
-      "What writing needs: who the brand is, who reads it, how it sounds, its words and its guardrails. companyName, language, description, tone, targetAudience, dos and avoid are all required — a post written without them is generic.",
+/** What writing a post reads: the brand, the campaign, the format and the site's blocks. */
+export const WritingInputSchema = z.object({
+  brand: ReducedContextSchema.partial().describe(
+    "What writing needs: who the brand is, who reads it, how it sounds, its words and its guardrails. companyName, language, description, tone, targetAudience, dos and avoid are all required — a post written without them is generic.",
+  ),
+  campaign: CampaignSchema.describe(
+    "The campaign this post is written for — the brief, the products and the campaign-only guardrails.",
+  ),
+  format: z
+    .object({
+      name: z.string().max(MAX_NAME_CHARS),
+      value: z.string().max(MAX_BODY_CHARS),
+      length: z
+        .string()
+        .max(MAX_NAME_CHARS)
+        .optional()
+        .describe("How long a post in this format runs."),
+    })
+    .describe("How this brand builds a post of this kind."),
+  blocks: z
+    .array(BlockSchema)
+    .min(1)
+    .max(MAX_BLOCKS)
+    .describe(
+      "The only blocks this post may be built from, each with the schema its props must match.",
     ),
-    campaign: CampaignSchema.describe(
-      "The campaign this post is written for — the brief, the products and the campaign-only guardrails.",
+  exemplars: z
+    .array(
+      z.object({
+        title: z.string().max(MAX_NAME_CHARS),
+        slug: z.string().max(MAX_NAME_CHARS),
+        text: z.string().max(MAX_BODY_CHARS),
+      }),
+    )
+    .max(MAX_EXEMPLARS)
+    .default([])
+    .describe(
+      "The brand's own posts in this format, as BLOG_SITE_BLOCKS returns them: what a post like this reads like.",
     ),
-    format: z
-      .object({
+  categories: z
+    .array(
+      z.object({
         name: z.string().max(MAX_NAME_CHARS),
-        value: z.string().max(MAX_BODY_CHARS),
-      })
-      .describe("How this brand builds a post of this kind."),
-    blocks: z
-      .array(BlockSchema)
-      .min(1)
-      .max(MAX_BLOCKS)
-      .describe(
-        "The only blocks this post may be built from, each with the schema its props must match.",
-      ),
-    categories: z
-      .array(
-        z.object({
-          name: z.string().max(MAX_NAME_CHARS),
-          slug: z.string().max(MAX_NAME_CHARS),
-        }),
-      )
-      .max(MAX_CATEGORIES)
-      .default([])
-      .describe("The blog's categories, to file these posts under."),
-    authors: z
-      .array(
-        z.object({
-          name: z.string().max(MAX_NAME_CHARS),
-          email: z.string().max(MAX_NAME_CHARS),
-          bio: z.string().max(MAX_BODY_CHARS).optional(),
-        }),
-      )
-      .max(MAX_AUTHORS)
-      .default([])
-      .describe("The blog's authors, to attribute these posts to."),
-    extraInstructions: z
-      .string()
-      .max(MAX_BODY_CHARS)
-      .optional()
-      .describe(
-        "What the operator asked for on top of everything else, in their own words.",
-      ),
-    count: z
-      .number()
-      .int()
-      .min(1)
-      .max(MAX_DRAFTS)
-      .default(1)
-      .describe("How many drafts to write. Each is a separate angle."),
-    fileConfigId: z
-      .string()
-      .max(256)
-      .optional()
-      .describe(
-        "The organization's bucket, where a generated image is uploaded so a reader can load it. Omit and no image is made.",
-      ),
-    virtualMcpId: VirtualMcpIdSchema,
-    grounding: GroundingInputSchema,
-  }),
-
-  outputSchema: z.object({
-    posts: z.array(
-      PostSchema.omit({ cover: true, sections: true }).extend({
-        cover: z.object({
-          url: z
-            .string()
-            .describe(
-              "Empty unless a `fileConfigId` was given. BLOG_POST_ILLUSTRATE is the call that fills it, and the one that can condition the image on the product's own photographs.",
-            ),
-          alt: z.string(),
-          prompt: z
-            .string()
-            .describe(
-              "What the cover should show, unframed. BLOG_POST_ILLUSTRATE adds the attribution and the no-lettering rule, so passing it through there twice would say both twice.",
-            ),
-        }),
-        sections: z.array(
-          z.object({
-            /** The block's name; the caller maps it to a resolveType. */
-            type: z.string(),
-            props: z.record(z.string(), z.unknown()),
-            /** Campaign product ids; the caller writes them in the site's shape. */
-            productIds: z.array(z.string()),
-          }),
-        ),
+        slug: z.string().max(MAX_NAME_CHARS),
       }),
+    )
+    .max(MAX_CATEGORIES)
+    .default([])
+    .describe("The blog's categories, to file these posts under."),
+  authors: z
+    .array(
+      z.object({
+        name: z.string().max(MAX_NAME_CHARS),
+        email: z.string().max(MAX_NAME_CHARS),
+        bio: z.string().max(MAX_BODY_CHARS).optional(),
+      }),
+    )
+    .max(MAX_AUTHORS)
+    .default([])
+    .describe("The blog's authors, to attribute these posts to."),
+  extraInstructions: z
+    .string()
+    .max(MAX_BODY_CHARS)
+    .optional()
+    .describe(
+      "What the operator asked for on top of everything else, in their own words.",
     ),
-    /** What could not be done, as codes the caller words in its own locale. */
-    gaps: z.array(GapSchema),
-  }),
-
-  /** Token spend, and a spent envelope has to stop it. */
-  requiresAiBudget: true,
-
-  modelSummary: (r) =>
-    `${r.posts.length} draft(s): ${r.posts
-      .map((p) => `"${p.title}" (${p.sections.length} section(s))`)
-      .join("; ")}. Not yet saved.`,
-
-  handler: async (input, ctx) => {
-    requireAuth(ctx);
-    await ctx.access.check();
-
-    const organizationId = ctx.organization?.id;
-    if (!organizationId) {
-      throw new Error(
-        "Organization ID required (no active organization in context)",
-      );
-    }
-    await requireBlogAi(ctx, organizationId);
-
-    const { brand, campaign } = input;
-    const missing = [
-      !brand.companyName?.trim() && "companyName",
-      !brand.language?.trim() && "language",
-      !brand.description?.trim() && "description",
-      !brand.tone?.trim() && "tone",
-      !brand.targetAudience?.trim() && "targetAudience",
-      !brand.dos?.length && "dos",
-      !brand.avoid?.length && "avoid",
-    ].filter((field): field is string => typeof field === "string");
-    if (missing.length > 0) {
-      throw new Error(
-        `Editorial brand context is incomplete — fill ${missing.join(", ")} before generating. A post written without it reads like any other brand's.`,
-      );
-    }
-
-    const tier = await resolveTier(ctx, "thinking");
-    const provider = await ctx.aiProviders.activate(
-      tier.credentialId,
-      organizationId,
-    );
-    const model = provider.aiSdk.languageModel(tier.modelId);
-
-    // One pass for every draft: the store answers the same for all of them.
-    const report = await resolveGrounding(
-      ctx,
-      organizationId,
-      input.grounding,
-      {
-        virtualMcpId: input.virtualMcpId,
-        language: brand.language,
-        label: "BLOG_POST_DRAFT",
-        maxSteps: GROUNDING_MAX_STEPS,
-        task: `Writing ${input.count} blog post(s) for ${brand.companyName}, for the campaign "${campaign.name}": ${campaign.trigger.note}`,
-        wanted:
-          "Anything these posts would otherwise have to assume: the products they will mention, their real names and current prices, what is in stock, any promotion running now, and what readers of this subject actually search for. Exact figures matter — they are going into copy a customer will hold the brand to.",
-      },
-    );
-
-    console.info(
-      `[BLOG_POST_DRAFT] ${input.blocks.length} block(s) offered`,
-      input.blocks.map(describeBlock),
-    );
-
-    const tone = campaign.guardrails.toneOverrides.trim() || brand.tone;
-    const basePrompt = [
-      `## Brand\n${brand.companyName}`,
-      `## What it does\n${brand.description}`,
-      `## Language to write in\n${brand.language}`,
-      brand.storeUrl && `## The store's address\n${brand.storeUrl}`,
-      `## Tone of voice\n${tone}`,
-      `## Audience\n${brand.targetAudience}`,
-      renderRules("Editorial instructions — follow these", brand.dos),
-      renderRules("Guardrails — never do these", brand.avoid),
-      renderRules(
-        "The brand's own words — use these, not the words they displace",
-        brand.vocabulary,
-      ),
-      renderVoiceExamples(brand.voiceExamples),
-      renderCampaign(campaign),
-      `## Format: ${input.format.name}\n${input.format.value}`,
-      `## Blocks available — props must match these schemas\n\n${input.blocks
-        .map(renderBlock)
-        .join("\n\n")}`,
-      input.categories.length > 0 &&
-        `## Categories\n${input.categories.map((c) => `- ${c.name} (${c.slug})`).join("\n")}`,
-      input.authors.length > 0 &&
-        `## Authors\n${input.authors
-          .map((a) => `- ${a.name} (${a.email})${a.bio ? ` — ${a.bio}` : ""}`)
-          .join("\n")}`,
-      input.extraInstructions &&
-        `## What the operator asked for\n${input.extraInstructions}`,
-      renderGrounding(report.grounding),
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-
-    const written = await Promise.allSettled(
-      Array.from({ length: input.count }, (_, i) =>
-        retryGenerateObject({
-          model,
-          schema: PostSchema,
-          system: SYSTEM,
-          prompt: `${basePrompt}\n\n${task(i, input.count)}`,
-        }).then((result) => result.object),
-      ),
-    );
-    const drafts = written.flatMap((draft) =>
-      draft.status === "fulfilled" ? [draft.value] : [],
-    );
-    for (const draft of written) {
-      if (draft.status === "rejected") {
-        console.warn(
-          `[BLOG_POST_DRAFT] one draft failed: ${generationFailure(draft.reason)}`,
-        );
-      }
-    }
-
-    const painter = await painterFor(
-      ctx,
-      organizationId,
-      input.fileConfigId,
-      "BLOG_POST_DRAFT",
-    );
-    const byName = new Map(input.blocks.map((block) => [block.name, block]));
-    let droppedSections = 0;
-    const dropped = new Map<string, number>();
-
-    const validProductIds = new Set(
-      campaign.intent.products.map((product) => product.id),
-    );
-    const posts = await Promise.all(
-      drafts.map(async (draft) => {
-        const sections: {
-          type: string;
-          props: Record<string, unknown>;
-          productIds: string[];
-        }[] = [];
-        for (const section of draft.sections.slice(0, MAX_SECTIONS)) {
-          const block = byName.get(section.type);
-          if (!block) {
-            droppedSections += 1;
-            note(dropped, `${section.type}: not a block this site has`);
-            continue;
-          }
-          const read = readProps(section.props, block.schema, block.example);
-          if (!read.props) {
-            droppedSections += 1;
-            note(dropped, `${section.type}: ${read.reason}`);
-            continue;
-          }
-          sections.push({
-            type: section.type,
-            props: read.props,
-            productIds: resolveProductIds(section.productIds, validProductIds),
-          });
-        }
-
-        const [cover, filled] = await Promise.all([
-          painter.paint(
-            coverPrompt(draft, brand.companyName ?? ""),
-            draft.cover.alt,
-          ),
-          fillBodyImages(sections, byName, painter),
-        ]);
-
-        return {
-          title: draft.title,
-          excerpt: draft.excerpt,
-          seo: draft.seo,
-          cover: {
-            url: cover,
-            alt: draft.cover.alt,
-            prompt: draft.cover.prompt,
-          },
-          categorySlugs: draft.categorySlugs.filter((slug) =>
-            input.categories.some((c) => c.slug === slug),
-          ),
-          authorEmails: draft.authorEmails.filter((email) =>
-            input.authors.some((a) => a.email === email),
-          ),
-          sections: filled,
-        };
-      }),
-    );
-
-    console.info(
-      `[BLOG_POST_DRAFT] ${posts.length}/${input.count} draft(s), ${posts.reduce((n, p) => n + p.sections.length, 0)} section(s) kept, ${droppedSections} dropped, images ${painter.outcome()}`,
-      [...dropped].map(([reason, n]) => `${n}x ${reason}`),
-    );
-
-    return {
-      posts,
-      gaps: describeGaps({
-        grounded: report.outcome === "ok" && report.grounding.trim().length > 0,
-        droppedSections,
-        failedDrafts: input.count - posts.length,
-        // Only when drawing was asked for: without a bucket this call was
-        // never going to draw, and BLOG_POST_ILLUSTRATE is reporting instead.
-        images: input.fileConfigId ? painter.outcome() : "ok",
-        covered: posts.filter((post) => post.cover.url).length,
-      }),
-    };
-  },
 });
 
-/** Tally one reason a section was dropped, so the log groups rather than floods. */
-function note(seen: Map<string, number>, reason: string): void {
-  seen.set(reason, (seen.get(reason) ?? 0) + 1);
+type WritingInput = z.infer<typeof WritingInputSchema>;
+
+/** Refuses a brand a post would read generic from, naming what to fill. */
+function requireEditorialBrand(brand: WritingInput["brand"]): void {
+  const missing = [
+    !brand.companyName?.trim() && "companyName",
+    !brand.language?.trim() && "language",
+    !brand.description?.trim() && "description",
+    !brand.tone?.trim() && "tone",
+    !brand.targetAudience?.trim() && "targetAudience",
+    !brand.dos?.length && "dos",
+    !brand.avoid?.length && "avoid",
+  ].filter((field): field is string => typeof field === "string");
+  if (missing.length > 0) {
+    throw new Error(
+      `Editorial brand context is incomplete — fill ${missing.join(", ")} before generating. A post written without it reads like any other brand's.`,
+    );
+  }
 }
+
+/** Everything a writer reads about this post, in the order it reads it. */
+function writingContext(input: WritingInput, grounding: string): string {
+  const { brand, campaign } = input;
+  const tone = campaign.guardrails.toneOverrides.trim() || brand.tone;
+  return [
+    `## Brand\n${brand.companyName}`,
+    `## What it does\n${brand.description}`,
+    `## Language to write in\n${brand.language}`,
+    brand.storeUrl && `## The store's address\n${brand.storeUrl}`,
+    `## Tone of voice\n${tone}`,
+    `## Audience\n${brand.targetAudience}`,
+    renderRules("Editorial instructions — follow these", brand.dos),
+    renderRules("Guardrails — never do these", brand.avoid),
+    renderRules(
+      "The brand's own words — use these, not the words they displace",
+      brand.vocabulary,
+    ),
+    renderRules(
+      "Commercial policies — state them exactly as written, or not at all",
+      brand.commercialPolicies,
+    ),
+    renderVoiceExamples(brand.voiceExamples),
+    renderCampaign(campaign),
+    `## Format: ${input.format.name}${input.format.length ? `\nLength: ${input.format.length}` : ""}\n${input.format.value}`,
+    input.exemplars.length > 0 &&
+      `## How this brand writes a post like this — match its density and structure, never copy its sentences\n\n${input.exemplars
+        .map(
+          (exemplar) =>
+            `### ${exemplar.title} (${exemplar.slug})\n${exemplar.text}`,
+        )
+        .join("\n\n")}`,
+    renderRules(
+      "How this brand fills its blocks — these values win over the examples below",
+      brand.blocks,
+    ),
+    `## Blocks available — props must match these schemas\n\n${input.blocks
+      .map(renderBlock)
+      .join("\n\n")}`,
+    input.categories.length > 0 &&
+      `## Categories\n${input.categories.map((c) => `- ${c.name} (${c.slug})`).join("\n")}`,
+    input.authors.length > 0 &&
+      `## Authors\n${input.authors
+        .map((a) => `- ${a.name} (${a.email})${a.bio ? ` — ${a.bio}` : ""}`)
+        .join("\n")}`,
+    input.extraInstructions &&
+      `## What the operator asked for\n${input.extraInstructions}`,
+    renderGrounding(grounding),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** The shape an agent answers in: the draft's, with `props` as an object. */
+const AGENT_TASK = `## Your task
+Write the post, and answer with one JSON object in this shape:
+
+\`\`\`json
+{
+  "title": "the headline",
+  "excerpt": "one sentence that earns the click",
+  "seo": { "title": "~60 characters", "description": "~155 characters" },
+  "cover": {
+    "prompt": "what the cover shows, as a photographic brief: subject, setting, light, mood. No text, logos or brand name in the image",
+    "alt": "the cover's alt text"
+  },
+  "categorySlugs": ["chosen from the categories"],
+  "authorEmails": ["chosen from the authors"],
+  "sections": [
+    { "type": "a block's name", "props": { "…": "matching that block's schema" }, "productIds": [] }
+  ]
+}
+\`\`\`
+
+\`props\` is an object here, not a string. \`productIds\` holds campaign product ids for a product block and stays empty for every other. At most ${MAX_SECTIONS} sections.`;
 
 /**
- * A section's product ids, kept to the campaign's own and to one mention each.
- *
- * Nothing stops a model from listing the same id twice — the schema only says
- * "the campaign products this block shows, in order" — and a product block
- * given a repeated id renders that product twice in the same slot.
+ * The brief for the agent that writes the post: the rules it writes under,
+ * its reading of the brand, campaign and blocks, and the shape to answer in.
  */
-export function resolveProductIds(
-  ids: string[],
-  validIds: ReadonlySet<string>,
-): string[] {
-  const kept = new Set<string>();
-  for (const id of ids) {
-    if (validIds.has(id)) kept.add(id);
-  }
-  return [...kept];
-}
-
-/** What separates one draft from the next, when several are asked for. */
-function task(index: number, count: number): string {
-  if (count === 1) return "## Your task\nWrite the post.";
-  return `## Your task\nWrite the post. This is draft ${index + 1} of ${count}: take an angle on this campaign that the others would not — a different reader, a different question, a different part of the catalogue. Do not hedge toward the middle.`;
-}
-
-function coverPrompt(
-  draft: z.infer<typeof PostSchema>,
-  companyName: string,
+export function agentWritingBrief(
+  input: WritingInput,
+  grounding: string,
 ): string {
-  return `Editorial photograph for a blog post titled "${draft.title}" published by ${companyName}. ${draft.cover.prompt} No text, no lettering, no logo, no watermark anywhere in the image.`;
-}
-
-/**
- * The sentinels a draft left behind, turned into addresses.
- *
- * Capped per post rather than per section, so a format citing five image blocks
- * costs what two cost. What is left over is blanked: shipping the sentinel
- * itself would render a broken image on a published page.
- */
-async function fillBodyImages<
-  T extends { type: string; props: Record<string, unknown> },
->(
-  sections: T[],
-  byName: Map<string, { schema: Record<string, unknown> }>,
-  painter: { paint: (prompt: string, alt: string) => Promise<string> },
-): Promise<T[]> {
-  let budget = MAX_BODY_IMAGES;
-  const filled: T[] = [];
-  for (const section of sections) {
-    const schema = byName.get(section.type)?.schema;
-    if (!schema) {
-      filled.push(section);
-      continue;
-    }
-    let props = section.props;
-    for (const request of imageRequests(props, schema)) {
-      if (budget <= 0) break;
-      budget -= 1;
-      const url = await painter.paint(request.prompt, request.prompt);
-      if (url) props = withImageAt(props, request.path, url);
-    }
-    filled.push({ ...section, props: clearUnfilled(props, schema) });
-  }
-  return filled;
-}
-
-/**
- * What the person is told could not be done.
- *
- * Codes rather than sentences: this runs with no notion of who is reading, and
- * a sentence composed here arrives in English inside an interface someone set
- * to their own language.
- */
-export function describeGaps(run: {
-  grounded: boolean;
-  droppedSections: number;
-  failedDrafts: number;
-  images: "ok" | "no-bucket" | "no-model" | "failed";
-  covered: number;
-}): Gap[] {
-  const gaps: Gap[] = [];
-  if (!run.grounded) gaps.push({ code: "no-store-data" });
-  if (run.failedDrafts > 0) {
-    gaps.push({ code: "drafts-failed", count: run.failedDrafts });
-  }
-  if (run.droppedSections > 0) {
-    gaps.push({ code: "sections-dropped", count: run.droppedSections });
-  }
-  if (run.images === "no-bucket") gaps.push({ code: "no-bucket" });
-  if (run.images === "no-model") gaps.push({ code: "no-image-model" });
-  if (run.images === "failed" && run.covered === 0) {
-    gaps.push({ code: "images-failed" });
-  }
-  return gaps;
+  requireEditorialBrand(input.brand);
+  return [SYSTEM, writingContext(input, grounding), AGENT_TASK].join("\n\n");
 }

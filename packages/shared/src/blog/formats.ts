@@ -1,0 +1,100 @@
+/**
+ * A format is how this brand builds a post of a given kind, written as prose
+ * that cites blocks as `@Name`.
+ *
+ * The citations are the link between an editorial decision and a technical
+ * one: they pick the blocks a draft reaches for, on top of the basic ones.
+ */
+import {
+  type BlogBlockDiscoveryOptions,
+  blockComponentName,
+  discoverBlogBlockTypes,
+} from "./block-discovery";
+import type { LiveMeta } from "./live-meta";
+
+export interface MentionableSection {
+  /** The label a citation shows: `ProductShelf`. */
+  name: string;
+  /** What the citation actually points at — the block it resolves to. */
+  resolveType: string;
+  title: string;
+  description?: string;
+}
+
+/**
+ * The sections a format's brief may cite.
+ *
+ * Every discovered block, not one per component name: a site that overrides an
+ * app block has two `Heading`s, and they are different blocks. Collapsing them
+ * was only tenable while a citation was the bare name, which could not tell
+ * them apart; now that it carries the `resolveType` they are distinguishable,
+ * and hiding one meant a brief could never cite it.
+ */
+export function mentionableSections(
+  meta: LiveMeta,
+  options?: BlogBlockDiscoveryOptions,
+): MentionableSection[] {
+  return discoverBlogBlockTypes(meta, options).map((block) => ({
+    name: blockComponentName(block.resolveType),
+    resolveType: block.resolveType,
+    title: block.title,
+    description: block.description,
+  }));
+}
+
+/**
+ * The blocks a brief cites, as resolveTypes.
+ *
+ * A citation is the markdown link `[@Heading](<resolveType>)` — the same shape
+ * `@decocms/shared/mentions` uses for people, and for the same reason: a
+ * component name repeats across an app block and a site's override of it, so
+ * which block renders must not depend on the name.
+ *
+ * A bare `@Name` still reads, because briefs written before this and briefs a
+ * model writes both use it, in code backticks too. It resolves through
+ * `byName` when the site has that component, and is returned as-is when it
+ * does not, so an unknown citation stays visible as one.
+ */
+/**
+ * A `[@Name](resolveType)` citation.
+ *
+ * Both repetitions are bounded, which is the whole reason this is a constant
+ * rather than a literal beside each use. Unbounded, a format of `[@[@[@…`
+ * costs time quadratic in its length: every `[@` starts a scan to the end of
+ * the string looking for a `]` that never comes. A block name and a
+ * resolveType are both far shorter than these caps, so nothing real is
+ * excluded — and a format is written by a person or a model, which is exactly
+ * the input a bound belongs on.
+ */
+const CITATION = /\[@[^\]]{1,200}\]\(([^)\s]{1,500})\)/g;
+
+/** The posts a format holds up as its examples, by slug: the last path segment of each address it cites. */
+export function formatExampleSlugs(markdown: string): string[] {
+  const slugs: string[] = [];
+  for (const [match] of markdown.matchAll(/https?:\/\/[^\s)<>"'`]+/g)) {
+    const address = match.replace(/[.,;:!?]+$/, "");
+    if (!URL.canParse(address)) continue;
+    const slug = new URL(address).pathname.split("/").filter(Boolean).pop();
+    if (slug && !slugs.includes(slug)) slugs.push(slug);
+  }
+  return slugs;
+}
+
+export function citedSections(
+  markdown: string,
+  byName: Record<string, string> = {},
+): string[] {
+  const cited = new Set<string>();
+  const linked = CITATION;
+  for (const match of markdown.matchAll(linked)) {
+    if (match[1]) cited.add(match[1]);
+  }
+  const bare = /(?:^|[\s([{>`])@([A-Za-z][\w-]*)/g;
+  for (const match of markdown.replace(linked, " ").matchAll(bare)) {
+    const name = match[1];
+    if (name) cited.add(byName[name] ?? name);
+  }
+  return [...cited];
+}
+
+// ------------------ Generation ----------------------------------------------

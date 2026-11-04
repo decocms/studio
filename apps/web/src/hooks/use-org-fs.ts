@@ -352,15 +352,22 @@ export async function fetchOrgFsText(
  */
 export function useFileText(url: string, opts?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: KEYS.fileText(url),
+    ...fileTextQuery(url),
     enabled: opts?.enabled !== false && url !== "",
+  });
+}
+
+/** The query behind {@link useFileText}, for reading several files at once. */
+export function fileTextQuery(url: string) {
+  return {
+    queryKey: KEYS.fileText(url),
     staleTime: 60_000,
     retry: false,
     queryFn: async (): Promise<string | null> => {
       const res = await fetch(url, { credentials: "include" });
       return res.ok ? await res.text() : null;
     },
-  });
+  };
 }
 
 /** A text file inside a skill folder, collected for inlining into chat. */
@@ -493,10 +500,18 @@ export function useOrgFsDownloadUrl(volume: string) {
 }
 
 /** Volume-late variant for cross-volume feeds (the Library recent grid). */
+/** Where a file is read from, which is also the key of its text query. */
+export function orgFsReadUrl(
+  orgSlug: string,
+  volume: string,
+  path: string,
+): string {
+  return fsUrl(orgSlug, volume, "read", { path });
+}
+
 export function useOrgFsFileUrl() {
   const { org } = useProjectContext();
-  return (volume: string, path: string) =>
-    fsUrl(org.slug, volume, "read", { path });
+  return (volume: string, path: string) => orgFsReadUrl(org.slug, volume, path);
 }
 
 /**

@@ -71,10 +71,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { buildBlogPostPreviewUrl } from "./blog-preview-url";
-import { SuggestLinksButton } from "./link-suggestions";
-import { useBlogAi } from "@/hooks/use-blog-ai";
-import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
+import { buildBlogPostPreviewUrl } from "@decocms/shared/blog";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useNeverPublished } from "@/components/sections-editor/use-never-published";
 import {
@@ -158,8 +155,6 @@ function PostEditorForm({
     contentBackend.kind === "protocol" && contentBackend.source === "github";
   // A post the draft created: deleting it is no change Publish lists.
   const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
-  const hasAi = useHostedAiProviderKeys().length > 0;
-  const blogAi = useBlogAi();
   // The preview frame's `__draft` (a hosted draft's carries its forced
   // variants and "Preview as" options), so this link opens what it shows.
   const draftPointer = usePreviewLinkDraftPointer({
@@ -216,9 +211,6 @@ function PostEditorForm({
   const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
     save.mutate({ blockKey: refKey, data }),
   );
-
-  // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
-  const [contentRevision, setContentRevision] = useState(0);
 
   const previewUrl = buildBlogPostPreviewUrl({
     decofile,
@@ -384,20 +376,6 @@ function PostEditorForm({
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {blogAi && (
-                  <SuggestLinksButton
-                    decofile={decofile}
-                    virtualMcpId={virtualMcpId}
-                    sections={asBlocks(post.sections)}
-                    currentKey={blockKey}
-                    meta={meta}
-                    hasAi={hasAi}
-                    onApply={(next) => {
-                      setField("sections", next);
-                      setContentRevision((r) => r + 1);
-                    }}
-                  />
-                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -423,7 +401,6 @@ function PostEditorForm({
             <TabsContent value="content">
               <div className="surface p-8">
                 <BlockDocument
-                  key={contentRevision}
                   value={asBlocks(post.sections)}
                   onChange={(next) => setField("sections", next)}
                   meta={meta}

@@ -7,6 +7,7 @@ export const library = {
   "library.context.colorText": "Text",
   "library.context.all": "All",
   "library.context.fillFromSite": "Fill from site",
+  "library.context.fillFailed": "Could not start the fill: {error}",
   "library.context.editBrand": "Edit brand",
   "library.context.fill": "Fill",
   "library.context.notWritten": "Not written yet",
@@ -14,6 +15,10 @@ export const library = {
   "library.context.groupRules": "Generation rules",
   "library.context.groupGuardrails": "Guardrails",
   "library.context.groupExtra": "Extra context",
+  "library.context.groupContent": "Content",
+  "library.context.campaignsOffTitle": "Campaigns are off",
+  "library.context.campaignsOffDescription":
+    "Agentic blog generation is off for this organization. An admin can turn it on under Settings.",
   "library.context.groupMore": "More",
   "library.context.itemVoice": "Voice & tone",
   "library.context.itemAudience": "Audience",
@@ -26,10 +31,24 @@ export const library = {
   "library.context.itemKeywords": "Keywords",
   "library.context.itemDates": "Special dates",
   "library.context.itemPolicies": "Commercial policies",
+  "library.context.itemFormats": "Formats",
+  "library.context.itemBlocks": "Blog blocks",
+  "library.context.itemCampaigns": "Campaigns",
+  "library.context.noCampaigns": "No campaigns yet",
+  "library.context.siteLabel": "Site",
+  "library.context.languageLabel": "Language",
+  "library.context.sitePlaceholder": "https://www.your-store.com",
+  "library.context.languagePlaceholder": "en-US",
   "library.context.fillBrandPrompt":
-    "Read our site and write our brand guide at {path}, one ## section each: voice and tone, audience, example phrases that sound like us and that don't, writing rules, vocabulary, don'ts, values with their evidence, competitors, keywords, special dates and commercial policies. Keep anything already written.",
+    "Use the brand skill and follow its fill.md to fill our brand guide at {path} from our site, {site}, its repository and the store's systems: VTEX, GA4 and Search Console. Fill only what is still empty, including the post formats and the site's colors and fonts, and keep everything already written exactly as it is.",
+  "library.context.fillBrandReplacePrompt":
+    "Use the brand skill and follow its fill.md in replace mode to rewrite our brand guide at {path} from our site, {site}, its repository and the store's systems: VTEX, GA4 and Search Console. Rewrite every section you find evidence for, including the post formats and the site's colors and fonts; never blank a section you found nothing for.",
+  "library.context.fillModeEmpty": "Fill only what is empty",
+  "library.context.fillModeReplace": "Replace with what the site says",
   "library.context.fillSectionPrompt":
-    'Read our site and add a "{section}" section to our brand guide at {path}. Keep everything else as it is.',
+    'Use the brand skill and follow its fill.md to fill the "{section}" section of our brand guide at {path} from our site, {site}, its repository and the store\'s systems: VTEX, GA4 and Search Console. Leave everything else as it is.',
+  "library.context.siteUnknown":
+    "whose address you can find from our VTEX connection or the brand's name",
   "library.context.thisProject": "This project",
   "library.context.allFiles": "All files",
   "library.context.brand": "Brand",
@@ -221,6 +240,54 @@ export const library = {
   "library.library.placeUploads": "Uploads",
   "library.library.placeOutputs": "Outputs",
   "library.library.placeSkills": "Skills",
+  "library.formats.title": "Post formats",
+  "library.formats.description":
+    "One file per format, in the brand's formats folder. The agent picks a format by its summary and follows its brief.",
+  "library.formats.new": "New format",
+  "library.formats.fill": "Fill with the agent",
+  "library.formats.fillBlocks":
+    "Cite only the blog blocks the site {site} renders: list them with BLOG_SITE_BLOCKS (virtualMcpId {id}, branch main) and use the names it returns.",
+  "library.formats.blocksFrom": "Blocks from",
+  "library.formats.mentionHint":
+    "Type @ to cite one of the site's blog blocks.",
+  "library.formats.noBlocks": "No site blocks found",
+  "library.formats.fillPrompt":
+    "Use the brand skill and follow its fill.md to write our brand's post formats, one file per format under {path}, in the shape of its templates/format.md, from our site, {site}, its repository and GA4. Write formats only if there are none yet, and keep everything already written exactly as it is.",
+  "library.formats.fillReplacePrompt":
+    "Use the brand skill and follow its fill.md in replace mode to rewrite our brand's post formats, one file per format under {path}, in the shape of its templates/format.md, from our site, {site}, its repository and GA4. Rewrite every format you find evidence for, filling every section of the template, and move any formats still in the brand guide into files; never delete a format you found nothing for.",
+  "library.formats.empty": "No formats yet.",
+  "library.formats.legacyTitle":
+    "These formats are still inside the brand guide.",
+  "library.formats.legacyHint":
+    "Move each into its own file to edit it here. The guide's formats section is then removed.",
+  "library.formats.moveToFiles": "Move to files",
+  "library.formats.moved": "Formats moved to their own files.",
+  "library.formats.unnamed": "No name: the agent skips this file.",
+  "library.formats.tooLong":
+    "Too long: the agent skips briefs over {max} characters.",
+  "library.formats.name": "Name",
+  "library.formats.namePlaceholder": "Seasonal buying guide",
+  "library.formats.summary": "Summary",
+  "library.formats.summaryPlaceholder":
+    "What it is for, in one line: the agent chooses by it",
+  "library.formats.length": "Length",
+  "library.formats.lengthPlaceholder": "1,200–1,800 words",
+  "library.formats.brief": "Brief",
+  "library.formats.briefPlaceholder":
+    "What the format is for, its structure, site blocks, title and SEO, images, tone, what to avoid and examples",
+  "library.formats.charCount": "{count}/{max} characters",
+  "library.formats.template":
+    "## What it is for\n\n## When to use it\n\n## When not to\n\n## Structure\n\n## Site blocks\n\n## Title and SEO\n\n## Images\n\n## Tone\n\n## Avoid\n\n## Examples",
+  "library.formats.saved": "Format saved.",
+  "library.formats.deleted": "Format deleted.",
+  "library.formats.failed": "Could not save the format.",
+  "library.formats.conflict":
+    "This format changed while you were editing it. It was reloaded.",
+  "library.formats.delete": "Delete",
+  "library.formats.deleteTitle": 'Delete "{name}"?',
+  "library.formats.deleteDescription":
+    "Its file is deleted. Cards that already use it keep their copy of the brief.",
+
   "library.library.anyType": "Any type",
   "library.library.typeFilter": "Type",
   "library.entries.createdBy": "Created by",

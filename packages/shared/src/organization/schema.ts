@@ -320,7 +320,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "The blog's brand context tab and its agentic generation — campaigns, post drafting and link suggestions. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
+      "The content track: the brand guide the blog writes from, its campaigns, and blogpost cards an agent takes from a hypothesis to a draft on the site. Off by default; with it off the blog is written by hand and every BLOG_* tool refuses, over MCP and in the app alike, so an agent cannot spend the organization's credits on a feature it turned off.",
     ),
   site_apps_install_enabled: z
     .boolean()
@@ -333,6 +333,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "Previewing more than one app of a monorepo: an Apps list in project settings, app tabs with a split view in the preview, and a dev server per extra app in the sandbox, served at its own preview host. Off by default.",
+    ),
+  blog_writing_high_effort: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run a blogpost card's execute phase at high reasoning effort instead of a run's usual low. Off by default: the whole run, from grounding to review, reasons longer and costs more, and it takes a sandbox image new enough to read the effort.",
     ),
   hide_default_blog_blocks: z
     .boolean()

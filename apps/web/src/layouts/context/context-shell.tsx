@@ -29,6 +29,7 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { ContextSection } from "@/lib/legacy-workspace-search";
 import { PROJECT_SETTINGS_SECTIONS } from "@/views/virtual-mcp/settings/sections";
 import { BrandOverview } from "./brand-overview";
+import { BrandCampaigns } from "./brand-campaigns";
 
 const OrgMcps = lazy(() => import("@/routes/orgs/connections"));
 const SkillsPage = lazy(() => import("@/routes/orgs/settings/skills"));
@@ -148,6 +149,11 @@ const PROJECT_GROUPS: Group[] = [
   },
 ];
 
+/** A section reached from inside another, and the one the menu shows it under. */
+const PARENT_SECTION: Partial<Record<ContextSection, ContextSection>> = {
+  campaigns: "brand",
+};
+
 const PROJECT_SETTINGS_GROUPS: Group[] = [
   {
     items: (["general", "views", "repository", "site"] as const).map((id) => ({
@@ -179,6 +185,7 @@ function ContextNav({
   section: ContextSection;
 }) {
   const t = useT();
+  const shown = PARENT_SECTION[section] ?? section;
   return (
     <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 px-3 py-2 md:w-[216px] md:flex-col md:gap-5 md:overflow-y-auto md:border-b-0 md:pt-4 md:pr-1">
       {groups.map((group) => (
@@ -194,7 +201,7 @@ function ContextNav({
           {group.items.map(({ id, labelKey, Icon }) => (
             <Link
               key={id}
-              ref={id === section ? revealInRow : undefined}
+              ref={id === shown ? revealInRow : undefined}
               to="."
               search={
                 id === "files" || id === "general"
@@ -202,11 +209,7 @@ function ContextNav({
                   : { section: id }
               }
               activeOptions={{ includeSearch: true, explicitUndefined: true }}
-              className={cn(
-                ROW,
-                "h-8 gap-2.5 px-2.5",
-                rowState(id === section),
-              )}
+              className={cn(ROW, "h-8 gap-2.5 px-2.5", rowState(id === shown))}
             >
               <Icon size={16} className="shrink-0" />
               {t(labelKey)}
@@ -234,9 +237,15 @@ export function ContextShell({
       : scope === "project"
         ? PROJECT_GROUPS
         : PROJECT_SETTINGS_GROUPS;
-  const label = groups
-    .flatMap((group) => group.items)
-    .find((item) => item.id === section)?.labelKey;
+  const items = groups.flatMap((group) => group.items);
+  const parent = PARENT_SECTION[section];
+  const parentLabel = parent
+    ? items.find((item) => item.id === parent)?.labelKey
+    : undefined;
+  const label =
+    section === "campaigns"
+      ? "sandbox.blogContext.tabCampaigns"
+      : items.find((item) => item.id === section)?.labelKey;
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
       {/* Files trail their folders after the page crumb themselves. */}
@@ -244,7 +253,18 @@ export function ContextShell({
         <Page.Breadcrumbs
           after="page"
           parent={{ link: { to: ".", search: {} } }}
-          items={[{ key: "context-section", label: t(label) }]}
+          items={[
+            ...(parent && parentLabel
+              ? [
+                  {
+                    key: "context-parent",
+                    label: t(parentLabel),
+                    link: { to: "." as const, search: { section: parent } },
+                  },
+                ]
+              : []),
+            { key: "context-section", label: t(label) },
+          ]}
         />
       )}
       <ContextNav groups={groups} section={section} />
@@ -295,6 +315,16 @@ export function ContextSectionBody({
           <Page.Content>
             <Page.Container>
               <BrandOverview />
+            </Page.Container>
+          </Page.Content>
+        </Page>
+      );
+    case "campaigns":
+      return (
+        <Page>
+          <Page.Content>
+            <Page.Container>
+              <BrandCampaigns />
             </Page.Container>
           </Page.Content>
         </Page>

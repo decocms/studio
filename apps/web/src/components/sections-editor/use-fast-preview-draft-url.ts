@@ -1,4 +1,4 @@
-import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
+import { buildDraftPointer, withDraftPointer } from "@decocms/shared/blog";
 import { useDecofileDraft } from "./decofile-api";
 import { useProtocolDraft } from "./content-protocol-api";
 import { useContentBackend } from "./use-content-backend";

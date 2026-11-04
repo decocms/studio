@@ -3,7 +3,7 @@ import {
   isLegacyPageResolveType,
   isPageResolveType,
   LEGACY_PAGE_RESOLVE_TYPES,
-} from "./page-types";
+} from "@decocms/shared/page-types";
 import {
   DEFAULT_LIVE_PAGE_RESOLVE_TYPE,
   findLivePageResolveType,

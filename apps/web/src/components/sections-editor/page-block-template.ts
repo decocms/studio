@@ -1,5 +1,5 @@
 import type { LiveMeta } from "./resolve-schema";
-import { isLegacyPageResolveType } from "./page-types";
+import { isLegacyPageResolveType } from "@decocms/shared/page-types";
 import { findNewPageResolveType } from "./section-catalog";
 import { isNoSchemaMeta } from "./schemaless";
 import { defaultPageSeoResolveType } from "./seo-schema";

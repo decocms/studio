@@ -2,9 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildFastPreviewDraftUrl,
   buildPageRenderRequest,
-  DRAFT_OFF,
   resolveSectionPreviewBase,
-  withDraftPointer,
 } from "./section-preview-url";
 
 const PROD = "https://www.acme.com";
@@ -93,32 +91,6 @@ describe("buildFastPreviewDraftUrl", () => {
   });
 });
 
-describe("withDraftPointer", () => {
-  const POINTER = "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc123";
-
-  it("stamps the pointer onto an already-built page url", () => {
-    const url = new URL(
-      withDraftPointer("https://www.example.com/blog/news/post", POINTER),
-    );
-    expect(url.pathname).toBe("/blog/news/post");
-    expect(url.searchParams.get("__draft")).toBe(POINTER);
-  });
-
-  it("keeps query params the page url already carried", () => {
-    const url = new URL(
-      withDraftPointer("https://www.example.com/search?q=chair", POINTER),
-    );
-    expect(url.searchParams.get("q")).toBe("chair");
-    expect(url.searchParams.get("__draft")).toBe(POINTER);
-  });
-
-  it("returns the url untouched without a grant — a sandbox session has none", () => {
-    const url = "https://www.example.com/blog/news/post";
-    expect(withDraftPointer(url, null)).toBe(url);
-    expect(withDraftPointer(url, undefined)).toBe(url);
-  });
-});
-
 describe("resolveSectionPreviewBase", () => {
   it("prefers the sandbox dev server when Fast Preview is off", () => {
     expect(
@@ -194,29 +166,6 @@ describe("resolveSectionPreviewBase", () => {
         fastPreviewActive: false,
       }),
     ).toBeNull();
-  });
-});
-
-describe("DRAFT_OFF", () => {
-  const PAGE = "https://www.example.com/blog/news/post";
-
-  it("asks the site for its published render — what the boot fallback stamps", () => {
-    const url = new URL(withDraftPointer(PAGE, DRAFT_OFF));
-    expect(url.pathname).toBe("/blog/news/post");
-    expect(url.searchParams.get("__draft")).toBe("off");
-  });
-
-  it("replaces a pointer already on the url — the trailing draft is what it kills", () => {
-    const url = new URL(
-      withDraftPointer(
-        withDraftPointer(
-          PAGE,
-          "api.deco.cx/api/acme/decofile/vm-1/main?token=t@abc",
-        ),
-        DRAFT_OFF,
-      ),
-    );
-    expect(url.searchParams.getAll("__draft")).toEqual(["off"]);
   });
 });
 

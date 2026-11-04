@@ -60,16 +60,23 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
-  "BLOG_SITE_GROUND",
-  "BLOG_SITE_CATALOGUE",
-  "BLOG_BRAND_EXTRACT",
-  "BLOG_BRAND_ENRICH",
-  "BLOG_CONTEXT_EXTRACT",
-  "BLOG_FORMAT_SUGGEST",
-  "BLOG_POST_DRAFT",
+  "BLOG_STATE_GET",
+  "BLOG_STATE_SET",
+  "BLOG_CARD_LIST",
+  "BLOG_CARD_GET",
+  "BLOG_CARD_CREATE",
+  "BLOG_CARD_UPDATE",
+  "BLOG_CARD_DELETE",
+  "BLOG_CARD_RUN",
+  "BLOG_BRAND_FILL",
+  "BLOG_CAMPAIGN_RUN",
+  "BLOG_CAMPAIGN_UPDATE",
+  "BLOG_SITE_BLOCKS",
+  "BLOG_POST_ASSEMBLE",
+  "BLOG_POST_BRIEF",
+  "BLOG_POST_WRITE",
   "BLOG_POST_ILLUSTRATE",
-  "BLOG_LINK_SUGGEST",
-  "BLOG_CAMPAIGN_SUGGEST",
+  "BLOG_POST_PREVIEW",
   "ORGANIZATION_DOMAIN_LIST",
   "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
@@ -425,49 +432,76 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
-    name: "BLOG_SITE_GROUND",
+    name: "BLOG_STATE_GET",
     description:
-      "Read the site's connected systems once, for the generators that follow",
+      "Read the organization's blog brand, writing rules, formats and campaigns from its brand folder",
     category: "Blog",
   },
   {
-    name: "BLOG_SITE_CATALOGUE",
+    name: "BLOG_STATE_SET",
     description:
-      "Turn a grounding pass's raw output into the store's catalogue",
+      "Write the organization's blog campaigns and campaign seeds to its brand folder",
     category: "Blog",
   },
   {
-    name: "BLOG_BRAND_EXTRACT",
+    name: "BLOG_CARD_LIST",
+    description: "List the content track's blogpost cards",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_GET",
+    description: "Read a blogpost card",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_CREATE",
+    description: "Create a blogpost card for a site and a campaign",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_UPDATE",
+    description: "Merge a change into a blogpost card",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CARD_DELETE",
+    description: "Delete a blogpost card",
+    category: "Blog",
+    dangerous: true,
+  },
+  {
+    name: "BLOG_CARD_RUN",
     description:
-      "Infer a brand's identity (name, audience, values, competitors) from a site",
+      "Start a blogpost card's agent, to bring its hypothesis or write its post",
     category: "Blog",
   },
   {
-    name: "BLOG_BRAND_ENRICH",
+    name: "BLOG_BRAND_FILL",
     description:
-      "Research a brand on the web and drop the claims its evidence does not support",
+      "Fill the brand guide in a chat of its own that reads the store's connections",
     category: "Blog",
   },
   {
-    name: "BLOG_CONTEXT_EXTRACT",
+    name: "BLOG_CAMPAIGN_RUN",
     description:
-      "Infer a blog's writing context (tone, dos and don'ts) from a site",
+      "Start or continue a campaign's agent in a chat of its own that reads the store's connections",
     category: "Blog",
   },
   {
-    name: "BLOG_FORMAT_SUGGEST",
-    description: "Name the post formats a blog writes in",
+    name: "BLOG_CAMPAIGN_UPDATE",
+    description: "Merge a change into a blog campaign",
     category: "Blog",
   },
   {
-    name: "BLOG_CAMPAIGN_SUGGEST",
+    name: "BLOG_POST_BRIEF",
     description:
-      "Propose campaigns from a seed, grounded in the site's systems",
+      "Read the brief for writing a blog post yourself, without spending a model",
     category: "Blog",
   },
   {
-    name: "BLOG_POST_DRAFT",
-    description: "Write a blog post from a theme and a format",
+    name: "BLOG_POST_WRITE",
+    description:
+      "Save a written post to the site as a draft on the Posts board",
     category: "Blog",
   },
   {
@@ -477,8 +511,21 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Blog",
   },
   {
-    name: "BLOG_LINK_SUGGEST",
-    description: "Propose internal links from a post to the site's other posts",
+    name: "BLOG_POST_PREVIEW",
+    description:
+      "Find where a post written on a branch renders on its site, to look at it",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_SITE_BLOCKS",
+    description:
+      "Read the blocks a post can be built from, with their schemas, categories and authors",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_POST_ASSEMBLE",
+    description:
+      "Turn a drafted post into the block this site stores, without persisting it",
     category: "Blog",
   },
   {

@@ -1,4 +1,3 @@
-import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -166,7 +165,7 @@ import {
   categoryAncestors,
   type CategoryTreeRow,
   orderCategoryTree,
-} from "./blog/category-tree";
+} from "@decocms/shared/blog";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,
@@ -208,12 +207,6 @@ const PostEditor = lazy(() =>
 
 const RecordEditor = lazy(() =>
   import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
-);
-
-const BlogContext = lazy(() =>
-  import("./blog/context").then((m) => ({
-    default: m.BlogContext,
-  })),
 );
 
 const CategoryEditor = lazy(() =>
@@ -258,25 +251,17 @@ export type CollectionId =
   | "loaders"
   | "actions"
   | "redirects"
-  | "context"
   | BlogKind;
 
 /**
- * The collection actually shown.
- *
- * `activeCollection` is local state and the context tab is reachable only by
- * clicking its row, so no link can land on it — but someone already there when
- * an admin turns the AI-blog flag off would be looking at a tab the menu no
- * longer lists. Normalising once at the source spares every reader downstream
- * a guard of its own.
+ * The collection actually shown. Normalising once at the source spares every
+ * reader downstream a guard of its own.
  */
 export function visibleCollection(
   active: CollectionId,
-  blogAi: boolean,
   /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
 ): CollectionId {
-  if (active === "context" && !blogAi) return "posts";
   if (blocksV8 && active === "calendar") return "pages";
   return active;
 }
@@ -510,12 +495,7 @@ function ContentBrowserReady({
       deepLinkCollection(contentDeepLink.contentCollection, !runsSiteCode) ??
       "pages",
   );
-  const blogAi = useBlogAi();
-  const activeCollection = visibleCollection(
-    storedCollection,
-    blogAi,
-    !runsSiteCode,
-  );
+  const activeCollection = visibleCollection(storedCollection, !runsSiteCode);
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
   // Calendar views. Both keep the open thread, so they work in this same draft.
@@ -1599,14 +1579,6 @@ function ContentBrowserReady({
               // draft; the defaults are saved with the first real change.
               persistDefaults={typesMode ? false : undefined}
             />
-          ) : activeCollection === "context" ? (
-            <BlogContext
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              decofile={decofile}
-              meta={meta}
-            />
           ) : activeCollection === "seo" ? (
             <SeoEditor
               orgSlug={orgSlug}
@@ -1861,7 +1833,6 @@ function ContentBrowserReady({
             counts={counts}
             hidden={hiddenCollections}
             showBlog={showBlog}
-            showContext={blogAi}
             onSelect={(id) => {
               setActiveCollection(id);
               setSelection(null);
@@ -1873,7 +1844,6 @@ function ContentBrowserReady({
           activeCollection !== "seo" &&
           activeCollection !== "site" &&
           activeCollection !== "settings" &&
-          activeCollection !== "context" &&
           activeCollection !== "calendar" &&
           activeCollection !== "post-schedule" &&
           activeCollection !== "posts" &&

@@ -1,0 +1,189 @@
+# Writing a card's post
+
+The hypothesis is approved; now the post, which you write yourself. Six
+stages, in order. At the start of each, save its name as the card's `stage`,
+so the board shows where you are, and save each stage's result as soon as you
+have it. The card arrives in `generating` at `grounding`.
+
+Read the card and `BLOG_STATE_GET` first. You need from them: the site
+(`virtualMcpId`), the branch (`branch`), the hypothesis, the campaign (by
+`campaignId`), the brand (`brand` and `context`) and the chosen format.
+
+## 1. `grounding` — what the store has, and what the site renders
+
+- **The store**, through `CONNECTION_TOOL_CALL`: each of the campaign's
+  products (`VTEX_GET_PRODUCT`: its name, price, availability and address),
+  and anything the post will claim that the hypothesis's evidence does not
+  already carry. Write to `/tmp/blog/grounding.txt` only what the post may
+  state to a reader: product facts, rules and limits, policies. One fact per
+  line, each figure exactly as reported, with the tool's name and no list of
+  the fields you read. Traffic and sales figures (sessions, entrances,
+  purchases, conversion, items per order) chose the post's angle and are not
+  for the reader: they stay out, and so does any of the card's evidence a
+  reader could not use.
+- **The site**: `BLOG_SITE_BLOCKS` with `virtualMcpId`, `branch` and the
+  hypothesis's `format`, through a file. It returns `blocks` (the only ones a
+  post may be built from, with their schemas), `exemplars` (the brand's own
+  posts in the format), `categories` and `authors`.
+
+## 2. `drafting` — the post, written by you
+
+`BLOG_POST_BRIEF`, through a file, built with `bun -e` from what you have:
+
+```json
+{
+  "brand": { "...": "brand and context from BLOG_STATE_GET, merged" },
+  "campaign": { "...": "the campaign's data", "name": "<its campaignName>" },
+  "format": { "name": "...", "value": "...", "length": "<when the hypothesis has one>" },
+  "blocks": [], "exemplars": [], "categories": [], "authors": [],
+  "extraInstructions": "<the statement, the angle, the keywords and the guardrails, as the hypothesis has them, and the pages its objective sends readers to, without its figures>",
+  "grounding": "<the contents of /tmp/blog/grounding.txt>"
+}
+```
+
+It answers with `brief`: the rules this brand's posts are written under, the
+brand, the campaign, the blocks with their schemas, the brand's own posts in
+the format, and the JSON shape to answer in. Save it to `/tmp/blog/brief.txt`
+and read it whole, then read `writing.md` (in this skill folder), then write
+the post to `/tmp/blog/post.json` in that shape. The brief is binding: its
+blocks are the only ones, their schemas say what each section's `props` may
+hold, and its products are the only products.
+
+**The editor.** Before you save the post, one subagent (the `Agent` tool)
+reviews it: tell it to follow `review-prose.md`, and hand it the absolute
+paths of that file, `writing.md` (both in this skill folder),
+`/tmp/blog/post.json` and `/tmp/blog/brief.txt`. Apply its `edits` and `cuts`
+where they hold: a rewrite that breaks a block's schema or loses a fact does
+not. It reviews once.
+
+Save the post on the card: `title`, `excerpt`, `seo`, `cover` (`alt` and
+`prompt`) and `sections`.
+
+## 3. `illustrating` — the cover, then the body
+
+Offer the products' own photographs, so the images look like what the brand
+sells: from the campaign's products, one image of each product before a
+second of any, at most 12, as `productImages`.
+
+Find the bucket: the card's `fileConfigId`, or the only one `FILE_CONFIG_LIST`
+returns. With several and none on the card, ask the person which. With none,
+add `{ "code": "no-bucket" }` to the post's `gaps`, clear every `generate:`
+note, and go to "No cover drawn" below.
+
+**The cover**, one `BLOG_POST_ILLUSTRATE` call:
+
+```json
+{
+  "requests": [{ "id": "cover", "prompt": "<post.cover.prompt, verbatim>", "alt": "<post.cover.alt>" }],
+  "productImages": ["..."],
+  "companyName": "<brand.companyName>",
+  "fileConfigId": "<bucket>"
+}
+```
+
+Pass the prompt verbatim: the tool adds the brand and the no-lettering rule
+itself. Save the address as the post's `cover.url` as soon as it comes.
+
+**The body**: where you wanted a picture, a prop's value starts with
+`generate:` followed by what it shows. For each, at most two, call
+`BLOG_POST_ILLUSTRATE` with one request whose `prompt` is the text after
+`generate:`, then put the address in that prop and save `sections`. A failed
+one gets an empty value, never the note.
+
+`outcome`: `ok` is an address; `no-model` means the organization has no image
+model: add `{ "code": "no-image-model" }` to the post's `gaps`, clear every
+`generate:` note, and go on; `failed` can be retried once, then add
+`{ "code": "images-failed" }` if no image was made at all.
+
+**No cover drawn.** When this stage ends without a cover address (no bucket,
+`no-model`, or `failed` after its retry), the cover is a product's own
+photograph: set `cover.url` to the first `https://` address in `productImages`
+and `cover.alt` to that product's name, save it on the card, and keep the gap
+you recorded. With no product photograph, the cover stays empty. Never use any
+other image.
+
+## 4. `assembling` — the block this site stores
+
+`BLOG_POST_ASSEMBLE`, through a file:
+
+```json
+{
+  "virtualMcpId": "...",
+  "branch": "<the card's branch>",
+  "postId": "<the card's id>",
+  "draft": { "...": "the post from the card, with cover.url and the filled sections" },
+  "planning": {
+    "campaignKey": "blog-manager/campaigns/<campaignId>",
+    "format": { "name": "...", "value": "..." },
+    "brief": "<the hypothesis's statement>"
+  }
+}
+```
+
+`postId` is always the card's id: the draft is filed under it.
+
+It checks every section against its block's schema. `droppedReasons` says
+which sections it dropped and why: fix those sections in `post.json`, save
+`sections` on the card, and assemble again, once. What still fails stays out;
+record `{ "code": "sections-dropped", "count": <dropped> }` in the post's
+`gaps` and say so in the chat.
+
+**Internal links**, when `posts` is not empty: choose up to five yourself.
+Each is an exact phrase from `bodyText`, a few words that name what another
+post is about, and that post's `slug`; one link per post at most, and only
+where a reader would want it. Assemble again with the same input plus `links`.
+`applied` lower than what you sent is normal.
+
+## 5. `writing` — the draft, on the card's branch
+
+`BLOG_POST_WRITE`, through a file: `virtualMcpId`, `branch`, `postId` (the
+card's id) and `post` (from the last assembly). Check that the `branch` it
+answers with is the card's.
+
+A `BlockConflictError` means someone edited the same post meanwhile: read the
+card again and write once more.
+
+Save `postKey` (the `key`) and `commit` (the `version`) on the card.
+
+## 6. `reviewing` — the post as its reader sees it
+
+`BLOG_POST_PREVIEW` with `virtualMcpId`, `postId`, `branch`, and the `slug` of
+each of `BLOG_SITE_BLOCKS`'s `exemplars` as `exemplarSlugs`. A null `url` ends
+this stage: add `{ "code": "no-preview", "detail": "<its reason>" }` to the
+post's `gaps` and go to "Done". The address carries a grant to read the
+branch: never paste it in the chat.
+
+Save the last assembly's `post` to `/tmp/blog/assembled.json`, then render
+both pages with `render-check` (in this skill folder):
+
+```bash
+node <this skill folder>/render-check "<url>" /tmp/blog/render/post --post=/tmp/blog/assembled.json
+node <this skill folder>/render-check "<an exemplar's url>" /tmp/blog/render/exemplar
+```
+
+The first writes `report.json` and the post's slices; the second, the
+example's slices. A page that answers 404, or shows none of the post's blocks,
+is a preview that does not reach this branch, not a broken post: add
+`{ "code": "no-preview", "detail": "<what it showed>" }` to `gaps` and go to
+"Done".
+
+Then one subagent (the `Agent` tool) reviews it: tell it to follow
+`review-visual.md`, and hand it the absolute paths of that file, the slices of
+both pages, `/tmp/blog/render/post/report.json`, `/tmp/blog/assembled.json`
+and `/tmp/blog/brief.txt`.
+
+Fix what the report and the reviewer find, in `post.json`: a heading level
+the block renders, a product block's ids, an image that loads, a block that
+shows nothing. Then assemble, save its `post` to `/tmp/blog/assembled.json`
+again, write, and call `BLOG_POST_PREVIEW` again: its address names the commit
+it renders, and the old one still shows the post before your fix. Render the
+new address and have a reviewer look once more. Two rounds at most. Each
+problem still there goes in the post's `gaps` as `{ "code": "visual",
+"detail": "<what a reader sees, in a sentence>" }`, and in the chat.
+
+## Done
+
+In one update: `stage: "done"`, `status: "awaiting_review"`, `postKey` (the
+last `key`) and `commit` (the last `version`). In the chat, say what was
+written, what was dropped or left without an image, what the review fixed and
+what it left, and that the draft is waiting for review in the Site Editor.

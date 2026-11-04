@@ -101,12 +101,22 @@ const GITHUB_TOKEN = /\b(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g;
 const BASE64_DATA_URL =
   /data:[a-z0-9.+-]{0,60}\/[a-z0-9.+-]{0,60};base64,[A-Za-z0-9+/=]{100,}/gi;
 
+/**
+ * A draft grant inside a `?__draft=` pointer, `…?token=<grant>@<sha>`, raw or
+ * URL-encoded. It reads a branch's unpublished decofile without a session for
+ * six hours, and a run that previews its post carries the address in a tool
+ * result and a command. Only a `token` that runs into the pointer's `@` matches,
+ * so a word like "token" in prose is left alone.
+ */
+const DRAFT_GRANT = /(token(?:=|%3D))[A-Za-z0-9_.-]{20,2048}(?=@|%40)/gi;
+
 function sanitizeForPg(value: string): string {
   return value
     .replace(NUL, "")
     .replace(LONE_SURROGATE, "\uFFFD")
     .replace(URL_USERINFO, "$1***@")
     .replace(GITHUB_TOKEN, "$1***")
+    .replace(DRAFT_GRANT, "$1***")
     .replace(BASE64_DATA_URL, "[base64 data omitted]");
 }
 

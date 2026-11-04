@@ -7,12 +7,15 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { File02, Loading02, SearchSm, Tag01 } from "@untitledui/icons";
+import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import type { LinkSource } from "@/components/sections-editor/rich-text-link-control";
-import { applyBlogPageSlug, findBlogPageSlug } from "../blog-preview-url";
-import { listPostsWithMeta, readBlogContext } from "../blog-data";
+import { applyBlogPageSlug, findBlogPageSlug } from "@decocms/shared/blog";
+import { useProjectContext } from "@/sdk";
+import { listPostsWithMeta } from "../blog-data";
+import { useBlogState } from "../use-blog-state";
 import { str } from "./primitives";
 import { reHome } from "@decocms/shared/store-url";
 import {
@@ -233,11 +236,11 @@ export function useLinkSources({
   sandboxRef?: PreviewProxyRef | null;
 }): LinkSource[] {
   const t = useT();
-  // The decofile is already here for the post picker, and the brand block it
-  // holds is where the storefront domain lives.
-  const storeUrl = decofile
-    ? str(readBlogContext(decofile).merged.storeUrl)
-    : "";
+  const { org } = useProjectContext();
+  const blogAi = useBlogAi();
+  // The storefront domain is the brand's, read off its guide.
+  const { brand } = useBlogState({ orgSlug: org.slug, enabled: blogAi });
+  const storeUrl = str(brand.storeUrl);
   const sources: LinkSource[] = [];
   if (decofile) {
     sources.push({

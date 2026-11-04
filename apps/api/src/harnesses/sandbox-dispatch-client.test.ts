@@ -93,6 +93,19 @@ describe("selectRunConnections", () => {
     expect(select(new Set(["conn_figma"]))).toEqual([]);
   });
 
+  test("takes a run's own connections whatever the agent, the flag or the exclusion", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set<string>(),
+        runIds: new Set(["conn_vtex", "conn_broken"]),
+        excludedIds: new Set(["conn_vtex"]),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_vtex"]);
+  });
+
   test("mounts the agent's own connections without the org-wide flag", () => {
     expect(
       selectRunConnections({

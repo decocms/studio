@@ -117,14 +117,14 @@ function stripHostileMarkup(html: string): string {
 }
 
 /** Inline tags a paragraph may keep. Anything else loses its markup. */
-const ALLOWED_INLINE = /^(a|b|strong|i|em|u|s|code|br|span|sub|sup)$/;
+export const ALLOWED_INLINE = /^(a|b|strong|i|em|u|s|code|br|span|sub|sup)$/;
 
 /**
  * A URL safe to put in an `href`/`src`. Relative URLs carry no scheme and are
  * fine; an absolute one has to name a scheme that cannot execute, which rules
  * out `javascript:` and `data:`.
  */
-function isSafeUrl(url: string): boolean {
+export function isSafeUrl(url: string): boolean {
   // A browser drops control characters before resolving a URL, so `java<TAB>script:`
   // navigates. Drop them the same way, then judge the scheme on what is left.
   let bare = "";

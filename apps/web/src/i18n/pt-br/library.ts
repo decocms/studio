@@ -9,6 +9,8 @@ export const library = {
   "library.context.colorText": "Texto",
   "library.context.all": "Todos",
   "library.context.fillFromSite": "Preencher pelo site",
+  "library.context.fillFailed":
+    "Não foi possível começar o preenchimento: {error}",
   "library.context.editBrand": "Editar marca",
   "library.context.fill": "Preencher",
   "library.context.notWritten": "Ainda não escrito",
@@ -16,6 +18,10 @@ export const library = {
   "library.context.groupRules": "Regras de escrita",
   "library.context.groupGuardrails": "Limites",
   "library.context.groupExtra": "Contexto extra",
+  "library.context.groupContent": "Conteúdo",
+  "library.context.campaignsOffTitle": "Campanhas estão desligadas",
+  "library.context.campaignsOffDescription":
+    "A geração agêntica do blog está desligada nesta organização. Um admin pode ligar em Configurações.",
   "library.context.groupMore": "Mais",
   "library.context.itemVoice": "Tom de voz",
   "library.context.itemAudience": "Público",
@@ -28,10 +34,24 @@ export const library = {
   "library.context.itemKeywords": "Palavras-chave",
   "library.context.itemDates": "Datas especiais",
   "library.context.itemPolicies": "Políticas comerciais",
+  "library.context.itemFormats": "Formatos",
+  "library.context.itemBlocks": "Blocos do blog",
+  "library.context.itemCampaigns": "Campanhas",
+  "library.context.noCampaigns": "Nenhuma campanha ainda",
+  "library.context.siteLabel": "Site",
+  "library.context.languageLabel": "Idioma",
+  "library.context.sitePlaceholder": "https://www.sua-loja.com.br",
+  "library.context.languagePlaceholder": "pt-BR",
   "library.context.fillBrandPrompt":
-    "Leia nosso site e escreva o guia da nossa marca em {path}, uma seção ## para cada: tom de voz, público, frases de exemplo que soam como a gente e que não soam, regras de escrita, vocabulário, o que evitar, valores com a evidência de cada um, concorrentes, palavras-chave, datas especiais e políticas comerciais. Mantenha o que já estiver escrito.",
+    "Use a skill brand e siga o fill.md dela para preencher o guia da nossa marca em {path} a partir do nosso site, {site}, do repositório dele e dos sistemas da loja: VTEX, GA4 e Search Console. Preencha só o que ainda está vazio, inclusive os formatos de post e as cores e fontes do site, e mantenha exatamente o que já estiver escrito.",
+  "library.context.fillBrandReplacePrompt":
+    "Use a skill brand e siga o fill.md dela no modo substituir para reescrever o guia da nossa marca em {path} a partir do nosso site, {site}, do repositório dele e dos sistemas da loja: VTEX, GA4 e Search Console. Reescreva toda seção para a qual encontrar evidência, inclusive os formatos de post e as cores e fontes do site; nunca apague uma seção para a qual não achou nada.",
+  "library.context.fillModeEmpty": "Preencher só o que está vazio",
+  "library.context.fillModeReplace": "Sobrescrever com o que o site diz",
   "library.context.fillSectionPrompt":
-    'Leia nosso site e adicione uma seção "{section}" ao guia da nossa marca em {path}. Mantenha o resto como está.',
+    'Use a skill brand e siga o fill.md dela para preencher a seção "{section}" do guia da nossa marca em {path} a partir do nosso site, {site}, do repositório dele e dos sistemas da loja: VTEX, GA4 e Search Console. Não mexa no resto.',
+  "library.context.siteUnknown":
+    "cujo endereço você encontra pela nossa conexão VTEX ou pelo nome da marca",
   "library.context.thisProject": "Este projeto",
   "library.context.allFiles": "Todos os arquivos",
   "library.context.brand": "Marca",
@@ -229,6 +249,54 @@ export const library = {
   "library.library.placeUploads": "Uploads",
   "library.library.placeOutputs": "Outputs",
   "library.library.placeSkills": "Skills",
+  "library.formats.title": "Formatos de post",
+  "library.formats.description":
+    "Um arquivo por formato, na pasta de formatos da marca. O agente escolhe o formato pelo resumo e segue o brief.",
+  "library.formats.new": "Novo formato",
+  "library.formats.fill": "Preencher com o agente",
+  "library.formats.fillBlocks":
+    "Cite só os blocos de blog que o site {site} renderiza: liste-os com BLOG_SITE_BLOCKS (virtualMcpId {id}, branch main) e use os nomes que ele devolver.",
+  "library.formats.blocksFrom": "Blocos de",
+  "library.formats.mentionHint":
+    "Digite @ para citar um bloco de blog do site.",
+  "library.formats.noBlocks": "Nenhum bloco do site encontrado",
+  "library.formats.fillPrompt":
+    "Use a skill brand e siga o fill.md dela para escrever os formatos de post da nossa marca, um arquivo por formato em {path}, no modelo templates/format.md dela, a partir do nosso site, {site}, do repositório dele e do GA4. Escreva formatos só se ainda não houver nenhum, e mantenha exatamente o que já estiver escrito.",
+  "library.formats.fillReplacePrompt":
+    "Use a skill brand e siga o fill.md dela no modo substituir para reescrever os formatos de post da nossa marca, um arquivo por formato em {path}, no modelo templates/format.md dela, a partir do nosso site, {site}, do repositório dele e do GA4. Reescreva todo formato para o qual encontrar evidência, preenchendo todas as seções do modelo, e mova para arquivos os formatos que ainda estiverem no guia da marca; nunca apague um formato para o qual não achou nada.",
+  "library.formats.empty": "Nenhum formato ainda.",
+  "library.formats.legacyTitle":
+    "Estes formatos ainda estão dentro do guia da marca.",
+  "library.formats.legacyHint":
+    "Mova cada um para um arquivo próprio para editar aqui. A seção de formatos sai do guia.",
+  "library.formats.moveToFiles": "Mover para arquivos",
+  "library.formats.moved": "Formatos movidos para arquivos próprios.",
+  "library.formats.unnamed": "Sem nome: o agente ignora este arquivo.",
+  "library.formats.tooLong":
+    "Longo demais: o agente ignora briefs com mais de {max} caracteres.",
+  "library.formats.name": "Nome",
+  "library.formats.namePlaceholder": "Guia de compra para datas",
+  "library.formats.summary": "Resumo",
+  "library.formats.summaryPlaceholder":
+    "Para que serve, numa linha: o agente escolhe por ele",
+  "library.formats.length": "Tamanho",
+  "library.formats.lengthPlaceholder": "1.200–1.800 palavras",
+  "library.formats.brief": "Brief",
+  "library.formats.briefPlaceholder":
+    "Para que serve, estrutura, blocos do site, título e SEO, imagens, tom, o que evitar e exemplos",
+  "library.formats.charCount": "{count}/{max} caracteres",
+  "library.formats.template":
+    "## Para que serve\n\n## Quando usar\n\n## Quando não usar\n\n## Estrutura\n\n## Blocos do site\n\n## Título e SEO\n\n## Imagens\n\n## Tom\n\n## Evite\n\n## Exemplos",
+  "library.formats.saved": "Formato salvo.",
+  "library.formats.deleted": "Formato apagado.",
+  "library.formats.failed": "Não foi possível salvar o formato.",
+  "library.formats.conflict":
+    "Este formato mudou enquanto você editava. Ele foi recarregado.",
+  "library.formats.delete": "Apagar",
+  "library.formats.deleteTitle": 'Apagar "{name}"?',
+  "library.formats.deleteDescription":
+    "O arquivo é apagado. Cards que já usam este formato mantêm a cópia do brief.",
+
   "library.library.anyType": "Qualquer tipo",
   "library.library.typeFilter": "Tipo",
   "library.entries.createdBy": "Criado por",

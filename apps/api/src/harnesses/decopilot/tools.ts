@@ -41,6 +41,10 @@ import { sandboxOnlyChatsEnabled } from "@/harnesses/sandbox-only-chats";
 import { toolsFromMCP } from "@/harnesses/lib/decopilot/mcp-tools";
 import { MCP_LIST_TIMEOUT_MS } from "@/core/constants";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
+import {
+  filterBuiltInsByAllowlist,
+  filterPassthroughByAllowlist,
+} from "./tool-allowlist";
 import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type { HarnessStreamInput } from "@/harnesses/lib/types";
 
@@ -129,60 +133,6 @@ export interface AssembleDecopilotToolsExtras {
   /** Cluster-injected: makes slow built-ins (generate_image) run as durable
    *  background jobs instead of holding the turn open. */
   backgroundDispatcher?: BackgroundDispatcher | null;
-}
-
-/**
- * Built-in tools the agent loop depends on for mechanics (reading truncated
- * outputs, the connections-block lazy-load via enable_tool, todo tracking).
- * These are NEVER subject to the per-run allowlist — removing them would break
- * the loop rather than scope it. The allowlist governs everything else: MCP
- * tools, the user-facing capability built-ins (web_search, generate_image,
- * subtask, …), the VM file tools, the browser tools, and read_resource /
- * read_prompt — all selectable in the automations tool picker.
- */
-const ALLOWLIST_EXEMPT_BUILTINS = new Set<string>([
-  "read_tool_output",
-  "enable_tool",
-  "open_in_agent",
-  "todo_write",
-  "update_interests",
-]);
-
-/**
- * Filter the passthrough (MCP) tool set against the allowlist. The allowlist
- * carries the RAW tool names the UI lists (from `listTools()`), so an MCP
- * tool's model-facing (safe) key survives iff its raw name — or the safe name
- * itself, for robustness — is allowed. A null allowlist is a no-op.
- */
-function filterPassthroughByAllowlist(
-  set: ToolSet,
-  nameMap: Map<string, string>,
-  allow: Set<string> | null,
-): ToolSet {
-  if (!allow) return set;
-  const allowedSafe = new Set<string>();
-  for (const [raw, safe] of nameMap) {
-    if (allow.has(raw) || allow.has(safe)) allowedSafe.add(safe);
-  }
-  return Object.fromEntries(
-    Object.entries(set).filter(([name]) => allowedSafe.has(name)),
-  );
-}
-
-/**
- * Filter built-ins against the allowlist, always keeping the loop-essential
- * ones. A null allowlist is a no-op.
- */
-function filterBuiltInsByAllowlist(
-  set: ToolSet,
-  allow: Set<string> | null,
-): ToolSet {
-  if (!allow) return set;
-  return Object.fromEntries(
-    Object.entries(set).filter(
-      ([name]) => ALLOWLIST_EXEMPT_BUILTINS.has(name) || allow.has(name),
-    ),
-  );
 }
 
 /**

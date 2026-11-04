@@ -215,6 +215,21 @@ describe("buildOptions", () => {
     }
   });
 
+  test("runs at low effort unless the run asks for more", () => {
+    const prev = process.env.CLAUDE_CODE_EFFORT;
+    try {
+      delete process.env.CLAUDE_CODE_EFFORT;
+      expect(options().effort).toBe("low");
+      process.env.CLAUDE_CODE_EFFORT = "high";
+      expect(options().effort).toBe("high");
+      process.env.CLAUDE_CODE_EFFORT = "enormous";
+      expect(options().effort).toBe("low");
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CODE_EFFORT;
+      else process.env.CLAUDE_CODE_EFFORT = prev;
+    }
+  });
+
   test("subtracts the dispatch's disallowed tools — that's what makes a reviewer read-only", () => {
     expect(
       options({ agent: { id: "a", disallowedTools: ["Write", "Edit"] } })

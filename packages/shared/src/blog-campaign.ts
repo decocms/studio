@@ -1,14 +1,15 @@
 /**
- * The closed sets a blog campaign is described by.
+ * A blog campaign: the closed sets it is described by, and the parts its agent
+ * writes while shaping it — the evidence, the briefings it suggests, the one a
+ * person chose.
  *
- * Shared because both ends validate against them: the editor renders a chip per
- * option, and `BLOG_CAMPAIGN_SUGGEST` narrows what the model returns to the same
- * lists. Restating them server-side would mean a trigger added to one end and
- * silently rejected by the other.
- *
- * The campaign shape itself stays in the web app — it is a decofile block, not a
- * wire contract.
+ * Shared because both ends read them: the page renders what the agent wrote,
+ * and the API checks every write against the same lists. Restating them on one
+ * side would mean a value added there and silently rejected by the other.
  */
+
+import { z } from "zod";
+import { BLOG_EVIDENCE_SOURCES } from "./blog-card";
 
 export const CAMPAIGN_STATUSES = [
   "draft",
@@ -43,6 +44,80 @@ export const CAMPAIGN_OBJECTIVES = [
 ] as const;
 export type CampaignObjective = (typeof CAMPAIGN_OBJECTIVES)[number];
 
+/**
+ * What a campaign's goal is counted in: a figure GA4, Search Console or VTEX
+ * reports, so the goal can be checked rather than argued about.
+ */
+export const CAMPAIGN_GOAL_METRICS = [
+  "organic_sessions",
+  "sessions",
+  "search_clicks",
+  "search_impressions",
+  "conversions",
+  "revenue",
+] as const;
+export type CampaignGoalMetric = (typeof CAMPAIGN_GOAL_METRICS)[number];
+
+/** How many goals a campaign keeps. */
+export const MAX_CAMPAIGN_GOALS = 5;
+
+/**
+ * One thing a campaign is for, in a figure someone can check: the text says
+ * it, the metric names what counts it, the target says how far. The
+ * campaign's period is its deadline. Its agent sets it; a person can change it.
+ */
+export const CampaignGoalSchema = z.object({
+  text: z
+    .string()
+    .max(200)
+    .describe(
+      "The goal in the brand's language: 'Grow organic traffic on accessories'.",
+    ),
+  metric: z
+    .enum(CAMPAIGN_GOAL_METRICS)
+    .nullable()
+    .describe("What counts it, or null when none of these does."),
+  target: z
+    .string()
+    .max(40)
+    .describe(
+      "How far, from where the evidence puts it today: '+20%'. Empty when nothing gives that baseline.",
+    ),
+});
+export type CampaignGoal = z.infer<typeof CampaignGoalSchema>;
+
+/**
+ * A campaign's goals: its `goals`, or the single `goal` a record kept before a
+ * campaign could have several, read as a list of one. A goal with no text is
+ * none.
+ */
+export function campaignGoals(record: {
+  goals?: unknown;
+  goal?: unknown;
+}): CampaignGoal[] {
+  const listed: unknown[] = Array.isArray(record.goals)
+    ? record.goals
+    : record.goal
+      ? [record.goal]
+      : [];
+  return listed
+    .flatMap((value) => {
+      if (!value || typeof value !== "object") return [];
+      const goal = value as Record<string, unknown>;
+      const text = typeof goal.text === "string" ? goal.text.trim() : "";
+      if (!text) return [];
+      // A metric this version does not know keeps the goal's words, not the metric.
+      return [
+        {
+          text,
+          metric: CAMPAIGN_GOAL_METRICS.find((m) => m === goal.metric) ?? null,
+          target: typeof goal.target === "string" ? goal.target.trim() : "",
+        },
+      ];
+    })
+    .slice(0, MAX_CAMPAIGN_GOALS);
+}
+
 /** A target is the slice a campaign argues for — never a single product. */
 export const CAMPAIGN_TARGET_KINDS = ["category", "collection"] as const;
 export type CampaignTargetKind = (typeof CAMPAIGN_TARGET_KINDS)[number];
@@ -60,3 +135,79 @@ export const MAX_CAMPAIGN_PRODUCT_IMAGES = 3;
  * cover at all on exactly the well-stocked campaigns that most deserve one.
  */
 export const MAX_OFFERED_PHOTOS = 12;
+
+/** A campaign's key in the editor's decofile view; its file is named by the rest. */
+export const CAMPAIGN_KEY_PREFIX = "blog-manager/campaigns/";
+
+/** How many briefings one suggestion offers. */
+export const MAX_CAMPAIGN_BRIEFINGS = 3;
+
+/** One briefing an agent suggests: a campaign in a sentence, and the figure it stands on. */
+export const CampaignBriefingOptionSchema = z
+  .object({
+    id: z.string().min(1).max(40),
+    title: z.string().min(1).max(160),
+    idea: z
+      .string()
+      .min(1)
+      .max(800)
+      .describe(
+        "The campaign in two or three sentences: the moment, the slice of the store, why now.",
+      ),
+    figure: z
+      .string()
+      .max(80)
+      .optional()
+      .describe("The number it stands on, exactly as a tool reported it."),
+    source: z.enum(BLOG_EVIDENCE_SOURCES).optional(),
+  })
+  .loose();
+export type CampaignBriefingOption = z.infer<
+  typeof CampaignBriefingOptionSchema
+>;
+
+/** The briefing a campaign is developed from: one of the suggestions, or a person's own words. */
+export const CampaignBriefingSchema = z
+  .object({
+    text: z.string().trim().min(1).max(2_000),
+    optionId: z
+      .string()
+      .max(40)
+      .optional()
+      .describe("The suggestion it came from, when it came from one."),
+  })
+  .loose();
+export type CampaignBriefing = z.infer<typeof CampaignBriefingSchema>;
+
+/** The last run Studio started on a campaign. Only the server writes it. */
+export const CampaignRunSchema = z
+  .object({ requestedAt: z.string(), requestedBy: z.string() })
+  .loose();
+export type CampaignRun = z.infer<typeof CampaignRunSchema>;
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Whether a campaign's agent has developed it: it has a name and a reason to run now. */
+export function campaignDeveloped(record: Record<string, unknown>): boolean {
+  const trigger = record.trigger;
+  const note =
+    trigger && typeof trigger === "object"
+      ? text((trigger as Record<string, unknown>).note)
+      : "";
+  return text(record.campaignName) !== "" && note !== "";
+}
+
+/** What a draft's agent does next: suggest briefings, develop the chosen one, or nothing until a person acts. */
+export function campaignNextStep(
+  record: Record<string, unknown>,
+): "suggest" | "develop" | null {
+  if ((record.status ?? "draft") !== "draft") return null;
+  if (campaignDeveloped(record)) return null;
+  if (CampaignBriefingSchema.safeParse(record.briefing).success) {
+    return "develop";
+  }
+  const offered = Array.isArray(record.briefings) ? record.briefings.length : 0;
+  return offered > 0 ? null : "suggest";
+}

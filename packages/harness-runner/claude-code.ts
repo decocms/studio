@@ -48,7 +48,20 @@ const ENVS = {
   // knows where it wrote them, and the value must not outlive that pod.
   PLUGIN_DIRS_ENV: "CLAUDE_CODE_PLUGIN_DIRS",
   MAX_TURNS_ENV: "CLAUDE_CODE_MAX_TURNS",
+  EFFORT_ENV: "CLAUDE_CODE_EFFORT",
 };
+
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+/**
+ * The run's reasoning effort: low, unless Studio asks for more for a kind of
+ * run that needs it (see `claude-code-env.ts`). An unknown value is low rather
+ * than a refused run.
+ */
+function effortFromEnv(): (typeof EFFORTS)[number] {
+  const value = process.env[ENVS.EFFORT_ENV];
+  return EFFORTS.find((effort) => effort === value) ?? "low";
+}
 
 /**
  * The turn cap for this run, or `undefined` for the SDK's own default. Set by
@@ -416,8 +429,7 @@ export function buildOptions(args: {
       : {}),
     ...(model ? { model } : {}),
     ...(maxTurns === undefined ? {} : { maxTurns }),
-    // ponytail: fixed, not configurable — raise it here if runs come back thin.
-    effort: "low",
+    effort: effortFromEnv(),
     // Token-level streaming. Without this the SDK yields only COMPLETE
     // assistant messages, so a paragraph reaches the UI as one 5KB frame after
     // the model finished writing it — the run reads as frozen while it is in

@@ -72,6 +72,27 @@ describe("serializePayload", () => {
     );
   });
 
+  it("redacts the draft grant in a preview address, raw or encoded", () => {
+    const grant = "eyJvIjoib3JnIiwibSI6InZtIn0.c2lnbmF0dXJlLXNpZ25hdHVyZQ";
+    const pointer = `studio.example.com/api/acme/decofile/vm-1/blog-a?token=${grant}@abc123`;
+    const url = `https://acme.deco.site/blog/guia?__draft=${encodeURIComponent(pointer)}`;
+    const out = JSON.parse(
+      serializePayload({ output: pointer, command: `render "${url}"` }),
+    );
+    expect(out.output).toBe(
+      "studio.example.com/api/acme/decofile/vm-1/blog-a?token=***@abc123",
+    );
+    expect(out.command).not.toContain(grant);
+    expect(out.command).toContain("token%3D***%40abc123");
+  });
+
+  it("leaves the word token alone where no grant follows it", () => {
+    const out = JSON.parse(
+      serializePayload({ text: "Use o token=xyz no header." }),
+    );
+    expect(out.text).toBe("Use o token=xyz no header.");
+  });
+
   it("redacts a bare GitHub token with no URL around it", () => {
     const payload = {
       env: "GITHUB_TOKEN=github_pat_0000AAAAbbbbCCCCddddEEEEffffGGGGhhhh",

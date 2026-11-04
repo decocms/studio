@@ -142,6 +142,7 @@ export interface StudioToolIO {
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
             multi_app_preview?: boolean | undefined;
+            blog_writing_high_effort?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -230,6 +231,7 @@ export interface StudioToolIO {
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
             multi_app_preview?: boolean | undefined;
+            blog_writing_high_effort?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | undefined;
@@ -314,6 +316,7 @@ export interface StudioToolIO {
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
             multi_app_preview?: boolean | undefined;
+            blog_writing_high_effort?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
           }
         | null
@@ -2231,142 +2234,1518 @@ export interface StudioToolIO {
       )[];
     };
   };
-  BLOG_SITE_GROUND: {
-    input: {
-      purpose: "format" | "link" | "context" | "brand" | "campaign" | "post";
-      virtualMcpId?: string | undefined;
-      focus?: string | undefined;
-      language?: string | undefined;
-    };
+  BLOG_STATE_GET: {
+    input: { [x: string]: never };
     output: {
-      report: string;
-      outcome: "ok" | "failed" | "no-site" | "no-tools" | "timeout";
-      toolNames: string[];
-      evidence: string;
-      evidenceUri: string | null;
-      evidenceChars: number;
+      brandPath: string;
+      brand: Record<string, unknown> | null;
+      context: Record<string, unknown> | null;
+      formats: Record<string, unknown> | null;
+      campaigns: { id: string; data: Record<string, unknown> }[];
+      versions: Record<string, string>;
     };
   };
-  BLOG_SITE_CATALOGUE: {
+  BLOG_STATE_SET: {
     input: {
-      grounding?:
+      campaigns?:
         | {
-            report: string;
-            outcome?:
-              | "ok"
-              | "failed"
-              | "no-site"
-              | "no-tools"
-              | "timeout"
-              | undefined;
-            evidence?: string | undefined;
-            evidenceUri?: string | null | undefined;
-          }
+            id: string;
+            data: {
+              [x: string]: unknown;
+              period?: { start: string | null; end: string | null } | undefined;
+              trigger?:
+                | {
+                    type:
+                      | "launch"
+                      | "seasonal"
+                      | "trend"
+                      | "seo_gap"
+                      | "inventory"
+                      | "partnership"
+                      | "reputation";
+                    note: string;
+                  }
+                | undefined;
+              intent?:
+                | {
+                    objective:
+                      | "awareness"
+                      | "education"
+                      | "conversion"
+                      | "retention"
+                      | "repositioning";
+                    targets: {
+                      kind: "category" | "collection";
+                      id: string;
+                      name: string;
+                      url: string;
+                      description: string;
+                    }[];
+                    products: {
+                      id: string;
+                      name: string;
+                      url: string;
+                      images: string[];
+                      category: string;
+                      description: string;
+                    }[];
+                    keywords: string[];
+                  }
+                | undefined;
+              guardrails?:
+                | {
+                    avoidComplements: { name: string; value: string }[];
+                    toneOverrides: string;
+                  }
+                | undefined;
+              campaignName?: string | undefined;
+              goals?:
+                | {
+                    text: string;
+                    metric:
+                      | "organic_sessions"
+                      | "sessions"
+                      | "search_clicks"
+                      | "search_impressions"
+                      | "conversions"
+                      | "revenue"
+                      | null;
+                    target: string;
+                  }[]
+                | undefined;
+              goal?:
+                | {
+                    text: string;
+                    metric:
+                      | "organic_sessions"
+                      | "sessions"
+                      | "search_clicks"
+                      | "search_impressions"
+                      | "conversions"
+                      | "revenue"
+                      | null;
+                    target: string;
+                  }
+                | undefined;
+              status?: "active" | "draft" | "paused" | "finished" | undefined;
+              threadId?: string | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
+                  }[]
+                | undefined;
+              briefings?:
+                | {
+                    [x: string]: unknown;
+                    id: string;
+                    title: string;
+                    idea: string;
+                    figure?: string | undefined;
+                    source?:
+                      | "calendar"
+                      | "brand"
+                      | "gsc"
+                      | "ga4"
+                      | "vtex"
+                      | undefined;
+                  }[]
+                | undefined;
+              briefing?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    optionId?: string | undefined;
+                  }
+                | undefined;
+              run?:
+                | {
+                    [x: string]: unknown;
+                    requestedAt: string;
+                    requestedBy: string;
+                  }
+                | undefined;
+              createdAt?: string | undefined;
+              updatedAt?: string | undefined;
+            };
+          }[]
         | undefined;
-      storeUrl?: string | undefined;
+      removeCampaigns?: string[] | undefined;
+      expect?: Record<string, string> | undefined;
     };
     output: {
-      products: {
-        id: string;
-        name: string;
-        category: string;
-        price: string;
-        slug: string;
-        url: string;
-        images: string[];
-        description: string;
-      }[];
-      targets: {
-        kind: "category" | "collection";
-        id: string;
-        name: string;
-        slug: string;
-        url: string;
-      }[];
-      read: boolean;
+      written: { path: string; contentHash: string }[];
+      removed: string[];
     };
   };
-  BLOG_BRAND_EXTRACT: {
-    input: {
-      blocks: { key: string; content: string }[];
-      seo?: { key: string; content: string }[] | undefined;
-      virtualMcpId?: string | undefined;
-      grounding?:
-        | {
-            report: string;
-            outcome?:
-              | "ok"
-              | "failed"
-              | "no-site"
-              | "no-tools"
-              | "timeout"
-              | undefined;
-            evidence?: string | undefined;
-            evidenceUri?: string | null | undefined;
-          }
-        | undefined;
-    };
+  BLOG_CARD_LIST: {
+    input: { virtualMcpId?: string | undefined };
     output: {
-      values: { name: string; value: string }[];
-      description: string;
-      language: string;
-      storeUrl: string;
-      companyName: string;
-      targetAudience: string;
-      competitors: { name: string; value: string }[];
-      keywords: string[];
-      commercialPolicies: { name: string; value: string }[];
-      sources: string[];
+      cards: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | "reviewing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    id?: string | undefined;
+                    value?: string | undefined;
+                    length?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              objective?: string | undefined;
+              metric?: string | undefined;
+              publishAt?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                    detail?: string | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "campaign" | "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      }[];
     };
   };
-  BLOG_BRAND_ENRICH: {
-    input: {
-      profile: {
-        values: { name: string; value: string }[];
-        description: string;
-        language: string;
-        storeUrl: string;
-        companyName: string;
-        targetAudience: string;
-        competitors: { name: string; value: string }[];
-        keywords: string[];
-        commercialPolicies: { name: string; value: string }[];
+  BLOG_CARD_GET: {
+    input: { id: string };
+    output: {
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | "reviewing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    id?: string | undefined;
+                    value?: string | undefined;
+                    length?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              objective?: string | undefined;
+              metric?: string | undefined;
+              publishAt?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                    detail?: string | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "campaign" | "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
       };
-      blocks: { key: string; content: string }[];
-      seo?: { key: string; content: string }[] | undefined;
-      grounding?:
-        | {
-            report: string;
-            outcome?:
-              | "ok"
-              | "failed"
-              | "no-site"
-              | "no-tools"
-              | "timeout"
-              | undefined;
-            evidence?: string | undefined;
-            evidenceUri?: string | null | undefined;
-          }
+      version: string;
+    };
+  };
+  BLOG_CARD_CREATE: {
+    input: {
+      virtualMcpId: string;
+      campaignId?: string | undefined;
+      prompt?: string | undefined;
+      id?: string | undefined;
+    };
+    output: {
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | "reviewing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    id?: string | undefined;
+                    value?: string | undefined;
+                    length?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              objective?: string | undefined;
+              metric?: string | undefined;
+              publishAt?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                    detail?: string | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "campaign" | "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      };
+      version: string;
+    };
+  };
+  BLOG_CARD_UPDATE: {
+    input: {
+      id: string;
+      patch: {
+        status?:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published"
+          | undefined;
+        virtualMcpId?: string | undefined;
+        campaignId?: string | null | undefined;
+        prompt?: string | null | undefined;
+        fileConfigId?: string | null | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | "reviewing"
+          | null
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    id?: string | undefined;
+                    value?: string | undefined;
+                    length?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              objective?: string | undefined;
+              metric?: string | undefined;
+              publishAt?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | null
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                    detail?: string | undefined;
+                  }[]
+                | undefined;
+            }
+          | null
+          | undefined;
+        postKey?: string | null | undefined;
+        commit?: string | null | undefined;
+        error?: string | null | undefined;
+      };
+      expect?: string | undefined;
+    };
+    output: {
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | "reviewing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    id?: string | undefined;
+                    value?: string | undefined;
+                    length?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              objective?: string | undefined;
+              metric?: string | undefined;
+              publishAt?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                    detail?: string | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "campaign" | "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      };
+      version: string;
+    };
+  };
+  BLOG_CARD_DELETE: { input: { id: string }; output: { id: string } };
+  BLOG_CARD_RUN: {
+    input: {
+      id: string;
+      phase: "campaign" | "hypothesis" | "execute";
+      message?: string | undefined;
+      fileConfigId?: string | undefined;
+      briefing?:
+        | { [x: string]: unknown; text: string; optionId?: string | undefined }
         | undefined;
     };
     output: {
-      companyName: string;
-      description: string;
-      language: string;
-      storeUrl: string;
-      targetAudience: string;
-      values: { name: string; value: string }[];
-      competitors: { name: string; value: string }[];
-      keywords: string[];
-      commercialPolicies: { name: string; value: string }[];
-      specialDates: { name: string; value: string }[];
-      researchSources: string[];
-      searched: boolean;
-      discarded: number;
-      judged: boolean;
+      card: {
+        [x: string]: unknown;
+        id: string;
+        kind: "blogpost";
+        status:
+          | "ideas"
+          | "generating"
+          | "awaiting_review"
+          | "scheduled"
+          | "published";
+        virtualMcpId: string;
+        createdBy: string;
+        createdAt: string;
+        updatedAt: string;
+        campaignId?: string | undefined;
+        prompt?: string | undefined;
+        threadId?: string | undefined;
+        branch?: string | undefined;
+        fileConfigId?: string | undefined;
+        stage?:
+          | "done"
+          | "grounding"
+          | "drafting"
+          | "illustrating"
+          | "assembling"
+          | "writing"
+          | "reviewing"
+          | undefined;
+        hypothesis?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              statement?: string | undefined;
+              angle?: string | undefined;
+              format?:
+                | {
+                    [x: string]: unknown;
+                    name: string;
+                    id?: string | undefined;
+                    value?: string | undefined;
+                    length?: string | undefined;
+                  }
+                | undefined;
+              keywords?:
+                | {
+                    [x: string]: unknown;
+                    term: string;
+                    volume?: number | undefined;
+                  }[]
+                | undefined;
+              evidence?:
+                | {
+                    [x: string]: unknown;
+                    source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+                    fact: string;
+                    figure?: string | undefined;
+                    tool?: string | undefined;
+                    detail?:
+                      | {
+                          [x: string]: unknown;
+                          trend?:
+                            | {
+                                [x: string]: unknown;
+                                points: number[];
+                                label?: string | undefined;
+                                from?: string | undefined;
+                                to?: string | undefined;
+                              }
+                            | undefined;
+                          stats?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: string;
+                              }[]
+                            | undefined;
+                          compare?:
+                            | {
+                                [x: string]: unknown;
+                                label: string;
+                                value: number;
+                                display: string;
+                              }[]
+                            | undefined;
+                          products?:
+                            | {
+                                [x: string]: unknown;
+                                name: string;
+                                note?: string | undefined;
+                                image?: string | undefined;
+                              }[]
+                            | undefined;
+                          timeline?:
+                            | {
+                                [x: string]: unknown;
+                                date: string;
+                                label?: string | undefined;
+                                now?: boolean | undefined;
+                              }[]
+                            | undefined;
+                          link?:
+                            | {
+                                [x: string]: unknown;
+                                url: string;
+                                label?: string | undefined;
+                              }
+                            | undefined;
+                        }
+                      | undefined;
+                  }[]
+                | undefined;
+              guardrails?:
+                | {
+                    [x: string]: unknown;
+                    text: string;
+                    origin: "brand" | "campaign";
+                  }[]
+                | undefined;
+              objective?: string | undefined;
+              metric?: string | undefined;
+              publishAt?: string | undefined;
+              groundingOutcome?: string | undefined;
+            }
+          | undefined;
+        post?:
+          | {
+              [x: string]: unknown;
+              title?: string | undefined;
+              excerpt?: string | undefined;
+              seo?:
+                | {
+                    [x: string]: unknown;
+                    title?: string | undefined;
+                    description?: string | undefined;
+                  }
+                | undefined;
+              cover?:
+                | {
+                    [x: string]: unknown;
+                    url?: string | undefined;
+                    alt?: string | undefined;
+                    prompt?: string | undefined;
+                  }
+                | undefined;
+              sections?:
+                | {
+                    [x: string]: unknown;
+                    type?: string | undefined;
+                    props?: Record<string, unknown> | undefined;
+                    productIds?: string[] | undefined;
+                  }[]
+                | undefined;
+              gaps?:
+                | {
+                    [x: string]: unknown;
+                    code: string;
+                    count?: number | undefined;
+                    detail?: string | undefined;
+                  }[]
+                | undefined;
+            }
+          | undefined;
+        postKey?: string | undefined;
+        commit?: string | undefined;
+        error?: string | undefined;
+        run?:
+          | {
+              [x: string]: unknown;
+              phase: "campaign" | "hypothesis" | "execute";
+              requestedAt: string;
+              requestedBy: string;
+            }
+          | undefined;
+      };
+      threadId: string;
     };
   };
-  BLOG_CONTEXT_EXTRACT: {
+  BLOG_BRAND_FILL: { input: { prompt: string }; output: { threadId: string } };
+  BLOG_CAMPAIGN_RUN: {
+    input: {
+      campaignId?: string | undefined;
+      briefing?:
+        | { [x: string]: unknown; text: string; optionId?: string | undefined }
+        | undefined;
+      message?: string | undefined;
+    };
+    output: { campaignId: string; threadId: string };
+  };
+  BLOG_CAMPAIGN_UPDATE: {
+    input: {
+      id: string;
+      patch: {
+        campaignName?: string | undefined;
+        period?:
+          | {
+              start?: string | null | undefined;
+              end?: string | null | undefined;
+            }
+          | undefined;
+        trigger?:
+          | {
+              type?:
+                | "launch"
+                | "seasonal"
+                | "trend"
+                | "seo_gap"
+                | "inventory"
+                | "partnership"
+                | "reputation"
+                | undefined;
+              note?: string | undefined;
+            }
+          | undefined;
+        intent?:
+          | {
+              objective?:
+                | "awareness"
+                | "education"
+                | "conversion"
+                | "retention"
+                | "repositioning"
+                | undefined;
+              targets?:
+                | {
+                    kind: "category" | "collection";
+                    id: string;
+                    name: string;
+                    url: string;
+                    description: string;
+                  }[]
+                | undefined;
+              products?:
+                | {
+                    id: string;
+                    name: string;
+                    url: string;
+                    images: string[];
+                    category: string;
+                    description: string;
+                  }[]
+                | undefined;
+              keywords?: string[] | undefined;
+            }
+          | undefined;
+        guardrails?:
+          | {
+              avoidComplements?: { name: string; value: string }[] | undefined;
+              toneOverrides?: string | undefined;
+            }
+          | undefined;
+        goals?:
+          | {
+              text: string;
+              metric:
+                | "organic_sessions"
+                | "sessions"
+                | "search_clicks"
+                | "search_impressions"
+                | "conversions"
+                | "revenue"
+                | null;
+              target: string;
+            }[]
+          | undefined;
+        status?: "active" | "draft" | "paused" | "finished" | undefined;
+        evidence?:
+          | {
+              [x: string]: unknown;
+              source: "calendar" | "brand" | "gsc" | "ga4" | "vtex";
+              fact: string;
+              figure?: string | undefined;
+              tool?: string | undefined;
+              detail?:
+                | {
+                    [x: string]: unknown;
+                    trend?:
+                      | {
+                          [x: string]: unknown;
+                          points: number[];
+                          label?: string | undefined;
+                          from?: string | undefined;
+                          to?: string | undefined;
+                        }
+                      | undefined;
+                    stats?:
+                      | { [x: string]: unknown; label: string; value: string }[]
+                      | undefined;
+                    compare?:
+                      | {
+                          [x: string]: unknown;
+                          label: string;
+                          value: number;
+                          display: string;
+                        }[]
+                      | undefined;
+                    products?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          note?: string | undefined;
+                          image?: string | undefined;
+                        }[]
+                      | undefined;
+                    timeline?:
+                      | {
+                          [x: string]: unknown;
+                          date: string;
+                          label?: string | undefined;
+                          now?: boolean | undefined;
+                        }[]
+                      | undefined;
+                    link?:
+                      | {
+                          [x: string]: unknown;
+                          url: string;
+                          label?: string | undefined;
+                        }
+                      | undefined;
+                  }
+                | undefined;
+            }[]
+          | null
+          | undefined;
+        briefings?:
+          | {
+              [x: string]: unknown;
+              id: string;
+              title: string;
+              idea: string;
+              figure?: string | undefined;
+              source?:
+                | "calendar"
+                | "brand"
+                | "gsc"
+                | "ga4"
+                | "vtex"
+                | undefined;
+            }[]
+          | null
+          | undefined;
+        briefing?:
+          | {
+              [x: string]: unknown;
+              text: string;
+              optionId?: string | undefined;
+            }
+          | null
+          | undefined;
+      };
+      expect?: string | undefined;
+    };
+    output: { id: string; campaign: Record<string, unknown>; version: string };
+  };
+  BLOG_SITE_BLOCKS: {
+    input: {
+      virtualMcpId: string;
+      format: { name: string; value: string };
+      branch?: string | undefined;
+    };
+    output: {
+      blocks: {
+        name: string;
+        title: string;
+        description: string;
+        schema: Record<string, unknown>;
+        example?: Record<string, unknown> | undefined;
+      }[];
+      exemplars: { title: string; slug: string; text: string }[];
+      categories: { name: string; slug: string }[];
+      authors: { name: string; email: string; bio?: string | undefined }[];
+      branch: string;
+    };
+  };
+  BLOG_POST_ASSEMBLE: {
+    input: {
+      virtualMcpId: string;
+      draft: {
+        title: string;
+        excerpt: string;
+        seo: { title: string; description: string };
+        cover: { url: string; alt: string };
+        sections: {
+          type: string;
+          props: Record<string, unknown>;
+          productIds?: string[] | undefined;
+        }[];
+        categorySlugs?: string[] | undefined;
+        authorEmails?: string[] | undefined;
+      };
+      postId?: string | undefined;
+      links?: { quote: string; slug: string }[] | undefined;
+      planning?:
+        | {
+            campaignKey?: string | undefined;
+            format?: { name: string; value: string } | undefined;
+            brief?: string | undefined;
+          }
+        | undefined;
+      branch?: string | undefined;
+    };
+    output: {
+      postId: string;
+      post: Record<string, unknown>;
+      bodyText: string;
+      posts: { title: string; slug: string }[];
+      dropped: number;
+      droppedReasons: string[];
+      applied: number;
+      branch: string;
+    };
+  };
+  BLOG_POST_BRIEF: {
     input: {
       brand: {
         companyName?: string | undefined;
@@ -2374,84 +3753,13 @@ export interface StudioToolIO {
         language?: string | undefined;
         storeUrl?: string | undefined;
         targetAudience?: string | undefined;
-        values?: { name: string; value: string }[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
-        keywords?: string[] | undefined;
-        commercialPolicies?: { name: string; value: string }[] | undefined;
-        specialDates?: { name: string; value: string }[] | undefined;
-      };
-      blocks: { key: string; content: string }[];
-      seo?: { key: string; content: string }[] | undefined;
-    };
-    output: {
-      tone: string;
-      dos: { name: string; value: string }[];
-      avoid: { name: string; value: string }[];
-      categories: string[];
-      vocabulary: { name: string; value: string }[];
-      voiceExamples: { text: string; sounds: boolean }[];
-      sources: string[];
-      discarded: number;
-      judged: boolean;
-    };
-  };
-  BLOG_FORMAT_SUGGEST: {
-    input: {
-      brand: {
-        companyName?: string | undefined;
-        description?: string | undefined;
-        language?: string | undefined;
-        storeUrl?: string | undefined;
-        targetAudience?: string | undefined;
-        values?: { name: string; value: string }[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
-        keywords?: string[] | undefined;
-        commercialPolicies?: { name: string; value: string }[] | undefined;
-        specialDates?: { name: string; value: string }[] | undefined;
         tone?: string | undefined;
         dos?: { name: string; value: string }[] | undefined;
         avoid?: { name: string; value: string }[] | undefined;
-        categories?: string[] | undefined;
         vocabulary?: { name: string; value: string }[] | undefined;
         voiceExamples?: { text: string; sounds: boolean }[] | undefined;
-      };
-      sections?:
-        | { name: string; title: string; description?: string | undefined }[]
-        | undefined;
-      postStructures?: { title: string; sections: string[] }[] | undefined;
-      guidance?: string | undefined;
-      count?: number | undefined;
-      virtualMcpId?: string | undefined;
-      grounding?:
-        | {
-            report: string;
-            outcome?:
-              | "ok"
-              | "failed"
-              | "no-site"
-              | "no-tools"
-              | "timeout"
-              | undefined;
-            evidence?: string | undefined;
-            evidenceUri?: string | null | undefined;
-          }
-        | undefined;
-    };
-    output: { formats: { name: string; value: string }[] };
-  };
-  BLOG_POST_DRAFT: {
-    input: {
-      brand: {
-        description?: string | undefined;
-        language?: string | undefined;
-        storeUrl?: string | undefined;
-        companyName?: string | undefined;
-        targetAudience?: string | undefined;
-        tone?: string | undefined;
-        dos?: { name: string; value: string }[] | undefined;
-        avoid?: { name: string; value: string }[] | undefined;
-        vocabulary?: { name: string; value: string }[] | undefined;
-        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
+        blocks?: { name: string; value: string }[] | undefined;
+        commercialPolicies?: { name: string; value: string }[] | undefined;
       };
       campaign: {
         name: string;
@@ -2493,8 +3801,36 @@ export interface StudioToolIO {
           avoidComplements?: { name: string; value: string }[] | undefined;
           toneOverrides?: string | undefined;
         };
+        goals?:
+          | {
+              text: string;
+              metric:
+                | "organic_sessions"
+                | "sessions"
+                | "search_clicks"
+                | "search_impressions"
+                | "conversions"
+                | "revenue"
+                | null;
+              target: string;
+            }[]
+          | undefined;
+        goal?:
+          | {
+              text: string;
+              metric:
+                | "organic_sessions"
+                | "sessions"
+                | "search_clicks"
+                | "search_impressions"
+                | "conversions"
+                | "revenue"
+                | null;
+              target: string;
+            }
+          | undefined;
       };
-      format: { name: string; value: string };
+      format: { name: string; value: string; length?: string | undefined };
       blocks: {
         name: string;
         title: string;
@@ -2502,54 +3838,24 @@ export interface StudioToolIO {
         schema: Record<string, unknown>;
         example?: Record<string, unknown> | undefined;
       }[];
+      exemplars?: { title: string; slug: string; text: string }[] | undefined;
       categories?: { name: string; slug: string }[] | undefined;
       authors?:
         | { name: string; email: string; bio?: string | undefined }[]
         | undefined;
       extraInstructions?: string | undefined;
-      count?: number | undefined;
-      fileConfigId?: string | undefined;
-      virtualMcpId?: string | undefined;
-      grounding?:
-        | {
-            report: string;
-            outcome?:
-              | "ok"
-              | "failed"
-              | "no-site"
-              | "no-tools"
-              | "timeout"
-              | undefined;
-            evidence?: string | undefined;
-            evidenceUri?: string | null | undefined;
-          }
-        | undefined;
+      grounding?: string | undefined;
     };
-    output: {
-      posts: {
-        title: string;
-        seo: { title: string; description: string };
-        excerpt: string;
-        categorySlugs: string[];
-        authorEmails: string[];
-        cover: { url: string; alt: string; prompt: string };
-        sections: {
-          type: string;
-          props: Record<string, unknown>;
-          productIds: string[];
-        }[];
-      }[];
-      gaps: {
-        code:
-          | "no-store-data"
-          | "sections-dropped"
-          | "no-bucket"
-          | "no-image-model"
-          | "images-failed"
-          | "drafts-failed";
-        count?: number | undefined;
-      }[];
+    output: { brief: string };
+  };
+  BLOG_POST_WRITE: {
+    input: {
+      virtualMcpId: string;
+      postId: string;
+      post: Record<string, unknown>;
+      branch?: string | undefined;
     };
+    output: { key: string; version: string; branch: string };
   };
   BLOG_POST_ILLUSTRATE: {
     input: {
@@ -2557,159 +3863,29 @@ export interface StudioToolIO {
       productImages?: string[] | undefined;
       companyName?: string | undefined;
       fileConfigId?: string | undefined;
+      sections?: { type: string; props: Record<string, unknown> }[] | undefined;
+      guidance?: string | undefined;
     };
     output: {
       images: { id: string; url: string }[];
       outcome: "ok" | "failed" | "no-bucket" | "no-model";
       referenced: number;
+      sections: { type: string; props: Record<string, unknown> }[];
+      bodyImages: number;
     };
   };
-  BLOG_LINK_SUGGEST: {
+  BLOG_POST_PREVIEW: {
     input: {
-      body: string;
-      posts: { title: string; slug: string }[];
-      count?: number | undefined;
-      virtualMcpId?: string | undefined;
-      grounding?:
-        | {
-            report: string;
-            outcome?:
-              | "ok"
-              | "failed"
-              | "no-site"
-              | "no-tools"
-              | "timeout"
-              | undefined;
-            evidence?: string | undefined;
-            evidenceUri?: string | null | undefined;
-          }
-        | undefined;
-    };
-    output: { suggestions: { quote: string; slug: string }[] };
-  };
-  BLOG_CAMPAIGN_SUGGEST: {
-    input: {
-      seed: { prompt: string; keywords?: string[] | undefined };
-      brand: {
-        companyName?: string | undefined;
-        description?: string | undefined;
-        language?: string | undefined;
-        storeUrl?: string | undefined;
-        targetAudience?: string | undefined;
-        values?: { name: string; value: string }[] | undefined;
-        competitors?: { name: string; value: string }[] | undefined;
-        keywords?: string[] | undefined;
-        commercialPolicies?: { name: string; value: string }[] | undefined;
-        specialDates?: { name: string; value: string }[] | undefined;
-        tone?: string | undefined;
-        dos?: { name: string; value: string }[] | undefined;
-        avoid?: { name: string; value: string }[] | undefined;
-        categories?: string[] | undefined;
-        vocabulary?: { name: string; value: string }[] | undefined;
-        voiceExamples?: { text: string; sounds: boolean }[] | undefined;
-      };
-      existingNames?: string[] | undefined;
-      count?: number | undefined;
-      virtualMcpId?: string | undefined;
-      grounding?:
-        | {
-            report: string;
-            outcome?:
-              | "ok"
-              | "failed"
-              | "no-site"
-              | "no-tools"
-              | "timeout"
-              | undefined;
-            evidence?: string | undefined;
-            evidenceUri?: string | null | undefined;
-          }
-        | undefined;
-      catalogue?:
-        | {
-            products: {
-              id: string;
-              name: string;
-              category: string;
-              price: string;
-              slug: string;
-              url: string;
-              images: string[];
-              description: string;
-            }[];
-            targets: {
-              kind: "category" | "collection";
-              id: string;
-              name: string;
-              slug: string;
-              url: string;
-            }[];
-          }
-        | undefined;
+      virtualMcpId: string;
+      postId: string;
+      branch?: string | undefined;
+      exemplarSlugs?: string[] | undefined;
     };
     output: {
-      campaigns: {
-        name: string;
-        period: { start: string | null; end: string | null };
-        trigger: {
-          type:
-            | "launch"
-            | "seasonal"
-            | "trend"
-            | "seo_gap"
-            | "inventory"
-            | "partnership"
-            | "reputation";
-          note: string;
-        };
-        intent: {
-          objective:
-            | "awareness"
-            | "education"
-            | "conversion"
-            | "retention"
-            | "repositioning";
-          targets: {
-            kind: "category" | "collection";
-            id: string;
-            name: string;
-            url: string;
-            description: string;
-          }[];
-          products: {
-            id: string;
-            name: string;
-            url: string;
-            images: string[];
-            category: string;
-            description: string;
-          }[];
-          keywords: string[];
-        };
-        guardrails: {
-          avoidComplements: { name: string; value: string }[];
-          toneOverrides: string;
-        };
-        review: {
-          verdict: "strong" | "workable" | "weak";
-          rationale: string;
-          risks: string[];
-        };
-      }[];
-      grounded: boolean;
-      toolsUsed: string[];
-      gaps: {
-        code:
-          | "failed"
-          | "no-site"
-          | "no-tools"
-          | "timeout-partial"
-          | "timeout-empty"
-          | "nothing-useful"
-          | "targets-dropped"
-          | "products-dropped";
-        count?: number | undefined;
-      }[];
+      url: string | null;
+      reason: "no-preview-server" | "no-post" | "no-route" | null;
+      exemplars: { slug: string; url: string }[];
+      version: string;
     };
   };
   ORGANIZATION_DOMAIN_LIST: {
@@ -3735,13 +4911,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -3749,8 +4927,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -3803,6 +4979,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -3810,8 +4988,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -3822,6 +4998,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -3829,8 +5007,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -3942,7 +5118,7 @@ export interface StudioToolIO {
     output: { triggered: boolean; reason?: string | undefined };
   };
   REPORTS_BIND: {
-    input: { siteUrl: string; provider: "ga4" | "gsc"; resourceId: string };
+    input: { siteUrl: string; provider: "gsc" | "ga4"; resourceId: string };
     output:
       | { ok: true; resourceId: string; evidence: string }
       | { ok: false; reason: string; detail: string };
@@ -4022,8 +5198,8 @@ export interface StudioToolIO {
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
                             | "off"
-                            | "manual"
                             | "on"
+                            | "manual"
                             | "auto"
                             | null
                             | undefined;
@@ -4033,6 +5209,8 @@ export interface StudioToolIO {
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "calendar"
+                                | "experiments"
                                 | "assets"
                                 | "releases"
                                 | "hosting"
@@ -4040,8 +5218,6 @@ export interface StudioToolIO {
                                 | "analytics"
                                 | "cdn"
                                 | "automations"
-                                | "experiments"
-                                | "calendar"
                               )[]
                             | null
                             | undefined;
@@ -4094,6 +5270,8 @@ export interface StudioToolIO {
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -4101,8 +5279,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -4113,6 +5289,8 @@ export interface StudioToolIO {
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -4120,8 +5298,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -4239,13 +5415,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -4253,8 +5431,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4307,6 +5483,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4314,8 +5492,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4326,6 +5502,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4333,8 +5511,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4491,13 +5667,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -4505,8 +5683,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4559,6 +5735,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4566,8 +5744,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4578,6 +5754,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4585,8 +5763,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4734,13 +5910,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -4748,8 +5926,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -4802,6 +5978,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4809,8 +5987,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4821,6 +5997,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -4828,8 +6006,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -4974,8 +6150,8 @@ export interface StudioToolIO {
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
                             | "off"
-                            | "manual"
                             | "on"
+                            | "manual"
                             | "auto"
                             | null
                             | undefined;
@@ -4985,6 +6161,8 @@ export interface StudioToolIO {
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "calendar"
+                                | "experiments"
                                 | "assets"
                                 | "releases"
                                 | "hosting"
@@ -4992,8 +6170,6 @@ export interface StudioToolIO {
                                 | "analytics"
                                 | "cdn"
                                 | "automations"
-                                | "experiments"
-                                | "calendar"
                               )[]
                             | null
                             | undefined;
@@ -5046,6 +6222,8 @@ export interface StudioToolIO {
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -5053,8 +6231,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -5065,6 +6241,8 @@ export interface StudioToolIO {
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "calendar"
+                    | "experiments"
                     | "assets"
                     | "releases"
                     | "hosting"
@@ -5072,8 +6250,6 @@ export interface StudioToolIO {
                     | "analytics"
                     | "cdn"
                     | "automations"
-                    | "experiments"
-                    | "calendar"
                   )[]
                 | null
                 | undefined;
@@ -5199,13 +6375,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -5213,8 +6391,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -5267,6 +6443,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5274,8 +6452,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -5286,6 +6462,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5293,8 +6471,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -5440,13 +6616,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -5454,8 +6632,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -5508,6 +6684,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5515,8 +6693,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -5527,6 +6703,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -5534,8 +6712,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -6610,7 +7786,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -6637,7 +7813,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -6677,7 +7853,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -6743,7 +7919,7 @@ export interface StudioToolIO {
       site: string;
       key: string;
       name?: string | undefined;
-      status?: "draft" | "running" | "paused" | "ended" | undefined;
+      status?: "draft" | "paused" | "running" | "ended" | undefined;
       goals?: string[] | undefined;
       variants?:
         | {
@@ -6761,7 +7937,7 @@ export interface StudioToolIO {
         site: string;
         key: string;
         name: string;
-        status: "draft" | "running" | "paused" | "ended";
+        status: "draft" | "paused" | "running" | "ended";
         goals: string[];
         variants: {
           id: string;
@@ -7097,13 +8273,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "on" | "manual" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "overview"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "calendar"
+                            | "experiments"
                             | "assets"
                             | "releases"
                             | "hosting"
@@ -7111,8 +8289,6 @@ export interface StudioToolIO {
                             | "analytics"
                             | "cdn"
                             | "automations"
-                            | "experiments"
-                            | "calendar"
                           )[]
                         | null
                         | undefined;
@@ -7165,6 +8341,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -7172,8 +8350,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;
@@ -7184,6 +8360,8 @@ export interface StudioToolIO {
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "calendar"
+                | "experiments"
                 | "assets"
                 | "releases"
                 | "hosting"
@@ -7191,8 +8369,6 @@ export interface StudioToolIO {
                 | "analytics"
                 | "cdn"
                 | "automations"
-                | "experiments"
-                | "calendar"
               )[]
             | null
             | undefined;

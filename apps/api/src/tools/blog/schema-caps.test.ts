@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { CampaignDraftSchema, ReviewSchema } from "./campaign-suggest";
-import { PostSchema } from "./post-draft";
-import { CatalogueProductSchema, CatalogueTargetSchema } from "./site-tools";
-import { boundedText } from "./schema";
+import { boundedText, CampaignDraftSchema } from "./schema";
 
 /**
  * A size constraint on a model's output is not a cap, it is a rejection.
@@ -23,11 +20,7 @@ import { boundedText } from "./schema";
  * can be told what it did wrong.
  */
 const MODEL_OUTPUT_SCHEMAS = {
-  CatalogueProductSchema,
-  CatalogueTargetSchema,
   CampaignDraftSchema,
-  ReviewSchema,
-  PostSchema,
 } satisfies Record<string, z.ZodType>;
 
 /** The JSON Schema keywords that make a provider's response unparseable. */
@@ -91,43 +84,5 @@ describe("boundedText", () => {
     expect(Schema.parse({ description: "Uma mochila." }).description).toBe(
       "Uma mochila.",
     );
-  });
-});
-
-/**
- * The failure that prompted all of this: a product description copied out of a
- * storefront, several thousand characters of marketing HTML, rejected the whole
- * catalogue chunk. Ids and image URLs in the same object must survive whole —
- * a clamped URL is broken rather than shortened.
- */
-describe("a catalogue entry as a storefront actually reports one", () => {
-  const longDescription = `<strong>Mochila</strong> ${"resistente e espaçosa. ".repeat(500)}`;
-  const longImageUrl = `https://cdn.example.com/arquivos/ids/${"1".repeat(400)}/foto.jpg?v=638905407050530000`;
-
-  test("survives a description no cap anticipated", () => {
-    const read = CatalogueProductSchema.safeParse({
-      id: "150298",
-      name: "Mochila Escolar",
-      category: "Escolar",
-      price: "349.9",
-      slug: "mochila-escolar",
-      images: [longImageUrl],
-      description: longDescription,
-    });
-    expect(read.success).toBe(true);
-    expect(read.data?.description.length).toBeLessThanOrEqual(2_048);
-  });
-
-  test("keeps the image address character for character", () => {
-    const read = CatalogueProductSchema.safeParse({
-      id: "150298",
-      name: "Mochila Escolar",
-      category: "Escolar",
-      price: "349.9",
-      slug: "mochila-escolar",
-      images: [longImageUrl],
-      description: "",
-    });
-    expect(read.data?.images[0]).toBe(longImageUrl);
   });
 });

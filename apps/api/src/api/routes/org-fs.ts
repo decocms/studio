@@ -938,6 +938,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           getConnection(),
           r.ctx.organization!.id,
           volume,
+          [path],
         );
         return c.json({ entry });
       } catch (err) {
@@ -986,6 +987,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           getConnection(),
           grant.organizationId,
           grant.volume,
+          [grant.path],
         );
         return c.json({ entry });
       } catch (err) {
@@ -1006,7 +1008,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       await r.fs.mkdir(volume, path, {
         actor: r.ctx.auth!.user!.id,
       });
-      await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
+      await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume, [
+        path,
+      ]);
       return c.json({ ok: true });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -1025,7 +1029,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       await r.fs.delete(volume, path, {
         actor: r.ctx.auth!.user!.id,
       });
-      await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
+      await notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume, [
+        path,
+      ]);
       return c.json({ ok: true });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -1073,6 +1079,7 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           getConnection(),
           r.ctx.organization!.id,
           volume,
+          [body.from, body.to],
         );
         return c.json({ ok: true });
       } catch (err) {

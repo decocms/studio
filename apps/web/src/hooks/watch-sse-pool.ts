@@ -16,6 +16,11 @@ import { NOTIFICATION_CREATED_EVENT } from "@decocms/shared/notification-types";
 import { PROJECT_FOLDERS_UPDATED_EVENT } from "@decocms/shared/project-sidebar";
 import { ORDER_MONITOR_EVALUATED_EVENT } from "@decocms/shared/order-monitor";
 import {
+  BLOG_CARD_DELETED_EVENT,
+  BLOG_CARD_UPDATED_EVENT,
+} from "@decocms/shared/blog-card";
+import { BRAND_UPDATED_EVENT } from "@decocms/shared/brand";
+import {
   createSSESubscription,
   filterEventTypes,
   type SSESubscription,
@@ -32,6 +37,9 @@ const WATCH_TYPES = [
   NOTIFICATION_CREATED_EVENT,
   PROJECT_FOLDERS_UPDATED_EVENT,
   ORDER_MONITOR_EVALUATED_EVENT,
+  BLOG_CARD_UPDATED_EVENT,
+  BLOG_CARD_DELETED_EVENT,
+  BRAND_UPDATED_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -101,6 +109,17 @@ export const orderMonitorWatchView: SSESubscription = filterEventTypes(
   watchSSE,
   [ORDER_MONITOR_EVALUATED_EVENT],
 );
+
+/** The content track's cards (`blog.card.updated` / `.deleted`). */
+export const blogCardWatchView: SSESubscription = filterEventTypes(watchSSE, [
+  BLOG_CARD_UPDATED_EVENT,
+  BLOG_CARD_DELETED_EVENT,
+]);
+
+/** A brand's files changed (`brand.updated`), by a person or an agent. */
+export const brandWatchView: SSESubscription = filterEventTypes(watchSSE, [
+  BRAND_UPDATED_EVENT,
+]);
 
 /**
  * Every org's thread status changes — the admin threads view. Its own

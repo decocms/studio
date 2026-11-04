@@ -43,8 +43,6 @@
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import {
-  assertSafeDecoBlockKey,
-  isReservedResolverBlockKey,
   PlaintextSecretError,
   sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
@@ -60,8 +58,10 @@ import {
   repoErrorStatus,
   type RepoContentClient,
 } from "@/git-providers";
+import { decofilePatchRefusal } from "@/decofile/block-write-guards";
 import {
   BlockConflictError,
+  decofileQueueKey,
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
@@ -742,36 +742,17 @@ export function createDecofileRoutes(
       throw err;
     }
 
-    for (const key of [
-      ...Object.keys(patch.set ?? {}),
-      ...(patch.delete ?? []),
-    ]) {
-      try {
-        assertSafeDecoBlockKey(key);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: message }, 400);
-      }
-    }
-    for (const [key, value] of Object.entries(patch.set ?? {})) {
-      if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        return c.json({ error: `Block "${key}" must be a JSON object` }, 400);
-      }
-      // Deletes of resolver-shaped keys stay allowed above so a shadow is repairable.
-      if (isReservedResolverBlockKey(key)) {
-        return c.json(
-          {
-            error: `Block key "${key}" collides with a framework resolver module and cannot be written`,
-          },
-          400,
-        );
-      }
-    }
+    const refusal = decofilePatchRefusal(patch);
+    if (refusal) return c.json({ error: refusal }, 400);
 
     try {
       const client = await contentClientForScope(c);
       const sha = await enqueueDecofilePatch(
-        `${scope.organizationId}/${scope.virtualMcpId}/${scope.branch}`,
+        decofileQueueKey(
+          scope.organizationId,
+          scope.virtualMcpId,
+          scope.branch,
+        ),
         {
           client,
           branch: scope.branch,

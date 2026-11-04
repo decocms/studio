@@ -37,9 +37,7 @@ import {
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
-import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import {
   DropdownMenu,
@@ -48,8 +46,6 @@ import {
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { GeneratePostDialog } from "./generate-post-dialog";
-import { useGeneratePost } from "./use-generate-post";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   buildPlanningPostBlock,
@@ -144,7 +140,7 @@ export function PostsWorkspace({
   onClose?: () => void;
   /** The shared status transition — the same one the editor's control uses. */
   move: PostStatusMove;
-  /** Live schema — which section kinds generation may write. */
+  /** Live schema — which section kinds an import may write. */
   meta: LiveMeta;
   /** Renders the open post — the list's right pane or the board's floating panel. */
   renderDetail?: (
@@ -158,13 +154,10 @@ export function PostsWorkspace({
 }) {
   const t = useT();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const hasAi = useHostedAiProviderKeys().length > 0;
-  const blogAi = useBlogAi();
   const hideDefaults = useHideDefaultBlogBlocks();
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [generateOpen, setGenerateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -180,18 +173,6 @@ export function PostsWorkspace({
     laneOverrides[lane] ?? empty;
   const setLaneCollapsed = (lane: string, collapsed: boolean) =>
     setLaneOverrides((prev) => ({ ...prev, [lane]: collapsed }));
-
-  const generatePost = useGeneratePost({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    decofile,
-    meta,
-    onStarted: (keys) => {
-      const first = keys[0];
-      if (first) onOpen(first);
-    },
-  });
 
   const posts = listAllPostsWithMeta(decofile);
   const payloadOf = (key: string) =>
@@ -374,17 +355,6 @@ export function PostsWorkspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {blogAi && (
-                <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
-                  <Stars02 size={14} />
-                  <div className="flex flex-col">
-                    <span>{t("sandbox.postBoard.newPostGenerate")}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {t("sandbox.postBoard.newPostGenerateHint")}
-                    </span>
-                  </div>
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem onClick={writePost}>
                 <Pilcrow01 size={14} />
                 <div className="flex flex-col">
@@ -405,15 +375,6 @@ export function PostsWorkspace({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {blogAi && (
-            <GeneratePostDialog
-              open={generateOpen}
-              onOpenChange={setGenerateOpen}
-              decofile={decofile}
-              hasAi={hasAi}
-              onGenerate={(briefing) => void generatePost(briefing)}
-            />
-          )}
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogContent className="max-h-[85vh] sm:max-w-2xl">
               <DialogHeader>

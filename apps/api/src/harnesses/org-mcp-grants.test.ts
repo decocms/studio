@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { connectionGrantsFor, selfToolGrantsFor } from "./org-mcp-grants";
+import {
+  connectionGrantsFor,
+  narrowConnectionGrants,
+  selfToolGrantsFor,
+} from "./org-mcp-grants";
 
 describe("connectionGrantsFor", () => {
   const ids = ["conn_a", "conn_b"];
@@ -179,5 +183,40 @@ describe("selfToolGrantsFor", () => {
         runScoped,
       }),
     ).toEqual(["TASK_ADD_REPO"]);
+  });
+});
+
+describe("narrowConnectionGrants", () => {
+  it("cuts a whole grant down to the listed tools", () => {
+    expect(
+      narrowConnectionGrants(
+        { conn_vtex: ["*"], conn_ga4: ["*"] },
+        { conn_vtex: ["VTEX_LIST_CATEGORIES", "VTEX_GET_PRODUCT"] },
+      ),
+    ).toEqual({
+      conn_vtex: ["VTEX_LIST_CATEGORIES", "VTEX_GET_PRODUCT"],
+      conn_ga4: ["*"],
+    });
+  });
+
+  it("never widens: a tool the grant does not allow stays out", () => {
+    expect(
+      narrowConnectionGrants(
+        { conn_vtex: ["*", "!VTEX_GET_PRODUCT"] },
+        { conn_vtex: ["VTEX_LIST_CATEGORIES", "VTEX_GET_PRODUCT"] },
+      ),
+    ).toEqual({ conn_vtex: ["VTEX_LIST_CATEGORIES"] });
+    expect(
+      narrowConnectionGrants(
+        { conn_vtex: ["VTEX_UPDATE_PRICE"] },
+        { conn_vtex: ["VTEX_LIST_CATEGORIES"] },
+      ),
+    ).toEqual({});
+  });
+
+  it("leaves alone a connection the grants do not have", () => {
+    expect(
+      narrowConnectionGrants({}, { conn_vtex: ["VTEX_LIST_CATEGORIES"] }),
+    ).toEqual({});
   });
 });

@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  CAMPAIGN_OBJECTIVES,
+  CAMPAIGN_TARGET_KINDS,
+  CAMPAIGN_TRIGGERS,
+} from "@decocms/shared/blog-campaign";
 import { clampText } from "@decocms/shared/report-seo";
 
 /**
@@ -32,7 +37,7 @@ export function boundedText(max: number) {
  * ProductCard") nor a competitor worth naming (a name alone says nothing about
  * how the brand differs from it).
  */
-export const BrandRuleSchema = z.object({
+const BrandRuleSchema = z.object({
   name: z
     .string()
     .describe("Short phrase naming the rule — what it is about, not the rule"),
@@ -41,6 +46,83 @@ export const BrandRuleSchema = z.object({
     .describe(
       "The rule itself, as markdown. One or two paragraphs; use a bullet list only when there are genuinely several cases. No heading — the name is the heading.",
     ),
+});
+
+/** How long a campaign's free text may run before it is clamped. */
+const MAX_CAMPAIGN_TEXT_CHARS = 2_000;
+
+/**
+ * What the model writes here is clamped, never rejected.
+ *
+ * {@link boundedText} explains why at length. The short of it: these fields
+ * carry values copied out of a tool result, a `.max()` on them throws away the
+ * whole campaign rather than the overlong field, and every retry throws it away
+ * again for the same reason. Ids and URLs carry no bound at all — truncating one
+ * breaks it.
+ */
+const TargetSchema = z.object({
+  kind: z.enum(CAMPAIGN_TARGET_KINDS),
+  id: z
+    .string()
+    .describe(
+      "The store's own id, exactly as a tool reported it. For a collection this IS the identifier, so it is required; for a category it is optional.",
+    ),
+  name: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+  url: z
+    .string()
+    .describe(
+      "The address a reader can open. Never invented. Always '' for a collection: a collection is a cluster the store filters by, not a page, so it has no address of its own.",
+    ),
+  description: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+    "What falls inside this slice, and who it is for.",
+  ),
+});
+
+const ProductSchema = z.object({
+  id: z.string(),
+  name: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+  url: z.string(),
+  images: z
+    .array(z.string())
+    .describe(
+      "Left to the catalogue when the product is in it. Fill this only for a product no catalogue entry covers, copying the URLs a tool reported verbatim — they sit on a CDN whose host is NOT the store's.",
+    ),
+  category: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+  description: boundedText(MAX_CAMPAIGN_TEXT_CHARS),
+});
+
+/** A campaign as proposed — no key, no audit dates; the caller stamps those. */
+export const CampaignDraftSchema = z.object({
+  name: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+    "What someone would call this campaign. 'Black Friday 2026'.",
+  ),
+  period: z.object({
+    start: z
+      .string()
+      .nullable()
+      .describe("`YYYY-MM-DD`, or null when the moment has no fixed date."),
+    end: z.string().nullable(),
+  }),
+  trigger: z.object({
+    type: z.enum(CAMPAIGN_TRIGGERS),
+    note: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+      "Why this campaign exists now — what a writer reads first.",
+    ),
+  }),
+  intent: z.object({
+    objective: z.enum(CAMPAIGN_OBJECTIVES),
+    targets: z.array(TargetSchema),
+    products: z.array(ProductSchema),
+    keywords: z.array(boundedText(MAX_CAMPAIGN_TEXT_CHARS)),
+  }),
+  guardrails: z.object({
+    avoidComplements: z
+      .array(BrandRuleSchema)
+      .describe("Added to the brand's guardrails for this campaign only."),
+    toneOverrides: boundedText(MAX_CAMPAIGN_TEXT_CHARS).describe(
+      "Replaces the brand's tone while this runs. '' to keep it.",
+    ),
+  }),
 });
 
 /** One example sentence, and whether it is one to imitate or one to avoid — a pair of opposites teaches a voice faster than either side alone, since "not like this" is what pins down how far "like this" goes. */
@@ -54,9 +136,11 @@ const VoiceExampleSchema = z.object({
 });
 
 /**
- * Who the brand is, in `blog-manager-brand.json` — facts that hold whether or not it ever blogs.
+ * What writing one post needs from the brand: who it is, who reads it, how it
+ * sounds, which words it uses, what it refuses and how it fills its blocks.
+ * The campaign brings the rest: its own keywords, its products, its dates.
  */
-export const BlogBrandSchema = z.object({
+export const ReducedContextSchema = z.object({
   companyName: z
     .string()
     .describe(
@@ -82,41 +166,6 @@ export const BlogBrandSchema = z.object({
     .describe(
       "Who reads this brand's content and what they came looking for. Infer from who the copy addresses and what it assumes the reader already cares about. Say so plainly rather than reaching for marketing personas.",
     ),
-  values: z
-    .array(BrandRuleSchema)
-    .describe(
-      "Brand values the content should carry, as the brand itself states them. `name` is the value ('Biodiversidade brasileira'), `value` explains what the copy actually claims and the evidence for it — stated numbers, sourcing commitments. Prefer a value the copy argues for over a generic virtue like 'quality' or 'innovation'.",
-    ),
-  competitors: z
-    .array(BrandRuleSchema)
-    .describe(
-      "Competitors named explicitly in the content. A brand rarely names them in its own copy — return an empty array unless a name is actually there, and never guess from the market segment. When one is named, `name` is the competitor and `value` is what the content says about it.",
-    ),
-  keywords: z
-    .array(z.string())
-    .describe(
-      "Search terms this brand should be found by: what a customer types when looking for what it sells. One term per entry, written exactly as someone would search it, in the brand's language — nothing else, no explanation. Take them from what the site sells and how it names things: product and category terms belong here, and so do the questions its audience asks around them. Not a list of the brand's themes, and never the brand's own name alone.",
-    ),
-  commercialPolicies: z
-    .array(BrandRuleSchema)
-    .describe(
-      "Exchange, shipping, warranty and payment terms, as the site states them. `name` is the policy ('Frete grátis'), `value` the terms with their actual numbers and conditions. These are facts a post may need to state correctly, never a source of voice. Copy the numbers exactly; a wrong threshold in a post is a promise the brand did not make.",
-    ),
-  specialDates: z
-    .array(BrandRuleSchema)
-    .describe(
-      "The commercial moments this brand's calendar turns around — both its own ('Semana Granado') and the general retail dates that matter to its country and segment (Black Friday, Dia das Mães, 8/8). `name` is the date's name, `value` explains what that date means FOR THIS BRAND: what it sells then, what it says then, who it is aimed at. Not a calendar pin — no exact day is wanted, because these move year to year.",
-    ),
-});
-
-/**
- * How this blog is written: the rules a generated post must follow. Persisted
- * to the site's `blog-manager-context.json`, separately from the brand, because
- * these evolve with the blog while the brand's identity does not.
- *
- * `BLOG_CONTEXT_EXTRACT` produces this.
- */
-export const BlogGenerationSchema = z.object({
   tone: z
     .string()
     .describe(
@@ -132,11 +181,6 @@ export const BlogGenerationSchema = z.object({
     .describe(
       "Things a blogpost writer must not do — banned words, claims, formats, topics. `name` names the guardrail, `value` states the prohibition and why the copy suggests it. Derive them from what the copy consistently never does and from claims the brand is visibly careful about. Do not restate a `dos` entry inverted.",
     ),
-  categories: z
-    .array(z.string())
-    .describe(
-      "Content categories that fit this brand's blog, as plain names — this is a taxonomy, not a rule, so no body. Take existing category blocks first; with no blog, derive them from the themes the site's own pages keep returning to. Editorial subjects, not the product taxonomy.",
-    ),
   vocabulary: z
     .array(BrandRuleSchema)
     .describe(
@@ -147,42 +191,14 @@ export const BlogGenerationSchema = z.object({
     .describe(
       "Sentences that show the voice by example, where a description of it would be argued with. Quote VERBATIM from the site — never paraphrased, never improved — and pick sentences a customer actually reads: never an editor's internal annotation, never a shipping term. At most 6, each earning its place by showing something the others do not. Always `sounds: true`: the counter-examples are a human's judgement call, not yours.",
     ),
-});
-
-/**
- * The whole editorial context, brand and generation rules together — what a
- * post is actually written from.
- *
- * The two halves are stored and inferred apart, but every tool downstream of
- * the extract needs both, and takes this `.partial()`: a half-filled context is
- * the normal case, since the extract leaves unevidenced fields blank and a
- * human fills the rest. `normalizeBrandRules` (web) reads the older `string[]`
- * rule lists too.
- */
-export const BlogContextSchema = BlogBrandSchema.merge(BlogGenerationSchema);
-
-/**
- * What writing one post actually needs.
- *
- * A prompt is not a filing cabinet. The whole context carries sixteen fields
- * and four of them were already being dropped unread by the post prompt; the
- * rest competes for the model's attention with the brief it is meant to follow.
- * So a post takes the fields that change how a sentence comes out — who the
- * brand is, who reads it, how it sounds, which words it uses, what it refuses —
- * and the campaign brings the rest: its own keywords, its products, its dates.
- *
- * Picked from {@link BlogContextSchema} rather than restated, so a description
- * improved in one place is improved here too.
- */
-export const ReducedContextSchema = BlogContextSchema.pick({
-  companyName: true,
-  description: true,
-  language: true,
-  storeUrl: true,
-  targetAudience: true,
-  tone: true,
-  dos: true,
-  avoid: true,
-  vocabulary: true,
-  voiceExamples: true,
+  blocks: z
+    .array(BrandRuleSchema)
+    .describe(
+      'How this brand fills each blog block it uses. `name` is the block as a format cites it (\'@Heading\'), `value` its default props — values the block\'s own code accepts, such as `{"level":"h2"}` for a section and `"h3"` for a question inside one — and when to use it. Where it gives a value, that value wins over the block\'s stored example.',
+    ),
+  commercialPolicies: z
+    .array(BrandRuleSchema)
+    .describe(
+      "Exchange, shipping, warranty and payment terms, as the site states them. `name` is the policy ('Frete grátis'), `value` the terms with their actual numbers and conditions. These are facts a post may need to state correctly, never a source of voice. Copy the numbers exactly; a wrong threshold in a post is a promise the brand did not make.",
+    ),
 });

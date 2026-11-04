@@ -38,4 +38,16 @@ describe("legacyWorkspaceCompatibilitySearchSchema", () => {
       connect: "1",
     });
   });
+
+  it("carries Execute's track and card, and reads a retired track as code", () => {
+    expect(
+      legacyWorkspaceCompatibilitySearchSchema.parse({
+        track: "content",
+        card: "aurora-1",
+      }),
+    ).toMatchObject({ track: "content", card: "aurora-1" });
+    expect(
+      legacyWorkspaceCompatibilitySearchSchema.parse({ track: "design" }),
+    ).toMatchObject({ track: "code" });
+  });
 });

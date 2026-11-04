@@ -1,14 +1,10 @@
-import {
-  extractPathParams,
-  fillPathTemplate,
-} from "@/components/sections-editor/page-path-utils.ts";
+import { extractPathParams } from "@decocms/shared/page-path";
+import { fillPathTemplate } from "@/components/sections-editor/page-path-utils.ts";
 import { previewPageForBlock } from "@/components/sections-editor/page-list.tsx";
 import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
 import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
-import {
-  globalSectionPreviewUrl,
-  withDraftPointer,
-} from "@/components/sections-editor/section-preview-url.ts";
+import { withDraftPointer } from "@decocms/shared/blog";
+import { globalSectionPreviewUrl } from "@/components/sections-editor/section-preview-url.ts";
 import type { LastPreviewPage } from "@/components/sandbox/preview/last-preview-page.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 
