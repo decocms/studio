@@ -12,9 +12,9 @@ import {
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
-  readThreadRuntime,
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
@@ -40,12 +40,13 @@ export type BranchPickAction =
 /** Only escalates to sandbox: a `cms` stamp doesn't mean the branch has no code. */
 export function branchPickAction(input: {
   locked: boolean;
-  sessionRuntime: ThreadRuntime;
+  /** `null` while unresolved: may still be a CMS chat. */
+  sessionRuntime: ThreadRuntime | null;
   draftRuntime?: ThreadRuntime;
 }): BranchPickAction {
   const { locked, sessionRuntime, draftRuntime } = input;
   const needsCoding = draftRuntime === "sandbox";
-  if (!locked && !(needsCoding && sessionRuntime === "cms")) {
+  if (!locked && !(needsCoding && sessionRuntime !== "sandbox")) {
     return { kind: "switch" };
   }
   return needsCoding
@@ -74,10 +75,8 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
   const createTask = taskCtx?.createTask;
-  const sessionRuntime = readThreadRuntime(
-    taskCtx?.activeTask?.metadata,
-    virtualMcp?.metadata,
-  );
+  const sessionState = useSessionRuntime(virtualMcp?.id);
+  const sessionRuntime = sessionState.runtime;
   /** A new branch only lands in CMS through a NEW (unstamped) thread: the
    *  runtime is per-thread and immutable, so a coding session on a CMS-default
    *  project has to start one rather than switch in place. */
@@ -104,7 +103,11 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const baseIsDraft = mainSchema === "v8" && sessionRuntime === "cms";
 
   const onChange = (next: string, draftRuntime?: ThreadRuntime) => {
-    const action = branchPickAction({ locked, sessionRuntime, draftRuntime });
+    const action = branchPickAction({
+      locked,
+      sessionRuntime: sessionState.resolved ? sessionRuntime : null,
+      draftRuntime,
+    });
     if (action.kind === "new-chat" && createTask) {
       createTask({
         branch: next,
