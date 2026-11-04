@@ -31,6 +31,7 @@ import {
   useSiteProjects,
 } from "./monitor-views";
 import { DeploysView } from "./deploys-view";
+import { ExperimentsView } from "./experiments-view";
 import { LogsView } from "./logs-view";
 import { MonitoredRepos } from "./monitored-repos";
 import { monitorScope, ProjectFilter } from "./project-filter";
@@ -223,6 +224,14 @@ export function MonitorPage({
           )}
         </div>
       </div>
+    );
+  }
+  if (view === "experiments") {
+    return (
+      <>
+        {tabs}
+        <ExperimentsView scopeId={scopeId} />
+      </>
     );
   }
   if (view === "logs") {

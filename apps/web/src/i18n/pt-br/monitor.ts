@@ -275,4 +275,10 @@ export const monitor = {
   "monitor.verdict.settling": "Medindo",
   "monitor.verdict.unmeasured": "Não medido",
   "monitor.view.deploys": "Deploys",
+  "monitor.connect.firstExperiment": "Criar experimento",
+  "monitor.locked.experiments.title": "Rode experimentos nos seus sites",
+  "monitor.locked.firstExperiment.title": "Nenhum experimento ainda",
+  "monitor.org.unreadable": "Não deu para ler {names}",
+  "monitor.powers.siteExperiments": "Testes A/B com tráfego real",
+  "monitor.view.experiments": "Experimentos",
 } satisfies Record<keyof typeof monitorEn, string>;
