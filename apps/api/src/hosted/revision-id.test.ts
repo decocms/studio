@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { blockVersion } from "./block-version";
-import { isRevisionId, newRevisionId } from "./revision-id";
+import {
+  isRevisionId,
+  newRevisionId,
+  revisionTimeAfter,
+  revisionTimeMs,
+} from "./revision-id";
 
 const bytes = (hex: string) =>
   Uint8Array.from(hex.match(/../g)!.map((b) => Number.parseInt(b, 16)));
@@ -62,5 +67,23 @@ describe("blockVersion (contract §1.3 vectors)", () => {
     ],
   ])("%j", (input, expected) => {
     expect(blockVersion(input)).toBe(expected);
+  });
+});
+
+describe("revisionTimeMs / revisionTimeAfter", () => {
+  it("reads the UUIDv7 timestamp back from an id", () => {
+    expect(
+      revisionTimeMs("fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55"),
+    ).toBe(0x0193a1f26800);
+    const at = Date.parse("2026-11-03T12:00:00.001Z");
+    expect(revisionTimeMs(newRevisionId(at))).toBe(at);
+  });
+
+  it("is now, but never before 1 ms after the previous revision", () => {
+    const previous = newRevisionId(10_000);
+    expect(revisionTimeAfter(null, 5_000)).toBe(5_000);
+    expect(revisionTimeAfter(previous, 20_000)).toBe(20_000);
+    expect(revisionTimeAfter(previous, 5_000)).toBe(10_001);
+    expect(revisionTimeAfter(previous, 10_000)).toBe(10_001);
   });
 });
