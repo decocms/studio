@@ -13,7 +13,7 @@
  *                DELETE) / deploy (POST re-deploy of the current commit)
  *   - E2E:       e2e/runs (list + POST to queue a run) and e2e/runs/:runId
  *                (detail)
- *   - Analytics: lifecycle (status/register/config/disable/usage/delete) proxied
+ *   - Analytics: lifecycle (status/config/disable/usage/delete) proxied
  *                to the control-plane; PLUS analytics/data — the tenant-scoped
  *                dashboard views read straight from the Analytics read surface
  *                (a different upstream), scoped by a warehouse site_id this BFF
@@ -44,14 +44,16 @@ import {
   isAuthenticated,
   requireOrganization,
 } from "../../core/studio-context";
-import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
-import { readAnalyticsRegistration } from "../../analytics/registration";
+import {
+  readAnalyticsRegistration,
+  readExternalAnalyticsConfig,
+} from "../../analytics/registration";
 import {
   isCustomerLakeConfigured,
   linkAnalyticsSite,
 } from "../../customer-lake/client";
 import { getSettings } from "../../settings";
-import { lookupOwnedProject } from "../../tools/experiments/ownership";
+import { analyticsAccess } from "../../analytics/access";
 
 type Variables = { studioContext: StudioContext };
 
@@ -411,38 +413,6 @@ export function toTenantAnalyticsPayload(
   return out;
 }
 
-/**
- * How the org may read `site`'s analytics: it owns the slug in `org_sites`, or,
- * for a site deco doesn't host (never in `org_sites`), its project carries the
- * registration ANALYTICS_INSTALL made for it. Null when neither; `error` when
- * the project lookup failed.
- */
-async function analyticsAccess(
-  ctx: StudioContext,
-  organizationId: string,
-  site: string,
-): Promise<
-  | { kind: "owned" }
-  | { kind: "external"; siteId: string }
-  | { kind: "error" }
-  | null
-> {
-  if (await ctx.storage.orgSites.isOwnedBy(site, organizationId)) {
-    return { kind: "owned" };
-  }
-  try {
-    const project = await lookupOwnedProject(ctx, organizationId, site);
-    const stored = storedExternalRegistration(project?.metadata);
-    return stored ? { kind: "external", siteId: stored.id } : null;
-  } catch (err) {
-    console.error(
-      `[analytics] registration lookup failed for site="${site}":`,
-      err,
-    );
-    return { kind: "error" };
-  }
-}
-
 function registrationLookupFailed(
   c: import("hono").Context<{ Variables: Variables }>,
 ) {
@@ -710,7 +680,12 @@ export const createHostingRoutes = () => {
           registered: true,
           external: true,
           host: null,
-          config: { id: access.siteId },
+          // Its modules gate the tab's views (Heatmap); without them the
+          // data views still work from the id alone.
+          config: {
+            ...(await readExternalAnalyticsConfig(access.siteId)),
+            id: access.siteId,
+          },
         });
       }
     }
@@ -723,15 +698,6 @@ export const createHostingRoutes = () => {
   app.get("/:site/analytics/usage", (c) =>
     proxyControlplane(c, "analytics/usage", {
       forwardQuery: ["from", "to", "granularity"],
-    }),
-  );
-
-  // POST /api/:org/hosting/:site/analytics/register — body `{ modules?, host?,
-  // sampling? }` registers the site with the Deco Analytics collector.
-  app.post("/:site/analytics/register", async (c) =>
-    proxyControlplane(c, "analytics/register", {
-      method: "POST",
-      body: await readJsonBody(c),
     }),
   );
 

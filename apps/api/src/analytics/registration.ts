@@ -7,6 +7,7 @@
  * (`registerExternalAnalyticsSite`).
  */
 
+import { z } from "zod";
 import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { getSettings } from "../settings";
 
@@ -120,6 +121,51 @@ async function registrationError(
       : (code ?? `Analytics registration failed (${res.status})`),
     code,
   );
+}
+
+const ExternalConfig = z.object({
+  config: z.object({
+    enabled: z.boolean().optional(),
+    modules: z.array(z.string()).optional(),
+    domains: z.array(z.string()).optional(),
+    sampling: z.number().optional(),
+    quota: z.number().optional(),
+  }),
+});
+
+/** The collector config of a site the control-plane doesn't host, read by
+ *  the id its registration was created with, or null when it can't be read:
+ *  the caller still has the id, which is all the data views need. */
+export async function readExternalAnalyticsConfig(
+  id: string,
+): Promise<z.infer<typeof ExternalConfig>["config"] | null> {
+  try {
+    const res = await controlplane(
+      `/analytics/external/${encodeURIComponent(id)}`,
+    );
+    if (!res) return null;
+    if (!res.ok) {
+      console.error(
+        `[analytics] external config read HTTP ${res.status} for id="${id}"`,
+      );
+      return null;
+    }
+    const parsed = ExternalConfig.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) {
+      console.error(
+        `[analytics] external config read got an invalid body for id="${id}":`,
+        parsed.error.issues,
+      );
+      return null;
+    }
+    return parsed.data.config;
+  } catch (err) {
+    console.error(
+      `[analytics] external config read failed for id="${id}":`,
+      err,
+    );
+    return null;
+  }
 }
 
 /** Register a site the control-plane doesn't host, by the domains it's live
