@@ -44,7 +44,7 @@ export function SidebarPickerHeaderMobile({
 }
 
 /** No tooltip: it sits next to a picker that already names the place. The
- *  collapsed sidebar has zero width, so reopening is the page header's toggle. */
+ *  collapsed sidebar has zero width, so the leftmost panel's header reopens it. */
 function CollapseToggle() {
   const t = useT();
   const { toggleSidebar } = useSidebar();

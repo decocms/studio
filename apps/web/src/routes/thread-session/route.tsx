@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 /** Binds project and thread runtime to ChatLayout and its routed content. */
 
 import {
@@ -384,12 +386,14 @@ function VmEventsBridge({
 function ThreadTopbar() {
   const t = useT();
   const { toggleSidebar } = useSidebar();
+  const sidebarCollapsed = useSidebarCollapsed();
   const { virtualMcpId, taskId } = useChatTask();
   return (
     <Panel.Topbar className="border-b border-border/60 px-3">
       <Panel.Topbar.Left>
+        {/* The chat is the leftmost panel, so a collapsed sidebar reopens here. */}
         <ToolbarIconButton
-          className="md:hidden"
+          className={cn(!sidebarCollapsed && "md:hidden")}
           onClick={toggleSidebar}
           aria-label={t("layouts.shellControls.toggleSidebar")}
         >

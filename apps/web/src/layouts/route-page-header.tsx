@@ -74,8 +74,11 @@ export function RoutePageHeader({
   }
   breadcrumbs.push({ key: "page", label: title });
   /** A collapsed sidebar takes its toggles with it: they move here, beside the
-   *  breadcrumb. */
+   *  breadcrumb — an open chat, being leftmost, keeps the sidebar one. */
   const sidebarHidden = collapsed;
+  const chatOpen =
+    !!chatLayout && !chatLayout.threadless && chatLayout.threadOpen;
+  const sidebarToggleHere = sidebarHidden && !chatOpen;
   const chatToggle = sidebarHidden && chatLayout && !chatLayout.threadless && (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -102,7 +105,7 @@ export function RoutePageHeader({
           <Tooltip>
             <TooltipTrigger asChild>
               <ToolbarIconButton
-                className={cn(!sidebarHidden && "md:hidden")}
+                className={cn(!sidebarToggleHere && "md:hidden")}
                 onClick={toggleSidebar}
                 aria-label={t("page.expandSidebar")}
               >
