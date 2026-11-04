@@ -67,7 +67,11 @@ export function hostedPublishFailure(
   t: TFunction,
   error: unknown,
 ): { message: string; detail: string | null } {
-  if (error instanceof HostedPublishError && error.code === "main-moved") {
+  // Someone else published in between, three times over (contract §4.9).
+  if (
+    error instanceof HostedPublishError &&
+    (error.code === "production_moved" || error.code === "main-moved")
+  ) {
     return {
       message: t("siteEditor.publish.publishedMeanwhile"),
       detail: null,

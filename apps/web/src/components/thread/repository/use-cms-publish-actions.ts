@@ -265,7 +265,18 @@ export function useCmsPublishActions(
         kind: "publish",
         reread: true,
         refreshOnError: true,
-        write: () => publishHostedDraft(target, noteParts().message),
+        // The hosted CMS publishes the site's draft named after the branch.
+        write: () =>
+          publishHostedDraft(
+            {
+              ...target,
+              site:
+                content?.backend?.kind === "protocol"
+                  ? (content.backend.site ?? null)
+                  : null,
+            },
+            noteParts().message,
+          ),
       });
       await settleHosted(result);
       return true;
