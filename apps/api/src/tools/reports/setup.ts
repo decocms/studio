@@ -221,9 +221,25 @@ export const REPORTS_SETUP = defineTool({
             scopes: connection.configuration_scopes ?? [],
             firstRun: false,
           });
-          connection = await ctx.storage.connections.update(connection.id, {
-            metadata: { ...(connection.metadata ?? {}), picksSentToHost: host },
-          });
+          // Re-read: the send above is a remote round-trip, and a setup that
+          // ran meanwhile may have moved the connection to another site. Merge
+          // onto that fresh metadata, and only while it still names this site.
+          // ponytail: read-then-write; a storage-level jsonb merge if two
+          // setups ever race inside these two DB calls.
+          const fresh = await ctx.storage.connections.findById(
+            connection.id,
+            organization.id,
+          );
+          const freshSite = fresh?.metadata?.siteUrl;
+          if (
+            fresh &&
+            typeof freshSite === "string" &&
+            siteUrlToHost(freshSite) === host
+          ) {
+            connection = await ctx.storage.connections.update(fresh.id, {
+              metadata: { ...(fresh.metadata ?? {}), picksSentToHost: host },
+            });
+          }
         } catch (error) {
           console.error(
             "[reports] ON_MCP_CONFIGURATION after site claim failed",

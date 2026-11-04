@@ -242,6 +242,33 @@ describe("REPORTS_SETUP", () => {
     expect(notifyMock).toHaveBeenCalledTimes(1);
   });
 
+  test("a setup that moved the site during the send keeps its siteUrl", async () => {
+    notifyMock.mockClear();
+    // Another setup lands while this one's send is in flight.
+    notifyMock.mockImplementationOnce(async (ctx) => {
+      await (ctx as StudioContext).storage.connections.update("conn_1", {
+        metadata: { siteUrl: "https://other-site.com" },
+      });
+    });
+    let final: StubConnection | undefined;
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: { ga4: { __type: "x", value: "conn_ga" } },
+      },
+      connectionUpdate: (_id, data) => {
+        final = { id: "conn_1", ...data } as StubConnection;
+      },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(final?.metadata?.siteUrl).toBe("https://other-site.com");
+    expect(final?.metadata?.picksSentToHost).toBeUndefined();
+  });
+
   test("nothing to re-send ⇒ no notify", async () => {
     notifyMock.mockClear();
     const ctx = makeCtx({
