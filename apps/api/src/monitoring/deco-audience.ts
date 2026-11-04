@@ -117,3 +117,63 @@ export async function loadDecoAudience(
     metrics: spec.metrics.map((m) => Number(r[m])),
   }));
 }
+
+/** The Monitor's audience views (web `audience-contract.ts`) → the report each reads. */
+export const AUDIENCE_REPORTS: Record<string, string> = {
+  summary: "kpis",
+  timeline: "timeseries",
+  pages: "pages",
+  sources: "sources",
+  countries: "countries",
+  devices: "devices",
+};
+
+/** {@link loadDecoAudience}'s positional rows in the audience contract's shape.
+ *  The lake has no sessions, bounce or duration: null, never zero. */
+export function toAudienceData(
+  view: string,
+  rows: AudienceRow[],
+  previous: AudienceRow[] | null,
+) {
+  const summary = (r: AudienceRow[] | null) =>
+    r?.[0]
+      ? {
+          visitors: r[0].metrics[0] ?? 0,
+          pageviews: r[0].metrics[2] ?? 0,
+          sessions: null,
+          bounceRate: null,
+          visitDurationS: null,
+        }
+      : null;
+  if (view === "summary") {
+    return {
+      view,
+      summary: summary(rows) ?? {
+        visitors: 0,
+        pageviews: 0,
+        sessions: null,
+        bounceRate: null,
+        visitDurationS: null,
+      },
+      previous: summary(previous),
+    };
+  }
+  if (view === "timeline") {
+    return {
+      view,
+      points: rows.map((r) => ({
+        t: r.dimensions[0] ?? "",
+        visitors: r.metrics[2] ?? 0,
+        pageviews: r.metrics[0] ?? 0,
+      })),
+    };
+  }
+  // Each breakdown's first metric is the one it ranks by.
+  return {
+    view,
+    rows: rows.map((r) => ({
+      key: r.dimensions[0] ?? "",
+      count: r.metrics[0] ?? 0,
+    })),
+  };
+}

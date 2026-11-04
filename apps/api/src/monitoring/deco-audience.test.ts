@@ -14,7 +14,7 @@ mock.module("../customer-lake/client", () => ({
   },
 }));
 
-const { loadDecoAudience } = await import("./deco-audience");
+const { loadDecoAudience, toAudienceData } = await import("./deco-audience");
 
 const DAY = {
   since: "2026-10-28",
@@ -60,4 +60,35 @@ it("has nothing for UTM fields the collector doesn't keep", async () => {
   expect(await loadDecoAudience("org", "s1", "utm_term", DAY, "UTC")).toEqual(
     [],
   );
+});
+
+it("maps the lake's positional rows to the audience contract", () => {
+  const kpis = [{ dimensions: [], metrics: [10, 0, 30, 0, 0] }];
+  expect(toAudienceData("summary", kpis, null)).toEqual({
+    view: "summary",
+    summary: {
+      visitors: 10,
+      pageviews: 30,
+      sessions: null,
+      bounceRate: null,
+      visitDurationS: null,
+    },
+    previous: null,
+  });
+  expect(
+    toAudienceData(
+      "timeline",
+      [{ dimensions: ["2026-11-04"], metrics: [30, 0, 10, 0, 0] }],
+      null,
+    ),
+  ).toEqual({
+    view: "timeline",
+    points: [{ t: "2026-11-04", visitors: 10, pageviews: 30 }],
+  });
+  expect(
+    toAudienceData("pages", [{ dimensions: ["/"], metrics: [7, 3] }], null),
+  ).toEqual({ view: "pages", rows: [{ key: "/", count: 7 }] });
+  expect(toAudienceData("summary", [], null)).toMatchObject({
+    summary: { visitors: 0, pageviews: 0 },
+  });
 });

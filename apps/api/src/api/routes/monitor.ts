@@ -52,9 +52,20 @@ import {
 } from "../../deco-legacy/clickhouse-analytics";
 import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
 import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
-import { readAnalyticsRegistration } from "@/analytics/registration";
+import { ownedAnalyticsSiteId } from "@/analytics/access";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
-import { loadDecoAudience } from "@/monitoring/deco-audience";
+import {
+  AUDIENCE_REPORTS,
+  loadDecoAudience,
+  toAudienceData,
+} from "@/monitoring/deco-audience";
+
+/** The audience contract's ranges → this module's day windows. */
+const AUDIENCE_RANGE_WINDOW: Record<string, string> = {
+  "24h": "today",
+  "7d": "7d",
+  "30d": "30d",
+};
 import { isTimezone } from "@/monitoring/timezone";
 
 type Variables = { studioContext: StudioContext };
@@ -1268,19 +1279,25 @@ export const createMonitorRoutes = () => {
     const tz = c.req.query("tz") ?? "UTC";
     if (!isTimezone(tz)) return c.json({ error: "unknown tz" }, 400);
 
-    const registration = await readAnalyticsRegistration(guard.slug);
+    const ctx = c.get("studioContext");
+    const organizationId = requireOrganization(ctx).id;
+    const registration = await ownedAnalyticsSiteId(
+      ctx,
+      organizationId,
+      guard.slug,
+    );
     if (registration.status === "error") {
       return c.json({ error: "Failed to resolve analytics registration" }, 502);
     }
     if (registration.status === "unregistered") {
       return c.json({ available: false });
     }
+    const siteId = registration.id;
 
-    const organizationId = requireOrganization(c.get("studioContext")).id;
     const read = (w: { since: string; until: string }) =>
       loadDecoAudience(
         organizationId,
-        registration.id,
+        siteId,
         report,
         { ...w, granularity: window.granularity },
         tz,
@@ -1301,6 +1318,74 @@ export const createMonitorRoutes = () => {
       });
     } catch (err) {
       console.error(`[monitor] deco ${report} failed for ${guard.slug}:`, err);
+      return c.json({ error: "Failed to read Deco Analytics" }, 502);
+    }
+  });
+
+  // GET /api/:org/monitor/:site/audience?view=&range=[&trafficSite=] — the
+  // Monitor's audience reads in one shape (web `audience-contract.ts`), from
+  // the site's Deco Analytics in the org's customer lake, whole UTC days.
+  // `trafficSite` reads another slug the org owns (a project's analytics
+  // override). `no-source` when the site isn't registered or the lake is off.
+  app.get("/:site/audience", async (c) => {
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+    const view = c.req.query("view") ?? "summary";
+    const report = AUDIENCE_REPORTS[view];
+    if (!report) return c.json({ error: `unknown view: ${view}` }, 400);
+    const range = c.req.query("range") ?? "7d";
+    const days = AUDIENCE_RANGE_WINDOW[range];
+    const window = days ? resolveWindow(days, undefined, undefined) : null;
+    if (!window) return c.json({ error: `unknown range: ${range}` }, 400);
+
+    const ctx = c.get("studioContext");
+    const organizationId = requireOrganization(ctx).id;
+    const traffic = c.req.query("trafficSite")?.toLowerCase() ?? guard.slug;
+    if (
+      traffic !== guard.slug &&
+      !(await ctx.storage.orgSites.isOwnedBy(traffic, organizationId))
+    ) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+    const noSource = { available: false, reason: "no-source" } as const;
+    // OneDollarStats isn't read here yet; `/onedollar` still serves it.
+    if (!isCustomerLakeConfigured() || c.req.query("source") === "onedollar") {
+      return c.json(noSource);
+    }
+    const registration = await ownedAnalyticsSiteId(
+      ctx,
+      organizationId,
+      traffic,
+    );
+    if (registration.status === "error") {
+      return c.json({ error: "Failed to resolve analytics registration" }, 502);
+    }
+    if (registration.status === "unregistered") return c.json(noSource);
+
+    const read = (w: { since: string; until: string }) =>
+      loadDecoAudience(
+        organizationId,
+        registration.id,
+        report,
+        { ...w, granularity: window.granularity },
+        "UTC",
+      );
+    try {
+      const rows = await read(window);
+      const [since, until] = previousWindow(window.since, window.days);
+      const previous =
+        view === "summary"
+          ? await read({ since, until }).catch(() => null)
+          : null;
+      return c.json({
+        available: true,
+        source: "deco-analytics",
+        range,
+        window: { kind: "calendar", since: window.since, until: window.until },
+        data: toAudienceData(view, rows, previous),
+      });
+    } catch (err) {
+      console.error(`[monitor] audience ${view} failed for ${traffic}:`, err);
       return c.json({ error: "Failed to read Deco Analytics" }, 502);
     }
   });
