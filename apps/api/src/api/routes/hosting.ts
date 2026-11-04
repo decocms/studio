@@ -895,6 +895,14 @@ export const createHostingRoutes = () => {
     }
 
     if (!readSurface) {
+      // Each lake dimension is its own aggregate, so a filtered read would
+      // show unfiltered numbers under the filter's chip.
+      if (segment.some(([key]) => key === "f")) {
+        return c.json(
+          { error: "Filters need the Analytics read surface" },
+          422,
+        );
+      }
       const win = lakeWindow(range);
       if (!win) return c.json({ error: `unknown range: ${range}` }, 400);
       try {

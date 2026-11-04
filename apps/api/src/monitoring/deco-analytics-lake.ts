@@ -3,7 +3,7 @@
  * payload keys, for a Studio without the read surface. The lake holds hourly
  * rollups (`site_traffic_hourly`, `site_dims_hourly`), so only `overview`,
  * `behaviour` and `events` have data: sessions, bounce, duration, the funnel,
- * live, vitals and the heatmap stay absent, and segment filters aren't applied
+ * live, vitals and the heatmap stay absent, and a segment can't be filtered
  * because each dimension is its own aggregate. Read as the org's own lake user,
  * so the row policy limits it to the org's sites.
  */
