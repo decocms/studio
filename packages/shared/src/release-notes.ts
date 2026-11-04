@@ -1,6 +1,6 @@
 /**
  * The words a reapplied release's note is written in. The server writes them
- * (`apps/api/src/hosted/reapply.ts`) and the Releases screen reads them back
+ * (`apps/api/src/hosted/cms-publish.ts`) and the Releases screen reads them back
  * (`releases-status.ts`) to show the note in the viewer's language, so both
  * sides take them from here.
  */
