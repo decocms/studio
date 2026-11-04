@@ -9,8 +9,15 @@
  * the whole lifecycle with the GitHub client set to throw
  * (`cms-lifecycle.test.ts`); this rule keeps the imports from coming back.
  *
+ * The web editor's content backend is covered too: the hook that picks the
+ * backend (`use-content-backend.ts`), the hosted CMS client
+ * (`content-protocol-api.ts`, `cms-*.ts`) and the hosted Publish and
+ * Releases clients.
+ *
  * `decofile.ts` and `sandbox-proxy.ts` stay outside it: they serve v7 Fast
- * Preview and sandboxes from git, and no longer carry a v8 content path.
+ * Preview and sandboxes from git. For a Blocks v8 project (its marker) they
+ * refuse the git writes and the git popover routes before any repository
+ * lookup (`decofile-v8.test.ts`, `hostedV8GitGone`).
  */
 
 import { resolveRelative } from "./resolve-relative.js";
@@ -21,6 +28,11 @@ const COVERED = [
   /apps\/api\/src\/hosted\/[a-z0-9-]+(\.test)?\.ts$/,
   /apps\/api\/src\/storage\/cms-drafts\.ts$/,
   /apps\/web\/src\/components\/sections-editor\/cms-[a-z-]+\.ts$/,
+  /apps\/web\/src\/components\/sections-editor\/use-content-backend\.ts$/,
+  /apps\/web\/src\/components\/sections-editor\/content-protocol-api\.ts$/,
+  /apps\/web\/src\/components\/sections-editor\/content-write-keys\.ts$/,
+  /apps\/web\/src\/components\/thread\/repository\/hosted-publish-api\.ts$/,
+  /apps\/web\/src\/layouts\/main-panel-tabs\/releases-api\.ts$/,
 ];
 
 /** What the covered files may not import, as resolved paths. */
