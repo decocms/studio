@@ -9,6 +9,8 @@ export const monitor = {
   "monitor.connect.more": "Conecte mais fontes",
   "monitor.connect.ordersAlerts":
     "Alertas quando pedidos caem ou cancelamentos sobem",
+  "monitor.performance.external":
+    "Este site não está na CDN da deco, então não tem performance de CDN",
   "monitor.signals.title": "Precisa de atenção",
   "monitor.signal.afterDeploy": "{minutes} min após o deploy “{message}”",
   "monitor.signal.below": "{metric} {pct} abaixo do esperado",

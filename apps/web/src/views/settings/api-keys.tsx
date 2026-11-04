@@ -23,7 +23,38 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@decocms/ui/components/radio-group.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
+  useMCPToolsListQuery,
+  useProjectContext,
+} from "@/sdk";
+import {
+  API_KEY_EXPIRY_OPTIONS,
+  type ApiKeyAccessMode,
+  type ApiKeyExpiry,
+  countTools,
+  expiresInSeconds,
+  keyPermissions,
+  readOnlyToolNames,
+  STUDIO_RESOURCE,
+  summarizeKeyAccess,
+} from "./api-key-access";
+import { ApiKeyToolPicker } from "./api-key-tool-picker";
 import {
   type ApiKey,
   type CreatedApiKey,
@@ -58,6 +89,11 @@ function ApiKeyRow({
   onDelete: () => void;
 }) {
   const t = useT();
+  const access = summarizeKeyAccess(apiKey.permissions);
+  const expiresAt = apiKey.expiresAt ? new Date(apiKey.expiresAt) : null;
+  const [now] = useState(() => Date.now());
+  const expired = expiresAt !== null && expiresAt.getTime() <= now;
+  const expiresOn = expiresAt?.toLocaleDateString() ?? "";
   return (
     <li className="flex items-center justify-between gap-4 px-4 py-3">
       <div className="flex items-center gap-3 min-w-0">
@@ -65,13 +101,33 @@ function ApiKeyRow({
           <Key01 size={16} className="text-muted-foreground" />
         </div>
         <div className="min-w-0">
-          <span className="font-medium text-sm truncate block">
-            {apiKey.name}
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-medium text-sm truncate">{apiKey.name}</span>
+            {access.kind === "full" ? (
+              <Badge variant="warning" size="sm">
+                {t("settings.apiKeys.accessFull")}
+              </Badge>
+            ) : (
+              <Badge variant="muted" size="sm">
+                {t("settings.apiKeys.toolCount", { count: access.count })}
+              </Badge>
+            )}
+            {expired && (
+              <Badge variant="destructive" size="sm">
+                {t("settings.apiKeys.expired")}
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             {t("settings.apiKeys.createdAt", {
               date: new Date(apiKey.createdAt).toLocaleDateString(),
             })}
+            {" · "}
+            {!apiKey.expiresAt
+              ? t("settings.apiKeys.neverExpires")
+              : expired
+                ? t("settings.apiKeys.expiredOn", { date: expiresOn })
+                : t("settings.apiKeys.expiresOn", { date: expiresOn })}
           </p>
         </div>
       </div>
@@ -152,30 +208,56 @@ function CreatedKeyDialog({
   );
 }
 
-function CreateApiKeyDialog({
-  open,
-  onOpenChange,
+function CreateApiKeyForm({
+  onClose,
   onCreated,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   onCreated: (key: CreatedApiKey) => void;
 }) {
   const t = useT();
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const toolsQuery = useMCPToolsListQuery({ client });
+  const tools = [...(toolsQuery.data?.tools ?? [])].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  const readOnlyTools = readOnlyToolNames(tools);
   const [name, setName] = useState("");
+  const [access, setAccess] = useState<ApiKeyAccessMode>("read-only");
+  const [customTools, setCustomTools] = useState<Record<
+    string,
+    string[]
+  > | null>(null);
+  const [expiry, setExpiry] = useState<ApiKeyExpiry>("90");
   const createApiKey = useCreateApiKey();
 
-  function handleClose() {
-    setName("");
-    onOpenChange(false);
-  }
+  // Custom starts from the read-only set, so narrowing it is one click away.
+  const selectedTools = customTools ?? { [STUDIO_RESOURCE]: readOnlyTools };
+  const needsTools = access !== "full";
+  const toolsReady = !needsTools || toolsQuery.isSuccess;
+  const hasTools =
+    access === "full" ||
+    (access === "read-only"
+      ? readOnlyTools.length
+      : countTools(selectedTools)) > 0;
+  const canSubmit =
+    !!name.trim() && toolsReady && hasTools && !createApiKey.isPending;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (!canSubmit) return;
     try {
-      const created = await createApiKey.mutateAsync({ name: name.trim() });
-      handleClose();
+      const created = await createApiKey.mutateAsync({
+        name: name.trim(),
+        permissions: keyPermissions(access, readOnlyTools, selectedTools),
+        expiresIn: expiresInSeconds(expiry),
+      });
+      onClose();
       onCreated(created);
     } catch (err) {
       toast.error(
@@ -186,54 +268,168 @@ function CreateApiKeyDialog({
     }
   }
 
+  const accessOptions: Array<{
+    value: ApiKeyAccessMode;
+    label: string;
+    description: string;
+  }> = [
+    {
+      value: "read-only",
+      label: t("settings.apiKeys.accessReadOnly"),
+      description: t("settings.apiKeys.accessReadOnlyDescription", {
+        count: readOnlyTools.length,
+      }),
+    },
+    {
+      value: "custom",
+      label: t("settings.apiKeys.accessCustom"),
+      description: t("settings.apiKeys.accessCustomDescription"),
+    },
+    {
+      value: "full",
+      label: t("settings.apiKeys.accessFull"),
+      description: t("settings.apiKeys.accessFullDescription"),
+    },
+  ];
+
+  const expiryLabels: Record<ApiKeyExpiry, string> = {
+    "7": t("settings.apiKeys.expiryDays", { days: 7 }),
+    "30": t("settings.apiKeys.expiryDays", { days: 30 }),
+    "90": t("settings.apiKeys.expiryDays", { days: 90 }),
+    "365": t("settings.apiKeys.expiryYear"),
+    never: t("settings.apiKeys.expiryNever"),
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) handleClose();
-        else onOpenChange(o);
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="api-key-name">{t("settings.apiKeys.nameLabel")}</Label>
+        <Input
+          id="api-key-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("settings.apiKeys.namePlaceholder")}
+          autoComplete="off"
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>{t("settings.apiKeys.accessLabel")}</Label>
+        <RadioGroup
+          value={access}
+          onValueChange={(value) => {
+            const next = accessOptions.find((o) => o.value === value);
+            if (next) setAccess(next.value);
+          }}
+          className="gap-2"
+        >
+          {accessOptions.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-start gap-3 rounded-md border border-border px-3 py-2.5 hover:bg-accent has-[[data-state=checked]]:border-primary"
+            >
+              <RadioGroupItem value={option.value} className="mt-0.5" />
+              <div className="min-w-0">
+                <span className="block text-sm font-medium">
+                  {option.label}
+                </span>
+                <span
+                  className={cn(
+                    "block text-xs",
+                    option.value === "full"
+                      ? "text-warning"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {option.description}
+                </span>
+              </div>
+            </label>
+          ))}
+        </RadioGroup>
+      </div>
+
+      {needsTools && toolsQuery.isError && (
+        <p className="text-xs text-destructive">
+          {t("settings.apiKeys.toolsLoadFailed")}
+        </p>
+      )}
+      {access === "custom" && toolsQuery.isSuccess && (
+        <ApiKeyToolPicker
+          studioTools={tools}
+          toolSet={selectedTools}
+          onChange={setCustomTools}
+        />
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor="api-key-expiry">
+          {t("settings.apiKeys.expiryLabel")}
+        </Label>
+        <Select
+          value={expiry}
+          onValueChange={(value) => {
+            const next = API_KEY_EXPIRY_OPTIONS.find((o) => o === value);
+            if (next) setExpiry(next);
+          }}
+        >
+          <SelectTrigger id="api-key-expiry" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {API_KEY_EXPIRY_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {expiryLabels[option]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onClose}
+          disabled={createApiKey.isPending}
+        >
+          {t("settings.apiKeys.cancelButton")}
+        </Button>
+        <Button type="submit" disabled={!canSubmit}>
+          {createApiKey.isPending
+            ? t("settings.apiKeys.creatingButton")
+            : t("settings.apiKeys.createButton")}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function CreateApiKeyDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (key: CreatedApiKey) => void;
+}) {
+  const t = useT();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("settings.apiKeys.newKeyTitle")}</DialogTitle>
           <DialogDescription>
             {t("settings.apiKeys.newKeyDescription")}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="api-key-name">
-              {t("settings.apiKeys.nameLabel")}
-            </Label>
-            <Input
-              id="api-key-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("settings.apiKeys.namePlaceholder")}
-              autoComplete="off"
-              required
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
-              disabled={createApiKey.isPending}
-            >
-              {t("settings.apiKeys.cancelButton")}
-            </Button>
-            <Button
-              type="submit"
-              disabled={createApiKey.isPending || !name.trim()}
-            >
-              {createApiKey.isPending
-                ? t("settings.apiKeys.creatingButton")
-                : t("settings.apiKeys.createButton")}
-            </Button>
-          </DialogFooter>
-        </form>
+        {/* Mounted only while open, so every open starts from a clean form. */}
+        <CreateApiKeyForm
+          onClose={() => onOpenChange(false)}
+          onCreated={onCreated}
+        />
       </DialogContent>
     </Dialog>
   );

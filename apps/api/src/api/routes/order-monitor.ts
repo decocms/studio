@@ -23,6 +23,7 @@ import type { Context } from "hono";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { StudioContext } from "@/core/studio-context";
 import { isAuthenticated, requireOrganization } from "@/core/studio-context";
+import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadStoreInfo } from "@/monitoring/order-incidents";
@@ -173,19 +174,30 @@ export const createOrderMonitorRoutes = () => {
     const site = c.req.query("site")?.toLowerCase();
     let siteId = "";
     if (site) {
-      if (!(await g.ctx.storage.orgSites.isOwnedBy(site, g.organizationId))) {
+      const access = await analyticsAccess(g.ctx, g.organizationId, site);
+      if (!access) {
         return c.json({ error: "Site not found in organization" }, 404);
       }
-      const registration = await readAnalyticsRegistration(site);
-      if (registration.status === "error") {
+      if (access.kind === "error") {
         return c.json(
           { error: "Failed to resolve analytics registration" },
           502,
         );
       }
-      if (registration.status === "unregistered")
-        return c.json({ traffic: null });
-      siteId = registration.id;
+      if (access.kind === "external") {
+        siteId = access.siteId;
+      } else {
+        const registration = await readAnalyticsRegistration(site);
+        if (registration.status === "error") {
+          return c.json(
+            { error: "Failed to resolve analytics registration" },
+            502,
+          );
+        }
+        if (registration.status === "unregistered")
+          return c.json({ traffic: null });
+        siteId = registration.id;
+      }
     }
     try {
       return c.json({

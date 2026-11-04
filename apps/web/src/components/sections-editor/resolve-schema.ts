@@ -60,6 +60,8 @@ export interface SchemaProperty {
     schema?: SchemaProperty;
     /** Value of the union discriminator field (e.g. `image-card`). */
     discriminatorValue?: string;
+    /** The branch lists its discriminator in `required`. */
+    discriminatorRequired?: boolean;
   }>;
   /** Property used to pick the active union branch (e.g. `type`). */
   discriminatorKey?: string;
@@ -284,6 +286,20 @@ function lookupManifestBlockSchema(
   }
 
   return {};
+}
+
+/**
+ * Whether this meta knows the block at all — the exact question
+ * {@link lookupManifestBlockSchema} answers, since it returns `{}` for a
+ * resolveType it cannot place. Worth asking before rendering a form: a block
+ * the manifest has no entry for falls back to the site-wide schema, whose
+ * fields belong to no block in particular.
+ */
+export function hasManifestBlockSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): boolean {
+  return Object.keys(lookupManifestBlockSchema(resolveType, meta)).length > 0;
 }
 
 /** Whether resolveType refers to a manifest `apps` block (legacy + site/apps aliases). */
@@ -1025,6 +1041,11 @@ function buildSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
+              // Read here, not from `schema`: a cyclic or deep branch has none.
+              discriminatorRequired: [
+                def,
+                ...((def.allOf as RawSchema[]) ?? []),
+              ].some((part) => asStringArray(part.required).includes("type")),
               // Type-discriminated branches have no module resolveType to
               // re-resolve from, so keep them eager regardless of union size.
               schema: eagerBranchSchema(def, depth + 1, nonNull.length, false),

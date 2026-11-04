@@ -67,7 +67,9 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
             description={t("virtualMcp.layoutTabContent.mainViewDescription")}
             action={
               <Select
-                value={views.defaultMainView}
+                // An empty value leaves Radix blank; remount so the placeholder shows.
+                key={views.noMainView ? "none" : "set"}
+                value={views.noMainView ? undefined : views.defaultMainView}
                 onValueChange={views.setMainView}
               >
                 <SelectTrigger

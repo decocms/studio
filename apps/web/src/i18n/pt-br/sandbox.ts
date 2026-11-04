@@ -8,9 +8,24 @@ export const sandbox = {
     "Instalado. As configurações aparecem depois que o site for buildado com este app — o schema é gerado a partir do módulo do próprio app.",
   "sandbox.appEditor.installNeedsCodingSession":
     "Inicie uma sessão de código para instalar apps.",
-  "sandbox.appEditor.loadingSchema": "Carregando schema do app…",
   "sandbox.appEditor.noEditableSchema":
     "Nenhum schema editável foi encontrado para este app.",
+  "sandbox.appInstallPanel.flagOff":
+    "A instalação de apps está desligada nesta organização. Um admin pode ligar em Configurações → Geral → Editor do site.",
+  "sandbox.appInstallPanel.install": "Instalar",
+  "sandbox.appInstallPanel.oneAtATime":
+    "Outro app está instalando — espere terminar para instalar este.",
+  "sandbox.appInstallPanel.sessionLoading":
+    "Ainda lendo esta sessão — o botão volta em instantes.",
+  "sandbox.appInstallPanel.installing": "Instalando…",
+  "sandbox.appInstallPanel.notInstallable":
+    "Este app vem do código do próprio site, não do registro — não há o que instalar por aqui.",
+  "sandbox.appInstallPanel.unavailable":
+    "Instalar apps não está disponível nesta sessão.",
+  "sandbox.appInstallPanel.writesDeno":
+    "A instalação adiciona apps/{vendor}/{app}.ts e o bloco do app nesta branch.",
+  "sandbox.appInstallPanel.writesTanstack":
+    "A instalação adiciona src/apps/{vendor}/{app}.ts, o pacote do app, sua entrada no APP_REGISTRY e o bloco do app nesta branch.",
   "sandbox.availableSectionEditor.editingBreadcrumb":
     "Trilha de navegação de edição",
   "sandbox.availableSectionEditor.localEditsHint":
@@ -1202,10 +1217,6 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
-  "sandbox.repoRow.label": "Repositório",
-  "sandbox.repoRow.noRepositoryConnected": "Nenhum repositório conectado",
-  "sandbox.repoRow.tooltipContent":
-    "O repositório GitHub conectado para este projeto. Gerencie em Conexões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",

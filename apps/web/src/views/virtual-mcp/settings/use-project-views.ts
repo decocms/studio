@@ -454,7 +454,10 @@ export function useProjectViews({
    * (`NAV_DESTINATION_KEYS` — Home, Reports, Tasks; Library is org-only and
    * never an agent's view), then the project rows, then Settings last.
    */
-  const defaultMainOptions: { value: string; label: string }[] = [];
+  // New projects land on Overview, so it must be pickable or the trigger blanks.
+  const defaultMainOptions: { value: string; label: string }[] = [
+    { value: "overview", label: t("sidebar.navDestinations.overview") },
+  ];
   for (const viewId of enabledSidebarViews) {
     /**
      * Pinned app rows sit before Automations in the actual sidebar, so append

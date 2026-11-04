@@ -4,6 +4,7 @@ import {
   extractGlobalSections,
   extractPages,
   findPageForPath,
+  findPageForPathOrFirst,
   findSiteAppEntry,
   hasEditableDecoContent,
   pagesShowingBlock,
@@ -85,6 +86,25 @@ describe("page-list", () => {
     expect(findPageForPath(pages, "/", "pages-home-old")?.key).toBe(
       "pages-home-old",
     );
+  });
+
+  it("findPageForPathOrFirst opens the first page when there is no home page", () => {
+    const pages = [
+      { key: "pages-home-en", name: "Home (EN)", path: "/en" },
+      { key: "pages-home-pt", name: "Home (PT)", path: "/pt" },
+    ];
+    expect(findPageForPathOrFirst(pages, "/")?.key).toBe("pages-home-en");
+    expect(findPageForPathOrFirst(pages, "/pt")?.key).toBe("pages-home-pt");
+    expect(findPageForPathOrFirst(pages, "/missing")).toBeNull();
+    expect(findPageForPathOrFirst([], "/")).toBeNull();
+  });
+
+  it("findPageForPathOrFirst keeps the home page when one exists", () => {
+    const pages = [
+      { key: "pages-about", name: "About", path: "/about" },
+      { key: "pages-home", name: "Home", path: "/" },
+    ];
+    expect(findPageForPathOrFirst(pages, "/")?.key).toBe("pages-home");
   });
 
   it("extractApps finds installed app blocks", () => {

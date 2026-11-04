@@ -374,6 +374,9 @@ export const settings = {
   "settings.blocksEditor.title": "New blocks editor",
   "settings.blocksEditor.description":
     "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
+  "settings.siteAppsInstall.title": "Install apps from the catalogue",
+  "settings.siteAppsInstall.description":
+    "Let the Apps tab install an app into the site: it writes the app's module and its registration to the branch, adds the dependency, and restarts the sandbox's dev server so the app's settings form appears. With it off the catalogue stays browsable and nothing is installable.",
   "settings.multiAppPreview.title": "Preview several apps of a monorepo",
   "settings.multiAppPreview.description":
     "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
@@ -1086,6 +1089,34 @@ export const settings = {
   "settings.roles.roleOwner": "Owner",
   "settings.roles.roleUser": "User",
   "settings.roles.searchPlaceholder": "Search roles...",
+  "settings.apiKeys.accessLabel": "Access",
+  "settings.apiKeys.accessReadOnly": "Read only",
+  "settings.apiKeys.accessReadOnlyDescription":
+    "The {count} Studio tools that never change data. Tools added later stay out.",
+  "settings.apiKeys.accessCustom": "Choose tools",
+  "settings.apiKeys.accessCustomDescription":
+    "Only the Studio and connection tools you pick. Tools added later stay out.",
+  "settings.apiKeys.accessFull": "Full access",
+  "settings.apiKeys.accessFullDescription":
+    "Every tool, including ones that delete data and ones added later.",
+  "settings.apiKeys.expired": "Expired",
+  "settings.apiKeys.expiredOn": "Expired {date}",
+  "settings.apiKeys.expiresOn": "Expires {date}",
+  "settings.apiKeys.expiryDays": "{days} days",
+  "settings.apiKeys.expiryLabel": "Expires after",
+  "settings.apiKeys.expiryNever": "Never",
+  "settings.apiKeys.expiryYear": "1 year",
+  "settings.apiKeys.neverExpires": "Never expires",
+  "settings.apiKeys.readOnlyBadge": "Read only",
+  "settings.apiKeys.toolCount": "{count} tools",
+  "settings.apiKeys.studioTools": "Studio",
+  "settings.apiKeys.toolsGroupCount": "{count}/{total}",
+  "settings.apiKeys.toolsNone": "No tools",
+  "settings.apiKeys.toolsSelectGroup": "Select every tool in {name}",
+  "settings.apiKeys.toolsSelected": "{count} selected",
+  "settings.apiKeys.toolsLoadFailed":
+    "Couldn't load the tool list. Close and try again.",
+  "settings.apiKeys.toolsSearch": "Search tools…",
   "settings.apiKeys.cancelButton": "Cancel",
   "settings.apiKeys.copied": "Copied to clipboard",
   "settings.apiKeys.copyKey": "Copy key",
@@ -1112,7 +1143,7 @@ export const settings = {
   "settings.apiKeys.namePlaceholder": "My integration",
   "settings.apiKeys.newKey": "New key",
   "settings.apiKeys.newKeyDescription":
-    "Give the key a name so you can recognize it later.",
+    "Give the key only the tools it needs. Whoever holds the key can use them, even if it leaks.",
   "settings.apiKeys.newKeyTitle": "New API key",
   "settings.apiKeys.sectionDescription":
     "For scripts and clients that can't sign in through a browser.",

@@ -118,6 +118,9 @@ export interface AnalyticsStatus {
   /** The public declared key (`dq_…`) for a keyed site — it ships in the page,
    *  so it is shown, not hidden. */
   key?: string | null;
+  /** A site deco doesn't host, registered from its project: the control-plane
+   *  has no record of it, so nothing here can configure it. */
+  external?: boolean;
 }
 
 /** The BFF's `/analytics/data` envelope. `data` is the read surface's per-view
@@ -2423,6 +2426,7 @@ function RegisteredView({
   const [requested, setRequested] = useState(initialView ?? "overview");
   const [configOpen, setConfigOpen] = useState(false);
   const cfg = status.config ?? {};
+  const external = status.external === true;
   const enabled = cfg.enabled !== false;
   const modules = cfg.modules ?? ["core"];
   // Heatmap is offered only to a site with the `heatmap` module; a view the
@@ -2461,31 +2465,37 @@ function RegisteredView({
                 ? t("mainPanelTabs.analyticsTab.active")
                 : t("mainPanelTabs.analyticsTab.paused")}
             </Badge>
-            <span className="text-sm text-muted-foreground">
-              {t("mainPanelTabs.analyticsTab.collectingUnder", {
-                host: status.host ?? cfg.id ?? "—",
-              })}
-            </span>
+            {/* An external site's status carries no host and no modules: the
+                id below already names it. */}
+            {!external && (
+              <span className="text-sm text-muted-foreground">
+                {t("mainPanelTabs.analyticsTab.collectingUnder", {
+                  host: status.host ?? cfg.id ?? "—",
+                })}
+              </span>
+            )}
             {cfg.id && (
               <span className="font-mono text-xs text-muted-foreground/70">
                 {t("mainPanelTabs.analyticsTab.idLabel", { id: cfg.id })}
               </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {modules.map((m) => (
-              <Badge key={m} variant="secondary">
-                {m}
-              </Badge>
-            ))}
-            {typeof cfg.sampling === "number" && cfg.sampling < 1 && (
-              <Badge variant="outline">
-                {t("mainPanelTabs.analyticsTab.sampling", {
-                  percent: String(Math.round(cfg.sampling * 100)),
-                })}
-              </Badge>
-            )}
-          </div>
+          {!external && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {modules.map((m) => (
+                <Badge key={m} variant="secondary">
+                  {m}
+                </Badge>
+              ))}
+              {typeof cfg.sampling === "number" && cfg.sampling < 1 && (
+                <Badge variant="outline">
+                  {t("mainPanelTabs.analyticsTab.sampling", {
+                    percent: String(Math.round(cfg.sampling * 100)),
+                  })}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Range pills — hidden on Heatmap, which picks its own. */}
@@ -2508,14 +2518,16 @@ function RegisteredView({
               ))}
             </div>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfigOpen(true)}
-          >
-            <Settings01 className="size-4" />
-            {t("mainPanelTabs.analyticsTab.configSectionTitle")}
-          </Button>
+          {!external && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfigOpen(true)}
+            >
+              <Settings01 className="size-4" />
+              {t("mainPanelTabs.analyticsTab.configSectionTitle")}
+            </Button>
+          )}
         </div>
       </div>
 

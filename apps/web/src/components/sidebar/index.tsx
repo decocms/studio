@@ -43,7 +43,7 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const scopeId = useScopeId();
   const exitToOrg = useExitProjectScope();
-  // The new navigation leaves through the header's switcher and the org rail.
+  // The new navigation leaves through the header's back arrow.
   const projectFirstNav = useProjectFirstNav();
 
   if (!scopeId || projectFirstNav) return null;

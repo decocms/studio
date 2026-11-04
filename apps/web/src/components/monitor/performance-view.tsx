@@ -26,6 +26,7 @@ import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Page } from "@/components/page";
+import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
@@ -638,6 +639,17 @@ function SitePerformance({
       <Frame>
         <Skeleton className="h-28" />
         <Skeleton className="h-64" />
+      </Frame>
+    );
+  }
+  // A site deco doesn't host never reaches the CDN; its Deco Analytics is under Analytics.
+  if (storedExternalRegistration(entity?.metadata)) {
+    return (
+      <Frame>
+        <EmptyState
+          icon={<Globe01 className="size-5" />}
+          title={t("monitor.performance.external")}
+        />
       </Frame>
     );
   }

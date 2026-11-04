@@ -11,7 +11,7 @@ import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import type { SeoTarget } from "./seo-block";
 import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
-import { defaultPageSeoResolveType } from "./seo-schema";
+import { defaultPageSeoResolveType, resolveSeoSchemaType } from "./seo-schema";
 import { activeSeoResolveType, useSeoFormSave } from "./seo-save";
 import { copyScope, useCopyEpochs } from "./held-copy";
 import { SeoPreview } from "./seo-preview";
@@ -103,7 +103,11 @@ export function SeoEditor({
     unknown
   >;
   const activeResolveType = resolved
-    ? activeSeoResolveType(effectiveSeo, resolved)
+    ? resolveSeoSchemaType(
+        activeSeoResolveType(effectiveSeo, resolved),
+        decofile,
+        meta,
+      )
     : null;
   const seoSchema =
     activeResolveType && (isPageTarget ? isSeoEnabled(displayRawSeo) : true)
