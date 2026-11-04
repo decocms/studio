@@ -128,23 +128,27 @@ export const AUDIENCE_REPORTS: Record<string, string> = {
   devices: "devices",
 };
 
-/** {@link loadDecoAudience}'s positional rows in the audience contract's shape.
- *  The lake has no sessions, bounce or duration: null, never zero. */
+/** OneDollarStats' positional rows, which {@link loadDecoAudience} mirrors, in
+ *  the audience contract's shape. The lake has no visits, bounce or duration:
+ *  null for it, never zero. */
 export function toAudienceData(
   view: string,
   rows: AudienceRow[],
   previous: AudienceRow[] | null,
+  source: "deco-analytics" | "onedollar" = "deco-analytics",
 ) {
-  const summary = (r: AudienceRow[] | null) =>
-    r?.[0]
-      ? {
-          visitors: r[0].metrics[0] ?? 0,
-          pageviews: r[0].metrics[2] ?? 0,
-          sessions: null,
-          bounceRate: null,
-          visitDurationS: null,
-        }
-      : null;
+  const summary = (r: AudienceRow[] | null) => {
+    const m = r?.[0]?.metrics;
+    if (!m) return null;
+    const od = source === "onedollar";
+    return {
+      visitors: m[0] ?? 0,
+      pageviews: m[2] ?? 0,
+      sessions: od ? (m[1] ?? null) : null,
+      bounceRate: od ? (m[3] ?? null) : null,
+      visitDurationS: od ? (m[4] ?? null) : null,
+    };
+  };
   if (view === "summary") {
     return {
       view,

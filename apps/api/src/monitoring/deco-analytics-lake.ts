@@ -28,7 +28,7 @@ const RANKED: Record<string, Record<string, string>> = {
     pages: "path",
     sources: "sourceDomain",
     channels: "channel",
-    campaigns: "utmCampaign",
+    campaignNames: "utmCampaign",
     devices: "device",
     os: "os",
     browser: "browser",
@@ -66,7 +66,7 @@ export function lakeWindow(
   range: string,
   now = Date.now(),
 ): { from: string; prevFrom: string; hours: number } | null {
-  const hours = RANGE_HOURS[range];
+  const hours = Object.hasOwn(RANGE_HOURS, range) ? RANGE_HOURS[range] : 0;
   if (!hours) return null;
   const hour = 3_600_000;
   const current = Math.floor(now / hour) * hour;
@@ -187,7 +187,7 @@ export async function loadLakeAnalyticsView(
 ): Promise<Record<string, unknown>> {
   const params = { site: siteId, from: win.from, prevFrom: win.prevFrom };
   if (view === "overview") return overview(organizationId, params, win);
-  const keys = RANKED[view];
+  const keys = Object.hasOwn(RANKED, view) ? RANKED[view] : undefined;
   return keys ? ranked(organizationId, params, keys) : {};
 }
 
@@ -199,7 +199,9 @@ export async function loadLakeFilterValues(
   dim: string,
   win: { from: string },
 ): Promise<{ k: string; n: number }[]> {
-  const lakeDim = FILTER_DIMS[dim];
+  const lakeDim = Object.hasOwn(FILTER_DIMS, dim)
+    ? FILTER_DIMS[dim]
+    : undefined;
   if (!lakeDim) return [];
   const rows = await queryCustomerLake(
     organizationId,

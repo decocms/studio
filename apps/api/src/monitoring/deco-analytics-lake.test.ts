@@ -32,3 +32,8 @@ describe("previousCoverage", () => {
     expect(previousCoverage("2026-11-04 01:00:00", win)).toBe(0);
   });
 });
+
+it("ignores inherited property names as ranges", () => {
+  expect(lakeWindow("constructor", NOW)).toBeNull();
+  expect(lakeWindow("toString", NOW)).toBeNull();
+});

@@ -92,3 +92,29 @@ it("maps the lake's positional rows to the audience contract", () => {
     summary: { visitors: 0, pageviews: 0 },
   });
 });
+
+it("maps the previous window and OneDollarStats' visit metrics", () => {
+  const current = [{ dimensions: [], metrics: [10, 12, 30, 40, 95] }];
+  const before = [{ dimensions: [], metrics: [8, 9, 20, 50, 80] }];
+  expect(toAudienceData("summary", current, before)).toMatchObject({
+    summary: { visitors: 10, pageviews: 30, sessions: null, bounceRate: null },
+    previous: { visitors: 8, pageviews: 20, visitDurationS: null },
+  });
+  expect(toAudienceData("summary", current, before, "onedollar")).toEqual({
+    view: "summary",
+    summary: {
+      visitors: 10,
+      pageviews: 30,
+      sessions: 12,
+      bounceRate: 40,
+      visitDurationS: 95,
+    },
+    previous: {
+      visitors: 8,
+      pageviews: 20,
+      sessions: 9,
+      bounceRate: 50,
+      visitDurationS: 80,
+    },
+  });
+});
