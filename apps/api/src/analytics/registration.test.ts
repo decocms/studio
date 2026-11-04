@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { getSettings, setGlobalSettings } from "../settings";
 import {
   AnalyticsRegistrationError,
+  readAnalyticsRegistration,
   readExternalAnalyticsConfig,
   registerAnalyticsSite,
   registerExternalAnalyticsSite,
@@ -38,6 +39,27 @@ test("typedHost reads a typed domain, with or without a scheme or path", () => {
   expect(typedHost("ftp://loja.com")).toBeNull();
   expect(typedHost("")).toBeNull();
   expect(typedHost(undefined)).toBeNull();
+});
+
+test("a site the control-plane has no record of reads as unhosted, not as an outage", async () => {
+  const fetchSpy = spyOn(globalThis, "fetch");
+  try {
+    fetchSpy.mockResolvedValueOnce(
+      Response.json(
+        { error: "not_found", message: "unknown site: loja" },
+        { status: 404 },
+      ),
+    );
+    expect(await readAnalyticsRegistration("loja")).toEqual({
+      status: "unhosted",
+    });
+    fetchSpy.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+    expect(await readAnalyticsRegistration("loja")).toEqual({
+      status: "error",
+    });
+  } finally {
+    fetchSpy.mockRestore();
+  }
 });
 
 test("a control-plane refusal carries its code and reads by its message", async () => {

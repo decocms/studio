@@ -1272,7 +1272,7 @@ export const createMonitorRoutes = () => {
     if (registration.status === "error") {
       return c.json({ error: "Failed to resolve analytics registration" }, 502);
     }
-    if (registration.status === "unregistered") {
+    if (registration.status !== "registered") {
       return c.json({ available: false });
     }
 

@@ -49,6 +49,29 @@ describe("analyticsAccess", () => {
     });
   });
 
+  it("reads an owned slug the control-plane doesn't host through its project's registration", async () => {
+    const c = ctx({
+      owned: true,
+      projects: [
+        {
+          id: "p1",
+          title: "acme",
+          metadata: { siteSlug: "acme", decoAnalytics: registration },
+        },
+      ],
+    });
+    expect(await analyticsAccess(c, ORG, "acme")).toEqual({
+      kind: "external",
+      siteId: "s123",
+    });
+  });
+
+  it("still reads an owned slug when its project lookup fails", async () => {
+    expect(
+      await analyticsAccess(ctx({ owned: true, listFails: true }), ORG, "acme"),
+    ).toEqual({ kind: "owned" });
+  });
+
   it("refuses a project without a registration, and a slug no project has", async () => {
     const c = ctx({
       projects: [{ id: "p1", title: "acme", metadata: { siteSlug: "acme" } }],
