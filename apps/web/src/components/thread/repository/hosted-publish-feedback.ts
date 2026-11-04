@@ -1,7 +1,7 @@
 /**
  * What a hosted Publish tells the user, in business words: one toast per
- * Publish (sonner id `site-editor-publish`, shared with its "Try again" and
- * with the Releases screen), and the dialog's inline error when nothing was
+ * Publish (sonner id `site-editor-publish`, shared with the Releases
+ * screen), and the dialog's inline error when nothing was
  * published. "Published" says your site will show it shortly; the API's codes and texts only ever
  * reach the Details disclosure.
  */
@@ -12,7 +12,6 @@ import {
   FRESH_TOAST,
   SITE_EDITOR_PUBLISH_TOAST,
   errorDetail,
-  toastPublishFailed,
   toastPublished,
 } from "@/components/sections-editor/site-editor-toast.tsx";
 import {
@@ -20,16 +19,8 @@ import {
   type HostedPublishResult,
 } from "./hosted-publish-api.ts";
 
-/**
- * The one toast for a finished Publish. `retry` puts saved-but-not-live
- * changes live (see `retryRelease`); it is offered whenever the changes
- * reached main but the site doesn't show them yet.
- */
-export function notifyHostedPublish(
-  t: TFunction,
-  result: HostedPublishResult,
-  retry: () => void,
-) {
+/** The one toast for a finished Publish: it is live once it answers. */
+export function notifyHostedPublish(t: TFunction, result: HostedPublishResult) {
   if (result.result === "up-to-date") {
     // toast.message, not toast(): only the typed calls replace a toast with
     // the same id; a bare toast() always adds one.
@@ -40,26 +31,7 @@ export function notifyHostedPublish(
     });
     return;
   }
-  if (result.release === "current") {
-    toastPublished(t);
-    return;
-  }
-  notifySavedNotPublished(t, null, retry);
-}
-
-/** The changes are saved but not live yet: a warning with "Try again". */
-export function notifySavedNotPublished(
-  t: TFunction,
-  error: unknown,
-  retry: () => void,
-) {
-  toastPublishFailed(t, {
-    tone: "warning",
-    headline: t("siteEditor.publish.savedNotPublished"),
-    body: t("siteEditor.publish.savedNotPublishedBody"),
-    detail: errorDetail(error),
-    retry,
-  });
+  toastPublished(t);
 }
 
 /** A Publish that published nothing: the dialog's inline error. */
@@ -70,7 +42,7 @@ export function hostedPublishFailure(
   // Someone else published in between, three times over (contract §4.9).
   if (
     error instanceof HostedPublishError &&
-    (error.code === "production_moved" || error.code === "main-moved")
+    error.code === "production_moved"
   ) {
     return {
       message: t("siteEditor.publish.publishedMeanwhile"),

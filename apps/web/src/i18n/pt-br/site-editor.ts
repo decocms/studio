@@ -9,9 +9,6 @@ export const siteEditor = {
     "Publicado. {host} vai mostrar em instantes.",
   "siteEditor.publish.nothingToPublish": "Nada para publicar",
   "siteEditor.publish.everythingPublished": "Tudo já está publicado.",
-  "siteEditor.publish.savedNotPublished": "Salvo, mas ainda não publicado",
-  "siteEditor.publish.savedNotPublishedBody":
-    "Suas alterações estão salvas. Tente de novo para publicá-las.",
   "siteEditor.publish.publishedMeanwhile":
     "Outra pessoa publicou enquanto você publicava, então nada mudou. Revise suas alterações e publique de novo.",
   "siteEditor.publish.changedMeanwhile":

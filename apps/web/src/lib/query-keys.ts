@@ -914,34 +914,9 @@ export const KEYS = {
   // hosted CMS's `POST /drafts` on open.
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
-  // Main's schema answer (`isV8Schema` on main, from the server), once per
-  // project per session: what the editor waits for.
-  mainSchemaV8: (orgSlug: string, virtualMcpId: string) =>
-    ["main-schema-v8", orgSlug, virtualMcpId] as const,
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,
-  /** A hosted v8 Publish's review: the draft's blocks main also changed. */
-  hostedPublishReview: (
-    orgSlug: string,
-    virtualMcpId: string,
-    branch: string,
-  ) => ["hosted-publish-review", orgSlug, virtualMcpId, branch] as const,
-  /** Under `hostedReleases`: a publish or reapply refreshes it too. */
-  hostedReapplyCheck: (
-    orgSlug: string,
-    virtualMcpId: string,
-    sha: string | null,
-    latest: string | null,
-  ) =>
-    [
-      "hosted-releases",
-      orgSlug,
-      virtualMcpId,
-      "reapply-check",
-      sha,
-      latest,
-    ] as const,
   hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>

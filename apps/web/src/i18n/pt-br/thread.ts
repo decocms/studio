@@ -66,9 +66,6 @@ export const thread = {
   "thread.cmsActions.getLatestTooltip":
     "Trazer as novas alterações da produção",
   "thread.cmsActions.moreActionsAriaLabel": "Mais ações",
-  "thread.cmsActions.notLive": "Ainda não está no ar",
-  "thread.cmsActions.notLiveTooltip":
-    "Suas últimas alterações estão salvas, mas ainda não estão no ar. Publique para colocá-las no ar.",
   "thread.cmsActions.publishing": "Publicando…",
   "thread.cmsActions.gettingLatest": "Obtendo atualizações…",
   "thread.cmsActions.retry": "Tentar novamente",
@@ -177,17 +174,11 @@ export const thread = {
   "thread.publishPopover.emptyHint":
     "Suas alterações mais recentes já estão no ar.",
   "thread.publishPopover.everythingLive": "Tudo publicado",
-  "thread.publishPopover.notLive": "Ainda não está no ar",
-  "thread.publishPopover.notLiveBody":
-    "Suas últimas alterações estão salvas, mas ainda não estão no ar.",
-  "thread.publishPopover.notLiveHint": "Publique para colocá-las no ar.",
   "thread.publishPopover.abTests": "Testes A/B",
   "thread.publishPopover.campaignDates": "Datas das campanhas",
   "thread.publishPopover.settings": "Configurações",
   "thread.publishPopover.settingsDetail": "Telemetria e analytics",
   "thread.publishPopover.globalSection": "Seção global",
-  "thread.publishPopover.alsoChangedOnMain":
-    "Seu desenvolvedor também alterou {name}. Publicar mantém a sua versão.",
   "thread.publishPopover.missingTest":
     "Usa um teste que não está nos seus testes A/B",
   "thread.publishPopover.missingCampaign":

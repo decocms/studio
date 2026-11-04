@@ -12,9 +12,6 @@ export const siteEditor = {
   "siteEditor.publish.publishedOn": "Published. {host} will show it shortly.",
   "siteEditor.publish.nothingToPublish": "Nothing to publish",
   "siteEditor.publish.everythingPublished": "Everything is already published.",
-  "siteEditor.publish.savedNotPublished": "Saved, but not published yet",
-  "siteEditor.publish.savedNotPublishedBody":
-    "Your changes are safe. Try again to publish them.",
   "siteEditor.publish.publishedMeanwhile":
     "Someone else published while you were publishing, so nothing changed. Review your changes and publish again.",
   "siteEditor.publish.changedMeanwhile":

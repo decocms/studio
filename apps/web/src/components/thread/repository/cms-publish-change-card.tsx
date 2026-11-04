@@ -156,8 +156,6 @@ interface PublishChangeCardProps {
   isDiscarding: boolean;
   /** A Blocks v8 site's change (`publishChangeDigest`). Absent on v7. */
   v8?: boolean;
-  /** Hosted v8: a developer also changed it on main; Publish keeps this one. */
-  alsoChangedOnMain?: boolean;
 }
 
 export function PublishChangeCard({
@@ -171,7 +169,6 @@ export function PublishChangeCard({
   isPublishing,
   isDiscarding,
   v8 = false,
-  alsoChangedOnMain = false,
 }: PublishChangeCardProps) {
   const t = useT();
 
@@ -300,14 +297,6 @@ export function PublishChangeCard({
           data-testid="publish-change-missing-rule-uses"
         >
           {t(missingUsesKey(missingUses), { places: missingPlaces.places })}
-        </div>
-      ) : null}
-      {alsoChangedOnMain ? (
-        <div
-          className="mt-1 pl-[26px] text-xs text-muted-foreground"
-          data-testid="publish-change-also-changed"
-        >
-          {t("thread.publishPopover.alsoChangedOnMain", { name: change.name })}
         </div>
       ) : null}
     </PublishCardFrame>
