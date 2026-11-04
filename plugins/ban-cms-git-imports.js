@@ -2,19 +2,15 @@
  * Lint plugin for the hosted CMS's first condition: no GitHub in any content
  * operation (design "Conditions of satisfaction", 1).
  *
- * The hosted CMS on R2 — its Studio API route, its `hosted/` modules and the
- * web editor's client for it — must not import the git layer: not
- * `git-providers` (the GitHub client), not the repo readers
- * (`decofile/repo-content-storage`, `decofile/read-decofile`), and not the v8
- * git path's own modules (`hosted/publish`, `release-objects`, `releases`,
- * `reapply`, `scope`, `blocks-major`, `draft-content-storage`,
- * `draft-save-request`), which reach GitHub themselves. A test runs the
- * whole lifecycle with the GitHub client set to throw
+ * The hosted CMS on R2 — its Studio API route, every `hosted/` module and
+ * the web editor's client for it — must not import the git layer: not
+ * `git-providers` (the GitHub client) and not the repo readers
+ * (`decofile/repo-content-storage`, `decofile/read-decofile`). A test runs
+ * the whole lifecycle with the GitHub client set to throw
  * (`cms-lifecycle.test.ts`); this rule keeps the imports from coming back.
  *
- * Covered files are listed below by path, since the v8 git path still lives
- * beside them in `hosted/` until it is deleted; widen the list to the whole
- * directory then.
+ * `decofile.ts` and `sandbox-proxy.ts` stay outside it: they serve v7 Fast
+ * Preview and sandboxes from git, and no longer carry a v8 content path.
  */
 
 import { resolveRelative } from "./resolve-relative.js";
@@ -22,8 +18,7 @@ import { resolveRelative } from "./resolve-relative.js";
 /** The files the rule covers. Suffix-matched (`*` matches a file-name part). */
 const COVERED = [
   /apps\/api\/src\/api\/routes\/cms(-[a-z-]+)?\.ts$/,
-  /apps\/api\/src\/hosted\/cms-[a-z-]+\.ts$/,
-  /apps\/api\/src\/hosted\/(block-version|revision-id|record-store|via|save-guards|blocks-major-marker)\.ts$/,
+  /apps\/api\/src\/hosted\/[a-z0-9-]+(\.test)?\.ts$/,
   /apps\/api\/src\/storage\/cms-drafts\.ts$/,
   /apps\/web\/src\/components\/sections-editor\/cms-[a-z-]+\.ts$/,
 ];
@@ -32,7 +27,6 @@ const COVERED = [
 const BANNED = [
   /(^|\/)git-providers(\/|$)/,
   /(^|\/)decofile\/(repo-content-storage|read-decofile)$/,
-  /(^|\/)hosted\/(publish|release-objects|releases|reapply|scope|blocks-major|draft-content-storage|draft-save-request|draft-store|draft-editors)$/,
   /(^|\/)sections-editor\/decofile-api$/,
 ];
 
