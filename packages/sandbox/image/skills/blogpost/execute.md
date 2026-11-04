@@ -42,10 +42,19 @@ Read the card and `BLOG_STATE_GET` first. You need from them: the site
 ```
 
 It answers with `brief`: the rules this brand's posts are written under, the
-brand, the campaign, the blocks with their schemas, and the JSON shape to
-answer in. Read it whole, then write the post to `/tmp/blog/post.json` in that
-shape. The brief is binding: its blocks are the only ones, their schemas say
-what each section's `props` may hold, and its products are the only products.
+brand, the campaign, the blocks with their schemas, the brand's own posts in
+the format, and the JSON shape to answer in. Save it to `/tmp/blog/brief.txt`
+and read it whole, then read `writing.md` (in this skill folder), then write
+the post to `/tmp/blog/post.json` in that shape. The brief is binding: its
+blocks are the only ones, their schemas say what each section's `props` may
+hold, and its products are the only products.
+
+**The editor.** Before you save the post, one subagent (the `Agent` tool)
+reviews it: tell it to follow `review-prose.md`, and hand it the absolute
+paths of that file, `writing.md` (both in this skill folder),
+`/tmp/blog/post.json` and `/tmp/blog/brief.txt`. Apply its `edits` and `cuts`
+where they hold: a rewrite that breaks a block's schema or loses a fact does
+not. It reviews once.
 
 Save the post on the card: `title`, `excerpt`, `seo`, `cover` (`alt` and
 `prompt`) and `sections`.

@@ -23,7 +23,9 @@ wrote.
 | Bring the hypothesis | `hypothesis.md` (in this skill folder) | The hypothesis on the card, presented in the chat |
 | Write the post | `execute.md` (in this skill folder) | The draft committed on the card's branch, the card in `awaiting_review` |
 
-Read the file for the phase you were asked for, and follow it.
+Read the file for the phase you were asked for, and follow it. Writing the
+post also reads `writing.md`, how a post reads like the brand rather than a
+model, and hands the draft to an editor that follows `review-prose.md`.
 
 ## The card
 
