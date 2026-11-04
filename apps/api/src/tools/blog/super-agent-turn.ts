@@ -5,7 +5,9 @@ import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import {
+  type ClaudeCodeEffort,
   claudeSubscriptionChatModel,
+  EFFORT_METADATA_KEY,
   TASK_RUN_INSTRUCTIONS_KEY,
 } from "@/harnesses/claude-code-env";
 import { userPlanCredentialId } from "@/harnesses/sandbox-only-chats";
@@ -64,6 +66,8 @@ export async function dispatchSuperAgentTurn(
     /** Names the turn: a start retried with the same fence queues nothing new. */
     fence: string;
     requestedAt: string;
+    /** More reasoning than a run's low, for a turn whose output a reader judges. */
+    effort?: ClaudeCodeEffort;
   },
 ): Promise<void> {
   const model = await turnModel(ctx, turn.organizationId, turn.userId);
@@ -105,7 +109,10 @@ export async function dispatchSuperAgentTurn(
         harnessId: "claude-code",
         branch: turn.branch,
         taskId: turn.threadId,
-        runMetadata: { [RUN_CLASS_METADATA_KEY]: "new_task" },
+        runMetadata: {
+          [RUN_CLASS_METADATA_KEY]: "new_task",
+          ...(turn.effort ? { [EFFORT_METADATA_KEY]: turn.effort } : {}),
+        },
       },
     },
     { workflowID: turn.fence },

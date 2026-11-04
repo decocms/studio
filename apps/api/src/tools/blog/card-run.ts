@@ -37,6 +37,7 @@ import { campaignShell } from "./campaign-record";
 import { CardIdSchema, parseCard } from "./cards";
 import { resolveSiteProject, resolveSiteRepo } from "./site-repo";
 import { conflictOrRethrow, resolveBlogScope } from "./state";
+import type { ClaudeCodeEffort } from "@/harnesses/claude-code-env";
 import { dispatchSuperAgentTurn } from "./super-agent-turn";
 
 /**
@@ -197,6 +198,16 @@ export function blogCardRunInstructions(card: {
     "- Write in the brand's language, whatever language you are spoken to in.",
     "- Your Studio tools are namespaced `mcp__studio__`: where this names `BLOG_CARD_UPDATE`, the tool you call is `mcp__studio__BLOG_CARD_UPDATE`.",
   ].join("\n");
+}
+
+/**
+ * How hard a phase thinks. Writing the post is the one a reader judges, so it
+ * gets more reasoning than the runner's low; the others keep it.
+ */
+export function phaseEffort(
+  phase: BlogCardPhase,
+): ClaudeCodeEffort | undefined {
+  return phase === "execute" ? "high" : undefined;
 }
 
 /** The turn that starts a phase: a fixed ask, then the person's words. */
@@ -539,6 +550,7 @@ export const BLOG_CARD_RUN = defineTool({
         instructions,
         fence: `blog-card:${threadId}:${input.phase}:${requestedAt}`,
         requestedAt,
+        effort: phaseEffort(input.phase),
       });
     } catch (err) {
       await rollBack(err);

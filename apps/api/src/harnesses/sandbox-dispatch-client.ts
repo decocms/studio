@@ -50,6 +50,8 @@ import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/sub
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
 import {
   claudeCodeEnvFromCredential,
+  EFFORT_METADATA_KEY,
+  effortFromMetadata,
   modelClassFromMetadata,
   MODEL_CLASS_METADATA_KEY,
   type ClaudeCodeCredential,
@@ -599,6 +601,7 @@ export class SandboxDispatchClient {
     // is a booted sandbox that dies on an opaque model error minutes later.
     const runMetadata = this.ctx.metadata?.runMetadata;
     // Task-board runs carry a run class and keep their per-class model.
+    const effort = effortFromMetadata(runMetadata?.[EFFORT_METADATA_KEY]);
     const modelEnv =
       this.harnessId === "codex"
         ? codexEnvFromCredential(this.credential, input.models.thinking.id)
@@ -606,11 +609,14 @@ export class SandboxDispatchClient {
           ? claudeCodeEnvFromCredential(
               this.credential,
               modelClassFromMetadata(runMetadata[MODEL_CLASS_METADATA_KEY]),
+              undefined,
+              effort,
             )
           : claudeCodeEnvFromCredential(
               this.credential,
               "chat",
               input.models.thinking.id,
+              effort,
             );
     if (this.harnessId !== "codex") {
       Object.assign(modelEnv, {

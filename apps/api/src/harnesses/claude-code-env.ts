@@ -146,6 +146,20 @@ const CLAUDE_CODE_MODEL: Record<
  */
 export const MODEL_CLASS_METADATA_KEY = "claudeCodeModelClass";
 
+/** `runMetadata` key asking for more reasoning effort than the runner's low. */
+export const EFFORT_METADATA_KEY = "claudeCodeEffort";
+
+const EFFORTS = ["medium", "high", "xhigh", "max"] as const;
+
+export type ClaudeCodeEffort = (typeof EFFORTS)[number];
+
+/** Narrow an untrusted `runMetadata` value to an effort, or none. Pure — unit-tested. */
+export function effortFromMetadata(
+  value: string | undefined,
+): ClaudeCodeEffort | null {
+  return EFFORTS.find((effort) => effort === value) ?? null;
+}
+
 /** Thread metadata key holding a task run's `appendInstructions`, reused by
  *  every later turn on that thread. */
 export const TASK_RUN_INSTRUCTIONS_KEY = "taskRunInstructions";
@@ -265,6 +279,8 @@ export function claudeCodeEnvFromCredential(
   modelClass: ClaudeCodeModelClass = "default",
   /** The model the chat picked; honored only for the chat class. */
   chosenModel?: string,
+  /** More reasoning than the runner's low, for a run that asked for it. */
+  effort: ClaudeCodeEffort | null = null,
 ): Record<string, string | null> {
   const { providerId, apiKey, baseUrl } = credential;
   const modelFor = (shape: "anthropic" | "openrouter") =>
@@ -280,6 +296,7 @@ export function claudeCodeEnvFromCredential(
   const budget = {
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
+    CLAUDE_CODE_EFFORT: effort,
     ENABLE_TOOL_SEARCH: TOOL_SEARCH,
     FORCE_PROMPT_CACHING_5M: PROMPT_CACHE_5M,
     // Only Copilot sets it; null clears a previous Copilot run's header.

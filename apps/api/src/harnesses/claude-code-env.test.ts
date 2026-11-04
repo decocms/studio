@@ -6,6 +6,7 @@ import {
   claudeSubscriptionChatModel,
   copilotModelId,
   GITHUB_COPILOT_PROVIDER_ID,
+  effortFromMetadata,
   modelClassFromMetadata,
   UnsupportedClaudeCodeProviderError,
 } from "./claude-code-env";
@@ -13,6 +14,7 @@ import {
 const BUDGET = {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
   CLAUDE_CODE_MAX_TURNS: null,
+  CLAUDE_CODE_EFFORT: null,
   ENABLE_TOOL_SEARCH: "1",
   FORCE_PROMPT_CACHING_5M: "1",
   ANTHROPIC_CUSTOM_HEADERS: null,
@@ -352,6 +354,21 @@ describe("claudeCodeEnvFromCredential", () => {
         "conflict",
       ).CLAUDE_CODE_MODEL,
     ).toBe("anthropic/claude-sonnet-5");
+  });
+
+  test("a run that asks for more effort carries it; any other clears a previous one", () => {
+    const credential = { providerId: "anthropic", apiKey: "sk-a" };
+    expect(
+      claudeCodeEnvFromCredential(credential, "default", undefined, "high")
+        .CLAUDE_CODE_EFFORT,
+    ).toBe("high");
+    expect(
+      claudeCodeEnvFromCredential(credential, "default").CLAUDE_CODE_EFFORT,
+    ).toBeNull();
+    expect(effortFromMetadata("high")).toBe("high");
+    expect(effortFromMetadata("low")).toBeNull();
+    expect(effortFromMetadata("lots")).toBeNull();
+    expect(effortFromMetadata(undefined)).toBeNull();
   });
 
   test("the error never contains the key", () => {

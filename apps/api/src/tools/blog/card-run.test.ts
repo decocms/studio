@@ -4,6 +4,7 @@ import type { BlogCard } from "@decocms/shared/blog-card";
 import {
   blogCardRunInstructions,
   blogCardRunPrompt,
+  phaseEffort,
   blogCardThreadId,
   dispatchFailure,
   phaseClaim,
@@ -234,6 +235,14 @@ describe("blogCardRunInstructions", () => {
     expect(text).toContain("BLOG_CAMPAIGN_UPDATE");
     expect(text).toContain("its goals included");
     expect(text).toContain("never `status`");
+  });
+});
+
+describe("phaseEffort", () => {
+  test("writing the post thinks harder; the other phases keep the runner's low", () => {
+    expect(phaseEffort("execute")).toBe("high");
+    expect(phaseEffort("hypothesis")).toBeUndefined();
+    expect(phaseEffort("campaign")).toBeUndefined();
   });
 });
 
