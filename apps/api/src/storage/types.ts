@@ -1629,6 +1629,34 @@ export interface OrgSite {
 }
 
 // ============================================================================
+// Hosted CMS named drafts (migration 263)
+// ============================================================================
+
+/** How a draft or revision was made, set by the server from the auth method. */
+export type CmsVia = "studio" | "cli" | "token" | "studio-agent";
+
+export interface CmsDraftTable {
+  /** The `org_sites` slug. */
+  site: string;
+  /** Unique within the site; the Studio editor's draft is its thread's branch. */
+  name: string;
+  /** The random slug of `sites/<site>/drafts/<slug>.json`; never changes. */
+  slug: string;
+  created_by: string;
+  via: CmsVia;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface CmsDraftRow {
+  site: string;
+  name: string;
+  slug: string;
+  createdBy: string;
+  via: CmsVia;
+  createdAt: string;
+}
+
+// ============================================================================
 // Organization Notices (deployment-admin billing warning / block)
 // ============================================================================
 
@@ -2559,6 +2587,7 @@ export interface Database {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  drafts: CmsDraftTable;
   experiments: ExperimentTable;
 
   // Deployment-admin billing warning / block pinned on an org
