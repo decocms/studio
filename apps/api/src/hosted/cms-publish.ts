@@ -189,11 +189,11 @@ async function writeAndPoint(
  * appended, code-unit order) and its deleted names removed. `meta` of a set
  * name is computed over the new index's names.
  */
-export function composeIndex(
+export async function composeIndex(
   base: BlockIndex,
   sets: ReadonlyMap<string, Record<string, unknown>>,
   deletes: ReadonlySet<string>,
-): BlockIndex {
+): Promise<BlockIndex> {
   const names = new Set(
     [...Object.keys(base), ...sets.keys()].filter(
       (n) => sets.has(n) || !deletes.has(n),
@@ -202,12 +202,12 @@ export function composeIndex(
   const out: Array<[string, IndexEntry]> = [];
   for (const [name, entry] of Object.entries(base)) {
     if (sets.has(name))
-      out.push([name, indexEntry(name, sets.get(name), names)]);
+      out.push([name, await indexEntry(name, sets.get(name), names)]);
     else if (!deletes.has(name)) out.push([name, entry]);
   }
   const added = [...sets.keys()].filter((n) => !Object.hasOwn(base, n)).sort();
   for (const name of added) {
-    out.push([name, indexEntry(name, sets.get(name), names)]);
+    out.push([name, await indexEntry(name, sets.get(name), names)]);
   }
   // fromEntries: an entry named "__proto__" stays an entry.
   return Object.fromEntries(out);
@@ -311,7 +311,7 @@ export async function publishCmsDraft(
       if (read.file?.operation === "set") sets.set(name, read.file.data);
       else deletes.add(name);
     }
-    const blocks = composeIndex(baseBlocks, sets, deletes);
+    const blocks = await composeIndex(baseBlocks, sets, deletes);
     if (canonicalJson(blocks) === canonicalJson(baseBlocks)) {
       return {
         result: "up-to-date",
