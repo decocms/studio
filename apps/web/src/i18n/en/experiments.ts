@@ -133,12 +133,12 @@ export const experiments = {
   "experiments.results.visitors": "Visitors",
   "experiments.results.visitorsHint":
     "Counted once a day: someone who comes back on another day counts again.",
-  "experiments.results.exposed": "Saw the change",
+  "experiments.results.exposed": "Exposed",
   "experiments.results.exposedHint":
-    "Visitors who reached the part of the site the test changes.",
+    "Visitors who reached the point where the versions differ, in both versions. The fairest base for the comparison.",
   "experiments.results.conversion": "Conversion",
   "experiments.results.conversionHintExposed":
-    "Of the visitors who saw the change, the share who reached the goal “{goal}”.",
+    "Of the exposed visitors, the share who reached the goal “{goal}”.",
   "experiments.results.conversionHintVisitors":
     "Of all visitors, the share who reached the goal “{goal}”.",
   "experiments.results.difference": "Difference",
@@ -155,9 +155,9 @@ export const experiments = {
   "experiments.results.verdict.ahead": "“{arm}” is ahead",
   "experiments.results.verdict.behind": "“{arm}” is behind",
   "experiments.results.verdict.compareExposed":
-    "“{test}” converts {testRate} of the visitors who saw the change, against {controlRate} for “{control}”: a difference of {lift} (range {low} to {high}).",
+    "“{test}” converts {testRate} of exposed visitors, against {controlRate} for “{control}”, a difference of {lift} (range {low} to {high}).",
   "experiments.results.verdict.compareVisitors":
-    "“{test}” converts {testRate} of its visitors, against {controlRate} for “{control}”: a difference of {lift} (range {low} to {high}).",
+    "“{test}” converts {testRate} of its visitors, against {controlRate} for “{control}”, a difference of {lift} (range {low} to {high}).",
   "experiments.results.verdict.noBase":
     "Control has no conversions yet, so there is nothing to compare against.",
   "experiments.results.verdict.tieHint":
@@ -196,7 +196,7 @@ export const experiments = {
   "experiments.results.goals": "Goals",
   "experiments.results.goalsHint": "Visitors who reached each goal.",
   "experiments.results.goalName.purchase": "Purchase",
-  "experiments.results.goalName.experience_impression": "Saw the change",
+  "experiments.results.goalName.experience_impression": "Exposure",
   "experiments.results.goal": "Goal",
   "experiments.results.sourceDeco": "Source: Deco Analytics",
   "experiments.v8.intro":

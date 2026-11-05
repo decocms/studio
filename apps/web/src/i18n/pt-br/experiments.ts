@@ -136,12 +136,12 @@ export const experiments = {
   "experiments.results.visitors": "Visitantes",
   "experiments.results.visitorsHint":
     "Contados uma vez por dia: quem volta em outro dia conta de novo.",
-  "experiments.results.exposed": "Viram a mudança",
+  "experiments.results.exposed": "Expostos",
   "experiments.results.exposedHint":
-    "Visitantes que chegaram à parte do site que o teste muda.",
+    "Visitantes que chegaram ao ponto em que as versões se diferenciam, nas duas versões. É a base mais justa para comparar.",
   "experiments.results.conversion": "Conversão",
   "experiments.results.conversionHintExposed":
-    "Dos visitantes que viram a mudança, a parte que chegou à meta “{goal}”.",
+    "Dos visitantes expostos, a parte que chegou à meta “{goal}”.",
   "experiments.results.conversionHintVisitors":
     "De todos os visitantes, a parte que chegou à meta “{goal}”.",
   "experiments.results.difference": "Diferença",
@@ -158,9 +158,9 @@ export const experiments = {
   "experiments.results.verdict.ahead": "“{arm}” está à frente",
   "experiments.results.verdict.behind": "“{arm}” está pior",
   "experiments.results.verdict.compareExposed":
-    "“{test}” converte {testRate} dos visitantes que viram a mudança, contra {controlRate} de “{control}”: diferença de {lift} (margem de {low} a {high}).",
+    "“{test}” converte {testRate} dos visitantes expostos, contra {controlRate} de “{control}”, uma diferença de {lift} (margem de {low} a {high}).",
   "experiments.results.verdict.compareVisitors":
-    "“{test}” converte {testRate} dos visitantes, contra {controlRate} de “{control}”: diferença de {lift} (margem de {low} a {high}).",
+    "“{test}” converte {testRate} dos visitantes, contra {controlRate} de “{control}”, uma diferença de {lift} (margem de {low} a {high}).",
   "experiments.results.verdict.noBase":
     "O controle ainda não teve conversões, então não há base para comparar.",
   "experiments.results.verdict.tieHint":
@@ -198,7 +198,7 @@ export const experiments = {
   "experiments.results.goals": "Metas",
   "experiments.results.goalsHint": "Visitantes que chegaram a cada meta.",
   "experiments.results.goalName.purchase": "Compra",
-  "experiments.results.goalName.experience_impression": "Viu a mudança",
+  "experiments.results.goalName.experience_impression": "Exposição",
   "experiments.results.goal": "Meta",
   "experiments.results.sourceDeco": "Fonte: Deco Analytics",
   "experiments.v8.intro":
