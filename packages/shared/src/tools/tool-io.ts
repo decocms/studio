@@ -6803,8 +6803,8 @@ export interface StudioToolIO {
         stats: {
           totalParticipants: number;
           sampleSize: number;
-          probabilityVariantBest: number;
-          probabilityDefaultBest: number;
+          probabilityVariantBest: number | null;
+          probabilityDefaultBest: number | null;
         };
         statsGoal?: string | undefined;
         arms?:

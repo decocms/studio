@@ -129,8 +129,25 @@ const input = {
 describe("decoGoals / decoWindow", () => {
   it("keeps valid event names, purchase first", () => {
     expect(
-      decoGoals(["add_to_cart", "visitors", "Cross Sell", "purchase"]),
+      decoGoals(
+        ["add_to_cart", "visitors", "Cross Sell", "purchase"],
+        "visitors",
+      ),
     ).toEqual(["purchase", "add_to_cart"]);
+  });
+
+  it("never caps away the statistics goal or the exposure event", () => {
+    const filler = Array.from({ length: 12 }, (_, i) => `goal_${i}`);
+    const goals = decoGoals(
+      [...filler, "experience_impression", "add_to_cart"],
+      "add_to_cart",
+    );
+    expect(goals).toHaveLength(10);
+    expect(goals.slice(0, 3)).toEqual([
+      "purchase",
+      "add_to_cart",
+      "experience_impression",
+    ]);
   });
 
   it("reads from the experiment's start hour to now's, at most 31 days", () => {
@@ -266,7 +283,7 @@ describe("readDecoExperimentResults", () => {
         },
       ]);
       expect(out?.currency).toBeNull();
-      // Among the exposed, not among every visitor.
+      // The total counts every visitor; the probabilities compare the exposed.
       expect(out?.stats.totalParticipants).toBe(1200);
       expect(out?.stats.probabilityVariantBest).toBe(
         pBetter({ successes: 15, total: 100 }, { successes: 4, total: 20 }),
@@ -333,7 +350,7 @@ describe("readDecoExperimentResults", () => {
     }
   });
 
-  it("answers null on an error, an unscoped payload, no rows, or a key it can't read", async () => {
+  it("answers null on an error, an unscoped payload, no matching rows, or a key it can't read", async () => {
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     const fetchSpy = spyOn(globalThis, "fetch");
     const read = (key = input.key) =>
@@ -358,6 +375,17 @@ describe("readDecoExperimentResults", () => {
       expect(await read()).toBeNull();
       fetchSpy.mockResolvedValueOnce(
         Response.json({ ...recordedPayload, expResults: [] }),
+      );
+      expect(await read()).toBeNull();
+      // Rows only for arms the experiment doesn't configure.
+      fetchSpy.mockResolvedValueOnce(
+        Response.json({
+          ...recordedPayload,
+          expResults: recordedPayload.expResults.map((r) => ({
+            ...r,
+            variant: `stale-${r.variant}`,
+          })),
+        }),
       );
       expect(await read()).toBeNull();
       fetchSpy.mockClear();

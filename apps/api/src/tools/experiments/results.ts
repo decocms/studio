@@ -111,8 +111,9 @@ export const EXPERIMENT_RESULTS = defineTool({
         stats: z.object({
           totalParticipants: z.number(),
           sampleSize: z.number(),
-          probabilityVariantBest: z.number(),
-          probabilityDefaultBest: z.number(),
+          /** Null while either arm has no visitors or no conversions. */
+          probabilityVariantBest: z.number().nullable(),
+          probabilityDefaultBest: z.number().nullable(),
         }),
         /** Deco Analytics only: the goal the statistics compare. */
         statsGoal: z.string().optional(),
@@ -190,18 +191,35 @@ export const EXPERIMENT_RESULTS = defineTool({
       };
     }
 
+    const unavailable = {
+      available: false,
+      reason: outcome.status,
+      analyticsSite: slug,
+      results: null,
+    };
     const experiment = await ctx.storage.experiments
       .getByKey(organization.id, input.site, input.key)
-      .catch(() => null);
+      .catch((err) => {
+        console.error(
+          `[experiments] experiment lookup failed for site="${input.site}":`,
+          err,
+        );
+        return null;
+      });
+    // Without the configured arms, control and treatment would follow the
+    // payload's row order, which is not guaranteed.
+    if (!experiment?.variants.length) return unavailable;
     const deco = await readDecoExperimentResults(ctx, organization.id, {
       slug,
       key: input.key,
-      goals: [...input.goals, ...(experiment?.goals ?? [])],
+      goals: [...input.goals, ...experiment.goals],
       goalOnDash: input.goalOnDash,
-      variants: experiment?.variants ?? [],
-      startedAt: experiment?.startedAt ?? null,
-      since: input.since,
-      until: input.until,
+      variants: experiment.variants,
+      startedAt: experiment.startedAt ?? null,
+      // The legacy read honours a window only when both ends are given.
+      ...(input.since && input.until
+        ? { since: input.since, until: input.until }
+        : {}),
     });
     return deco
       ? {
@@ -211,11 +229,6 @@ export const EXPERIMENT_RESULTS = defineTool({
           source: "deco-analytics" as const,
           results: deco,
         }
-      : {
-          available: false,
-          reason: outcome.status,
-          analyticsSite: slug,
-          results: null,
-        };
+      : unavailable;
   },
 });

@@ -56,6 +56,19 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
   );
   afterAll(() => setGlobalSettings(original));
 
+  const experiment = {
+    goals: ["purchase"],
+    variants: [
+      { id: "a", weight: 50, role: "control" },
+      { id: "b", weight: 50, role: "treatment" },
+    ],
+    startedAt: null,
+  };
+  const withExperiment = (getByKey: () => Promise<unknown>) =>
+    ({
+      ...ctx,
+      storage: { ...ctx.storage, experiments: { getByKey } },
+    }) as never;
   const ctx = {
     auth: { user: { id: "user-1" } },
     access: { check: async () => {} },
@@ -77,18 +90,9 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
           },
         ],
       },
-      experiments: {
-        getByKey: async () => ({
-          goals: ["purchase"],
-          variants: [
-            { id: "a", weight: 50, role: "control" },
-            { id: "b", weight: 50, role: "treatment" },
-          ],
-          startedAt: null,
-        }),
-      },
+      experiments: { getByKey: async () => experiment },
     },
-  } as never;
+  };
   const input = EXPERIMENT_RESULTS.inputSchema.parse({
     site: "acme",
     key: "new-cart",
@@ -126,7 +130,7 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
       Response.json(decoPayload),
     );
     try {
-      const out = await EXPERIMENT_RESULTS.handler(input, ctx);
+      const out = await EXPERIMENT_RESULTS.handler(input, ctx as never);
       expect(out.available).toBe(true);
       expect(out.source).toBe("deco-analytics");
       expect(out.results?.visitors).toEqual({ default: 10, variant: 0 });
@@ -143,7 +147,7 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
     );
     const fetchSpy = spyOn(globalThis, "fetch");
     try {
-      expect(await EXPERIMENT_RESULTS.handler(input, ctx)).toEqual({
+      expect(await EXPERIMENT_RESULTS.handler(input, ctx as never)).toEqual({
         available: true,
         reason: null,
         analyticsSite: "acme",
@@ -166,7 +170,7 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
     );
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     try {
-      expect(await EXPERIMENT_RESULTS.handler(input, ctx)).toEqual({
+      expect(await EXPERIMENT_RESULTS.handler(input, ctx as never)).toEqual({
         available: false,
         reason: "not_configured",
         analyticsSite: "acme",
@@ -177,6 +181,67 @@ describe("EXPERIMENT_RESULTS fallback to Deco Analytics", () => {
       legacySpy.mockRestore();
       fetchSpy.mockRestore();
       errorSpy.mockRestore();
+    }
+  });
+
+  it("skips Deco Analytics without a configured experiment, logging a failed lookup", async () => {
+    const legacySpy = spyOn(legacy, "queryExperimentResults").mockResolvedValue(
+      { status: "no_site_data" },
+    );
+    const fetchSpy = spyOn(globalThis, "fetch");
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const legacyOutcome = {
+      available: false,
+      reason: "no_site_data" as const,
+      analyticsSite: "acme",
+      results: null,
+    };
+    try {
+      expect(
+        await EXPERIMENT_RESULTS.handler(
+          input,
+          withExperiment(async () => null),
+        ),
+      ).toEqual(legacyOutcome);
+      expect(
+        await EXPERIMENT_RESULTS.handler(
+          input,
+          withExperiment(async () => {
+            throw new Error("db down");
+          }),
+        ),
+      ).toEqual(legacyOutcome);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      legacySpy.mockRestore();
+      fetchSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("reads the window the legacy source reads: both ends, or neither", async () => {
+    const legacySpy = spyOn(legacy, "queryExperimentResults").mockResolvedValue(
+      { status: "no_site_data" },
+    );
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async () =>
+      Response.json(decoPayload)) as unknown as typeof fetch);
+    const from = (call: number) =>
+      new URL(String(fetchSpy.mock.calls[call]?.[0])).searchParams.get("from");
+    try {
+      await EXPERIMENT_RESULTS.handler(
+        { ...input, since: "2026-01-01" },
+        ctx as never,
+      );
+      expect(from(0)).not.toBe("2026-01-01T00:00:00.000Z");
+      await EXPERIMENT_RESULTS.handler(
+        { ...input, since: "2026-01-01", until: "2026-01-05" },
+        ctx as never,
+      );
+      expect(from(1)).toBe("2026-01-01T00:00:00.000Z");
+    } finally {
+      legacySpy.mockRestore();
+      fetchSpy.mockRestore();
     }
   });
 });

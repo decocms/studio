@@ -36,8 +36,9 @@ export interface ExperimentResults {
   stats: {
     totalParticipants: number;
     sampleSize: number;
-    probabilityVariantBest: number;
-    probabilityDefaultBest: number;
+    /** Null while either arm has no visitors or no conversions. */
+    probabilityVariantBest: number | null;
+    probabilityDefaultBest: number | null;
   };
 }
 

@@ -100,10 +100,12 @@ interface DecoExperimentInput {
   until?: string;
 }
 
-/** Event names the read surface can count, `purchase` first and always. */
-export function decoGoals(goals: string[]): string[] {
+/** Event names the read surface can count, at most 10: `purchase`, the
+ *  statistics goal and the exposure event first, so the cap never drops them. */
+export function decoGoals(goals: string[], goalOnDash: string): string[] {
   const valid = goals.filter((g) => g !== VISITORS_GOAL && EVENT_NAME.test(g));
-  return [...new Set([PURCHASE, ...valid])].slice(0, MAX_GOALS);
+  const pinned = [goalOnDash, EXPOSURE].filter((g) => valid.includes(g));
+  return [...new Set([PURCHASE, ...pinned, ...valid])].slice(0, MAX_GOALS);
 }
 
 /** A closed window on the hour, at most 31 days, ending now: from the asked
@@ -129,16 +131,15 @@ export function decoWindow(
 }
 
 /** The read surface's answer in EXPERIMENT_RESULTS' shape: `default` is the
- *  control arm (role `control`, else the first), `variant` the treatment. */
+ *  control arm (role `control`, else the first configured), `variant` the
+ *  treatment. */
 function toExperimentResults(
   payload: Payload,
   input: Pick<DecoExperimentInput, "goalOnDash" | "variants"> & {
     goals: string[];
   },
 ): DecoExperimentResults {
-  const ids = input.variants.length
-    ? input.variants.map((v) => v.id)
-    : payload.expResults.map((r) => r.variant);
+  const ids = input.variants.map((v) => v.id);
   const control =
     input.variants.find((v) => v.role === "control")?.id ?? ids[0];
   const treatment =
@@ -253,7 +254,8 @@ function toExperimentResults(
 /**
  * The experiment's results from Deco Analytics, or null when the site has no
  * registration the org can read, the read surface isn't configured, has no
- * rows for the key, or fails. Never throws: the caller then answers as before.
+ * rows for the experiment's configured arms, or fails. Never throws: the
+ * caller then answers as before.
  */
 export async function readDecoExperimentResults(
   ctx: StudioContext,
@@ -274,7 +276,7 @@ export async function readDecoExperimentResults(
       siteId = registration.id;
     }
 
-    const goals = decoGoals(input.goals);
+    const goals = decoGoals(input.goals, input.goalOnDash);
     const window = decoWindow(input, now);
     const url = new URL(`${analyticsDataUrl}/data`);
     url.search = new URLSearchParams({
@@ -315,7 +317,10 @@ export async function readDecoExperimentResults(
       );
       return null;
     }
-    if (parsed.data.expResults.length === 0) return null;
+    // Rows for arms the experiment doesn't configure (stale or unknown) would
+    // map to an all-zero answer that hides the legacy outcome.
+    const ids = new Set(input.variants.map((v) => v.id));
+    if (!parsed.data.expResults.some((r) => ids.has(r.variant))) return null;
     return toExperimentResults(parsed.data, { ...input, goals });
   } catch (err) {
     console.error(
