@@ -832,6 +832,35 @@ describe("a refused save, then the poll (the conflict dialog is open)", () => {
     );
   });
 
+  it("a poll in flight when the refusal lands brings nothing new either", async () => {
+    const queryClient = new QueryClient();
+    const { backend, hosted, state, writeElsewhere } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await ensureHostedBlocks(queryClient, backend.hosted!, CACHE_KEY, ["home"]);
+    writeElsewhere("home", theirs);
+    // The poll reads the server, then the refused save's answer lands
+    // before the poll's own answer is handled.
+    const batch = hosted.batch;
+    hosted.batch = async (calls) => {
+      const answers = await batch(calls);
+      if (calls.some((call) => call.method === "cms.index")) {
+        hosted.batch = batch;
+        adoptRefusedDraft(
+          queryClient,
+          backend,
+          CACHE_KEY,
+          refusal("home", theirs, state.versions.home!),
+        );
+      }
+      return answers;
+    };
+    const before = epoch();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await settle();
+    expect(epoch()).toBe(before);
+    expect(loadedBodies(queryClient)?.home).toEqual(theirs);
+  });
+
   it("still catches up with a change the refusal didn't carry", async () => {
     const queryClient = new QueryClient();
     const { backend, state, writeElsewhere } = hostedServer();
