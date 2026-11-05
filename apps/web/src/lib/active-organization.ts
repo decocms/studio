@@ -7,6 +7,7 @@ import {
   currentSessionUserId,
   sessionSettled,
 } from "@/lib/auth-client";
+import { saveLastLocation } from "@/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { KEYS } from "@/lib/query-keys";
 import { readCachedOrg, writeCachedOrg } from "@/lib/query-persist";
@@ -71,6 +72,8 @@ export function activeOrganizationQueryOptions(
   });
 }
 
+let latestPreloadedOrg: string | undefined;
+
 /**
  * The `$org` route's loader: have the org in the cache before the router
  * commits the URL that names it.
@@ -85,11 +88,16 @@ export function activeOrganizationQueryOptions(
  * Never throws: a failed read is the shell's to report, from its own query.
  */
 export async function preloadActiveOrganization(org: string): Promise<void> {
+  latestPreloadedOrg = org;
   await sessionSettled();
   const userId = currentSessionUserId();
   // Signed out, a cached `null` would read as "no access" right after sign-in.
   if (!userId) return;
-  await queryClient
+  const data = await queryClient
     .ensureQueryData(activeOrganizationQueryOptions(org, userId))
-    .catch(() => undefined);
+    .catch(() => null);
+  // Record only orgs the user can open, and only for the latest navigation.
+  if (data && !isOrgArchived(data) && latestPreloadedOrg === org) {
+    saveLastLocation({ org });
+  }
 }

@@ -14,22 +14,8 @@
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { useProjectContext } from "@/sdk";
 
-export function OrgLabel({ collapsed = false }: { collapsed?: boolean }) {
+export function OrgLabel() {
   const { org } = useProjectContext();
-
-  if (collapsed) {
-    return (
-      <div
-        className="flex items-center justify-center"
-        title={org.name}
-        data-tour={LAYOUT_TOUR_ANCHORS.switcher}
-      >
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground text-sm">
-          {org.name}
-        </span>
-      </div>
-    );
-  }
 
   return (
     <div

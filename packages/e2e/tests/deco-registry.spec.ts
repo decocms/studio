@@ -86,6 +86,7 @@ test("Connections shows the Deco catalog without Store settings", async ({
   expect(response.status()).toBe(200);
   const { items } = await response.json();
   await page.goto(`/${orgSlug}/settings/connections?tab=all`);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   const search = page.getByPlaceholder("Search for a connection");
   await expect(search).toBeVisible();
   await search.fill(items[0].title);

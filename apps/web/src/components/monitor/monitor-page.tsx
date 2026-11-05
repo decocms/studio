@@ -1,15 +1,7 @@
-/**
- * The Monitor destination, org or project: is today a normal day, and if
- * not, why and what to do. Top to bottom: the pulse (KPIs against
- * yesterday), today's orders with every deploy marked on them beside what
- * needs attention, the deploys and their effect, the projects side by side
- * (org only), experiments, and the sources feeding it all. A store opens its
- * full day (the order monitor's own view) in place.
- */
+/** The Monitor, org or project: ask about the data, what needs attention, the numbers that matter. */
 
-import { type ReactNode, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { Activity, GitBranch01, Plus } from "@untitledui/icons";
+import type { ReactNode } from "react";
+import { Activity, GitBranch01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
@@ -18,7 +10,6 @@ import {
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   DayInput,
   localInstant,
@@ -30,228 +21,115 @@ import {
 } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
 import {
-  type Kpi,
-  type KpiId,
   type MonitorBoard,
   scopeBoard,
   type SourceId,
   sortSignals,
   storeTimezone,
 } from "./board";
-import { ChannelsChart } from "./channels-chart";
-import { ChangeFocusProvider, MetricChart } from "./metric-chart";
+import { AskData } from "./ask-data";
 import {
-  AnalyticsView,
-  DeploysView,
-  ExperimentsView,
+  AudienceView,
+  MonitorHeatmap,
   MonitorTabs,
   type MonitorView,
+  PerformanceView,
+  useSiteProjects,
 } from "./monitor-views";
-import { connectLink, localDay } from "./parts";
-import { Locked } from "./locked";
+import { DeploysView } from "./deploys-view";
+import { ExperimentsView } from "./experiments-view";
+import { LogsView } from "./logs-view";
 import { MonitoredRepos } from "./monitored-repos";
-import { ProjectsTable } from "./projects-table";
-import { SignalsPanel } from "./signals-panel";
-import { monitorPreview } from "./preview";
+import { monitorScope, ProjectFilter } from "./project-filter";
+import { connectLink, localDay } from "./parts";
+import { ConnectMore, Locked } from "./locked";
+import { AllClear, SignalsPanel } from "./signals-panel";
 import { StoreDay } from "./store-day";
-import { StoresTable } from "./stores-table";
-import { sourceName } from "./sources-panel";
-import { useSourceIcons } from "./use-source-icons";
+import { NumberCards, OverviewNumbers } from "./overview-numbers";
+import { Sparkline } from "./sparkline";
 
 export interface MonitorSelection {
   view?: MonitorView;
+  /** Across the org, the one project every tab shows (the filter's pick). */
+  project?: string;
   /** A past local day, `YYYY-MM-DD`; today when absent. */
   date?: string;
   store?: string;
   at?: string;
 }
 
-/** What the board's controls change: which day, and whether deploys are drawn. */
+/** What the board's controls change: which day. */
 interface BoardControls {
   date: string;
   onDate: (date: string) => void;
-  showChanges: boolean;
-  onShowChanges: (show: boolean) => void;
-  hasChanges: boolean;
 }
 
-/**
- * Every page control in the panel's top bar, where the board analytics keep
- * theirs: the day and the deploys toggle (on the board only), then the way
- * to connect a source. Each chart picks its own reference days.
- */
-function Actions({
-  orgSlug,
-  scopeId,
-  controls,
-  repos,
-}: {
-  orgSlug: string;
-  scopeId: string | null;
-  controls: BoardControls | null;
-  /** Which repositories the Deploys tab follows, once it follows any. */
-  repos: boolean;
-}) {
-  const t = useT();
+/** The day picker, in the panel's top bar where the board analytics keep theirs. */
+function Actions({ controls }: { controls: BoardControls | null }) {
+  if (!controls) return null;
   return (
     <Page.Actions>
-      {repos && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1">
-              <GitBranch01 size={14} />
-              {t("monitor.repos.button")}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 p-3">
-            <MonitoredRepos />
-          </PopoverContent>
-        </Popover>
-      )}
-      {controls && (
-        <>
-          <DayInput
-            value={controls.date}
-            max={localDay(new Date())}
-            onChange={controls.onDate}
-          />
-          {controls.hasChanges && (
-            <label className="text-meta flex cursor-pointer items-center gap-2 px-1">
-              <Switch
-                checked={controls.showChanges}
-                onCheckedChange={controls.onShowChanges}
-              />
-              {t("monitor.chart.changes")}
-            </label>
-          )}
-        </>
-      )}
-      <Button asChild variant="outline" size="sm" className="gap-1">
-        <Link {...connectLink(orgSlug, scopeId)}>
-          <Plus size={14} />
-          {t("monitor.connectSource")}
-        </Link>
-      </Button>
+      <DayInput
+        value={controls.date}
+        max={localDay(new Date())}
+        onChange={controls.onDate}
+      />
     </Page.Actions>
   );
 }
 
-const CARD_ORDER: readonly KpiId[] = [
-  "orders",
-  "cancellations",
-  "conversion",
-  "audience",
-  "errors",
-  "latency",
-];
-
-/** Where each card's numbers come from once the org is live. */
-const LIVE_SOURCE: Record<KpiId, SourceId> = {
-  orders: "orders",
-  cancellations: "orders",
-  conversion: "analytics",
-  audience: "site",
-  latency: "site",
-  errors: "site",
-};
+/** Made-up numbers for the faded Overview behind the connect card. */
+const PREVIEW_NUMBERS = [
+  { key: "orders", label: "monitor.overview.orders", value: "317" },
+  { key: "visitors", label: "monitor.overview.visitors", value: "21,904" },
+  { key: "pageviews", label: "monitor.overview.pageviews", value: "68,350" },
+  {
+    key: "cancellations",
+    label: "monitor.overview.cancellations",
+    value: "4",
+  },
+] as const;
+const PREVIEW_SHAPE = [3, 2, 2, 4, 7, 9, 8, 10, 12, 11, 13, 12, 9, 10];
 
 function Board({
   board,
   orgSlug,
   scopeId,
+  today,
   selection,
   onSelect,
-  showChanges,
-  preview,
-  bare = false,
+  ask,
+  numbers,
+  more,
 }: {
   board: MonitorBoard;
   orgSlug: string;
   scopeId: string | null;
+  /** A past day has no verdicts of its own, so it can't be all clear. */
+  today: boolean;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
-  showChanges: boolean;
-  /** Every card the page can show, with preview numbers, for the ones not fed yet. */
-  preview: readonly Kpi[] | null;
-  /** Drawn under the page's connect card: no buttons of its own. */
-  bare?: boolean;
+  ask: ReactNode;
+  numbers: ReactNode;
+  /** The sources still missing, last. */
+  more: ReactNode;
 }) {
-  const t = useT();
   const signals = sortSignals(board.signals);
-  const connect = connectLink(orgSlug, scopeId);
-  const iconOf = useSourceIcons(orgSlug, board.sources);
-  const changes = board.deploys ?? [];
-  // The whole page is laid out from the start: a card whose source isn't
-  // connected shows what it would draw, faded, under the button to connect it.
-  const kpis: Kpi[] = preview
-    ? preview.map(
-        (sample) =>
-          board.kpis.find((k) => k.id === sample.id) ?? {
-            ...sample,
-            source: LIVE_SOURCE[sample.id],
-            value: null,
-            points: null,
-          },
-      )
-    : board.kpis;
-  // Orders, then what happens to them, then the site behind them.
-  const [orders, ...rest] = [...kpis].sort(
-    (a, b) => CARD_ORDER.indexOf(a.id) - CARD_ORDER.indexOf(b.id),
-  );
-  const chart = (kpi: Kpi, className?: string) => (
-    <MetricChart
-      key={kpi.id}
-      kpi={kpi}
-      preview={preview?.find((p) => p.id === kpi.id)}
-      waiting={board.sources.find((s) => s.id === kpi.source)?.state === "live"}
-      comingSoon={!board.kpis.some((k) => k.id === kpi.id)}
-      changes={changes}
-      showChanges={showChanges}
-      dayStart={board.dayStart}
-      sourceName={sourceName(kpi.source, t)}
-      icon={iconOf(kpi.source)}
-      connect={connect}
-      bare={bare}
-      className={className}
-    />
-  );
-
   return (
-    <div className="flex flex-col gap-4">
-      {signals.length > 0 && (
+    <div className="flex flex-col gap-8">
+      {ask}
+      {signals.length > 0 ? (
         <SignalsPanel
           signals={signals}
           orgSlug={orgSlug}
           scopeId={scopeId}
           onOpenStore={(store) => onSelect({ ...selection, store })}
-          iconOf={iconOf}
         />
+      ) : (
+        today && board.stores.length > 0 && <AllClear />
       )}
-      <ChangeFocusProvider>
-        {orders && chart(orders)}
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Cancellations beside the channels: both are about the orders. */}
-          {rest.slice(0, 1).map((kpi) => chart(kpi))}
-          {board.channels && board.channels.length > 1 && (
-            <ChannelsChart channels={board.channels} />
-          )}
-          {rest.slice(1).map((kpi) => chart(kpi))}
-        </div>
-      </ChangeFocusProvider>
-      {!bare && board.stores.length > 0 && (
-        <div className="mt-6">
-          <StoresTable
-            stores={board.stores}
-            orgSlug={orgSlug}
-            onOpen={(store) => onSelect({ ...selection, store })}
-          />
-        </div>
-      )}
-      {!scopeId && board.projects.length > 1 && (
-        <div className="mt-6">
-          <ProjectsTable projects={board.projects} orgSlug={orgSlug} />
-        </div>
-      )}
+      {numbers}
+      {more}
     </div>
   );
 }
@@ -261,7 +139,8 @@ export function MonitorPage({
   loading,
   error,
   orgSlug,
-  scopeId,
+  scopeId: routeScope,
+  orgWide = false,
   selection,
   onSelect,
 }: {
@@ -269,11 +148,23 @@ export function MonitorPage({
   loading: boolean;
   error: Error | null;
   orgSlug: string;
+  /** The project the route is in; null across the org. */
   scopeId: string | null;
+  /** The route is in an agent that spans the org, not in a project. */
+  orgWide?: boolean;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
   const t = useT();
+  const projects = useSiteProjects();
+  const scopeId = monitorScope(
+    routeScope,
+    projects,
+    selection.project,
+    orgWide,
+  );
+  const onProject = (project: string | null) =>
+    onSelect({ view: selection.view, project: project ?? undefined });
   const board = scopeBoard(orgBoard, scopeId);
   /** A past day's last second in the store's own timezone. */
   const storeDayEnd = (connectionId: string, date: string | undefined) => {
@@ -287,20 +178,81 @@ export function MonitorPage({
   const stateOf = (id: SourceId) =>
     board.sources.find((s) => s.id === id)?.state ?? "off";
   const view = selection.view ?? "metrics";
-  // Everything the page can show is laid out from the start; what no source
-  // feeds yet is drawn from the preview, faded, under its connect button.
-  const shown = monitorPreview(scopeId, selection.date);
-  const preview = shown.kpis;
-  const [showChanges, setShowChanges] = useState(true);
+  const day = selection.date ?? localDay(new Date());
+  const today = day === localDay(new Date());
+  const scopeProject = projects.find((p) => p.id === scopeId);
   const tabs = (
-    <MonitorTabs
-      view={view}
-      onView={(next) =>
-        onSelect({ view: next === "metrics" ? undefined : next })
-      }
-    />
+    <>
+      <MonitorTabs
+        view={view}
+        onView={(next) =>
+          onSelect({
+            view: next === "metrics" ? undefined : next,
+            project: selection.project,
+          })
+        }
+      />
+      {!routeScope && projects.length > 1 && (
+        <ProjectFilter
+          projects={projects}
+          value={scopeId}
+          onChange={onProject}
+        />
+      )}
+    </>
   );
-  // Experiments and Analytics are a project's own screens, with their frame.
+  // Every tab but the Overview is its own screen, with its frame.
+  if (view === "deploys") {
+    const deploysState = stateOf("deploys");
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-auto">
+        {tabs}
+        {!loading && board.deploys && (
+          <Page.Actions>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1">
+                  <GitBranch01 size={14} />
+                  {t("monitor.repos.button")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 p-3">
+                <MonitoredRepos />
+              </PopoverContent>
+            </Popover>
+          </Page.Actions>
+        )}
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
+          {loading ? (
+            <Skeleton className="h-64" />
+          ) : board.deploys ? (
+            <DeploysView
+              deploys={board.deploys}
+              history={board.deployHistory}
+              orgSlug={orgSlug}
+              scopeId={scopeId}
+            />
+          ) : (
+            <Locked
+              kind="metrics"
+              title={t("monitor.locked.deploys.title")}
+              {...(deploysState === "partial"
+                ? { guide: <MonitoredRepos /> }
+                : { steps: [{ source: "deploys", state: deploysState }] })}
+              link={connectLink(orgSlug, scopeId)}
+            >
+              <DeploysView
+                deploys={[]}
+                history={null}
+                orgSlug={orgSlug}
+                scopeId={scopeId}
+              />
+            </Locked>
+          )}
+        </div>
+      </div>
+    );
+  }
   if (view === "experiments") {
     return (
       <>
@@ -309,20 +261,40 @@ export function MonitorPage({
       </>
     );
   }
-  if (view === "analytics") {
+  if (view === "logs") {
     return (
       <>
         {tabs}
-        <AnalyticsView
+        <LogsView scopeId={scopeId} onProject={onProject} />
+      </>
+    );
+  }
+  if (view === "audience") {
+    return (
+      <>
+        {tabs}
+        <AudienceView
           scopeId={scopeId}
-          date={selection.date ?? localDay(new Date())}
-          onDate={(date) =>
-            onSelect({
-              ...selection,
-              date: date === localDay(new Date()) ? undefined : date,
-            })
+          onOpen={(next) =>
+            onSelect({ view: selection.view, project: next.project })
           }
         />
+      </>
+    );
+  }
+  if (view === "heatmap") {
+    return (
+      <>
+        {tabs}
+        <MonitorHeatmap scopeId={scopeId} onProject={onProject} />
+      </>
+    );
+  }
+  if (view === "performance") {
+    return (
+      <>
+        {tabs}
+        <PerformanceView scopeId={scopeId} onProject={onProject} />
       </>
     );
   }
@@ -339,41 +311,7 @@ export function MonitorPage({
   const unconnected = board.sources.every((s) => s.state === "off");
 
   let body: ReactNode;
-  if (view === "deploys") {
-    body = board.deploys ? (
-      <DeploysView
-        deploys={board.deploys}
-        history={board.deployHistory}
-        orgSlug={orgSlug}
-        scopeId={scopeId}
-      />
-    ) : (
-      <Locked
-        kind="deploys"
-        title={t("monitor.locked.deploys.title")}
-        {...(stateOf("deploys") === "partial"
-          ? {
-              guide: (
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    {t("monitor.repos.hint")}
-                  </p>
-                  <MonitoredRepos />
-                </div>
-              ),
-            }
-          : { steps: [{ source: "deploys", state: stateOf("deploys") }] })}
-        link={connectLink(orgSlug, scopeId)}
-      >
-        <DeploysView
-          deploys={shown.deploys}
-          history={shown.deployHistory}
-          orgSlug={orgSlug}
-          scopeId={scopeId}
-        />
-      </Locked>
-    );
-  } else if (selection.store) {
+  if (selection.store) {
     body = (
       <StoreDay
         store={board.stores.find(
@@ -400,12 +338,8 @@ export function MonitorPage({
   } else if (loading) {
     body = (
       <div className="flex flex-col gap-6">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
-        <Skeleton className="h-96" />
+        <Skeleton className="h-14 rounded-full" />
+        <Skeleton className="h-32" />
       </div>
     );
   } else if (error) {
@@ -422,19 +356,21 @@ export function MonitorPage({
         kind="metrics"
         title={t("monitor.locked.metrics.title")}
         steps={(["orders", "analytics", "site", "deploys"] as const).map(
-          (source) => ({ source, state: stateOf(source) }),
+          (source) => ({
+            source,
+            state: stateOf(source),
+          }),
         )}
         link={connectLink(orgSlug, scopeId)}
       >
-        <Board
-          board={board}
-          selection={selection}
-          orgSlug={orgSlug}
-          scopeId={scopeId}
-          onSelect={onSelect}
-          showChanges={showChanges}
-          preview={preview}
-          bare
+        <NumberCards
+          numbers={PREVIEW_NUMBERS.map((n) => ({
+            key: n.key,
+            label: t(n.label),
+            help: t(n.label),
+            value: n.value,
+            chart: <Sparkline values={PREVIEW_SHAPE} className="h-14" />,
+          }))}
         />
       </Locked>
     );
@@ -445,13 +381,36 @@ export function MonitorPage({
         selection={selection}
         orgSlug={orgSlug}
         scopeId={scopeId}
+        today={today}
         onSelect={onSelect}
-        showChanges={showChanges}
-        preview={preview}
+        ask={<AskData project={scopeProject?.title ?? null} />}
+        numbers={
+          <OverviewNumbers
+            project={scopeProject}
+            today={today}
+            kpis={board.kpis}
+          />
+        }
+        more={
+          <ConnectMore
+            steps={(["orders", "analytics", "site", "deploys"] as const).map(
+              (source) => ({
+                source,
+                state: stateOf(source),
+                // On the Overview a store is what alerts come from.
+                meta:
+                  source === "orders"
+                    ? t("monitor.connect.ordersAlerts")
+                    : undefined,
+              }),
+            )}
+            link={connectLink(orgSlug, scopeId)}
+          />
+        }
       />
     );
   }
-  // A store's day keeps the day picker; the deploys toggle is the board's.
+  // A store's day keeps the day picker.
   const onBoard =
     view === "metrics" && !loading && !error && (!!selection.store || !nothing);
   const controls: BoardControls | null = onBoard
@@ -463,9 +422,6 @@ export function MonitorPage({
             date: date === localDay(new Date()) ? undefined : date,
             at: undefined,
           }),
-        showChanges,
-        onShowChanges: setShowChanges,
-        hasChanges: !selection.store && (board.deploys?.length ?? 0) > 0,
       }
     : null;
 
@@ -473,12 +429,7 @@ export function MonitorPage({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
       {tabs}
-      <Actions
-        orgSlug={orgSlug}
-        scopeId={scopeId}
-        controls={controls}
-        repos={view === "deploys" && board.deploys !== null}
-      />
+      <Actions controls={controls} />
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
         {body}
       </div>

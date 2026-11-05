@@ -189,8 +189,8 @@ function SidebarDemo({ defaultOpen }: { defaultOpen: boolean }) {
   );
 }
 
-/* The `projectFirstNav` preference: an org rail beside the sidebar, the
-   destinations Today, Tasks, Agents and Library, and projects in folders. */
+/* The org rail beside the sidebar, the destinations Today, Tasks, Agents and
+   Library, and projects in folders. */
 
 const orgs = [
   { name: "Acme", active: true },

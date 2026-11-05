@@ -1,18 +1,15 @@
 /**
- * Plan under the new navigation, before it exists: what it will do, over a
+ * Plan, before it exists: what it will do, over a
  * sketch of it. The sketch is decoration, so it carries no copy of its own
  * and is hidden from assistive tech.
  */
 
 import type { ComponentType } from "react";
-import { Navigate } from "@tanstack/react-router";
 import { CheckDone01, Target04, TrendUp01 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Page } from "@/components/page";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
-import { useProjectContext } from "@/sdk";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 type Kind = "plan";
@@ -83,15 +80,9 @@ function PlanSketch() {
   );
 }
 
-/** Only the new navigation announces it, so anyone else lands on home. */
 export function ComingSoonPage({ kind }: { kind: Kind }) {
   const t = useT();
-  const { org } = useProjectContext();
-  const projectFirstNav = useProjectFirstNav();
   const copy = COPY[kind];
-  if (!projectFirstNav) {
-    return <Navigate to="/$org/home" params={{ org: org.slug }} replace />;
-  }
   return (
     <Page>
       <Page.Content>

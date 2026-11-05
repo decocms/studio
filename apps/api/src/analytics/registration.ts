@@ -7,6 +7,7 @@
  * (`registerExternalAnalyticsSite`).
  */
 
+import { z } from "zod";
 import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { getSettings } from "../settings";
 
@@ -21,6 +22,9 @@ export type AnalyticsRegistration =
     }
   /** `host` is the site's production domain, what a registration would use. */
   | { status: "unregistered"; host: string | null }
+  /** The control-plane has no such site: an `org_sites` slug claimed when a
+   *  project was created, which registers by domain like an external site. */
+  | { status: "unhosted" }
   /** Unreachable or not configured: never cache this as "unregistered". */
   | { status: "error" };
 
@@ -52,6 +56,7 @@ export async function readAnalyticsRegistration(
   try {
     const res = await controlplane(sitePath(site, "analytics/status"));
     if (!res) return { status: "error" };
+    if (await isUnknownSite(res)) return { status: "unhosted" };
     if (!res.ok) {
       console.error(
         `[analytics] status resolve HTTP ${res.status} for site="${site}"`,
@@ -79,6 +84,21 @@ export async function readAnalyticsRegistration(
     console.error(`[analytics] status resolve failed for site="${site}":`, err);
     return { status: "error" };
   }
+}
+
+/** The control-plane's answer for a site it has no record of, as opposed to a
+ *  404 from a wrong base URL or a missing route. */
+async function isUnknownSite(res: Response): Promise<boolean> {
+  if (res.status !== 404) return false;
+  const body = (await res
+    .clone()
+    .json()
+    .catch(() => null)) as { error?: unknown; message?: unknown } | null;
+  return (
+    body?.error === "not_found" &&
+    typeof body.message === "string" &&
+    body.message.startsWith("unknown site:")
+  );
 }
 
 /** The control-plane's refusal: `code` is its machine reason (`on_cdn`, `no_domains`). */
@@ -120,6 +140,51 @@ async function registrationError(
       : (code ?? `Analytics registration failed (${res.status})`),
     code,
   );
+}
+
+const ExternalConfig = z.object({
+  config: z.object({
+    enabled: z.boolean().optional(),
+    modules: z.array(z.string()).optional(),
+    domains: z.array(z.string()).optional(),
+    sampling: z.number().optional(),
+    quota: z.number().optional(),
+  }),
+});
+
+/** The collector config of a site the control-plane doesn't host, read by
+ *  the id its registration was created with, or null when it can't be read:
+ *  the caller still has the id, which is all the data views need. */
+export async function readExternalAnalyticsConfig(
+  id: string,
+): Promise<z.infer<typeof ExternalConfig>["config"] | null> {
+  try {
+    const res = await controlplane(
+      `/analytics/external/${encodeURIComponent(id)}`,
+    );
+    if (!res) return null;
+    if (!res.ok) {
+      console.error(
+        `[analytics] external config read HTTP ${res.status} for id="${id}"`,
+      );
+      return null;
+    }
+    const parsed = ExternalConfig.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) {
+      console.error(
+        `[analytics] external config read got an invalid body for id="${id}":`,
+        parsed.error.issues,
+      );
+      return null;
+    }
+    return parsed.data.config;
+  } catch (err) {
+    console.error(
+      `[analytics] external config read failed for id="${id}":`,
+      err,
+    );
+    return null;
+  }
 }
 
 /** Register a site the control-plane doesn't host, by the domains it's live

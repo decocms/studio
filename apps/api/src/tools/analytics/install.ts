@@ -18,15 +18,14 @@ import {
 } from "../../customer-lake/client";
 import { findOwnedProject } from "../experiments/ownership";
 import { resolveRepositoryForProject } from "../experiments/resolve-site-repository";
-import { DECO_ANALYTICS_METADATA_KEY } from "../strip-server-managed-metadata";
+import {
+  DECO_ANALYTICS_METADATA_KEY,
+  storedExternalRegistration,
+} from "@decocms/shared/deco-analytics";
 import { emitTaskBoardUpdated } from "../task-board/run-reactions";
 import { buildInstruction } from "./instruction";
 
 const MODULES = ["core", "commerce", "vitals"];
-
-/** What a site the control-plane doesn't host keeps of its registration: the
- *  key is only returned when it's created. */
-const ExternalRegistration = z.object({ id: z.string(), key: z.string() });
 
 export const ANALYTICS_INSTALL = defineTool({
   name: "ANALYTICS_INSTALL",
@@ -100,9 +99,13 @@ export const ANALYTICS_INSTALL = defineTool({
       );
     }
 
+    const stored = storedExternalRegistration(project.metadata);
+    // An owned slug the control-plane doesn't host (claimed when its project
+    // was created) registers by domain, like a site deco doesn't host.
+    let hostedRegistration =
+      hosted && !stored ? await readAnalyticsRegistration(site) : null;
     let registration: { id: string; key: string | null; modules: string[] };
-    if (hosted) {
-      let hostedRegistration = await readAnalyticsRegistration(site);
+    if (hostedRegistration && hostedRegistration.status !== "unhosted") {
       // Keyed, because a keyed tag collects on any host; a host registration
       // collects only where `/_dq/*` is routed to the collector, which the
       // control-plane checks before converting one.
@@ -133,13 +136,8 @@ export const ANALYTICS_INSTALL = defineTool({
       }
       registration = hostedRegistration;
     } else {
-      const stored = ExternalRegistration.safeParse(
-        (project.metadata as Record<string, unknown> | null)?.[
-          DECO_ANALYTICS_METADATA_KEY
-        ],
-      );
-      if (stored.success) {
-        registration = { ...stored.data, modules: MODULES };
+      if (stored) {
+        registration = { ...stored, modules: MODULES };
       } else {
         const host = typedHost(input.domain);
         if (!host) return { status: "needs_domain" as const };

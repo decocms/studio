@@ -2,7 +2,7 @@ import { withDraftPointer } from "@/components/sections-editor/section-preview-u
 import { extractPathParams } from "@/components/sections-editor/page-path-utils";
 import { isPageResolveTypeOnBlocksSite } from "@/components/sections-editor/page-types";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { scanBlogEntries } from "./blog-data";
+import { blogAppBlocks, scanBlogEntries } from "./blog-data";
 import { categoryPathSegments } from "./category-tree";
 
 const str = (value: unknown): string =>
@@ -16,20 +16,12 @@ const str = (value: unknown): string =>
  * substitute the params so "See preview" buttons can open the live sandbox
  * page for the post/category being edited.
  */
-const BLOG_APP_RESOLVE_TYPE = /\/blog\.tsx?$/;
-
-/** Reads a string prop off the (single) blog app block, if present. */
 function readBlogAppProp(
   decofile: Record<string, unknown>,
   prop: string,
 ): string | null {
-  for (const [key, val] of Object.entries(decofile)) {
-    if (key.includes("/")) continue;
-    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
-    const obj = val as Record<string, unknown>;
-    if (typeof obj.__resolveType !== "string") continue;
-    if (!BLOG_APP_RESOLVE_TYPE.test(obj.__resolveType)) continue;
-    const value = str(obj[prop]);
+  for (const block of blogAppBlocks(decofile)) {
+    const value = str(block[prop]);
     if (value) return value;
   }
   return null;

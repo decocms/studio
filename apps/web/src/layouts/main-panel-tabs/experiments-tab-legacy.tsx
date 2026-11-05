@@ -6,7 +6,15 @@
  * what main shipped. Delete this file, its `experiments.legacy.*` /
  * `experiments.col.*` / `experiments.results.*` strings, and the flag together.
  */
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { ArrowLeft } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -37,9 +45,20 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import {
+  ChartContainer,
+  ChartTooltipContent,
+} from "@decocms/ui/components/chart.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
-import { useT } from "@/i18n/use-t.ts";
+import { type TFunction, type TranslationKey, useT } from "@/i18n/use-t.ts";
+import { useClockTick } from "@/lib/use-clock-tick";
 import {
   type Experiment,
   type ExperimentStatus,
@@ -49,6 +68,16 @@ import {
   useExperiments,
   useUpdateExperiment,
 } from "@/hooks/use-experiments";
+import {
+  type ArmCounts,
+  compareArms,
+  DETECTABLE_LIFT,
+  daysLeft,
+  daysRunning,
+  MIN_SUCCESSES,
+  MIN_TOTAL,
+  type Verdict,
+} from "./experiment-results-model";
 
 const STATUSES: ExperimentStatus[] = ["draft", "running", "paused", "ended"];
 
@@ -221,36 +250,647 @@ function CreateDialog({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+type ResultsData = NonNullable<ReturnType<typeof useExperimentResults>["data"]>;
+type ResultsBody = NonNullable<ResultsData["results"]>;
+type Behaviour = NonNullable<
+  NonNullable<ResultsBody["arms"]>[number]["behaviour"]
+>;
+
+/** One arm as the screen reads it, whichever backend answered. */
+interface ArmView {
+  id: string;
+  /** What people call the version: its description when short, else its id. */
+  name: string;
+  role: "control" | "test" | null;
+  weight: number | null;
+  visitors: number;
+  exposed: number | null;
+  /** The decision metric: conversion among the exposed, else among visitors. */
+  counts: ArmCounts;
+  purchases: number | null;
+  revenue: number | null;
+  behaviour: Behaviour | null;
+  daily: { date: string; counts: ArmCounts }[];
+}
+
+const GOAL_LABELS: Record<string, TranslationKey> = {
+  purchase: "experiments.results.goalName.purchase",
+  experience_impression: "experiments.results.goalName.experience_impression",
+  visitors: "experiments.results.visitors",
+};
+
+/** Known event names in words; any other goal as configured. */
+function goalLabel(goal: string, t: TFunction): string {
+  const key = GOAL_LABELS[goal];
+  return key ? t(key) : goal;
+}
+
+const STATUS_LABELS: Record<ExperimentStatus, TranslationKey> = {
+  draft: "experiments.status.draft",
+  running: "experiments.status.running",
+  paused: "experiments.status.paused",
+  ended: "experiments.status.ended",
+};
+
+const VERDICT_TONE: Record<Verdict, string> = {
+  few: "text-muted-foreground",
+  tie: "text-foreground",
+  ahead: "text-success",
+  behind: "text-destructive",
+};
+
+const fmt = (n: number, options: Intl.NumberFormatOptions) =>
+  new Intl.NumberFormat(undefined, options).format(n);
+const num = (n: number) => fmt(n, { maximumFractionDigits: 0 });
+const dec = (n: number) =>
+  fmt(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const pct = (n: number, digits = 1) =>
+  fmt(n, {
+    style: "percent",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+const signedPct = (n: number, digits = 1) =>
+  fmt(n, {
+    style: "percent",
+    signDisplay: "exceptZero",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+// ponytail: revenue without a named currency is read as BRL, every Deco
+// Analytics store so far; name it in the payload before that stops holding.
+const money = (n: number, currency: string) =>
+  fmt(n, { style: "currency", currency });
+const ratio = (a: number | null, b: number | null) =>
+  a !== null && b ? a / b : null;
+
+/** Seconds as "1 min 37 s". */
+function duration(seconds: number, t: TFunction): string {
+  const s = Math.round(seconds);
+  return s >= 60
+    ? t("experiments.results.minutes", { m: Math.floor(s / 60), s: s % 60 })
+    : t("experiments.results.seconds", { s });
+}
+
+const NAME_MAX = 40;
+
+/** A variant's description reads as its name ("Carrinho novo") when it is one
+ *  short line; a longer description is an explanation, so the id stays. */
+function armName(variants: Experiment["variants"], id: string): string {
+  const d = variants.find((v) => v.id === id)?.description?.trim();
+  return d && d.length <= NAME_MAX && !/[\r\n]/.test(d) ? d : id;
+}
+
+/** Control first, then the treatment, then any other arm. */
+function toArms(r: ResultsBody, variants: Experiment["variants"]): ArmView[] {
+  const arms = r.arms ?? [];
+  const weight = (id: string) =>
+    variants.find((v) => v.id === id)?.weight ?? null;
+  if (arms.length === 0) {
+    // OneDollarStats: two sides and goal counts, no exposure.
+    const goal = r.goals.find((g) => g.goal !== "visitors");
+    const side = (key: "default" | "variant"): ArmView => {
+      const v = variants.find((x) =>
+        key === "default" ? x.role === "control" : x.role === "treatment",
+      );
+      return {
+        id: v?.id ?? key,
+        name: armName(variants, v?.id ?? key),
+        role: key === "default" ? "control" : "test",
+        weight: v?.weight ?? null,
+        visitors: r.visitors[key],
+        exposed: null,
+        counts: { successes: goal?.[key] ?? 0, total: r.visitors[key] },
+        purchases: null,
+        revenue: null,
+        behaviour: null,
+        daily: [],
+      };
+    };
+    return [side("default"), side("variant")];
+  }
+  const control = variants.find((v) => v.role === "control")?.id ?? arms[0]?.id;
+  const treatment =
+    variants.find((v) => v.role === "treatment")?.id ??
+    arms.find((a) => a.id !== control)?.id;
+  const onExposed = arms.some((a) => (a.exposed ?? 0) > 0);
+  const counts = (a: {
+    visitors: number;
+    exposed: number | null;
+    converters: number;
+    convertersAmongExposed: number | null;
+  }): ArmCounts =>
+    onExposed
+      ? { successes: a.convertersAmongExposed ?? 0, total: a.exposed ?? 0 }
+      : { successes: a.converters, total: a.visitors };
+  const rank = (id: string) => (id === control ? 0 : id === treatment ? 1 : 2);
+  return [...arms]
+    .sort((a, b) => rank(a.id) - rank(b.id))
+    .map((a) => ({
+      id: a.id,
+      name: armName(variants, a.id),
+      role: a.id === control ? "control" : a.id === treatment ? "test" : null,
+      weight: weight(a.id),
+      visitors: a.visitors,
+      exposed: a.exposed,
+      counts: counts(a),
+      purchases: a.purchases,
+      revenue: a.revenue,
+      behaviour: a.behaviour,
+      daily: a.daily.map((d) => ({ date: d.date, counts: counts(d) })),
+    }));
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xl font-semibold tabular-nums">{value}</span>
+    <section className="surface overflow-hidden">
+      <h3 className="border-b border-border px-4 py-3 text-sm font-medium text-foreground">
+        {title}
+      </h3>
+      <div className="overflow-x-auto">{children}</div>
+    </section>
+  );
+}
+
+/** A column header that explains itself on hover. */
+function Head({
+  label,
+  hint,
+  left,
+}: {
+  label: string;
+  hint?: string;
+  left?: boolean;
+}) {
+  const className = cn("whitespace-nowrap", !left && "text-right");
+  if (!hint) return <TableHead className={className}>{label}</TableHead>;
+  return (
+    <TableHead className={className}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-help underline decoration-dotted underline-offset-4">
+            {label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-64">{hint}</TooltipContent>
+      </Tooltip>
+    </TableHead>
+  );
+}
+
+function ArmName({ arm }: { arm: ArmView }) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-2 whitespace-nowrap">
+      <span className="font-medium">{arm.name}</span>
+      {arm.name !== arm.id && (
+        <span className="font-mono text-xs text-muted-foreground">
+          {arm.id}
+        </span>
+      )}
+      {arm.role && (
+        <Badge variant={arm.role === "control" ? "outline" : "secondary"}>
+          {t(
+            arm.role === "control"
+              ? "experiments.results.control"
+              : "experiments.results.test",
+          )}
+        </Badge>
+      )}
+      {arm.weight !== null && (
+        <span className="text-xs text-muted-foreground">
+          {t("experiments.results.weight", { weight: arm.weight })}
+        </span>
+      )}
     </div>
   );
 }
 
-const pct = (n: number) => `${Math.round(n * 100)}%`;
-const num = (n: number) => new Intl.NumberFormat().format(n);
-
-function Results({
-  site,
-  experimentKey,
+function VerdictCard({
+  control,
+  test,
+  exposure,
+  days,
 }: {
-  site: string;
-  experimentKey: string;
+  control: ArmView;
+  test: ArmView;
+  exposure: boolean;
+  days: number;
 }) {
   const t = useT();
-  const { data, isLoading } = useExperimentResults(site, experimentKey);
+  const c = compareArms(control.counts, test.counts);
+  const left = daysLeft(control.counts, test.counts, days);
+  const title =
+    c.verdict === "ahead"
+      ? t("experiments.results.verdict.ahead", { arm: test.name })
+      : c.verdict === "behind"
+        ? t("experiments.results.verdict.behind", { arm: test.name })
+        : t(`experiments.results.verdict.${c.verdict}`);
+  const compare =
+    c.lift === null || c.low === null || c.high === null
+      ? t("experiments.results.verdict.noBase")
+      : t(
+          exposure
+            ? "experiments.results.verdict.compareExposed"
+            : "experiments.results.verdict.compareVisitors",
+          {
+            test: test.name,
+            control: control.name,
+            testRate: pct(c.treatmentRate),
+            controlRate: pct(c.controlRate),
+            lift: signedPct(c.lift),
+            low: signedPct(c.low, 0),
+            high: signedPct(c.high, 0),
+          },
+        );
+  const why =
+    c.verdict === "few"
+      ? t("experiments.results.verdict.fewHint", {
+          total: MIN_TOTAL,
+          successes: MIN_SUCCESSES,
+        })
+      : c.verdict === "tie"
+        ? t("experiments.results.verdict.tieHint")
+        : t("experiments.results.verdict.sureHint");
+  const mde = pct(DETECTABLE_LIFT, 0);
+  const progress = [
+    days > 0 &&
+      t(
+        days === 1
+          ? "experiments.results.progress.runningOne"
+          : "experiments.results.progress.running",
+        { days },
+      ),
+    left === null
+      ? t("experiments.results.progress.unknown")
+      : left === 0
+        ? t("experiments.results.progress.enough", { mde })
+        : t(
+            left === 1
+              ? "experiments.results.progress.leftOne"
+              : "experiments.results.progress.left",
+            { days: num(left), mde },
+          ),
+  ].filter(Boolean);
+  return (
+    <section className="surface flex flex-col gap-2 p-5">
+      <h3 className={cn("text-xl font-semibold", VERDICT_TONE[c.verdict])}>
+        {title}
+      </h3>
+      <p className="max-w-3xl text-sm text-foreground">
+        {compare} {why}
+      </p>
+      <p className="text-xs text-muted-foreground">{progress.join(" ")}</p>
+    </section>
+  );
+}
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center p-8">
-        <Spinner />
+function ArmsTable({
+  arms,
+  exposure,
+  goal,
+  currency,
+}: {
+  arms: ArmView[];
+  exposure: boolean;
+  goal: string;
+  currency: string;
+}) {
+  const t = useT();
+  const control = arms.find((a) => a.role === "control");
+  const hasMoney = arms.some((a) => a.revenue !== null);
+  const dash = <span className="text-muted-foreground">—</span>;
+  return (
+    <Section title={t("experiments.results.armsTitle")}>
+      <Table variant="flush">
+        <TableHeader>
+          <TableRow>
+            <Head left label={t("experiments.results.arm")} />
+            <Head
+              label={t("experiments.results.visitors")}
+              hint={t("experiments.results.visitorsHint")}
+            />
+            {exposure && (
+              <Head
+                label={t("experiments.results.exposed")}
+                hint={t("experiments.results.exposedHint")}
+              />
+            )}
+            <Head
+              label={t("experiments.results.conversion")}
+              hint={t(
+                exposure
+                  ? "experiments.results.conversionHintExposed"
+                  : "experiments.results.conversionHintVisitors",
+                { goal: goalLabel(goal, t) },
+              )}
+            />
+            <Head
+              label={t("experiments.results.difference")}
+              hint={t("experiments.results.differenceHint")}
+            />
+            {hasMoney && (
+              <>
+                <Head label={t("experiments.results.orders")} />
+                <Head label={t("experiments.results.revenue")} />
+                <Head label={t("experiments.results.revenuePerVisitor")} />
+                <Head label={t("experiments.results.averageOrder")} />
+              </>
+            )}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {arms.map((a) => {
+            const vs =
+              control && a !== control
+                ? compareArms(control.counts, a.counts)
+                : null;
+            const perVisitor = ratio(a.revenue, a.visitors);
+            const perOrder = ratio(a.revenue, a.purchases);
+            return (
+              <TableRow key={a.id}>
+                <TableCell>
+                  <ArmName arm={a} />
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {num(a.visitors)}
+                </TableCell>
+                {exposure && (
+                  <TableCell className="text-right tabular-nums">
+                    {num(a.exposed ?? 0)}
+                  </TableCell>
+                )}
+                <TableCell className="text-right font-semibold tabular-nums">
+                  {a.counts.total > 0
+                    ? pct(a.counts.successes / a.counts.total)
+                    : dash}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right tabular-nums">
+                  {!vs ? (
+                    <span className="text-xs text-muted-foreground">
+                      {t("experiments.results.reference")}
+                    </span>
+                  ) : vs.lift === null ||
+                    vs.low === null ||
+                    vs.high === null ? (
+                    dash
+                  ) : (
+                    <div className="flex flex-col items-end">
+                      <span
+                        className={cn("font-medium", VERDICT_TONE[vs.verdict])}
+                      >
+                        {signedPct(vs.lift)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {t("experiments.results.range", {
+                          low: signedPct(vs.low, 0),
+                          high: signedPct(vs.high, 0),
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </TableCell>
+                {hasMoney && (
+                  <>
+                    <TableCell className="text-right tabular-nums">
+                      {a.purchases === null ? dash : num(a.purchases)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {a.revenue === null ? dash : money(a.revenue, currency)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {perVisitor === null ? dash : money(perVisitor, currency)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {perOrder === null ? dash : money(perOrder, currency)}
+                    </TableCell>
+                  </>
+                )}
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </Section>
+  );
+}
+
+/** The decision metric per day and arm, once there are two days to join. */
+function Trend({ arms }: { arms: ArmView[] }) {
+  const t = useT();
+  const dates = [
+    ...new Set(arms.flatMap((a) => a.daily.map((d) => d.date))),
+  ].sort();
+  if (dates.length < 2) return null;
+  const data = dates.map((date) => {
+    const point: Record<string, string | number | null> = {
+      label: new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+        day: "2-digit",
+        month: "2-digit",
+        timeZone: "UTC",
+      }),
+    };
+    for (const a of arms) {
+      const d = a.daily.find((x) => x.date === date);
+      point[a.id] =
+        d && d.counts.total > 0 ? d.counts.successes / d.counts.total : null;
+    }
+    return point;
+  });
+  // Round ticks (0, 10%, 20%…) rather than the axis's own thirds of the top.
+  const top = Math.max(
+    0,
+    ...data.flatMap((p) => arms.map((a) => Number(p[a.id]) || 0)),
+  );
+  const step =
+    [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.25].find(
+      (x) => top / x <= 4,
+    ) ?? 0.25;
+  const ticks = Array.from(
+    { length: Math.ceil(top / step) + 1 },
+    (_, i) => i * step,
+  );
+  const config = Object.fromEntries(
+    arms.map((a, i) => [
+      a.id,
+      { label: a.name, color: `var(--chart-${(i % 5) + 1})` },
+    ]),
+  );
+  return (
+    <Section title={t("experiments.results.trend")}>
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+          {arms.map((a) => (
+            <span key={a.id} className="flex items-center gap-1.5">
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: config[a.id]?.color }}
+              />
+              {a.name}
+            </span>
+          ))}
+        </div>
+        <ChartContainer config={config} className="h-56 w-full">
+          <LineChart
+            data={data}
+            margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+          >
+            <CartesianGrid vertical={false} strokeDasharray="4 4" />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={10}
+              padding={{ left: 16, right: 16 }}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={48}
+              ticks={ticks}
+              domain={[0, ticks.at(-1) ?? 1]}
+              tickFormatter={(v: number) => pct(v, step < 0.01 ? 1 : 0)}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  formatter={(v, name) => `${name} ${pct(Number(v))}`}
+                />
+              }
+            />
+            {arms.map((a) => (
+              <Line
+                key={a.id}
+                dataKey={a.id}
+                type="monotone"
+                stroke={config[a.id]?.color}
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                connectNulls
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        </ChartContainer>
       </div>
-    );
-  }
+    </Section>
+  );
+}
 
+function BehaviourTable({ arms }: { arms: ArmView[] }) {
+  const t = useT();
+  const rows = arms.filter(
+    (a): a is ArmView & { behaviour: Behaviour } => a.behaviour !== null,
+  );
+  if (rows.length === 0) return null;
+  return (
+    <Section title={t("experiments.results.behaviour")}>
+      <Table variant="flush">
+        <TableHeader>
+          <TableRow>
+            <Head left label={t("experiments.results.arm")} />
+            <Head
+              label={t("experiments.results.pageviews")}
+              hint={t("experiments.results.pageviewsHint")}
+            />
+            <Head
+              label={t("experiments.results.activeTime")}
+              hint={t("experiments.results.activeTimeHint")}
+            />
+            <Head
+              label={t("experiments.results.clicks")}
+              hint={t("experiments.results.clicksHint")}
+            />
+            <Head
+              label={t("experiments.results.scroll")}
+              hint={t("experiments.results.scrollHint")}
+            />
+            <Head
+              label={t("experiments.results.jsErrors")}
+              hint={t("experiments.results.jsErrorsHint")}
+            />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map(({ id, behaviour: b }) => (
+            <TableRow key={id}>
+              <TableCell className="font-medium">{id}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {dec(b.pageviewsPerVisitor)}
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">
+                {duration(b.activeSecondsPerVisitor, t)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {dec(b.clicksPerVisitor)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {pct(b.medianScrollDepth / 100)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {pct(b.errorPct / 100)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Section>
+  );
+}
+
+function GoalsTable({
+  goals,
+  control,
+  test,
+}: {
+  goals: ResultsBody["goals"];
+  control: string;
+  test: string;
+}) {
+  const t = useT();
+  const rows = goals.filter((g) => g.goal !== "visitors");
+  if (rows.length === 0) return null;
+  return (
+    <Section title={t("experiments.results.goals")}>
+      <Table variant="flush">
+        <TableHeader>
+          <TableRow>
+            <Head
+              left
+              label={t("experiments.results.goal")}
+              hint={t("experiments.results.goalsHint")}
+            />
+            <Head label={control} />
+            <Head label={test} />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((g) => (
+            <TableRow key={g.goal}>
+              <TableCell>{goalLabel(g.goal, t)}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {num(g.default)}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                {num(g.variant)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Section>
+  );
+}
+
+function ResultsView({
+  data,
+  experiment,
+}: {
+  data: ResultsData | undefined;
+  experiment: Experiment;
+}) {
+  const t = useT();
+  const now = useClockTick(3_600_000);
   if (!data?.available) {
     return (
       <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -270,81 +910,64 @@ function Results({
     );
   }
 
-  const conversionGoals = r.goals.filter((g) => g.goal !== "visitors");
+  const arms = toArms(r, experiment.variants);
+  const control = arms.find((a) => a.role === "control");
+  const test = arms.find((a) => a.role === "test");
+  const exposure = arms.some((a) => a.exposed !== null);
+  const days =
+    daysRunning(experiment.startedAt, now) ||
+    new Set(arms.flatMap((a) => a.daily.map((d) => d.date))).size;
+  const goal =
+    r.statsGoal ?? r.goals.find((g) => g.goal !== "visitors")?.goal ?? "";
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4 rounded-lg border border-border p-4 sm:grid-cols-4">
-        <Stat
-          label={t("experiments.results.participants")}
-          value={num(r.stats.totalParticipants)}
+      {control && test && (
+        <VerdictCard
+          control={control}
+          test={test}
+          exposure={exposure && arms.some((a) => (a.exposed ?? 0) > 0)}
+          days={days}
         />
-        <Stat
-          label={t("experiments.results.sampleSize")}
-          value={num(r.stats.sampleSize)}
-        />
-        <Stat
-          label={`${t("experiments.results.control")} · ${t("experiments.results.visitors")}`}
-          value={num(r.visitors.default)}
-        />
-        <Stat
-          label={`${t("experiments.results.variant")} · ${t("experiments.results.visitors")}`}
-          value={num(r.visitors.variant)}
-        />
-      </div>
-
-      <div className="rounded-lg border border-border p-4">
-        <div className="mb-1 text-xs text-muted-foreground">
-          {t("experiments.results.probBest")}
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm">
-            {t("experiments.results.variant")}:{" "}
-            <span className="font-semibold tabular-nums">
-              {pct(r.stats.probabilityVariantBest)}
-            </span>
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {t("experiments.results.control")}:{" "}
-            <span className="font-semibold tabular-nums">
-              {pct(r.stats.probabilityDefaultBest)}
-            </span>
-          </span>
-        </div>
-      </div>
-
-      {conversionGoals.length > 0 && (
-        <div className="rounded-lg border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("experiments.results.goal")}</TableHead>
-                <TableHead className="text-right">
-                  {t("experiments.results.control")}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t("experiments.results.variant")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {conversionGoals.map((g) => (
-                <TableRow key={g.goal}>
-                  <TableCell>{g.goal}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {num(g.default)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {num(g.variant)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+      )}
+      <ArmsTable
+        arms={arms}
+        exposure={exposure}
+        goal={goal}
+        currency={r.currency ?? "BRL"}
+      />
+      <Trend arms={arms} />
+      <BehaviourTable arms={arms} />
+      <GoalsTable
+        goals={r.goals}
+        control={control?.id ?? t("experiments.results.control")}
+        test={test?.id ?? t("experiments.results.variant")}
+      />
+      {data.source === "deco-analytics" && (
+        <span className="text-xs text-muted-foreground">
+          {t("experiments.results.sourceDeco")}
+        </span>
       )}
     </div>
   );
+}
+
+function Results({
+  site,
+  experiment,
+}: {
+  site: string;
+  experiment: Experiment;
+}) {
+  const { data, isLoading } = useExperimentResults(site, experiment.key);
+  if (isLoading) {
+    return (
+      <div className="flex justify-center p-8">
+        <Spinner />
+      </div>
+    );
+  }
+  return <ResultsView data={data} experiment={experiment} />;
 }
 
 function Detail({
@@ -359,13 +982,13 @@ function Detail({
   const t = useT();
   return (
     <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft size={14} />
           {t("experiments.action.back")}
         </Button>
         <span className="text-lg font-semibold">{experiment.name}</span>
-        <Badge>{experiment.status}</Badge>
+        <Badge>{t(STATUS_LABELS[experiment.status])}</Badge>
       </div>
       <div className="rounded-lg border border-border p-4">
         <div className="mb-2 text-xs text-muted-foreground">
@@ -376,7 +999,7 @@ function Detail({
       <div className="text-sm font-semibold">
         {t("experiments.results.title")}
       </div>
-      <Results site={site} experimentKey={experiment.key} />
+      <Results site={site} experiment={experiment} />
     </div>
   );
 }
@@ -427,9 +1050,11 @@ export function LegacyExperimentsTab({
             {t("experiments.subtitle")}
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          {t("experiments.new")}
-        </Button>
+        {experiments && experiments.length > 0 && (
+          <Button onClick={() => setDialogOpen(true)}>
+            {t("experiments.new")}
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -488,7 +1113,7 @@ export function LegacyExperimentsTab({
                       <SelectContent>
                         {STATUSES.map((s) => (
                           <SelectItem key={s} value={s}>
-                            {s}
+                            {t(STATUS_LABELS[s])}
                           </SelectItem>
                         ))}
                       </SelectContent>

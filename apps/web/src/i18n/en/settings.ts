@@ -338,7 +338,6 @@ export const settings = {
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
   "settings.nav.memory": "Memory",
@@ -380,9 +379,6 @@ export const settings = {
   "settings.multiAppPreview.title": "Preview several apps of a monorepo",
   "settings.multiAppPreview.description":
     "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
-  "settings.preferences.projectFirstNav": "Project-first navigation",
-  "settings.preferences.projectFirstNavDescription":
-    "Try the org rail, project launcher and the Today/Agents home.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeLight": "Light theme",
   "settings.preferences.themeDark": "Dark theme",
@@ -417,7 +413,6 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
   "settings.skills.importing": "Importing…",
   "settings.skills.importSuccess": 'Imported "{name}"',
@@ -449,15 +444,10 @@ export const settings = {
   "settings.skills.errorDescription":
     "The skill catalog could not be loaded. You may not have access to this org's files.",
   "settings.skills.retry": "Try again",
-  "settings.memory.pageTitle": "Memory",
   "settings.memory.tabOrg": "Organization",
   "settings.memory.tabUser": "Just you",
   "settings.memory.orgHeading": "Shared with everyone in {org}",
-  "settings.memory.orgDescription":
-    "Deco reads this at the start of every chat and adds to it as it learns. Fix anything wrong or out of date.",
   "settings.memory.userHeading": "Your personal memory",
-  "settings.memory.userDescription":
-    "Loaded only into your chats. Good for how you like to work, what you own and what to skip.",
   "settings.memory.orgPlaceholder":
     "Facts everyone's chats should know. For example: we ship on Thursdays, prices are in BRL, the brand voice is informal.",
   "settings.memory.userPlaceholder":
@@ -707,11 +697,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
-  "settings.planUsage.noPlan": "No active plan",
-  "settings.planUsage.noPlanDescription":
-    "This organization has no active plan. Pick one below — Starter's first month is free.",
   "settings.planUsage.included": "Included in plan",
-  "settings.planUsage.credits": "Credits",
+  "settings.planUsage.credits": "Added credits",
   "settings.planUsage.creditsInUse": "In use",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
@@ -772,12 +759,6 @@ export const settings = {
     "This organization has used its monthly AI allowance. Chat and tasks pause until you upgrade or top up.",
 
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
-  "settings.decoNudgeCard.connectDeco": "Connect Deco",
-  "settings.decoNudgeCard.connecting": "Connecting…",
-  "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
-  "settings.decoNudgeCard.description":
-    "100+ models, one connection — pay as you go, no API keys to juggle.",
-  "settings.decoNudgeCard.recommended": "Recommended",
   "settings.deleteOrganizationSection.cancel": "Cancel",
   "settings.deleteOrganizationSection.dangerZone": "Danger zone",
   "settings.deleteOrganizationSection.deleteButton": "Delete",
@@ -1089,6 +1070,34 @@ export const settings = {
   "settings.roles.roleOwner": "Owner",
   "settings.roles.roleUser": "User",
   "settings.roles.searchPlaceholder": "Search roles...",
+  "settings.apiKeys.accessLabel": "Access",
+  "settings.apiKeys.accessReadOnly": "Read only",
+  "settings.apiKeys.accessReadOnlyDescription":
+    "The {count} Studio tools that never change data. Tools added later stay out.",
+  "settings.apiKeys.accessCustom": "Choose tools",
+  "settings.apiKeys.accessCustomDescription":
+    "Only the Studio and connection tools you pick. Tools added later stay out.",
+  "settings.apiKeys.accessFull": "Full access",
+  "settings.apiKeys.accessFullDescription":
+    "Every tool, including ones that delete data and ones added later.",
+  "settings.apiKeys.expired": "Expired",
+  "settings.apiKeys.expiredOn": "Expired {date}",
+  "settings.apiKeys.expiresOn": "Expires {date}",
+  "settings.apiKeys.expiryDays": "{days} days",
+  "settings.apiKeys.expiryLabel": "Expires after",
+  "settings.apiKeys.expiryNever": "Never",
+  "settings.apiKeys.expiryYear": "1 year",
+  "settings.apiKeys.neverExpires": "Never expires",
+  "settings.apiKeys.readOnlyBadge": "Read only",
+  "settings.apiKeys.toolCount": "{count} tools",
+  "settings.apiKeys.studioTools": "Studio",
+  "settings.apiKeys.toolsGroupCount": "{count}/{total}",
+  "settings.apiKeys.toolsNone": "No tools",
+  "settings.apiKeys.toolsSelectGroup": "Select every tool in {name}",
+  "settings.apiKeys.toolsSelected": "{count} selected",
+  "settings.apiKeys.toolsLoadFailed":
+    "Couldn't load the tool list. Close and try again.",
+  "settings.apiKeys.toolsSearch": "Search tools…",
   "settings.apiKeys.cancelButton": "Cancel",
   "settings.apiKeys.copied": "Copied to clipboard",
   "settings.apiKeys.copyKey": "Copy key",
@@ -1115,7 +1124,7 @@ export const settings = {
   "settings.apiKeys.namePlaceholder": "My integration",
   "settings.apiKeys.newKey": "New key",
   "settings.apiKeys.newKeyDescription":
-    "Give the key a name so you can recognize it later.",
+    "Give the key only the tools it needs. Whoever holds the key can use them, even if it leaks.",
   "settings.apiKeys.newKeyTitle": "New API key",
   "settings.apiKeys.sectionDescription":
     "For scripts and clients that can't sign in through a browser.",
@@ -1168,10 +1177,6 @@ export const settings = {
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.decoConnectSuccess":
-    "Deco AI Gateway connected successfully",
-  "settings.aiProviders.decoConnectError":
-    "Failed to connect Deco AI Gateway: {error}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",

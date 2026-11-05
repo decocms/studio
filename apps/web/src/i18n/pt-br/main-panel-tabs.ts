@@ -310,13 +310,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.e2eTab.noArtifacts": "Nenhum artefato para esta execução.",
   "mainPanelTabs.e2eTab.openArtifact": "Abrir",
   "mainPanelTabs.e2eTab.viewScreenshot": "Ver captura de tela",
-  "mainPanelTabs.analyticsTab.noSiteTitle": "Nenhum site vinculado",
-  "mainPanelTabs.analyticsTab.noSiteDescription":
-    "Este projeto ainda não está vinculado a um site hospedado.",
-  "mainPanelTabs.analyticsTab.notConnectedTitle":
-    "Análises ainda não conectadas",
-  "mainPanelTabs.analyticsTab.notConnectedDescription":
-    "As análises deste site aparecerão aqui quando a conexão com o control-plane estiver configurada.",
   "mainPanelTabs.analyticsTab.statusError":
     "Falha ao carregar o status das análises",
   "mainPanelTabs.analyticsTab.backendNotConfiguredTitle":
@@ -324,11 +317,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.backendNotConfiguredDescription":
     "O coletor de análises ainda não está conectado a este ambiente.",
   // Registro
-  "mainPanelTabs.analyticsTab.registerTitle": "Começar a coletar análises",
-  "mainPanelTabs.analyticsTab.registerDescription":
-    "Registra {host} no coletor do Deco Analytics para começar a registrar o tráfego.",
-  "mainPanelTabs.analyticsTab.registerHostFallback": "o domínio deste site",
-  "mainPanelTabs.analyticsTab.modules": "Módulos",
   "mainPanelTabs.analyticsTab.moduleCore": "Core",
   "mainPanelTabs.analyticsTab.moduleCoreHint":
     "Pageviews + eventos personalizados (sempre ativo)",
@@ -342,15 +330,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.moduleEngagement": "Engajamento",
   "mainPanelTabs.analyticsTab.moduleEngagementHint":
     "Profundidade de rolagem, permanência",
-  "mainPanelTabs.analyticsTab.hostLabel": "Nome do host",
-  "mainPanelTabs.analyticsTab.hostPlaceholder": "loja.com.br",
-  "mainPanelTabs.analyticsTab.hostHint":
-    "Este site não tem domínio de produção registrado — informe o host para coletar.",
-  "mainPanelTabs.analyticsTab.registerInstallHint":
-    "Depois de habilitar, o tráfego é coletado automaticamente — nada de código pra adicionar.",
-  "mainPanelTabs.analyticsTab.enableAnalytics": "Habilitar análises",
-  "mainPanelTabs.analyticsTab.enabling": "Habilitando…",
-  "mainPanelTabs.analyticsTab.toastRegistered": "Análises habilitadas",
+  "mainPanelTabs.analyticsTab.editModules": "Módulos",
+  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
+  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
+    "Cliques, rolagem e atenção por página",
   // Visão registrada
   "mainPanelTabs.analyticsTab.collection": "Coleta",
   "mainPanelTabs.analyticsTab.active": "Ativa",
@@ -372,7 +355,6 @@ export const mainPanelTabs = {
     "Registro das análises cancelado",
   // Diálogo de edição
   "mainPanelTabs.analyticsTab.editTitle": "Editar análises",
-  "mainPanelTabs.analyticsTab.editModules": "Módulos",
   "mainPanelTabs.analyticsTab.editSampling": "Amostragem (%)",
   "mainPanelTabs.analyticsTab.editSamplingHint":
     "Percentual de eventos a manter, 1–100%.",
@@ -387,12 +369,17 @@ export const mainPanelTabs = {
     "Envie eventos personalizados do seu código via ",
   // Dashboard (views /data com escopo de tenant), em seções colapsáveis.
   "mainPanelTabs.analyticsTab.configSectionTitle": "Configuração",
-  "mainPanelTabs.analyticsTab.viewOverview": "Visão geral",
-  "mainPanelTabs.analyticsTab.viewBehaviour": "Páginas & origens",
+  "mainPanelTabs.analyticsTab.eventsHelp.title":
+    "Enviar eventos personalizados pelo código",
+  "mainPanelTabs.analyticsTab.eventsHelp.intro":
+    "O Analytics já vem ativo: as visualizações são coletadas sem código. Para eventos personalizados, use a API pública em",
+  "mainPanelTabs.analyticsTab.eventsHelp.pageview":
+    "Registra uma visualização manualmente (troca de rota em SPA).",
+  "mainPanelTabs.analyticsTab.eventsHelp.track":
+    "Um evento personalizado. name usa a–z minúsculas, dígitos e sublinhado, até 40 caracteres; props é um objeto simples opcional.",
+  "mainPanelTabs.analyticsTab.eventsHelp.purchase":
+    "Uma compra. transactionId evita contar duas vezes a mesma venda quando a página de confirmação é recarregada.",
   "mainPanelTabs.analyticsTab.viewEvents": "Eventos & props",
-  "mainPanelTabs.analyticsTab.viewErrors": "Erros",
-  "mainPanelTabs.analyticsTab.viewExperiments": "Experimentos",
-  "mainPanelTabs.analyticsTab.viewVitals": "Web Vitals",
   "mainPanelTabs.analyticsTab.heatmap.offTitle": "Módulo heatmap não ligado",
   "mainPanelTabs.analyticsTab.heatmap.offDescription":
     "Ligue o módulo heatmap em Configuração para registrar cliques, rolagem e atenção nas páginas deste site.",
@@ -402,6 +389,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.noDomainDescription":
     "Adicione o domínio do site no cadastro do analytics para ver o mapa sobre a página real.",
   "mainPanelTabs.analyticsTab.heatmap.page": "Página",
+  "mainPanelTabs.analyticsTab.heatmap.pageSearch":
+    "Busque uma página ou digite um caminho",
+  "mainPanelTabs.analyticsTab.heatmap.pageEmpty":
+    "Digite um caminho que comece com /",
   "mainPanelTabs.analyticsTab.heatmap.device": "Dispositivo",
   "mainPanelTabs.analyticsTab.heatmap.deviceViews":
     "{device}: {views} visitas na amostra",
@@ -420,9 +411,9 @@ export const mainPanelTabs = {
     "Quanto cada elemento vale, não só quanto é clicado",
   "mainPanelTabs.analyticsTab.heatmap.valueTitle": "Receita por elemento",
   "mainPanelTabs.analyticsTab.heatmap.valueBaseline":
-    "Esta página: {cvr} de {people} pessoas compraram",
+    "Média da página: {cvr} de {people} compraram",
   "mainPanelTabs.analyticsTab.heatmap.valueRowSub":
-    "{conv} de {people} pessoas compraram · {cvr}",
+    "{cvr} de {people} compraram",
   "mainPanelTabs.analyticsTab.heatmap.valueIndex": "{x}x a página",
   "mainPanelTabs.analyticsTab.heatmap.valueIndexHint":
     "Receita por pessoa que clicou, comparada à média da própria página. 1x significa que rende exatamente como a página.",
@@ -430,11 +421,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.valueSmallHint":
     "Ainda não clicaram o suficiente para a taxa significar algo, então fica fora do ranking abaixo.",
   "mainPanelTabs.analyticsTab.heatmap.valueLeaksTitle":
-    "Muito clicado, vende menos",
-  "mainPanelTabs.analyticsTab.heatmap.valueLeaksAside":
-    "pior retorno pelo espaço que ocupam",
-  "mainPanelTabs.analyticsTab.heatmap.valueLeakSub":
-    "{people} pessoas clicaram, {conv} compraram",
+    "Muito clicado, vende pouco",
+  "mainPanelTabs.analyticsTab.heatmap.valueLeakSub": "{conv} compraram",
   "mainPanelTabs.analyticsTab.heatmap.valueNone":
     "Nenhuma compra registrada nesta página no período.",
   "mainPanelTabs.analyticsTab.heatmap.valueOtherGoal":
@@ -473,6 +461,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.frameLoading":
     "Carregando a página real…",
   "mainPanelTabs.analyticsTab.heatmap.timeoutTitle": "O site não respondeu",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutHint":
+    "Passe o mouse sobre a página ou aceite os cookies dela e tente de novo.",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutRetry": "Tentar de novo",
+  "mainPanelTabs.analyticsTab.heatmap.timeoutWhy": "Por que isso acontece",
   "mainPanelTabs.analyticsTab.heatmap.timeoutDescription":
     "A página ainda não iniciou o modo de visualização do analytics. Se o site só carrega o analytics depois de uma interação ou do aceite de cookies, passe o mouse sobre a página ou aceite os cookies. Se não, confira se ele roda o runtime atual do Deco Analytics e permite ser exibido no Studio.",
   "mainPanelTabs.analyticsTab.heatmap.noViewsTitle":
@@ -498,6 +490,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.legendMoreTime": "mais tempo",
   "mainPanelTabs.analyticsTab.heatmap.opacity": "Opacidade",
   "mainPanelTabs.analyticsTab.heatmap.colors": "Cores",
+  "mainPanelTabs.analyticsTab.heatmap.allClicks": "Todos os cliques",
+  "mainPanelTabs.analyticsTab.heatmap.display": "Exibição",
+  "mainPanelTabs.analyticsTab.heatmap.zoom": "Zoom",
   "mainPanelTabs.analyticsTab.heatmap.thermal": "Térmica",
   "mainPanelTabs.analyticsTab.heatmap.inferno": "Inferno",
   "mainPanelTabs.analyticsTab.heatmap.infernoHint":
@@ -505,9 +500,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.statClicks": "Cliques",
   "mainPanelTabs.analyticsTab.heatmap.statDepth": "Rolagem média",
   "mainPanelTabs.analyticsTab.heatmap.statFold": "dobra em {pct}",
-  "mainPanelTabs.analyticsTab.heatmap.statActive": "Tempo ativo por visita",
-  "mainPanelTabs.analyticsTab.heatmap.statRageDead": "Raiva e sem resposta",
-  "mainPanelTabs.analyticsTab.heatmap.statErrors": "{n} com erro",
+  "mainPanelTabs.analyticsTab.heatmap.statActive": "Tempo por visita",
   "mainPanelTabs.analyticsTab.heatmap.hideList": "Esconder a lista",
   "mainPanelTabs.analyticsTab.heatmap.showElements":
     "Ver os elementos mais clicados",
@@ -524,18 +517,16 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.heatmap.ctrMinNote":
     "Só elementos de seções vistas em {n}+ visitas.",
   "mainPanelTabs.analyticsTab.heatmap.funnelTitle": "Depois do clique",
-  "mainPanelTabs.analyticsTab.heatmap.funnelPage": "Página inteira",
+  "mainPanelTabs.analyticsTab.heatmap.backToList": "Todos os elementos",
   "mainPanelTabs.analyticsTab.heatmap.funnelPeople": "{n} pessoas",
-  "mainPanelTabs.analyticsTab.heatmap.funnelVsPage": "página {pct}",
+  "mainPanelTabs.analyticsTab.heatmap.funnelVsPage": "Média da página {pct}",
   "mainPanelTabs.analyticsTab.heatmap.funnel_viewed": "Viu um produto",
   "mainPanelTabs.analyticsTab.heatmap.funnel_carted": "Adicionou ao carrinho",
   "mainPanelTabs.analyticsTab.heatmap.funnel_checkout": "Iniciou o checkout",
   "mainPanelTabs.analyticsTab.heatmap.funnel_bought": "Comprou",
   "mainPanelTabs.analyticsTab.heatmap.topElements": "Elementos mais clicados",
   "mainPanelTabs.analyticsTab.heatmap.topOfType": "Mais cliques: {type}",
-  "mainPanelTabs.analyticsTab.heatmap.nElements": "{n} elementos",
   "mainPanelTabs.analyticsTab.heatmap.noText": "Elemento sem texto",
-  "mainPanelTabs.analyticsTab.heatmap.ofClicks": "{pct} dos cliques",
   "mainPanelTabs.analyticsTab.heatmap.ofVisits": "{pct} das visitas",
   "mainPanelTabs.analyticsTab.heatmap.inSection": "na seção",
   "mainPanelTabs.analyticsTab.heatmap.inSectionHint":
@@ -564,10 +555,6 @@ export const mainPanelTabs = {
     "{page} junta várias páginas. Cole o caminho de uma delas para desenhar o mapa sobre ela.",
   "mainPanelTabs.analyticsTab.heatmap.samplePlaceholder": "/produto-exemplo/p",
   "mainPanelTabs.analyticsTab.heatmap.sampleShow": "Mostrar",
-  "mainPanelTabs.analyticsTab.viewHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmap": "Heatmap",
-  "mainPanelTabs.analyticsTab.moduleHeatmapHint":
-    "Cliques, rolagem e atenção por página",
   // Mapa ao vivo. Os quatro substantivos são os que o renderer imprime no
   // próprio cartão de hover — ele os recebe como opção, não guarda inglês.
   "mainPanelTabs.analyticsTab.globe.visitor": "visitante",
@@ -591,31 +578,13 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.globe.legendConversions": "Conversões",
   "mainPanelTabs.analyticsTab.globe.loadError":
     "Não foi possível carregar o renderizador do mapa. Os números acima continuam ao vivo.",
-  "mainPanelTabs.analyticsTab.viewQuality": "Qualidade dos dados",
-  "mainPanelTabs.analyticsTab.viewUsage": "Uso & limites",
-  "mainPanelTabs.analyticsTab.cardTopSources": "Principais origens",
-  "mainPanelTabs.analyticsTab.cardFunnel": "Funil",
-  "mainPanelTabs.analyticsTab.cardLiveFeed": "Ao vivo",
-  "mainPanelTabs.analyticsTab.cardPagesNow": "Páginas agora",
   "mainPanelTabs.analyticsTab.monthlyQuota": "Cota mensal",
   "mainPanelTabs.analyticsTab.uncapped": "Sem limite",
-  "mainPanelTabs.analyticsTab.eventsPerMonthSuffix": "eventos / mês",
-  "mainPanelTabs.analyticsTab.acceptedInRange":
-    "{count} aceitos no período selecionado. A cota é reiniciada a cada mês civil; o coletor descarta eventos assim que o site é marcado como acima do limite. O consumo do mês até agora e o estado de excedente estão no detalhe de hospedagem do site.",
   "mainPanelTabs.analyticsTab.dataLoadError":
     "Não foi possível carregar esta visão.",
   "mainPanelTabs.analyticsTab.dataNotConfiguredDescription":
     "A superfície de dados de analytics ainda não está ligada a este ambiente — a configuração abaixo continua funcionando.",
   // Registro por token (chave)
-  "mainPanelTabs.analyticsTab.registerByKey":
-    "Registrar por token (site fora do nosso CDN)",
-  "mainPanelTabs.analyticsTab.registerByKeyHint":
-    "Para dev, staging ou site fora do CDN. A tag carrega um token público e os eventos não são faturáveis.",
-  "mainPanelTabs.analyticsTab.domainsLabel": "Domínios",
-  "mainPanelTabs.analyticsTab.domainsPlaceholder":
-    "loja.com.br, staging.loja.com.br",
-  "mainPanelTabs.analyticsTab.domainsHint":
-    "Domínios que o collector aceita (checagem de Origin); o primeiro é o principal. Obrigatório para um token.",
   "mainPanelTabs.analyticsTab.tokenTitle": "Token criado — copie agora",
   "mainPanelTabs.analyticsTab.tokenOnce":
     "Mostrado uma vez. É público (vai no script), então identifica mas nunca autentica — os eventos não são faturáveis.",
@@ -623,12 +592,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.analyticsTab.copy": "Copiar",
   "mainPanelTabs.analyticsTab.copied": "Copiado",
   "mainPanelTabs.analyticsTab.dismiss": "Dispensar",
-  "mainPanelTabs.analyticsTab.errorsKinds": "{n} tipos de erro",
-  "mainPanelTabs.analyticsTab.errorsNoMessage": "(sem mensagem)",
-  "mainPanelTabs.analyticsTab.errorsVisitor": "{n} visitante",
-  "mainPanelTabs.analyticsTab.errorsVisitors": "{n} visitantes",
-  "mainPanelTabs.analyticsTab.errorsStack": "Stack trace",
-  "mainPanelTabs.analyticsTab.liveHint": "Ao vivo · atualiza a cada 5s",
   "mainPanelTabs.analyticsTab.installHow":
     "O collector carrega async e nunca bloqueia a página. Um site é identificado pelo host (faturável) ou por um token público (para sites fora do nosso CDN).",
   "mainPanelTabs.analyticsTab.installHostTitle": "No nosso CDN (host)",
@@ -637,89 +600,8 @@ export const mainPanelTabs = {
     "O token é mostrado uma vez, no registro. Re-registre (desregistrar e habilitar por token) para gerar um novo.",
   "mainPanelTabs.analyticsTab.installSiteId": "Site ID (onde os eventos caem)",
   "mainPanelTabs.analyticsTab.toastTokenRotated": "Token rotacionado",
-  "mainPanelTabs.analyticsTab.emptyLive":
-    "Nenhum visitante nos últimos minutos.",
   "mainPanelTabs.analyticsTab.emptyView":
     "Nada coletado para este período ainda.",
-  "mainPanelTabs.analyticsTab.metricVisitors": "Visitantes",
-  "mainPanelTabs.analyticsTab.metricPageviews": "Visualizações",
-  "mainPanelTabs.analyticsTab.metricSessions": "Sessões",
-  "mainPanelTabs.analyticsTab.metricBounce": "Taxa de rejeição",
-  "mainPanelTabs.analyticsTab.metricDuration": "Duração média",
-  "mainPanelTabs.analyticsTab.metricEvents": "Eventos",
-  "mainPanelTabs.analyticsTab.metricLastEvent": "Último evento",
-  "mainPanelTabs.analyticsTab.seriesTitle": "{metric} ao longo do tempo",
-  "mainPanelTabs.analyticsTab.pointsSuffix": " p.p.",
-  "mainPanelTabs.analyticsTab.vsPrevious": "vs. período anterior",
-  "mainPanelTabs.analyticsTab.prevCoverage":
-    "Período anterior {percent}% coletado: variações em cinza são aproximadas",
-  "mainPanelTabs.analyticsTab.visitorDays":
-    "Visitantes-dia: a identidade muda a cada dia",
-  "mainPanelTabs.analyticsTab.partialHint":
-    "Tracejado: intervalo ainda em andamento",
-  "mainPanelTabs.analyticsTab.funnelViewed": "Viu uma página",
-  "mainPanelTabs.analyticsTab.funnelViewItem": "Viu um produto",
-  "mainPanelTabs.analyticsTab.funnelViewList": "Viu uma lista",
-  "mainPanelTabs.analyticsTab.funnelSelectItem": "Selecionou um produto",
-  "mainPanelTabs.analyticsTab.funnelAddToCart": "Adicionou ao carrinho",
-  "mainPanelTabs.analyticsTab.funnelBeginCheckout": "Iniciou o checkout",
-  "mainPanelTabs.analyticsTab.funnelPurchase": "Comprou",
-  "mainPanelTabs.analyticsTab.noCap":
-    "Nenhum limite mensal definido: todo evento aceito é armazenado. Defina um em Configuração para impor um limite.",
-  "mainPanelTabs.analyticsTab.customEventsTitle":
-    "Enviar eventos personalizados pelo código",
-  "mainPanelTabs.analyticsTab.panel.kpis": "Visão geral",
-  "mainPanelTabs.analyticsTab.panel.series": "Tráfego ao longo do tempo",
-  "mainPanelTabs.analyticsTab.panel.funnel": "Funil",
-  "mainPanelTabs.analyticsTab.panel.sources": "Principais origens",
-  "mainPanelTabs.analyticsTab.panel.pages": "Páginas mais vistas",
-  "mainPanelTabs.analyticsTab.panel.entryPages": "Páginas de entrada",
-  "mainPanelTabs.analyticsTab.panel.exitPages": "Páginas de saída",
-  "mainPanelTabs.analyticsTab.panel.devices": "Dispositivos",
-  "mainPanelTabs.analyticsTab.panel.os": "Sistemas operacionais",
-  "mainPanelTabs.analyticsTab.panel.browser": "Navegadores",
-  "mainPanelTabs.analyticsTab.panel.countries": "Países",
-  "mainPanelTabs.analyticsTab.panel.regions": "Regiões",
-  "mainPanelTabs.analyticsTab.panel.cities": "Cidades",
-  "mainPanelTabs.analyticsTab.panel.channels": "Canais",
-  "mainPanelTabs.analyticsTab.panel.channelConversion": "Conversão por canal",
-  "mainPanelTabs.analyticsTab.panel.campaigns": "Campanhas",
-  "mainPanelTabs.analyticsTab.panel.campaignNames": "Nomes de campanha",
-  "mainPanelTabs.analyticsTab.panel.attribution": "Atribuição",
-  "mainPanelTabs.analyticsTab.panel.products": "Produtos mais vistos",
-  "mainPanelTabs.analyticsTab.panel.events": "Eventos",
-  "mainPanelTabs.analyticsTab.panel.errors": "Erros",
-  "mainPanelTabs.analyticsTab.panel.propKeys": "Chaves de propriedade",
-  "mainPanelTabs.analyticsTab.panel.propValues": "Valores de propriedade",
-  "mainPanelTabs.analyticsTab.panel.scrollDepth": "Profundidade de rolagem",
-  "mainPanelTabs.analyticsTab.panel.searches": "Buscas no site",
-  "mainPanelTabs.analyticsTab.panel.outbound": "Links externos",
-  "mainPanelTabs.analyticsTab.panel.downloads": "Downloads",
-  "mainPanelTabs.analyticsTab.panel.variants": "Variantes de experimento",
-  "mainPanelTabs.analyticsTab.panel.vitals": "Web Vitals",
-  "mainPanelTabs.analyticsTab.panel.vitalsByPage": "Vitals por página",
-  "mainPanelTabs.analyticsTab.panel.vitalsBands": "Faixas de Web Vitals",
-  "mainPanelTabs.analyticsTab.panel.vitalsByDevice": "Vitals por dispositivo",
-  "mainPanelTabs.analyticsTab.panel.vitalsTrend": "LCP ao longo do tempo",
-  "mainPanelTabs.analyticsTab.panel.vitalsByVariant": "Vitals por variante",
-  "mainPanelTabs.analyticsTab.panel.conversionBySpeed":
-    "Conversão por velocidade",
-  "mainPanelTabs.analyticsTab.panel.quality": "Normalizações do coletor",
-  "mainPanelTabs.analyticsTab.panel.trust": "Origem do site id",
-  "mainPanelTabs.analyticsTab.panel.unregisteredEvents":
-    "Eventos não registrados",
-  "mainPanelTabs.analyticsTab.panel.unregisteredProps":
-    "Propriedades não registradas",
-  "mainPanelTabs.analyticsTab.panel.propCardinality":
-    "Cardinalidade de propriedades",
-  "mainPanelTabs.analyticsTab.panel.liveVisitors": "Visitantes ao vivo",
-  "mainPanelTabs.analyticsTab.panel.livePages": "Páginas ativas",
-  "mainPanelTabs.analyticsTab.panel.liveFeed": "Ao vivo",
-  "mainPanelTabs.analyticsTab.panel.liveByMinute": "Visitantes por minuto",
-  "mainPanelTabs.analyticsTab.panel.usage": "Uso",
-  "mainPanelTabs.analyticsTab.panel.usageTrend": "Uso ao longo do tempo",
-  "mainPanelTabs.analyticsTab.panel.usageSites": "Uso por site",
-  "mainPanelTabs.cdnTab.title": "Monitor",
   "mainPanelTabs.cdnTab.noSiteTitle": "Nenhum site vinculado",
   "mainPanelTabs.cdnTab.noSiteBody":
     "Este projeto não está vinculado a um site, então não há tráfego de CDN para mostrar.",
@@ -733,92 +615,23 @@ export const mainPanelTabs = {
   "mainPanelTabs.cdnTab.cacheHit": "Taxa de cache hit",
   "mainPanelTabs.cdnTab.avgLatency": "Latência média",
   "mainPanelTabs.cdnTab.errors5xx": "Erros 5xx",
-  "mainPanelTabs.cdnTab.errors4xx": "Erros 4xx",
-  "mainPanelTabs.cdnTab.success2xx": "Respostas 2xx",
-  "mainPanelTabs.cdnTab.countries": "Países",
   "mainPanelTabs.cdnTab.usageOverTime": "Uso ao longo do tempo",
-  "mainPanelTabs.cdnTab.emptyRange": "Nada coletado para este período ainda.",
   "mainPanelTabs.cdnTab.cacheStatus": "Status de cache",
   "mainPanelTabs.cdnTab.statusCodes": "Códigos de status",
   "mainPanelTabs.cdnTab.topPaths": "Principais caminhos",
   "mainPanelTabs.cdnTab.topCountries": "Principais países",
-  "mainPanelTabs.cdnTab.status": "Status",
-  "mainPanelTabs.cdnTab.code": "Código",
-  "mainPanelTabs.cdnTab.path": "Caminho",
-  "mainPanelTabs.cdnTab.country": "País",
-  "mainPanelTabs.cdnTab.performance": "Performance",
-  "mainPanelTabs.cdnTab.audience": "Analytics",
-  "mainPanelTabs.cdnTab.directUnknown": "Direto/Desconhecido",
-  "mainPanelTabs.cdnTab.addFilter": "Adicionar filtro",
-  "mainPanelTabs.cdnTab.removeFilter": "Remover filtro",
-  "mainPanelTabs.cdnTab.filterValue": "valor",
-  "mainPanelTabs.cdnTab.apply": "Aplicar",
-  "mainPanelTabs.cdnTab.cancel": "Cancelar",
-  "mainPanelTabs.cdnTab.page": "Página",
-  "mainPanelTabs.cdnTab.referrer": "Referrer",
-  "mainPanelTabs.cdnTab.compare": "Comparar",
-  "mainPanelTabs.cdnTab.mapView": "Mapa",
-  "mainPanelTabs.cdnTab.listView": "Lista",
-  "mainPanelTabs.cdnTab.countryMapLabel": "Requisições por país",
   "mainPanelTabs.cdnTab.today": "Hoje",
   "mainPanelTabs.cdnTab.yesterday": "Ontem",
   "mainPanelTabs.cdnTab.last7d": "Últimos 7 dias",
-  "mainPanelTabs.cdnTab.last14d": "Últimos 14 dias",
   "mainPanelTabs.cdnTab.last30d": "Últimos 30 dias",
   "mainPanelTabs.cdnTab.last90d": "Últimos 90 dias",
-  "mainPanelTabs.cdnTab.last180d": "Últimos 180 dias",
-  "mainPanelTabs.cdnTab.lastYear": "Último ano",
-  "mainPanelTabs.cdnTab.op_equals": "igual a",
-  "mainPanelTabs.cdnTab.op_not_equals": "diferente de",
-  "mainPanelTabs.cdnTab.op_contains": "contém",
-  "mainPanelTabs.cdnTab.op_not_contains": "não contém",
   "mainPanelTabs.cdnTab.ignoreQueryString": "Ignorar query string",
-  "mainPanelTabs.cdnTab.moreHostnames": "+{count} outros hostnames",
   "mainPanelTabs.cdnTab.pageviews": "Pageviews",
-  "mainPanelTabs.cdnTab.visitors": "Visitantes",
-  "mainPanelTabs.cdnTab.sessions": "Sessões",
-  "mainPanelTabs.cdnTab.pageviewsOverTime": "Pageviews ao longo do tempo",
-  "mainPanelTabs.cdnTab.topSources": "Principais origens",
-  "mainPanelTabs.cdnTab.source": "Origem",
-  "mainPanelTabs.cdnTab.devices": "Dispositivos",
-  "mainPanelTabs.cdnTab.device": "Dispositivo",
   "mainPanelTabs.cdnTab.requestsPerPageview": "Requisições / Pageview",
   "mainPanelTabs.cdnTab.bandwidthPer10k": "Banda / 10k Pageviews",
-  "mainPanelTabs.cdnTab.usageSubtitle":
-    "Requisições e Pageviews (eixo esq.), Banda (eixo dir.)",
-  "mainPanelTabs.cdnTab.visits": "Visitas",
-  "mainPanelTabs.cdnTab.visitDuration": "Duração da visita",
-  "mainPanelTabs.cdnTab.bounceRate": "Taxa de rejeição",
-  "mainPanelTabs.cdnTab.mostViewedPages": "Páginas mais vistas",
-  "mainPanelTabs.cdnTab.referrers": "Origens (referrers)",
-  "mainPanelTabs.cdnTab.events": "Eventos",
-  "mainPanelTabs.cdnTab.cr": "CR",
-  "mainPanelTabs.cdnTab.unique": "Únicos",
-  "mainPanelTabs.cdnTab.total": "Total",
-  "mainPanelTabs.cdnTab.value": "Valor",
-  "mainPanelTabs.cdnTab.event": "Evento",
-  "mainPanelTabs.cdnTab.browser": "Navegador",
-  "mainPanelTabs.cdnTab.os": "SO",
-  "mainPanelTabs.cdnTab.utm": "UTM",
-  "mainPanelTabs.cdnTab.utm_campaign": "Campanha",
-  "mainPanelTabs.cdnTab.utm_source": "Origem",
-  "mainPanelTabs.cdnTab.utm_medium": "Meio",
-  "mainPanelTabs.cdnTab.utm_content": "Conteúdo",
-  "mainPanelTabs.cdnTab.utm_term": "Termo",
-  "mainPanelTabs.cdnTab.audienceUnconfiguredTitle":
-    "Analytics de audiência indisponível",
-  "mainPanelTabs.cdnTab.audienceUnconfiguredBody":
-    "A fonte de audiência (OneDollarStats) não está configurada neste deployment.",
-  "mainPanelTabs.cdnTab.source_onedollar": "OneDollarStats",
-  "mainPanelTabs.cdnTab.source_deco": "Deco Analytics",
-  "mainPanelTabs.cdnTab.audienceDecoUnconfiguredBody":
-    "Este site ainda não envia Deco Analytics. Instale em Monitor → Analytics.",
   "mainPanelTabs.cdnTab.measureBy": "Medir por",
   "mainPanelTabs.cdnTab.showAll": "Ver tudo",
   "mainPanelTabs.cdnTab.showLess": "Ver menos",
-  "mainPanelTabs.cdnTab.cacheStatusSubtitle":
-    "Distribuição das respostas de cache",
-  "mainPanelTabs.cdnTab.statusCodesSubtitle": "Distribuição dos status HTTP",
   "mainPanelTabs.monitorV8.title": "Monitor",
   "mainPanelTabs.monitorV8.noSiteBody":
     "Este projeto ainda não está ligado a um site, então não há nada para monitorar.",

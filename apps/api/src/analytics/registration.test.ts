@@ -2,6 +2,8 @@ import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { getSettings, setGlobalSettings } from "../settings";
 import {
   AnalyticsRegistrationError,
+  readAnalyticsRegistration,
+  readExternalAnalyticsConfig,
   registerAnalyticsSite,
   registerExternalAnalyticsSite,
   siteDomains,
@@ -37,6 +39,36 @@ test("typedHost reads a typed domain, with or without a scheme or path", () => {
   expect(typedHost("ftp://loja.com")).toBeNull();
   expect(typedHost("")).toBeNull();
   expect(typedHost(undefined)).toBeNull();
+});
+
+test("a site the control-plane has no record of reads as unhosted, not as an outage", async () => {
+  const fetchSpy = spyOn(globalThis, "fetch");
+  try {
+    fetchSpy.mockResolvedValueOnce(
+      Response.json(
+        { error: "not_found", message: "unknown site: loja" },
+        { status: 404 },
+      ),
+    );
+    expect(await readAnalyticsRegistration("loja")).toEqual({
+      status: "unhosted",
+    });
+    fetchSpy.mockResolvedValueOnce(
+      Response.json(
+        { error: "not_found", message: "unknown route" },
+        { status: 404 },
+      ),
+    );
+    expect(await readAnalyticsRegistration("loja")).toEqual({
+      status: "error",
+    });
+    fetchSpy.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+    expect(await readAnalyticsRegistration("loja")).toEqual({
+      status: "error",
+    });
+  } finally {
+    fetchSpy.mockRestore();
+  }
 });
 
 test("a control-plane refusal carries its code and reads by its message", async () => {
@@ -90,6 +122,22 @@ test("an external site registers by domain and keeps the key only when it create
       key: null,
       created: false,
     });
+  } finally {
+    fetchSpy.mockRestore();
+  }
+});
+
+test("an external site's config is read by id, and a miss is null", async () => {
+  const config = { enabled: true, modules: ["core", "heatmap"] };
+  const fetchSpy = spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(Response.json({ id: "d-loja-1a2b", config }))
+    .mockResolvedValueOnce(Response.json({}, { status: 404 }));
+  try {
+    expect(await readExternalAnalyticsConfig("d-loja-1a2b")).toEqual(config);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toEndWith(
+      "/analytics/external/d-loja-1a2b",
+    );
+    expect(await readExternalAnalyticsConfig("d-loja-1a2b")).toBeNull();
   } finally {
     fetchSpy.mockRestore();
   }

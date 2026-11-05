@@ -1,11 +1,8 @@
-/**
- * The Monitor's views, switched like the task board's Feed / Board / List:
- * Metrics (is today normal), Deploys (what changed and what it did),
- * Experiments and Analytics. Inside a project, Experiments and Analytics are
- * that project's own screens; across the org they add every site up.
- */
+/** The Monitor's tabs: Overview, Performance, Logs, Analytics and Heatmap. */
 
 import type { ReactNode } from "react";
+import { BarChart10 } from "@untitledui/icons";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   resolveAgentSiteSlug,
   resolveAnalyticsSiteSlug,
@@ -15,45 +12,52 @@ import { Panel } from "@/components/panel";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
-import { CdnTab } from "@/layouts/main-panel-tabs/cdn-tab";
-import { ExperimentsTab } from "@/layouts/main-panel-tabs/experiments-tab";
-import { MetricCard } from "@/layouts/task-board/analytics-sections";
 import {
   isStudioPackAgent,
   useProjectContext,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
-import type { Deploy } from "./board";
-import { DeployTimeline } from "./deploy-timeline";
-import { DeploysTable } from "./deploys-table";
-import {
-  AnalyticsGuide,
-  AnalyticsPreview,
-  ExperimentsPreview,
-  Locked,
-} from "./locked";
-import { monitorPreview } from "./preview";
-import { OrgAnalytics, OrgExperiments, type SiteProject } from "./org-insights";
+import { type AnalyticsTarget, AudienceScreen } from "./audience-view";
+import { HeatmapScreen } from "./deco-stack";
+import { PerformanceScreen } from "./performance-view";
+import { AnalyticsGuide, AnalyticsPreview, Locked } from "./locked";
+import type { SiteProject } from "./org-insights";
 import { connectLink } from "./parts";
 
-export type MonitorView = "metrics" | "deploys" | "experiments" | "analytics";
+export type MonitorView =
+  | "metrics"
+  | "performance"
+  | "logs"
+  | "deploys"
+  | "experiments"
+  | "audience"
+  | "heatmap";
 export const MONITOR_VIEWS: readonly MonitorView[] = [
   "metrics",
+  "performance",
+  "logs",
   "deploys",
   "experiments",
-  "analytics",
+  "audience",
+  "heatmap",
 ];
 
 function viewLabel(view: MonitorView, t: TFunction): string {
   switch (view) {
     case "metrics":
       return t("monitor.view.metrics");
+    case "performance":
+      return t("monitor.view.performance");
+    case "logs":
+      return t("monitor.view.logs");
     case "deploys":
       return t("monitor.view.deploys");
     case "experiments":
       return t("monitor.view.experiments");
-    case "analytics":
-      return t("monitor.view.analytics");
+    case "audience":
+      return t("monitor.view.audience");
+    case "heatmap":
+      return t("monitor.view.heatmap");
     default: {
       const unhandled: never = view;
       return unhandled;
@@ -86,57 +90,8 @@ export function MonitorTabs({
   );
 }
 
-export function DeploysView({
-  deploys,
-  history,
-  orgSlug,
-  scopeId,
-}: {
-  deploys: readonly Deploy[];
-  history: readonly Deploy[] | null;
-  orgSlug: string;
-  scopeId: string | null;
-}) {
-  const t = useT();
-  const regressions = deploys.filter((d) => d.verdict === "regression").length;
-  const measuring = deploys.filter((d) => d.verdict === "settling").length;
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <MetricCard title={t("monitor.deploys.title")} value={deploys.length} />
-        <MetricCard
-          title={t("monitor.deploys.regressions")}
-          value={regressions}
-          caption={
-            regressions > 0 && (
-              <span className="text-meta text-destructive">
-                {t("monitor.deploys.regressionsHint")}
-              </span>
-            )
-          }
-        />
-        <MetricCard
-          title={t("monitor.deploys.measuringCount")}
-          value={measuring}
-        />
-      </div>
-      {history && <DeployTimeline deploys={history} showProject={!scopeId} />}
-      <div className="mt-6">
-        <DeploysTable
-          deploys={deploys}
-          orgSlug={orgSlug}
-          showProject={!scopeId}
-        />
-      </div>
-    </div>
-  );
-}
-
-/** The preview's experiments, for the faded tab behind its connect panel. */
-const PREVIEW_EXPERIMENTS = monitorPreview(null).experiments;
-
 /** The org's own projects with a site, not Studio's built-in managers. */
-function useSiteProjects(): SiteProject[] {
+export function useSiteProjects(): SiteProject[] {
   return useVirtualMCPsNonBlocking().flatMap((p) => {
     // The Deco Score Agent is built in, not a site, even when it's bound to the
     // store's repository.
@@ -159,104 +114,64 @@ function useSiteProjects(): SiteProject[] {
   });
 }
 
-/**
- * A project's own screen inside a project; across the org, the org's view of
- * every site project at once.
- */
-function ProjectScreen({
+/** One project's screen, or every site project's across the org; the connect card when none. */
+export function ProjectScreen({
   scopeId,
   enabled,
-  empty,
-  render,
-  org,
+  children,
 }: {
   scopeId: string | null;
   /** The org has this screen on at all. */
   enabled: boolean;
-  /** Which tab to draw, faded, when there is no site to read. */
-  empty: "experiments" | "analytics";
-  render: (projectId: string) => ReactNode;
-  org: (projects: readonly SiteProject[]) => ReactNode;
+  children: ReactNode;
 }) {
   const t = useT();
-  const { org: organization } = useProjectContext();
+  const { org } = useProjectContext();
   const projects = useSiteProjects();
   if (!enabled || (!scopeId && projects.length === 0)) {
     return (
       <div className="px-4 pt-6 pb-10 md:px-10">
         <Locked
-          kind={empty}
-          title={
-            empty === "analytics"
-              ? t("monitor.locked.analytics.title")
-              : t("monitor.locked.experiments.title")
-          }
-          {...(empty === "analytics"
-            ? { guide: <AnalyticsGuide /> }
-            : {
-                steps: [
-                  {
-                    source: "site",
-                    state: "off",
-                    meta: t("monitor.powers.siteExperiments"),
-                  },
-                ],
-              })}
-          link={connectLink(organization.slug, scopeId)}
+          kind="analytics"
+          title={t("monitor.locked.analytics.title")}
+          guide={<AnalyticsGuide />}
+          link={connectLink(org.slug, scopeId)}
         >
-          {empty === "analytics" ? (
-            <AnalyticsPreview />
-          ) : (
-            <ExperimentsPreview experiments={PREVIEW_EXPERIMENTS} />
-          )}
+          <AnalyticsPreview />
         </Locked>
       </div>
     );
   }
-  if (!scopeId) {
-    // The board's frame: same width, gutters and rhythm as Metrics.
-    return (
-      <div className="flex h-full min-h-0 flex-col overflow-auto">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
-          {org(projects)}
-        </div>
-      </div>
-    );
-  }
+  if (!scopeId) return children;
   return (
     <div key={scopeId} className="flex h-full min-h-0 flex-col">
-      {render(scopeId)}
+      {children}
     </div>
   );
 }
 
-/** Thais's rebuilt Experiments where the org has it, through the tab's own pick. */
-export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
-  const views = useControlPlaneViews();
+/** A project route on an agent without a site: nothing to read, and no other project to pick. */
+export function NoSite() {
+  const t = useT();
   return (
-    <ProjectScreen
-      scopeId={scopeId}
-      enabled={views.experiments}
-      empty="experiments"
-      render={(id) => <ExperimentsTab virtualMcpId={id} />}
-      org={(projects) => <OrgExperiments projects={projects} />}
+    <EmptyState
+      icon={<BarChart10 size={20} />}
+      title={t("mainPanelTabs.cdnTab.noSiteTitle")}
     />
   );
 }
 
-/** A site's Monitor (CDN traffic and audience), gated as its own route is. */
-export function AnalyticsView({
+/** Requests, cache and errors: the CDN on v7 sites, the site's own telemetry on v8. */
+export function PerformanceView({
   scopeId,
-  date,
-  onDate,
+  onProject,
 }: {
   scopeId: string | null;
-  /** The org view's day, shared with Metrics' picker (`YYYY-MM-DD`). */
-  date: string;
-  onDate: (date: string) => void;
+  onProject: (projectId: string) => void;
 }) {
   const views = useControlPlaneViews();
   const config = usePublicConfig();
+  const projects = useSiteProjects();
   return (
     <ProjectScreen
       scopeId={scopeId}
@@ -264,11 +179,57 @@ export function AnalyticsView({
         views.monitor &&
         (config.monitorEnabled === true || config.auth.localMode === true)
       }
-      empty="analytics"
-      render={(id) => <CdnTab virtualMcpId={id} />}
-      org={(projects) => (
-        <OrgAnalytics projects={projects} date={date} onDate={onDate} />
+    >
+      <PerformanceScreen
+        projects={projects}
+        scopeId={scopeId}
+        onProject={onProject}
+      />
+    </ProjectScreen>
+  );
+}
+
+/** Where visitors click and scroll, one project's page at a time. */
+export function MonitorHeatmap({
+  scopeId,
+  onProject,
+}: {
+  scopeId: string | null;
+  onProject: (projectId: string) => void;
+}) {
+  const views = useControlPlaneViews();
+  const projects = useSiteProjects();
+  const project = projects.find((p) => p.id === scopeId);
+  return (
+    <ProjectScreen scopeId={scopeId} enabled={views.monitor}>
+      {scopeId && !project ? (
+        <div className="mx-auto w-full max-w-[1200px] px-4 pt-6 pb-10 md:px-10">
+          <NoSite />
+        </div>
+      ) : (
+        <HeatmapScreen
+          project={project}
+          projects={projects}
+          onProject={onProject}
+        />
       )}
-    />
+    </ProjectScreen>
+  );
+}
+
+/** Who visits, from Deco Analytics or OneDollarStats, one shape for both. */
+export function AudienceView({
+  scopeId,
+  onOpen,
+}: {
+  scopeId: string | null;
+  onOpen: (next: AnalyticsTarget) => void;
+}) {
+  const views = useControlPlaneViews();
+  const projects = useSiteProjects();
+  return (
+    <ProjectScreen scopeId={scopeId} enabled={views.monitor}>
+      <AudienceScreen projects={projects} scopeId={scopeId} onOpen={onOpen} />
+    </ProjectScreen>
   );
 }

@@ -74,7 +74,7 @@ import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
   extractPages,
-  findPageForPath,
+  findPageForPathOrFirst,
   previewPageForBlock,
   type GlobalSectionEntry,
 } from "@/components/sections-editor/page-list";
@@ -670,7 +670,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const currentPage =
     activeGlobalSection || activeLoaderKey
       ? null
-      : findPageForPath(pages, currentPath, pinnedPageKey);
+      : findPageForPathOrFirst(pages, currentPath, pinnedPageKey);
 
   const currentPageKey = currentPage?.key ?? null;
   /**

@@ -13,11 +13,13 @@
  *                DELETE) / deploy (POST re-deploy of the current commit)
  *   - E2E:       e2e/runs (list + POST to queue a run) and e2e/runs/:runId
  *                (detail)
- *   - Analytics: lifecycle (status/register/config/disable/usage/delete) proxied
+ *   - Analytics: lifecycle (status/config/disable/usage/delete) proxied
  *                to the control-plane; PLUS analytics/data — the tenant-scoped
  *                dashboard views read straight from the Analytics read surface
  *                (a different upstream), scoped by a warehouse site_id this BFF
- *                resolves from an owned slug and never from the client.
+ *                resolves from an owned slug — or, for a site deco doesn't
+ *                host, from its project's registration — and never from the
+ *                client.
  *
  * Required env vars (see settings/resolve-config.ts):
  *   CONTROLPLANE_REST_URL        – control-plane REST base, e.g.
@@ -42,12 +44,21 @@ import {
   isAuthenticated,
   requireOrganization,
 } from "../../core/studio-context";
-import { readAnalyticsRegistration } from "../../analytics/registration";
+import {
+  readAnalyticsRegistration,
+  readExternalAnalyticsConfig,
+} from "../../analytics/registration";
 import {
   isCustomerLakeConfigured,
   linkAnalyticsSite,
 } from "../../customer-lake/client";
 import { getSettings } from "../../settings";
+import { analyticsAccess, isTenantScoped } from "../../analytics/access";
+import {
+  lakeWindow,
+  loadLakeAnalyticsView,
+  loadLakeFilterValues,
+} from "../../monitoring/deco-analytics-lake";
 
 type Variables = { studioContext: StudioContext };
 
@@ -259,6 +270,31 @@ export function heatmapParams(
   };
 }
 
+const SEGMENT_FILTER = /^[A-Za-z]{1,24}:(is|not|has|starts):[^\r\n]{1,512}$/;
+const CURRENCY = /^[A-Za-z]{3}$/;
+
+/** The segment a view is read with (`f` = `dim:op:value` filters, `currency`,
+ *  `prop`), validated before it reaches the read surface. Null when a value is
+ *  malformed. */
+export function segmentParams(
+  filters: readonly string[],
+  currency: string | undefined,
+  prop: string | undefined,
+): [string, string][] | null {
+  if (filters.length > 20 || !filters.every((f) => SEGMENT_FILTER.test(f))) {
+    return null;
+  }
+  if (currency !== undefined && !CURRENCY.test(currency)) return null;
+  if (prop !== undefined && (prop.length === 0 || prop.length > 128)) {
+    return null;
+  }
+  return [
+    ...filters.map((f): [string, string] => ["f", f]),
+    ...(currency ? [["currency", currency] as [string, string]] : []),
+    ...(prop ? [["prop", prop] as [string, string]] : []),
+  ];
+}
+
 /** The ranges the read surface understands (queries.mjs RANGES). */
 const ANALYTICS_RANGES = new Set([
   "5m",
@@ -287,9 +323,10 @@ type SiteIdResolution =
   | { status: "unregistered" }
   | { status: "error" };
 
-/** The read-surface payload keys the Analytics tab reads (analytics-tab.tsx,
- *  analytics-heatmap-model.ts). The proxy forwards only these: a key the
- *  upstream adds later stays server-side until the tab is taught to read it.
+/** The read-surface payload keys Monitor's analytics sections read
+ *  (web `components/monitor/analytics`, analytics-heatmap-model.ts). The proxy
+ *  forwards only these: a key the upstream adds later stays server-side until
+ *  Monitor is taught to read it.
  *  `pipeline`/`install`-only keys, `worker`, `panelErrors` and `meterCheck` are
  *  left out on purpose. */
 export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
@@ -405,6 +442,12 @@ export function toTenantAnalyticsPayload(
   }
   out.usageScope = { site: siteId, tenantScoped: true };
   return out;
+}
+
+function registrationLookupFailed(
+  c: import("hono").Context<{ Variables: Variables }>,
+) {
+  return c.json({ error: "Failed to resolve analytics registration" }, 502);
 }
 
 async function resolveWarehouseSiteId(
@@ -652,9 +695,33 @@ export const createHostingRoutes = () => {
   // GET /api/:org/hosting/:site/analytics/status — `{ configured, registered,
   // host, config }`. `configured:false` means the collector isn't wired to the
   // environment; `registered:false` means the site can be registered here.
-  app.get("/:site/analytics/status", (c) =>
-    proxyControlplane(c, "analytics/status"),
-  );
+  // The control-plane has no record of a site deco doesn't host.
+  app.get("/:site/analytics/status", async (c) => {
+    const ctx = c.get("studioContext");
+    const site = c.req.param("site");
+    if (isAuthenticated(ctx) && site) {
+      const org = requireOrganization(ctx);
+      const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+      if (access?.kind === "error") return registrationLookupFailed(c);
+      if (access?.kind === "external") {
+        const { analyticsDataUrl, analyticsMasterToken } = getSettings();
+        return c.json({
+          // Only the read surface serves an external site.
+          configured: !!analyticsDataUrl && !!analyticsMasterToken,
+          registered: true,
+          external: true,
+          host: null,
+          // Its modules gate the tab's views (Heatmap); without them the
+          // data views still work from the id alone.
+          config: {
+            ...(await readExternalAnalyticsConfig(access.siteId)),
+            id: access.siteId,
+          },
+        });
+      }
+    }
+    return proxyControlplane(c, "analytics/status");
+  });
 
   // GET /api/:org/hosting/:site/analytics/usage (?from&to&granularity passthrough)
   // Upstream may answer 503 `not_configured` when analytics isn't set up; that
@@ -662,15 +729,6 @@ export const createHostingRoutes = () => {
   app.get("/:site/analytics/usage", (c) =>
     proxyControlplane(c, "analytics/usage", {
       forwardQuery: ["from", "to", "granularity"],
-    }),
-  );
-
-  // POST /api/:org/hosting/:site/analytics/register — body `{ modules?, host?,
-  // sampling? }` registers the site with the Deco Analytics collector.
-  app.post("/:site/analytics/register", async (c) =>
-    proxyControlplane(c, "analytics/register", {
-      method: "POST",
-      body: await readJsonBody(c),
     }),
   );
 
@@ -709,6 +767,51 @@ export const createHostingRoutes = () => {
     proxyControlplane(c, "analytics", { method: "DELETE" }),
   );
 
+  // GET /api/:org/hosting/:site/analytics/values?dim=&range= — the values a
+  // segment dimension holds in the range, busiest first, for the filter
+  // builder's suggestions. From the org's customer lake; `values: []` when the
+  // lake isn't configured or doesn't keep the dimension.
+  app.get("/:site/analytics/values", async (c) => {
+    const ctx = c.get("studioContext");
+    if (!isAuthenticated(ctx)) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const org = requireOrganization(ctx);
+    const site = c.req.param("site");
+    if (!site) return c.json({ error: "site is required" }, 400);
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+    const dim = c.req.query("dim") ?? "";
+    if (!/^[A-Za-z]{1,24}$/.test(dim)) {
+      return c.json({ error: "invalid dim" }, 400);
+    }
+    const win = lakeWindow(c.req.query("range") ?? "24h");
+    if (!win) return c.json({ error: "unknown range" }, 400);
+    if (!isCustomerLakeConfigured()) return c.json({ values: [] });
+
+    let siteId = access.kind === "external" ? access.siteId : null;
+    if (!siteId) {
+      const resolution = await resolveWarehouseSiteId(org, site);
+      if (resolution.status === "error") return registrationLookupFailed(c);
+      if (resolution.status === "unregistered") return c.json({ values: [] });
+      siteId = resolution.id;
+    }
+    try {
+      return c.json({
+        values: await loadLakeFilterValues(org.id, siteId, dim, win),
+      });
+    } catch (err) {
+      console.error(
+        `[analytics] values ${dim} failed for site="${site}":`,
+        err,
+      );
+      return c.json({ error: "Failed to read Deco Analytics" }, 502);
+    }
+  });
+
   // GET /api/:org/hosting/:site/analytics/data?view=&range= (+ page, device for
   // view=heatmap) — the tenant-scoped
   // dashboard views, read straight from the Analytics read surface (NOT the
@@ -725,13 +828,10 @@ export const createHostingRoutes = () => {
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
 
-    // Same ownership guard as proxyControlplane: the org must own this slug.
     // 404 (not 403) so an unowned slug looks like a non-existent one.
-    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!ownsSite) {
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
 
@@ -741,10 +841,16 @@ export const createHostingRoutes = () => {
       analyticsDataUrl,
       analyticsMasterToken,
     } = getSettings();
-    if (!controlplaneRestUrl || !controlplaneServiceToken) {
+    if (
+      access.kind === "owned" &&
+      (!controlplaneRestUrl || !controlplaneServiceToken)
+    ) {
       return c.json({ error: "Hosting integration is not configured" }, 503);
     }
-    if (!analyticsDataUrl || !analyticsMasterToken) {
+    // Without the read surface, the org's customer lake answers what its
+    // hourly rollups hold.
+    const readSurface = !!analyticsDataUrl && !!analyticsMasterToken;
+    if (!readSurface && !isCustomerLakeConfigured()) {
       return c.json({ error: "Analytics data surface is not configured" }, 503);
     }
 
@@ -763,19 +869,54 @@ export const createHostingRoutes = () => {
     if (!heatmap) {
       return c.json({ error: "invalid heatmap page or device" }, 400);
     }
+    const segment = segmentParams(
+      c.req.queries("f") ?? [],
+      c.req.query("currency"),
+      c.req.query("prop"),
+    );
+    if (!segment) return c.json({ error: "invalid segment" }, 400);
 
     // Resolve the warehouse site_id from a slug the org owns — never trust a
     // client-supplied id. `unregistered` ⇒ the tab shows Configuration; a
     // transient resolve `error` ⇒ 502 (distinct from "no registration") so the
     // tab reports a data-load failure instead of a misleading Configuration screen.
-    const resolution = await resolveWarehouseSiteId(org, site);
-    if (resolution.status === "error") {
-      return c.json({ error: "Failed to resolve analytics registration" }, 502);
+    let siteId = access.kind === "external" ? access.siteId : null;
+    if (!siteId) {
+      const resolution = await resolveWarehouseSiteId(org, site);
+      if (resolution.status === "error") {
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+      if (resolution.status === "unregistered") {
+        return c.json({ registered: false, view, range });
+      }
+      siteId = resolution.id;
     }
-    if (resolution.status === "unregistered") {
-      return c.json({ registered: false, view, range });
+
+    if (!readSurface) {
+      // Each lake dimension is its own aggregate, so a filtered read would
+      // show unfiltered numbers under the filter's chip.
+      if (segment.some(([key]) => key === "f")) {
+        return c.json(
+          { error: "Filters need the Analytics read surface" },
+          422,
+        );
+      }
+      const win = lakeWindow(range);
+      if (!win) return c.json({ error: `unknown range: ${range}` }, 400);
+      try {
+        const data = await loadLakeAnalyticsView(org.id, siteId, view, win);
+        return c.json({ registered: true, siteId, view, range, data });
+      } catch (err) {
+        console.error(
+          `[analytics] lake ${view} failed for site="${site}":`,
+          err,
+        );
+        return c.json({ error: "Failed to read Deco Analytics" }, 502);
+      }
     }
-    const siteId = resolution.id;
 
     const upstream = new URL(`${analyticsDataUrl}/data`);
     upstream.searchParams.set("view", view);
@@ -784,6 +925,8 @@ export const createHostingRoutes = () => {
     for (const [key, value] of Object.entries(heatmap)) {
       upstream.searchParams.set(key, value);
     }
+    for (const [key, value] of segment)
+      upstream.searchParams.append(key, value);
 
     let payload: Record<string, unknown> | null;
     try {
@@ -821,20 +964,10 @@ export const createHostingRoutes = () => {
     // scoped to THIS tenant before returning. A payload that isn't tenant-scoped
     // — or was scoped to a different site — could be someone else's numbers under
     // this customer's name, which is the one outcome that must never render.
-    const scope = (payload.usageScope ?? null) as {
-      site?: string | null;
-      reader?: string;
-      tenantScoped?: boolean;
-    } | null;
-    if (
-      !scope ||
-      scope.tenantScoped !== true ||
-      scope.reader !== "stats_reader" ||
-      scope.site !== siteId
-    ) {
+    if (!isTenantScoped(payload, siteId)) {
       console.error(
         `[analytics] refusing unscoped payload for site="${site}" (${siteId}):`,
-        scope,
+        payload.usageScope,
       );
       return c.json(
         { error: "analytics did not scope to this site; refusing to render" },
@@ -871,11 +1004,9 @@ export const createHostingRoutes = () => {
     const site = c.req.param("site");
     if (!site) return c.json({ error: "site is required" }, 400);
 
-    const ownsSite = await ctx.storage.orgSites.isOwnedBy(
-      site.toLowerCase(),
-      org.id,
-    );
-    if (!ownsSite) {
+    const access = await analyticsAccess(ctx, org.id, site.toLowerCase());
+    if (access?.kind === "error") return registrationLookupFailed(c);
+    if (!access) {
       return c.json({ error: "Site not found in organization" }, 404);
     }
 
