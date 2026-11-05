@@ -10,6 +10,7 @@ import {
   ProductionMovedError,
   publishCmsDraft,
   RevisionNotFoundError,
+  NotPublishedError,
   rollbackToRevision,
   type CmsPublishDeps,
 } from "./cms-publish";
@@ -449,15 +450,22 @@ describe("rollbackToRevision", () => {
     });
   });
 
-  it("reapplies a revision before the first latest.json, as publish does", async () => {
+  it("refuses a rollback before the first latest.json, writing nothing", async () => {
     const { delivery, deps } = setup();
     const crashed = newRevisionId(clock++);
     await seedRelease(delivery.store, SITE, crashed, { a: { v: 1 } });
     delivery.objects.delete(deliveryKeys.latest(SITE));
-    const result = await rollbackToRevision(deps, crashed, "");
-    expect(result).toMatchObject({ result: "published", previous: null });
-    expect(
-      (await readLatestPointer(delivery.store, SITE))?.pointer.revision,
-    ).toBe((result as { revision: string }).revision);
+    const before = delivery.log.length;
+    await expect(rollbackToRevision(deps, crashed, "")).rejects.toBeInstanceOf(
+      NotPublishedError,
+    );
+    expect(delivery.log.slice(before).some((op) => op.startsWith("put"))).toBe(
+      false,
+    );
+    expect(await readLatestPointer(delivery.store, SITE)).toBeNull();
+    // A missing target is still 404 first.
+    await expect(
+      rollbackToRevision(deps, newRevisionId(clock++), ""),
+    ).rejects.toBeInstanceOf(RevisionNotFoundError);
   });
 });

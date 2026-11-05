@@ -47,11 +47,16 @@ export function canPreviewRelease(
   return revision.status !== "unreadable" && isReleaseRevision(revision.id);
 }
 
-/** Whether a row offers "Make current": any readable one but the latest. */
+/**
+ * Whether a row offers "Make current": any readable one but the latest, once
+ * the site has been published (`live`, the page's latest.json revision).
+ * Before the first publish the server refuses it (409 `not_published`).
+ */
 export function canReapply(
   revision: ReleaseRevision,
+  live: string | null,
 ): revision is ReadableRelease {
-  return revision.status === "listed";
+  return live !== null && revision.status === "listed";
 }
 
 // The server's note words ("Made current: …", "release from …"), shared with

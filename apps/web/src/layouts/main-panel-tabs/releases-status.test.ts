@@ -55,7 +55,7 @@ describe("a release whose details couldn't be read", () => {
     expect(isUnreadable(revision(NEW, "current"))).toBe(false);
     expect(isLatest(broken)).toBe(false);
     expect(canPreviewRelease(broken)).toBe(false);
-    expect(canReapply(broken)).toBe(false);
+    expect(canReapply(broken, NEW)).toBe(false);
   });
 });
 
@@ -71,8 +71,11 @@ describe("canPreviewRelease", () => {
 
 describe("canReapply", () => {
   test("any readable release but the latest can be made current", () => {
-    expect(canReapply(revision(OLD, "listed"))).toBe(true);
-    expect(canReapply(revision(NEW, "current"))).toBe(false);
+    expect(canReapply(revision(OLD, "listed"), NEW)).toBe(true);
+    expect(canReapply(revision(NEW, "current"), NEW)).toBe(false);
+  });
+  test("none before the site's first publish (the server refuses it)", () => {
+    expect(canReapply(revision(OLD, "listed"), null)).toBe(false);
   });
 });
 
