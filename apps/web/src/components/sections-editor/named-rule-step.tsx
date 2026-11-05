@@ -9,6 +9,7 @@ import {
 } from "@decocms/ui/components/command.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ShareSplit } from "@/components/experiments/split-donut";
 import { type TFunction, useT } from "@/i18n/use-t.ts";
@@ -70,6 +71,22 @@ function useNamedRuleViews(): NamedRuleViews | null {
 }
 
 /**
+ * The rule picker's load of the `experiments` and `campaigns` blocks. On a
+ * hosted v8 draft the editor holds only the index's stubs of them until a
+ * view loads them, so the picker asks for them when it opens (`request`) and
+ * lists names (or offers Create) only once they are loaded (`ready`): an
+ * existing test or campaign is listed, never offered as new. Always ready
+ * off the hosted draft.
+ */
+export interface NamedRuleBlocksLoad {
+  ready: boolean;
+  /** The last load failed; it is tried again on its own, or with `retry`. */
+  failed: boolean;
+  retry: () => void;
+  request: () => void;
+}
+
+/**
  * What a variant inside a form field needs for named rules: the kinds the
  * picker offers, and `prepare`, which saves a new name's block (guarded) and
  * gives the rule to put in the field, or `null` when nothing should change.
@@ -84,6 +101,8 @@ export interface NamedRuleFieldSupport {
    * one is saved, guarded, when there is none). `false`: nothing to point at.
    */
   ensureBlock: (kind: NamedRuleKind) => Promise<boolean>;
+  /** The picker's load of the tests and campaigns blocks. */
+  load?: NamedRuleBlocksLoad;
 }
 
 const NamedRuleFieldContext = createContext<NamedRuleFieldSupport | null>(null);
@@ -144,12 +163,15 @@ export function NamedRuleKindItems({
 export function NamedRuleNameStep({
   kind,
   currentName,
+  load,
   onBack,
   onPick,
   onCreate,
 }: {
   kind: NamedRulePickerKind;
   currentName: string | null;
+  /** Names are listed (and Create offered) only once it is ready. */
+  load?: NamedRuleBlocksLoad;
   onBack: () => void;
   onPick: (name: string) => void;
   onCreate: (name: string) => void;
@@ -188,7 +210,32 @@ export function NamedRuleNameStep({
         }
       />
       <CommandList>
-        {kind.state === "conflict" ? (
+        {load && !load.ready ? (
+          load.failed ? (
+            <div className="flex flex-col items-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
+              <p>
+                {tests
+                  ? t("sectionsEditor.namedRulePicker.loadFailedTests")
+                  : t("sectionsEditor.namedRulePicker.loadFailedCampaigns")}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={load.retry}
+              >
+                {t("sectionsEditor.namedRules.tryAgain")}
+              </Button>
+            </div>
+          ) : (
+            <div
+              className="flex justify-center px-4 py-6"
+              data-testid="named-rule-names-loading"
+            >
+              <Spinner className="size-4 text-muted-foreground" />
+            </div>
+          )
+        ) : kind.state === "conflict" ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">
             {tests
               ? t("sectionsEditor.namedRulePicker.conflictTests")

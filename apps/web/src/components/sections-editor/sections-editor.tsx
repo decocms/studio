@@ -111,11 +111,13 @@ import {
 } from "./named-rule-picker";
 import type { NamedRulePickerProps } from "./matcher-picker";
 import {
+  type NamedRuleBlocksLoad,
   NamedRuleFieldProvider,
   type NamedRuleFieldSupport,
 } from "./named-rule-step";
 import { RootVariantFocusProvider } from "./fields/multivariate-field-wrapper";
 import {
+  NAMED_RULE_BLOCKS,
   namedRuleKindInfo,
   namedRuleOf,
   readNamedRuleBlock,
@@ -721,6 +723,22 @@ export function SectionsEditor({
     hostedOpenKey ? [hostedOpenKey] : [],
     { withRefs: true },
   );
+  // Hosted v8: the rule picker loads the tests and campaigns blocks when it
+  // first opens (they stay loaded, and follow the index, from then on), so
+  // it lists the names that exist and never offers one of them as new.
+  const [namedRuleBlocksWanted, setNamedRuleBlocksWanted] = useState(false);
+  const namedRuleBlocksLoad = useEnsureDecofileBlocks(
+    { orgSlug, virtualMcpId, branch },
+    namedRuleBlocksWanted ? NAMED_RULE_BLOCKS : [],
+  );
+  const namedRuleLoad: NamedRuleBlocksLoad = {
+    ready:
+      !(contentBackend.kind === "protocol" && contentBackend.hosted) ||
+      (namedRuleBlocksWanted && namedRuleBlocksLoad.ready),
+    failed: namedRuleBlocksLoad.failed,
+    retry: namedRuleBlocksLoad.retry,
+    request: () => setNamedRuleBlocksWanted(true),
+  };
 
   if (hostedOpenLoad.failed) {
     return (
@@ -2645,6 +2663,7 @@ export function SectionsEditor({
       selected: named,
       campaignPrefill: inlineDateWindow(rule),
       onPick,
+      load: namedRuleLoad,
     };
   };
   const canAddSection =
@@ -2823,6 +2842,7 @@ export function SectionsEditor({
     namedRuleKinds.length > 0
       ? {
           kinds: namedRuleKinds,
+          load: namedRuleLoad,
           prepare: async (pick) => {
             const saved = await saveNamedRulePick(
               pick,

@@ -686,3 +686,88 @@ describe("a campaign's date inputs", () => {
     }
   });
 });
+
+describe("the rule picker on a hosted draft: the tests and campaigns load as it opens", () => {
+  /** What the editor holds before they load: the index's stub, no names. */
+  const UNLOADED: NamedRulePickerKind[] = [
+    { kind: "experiments", state: "saved", entries: [] },
+    { kind: "campaigns", state: "absent", entries: [] },
+  ];
+
+  test("asks for them on open; until they are loaded no name is listed and nothing is offered as new", () => {
+    const request = mock(() => {});
+    const { dialog } = openPicker({
+      kinds: UNLOADED,
+      selected: null,
+      onPick: () => {},
+      load: { ready: false, failed: false, retry: () => {}, request },
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByText("A/B test"));
+    typeInto(document.activeElement as HTMLElement, "hero-test");
+    expect(within(dialog).getByTestId("named-rule-names-loading")).toBeTruthy();
+    expect(within(dialog).queryByText(/Create test/)).toBeNull();
+    expect(
+      within(dialog).queryByText("No tests yet. Type a name to create one."),
+    ).toBeNull();
+  });
+
+  test("once loaded, an existing test is listed to pick, never offered as new", async () => {
+    function Harness() {
+      const [ready, setReady] = useState(false);
+      return (
+        <MatcherPicker
+          currentRt=""
+          currentLabel="Always"
+          matchers={MATCHERS}
+          onSelect={() => {}}
+          named={{
+            kinds: ready ? KINDS : UNLOADED,
+            selected: null,
+            onPick: () => {},
+            load: {
+              ready,
+              failed: false,
+              retry: () => {},
+              request: () => setReady(true),
+            },
+          }}
+        />
+      );
+    }
+    render(<Harness />);
+    const body = within(document.body);
+    fireEvent.click(body.getByRole("button", { name: /Always/ }));
+    fireEvent.click(body.getByText("A/B test"));
+    typeInto(document.activeElement as HTMLElement, "hero-test");
+    expect(await body.findByText("hero-test")).toBeTruthy();
+    expect(body.queryByText(/Create test/)).toBeNull();
+    expect(body.queryByTestId("named-rule-names-loading")).toBeNull();
+  });
+
+  test("a failed load says so and tries again on request", () => {
+    const retry = mock(() => {});
+    const { dialog } = openPicker({
+      kinds: UNLOADED,
+      selected: null,
+      onPick: () => {},
+      load: { ready: false, failed: true, retry, request: () => {} },
+    });
+    fireEvent.click(within(dialog).getByText("Campaign"));
+    expect(
+      within(dialog).getByText("Couldn't load your campaigns."),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/Create campaign/)).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  test("says it in pt-br too", () => {
+    expect(ptBR["sectionsEditor.namedRulePicker.loadFailedTests"]).toBe(
+      "Não foi possível carregar seus testes.",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.loadFailedCampaigns"]).toBe(
+      "Não foi possível carregar suas campanhas.",
+    );
+  });
+});
