@@ -139,10 +139,38 @@ describe("tabRouteLocation", () => {
         section: "settings",
       });
     }
-    expect(tabRouteLocation("cdn")).toEqual({
-      kind: "agent-section",
-      section: "monitor",
-    });
+  });
+
+  test("opens each retired app in the Monitor view that took it over", () => {
+    const rows = [
+      ["analytics", "audience"],
+      ["cdn", "performance"],
+      ["experiments", "experiments"],
+    ] as const;
+    for (const [tabId, view] of rows) {
+      expect(tabRouteLocation(tabId)).toEqual({
+        kind: "project-destination",
+        destination: "monitoring",
+        monitorView: view,
+      });
+      expect(tabRouteTarget({ org: "acme", agentId: "vir_1", tabId })).toEqual({
+        to: "/$org/projects/$agentId/monitoring",
+        params: { org: "acme", agentId: "vir_1" },
+        search: { view },
+      });
+      expect(
+        tabRouteTarget({
+          org: "acme",
+          agentId: "vir_1",
+          tabId,
+          destinationScope: "organization",
+        }),
+      ).toEqual({
+        to: "/$org/monitoring",
+        params: { org: "acme" },
+        search: { view },
+      });
+    }
   });
 
   test("routes every built-in explicitly instead of treating it as metadata", () => {

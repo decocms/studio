@@ -14,18 +14,13 @@ test("links and disconnects a personal Codex subscription through settings", asy
     },
   });
   await page.goto(`/${orgSlug}/settings/ai-providers`);
-  const card = page
-    .getByText("Your ChatGPT subscription for Codex", { exact: true })
-    .locator("../../..");
-  const input = card.getByRole("textbox", {
-    name: "Paste the contents of auth.json",
-  });
+  const row = page.getByRole("group", { name: "ChatGPT for Codex" });
+  await row.getByRole("button", { name: "Link", exact: true }).click();
+  const input = row.getByLabel("Paste the contents of auth.json");
   await expect(input).toBeVisible();
   await input.fill(authJson);
-  await card.getByRole("button", { name: "Link", exact: true }).click();
-  await expect(
-    card.getByRole("button", { name: "Disconnect", exact: true }),
-  ).toBeVisible();
+  await input.press("Enter");
+  await expect(row.getByText("Linked", { exact: true })).toBeVisible();
   await expect(input).toHaveCount(0);
 
   const status = await page.context().request.post(endpoint, { data: {} });
@@ -35,8 +30,13 @@ test("links and disconnects a personal Codex subscription through settings", asy
   expect(JSON.stringify(metadata)).not.toContain("synthetic-");
   expect(JSON.stringify(metadata)).not.toContain("tokens");
 
-  await card.getByRole("button", { name: "Disconnect", exact: true }).click();
-  await expect(input).toBeVisible();
+  await row.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Disconnect" }).click();
+  await expect(
+    row.getByRole("button", { name: "Link", exact: true }),
+  ).toBeVisible();
+  await expect(row.getByText("Linked", { exact: true })).toHaveCount(0);
+  await expect(input).toHaveCount(0);
   const disconnected = await page
     .context()
     .request.post(endpoint, { data: {} });

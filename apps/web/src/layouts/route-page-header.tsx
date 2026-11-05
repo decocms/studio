@@ -15,7 +15,6 @@ import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useOptionalChatLayout } from "@/components/chat-layout";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
@@ -37,7 +36,6 @@ export function RoutePageHeader({
   const { toggleSidebar } = useSidebar();
   const collapsed = useSidebarCollapsed();
   const chatLayout = useOptionalChatLayout();
-  const projectFirstNav = useProjectFirstNav();
   const page = useRouterState({
     select: (state) =>
       state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
@@ -51,8 +49,8 @@ export function RoutePageHeader({
       scopeId
       ? projectTitle
       : t("sidebar.navDestinations.home")
-    : // Project-first nav calls the Library Context.
-      projectFirstNav && page?.mainView === "files"
+    : // The Library is called Context.
+      page?.mainView === "files"
       ? t("sidebar.navDestinations.context")
       : t(page?.pageTitle ?? "page.view");
   /** The crumb leaves an app for the project's Overview. */
@@ -75,9 +73,12 @@ export function RoutePageHeader({
     });
   }
   breadcrumbs.push({ key: "page", label: title });
-  /** Project-first collapses the sidebar away, and its toggles with it: they
-   *  move here, beside the breadcrumb. */
-  const sidebarHidden = projectFirstNav && collapsed;
+  /** A collapsed sidebar takes its toggles with it: they move here, beside the
+   *  breadcrumb. */
+  const sidebarHidden = collapsed;
+  /** An open chat sits left of this panel and holds the sidebar toggle instead. */
+  const chatHoldsSidebarToggle =
+    !!chatLayout && !chatLayout.threadless && chatLayout.threadOpen;
   const chatToggle = sidebarHidden && chatLayout && !chatLayout.threadless && (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -101,30 +102,22 @@ export function RoutePageHeader({
     <Page.Header
       leading={
         <>
-          {projectFirstNav ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton
-                  className={cn(!sidebarHidden && "md:hidden")}
-                  onClick={toggleSidebar}
-                  aria-label={t("page.expandSidebar")}
-                >
-                  <LayoutLeft size={16} />
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t("page.expandSidebar")}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <ToolbarIconButton
-              className="md:hidden"
-              onClick={toggleSidebar}
-              aria-label={t("layouts.shellControls.toggleSidebar")}
-            >
-              <LayoutLeft size={16} />
-            </ToolbarIconButton>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                className={cn(
+                  (!sidebarHidden || chatHoldsSidebarToggle) && "md:hidden",
+                )}
+                onClick={toggleSidebar}
+                aria-label={t("page.expandSidebar")}
+              >
+                <LayoutLeft size={16} />
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t("page.expandSidebar")}
+            </TooltipContent>
+          </Tooltip>
           {chatToggle}
         </>
       }

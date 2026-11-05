@@ -2,8 +2,7 @@ import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { Suspense, lazy, useState } from "react";
-import { type Query } from "@tanstack/react-query";
+import { Suspense, lazy, useRef, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import {
   type NamedRuleViews,
@@ -48,9 +47,11 @@ import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
-import { hasEditableAppEditorSchema } from "./app-editor-schema";
+import {
+  liveMetaSchemaPollInterval,
+  type SchemaPollWindow,
+} from "./schema-poll";
 import { hasCmsSettingsType } from "./cms-settings";
-import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   keptTheirVersion,
   useSaveBlock,
@@ -67,6 +68,7 @@ import {
   type PageEntry,
 } from "@/components/sections-editor/page-list";
 import { buildAppCatalog, type AppCatalogEntry } from "./app-catalog";
+import { AppInstallPanel } from "./app-install-panel";
 import { ListEmpty } from "./list-empty";
 import { useInstallApp } from "@/hooks/use-install-app";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -316,6 +318,8 @@ type Selection =
       title: string;
     }
   | { collection: "apps"; key: string }
+  /** A catalogue app with no block yet: the panel that installs it. */
+  | { collection: "available-app"; id: string }
   | { collection: "redirects"; key: string }
   | { collection: BlogKind; key: string }
   | null;
@@ -410,24 +414,6 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
       sandboxWarming={gate.sandboxWarming}
     />
   );
-}
-
-const SCHEMA_POLL_INTERVAL_MS = 2000;
-const SCHEMA_POLL_MAX_ATTEMPTS = 15;
-
-function liveMetaSchemaPollIntervalMs(
-  query: Query<LiveMeta>,
-  resolveType: string | undefined,
-  meta: LiveMeta | undefined,
-  excludeFields?: readonly string[],
-): number | false {
-  if (typeof resolveType !== "string") return false;
-  if (!meta) return SCHEMA_POLL_INTERVAL_MS;
-  if (hasEditableAppEditorSchema(resolveType, meta, excludeFields)) {
-    return false;
-  }
-  if (query.state.dataUpdateCount >= SCHEMA_POLL_MAX_ATTEMPTS) return false;
-  return SCHEMA_POLL_INTERVAL_MS;
 }
 
 function ContentBrowserReady({
@@ -565,15 +551,27 @@ function ContentBrowserReady({
   }
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
-  const {
-    data: meta,
-    isLoading: metaLoading,
-    isFetching: metaFetching,
-  } = useLiveMeta(fetchParams, {
+  /**
+   * The open schema wait, so the budget in `liveMetaSchemaPollInterval` is a
+   * delta rather than the query's lifetime counter. A ref because
+   * `refetchInterval` runs outside render, where state would be a loop.
+   */
+  const schemaPollWindow = useRef<SchemaPollWindow | null>(null);
+  /**
+   * Whether that wait is still open, for the editor to say so. The budget is
+   * the only thing that ends a wait no build will ever satisfy, and the editor
+   * cannot see it — left to itself it spins over "appears once the site is
+   * built" for as long as the block stays open.
+   */
+  const [schemaWaitOpen, setSchemaWaitOpen] = useState(false);
+  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
     fetchEnabled: devServerReady,
     refetchInterval: (query) => {
       const currentMeta = query.state.data;
-
+      // The block whose schema is being waited for, when one is open. An app's
+      // comes off its own block; the Site tab's comes off the site app the
+      // manifest names, falling back to the block's own resolveType.
+      let resolveType: string | undefined;
       if (
         activeCollection === "apps" &&
         selection &&
@@ -582,31 +580,33 @@ function ContentBrowserReady({
         const block = decofile?.[selection.key] as
           | Record<string, unknown>
           | undefined;
-        return liveMetaSchemaPollIntervalMs(
-          query,
+        resolveType =
           typeof block?.__resolveType === "string"
             ? block.__resolveType
-            : undefined,
-          currentMeta,
-        );
-      }
-
-      if (activeCollection === "site" && decofile) {
+            : undefined;
+      } else if (activeCollection === "site" && decofile) {
         const siteEntry = currentMeta
           ? findSiteAppEntry(decofile, currentMeta)
           : null;
         const siteBlock = decofile.site as Record<string, unknown> | undefined;
-        const resolveType =
+        resolveType =
           siteEntry?.resolveType ??
           (typeof siteBlock?.__resolveType === "string"
             ? siteBlock.__resolveType
             : undefined);
-        return liveMetaSchemaPollIntervalMs(query, resolveType, currentMeta, [
-          "seo",
-        ]);
       }
-
-      return false;
+      const decision = liveMetaSchemaPollInterval({
+        resolveType,
+        meta: currentMeta,
+        // Failed reads count against the budget too: a dev server that never
+        // comes back would otherwise buy an unlimited wait.
+        reads: query.state.dataUpdateCount + query.state.errorUpdateCount,
+        window: schemaPollWindow.current,
+      });
+      schemaPollWindow.current = decision.window;
+      const open = decision.interval !== false;
+      setSchemaWaitOpen((prev) => (prev === open ? prev : open));
+      return decision.interval;
     },
   });
   // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
@@ -652,13 +652,6 @@ function ContentBrowserReady({
     setSearchQuery("");
   }
 
-  const isAppSchemaLoading = (
-    resolveType: string | undefined,
-    excludeFields?: readonly string[],
-  ) =>
-    !hasEditableAppEditorSchema(resolveType, meta, excludeFields) &&
-    (metaLoading || metaFetching);
-
   const { createTask } = useChatTask();
   /**
    * Installing writes code; a Fast Preview session only edits content, so the
@@ -676,10 +669,14 @@ function ContentBrowserReady({
    * renders a pasted tunnel and persists nothing, so it has none either.
    */
   const localPreviewUrl = useLocalPreviewUrl(virtualMcpId).url;
+  /**
+   * The org's own switch, off until an admin turns it on (Settings →
+   * General → Site editor). Told apart from the other two reasons below
+   * because it is the only one with something to do about it.
+   */
+  const installFlagOn = useOrgFlag("site_apps_install_enabled");
   const canInstallApps =
-    useOrgFlag("site_apps_install_enabled") &&
-    siteTechnology !== null &&
-    !localPreviewUrl;
+    installFlagOn && siteTechnology !== null && !localPreviewUrl;
   /**
    * Installable apps come from this repository's registry
    * (`@decocms/shared/site-apps`), not a fetch: the catalogue ships with the
@@ -698,6 +695,54 @@ function ContentBrowserReady({
         )
       : [];
   const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
+  /**
+   * Why this session cannot install, when it cannot. A Fast Preview session
+   * never writes code, so offering the button there buys a toast and nothing
+   * else — the way out is a coding session, so that is what it offers.
+   */
+  const installBlocked = !installFlagOn
+    ? { reason: t("sandbox.appInstallPanel.flagOff") }
+    : !canInstallApps
+      ? { reason: t("sandbox.appInstallPanel.unavailable") }
+      : // Until the project row lands, `runtime` is the shape of an answer
+        // rather than one, and `handleInstallApp` refuses to act on it. Saying
+        // so beats a button labelled Install whose every click does nothing.
+        !session.resolved
+        ? { reason: t("sandbox.appInstallPanel.sessionLoading") }
+        : session.runtime === "cms"
+          ? {
+              reason: t("sandbox.appEditor.installNeedsCodingSession"),
+              action: {
+                label: t("chat.fastPreview.startCodingSession"),
+                onClick: () => createTask({ runtime: "sandbox" }),
+              },
+            }
+          : null;
+  const handleInstallApp = (entry: AppCatalogEntry) => {
+    if (!session.resolved) return;
+    // One at a time: the mutation is a single instance, so a second install
+    // overwrites the first one's `variables` and `error` — the panel would
+    // then read the wrong app's state, and the first failure is lost.
+    if (installApp.isPending) return;
+    if (session.runtime === "cms") {
+      toast.error(t("sandbox.appEditor.installNeedsCodingSession"), {
+        action: {
+          label: t("chat.fastPreview.startCodingSession"),
+          onClick: () => createTask({ runtime: "sandbox" }),
+        },
+      });
+      return;
+    }
+    installApp.mutate(
+      { blockKey: entry.id },
+      {
+        // Most apps carry credentials they cannot work without.
+        onSuccess: (block) =>
+          selectItem({ collection: "apps", key: block.key }),
+        onError: (err) => toast.error(err.message),
+      },
+    );
+  };
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
@@ -898,7 +943,9 @@ function ContentBrowserReady({
     const wanted: CollectionId =
       selection.collection === "available-section"
         ? "sections"
-        : selection.collection;
+        : selection.collection === "available-app"
+          ? "apps"
+          : selection.collection;
     if (storedCollection !== wanted) setActiveCollection(wanted);
   }
   const typesEditorOpen =
@@ -1471,11 +1518,7 @@ function ContentBrowserReady({
       // The user kept their version (the hook said so in its own toast).
       if (keptTheirVersion(deleted)) return;
       toast.success(`Deleted "${label}"`);
-      if (
-        selection &&
-        selection.collection !== "available-section" &&
-        selection.key === key
-      ) {
+      if (selection && "key" in selection && selection.key === key) {
         setSelection(null);
       }
       setDeleteTarget(null);
@@ -1527,6 +1570,7 @@ function ContentBrowserReady({
             siteApp ? (
               <AppEditor
                 key={`site:${siteApp.key}`}
+                schemaWaiting={schemaWaitOpen}
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
@@ -1536,7 +1580,6 @@ function ContentBrowserReady({
                 meta={meta}
                 title="Site"
                 excludeFields={["seo"]}
-                schemaPending={isAppSchemaLoading(siteApp.resolveType, ["seo"])}
                 previewBaseUrl={previewUrl}
               />
             ) : (
@@ -1631,10 +1674,43 @@ function ContentBrowserReady({
                 />
               )}
             />
+          ) : selection?.collection === "available-app" ? (
+            (() => {
+              const entry = appCatalog.find(
+                (candidate) => candidate.id === selection.id,
+              );
+              return entry ? (
+                <AppInstallPanel
+                  key={`available-app:${entry.id}`}
+                  entry={entry}
+                  technology={siteTechnology}
+                  blocked={
+                    installApp.isPending &&
+                    installApp.variables?.blockKey !== entry.id
+                      ? { reason: t("sandbox.appInstallPanel.oneAtATime") }
+                      : installBlocked
+                  }
+                  isInstalling={
+                    installApp.isPending &&
+                    installApp.variables?.blockKey === entry.id
+                  }
+                  installError={
+                    installApp.isError &&
+                    installApp.variables?.blockKey === entry.id
+                      ? installApp.error.message
+                      : null
+                  }
+                  onInstall={() => handleInstallApp(entry)}
+                />
+              ) : (
+                <EmptyMessage title="App not found in this catalogue." />
+              );
+            })()
           ) : selection && selection.collection !== "available-section" ? (
             selection.collection === "apps" ? (
               <AppEditor
                 key={`app:${selection.key}`}
+                schemaWaiting={schemaWaitOpen}
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
@@ -1651,15 +1727,6 @@ function ContentBrowserReady({
                       title: openEntryTitle(selection.key),
                     }
                   : {})}
-                schemaPending={isAppSchemaLoading(
-                  typeof (decofile[selection.key] as Record<string, unknown>)
-                    ?.__resolveType === "string"
-                    ? String(
-                        (decofile[selection.key] as Record<string, unknown>)
-                          .__resolveType,
-                      )
-                    : undefined,
-                )}
               />
             ) : selection.collection === "categories" ? (
               <CategoryEditor
@@ -1755,7 +1822,7 @@ function ContentBrowserReady({
               } to edit`}
               description={
                 activeCollection === "apps"
-                  ? "Browse all apps and select an installed one to edit its settings."
+                  ? "Browse all apps: select an installed one to edit its settings, or any other to install it."
                   : 'Pick an item from the list, or click "+" to create one.'
               }
             />
@@ -1825,30 +1892,6 @@ function ContentBrowserReady({
                   ? (installApp.variables?.blockKey ?? null)
                   : null
               }
-              onInstallApp={(entry) => {
-                if (!session.resolved) return;
-                if (session.runtime === "cms") {
-                  toast.error(
-                    t("sandbox.appEditor.installNeedsCodingSession"),
-                    {
-                      action: {
-                        label: t("chat.fastPreview.startCodingSession"),
-                        onClick: () => createTask({ runtime: "sandbox" }),
-                      },
-                    },
-                  );
-                  return;
-                }
-                installApp.mutate(
-                  { blockKey: entry.id },
-                  {
-                    // Most apps carry credentials they cannot work without.
-                    onSuccess: (block) =>
-                      selectItem({ collection: "apps", key: block.key }),
-                    onError: (err) => toast.error(err.message),
-                  },
-                );
-              }}
               blogEntries={blogEntries}
               decofile={decofile}
               searchQuery={searchQuery}
@@ -2093,7 +2136,6 @@ function ItemList({
   appCatalog,
   canInstallApps,
   installingAppId,
-  onInstallApp,
   blogEntries,
   decofile,
   searchQuery,
@@ -2124,7 +2166,6 @@ function ItemList({
   canInstallApps: boolean;
   /** Catalogue id of the app being installed right now, if any. */
   installingAppId: string | null;
-  onInstallApp: (entry: AppCatalogEntry) => void;
   blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
   searchQuery: string;
@@ -2382,9 +2423,11 @@ function ItemList({
             ) : (
               filteredApps.map((entry) => {
                 const isActive =
-                  selection?.collection === "apps" &&
-                  entry.blockKey !== null &&
-                  selection.key === entry.blockKey;
+                  (selection?.collection === "apps" &&
+                    entry.blockKey !== null &&
+                    selection.key === entry.blockKey) ||
+                  (selection?.collection === "available-app" &&
+                    selection.id === entry.id);
                 const isInstalling = installingAppId === entry.id;
                 return (
                   <ItemRow
@@ -2407,20 +2450,15 @@ function ItemList({
                         </span>
                       ) : undefined
                     }
-                    onClick={() => {
-                      if (entry.installed && entry.blockKey) {
-                        onSelect({ collection: "apps", key: entry.blockKey });
-                        return;
-                      }
-                      if (!entry.installable || !canInstallApps) {
-                        toast.message(
-                          `${entry.title} is not installed on this site.`,
-                        );
-                        return;
-                      }
-                      if (installingAppId !== null) return;
-                      onInstallApp(entry);
-                    }}
+                    // Selecting only: what the app is, and whether it can be
+                    // installed, is the panel's answer to give.
+                    onClick={() =>
+                      onSelect(
+                        entry.installed && entry.blockKey
+                          ? { collection: "apps", key: entry.blockKey }
+                          : { collection: "available-app", id: entry.id },
+                      )
+                    }
                   />
                 );
               })

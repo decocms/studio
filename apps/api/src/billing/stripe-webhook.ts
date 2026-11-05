@@ -165,10 +165,9 @@ function invoiceSubscriptionId(
  *   line[].period.end    2026-10-15T18:01:20Z   <- the period actually bought
  *
  * Writing the former as `current_period_end` moves the org's renewal date into
- * the past, and `task-quota.ts` keys its monthly bucket off that exact value
- * (`sub:${currentPeriodEnd.toISOString()}`) — so a tier change would hand out a
- * brand-new, empty month of task executions, repeatably. The lines carry the
- * real period, so read them and fall back to the invoice only when they do not.
+ * the past, and the subscription sweep then treats the org as lapsed and asks
+ * Stripe on every tick. The lines carry the real period, so read them and fall
+ * back to the invoice only when they do not.
  */
 export function invoicePeriodEnd(obj: Record<string, unknown>): Date | null {
   const lines = rec(obj.lines)?.data;
@@ -234,8 +233,7 @@ export function planIdForPrices(
  *    a paid tier is granted, which is what makes a tier something bought
  *    rather than something asked for.
  *  - `past_due` → unchanged. Stripe is still dunning and the card may yet
- *    clear; `task-quota.ts` already treats past_due as grace, and the two must
- *    not disagree about what a delinquent org can do.
+ *    clear.
  *  - anything else (canceled, unpaid, incomplete_expired, paused) → `free`.
  *
  * A subscription whose price is not in the map grants nothing on the way in —

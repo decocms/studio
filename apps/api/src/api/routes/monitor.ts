@@ -52,6 +52,21 @@ import {
 } from "../../deco-legacy/clickhouse-analytics";
 import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
 import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
+import { ownedAnalyticsSiteId } from "@/analytics/access";
+import { isCustomerLakeConfigured } from "@/customer-lake/client";
+import {
+  AUDIENCE_REPORTS,
+  loadDecoAudience,
+  toAudienceData,
+} from "@/monitoring/deco-audience";
+
+/** The audience contract's ranges → this module's day windows. */
+const AUDIENCE_RANGE_WINDOW: Record<string, string> = {
+  "24h": "today",
+  "7d": "7d",
+  "30d": "30d",
+};
+import { isTimezone } from "@/monitoring/timezone";
 
 type Variables = { studioContext: StudioContext };
 
@@ -807,6 +822,61 @@ interface OdResult {
   metrics: number[];
 }
 
+/** One OneDollarStats (Plausible v2) query for `host`, the site's own hostname. */
+async function readOneDollar(
+  apiKey: string,
+  host: string,
+  spec: { metrics: string[]; order?: string },
+  dimension: string | undefined,
+  dateRange: [string, string],
+  filters: unknown[] = [],
+): Promise<OdResult[]> {
+  const res = await fetch(OD_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      site_id: host,
+      metrics: spec.metrics,
+      date_range: dateRange,
+      ...(dimension ? { dimensions: [dimension] } : {}),
+      ...(spec.order ? { order_by: [[spec.order, "desc"]] } : {}),
+      ...(filters.length ? { filters } : {}),
+      pagination: { limit: 100, offset: 0 },
+    }),
+    signal: AbortSignal.timeout(OD_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`OneDollarStats ${res.status}`);
+  const payload = (await res.json().catch(() => null)) as {
+    results?: OdResult[];
+  } | null;
+  return payload?.results ?? [];
+}
+
+/** The window of equal length just before `since`, for trend deltas and the
+ *  Compare overlay. Windows are inclusive, so it ends the day BEFORE `since`
+ *  (ending at `since` would overlap the current period by one day). */
+function previousWindow(since: string, days: number): [string, string] {
+  const sinceMs = Date.parse(`${since}T00:00:00Z`);
+  const dayMs = 86400000;
+  return [
+    toIsoDate(new Date(sinceMs - days * dayMs)),
+    toIsoDate(new Date(sinceMs - dayMs)),
+  ];
+}
+
+/** KPIs always compare (the ↓/↑ deltas); timeseries only when the user turned
+ *  Compare on (the previous-period overlay). */
+function wantsPrevious(c: Context, report: string): boolean {
+  return (
+    report === "kpis" ||
+    (report === "timeseries" && c.req.query("compare") === "1")
+  );
+}
+
 /** The site's hostnames as OneDollarStats indexes them (`www.` variant), busiest
  *  first — the values the audience host picker offers and the site_id queries
  *  run against. From the warehouse domain set (no Supabase). Deduped, so two
@@ -1163,51 +1233,18 @@ export const createMonitorRoutes = () => {
       })
       .filter(Boolean);
 
-    const runOd = async (dateRange: [string, string]): Promise<OdResult[]> => {
-      const res = await fetch(OD_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          site_id: host,
-          metrics: spec.metrics,
-          date_range: dateRange,
-          ...(dimension ? { dimensions: [dimension] } : {}),
-          ...(spec.order ? { order_by: [[spec.order, "desc"]] } : {}),
-          ...(plausibleFilters.length ? { filters: plausibleFilters } : {}),
-          pagination: { limit: 100, offset: 0 },
-        }),
-        signal: AbortSignal.timeout(OD_TIMEOUT_MS),
-      });
-      if (!res.ok) throw new Error(`OneDollarStats ${res.status}`);
-      const payload = (await res.json().catch(() => null)) as {
-        results?: OdResult[];
-      } | null;
-      return payload?.results ?? [];
-    };
+    const runOd = (dateRange: [string, string]) =>
+      readOneDollar(apiKey, host, spec, dimension, dateRange, plausibleFilters);
 
     try {
       // For KPIs, also read the immediately-preceding window of equal length so
       // the cards can show trend deltas (the ↓/↑ % the old admin shows).
       const results = await runOd([since, until]);
       let previous: OdResult[] | undefined;
-      // KPIs always compare (the ↓/↑ deltas); timeseries only when the user
-      // turned Compare on (the previous-period overlay).
-      const wantsPrevious =
-        report === "kpis" ||
-        (report === "timeseries" && c.req.query("compare") === "1");
-      if (wantsPrevious) {
-        const sinceMs = Date.parse(`${since}T00:00:00Z`);
-        const dayMs = 86400000;
-        // Windows are inclusive, so the previous period must END the day BEFORE
-        // `since` (leaving prevUntil at `since` would overlap the current period
-        // by one day) while keeping its length equal to the current window.
-        const prevUntil = toIsoDate(new Date(sinceMs - dayMs));
-        const prevSince = toIsoDate(new Date(sinceMs - window.days * dayMs));
-        previous = await runOd([prevSince, prevUntil]).catch(() => undefined);
+      if (wantsPrevious(c, report)) {
+        previous = await runOd(previousWindow(since, window.days)).catch(
+          () => undefined,
+        );
       }
       return c.json({
         available: true,
@@ -1224,6 +1261,184 @@ export const createMonitorRoutes = () => {
         err,
       );
       return c.json({ error: "Failed to reach OneDollarStats" }, 502);
+    }
+  });
+
+  // GET /api/:org/monitor/:site/deco?report=&range=&tz= — the same audience
+  // reports from the site's Deco Analytics, read from the org's customer lake,
+  // so the dashboard offers it next to OneDollarStats. No filters or host:
+  // each breakdown is its own aggregate, and a registration covers all the
+  // site's domains.
+  app.get("/:site/deco", async (c) => {
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+    if (!isCustomerLakeConfigured()) return c.json({ available: false });
+
+    const report = c.req.query("report") ?? "kpis";
+    if (!OD_REPORTS[report]) {
+      return c.json({ error: `unknown report: ${report}` }, 400);
+    }
+    const range = c.req.query("range") ?? "7d";
+    const window = resolveWindow(
+      range,
+      c.req.query("since"),
+      c.req.query("until"),
+    );
+    if (!window) {
+      return c.json({ error: `unknown range: ${range}` }, 400);
+    }
+    const tz = c.req.query("tz") ?? "UTC";
+    if (!isTimezone(tz)) return c.json({ error: "unknown tz" }, 400);
+
+    const ctx = c.get("studioContext");
+    const organizationId = requireOrganization(ctx).id;
+    const registration = await ownedAnalyticsSiteId(
+      ctx,
+      organizationId,
+      guard.slug,
+    );
+    if (registration.status === "error") {
+      return c.json({ error: "Failed to resolve analytics registration" }, 502);
+    }
+    if (registration.status === "unregistered") {
+      return c.json({ available: false });
+    }
+    const siteId = registration.id;
+
+    const read = (w: { since: string; until: string }) =>
+      loadDecoAudience(
+        organizationId,
+        siteId,
+        report,
+        { ...w, granularity: window.granularity },
+        tz,
+      );
+    try {
+      const results = await read(window);
+      let previous: OdResult[] | undefined;
+      if (wantsPrevious(c, report)) {
+        const [since, until] = previousWindow(window.since, window.days);
+        previous = await read({ since, until }).catch(() => undefined);
+      }
+      return c.json({
+        available: true,
+        report,
+        range,
+        results,
+        ...(previous ? { previous } : {}),
+      });
+    } catch (err) {
+      console.error(`[monitor] deco ${report} failed for ${guard.slug}:`, err);
+      return c.json({ error: "Failed to read Deco Analytics" }, 502);
+    }
+  });
+
+  // GET /api/:org/monitor/:site/audience?view=&range=[&trafficSite=][&source=]
+  // — the Monitor's audience reads in one shape (web `audience-contract.ts`),
+  // whole UTC days. The site's Deco Analytics (org customer lake) answers when
+  // it's registered, else OneDollarStats; `source` asks for one of them.
+  // `trafficSite` reads another slug the org owns (a project's analytics
+  // override). `no-source` when neither has the site.
+  app.get("/:site/audience", async (c) => {
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+    const view = c.req.query("view") ?? "summary";
+    if (!Object.hasOwn(AUDIENCE_REPORTS, view)) {
+      return c.json({ error: `unknown view: ${view}` }, 400);
+    }
+    const report = AUDIENCE_REPORTS[view] as string;
+    const range = c.req.query("range") ?? "7d";
+    const window = Object.hasOwn(AUDIENCE_RANGE_WINDOW, range)
+      ? resolveWindow(
+          AUDIENCE_RANGE_WINDOW[range] as string,
+          undefined,
+          undefined,
+        )
+      : null;
+    if (!window) return c.json({ error: `unknown range: ${range}` }, 400);
+    const source = c.req.query("source");
+    if (source && source !== "deco-analytics" && source !== "onedollar") {
+      return c.json({ error: `unknown source: ${source}` }, 400);
+    }
+
+    const ctx = c.get("studioContext");
+    const organizationId = requireOrganization(ctx).id;
+    const traffic = c.req.query("trafficSite")?.toLowerCase() ?? guard.slug;
+    if (
+      traffic !== guard.slug &&
+      !(await ctx.storage.orgSites.isOwnedBy(traffic, organizationId))
+    ) {
+      return c.json({ error: "Site not found in organization" }, 404);
+    }
+
+    let read:
+      | ((w: { since: string; until: string }) => Promise<OdResult[]>)
+      | null = null;
+    let answered: "deco-analytics" | "onedollar" = "deco-analytics";
+    if (source !== "onedollar" && isCustomerLakeConfigured()) {
+      const registration = await ownedAnalyticsSiteId(
+        ctx,
+        organizationId,
+        traffic,
+      );
+      if (registration.status === "error") {
+        return c.json(
+          { error: "Failed to resolve analytics registration" },
+          502,
+        );
+      }
+      if (registration.status === "registered") {
+        read = (w) =>
+          loadDecoAudience(
+            organizationId,
+            registration.id,
+            report,
+            { ...w, granularity: window.granularity },
+            "UTC",
+          );
+      }
+    }
+    const apiKey = getSettings().oneDollarStatsApiKey;
+    if (!read && source !== "deco-analytics" && apiKey) {
+      let host: string | undefined;
+      try {
+        [host] = await siteOdHosts(traffic);
+      } catch (err) {
+        console.error(`[monitor] audience hosts failed for ${traffic}:`, err);
+        return c.json({ error: "Failed to read audience data" }, 502);
+      }
+      const spec = OD_REPORTS[report];
+      if (host && spec) {
+        answered = "onedollar";
+        const dimension =
+          report === "timeseries"
+            ? window.granularity === "hourly"
+              ? "time:hour"
+              : "time:day"
+            : spec.dimension;
+        read = (w) =>
+          readOneDollar(apiKey, host, spec, dimension, [w.since, w.until]);
+      }
+    }
+    if (!read) return c.json({ available: false, reason: "no-source" });
+
+    try {
+      const rows = await read(window);
+      const [since, until] = previousWindow(window.since, window.days);
+      const previous =
+        view === "summary"
+          ? await read({ since, until }).catch(() => null)
+          : null;
+      return c.json({
+        available: true,
+        source: answered,
+        range,
+        window: { kind: "calendar", since: window.since, until: window.until },
+        data: toAudienceData(view, rows, previous, answered),
+      });
+    } catch (err) {
+      console.error(`[monitor] audience ${view} failed for ${traffic}:`, err);
+      return c.json({ error: "Failed to read audience data" }, 502);
     }
   });
 

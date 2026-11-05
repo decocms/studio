@@ -16,17 +16,50 @@ import type { UIMessageChunk } from "ai";
 import { promptForRun, type EmitFrame } from "./claude-code";
 import { CodexChunkTranslator, record } from "./codex-to-ui-chunks";
 import { liveMessageChunk, type LiveMessageInbox } from "./live-messages";
+import {
+  studioCliEnv,
+  studioCliInstruction,
+  studioCliPluginDir,
+  writeStudioCliSession,
+} from "./studio-cli";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
+
+const isReadonly = (input: HarnessStreamInputWire) =>
+  input.mode === "plan" || input.toolApprovalLevel === "readonly";
+
+/**
+ * The org slug when this run reaches Studio through the CLI. Read-only runs
+ * keep the MCP: their `read-only` sandbox has no network for shell commands,
+ * while Codex itself still reaches MCP servers for the research tools. So does
+ * a run with a tool allowlist: `enabled_tools` is what enforces it.
+ */
+export function codexStudioCliOrg(
+  input: HarnessStreamInputWire,
+): string | null {
+  return input.studioCli && !isReadonly(input) && !input.toolAllowlist
+    ? input.studioCli.org
+    : null;
+}
+
+/** Plugin dirs whose `skills/*` this run's Codex discovers. */
+export function codexPluginDirs(input: HarnessStreamInputWire): string[] {
+  const studioCliPlugin = codexStudioCliOrg(input)
+    ? studioCliPluginDir()
+    : null;
+  return [
+    ...(process.env.CLAUDE_CODE_PLUGIN_DIRS ?? "").split(":").filter(Boolean),
+    ...(studioCliPlugin ? [studioCliPlugin] : []),
+  ];
+}
 
 export function codexConfig(
   input: HarnessStreamInputWire,
 ): Record<string, unknown> {
   const servers: Record<string, unknown> = {};
-  const readonly =
-    input.mode === "plan" || input.toolApprovalLevel === "readonly";
+  const readonly = isReadonly(input);
   for (const server of [
-    { name: "studio", ...input.mcp },
+    ...(codexStudioCliOrg(input) ? [] : [{ name: "studio", ...input.mcp }]),
     ...(input.orgMcps ?? []),
   ]) {
     if (server.name in servers)
@@ -72,7 +105,10 @@ export async function runCodex(
   _turnStartedAt?: number,
   inbox?: LiveMessageInbox,
 ): Promise<void> {
-  const translator = new CodexChunkTranslator();
+  const studioCliOrg = codexStudioCliOrg(input);
+  const translator = new CodexChunkTranslator({
+    studioCli: studioCliOrg !== null,
+  });
   const home =
     process.env.CODEX_HOME ?? join(process.env.HOME ?? ".", ".codex");
   const pointer = join(
@@ -102,6 +138,8 @@ export async function runCodex(
     await mkdir(join(home, "deco-sessions"), { recursive: true, mode: 0o700 });
     runtime = await mkdtemp(join(home, ".studio-runtime-"));
     await symlink(join(home, "sessions"), join(runtime, "sessions"));
+    const studioCliHome = join(runtime, "decocms");
+    if (studioCliOrg) await writeStudioCliSession(studioCliHome, input);
     const config = codexConfig(input);
     const providerUrl = process.env.OPENAI_BASE_URL;
     if (seed)
@@ -127,9 +165,7 @@ export async function runCodex(
     // plugins. Codex discovers the same files in its own user skills directory.
     const skills = join(runtime, "skills");
     await mkdir(skills, { mode: 0o700 });
-    for (const plugin of (process.env.CLAUDE_CODE_PLUGIN_DIRS ?? "")
-      .split(":")
-      .filter(Boolean)) {
+    for (const plugin of codexPluginDirs(input)) {
       const source = join(plugin, "skills");
       const entries = await readdir(source, { withFileTypes: true }).catch(
         () => [],
@@ -167,7 +203,10 @@ export async function runCodex(
         stdin: "pipe",
         stdout: "pipe",
         stderr: "ignore",
-        env: { ...env, CODEX_HOME: runtime },
+        env: {
+          ...(studioCliOrg ? studioCliEnv(env, studioCliHome) : env),
+          CODEX_HOME: runtime,
+        },
       },
     );
     const stdin = proc.stdin;
@@ -306,8 +345,7 @@ export async function runCodex(
         capabilities: { experimentalApi: true },
       });
       send({ method: "initialized" });
-      const readonly =
-        input.mode === "plan" || input.toolApprovalLevel === "readonly";
+      const readonly = isReadonly(input);
       const options = {
         cwd: input.workspace.cwd ?? "/repo",
         model,
@@ -316,6 +354,7 @@ export async function runCodex(
         developerInstructions: [
           input.agent.instructions,
           "The organization filesystem is mounted at /app/org/. Wait for commands to finish before ending your turn. Ask questions with request_user_input. The user's response arrives in the next turn.",
+          studioCliOrg ? studioCliInstruction(studioCliOrg) : undefined,
         ]
           .filter(Boolean)
           .join("\n\n"),

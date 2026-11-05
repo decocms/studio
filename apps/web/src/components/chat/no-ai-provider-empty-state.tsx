@@ -25,7 +25,6 @@ export function NoAiProviderEmptyState({
   const { org } = useProjectContext();
   const [pendingProvider, setPendingProvider] =
     useState<ProviderSelection | null>(null);
-  const [gridOpen, setGridOpen] = useState(false);
 
   const aiProviders = useAiProviders();
   const providers = (aiProviders?.providers ?? []).filter(
@@ -60,16 +59,14 @@ export function NoAiProviderEmptyState({
         <ProviderGrid
           providers={providers}
           onSelect={(selection) => setPendingProvider(selection)}
-          onShowAll={() => setGridOpen(true)}
         />
       </div>
 
       <ConnectProviderDialog
-        open={pendingProvider !== null || gridOpen}
+        open={pendingProvider !== null}
         onOpenChange={(o) => {
           if (!o) {
             setPendingProvider(null);
-            setGridOpen(false);
           }
         }}
         initialProvider={pendingProvider ?? undefined}

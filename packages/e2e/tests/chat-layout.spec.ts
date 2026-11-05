@@ -77,14 +77,9 @@ test.describe("chat layout composition", () => {
     ).toBe(true);
     expect(new URL(page.url()).pathname).toBe(path);
 
-    await page
-      .getByRole("navigation", { name: "Project settings sections" })
-      .getByRole("link", { name: "General", exact: true })
-      .click();
-    await page.getByRole("button", { name: /^Automations\b/ }).click();
+    await sidebar.getByRole("link", { name: "Execute", exact: true }).click();
     await expect(page).toHaveURL(
-      (url) =>
-        url.pathname === `/${orgSlug}/projects/${project.item.id}/automations`,
+      (url) => url.pathname === `/${orgSlug}/projects/${project.item.id}/tasks`,
     );
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect
@@ -92,8 +87,9 @@ test.describe("chat layout composition", () => {
         Math.abs((await chat.boundingBox())!.width - resizedWidth),
       )
       .toBeLessThan(2);
+    // The project's Settings row, not the org settings gear in the footer.
     await sidebar
-      .getByRole("button", { name: "Settings", exact: true })
+      .locator('a[data-sidebar="menu-button"]', { hasText: "Settings" })
       .click();
     await expect(input).toBeVisible();
     await expect
@@ -151,8 +147,9 @@ test.describe("chat layout composition", () => {
     expect(pageErrors).toEqual([]);
 
     await page
-      .locator('[data-slot="sidebar"]')
-      .getByRole("button", { name: "Settings", exact: true })
+      .locator('[data-slot="sidebar"] a[data-sidebar="menu-button"]', {
+        hasText: "Settings",
+      })
       .click();
     await expect(page).toHaveURL(
       (url) =>
@@ -171,9 +168,9 @@ test.describe("chat layout composition", () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/${orgSlug}/home`);
+    // The page header's button and the chat topbar's open the same sheet.
     const toggle = page.getByRole("button", {
-      name: "Toggle sidebar",
-      exact: true,
+      name: /^(Expand|Toggle) sidebar$/,
     });
     await expect(page.getByTestId("page-header")).toBeVisible({
       timeout: 90_000,

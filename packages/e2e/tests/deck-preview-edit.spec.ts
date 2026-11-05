@@ -43,6 +43,9 @@ test.describe("deck preview tab", () => {
     // triple the budget so a busy host doesn't flake the save poll.
     test.slow();
     const { page, orgSlug } = authedPage;
+    // Room for the org rail and sidebar beside the deck, so its slide rail
+    // stays on screen after the resize below narrows the preview.
+    await page.setViewportSize({ width: 1600, height: 900 });
     const api = page.context().request;
 
     // Seed the deck in the home volume (same write surface the sandbox

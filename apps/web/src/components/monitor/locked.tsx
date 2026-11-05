@@ -10,21 +10,32 @@
 
 import { type ReactNode, useState } from "react";
 import { Link, type LinkProps } from "@tanstack/react-router";
-import { Globe02, Plus } from "@untitledui/icons";
+import { Plus } from "@untitledui/icons";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Check } from "@untitledui/icons";
 import { ListRow } from "@decocms/ui/components/list-row.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
+import { toast } from "sonner";
 import { IntegrationIcon } from "@/components/integration-icon";
+import { ProjectIcon } from "@/components/project-icon";
+import { useRepositories } from "@/hooks/use-git-providers";
+import { useInstallAnalytics } from "@/hooks/use-install-analytics";
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { useProjectContext } from "@/sdk";
-import { formatCount } from "@/layouts/main-panel-tabs/monitor-v8";
 import type { TimelinePoint } from "@/layouts/main-panel-tabs/cdn-tab";
-import { CopyButton } from "@/layouts/main-panel-tabs/analytics-tab";
 import { useT } from "@/i18n/use-t.ts";
 import { openNewProjectDialog } from "@/components/projects/new-project-store";
 import { ConnectSourceDialog } from "@/routes/reports-onboarding/connect-source-dialog";
 import { VtexConnectButton } from "./vtex-connect-dialog";
-import type { ExperimentRow, SourceId, SourceState } from "./board";
+import type { SourceId, SourceState } from "./board";
+import type { SiteProject } from "./org-insights";
 import { connectPowers, platformName } from "./sources-panel";
 import {
   type SiteUsage,
@@ -34,9 +45,13 @@ import {
   sumTimelines,
 } from "./sites-monitor";
 import { useSourceIcons } from "./use-source-icons";
+import { connectLink } from "./parts";
 
 /** How far back the preview sits behind the button. */
-export const FADED =
+/** A list inside the card scrolls on its own past a few rows, so the card never outgrows the page. */
+const LIST = "flex max-h-[min(22rem,45vh)] flex-col overflow-y-auto";
+
+const FADED =
   "pointer-events-none flex flex-col gap-4 opacity-15 grayscale select-none";
 
 /**
@@ -51,7 +66,7 @@ const CONNECT_FIELD: Partial<Record<SourceId, string>> = {
 };
 
 /** The button over a faded tab or card: the source, by name. */
-export function ConnectButton({
+function ConnectButton({
   label,
   link,
   source,
@@ -111,7 +126,7 @@ export function ConnectButton({
 }
 
 /** Which tab a panel stands in for, so its picture can show that tab. */
-export type LockedKind = "metrics" | "deploys" | "experiments" | "analytics";
+export type LockedKind = "metrics" | "analytics";
 
 /**
  * What each tab shows once connected, drawn small (160×72) in the chart
@@ -162,166 +177,6 @@ function Vignette({ kind }: { kind: LockedKind }) {
             r={4}
             className="fill-chart-1 stroke-background"
             strokeWidth={2}
-          />
-        </>
-      );
-    case "deploys":
-      return (
-        <>
-          <line x1={4} x2={156} y1={66} y2={66} className="stroke-border" />
-          <path
-            d="M4 50 C22 48 30 40 44 40 S70 44 80 42 S96 60 110 58 S140 46 156 44"
-            fill="none"
-            className="stroke-chart-1"
-            strokeWidth={2.5}
-            strokeLinecap="round"
-          />
-          {[
-            { x: 40, tone: "success" },
-            { x: 82, tone: "destructive" },
-            { x: 128, tone: "muted" },
-          ].map(({ x, tone }) => (
-            <g key={x}>
-              <line
-                x1={x}
-                x2={x}
-                y1={20}
-                y2={66}
-                strokeDasharray="2 3"
-                className={cn(
-                  tone === "destructive"
-                    ? "stroke-destructive/50"
-                    : "stroke-muted-foreground/30",
-                )}
-              />
-              <circle
-                cx={x}
-                cy={12}
-                r={6}
-                strokeWidth={2.5}
-                className={cn(
-                  "stroke-background",
-                  tone === "success" && "fill-success",
-                  tone === "destructive" && "fill-destructive",
-                  tone === "muted" && "fill-muted-foreground/50",
-                )}
-              />
-            </g>
-          ))}
-        </>
-      );
-    case "experiments":
-      // A page split down the middle: version A as it is, version B with the
-      // change, and B winning.
-      return (
-        <>
-          <rect
-            x={20}
-            y={4}
-            width={120}
-            height={64}
-            rx={8}
-            strokeWidth={1.5}
-            className="fill-background stroke-border"
-          />
-          <line x1={20} x2={140} y1={16} y2={16} className="stroke-border" />
-          {[28, 34, 40].map((cx) => (
-            <circle
-              key={cx}
-              cx={cx}
-              cy={10}
-              r={1.6}
-              className="fill-muted-foreground/40"
-            />
-          ))}
-          <line
-            x1={80}
-            x2={80}
-            y1={16}
-            y2={68}
-            strokeDasharray="2 3"
-            className="stroke-muted-foreground/40"
-          />
-          {/* A */}
-          <rect
-            x={28}
-            y={24}
-            width={44}
-            height={14}
-            rx={3}
-            className="fill-muted-foreground/15"
-          />
-          <rect
-            x={28}
-            y={43}
-            width={34}
-            height={4}
-            rx={2}
-            className="fill-muted-foreground/20"
-          />
-          <rect
-            x={28}
-            y={51}
-            width={26}
-            height={4}
-            rx={2}
-            className="fill-muted-foreground/20"
-          />
-          <rect
-            x={28}
-            y={59}
-            width={16}
-            height={5}
-            rx={2.5}
-            className="fill-muted-foreground/30"
-          />
-          {/* B */}
-          <rect
-            x={88}
-            y={24}
-            width={44}
-            height={14}
-            rx={3}
-            className="fill-chart-1/25"
-          />
-          <rect
-            x={88}
-            y={43}
-            width={34}
-            height={4}
-            rx={2}
-            className="fill-muted-foreground/20"
-          />
-          <rect
-            x={88}
-            y={51}
-            width={26}
-            height={4}
-            rx={2}
-            className="fill-muted-foreground/20"
-          />
-          <rect
-            x={88}
-            y={58}
-            width={26}
-            height={7}
-            rx={3.5}
-            className="fill-chart-1"
-          />
-          <circle
-            cx={140}
-            cy={6}
-            r={8}
-            strokeWidth={2.5}
-            className="fill-success stroke-background"
-          />
-          <path
-            d="M136.5 6 l2.5 2.5 l4.5 -4.5"
-            fill="none"
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="stroke-background"
           />
         </>
       );
@@ -395,6 +250,75 @@ export interface SourceStep {
 
 const NO_STEPS: readonly SourceStep[] = [];
 
+/** A row per source: what it brings and its Connect button, or Connected. The first one missing leads. */
+function SourceRows({
+  steps,
+  link,
+}: {
+  steps: readonly SourceStep[];
+  link: LinkProps;
+}) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const iconOf = useSourceIcons(org.slug, []);
+  // A VTEX connection without the order ingest still needs connecting here.
+  const lead = steps.find((s) => s.state !== "live");
+  return steps.map((step) => (
+    <ListRow
+      key={step.source + (step.label ?? "")}
+      variant="divided"
+      lead={
+        <IntegrationIcon
+          icon={iconOf(step.source)}
+          name={platformName(step.source, t)}
+          size="xs"
+          fit="contain"
+        />
+      }
+      title={platformName(step.source, t)}
+      meta={step.meta ?? connectPowers(step.source, t)}
+      trailing={
+        step.state !== "live" ? (
+          <ConnectButton
+            label={step.label ?? t("monitor.connect.short")}
+            link={step.link ?? link}
+            source={step.link ? undefined : step.source}
+            quiet={step !== lead}
+          />
+        ) : (
+          <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+            <Check size={14} className="text-success" />
+            {t("monitor.connect.done")}
+          </span>
+        )
+      }
+    />
+  ));
+}
+
+/** The sources still missing, on a page that already has some: a quiet card under the numbers. */
+export function ConnectMore({
+  steps,
+  link,
+}: {
+  steps: readonly SourceStep[];
+  link: LinkProps;
+}) {
+  const t = useT();
+  const missing = steps.filter((s) => s.state !== "live");
+  if (missing.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-medium text-foreground">
+        {t("monitor.connect.more")}
+      </h2>
+      <div className="surface px-4 py-1">
+        <SourceRows steps={missing} link={link} />
+      </div>
+    </section>
+  );
+}
+
 export function Locked({
   kind,
   title,
@@ -414,21 +338,22 @@ export function Locked({
   /** The tab as it will look, from the preview. */
   children: ReactNode;
 }) {
-  const t = useT();
-  const { org } = useProjectContext();
-  const iconOf = useSourceIcons(org.slug, []);
-  // A VTEX connection without the order ingest still needs connecting here.
-  const lead = steps.find((s) => s.state !== "live");
   return (
-    <div className="relative h-[calc(100dvh-11rem)] min-h-[520px] overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
-      <div aria-hidden className={FADED}>
+    <div className="relative h-[calc(100dvh-11rem)] min-h-[520px] overflow-hidden">
+      <div
+        aria-hidden
+        className={cn(
+          FADED,
+          "[mask-image:linear-gradient(to_bottom,black_70%,transparent)]",
+        )}
+      >
         {children}
       </div>
       {/* The design system's floating panel, frosted glass. No scrim: the
           page under it is already faded, and a scrim boxed to the content
           reads as a grey slab rather than a dimmed screen. */}
-      <div className="absolute inset-0 flex items-center justify-center pb-16">
-        <div className="glass flex w-full max-w-md flex-col gap-5 rounded-2xl p-6">
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="glass flex max-h-full w-full max-w-md flex-col gap-5 overflow-y-auto rounded-2xl p-6">
           <ConnectGlyph kind={kind} />
           <div className="flex flex-col gap-1">
             <p className="text-[1.375rem] leading-tight font-medium tracking-[-0.02em] text-foreground">
@@ -436,137 +361,201 @@ export function Locked({
             </p>
           </div>
           {guide}
-          <div className="flex flex-col">
-            {steps.map((step) => (
-              <ListRow
-                key={step.source + (step.label ?? "")}
-                variant="divided"
-                lead={
-                  <IntegrationIcon
-                    icon={iconOf(step.source)}
-                    name={platformName(step.source, t)}
-                    size="xs"
-                    fit="contain"
-                  />
-                }
-                title={platformName(step.source, t)}
-                meta={step.meta ?? connectPowers(step.source, t)}
-                trailing={
-                  step.state !== "live" ? (
-                    <ConnectButton
-                      label={step.label ?? t("monitor.connect.short")}
-                      link={step.link ?? link}
-                      source={step.link ? undefined : step.source}
-                      quiet={step !== lead}
-                    />
-                  ) : (
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                      <Check size={14} className="text-success" />
-                      {t("monitor.connect.done")}
-                    </span>
-                  )
-                }
-              />
-            ))}
-          </div>
+          {steps.length > 0 && (
+            <div className={LIST}>
+              <SourceRows steps={steps} link={link} />
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
-/** The collector's tag, as a site off our CDN pastes it. */
-const SNIPPET =
-  '<script async src="https://analytics.decocdn.com/_dq/a.js?k=YOUR_TOKEN"></script>';
 
 /**
  * How analytics gets onto a site, for the Analytics panel: there is nothing
- * to connect. A site on deco collects once it's turned on; any other site
- * pastes one line, with the token its project gives it.
+ * to connect. The Super Agent adds the collector's tag to a site's code and
+ * opens a pull request; with no site yet, the way in is adding one.
  */
-export function AnalyticsGuide() {
-  const t = useT();
-  const { org } = useProjectContext();
-  const iconOf = useSourceIcons(org.slug, []);
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col">
-        <ListRow
-          variant="divided"
-          lead={
-            <IntegrationIcon
-              icon={iconOf("site")}
-              name={platformName("site", t)}
-              size="xs"
-              fit="contain"
-            />
-          }
-          title={t("monitor.analyticsGuide.deco")}
-          meta={t("monitor.analyticsGuide.decoHow")}
-        />
-        <ListRow
-          variant="divided"
-          lead={
-            <span className="flex size-6 items-center justify-center text-muted-foreground">
-              <Globe02 size={16} />
-            </span>
-          }
-          title={t("monitor.analyticsGuide.other")}
-          meta={t("monitor.analyticsGuide.otherHow")}
-        />
-      </div>
-      <div className="flex items-start justify-between gap-2 rounded-lg border border-border bg-muted/30 py-1.5 pr-1.5 pl-3">
-        <code className="pt-1 text-xs break-all text-muted-foreground">
-          {SNIPPET}
-        </code>
-        <CopyButton text={SNIPPET} />
-      </div>
-      <Button
-        size="sm"
-        className="gap-1 self-center shadow-sm"
-        onClick={() => openNewProjectDialog("monitor")}
-      >
-        <Plus size={14} />
-        {t("monitor.analyticsGuide.add")}
-      </Button>
-    </div>
+const NO_PROJECTS: readonly SiteProject[] = [];
+
+/**
+ * The projects the Super Agent can install on, or `null` while the org's
+ * repositories load: it opens its PR in the project's repository, so only a
+ * project bound to one the org has connected can take the tag.
+ */
+function useInstallableProjects(
+  projects: readonly SiteProject[],
+): SiteProject[] | null {
+  const repositoriesQuery = useRepositories();
+  if (repositoriesQuery.isLoading) return null;
+  const repositories = repositoriesQuery.data ?? [];
+  return projects.filter(
+    (p) =>
+      p.repository &&
+      repositories.some((r) =>
+        sameRepositoryBinding(p.repository!, {
+          repositoryId: r.id,
+          url: r.webUrl,
+        }),
+      ),
   );
 }
 
-const LINE = "flex h-10 items-center gap-3 rounded-lg px-2 text-sm";
-const CARD = "surface flex flex-col gap-2 p-3";
-
-const STATE_DOT: Record<ExperimentRow["state"], string> = {
-  ready: "bg-success",
-  running: "bg-chart-1",
-  "low-traffic": "bg-muted-foreground",
-};
-
-/** The org's experiments list, from the preview, for the faded background. */
-export function ExperimentsPreview({
-  experiments,
+export function AnalyticsGuide({
+  projects = NO_PROJECTS,
+  more = NO_PROJECTS,
 }: {
-  experiments: readonly ExperimentRow[];
+  /** The org's site projects; those with a connected repository are offered
+   *  to the Super Agent. */
+  projects?: readonly SiteProject[];
+  /** Projects "Add another site" offers before falling back to a new project. */
+  more?: readonly SiteProject[];
 }) {
   const t = useT();
+  const install = useInstallAnalytics();
+  const installable = useInstallableProjects(projects);
+  const installableMore = useInstallableProjects(more);
+  const [domain, setDomain] = useState("");
+  // The site hosting knows no domain for, asked where it's live.
+  const [asking, setAsking] = useState<string | null>(null);
+  const pendingSite = install.isPending ? install.variables?.site : null;
+  if (!installable) return null;
+  if (installable.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">
+          {t("monitor.analyticsGuide.introEmpty")}
+        </p>
+        <Button
+          size="sm"
+          className="gap-1 self-center shadow-sm"
+          onClick={() => openNewProjectDialog("monitor")}
+        >
+          <Plus size={14} />
+          {t("monitor.analyticsGuide.add")}
+        </Button>
+      </div>
+    );
+  }
   return (
-    <section className={CARD}>
-      <h2 className="flex items-center gap-2 px-2 pt-1 pb-1 text-sm font-medium text-foreground">
-        {t("monitor.view.experiments")}
-        <span className="text-muted-foreground tabular-nums">
-          {experiments.length}
-        </span>
-      </h2>
-      {experiments.map((e) => (
-        <div key={e.id} className={LINE}>
-          <span className={cn("size-1.5 rounded-full", STATE_DOT[e.state])} />
-          <span className="text-foreground">{e.title}</span>
-          <span className="flex-1 text-muted-foreground">
-            {formatCount(e.participants)} · {Math.round(e.probability * 100)}%
-          </span>
-        </div>
-      ))}
-    </section>
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        {t("monitor.analyticsGuide.intro")}
+      </p>
+      <div className={LIST}>
+        {installable.map((project) =>
+          asking === project.site ? (
+            <form
+              key={project.id}
+              className="flex flex-col gap-2 border-b border-border py-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                install.mutate(
+                  { site: project.site, domain },
+                  {
+                    onSuccess: (result) => {
+                      if (result.status === "needs_domain") {
+                        toast.error(t("monitor.analyticsGuide.domainInvalid"));
+                      }
+                    },
+                  },
+                );
+              }}
+            >
+              <label
+                htmlFor="analytics-domain"
+                className="text-sm text-foreground"
+              >
+                {t("monitor.analyticsGuide.domain", { site: project.title })}
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  id="analytics-domain"
+                  autoFocus
+                  inputMode="url"
+                  placeholder="www.example.com"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={!domain.trim() || install.isPending}
+                >
+                  {pendingSite === project.site
+                    ? t("monitor.analyticsGuide.installing")
+                    : t("monitor.analyticsGuide.install")}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <ListRow
+              key={project.id}
+              variant="divided"
+              lead={<ProjectIcon icon={project.icon} name={project.title} />}
+              title={project.title}
+              meta={project.site}
+              trailing={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={install.isPending}
+                  onClick={() => {
+                    setDomain("");
+                    install.mutate(
+                      { site: project.site },
+                      {
+                        onSuccess: (result) =>
+                          setAsking(
+                            result.status === "needs_domain"
+                              ? project.site
+                              : null,
+                          ),
+                      },
+                    );
+                  }}
+                >
+                  {pendingSite === project.site
+                    ? t("monitor.analyticsGuide.installing")
+                    : t("monitor.analyticsGuide.install")}
+                </Button>
+              }
+            />
+          ),
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {t("monitor.analyticsGuide.manual")}
+        </p>
+        {installableMore && installableMore.length > 0 ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button size="sm" variant="ghost" className="shrink-0 gap-1">
+                <Plus size={14} />
+                {t("monitor.analyticsGuide.addAnother")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-96">
+              <AnalyticsGuide projects={installableMore} />
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="shrink-0 gap-1"
+            onClick={() => openNewProjectDialog("monitor")}
+          >
+            <Plus size={14} />
+            {t("monitor.analyticsGuide.addAnother")}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -643,5 +632,89 @@ export function AnalyticsPreview() {
     <SitesMonitor
       data={{ ...PREVIEW_ANALYTICS, currentLabel: t("monitor.chart.today") }}
     />
+  );
+}
+
+/** A tab read one project at a time, before one is picked: the connect card, a row per project. */
+export function PickProject({
+  projects,
+  onProject,
+  children,
+}: {
+  projects: readonly SiteProject[];
+  onProject: (projectId: string) => void;
+  /** The tab as it will look, faded behind. */
+  children: ReactNode;
+}) {
+  const t = useT();
+  const { org } = useProjectContext();
+  return (
+    <Locked
+      kind="analytics"
+      title={t("monitor.deco.pickProject")}
+      link={connectLink(org.slug, null)}
+      guide={
+        <div className={LIST}>
+          {projects.map((project, i) => (
+            <ListRow
+              key={project.id}
+              variant="divided"
+              lead={<ProjectIcon icon={project.icon} name={project.title} />}
+              title={project.title}
+              meta={project.site}
+              trailing={
+                <Button
+                  size="sm"
+                  variant={i === 0 ? "default" : "outline"}
+                  className="shrink-0"
+                  onClick={() => onProject(project.id)}
+                >
+                  {t("monitor.pickProject.open")}
+                </Button>
+              }
+            />
+          ))}
+        </div>
+      }
+    >
+      {children}
+    </Locked>
+  );
+}
+
+/** A site without Deco Analytics yet: the same card, saying it is on its way. */
+export function AnalyticsSoon() {
+  const t = useT();
+  const { org } = useProjectContext();
+  return (
+    <Locked
+      kind="analytics"
+      title={t("monitor.analyticsSoon.title")}
+      link={connectLink(org.slug, null)}
+      guide={
+        <div>
+          <ListRow
+            variant="divided"
+            lead={
+              <IntegrationIcon
+                icon="/logos/deco%20logo.svg"
+                name={t("monitor.audience.source.decoAnalytics")}
+                size="xs"
+                fit="contain"
+              />
+            }
+            title={t("monitor.audience.source.decoAnalytics")}
+            meta={t("monitor.analyticsSoon.powers")}
+            trailing={
+              <Badge variant="outline" className="shrink-0">
+                {t("monitor.analyticsSoon.badge")}
+              </Badge>
+            }
+          />
+        </div>
+      }
+    >
+      <AnalyticsPreview />
+    </Locked>
   );
 }

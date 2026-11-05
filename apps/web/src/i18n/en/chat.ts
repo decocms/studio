@@ -476,16 +476,6 @@ export const chat = {
   "chat.todoStatus.completed": "completed",
   "chat.todoStatus.inProgress": "in progress",
   "chat.todoStatus.pending": "pending",
-  "chat.subscriptionLimit.trialLabel": "Subscription required",
-  "chat.subscriptionLimit.trialTitle":
-    "This organization used its 3 free auto-task runs. Subscribe to keep going.",
-  "chat.subscriptionLimit.monthlyLabel": "Auto-task quota used up",
-  "chat.subscriptionLimit.monthlyTitle":
-    "This organization used its auto-task runs for this billing cycle. More become available next cycle.",
-  "chat.subscriptionLimit.runsLabel": "Task limit reached",
-  "chat.subscriptionLimit.runsTitle":
-    "This task reached its re-run limit. Create a new task to keep going.",
-  "chat.subscriptionLimit.subscribeButton": "Subscribe",
   "chat.planRefused.budgetLabel": "AI allowance used up",
   "chat.planRefused.budgetTitle":
     "This organization has used 100% of its AI allowance. Choose a plan to keep chatting.",

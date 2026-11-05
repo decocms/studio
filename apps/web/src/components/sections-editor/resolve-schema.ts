@@ -60,7 +60,14 @@ export interface SchemaProperty {
     schema?: SchemaProperty;
     /** Value of the union discriminator field (e.g. `image-card`). */
     discriminatorValue?: string;
+    /** The branch lists its discriminator in `required`. */
+    discriminatorRequired?: boolean;
   }>;
+  /**
+   * A block-ref typed as plain `Section`: it accepts every section, while its
+   * `anyOfRefs` name only a few. `Section<T>` lists exactly what it accepts.
+   */
+  acceptsAnySection?: true;
   /** Property used to pick the active union branch (e.g. `type`). */
   discriminatorKey?: string;
   /**
@@ -286,6 +293,20 @@ function lookupManifestBlockSchema(
   return {};
 }
 
+/**
+ * Whether this meta knows the block at all — the exact question
+ * {@link lookupManifestBlockSchema} answers, since it returns `{}` for a
+ * resolveType it cannot place. Worth asking before rendering a form: a block
+ * the manifest has no entry for falls back to the site-wide schema, whose
+ * fields belong to no block in particular.
+ */
+export function hasManifestBlockSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): boolean {
+  return Object.keys(lookupManifestBlockSchema(resolveType, meta)).length > 0;
+}
+
 /** Whether resolveType refers to a manifest `apps` block (legacy + site/apps aliases). */
 export function isResolvableManifestApp(
   meta: LiveMeta,
@@ -444,6 +465,20 @@ function buildSchema(
     const key = s.$ref.split("/").pop() ?? "";
     if (!key || seen.has(key)) return s;
     return unwrapRefAliases(resolveRef(s.$ref), new Set([...seen, key]));
+  };
+
+  /** True when `s` aliases the registry of every section (plain `Section`, not `Section<T>`). */
+  const refsSectionRegistry = (
+    s: RawSchema,
+    seen: Set<string> = new Set(),
+  ): boolean => {
+    if (typeof s.$ref !== "string") return false;
+    const key = s.$ref.split("/").pop() ?? "";
+    if (s.$ref === "#/root/sections" || key === SECTION_REF_DEF_KEY) {
+      return true;
+    }
+    if (!key || seen.has(key)) return false;
+    return refsSectionRegistry(resolveRef(s.$ref), new Set([...seen, key]));
   };
 
   const inlineLoaderResolveType = (s: RawSchema): string | undefined => {
@@ -692,6 +727,10 @@ function buildSchema(
 
         // deco.cx inline loader branches
         const loaderBranches = nonNull.filter(isInlineLoaderBranch);
+        const acceptsAnySection =
+          refsSectionRegistry(v) ||
+          nonNull.some((b) => refsSectionRegistry(b)) ||
+          undefined;
 
         // Site `global` / page `sections`: plain section arrays with an optional
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
@@ -863,6 +902,7 @@ function buildSchema(
                   ? resolved.description
                   : undefined,
             anyOfRefs,
+            acceptsAnySection,
             plainSchema,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
@@ -1025,6 +1065,11 @@ function buildSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
+              // Read here, not from `schema`: a cyclic or deep branch has none.
+              discriminatorRequired: [
+                def,
+                ...((def.allOf as RawSchema[]) ?? []),
+              ].some((part) => asStringArray(part.required).includes("type")),
               // Type-discriminated branches have no module resolveType to
               // re-resolve from, so keep them eager regardless of union size.
               schema: eagerBranchSchema(def, depth + 1, nonNull.length, false),
@@ -1165,6 +1210,7 @@ function buildSchema(
           }
           return {
             type: "block-ref",
+            acceptsAnySection,
             title:
               typeof v.title === "string"
                 ? v.title

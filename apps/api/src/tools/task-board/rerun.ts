@@ -31,6 +31,7 @@
  */
 
 import { z } from "zod";
+import { ConflictError } from "@/core/conflict-error";
 import { defineTool } from "@/core/define-tool";
 import {
   getUserId,
@@ -56,10 +57,6 @@ import { fireImplementer } from "@/automations/fire-implementer";
 import { allEnabledReviewersVerifiedApproved } from "./merge-pr";
 import { fetchPrConflict, pickActivePr } from "./prs-get";
 import { conflictResolutionCapReached } from "./conflict-reaction";
-import {
-  ensureTaskExecutionAllowed,
-  userInitiatedTaskQuotaConfig,
-} from "@/billing/task-quota";
 
 /** Recorded on a thread this re-run took over. */
 const SUPERSEDED_FAILURE_REASON = "Superseded by a manual re-run of this task";
@@ -277,7 +274,7 @@ export async function refuseIfMergePending(
   if (mergeRetryExpired(activity, Date.now(), item.reviewCycleStartedAt))
     return;
   if (await mergeIsDeadlocked(ctx, item, activity)) return;
-  throw new Error(
+  throw new ConflictError(
     "Every reviewer approved this task and its merge is retrying — re-running " +
       "would throw that away and start a new review cycle. Wait for the merge, " +
       "or use the ship button if the PR needs a nudge.",
@@ -324,11 +321,12 @@ export async function supersedeLiveRuns(
 export const TASK_BOARD_ITEM_RERUN = defineTool({
   name: "TASK_BOARD_ITEM_RERUN",
   description:
-    "Re-run a task board item with the Super Agent, whatever lane it is in. " +
-    "Use this to retry a task that stalled, finished without doing the job, or " +
-    "is already assigned to the Super Agent (in which case re-assigning it " +
-    "does nothing). Fails any run still holding the task open, moves it to In " +
-    "Progress, and queues a fresh run.",
+    "Re-run a task board item already assigned to the Super Agent, whatever " +
+    "lane it is in — e.g. one that stalled or finished without doing the job. " +
+    "Fails any run still holding the task open, moves it to In Progress, and " +
+    "queues a fresh run. Any other task: set its assigneeId to " +
+    `"${SUPER_AGENT_ASSIGNEE_ID}" with TASK_BOARD_ITEM_UPDATE instead, which ` +
+    "starts the run.",
   annotations: {
     title: "Re-run Task",
     readOnlyHint: false,
@@ -371,16 +369,14 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     // would be a surprise; the caller reassigns first if that's what they want
     // (and that transition dispatches on its own).
     if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) {
-      throw new Error(
+      throw new ConflictError(
         "Only a task assigned to the Super Agent can be re-run. Assign it to " +
-          "the Super Agent instead — that queues a run by itself.",
+          `the Super Agent instead (assigneeId "${SUPER_AGENT_ASSIGNEE_ID}" ` +
+          "with TASK_BOARD_ITEM_UPDATE) — that queues a run by itself.",
       );
     }
 
     await refuseIfMergePending(ctx, item);
-
-    // Paywall before any write: a refused re-run must leave the card untouched.
-    await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
 
     const supersededThreadIds = await supersedeLiveRuns(ctx, item);
 
@@ -389,11 +385,8 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
 
     // In Progress before dispatch, so the card reads as running the moment the
     // board refreshes rather than sitting in its old lane until the run's first
-    // chunk lands. the Implementer's run claims quota itself (idempotent
-    // per task, and exempt from `maxRunsPerTask`) and throws
-    // `TaskQuotaError` on an empty period bucket — which must surface, so NOT
-    // best-effort: a swallowed failure here is exactly the silent no-op this
-    // tool exists to remove.
+    // chunk lands. The dispatch is NOT best-effort: a swallowed failure here is
+    // exactly the silent no-op this tool exists to remove.
     const progress = LANES.progress;
     const updated = progress
       ? await ctx.storage.taskBoard.update(
@@ -412,7 +405,7 @@ export const TASK_BOARD_ITEM_RERUN = defineTool({
     });
     emitTaskBoardUpdated(organizationId, updated);
 
-    await fireImplementer(ctx, updated, { userInitiated: true });
+    await fireImplementer(ctx, updated);
 
     return { status: updated.status, supersededThreadIds };
   },

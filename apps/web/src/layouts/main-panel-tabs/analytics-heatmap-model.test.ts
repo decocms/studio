@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  elementCtr,
   frameUrl,
   gateViews,
   parseHeatmap,
@@ -354,5 +355,66 @@ describe("heatmap tab gating", () => {
     expect(pickView(undefined, without)).toBe("overview");
     expect(pickView("vitals", without)).toBe("vitals");
     expect(pickView("heatmap", gateViews(views, ["heatmap"]))).toBe("heatmap");
+  });
+});
+
+describe("elementCtr", () => {
+  const m = parseHeatmap({
+    hmSummary: [{ views: "1000" }],
+    hmSections: [{ root: "fs:hero#0", seen_views: "400", reach_pct: 40 }],
+    hmElements: [
+      { root: "fs:hero#0", el: "1", clicks: "90", views: "60" },
+      { root: "", el: "2", clicks: "5", views: "5" },
+    ],
+  });
+
+  it("divides by the views that SAW the element's section, not by the page", () => {
+    const hero = m.elements.find((e) => e.el === "1");
+    expect(hero && elementCtr(m, hero)).toEqual({ ctr: 0.15, seen: 400 });
+  });
+
+  it("falls back to page views outside any section", () => {
+    const loose = m.elements.find((e) => e.el === "2");
+    expect(loose && elementCtr(m, loose)).toEqual({ ctr: 0.005, seen: 1000 });
+  });
+});
+
+describe("hmFunnel", () => {
+  it("splits the page baseline from the element rows", () => {
+    const m = parseHeatmap({
+      hmFunnel: [
+        {
+          root: "",
+          el: "0",
+          visitors: "50",
+          viewed: "20",
+          carted: "5",
+          checkout: "2",
+          bought: "1",
+        },
+        {
+          root: "fs:hero#0",
+          el: "1",
+          visitors: "10",
+          viewed: "8",
+          carted: "3",
+          checkout: "1",
+          bought: "1",
+        },
+      ],
+    });
+    expect(m.pageFunnel).toEqual({
+      visitors: 50,
+      viewed: 20,
+      carted: 5,
+      checkout: 2,
+      bought: 1,
+    });
+    expect(m.funnel.get("fs:hero#0|1")?.carted).toBe(3);
+    expect(m.funnel.size).toBe(1);
+  });
+
+  it("has no baseline when the panel is absent", () => {
+    expect(parseHeatmap({}).pageFunnel).toBeNull();
   });
 });

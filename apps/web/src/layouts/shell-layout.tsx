@@ -19,6 +19,7 @@ import { isModKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { authClient } from "@/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
+import { clearLastLocation, readLastLocation } from "@/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { activeOrganizationQueryOptions } from "@/lib/active-organization";
 import { PostHogGroupSync } from "@/providers/posthog-group-sync";
@@ -355,10 +356,11 @@ function ShellLayoutContent() {
 
   const isArchivedOrg = isOrgArchived(activeOrg);
   if (isArchivedOrg) {
-    // Clear stale slug so /home redirect doesn't bounce the user back here
+    // Clear stale slugs so the "/" redirect doesn't bounce the user back here
     if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === org) {
       localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     }
+    if (readLastLocation()?.org === org) clearLastLocation();
     return <ArchivedOrgScreen orgName={activeOrg.name} />;
   }
 

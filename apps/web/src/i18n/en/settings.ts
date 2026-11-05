@@ -1,18 +1,9 @@
 export const settings = {
-  "settings.subscriptionUsage.title": "Plan usage",
   "settings.subscriptionUsage.refresh": "Refresh",
-  "settings.subscriptionUsage.loading": "Loading usage limits…",
-  "settings.subscriptionUsage.fiveHour": "5-hour window",
-  "settings.subscriptionUsage.weekly": "Weekly limit",
-  "settings.subscriptionUsage.sonnet": "Sonnet · weekly",
-  "settings.subscriptionUsage.opus": "Opus · weekly",
   "settings.subscriptionUsage.codeReview": "Code review",
-  "settings.subscriptionUsage.hours": "{hours}-hour window",
   "settings.subscriptionUsage.primary": "Primary limit",
   "settings.subscriptionUsage.secondary": "Secondary limit",
-  "settings.subscriptionUsage.used": "{percent}% used",
   "settings.subscriptionUsage.resets": "Resets {date}",
-  "settings.subscriptionUsage.resetUnknown": "Reset time not provided",
   "settings.subscriptionUsage.limitReached": "Limit reached",
   "settings.subscriptionUsage.permission":
     "This token cannot read usage limits. Check usage on the provider’s website.",
@@ -24,10 +15,6 @@ export const settings = {
     "Link your subscription to view usage limits.",
   "settings.subscriptionUsage.unavailable":
     "Usage limits are unavailable right now. Check the provider for the latest status.",
-  "settings.subscriptionUsage.retryAt": "Try again {date}",
-  "settings.subscriptionUsage.checkedAt": "Checked {date}",
-  "settings.subscriptionUsage.sharedUsage":
-    "Includes usage outside Studio. These limits belong to your personal plan.",
   "settings.subscriptionUsage.openProvider": "View on provider",
 
   "settings.voice.title": "Voice mode",
@@ -351,7 +338,6 @@ export const settings = {
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
   "settings.nav.memory": "Memory",
@@ -387,12 +373,12 @@ export const settings = {
   "settings.blocksEditor.title": "New blocks editor",
   "settings.blocksEditor.description":
     "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
+  "settings.siteAppsInstall.title": "Install apps from the catalogue",
+  "settings.siteAppsInstall.description":
+    "Let the Apps tab install an app into the site: it writes the app's module and its registration to the branch, adds the dependency, and restarts the sandbox's dev server so the app's settings form appears. With it off the catalogue stays browsable and nothing is installable.",
   "settings.multiAppPreview.title": "Preview several apps of a monorepo",
   "settings.multiAppPreview.description":
     "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
-  "settings.preferences.projectFirstNav": "Project-first navigation",
-  "settings.preferences.projectFirstNavDescription":
-    "Try the org rail, project launcher and the Today/Agents home.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeLight": "Light theme",
   "settings.preferences.themeDark": "Dark theme",
@@ -427,7 +413,6 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
   "settings.skills.importing": "Importing…",
   "settings.skills.importSuccess": 'Imported "{name}"',
@@ -459,15 +444,10 @@ export const settings = {
   "settings.skills.errorDescription":
     "The skill catalog could not be loaded. You may not have access to this org's files.",
   "settings.skills.retry": "Try again",
-  "settings.memory.pageTitle": "Memory",
   "settings.memory.tabOrg": "Organization",
   "settings.memory.tabUser": "Just you",
   "settings.memory.orgHeading": "Shared with everyone in {org}",
-  "settings.memory.orgDescription":
-    "Deco reads this at the start of every chat and adds to it as it learns. Fix anything wrong or out of date.",
   "settings.memory.userHeading": "Your personal memory",
-  "settings.memory.userDescription":
-    "Loaded only into your chats. Good for how you like to work, what you own and what to skip.",
   "settings.memory.orgPlaceholder":
     "Facts everyone's chats should know. For example: we ship on Thursdays, prices are in BRL, the brand voice is informal.",
   "settings.memory.userPlaceholder":
@@ -630,9 +610,7 @@ export const settings = {
   "settings.connectProviderDialog.connectionTimedOutMessage":
     "Connection timed out",
   "settings.connectProviderDialog.defaultProviderName": "Provider",
-  "settings.connectProviderDialog.defaultTitle": "Connect an AI provider",
-  "settings.connectProviderDialog.gridDescription":
-    "Pick a provider — we'll handle the rest.",
+  "settings.connectProviderDialog.defaultTitle": "Add API key",
   "settings.connectProviderDialog.oauthFailedMessage":
     "OAuth connection failed: {error}",
   "settings.connectProviderDialog.oauthPendingMessage":
@@ -647,10 +625,6 @@ export const settings = {
     "Security check failed: State token mismatch",
   "settings.connectProviderDialog.startOAuthFailedMessage":
     "Failed to start OAuth: {error}",
-  "settings.connectedProvidersSection.connectButton": "Connect provider",
-  "settings.connectedProvidersSection.emptyState":
-    "Bring your own keys to use specific models alongside Deco's gateway.",
-  "settings.connectedProvidersSection.sectionTitle": "Connected providers",
   "settings.agentTools.chatHarnessCodexTitle":
     "Use Codex for new sandbox chats",
   "settings.agentTools.chatHarnessCodexDescription":
@@ -658,50 +632,44 @@ export const settings = {
   "settings.codexSubscription.setupHeading": "Connect Codex",
   "settings.codexSubscription.setupDescription":
     "Link your ChatGPT subscription in Settings → AI Providers, or connect a provider with an OpenAI Responses API endpoint.",
-  "settings.codexSubscription.active":
-    "Your Codex runs use your ChatGPT subscription. Credentials refresh automatically.",
   "settings.codexSubscription.connect": "Link",
   "settings.codexSubscription.connected": "ChatGPT subscription linked",
-  "settings.codexSubscription.description":
-    "Use your ChatGPT subscription for Codex sandbox chats. Credentials belong to you and are stored encrypted.",
   "settings.codexSubscription.disconnect": "Disconnect",
   "settings.codexSubscription.disconnected": "ChatGPT subscription unlinked",
   "settings.codexSubscription.howTo":
     "Run this command locally, sign in with ChatGPT, then paste the contents of ~/.codex/auth.json:",
-  "settings.codexSubscription.title": "Your ChatGPT subscription for Codex",
+  "settings.codexSubscription.title": "ChatGPT for Codex",
   "settings.codexSubscription.tokenPlaceholder":
     "Paste the contents of auth.json",
-  "settings.claudeSubscription.active":
-    "Your Claude plan is running these coding tasks.",
   "settings.claudeSubscription.connect": "Link",
   "settings.claudeSubscription.connected": "Claude subscription linked",
-  "settings.claudeSubscription.description":
-    "Run coding tasks on your own Claude Pro or Max plan instead of the organization's AI credit.",
   "settings.claudeSubscription.disconnect": "Disconnect",
   "settings.claudeSubscription.disconnected": "Claude subscription unlinked",
-  "settings.claudeSubscription.expired":
-    "Anthropic no longer accepts your token. Generate a new one to keep using your plan.",
   "settings.claudeSubscription.howTo":
     "Generate a token on your own machine with",
-  "settings.claudeSubscription.title": "Your Claude subscription",
+  "settings.claudeSubscription.title": "Claude Pro or Max",
   "settings.claudeSubscription.tokenPlaceholder": "Paste your token",
-  "settings.githubCopilot.active":
-    "Your GitHub Copilot plan is running these coding tasks.",
   "settings.githubCopilot.connect": "Link",
   "settings.githubCopilot.connected": "GitHub Copilot linked",
-  "settings.githubCopilot.description":
-    "Run coding tasks on Claude through your own GitHub Copilot plan instead of the organization's AI credit.",
   "settings.githubCopilot.disconnect": "Disconnect",
   "settings.githubCopilot.disconnected": "GitHub Copilot unlinked",
   "settings.githubCopilot.howTo":
     "Create a fine-grained GitHub token with the Copilot Requests permission",
   "settings.githubCopilot.sharedBy":
     "Every run in this organization uses {name}'s shared GitHub Copilot plan.",
-  "settings.githubCopilot.shareTitle": "Share with the organization",
+  "settings.githubCopilot.shareTitle": "Share with org",
   "settings.githubCopilot.shareDescription":
     "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
-  "settings.githubCopilot.title": "Your GitHub Copilot plan",
+  "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
+  "settings.subscriptionUsage.unavailableShort": "Usage unavailable",
+  "settings.ownAccounts.more": "More actions",
+  "settings.providerKeyRow.edit": "Edit",
+  "settings.ownAccounts.title": "Your own accounts",
+  "settings.ownAccounts.cancel": "Cancel",
+  "settings.ownAccounts.addApiKey": "Add API key",
+  "settings.ownAccounts.linked": "Linked",
+  "settings.ownAccounts.expired": "Expired",
   "settings.decoCreditsHero.add": "Add",
   "settings.decoCreditsHero.addCredits": "Add credits",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -729,10 +697,9 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
-  "settings.planUsage.noPlan": "No active plan",
-  "settings.planUsage.noPlanDescription":
-    "This organization has no active plan. Pick one below — Starter's first month is free.",
-  "settings.planUsage.creditsLeft": "left",
+  "settings.planUsage.included": "Included in plan",
+  "settings.planUsage.credits": "Added credits",
+  "settings.planUsage.creditsInUse": "In use",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
@@ -792,12 +759,6 @@ export const settings = {
     "This organization has used its monthly AI allowance. Chat and tasks pause until you upgrade or top up.",
 
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
-  "settings.decoNudgeCard.connectDeco": "Connect Deco",
-  "settings.decoNudgeCard.connecting": "Connecting…",
-  "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
-  "settings.decoNudgeCard.description":
-    "100+ models, one connection — pay as you go, no API keys to juggle.",
-  "settings.decoNudgeCard.recommended": "Recommended",
   "settings.deleteOrganizationSection.cancel": "Cancel",
   "settings.deleteOrganizationSection.dangerZone": "Danger zone",
   "settings.deleteOrganizationSection.deleteButton": "Delete",
@@ -1077,8 +1038,6 @@ export const settings = {
   "settings.providerKeyRow.codex": "Codex",
   "settings.providerKeyRow.delete": "Delete",
   "settings.providerKeyRow.deleteApiKey": "Delete API key",
-  "settings.providerKeyRow.deleteProviderKey": "Delete provider key",
-  "settings.providerKeyRow.editProviderKey": "Edit provider key",
   "settings.providerKeyRow.failedToDeleteKey": "Failed to delete key: {error}",
   "settings.providerKeyRow.keyDeleted": "Key deleted",
   "settings.roles.allConnections": "All connections",
@@ -1111,6 +1070,34 @@ export const settings = {
   "settings.roles.roleOwner": "Owner",
   "settings.roles.roleUser": "User",
   "settings.roles.searchPlaceholder": "Search roles...",
+  "settings.apiKeys.accessLabel": "Access",
+  "settings.apiKeys.accessReadOnly": "Read only",
+  "settings.apiKeys.accessReadOnlyDescription":
+    "The {count} Studio tools that never change data. Tools added later stay out.",
+  "settings.apiKeys.accessCustom": "Choose tools",
+  "settings.apiKeys.accessCustomDescription":
+    "Only the Studio and connection tools you pick. Tools added later stay out.",
+  "settings.apiKeys.accessFull": "Full access",
+  "settings.apiKeys.accessFullDescription":
+    "Every tool, including ones that delete data and ones added later.",
+  "settings.apiKeys.expired": "Expired",
+  "settings.apiKeys.expiredOn": "Expired {date}",
+  "settings.apiKeys.expiresOn": "Expires {date}",
+  "settings.apiKeys.expiryDays": "{days} days",
+  "settings.apiKeys.expiryLabel": "Expires after",
+  "settings.apiKeys.expiryNever": "Never",
+  "settings.apiKeys.expiryYear": "1 year",
+  "settings.apiKeys.neverExpires": "Never expires",
+  "settings.apiKeys.readOnlyBadge": "Read only",
+  "settings.apiKeys.toolCount": "{count} tools",
+  "settings.apiKeys.studioTools": "Studio",
+  "settings.apiKeys.toolsGroupCount": "{count}/{total}",
+  "settings.apiKeys.toolsNone": "No tools",
+  "settings.apiKeys.toolsSelectGroup": "Select every tool in {name}",
+  "settings.apiKeys.toolsSelected": "{count} selected",
+  "settings.apiKeys.toolsLoadFailed":
+    "Couldn't load the tool list. Close and try again.",
+  "settings.apiKeys.toolsSearch": "Search tools…",
   "settings.apiKeys.cancelButton": "Cancel",
   "settings.apiKeys.copied": "Copied to clipboard",
   "settings.apiKeys.copyKey": "Copy key",
@@ -1137,7 +1124,7 @@ export const settings = {
   "settings.apiKeys.namePlaceholder": "My integration",
   "settings.apiKeys.newKey": "New key",
   "settings.apiKeys.newKeyDescription":
-    "Give the key a name so you can recognize it later.",
+    "Give the key only the tools it needs. Whoever holds the key can use them, even if it leaks.",
   "settings.apiKeys.newKeyTitle": "New API key",
   "settings.apiKeys.sectionDescription":
     "For scripts and clients that can't sign in through a browser.",
@@ -1174,40 +1161,22 @@ export const settings = {
   "settings.secrets.valueLabel": "Value",
   "settings.simpleModeSection.defaultModels": "Default models",
   "settings.simpleModeSection.failedToSave": "Failed to save: {error}",
-  "settings.simpleModeSection.modelsPowerDescription":
-    "These models power chat, automations, and tools across your organization.",
   "settings.simpleModeSection.notAvailableWithCurrentProvider":
     "Not available with current provider",
   "settings.simpleModeSection.pickModel": "Pick model",
   "settings.simpleModeSection.saved": "Saved",
   "settings.simpleModeSection.saving": "Saving…",
   "settings.simpleModeSection.tierDeepResearch": "Deep research",
-  "settings.simpleModeSection.tierDeepResearchDesc":
-    "In-depth, multi-source research reports",
   "settings.simpleModeSection.tierFast": "Fast",
-  "settings.simpleModeSection.tierFastDesc":
-    "Fastest responses, best for quick tasks",
   "settings.simpleModeSection.tierImage": "Image",
-  "settings.simpleModeSection.tierImageDesc": "Image generation",
   "settings.simpleModeSection.tierSmart": "Smart",
-  "settings.simpleModeSection.tierSmartDesc": "Balanced speed and capability",
   "settings.simpleModeSection.tierThinking": "Thinking",
-  "settings.simpleModeSection.tierThinkingDesc":
-    "Most capable, best for complex tasks",
   "settings.simpleModeSection.tierWebSearch": "Web search",
-  "settings.simpleModeSection.tierWebSearchDesc":
-    "Quick, up-to-date answers from the web",
-  "settings.aiProviders.recommended":
-    "Recommended — 100+ models, pay as you go",
+  "settings.aiProviders.groupChat": "Chat and tasks",
+  "settings.aiProviders.groupMedia": "Images and web search only",
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.moreProvidersSingular": "{count} more provider",
-  "settings.aiProviders.moreProvidersPlural": "{count} more providers",
-  "settings.aiProviders.decoConnectSuccess":
-    "Deco AI Gateway connected successfully",
-  "settings.aiProviders.decoConnectError":
-    "Failed to connect Deco AI Gateway: {error}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",

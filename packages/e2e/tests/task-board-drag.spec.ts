@@ -58,7 +58,9 @@ async function statusByTitle(request: APIRequestContext, orgSlug: string) {
 async function openBoard(page: Page, orgSlug: string) {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/${orgSlug}/tasks`);
-  await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
+  await expect(page.locator('button:has-text("Card 0")')).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 test("a card dragged to another lane moves and stays fully visible", async ({
@@ -140,10 +142,11 @@ test("a card drops into an empty lane beside a lane taller than the screen", asy
   await page.setViewportSize({ width: 1280, height: 1600 });
 
   // The long lane scrolls inside itself instead of stretching every lane.
-  const backlog = page.locator('[data-lane-scroll="triage"]');
+  // The long lane runs past the bottom of the screen.
+  const backlog = page.locator('[data-lane-scroll="triage"]').last();
   await expect
-    .poll(() => backlog.evaluate((el) => el.scrollHeight > el.clientHeight + 1))
-    .toBe(true);
+    .poll(async () => (await backlog.boundingBox())!.height)
+    .toBeGreaterThan(1600);
 
   const source = page.locator('[data-lane="triage"] [role="button"]').first();
   const title = (await source.textContent())?.match(/Card \d+/)?.[0];

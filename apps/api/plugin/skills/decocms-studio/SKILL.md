@@ -33,6 +33,11 @@ not work around a missing session with API keys, MCP tokens or presigned URLs.
 A self-hosted or local studio adds `--target <url>` to every command, e.g.
 `--target http://localhost:3000`.
 
+Inside a Studio sandbox run the session is provided: never run
+`decocms auth login` or pass `--target` there. If a call says it is not logged
+in, the session expired, or it cannot refresh, report that error to the user
+instead of asking them to log in.
+
 Done when `whoami` prints the user the person expects. Its `Target` is the
 studio origin used in the links below.
 
@@ -58,8 +63,8 @@ Org files are the exception: use the `fs` routes in section 4. They cover
 listing, moving and sharing, which no tool does.
 
 ```bash
-decocms tools list --org <slug> thread            # NAME<TAB>summary, filtered
-decocms tools describe COLLECTION_THREADS_LIST --org <slug>   # full JSON schema
+decocms tools list --org <slug> thread            # NAME<TAB>summary, name matches first
+decocms tools describe COLLECTION_THREADS_LIST --org <slug>   # one line per input field
 decocms tools call COLLECTION_THREADS_LIST --org <slug> -d '{"limit":5}'
 decocms tools call <NAME> --org <slug> -d @args.json          # or -d @- for stdin
 ```
@@ -72,8 +77,9 @@ error body still on stdout:
   plan or budget refusal. Report it; a retry gets the same answer.
 - `404 Unknown tool`: the name is wrong; search with `tools list`.
 
-Read `annotations` in `describe` before calling: `destructiveHint: true` (delete,
-remove, overwrite) needs the user's explicit go-ahead for that specific call.
+Use the field names exactly as `describe` prints them; add `--json` for the full
+schema. When `describe` lists `destructiveHint` (delete, remove, overwrite),
+get the user's explicit go-ahead for that specific call.
 
 ## 4. REST routes
 

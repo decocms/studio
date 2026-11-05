@@ -51,12 +51,6 @@ export const reports = {
     "Você pode acompanhar por aqui — leva alguns minutos.",
   "reports.scanGate.tryAnother": "Tentar outra loja",
   "reports.socialProof.alreadyReceived": "Já receberam",
-  "reports.banner.storeDefault": "sua loja",
-  "reports.banner.generatingTitle": "Gerando seu Deco Score",
-  "reports.banner.readyTitle": "Seu Deco Score está pronto",
-  "reports.banner.generatingSubtitle":
-    "Analisando {store}. Isso leva alguns minutos.",
-  "reports.banner.readySubtitle": "Veja a análise completa de {store}.",
   "reports.emptyState.title": "Nenhum Deco Score ainda",
   "reports.emptyState.description":
     "Gere o Deco Score da sua loja para ver como ela está e o que corrigir primeiro.",

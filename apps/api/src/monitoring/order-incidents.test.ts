@@ -6,7 +6,7 @@ import {
   incidentTitle,
   RECOVERY_MS,
 } from "./order-incidents";
-import { toMarkers } from "./order-pushes";
+import { toDailyMarkers, toMarkers } from "./order-pushes";
 
 describe("incidentAction", () => {
   const held = RECOVERY_MS;
@@ -102,6 +102,20 @@ describe("toMarkers", () => {
     expect(markers[0]!.commits.map((c) => c.author)).toEqual([
       "dev-a",
       "dev-b",
+    ]);
+  });
+
+  it("keeps the same slot on different days as separate pushes", () => {
+    const markers = toDailyMarkers(
+      [
+        commit("new", "2026-10-29T14:05:00Z"),
+        commit("old", "2026-10-18T14:10:00Z"),
+      ],
+      "UTC",
+    );
+    expect(markers.map((m) => [m.time, m.commits.map((c) => c.sha)])).toEqual([
+      ["2026-10-29T14:05:00Z", ["new"]],
+      ["2026-10-18T14:10:00Z", ["old"]],
     ]);
   });
 });

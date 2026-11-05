@@ -248,7 +248,6 @@ export async function recoverStalledTasks(
           ctx.storage.taskBoard,
           thread.threadId,
           organizationId,
-          ctx.storage.organizationBilling,
         );
       } else if (
         await ctx.storage.taskBoard.runMovesLinkedCards(

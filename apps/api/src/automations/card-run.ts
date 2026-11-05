@@ -17,7 +17,6 @@ import {
   enqueueSuperAgentForTask,
   type SuperAgentPromptOpts,
 } from "@/tools/task-board/enqueue-super-agent";
-import { TaskQuotaError, type TaskQuotaReason } from "@/billing/task-quota";
 import { emitTaskBoardUpdated } from "@/tools/task-board/run-reactions";
 import {
   enqueueReviewerForTask,
@@ -57,20 +56,15 @@ export interface CardTarget {
 /** The board-run options a manual fire carries through to the run. */
 export type ManualRun = Pick<
   SuperAgentPromptOpts,
-  "userInitiated" | "runClass" | "pr" | "resolveConflict"
+  "runClass" | "pr" | "resolveConflict"
 >;
 
-/** Why a run was refused, serializable so it survives the workflow. A quota
- *  refusal keeps its reason, so the caller can raise the paywall. */
+/** Why a run was refused, serializable so it survives the workflow. */
 export interface RunError {
   message: string;
-  quotaReason?: TaskQuotaReason;
 }
 
 export function runErrorOf(err: unknown): RunError {
-  if (err instanceof TaskQuotaError) {
-    return { message: err.message, quotaReason: err.reason };
-  }
   return { message: err instanceof Error ? err.message : String(err) };
 }
 

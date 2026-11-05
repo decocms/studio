@@ -107,7 +107,6 @@ export const orgs = {
   "orgs.connections.npmPackagePlaceholder": "@perplexity-ai/mcp-server",
   "orgs.connections.npxPackage": "NPX Package",
   "orgs.connections.openGitHubPatSettings": "Open GitHub PAT settings",
-  "orgs.connections.pageTitle": "Connections",
   "orgs.connections.saving": "Saving...",
   "orgs.connections.searchPlaceholder": "Search for a connection",
   "orgs.connections.sortDescription": "Description",

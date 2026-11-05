@@ -111,6 +111,37 @@ async function ensureTenantUser(username: string, password: string) {
   return promise;
 }
 
+/** `org:site` pairs this process already linked; the table replaces on site_id, so a repeat is harmless. */
+const linkedSites = new Set<string>();
+
+/**
+ * Record that the organization owns analytics site `siteId`, so the lake's sync
+ * copies that site's traffic into the org's rows. The caller must have checked
+ * ownership: this row is the tenancy boundary for the site's traffic.
+ */
+export async function linkAnalyticsSite(
+  organizationId: string,
+  siteId: string,
+): Promise<void> {
+  const key = `${organizationId}:${siteId}`;
+  if (linkedSites.has(key)) return;
+  const s = getSettings();
+  const admin = await connect(
+    s.customerLakeAdminUsername,
+    s.customerLakeAdminPassword ?? "",
+  );
+  try {
+    await admin.insert({
+      table: "customer_lake.analytics_sites",
+      values: [{ org_id: organizationId, site_id: siteId }],
+      format: "JSONEachRow",
+    });
+  } finally {
+    await admin.close();
+  }
+  linkedSites.add(key);
+}
+
 /** Run one read-only statement as the organization's own lake user.
  *  `queryParams` bind `{name:Type}` placeholders in `sql`. */
 export async function queryCustomerLake(

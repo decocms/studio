@@ -63,6 +63,11 @@ describe("isPermissionRejected", () => {
           "exceed what the GitHub App was granted.",
       ),
     ).toBe(true);
+    expect(
+      isPermissionRejected(
+        "The permissions requested are not granted to this installation.",
+      ),
+    ).toBe(true);
   });
 
   it("does NOT match an allowlist rejection for a REQUIRED permission", () => {

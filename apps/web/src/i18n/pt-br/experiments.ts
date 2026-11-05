@@ -6,8 +6,9 @@ export const experiments = {
   "experiments.noSite":
     "Este projeto não tem site vinculado, então não tem experimentos.",
   "experiments.empty.title": "Nenhum experimento ainda",
-  "experiments.empty.desc": "Crie o primeiro teste A/B deste site.",
-  "experiments.status.running": "Rodando",
+  "experiments.empty.desc":
+    "Mostre duas versões de uma página para visitantes reais e veja qual vende mais.",
+  "experiments.status.running": "Em andamento",
   "experiments.status.paused": "Pausado",
   "experiments.status.draft": "Rascunho",
   "experiments.prompt.title": "Novo experimento",
@@ -109,7 +110,7 @@ export const experiments = {
 
   // Read only by experiments-tab-legacy.tsx; both go when the flag does.
   "experiments.subtitle":
-    "Testes A/B deste site. O sorteio de tráfego vive no conteúdo do site; os resultados vêm do analytics.",
+    "Compare versões deste site com tráfego real e veja qual converte melhor.",
   "experiments.col.name": "Nome",
   "experiments.col.key": "Chave",
   "experiments.col.status": "Status",
@@ -127,12 +128,79 @@ export const experiments = {
     "Nenhum tráfego de analytics encontrado para {site}. O site pode ainda não estar enviando eventos de analytics, ou o tráfego dele é registrado sob outro site.",
   "experiments.results.empty": "Ainda sem participantes neste experimento.",
   "experiments.results.control": "Controle",
+  "experiments.results.test": "Teste",
   "experiments.results.variant": "Variante",
+  "experiments.results.weight": "{weight}% do tráfego",
+  "experiments.results.arm": "Versão",
+  "experiments.results.armsTitle": "Versões",
   "experiments.results.visitors": "Visitantes",
-  "experiments.results.participants": "Participantes",
-  "experiments.results.sampleSize": "Amostra alvo",
-  "experiments.results.probBest": "Probabilidade da variante ser melhor",
-  "experiments.results.goal": "Objetivo",
+  "experiments.results.visitorsHint":
+    "Contados uma vez por dia: quem volta em outro dia conta de novo.",
+  "experiments.results.exposed": "Expostos",
+  "experiments.results.exposedHint":
+    "Visitantes que chegaram ao ponto em que as versões se diferenciam, nas duas versões. É a base mais justa para comparar.",
+  "experiments.results.conversion": "Conversão",
+  "experiments.results.conversionHintExposed":
+    "Dos visitantes expostos, a parte que chegou à meta “{goal}”.",
+  "experiments.results.conversionHintVisitors":
+    "De todos os visitantes, a parte que chegou à meta “{goal}”.",
+  "experiments.results.difference": "Diferença",
+  "experiments.results.differenceHint":
+    "Quanto o teste converte acima ou abaixo do controle, e a faixa onde a diferença real fica 95 vezes em 100.",
+  "experiments.results.reference": "Referência",
+  "experiments.results.range": "{low} a {high}",
+  "experiments.results.orders": "Pedidos",
+  "experiments.results.revenue": "Receita",
+  "experiments.results.revenuePerVisitor": "Receita por visitante",
+  "experiments.results.averageOrder": "Ticket médio",
+  "experiments.results.verdict.few": "Poucos dados até agora",
+  "experiments.results.verdict.tie": "Empate até agora",
+  "experiments.results.verdict.ahead": "“{arm}” está à frente",
+  "experiments.results.verdict.behind": "“{arm}” está pior",
+  "experiments.results.verdict.compareExposed":
+    "“{test}” converte {testRate} dos visitantes expostos, contra {controlRate} de “{control}”, uma diferença de {lift} (margem de {low} a {high}).",
+  "experiments.results.verdict.compareVisitors":
+    "“{test}” converte {testRate} dos visitantes, contra {controlRate} de “{control}”, uma diferença de {lift} (margem de {low} a {high}).",
+  "experiments.results.verdict.noBase":
+    "O controle ainda não teve conversões, então não há base para comparar.",
+  "experiments.results.verdict.tieHint":
+    "A margem inclui o zero, então ainda não dá para dizer qual versão é melhor.",
+  "experiments.results.verdict.sureHint":
+    "Uma diferença desse tamanho dificilmente é acaso (95% de confiança).",
+  "experiments.results.verdict.fewHint":
+    "Cada versão precisa de pelo menos {total} visitantes e {successes} conversões para a comparação valer.",
+  "experiments.results.progress.running": "No ar há {days} dias.",
+  "experiments.results.progress.runningOne": "No ar há 1 dia.",
+  "experiments.results.progress.left":
+    "No ritmo atual, faltam cerca de {days} dias para detectar uma diferença de {mde}.",
+  "experiments.results.progress.leftOne":
+    "No ritmo atual, falta cerca de 1 dia para detectar uma diferença de {mde}.",
+  "experiments.results.progress.enough":
+    "Já há dados suficientes para detectar uma diferença de {mde}.",
+  "experiments.results.progress.unknown":
+    "Ainda sem dados suficientes para estimar o prazo.",
+  "experiments.results.trend": "Conversão por dia",
+  "experiments.results.behaviour": "Comportamento por visitante",
+  "experiments.results.pageviews": "Páginas vistas",
+  "experiments.results.pageviewsHint": "Média de páginas vistas por visitante.",
+  "experiments.results.activeTime": "Tempo ativo",
+  "experiments.results.activeTimeHint":
+    "Tempo médio por visitante com a página aberta e em uso.",
+  "experiments.results.clicks": "Cliques",
+  "experiments.results.clicksHint": "Média de cliques por visitante.",
+  "experiments.results.scroll": "Rolagem mediana",
+  "experiments.results.scrollHint": "Até onde a visita típica rola a página.",
+  "experiments.results.jsErrors": "Visitantes com erro JS",
+  "experiments.results.jsErrorsHint":
+    "Visitantes desta versão que tiveram pelo menos um erro de JavaScript em qualquer página do site.",
+  "experiments.results.minutes": "{m} min {s} s",
+  "experiments.results.seconds": "{s} s",
+  "experiments.results.goals": "Metas",
+  "experiments.results.goalsHint": "Visitantes que chegaram a cada meta.",
+  "experiments.results.goalName.purchase": "Compra",
+  "experiments.results.goalName.experience_impression": "Exposição",
+  "experiments.results.goal": "Meta",
+  "experiments.results.sourceDeco": "Fonte: Deco Analytics",
   "experiments.v8.intro":
     "Seus testes A/B fazem parte do conteúdo do site. Toda mudança fica salva no seu rascunho e vai ao ar quando você publica.",
   "experiments.v8.new": "Novo teste A/B",

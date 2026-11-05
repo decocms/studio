@@ -27,6 +27,15 @@ describe("stripServerManagedMetadata", () => {
       stripServerManagedMetadata({ fastPreview: true, blocksMajor: 8 }),
     ).toEqual({ fastPreview: true });
   });
+
+  test("removes the Deco Analytics registration, so a client can't point it at another site", () => {
+    expect(
+      stripServerManagedMetadata({
+        fastPreview: true,
+        decoAnalytics: { id: "d-other-site", key: "dq_x" },
+      }),
+    ).toEqual({ fastPreview: true });
+  });
 });
 
 describe("metadataKeptOnClear", () => {

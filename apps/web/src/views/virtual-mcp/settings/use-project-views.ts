@@ -441,10 +441,7 @@ export function useProjectViews({
     releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),
-    analytics: t("common.mainPanelTabs.analytics"),
-    cdn: t("common.mainPanelTabs.cdn"),
     automations: t("virtualMcp.layoutTabContent.automations"),
-    experiments: t("experiments.title"),
     calendar: t("common.mainPanelTabs.calendar"),
   };
 
@@ -454,7 +451,10 @@ export function useProjectViews({
    * (`NAV_DESTINATION_KEYS` — Home, Reports, Tasks; Library is org-only and
    * never an agent's view), then the project rows, then Settings last.
    */
-  const defaultMainOptions: { value: string; label: string }[] = [];
+  // New projects land on Overview, so it must be pickable or the trigger blanks.
+  const defaultMainOptions: { value: string; label: string }[] = [
+    { value: "overview", label: t("sidebar.navDestinations.overview") },
+  ];
   for (const viewId of enabledSidebarViews) {
     /**
      * Pinned app rows sit before Automations in the actual sidebar, so append
@@ -489,8 +489,6 @@ export function useProjectViews({
   return {
     /** Every view this project can open, in sidebar order. */
     projectViews: availableSidebarViews,
-    /** A Blocks (v8) site (its Calendar is present). */
-    blocksSite,
     labels: sidebarViewLabels,
     pinned: (viewId: ProjectSidebarViewId) => sidebarViews.includes(viewId),
     isMainView: (value: string) => defaultMainView === value,

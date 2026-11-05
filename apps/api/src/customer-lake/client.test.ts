@@ -10,20 +10,27 @@ mock.module("../settings", () => ({
 }));
 
 let adminConnects = 0;
+const inserted: unknown[] = [];
 mock.module("@clickhouse/client", () => ({
   createClient: (opts: { username: string }) => {
     if (opts.username === "admin") adminConnects++;
     return {
       command: async () => {},
+      insert: async ({ values }: { values: unknown[] }) => {
+        inserted.push(...values);
+      },
       query: async () => ({ json: async () => [] }),
       close: async () => {},
     };
   },
 }));
 
-const { normalizeQuery, tenantCredentials, queryCustomerLake } = await import(
-  "./client"
-);
+const {
+  normalizeQuery,
+  tenantCredentials,
+  queryCustomerLake,
+  linkAnalyticsSite,
+} = await import("./client");
 
 describe("tenantCredentials", () => {
   test("is stable per org and differs across orgs and secrets", () => {
@@ -65,4 +72,14 @@ describe("ensureTenantUser", () => {
     ]);
     expect(adminConnects).toBe(1);
   });
+});
+
+test("linkAnalyticsSite writes each org's site once per process", async () => {
+  await linkAnalyticsSite("orgA", "s1");
+  await linkAnalyticsSite("orgA", "s1");
+  await linkAnalyticsSite("orgB", "s1");
+  expect(inserted).toEqual([
+    { org_id: "orgA", site_id: "s1" },
+    { org_id: "orgB", site_id: "s1" },
+  ]);
 });

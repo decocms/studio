@@ -50,9 +50,8 @@ export interface BackgroundToolSnapshot {
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
   branch: string | null;
-  /** The originating run's metadata, carried so the resumed half of a
-   *  subscription-billed task run bills the same payer instead of silently
-   *  falling back to the org's credits (billing/subsidized-runs.ts). */
+  /** The originating run's metadata, carried so the resumed half keeps the
+   *  same run context (task binding, run class). */
   runMetadata?: Record<string, string>;
 }
 
@@ -228,9 +227,8 @@ function buildReactionRequest(
     models: ModelsConfig;
     nudge: string;
     harnessId: "decopilot";
-    /** The originating run's metadata — carried so a subscription-billed
-     *  task run's resumed half bills the same payer (billing/subsidized-runs)
-     *  instead of silently falling back to the org's own credits. */
+    /** The originating run's metadata, carried so the resumed half keeps the
+     *  same run context (task binding, run class). */
     runMetadata?: Record<string, string>;
   },
 ): ThreadGateContext["request"] {

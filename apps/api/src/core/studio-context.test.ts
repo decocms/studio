@@ -20,7 +20,6 @@ const createMockContext = (
     connections: null as never,
     connectionCredentialVault: null as never,
     organizationBilling: null as never,
-    subsidizedGatewayKeys: null as never,
     organizationSettings: null as never,
     gitProviderAccounts: null as never,
     gitProviderAccountCredentials: null as never,

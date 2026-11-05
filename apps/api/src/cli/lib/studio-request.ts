@@ -1,4 +1,4 @@
-import { getValidSession } from "./get-valid-session";
+import { getValidSession, SessionExpiredError } from "./get-valid-session";
 import { RefreshFailedError } from "./refresh-session";
 import type { Session } from "./session";
 
@@ -31,6 +31,18 @@ function loginHint(target: string | undefined): string {
 }
 
 /**
+ * What to do when the session stops working. A session without a refresh token
+ * may have been provided by the environment (a Studio sandbox run), where
+ * logging in is not an option.
+ */
+function renewAdvice(target: string, refreshable: boolean): string {
+  const login = `Run \`${loginHint(target)}\``;
+  return refreshable
+    ? `${login} to authenticate again.`
+    : `If this session was provided by the environment (e.g. a Studio sandbox run), report this error instead of logging in. Otherwise: ${login}.`;
+}
+
+/**
  * Returns a valid (refreshed if needed) session, or null after telling the
  * user how to log in.
  */
@@ -42,6 +54,10 @@ export async function requireSession(
   try {
     session = await getValidSession(options);
   } catch (err) {
+    if (err instanceof SessionExpiredError) {
+      console.error(`${err.message}. ${renewAdvice(err.target, false)}`);
+      return null;
+    }
     if (err instanceof RefreshFailedError && err.kind === "transient") {
       console.error(
         `Could not refresh session: ${err.message}. Run \`${hint}\` to authenticate.`,
@@ -126,9 +142,7 @@ export async function writeResponse(
   if (!res.ok) {
     console.error(`HTTP ${res.status} ${res.statusText}`.trim());
     if (res.status === 401) {
-      console.error(
-        `Run \`${loginHint(session.target)}\` to authenticate again.`,
-      );
+      console.error(renewAdvice(session.target, Boolean(session.refreshToken)));
     }
   }
   if (res.body) {

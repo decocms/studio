@@ -59,6 +59,10 @@ export const createThreadMcpRoutes = () => {
     if (c.req.method === "GET") return c.body(null, 405, { Allow: "POST" });
     const ctx = c.get("studioContext");
     const threadId = c.req.param("threadId");
+    const boundThreadId = ctx.auth.boundThreadId;
+    if (boundThreadId && boundThreadId !== threadId) {
+      return c.json({ error: "This key is bound to another thread" }, 403);
+    }
     // From the thread, not an argument the caller could forge with the same key.
     const thread = await ctx.storage.threads.get(threadId);
     // The run's own tools (the board) load up front; the catalog waits for

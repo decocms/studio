@@ -6,7 +6,7 @@
  * Implementer is off, past the column gates, with the caller's run options.
  *
  * From a request, the fire runs off the queue and its error comes back to the
- * caller, so a paywall still reaches the person who clicked. From inside a
+ * caller, so a refusal still reaches the person who clicked. From inside a
  * workflow or step (an agent's tool call), it is enqueued and its outcome is
  * not waited for.
  */
@@ -14,7 +14,6 @@
 import { randomUUID } from "node:crypto";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
-import { TaskQuotaError } from "@/billing/task-quota";
 import type { StudioContext } from "@/core/studio-context";
 import { getUserId } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
@@ -76,25 +75,21 @@ export async function fireImplementer(
     idempotencyKey: eventKey,
   });
   if ("skipped" in outcome && outcome.error) {
-    const { quotaReason, message } = outcome.error;
-    throw quotaReason ? new TaskQuotaError(quotaReason) : new Error(message);
+    throw new Error(outcome.error.message);
   }
 }
 
 /**
  * Start the Super Agent on a card just delegated to it. Best-effort: the card
  * is already saved, so a dispatch failure (no model configured, say) must not
- * fail the write that delegated it — except a paywall, which the caller
- * surfaces (the update tool) or undoes (the import route).
+ * fail the write that delegated it.
  */
 export async function reactToSuperAgentDelegation(
   ctx: StudioContext,
   item: TaskBoardItem,
-  opts?: Pick<ManualRun, "userInitiated">,
 ): Promise<void> {
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
-  await fireImplementer(ctx, item, opts).catch((err) => {
-    if (err instanceof TaskQuotaError) throw err;
+  await fireImplementer(ctx, item).catch((err) => {
     console.error("[task-board] Super Agent enqueue failed", err);
   });
 }

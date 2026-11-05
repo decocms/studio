@@ -102,7 +102,6 @@ export const taskBoard = {
     "Nenhuma tarefa corresponde a estes filtros.",
   "taskBoard.taskBoard.noTasksYet":
     "Nenhuma tarefa ainda. Comece uma com Nova tarefa.",
-  "taskBoard.taskBoard.tasksTitle": "Tarefas",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
   "taskBoard.taskBoard.columnsLabel": "Colunas",
@@ -111,32 +110,43 @@ export const taskBoard = {
   "taskBoard.taskBoard.collapseColumnAriaLabel": "Recolher {lane}",
   "taskBoard.taskBoard.expandColumn": "Expandir",
   "taskBoard.taskBoard.expandColumnAriaLabel": "Expandir {lane}",
-  "taskBoard.agenticSetup.button": "Configuração com agente",
-  "taskBoard.agenticSetup.message":
-    "Me ajude a configurar meu quadro para o trabalho que estou fazendo.",
-  "taskBoard.agenticSetup.failed":
-    "Não foi possível iniciar o chat de configuração do quadro",
   "taskBoard.dropHint.pickUp": "{names} vai pegar este card",
   "taskBoard.dropHint.pickUpMany": "{names} vai pegar estes cards",
-  "taskBoard.columnRules.menuItem": "Regras e automações",
-  "taskBoard.columnRules.automationsLabel": "Automações",
-  "taskBoard.columnRules.toggleAutomation":
-    "Rodar {name} nos cards que chegam aqui",
-  "taskBoard.columnRules.noAutomations": "Nada roda nos cards que chegam aqui.",
-  "taskBoard.columnRules.addAutomation": "Adicionar uma automação",
-  "taskBoard.columnRules.promptLabel": "Instruções",
-  "taskBoard.columnRules.promptPlaceholder":
-    "Convenções, ferramentas preferidas, o que nunca tocar",
-  "taskBoard.columnRules.skillsLabel": "Skills",
+  "taskBoard.columnRules.menuItem": "Como esta coluna funciona",
+  "taskBoard.columnRules.off": "Desligada",
+  "taskBoard.columnRules.runsHere": "Roda aqui",
+  "taskBoard.columnGuide.postDeployValidation":
+    "A mudança está em produção. Quando alguém confirmar que funciona lá, o card vai para Done.",
+  "taskBoard.columnGuide.readyForDeployment":
+    "Aprovado e esperando o merge. O merge do pull request leva o card adiante.",
+  "taskBoard.columnGuide.customerApproval":
+    "O cliente revisa a mudança, e a aprovação dele leva o card adiante.",
+  "taskBoard.columnGuide.qa":
+    "Alguém do time testa a mudança e aprova ou devolve.",
+  "taskBoard.columnGuide.inReview":
+    "O agente revisa o pull request, corrige o que encontrar e aprova para QA.",
+  "taskBoard.columnGuide.inProgress":
+    "O agente implementa a tarefa e abre um pull request para revisão.",
+  "taskBoard.columnGuide.todo":
+    "Pronto para começar. Mova o card para In Progress para entregar ao agente.",
+  "taskBoard.columnGuide.triage":
+    "Pedidos novos esperam aqui até alguém priorizar e mover para To Do.",
+  "taskBoard.columnRules.newAutomation": "Criar automação",
+  "taskBoard.columnRules.newAutomationName": "{column}: nova automação",
+  "taskBoard.columnRules.newAutomationFailed":
+    "Não foi possível criar a automação",
+  "taskBoard.columnRules.starter.board_column_transition":
+    "Roda quando um card entra",
+  "taskBoard.columnRules.starter.board_pr_ready":
+    "Roda quando o pull request fica pronto",
+  "taskBoard.columnRules.starter.board_pr_merged":
+    "Roda quando o pull request é mergeado",
+  "taskBoard.columnRules.noAutomations": "Nada roda aqui ainda",
   "taskBoard.columnRules.removeSkill": "Remover {skill}",
   "taskBoard.columnRules.searchSkills": "Buscar skills",
   "taskBoard.columnRules.noSkills": "Nenhuma skill encontrada",
   "taskBoard.columnRules.inheritedHint":
     "Também disponíveis aqui, de Configurações → Tarefas:",
-  "taskBoard.columnRules.cancel": "Cancelar",
-  "taskBoard.columnRules.save": "Salvar",
-  "taskBoard.columnRules.saved": "Regras da coluna salvas",
-  "taskBoard.columnRules.failed": "Não foi possível salvar as regras da coluna",
   "taskBoard.taskBoard.hiddenColumns": "Colunas ocultas",
   "taskBoard.taskBoard.showColumn": "Mostrar",
   "taskBoard.taskBoard.selectedCount": "{count} selecionado(s)",
@@ -407,28 +417,6 @@ export const taskBoard = {
     "O Super Agent vai iniciar uma nova execução em cada uma das {count} tarefas selecionadas. Qualquer execução ainda aberta nelas será interrompida.",
   "taskBoard.rerun.cancel": "Cancelar",
   "taskBoard.rerun.confirm": "Executar de novo",
-  "taskBoard.subscriptionPaywall.trialTitle":
-    "Assine para continuar com o auto-fix",
-  "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
-    "Deco Score sempre atualizado, detectando novos problemas automaticamente",
-  "taskBoard.subscriptionPaywall.trialBenefitAutoFix":
-    "O agente corrige o que encontra e abre um pull request para sua revisão",
-  "taskBoard.subscriptionPaywall.trialBenefitRuns":
-    "10 execuções de auto tasks por ciclo de cobrança",
-  "taskBoard.subscriptionPaywall.trialPrice": "R$ 250",
-  "taskBoard.subscriptionPaywall.trialPricePeriod": "/mês",
-  "taskBoard.subscriptionPaywall.previewAlt": "Prévia do seu quadro de tarefas",
-  "taskBoard.subscriptionPaywall.monthlyTitle": "Cota de auto tasks esgotada",
-  "taskBoard.subscriptionPaywall.monthlyDescription":
-    "Esta organização usou suas execuções de auto tasks deste ciclo de cobrança. Mais execuções ficam disponíveis no início do próximo ciclo.",
-  "taskBoard.subscriptionPaywall.runsTitle": "Esta tarefa atingiu o limite",
-  "taskBoard.subscriptionPaywall.runsDescription":
-    "Esta tarefa já foi re-executada o máximo de vezes permitido. Crie uma nova tarefa para continuar.",
-  "taskBoard.subscriptionPaywall.subscribeButton": "Assinar",
-  "taskBoard.subscriptionPaywall.notNowButton": "Agora não",
-  "taskBoard.subscriptionPaywall.dismissButton": "Fechar",
-  "taskBoard.subscriptionPaywall.checkoutError":
-    "Não foi possível iniciar o checkout: {message}",
   "taskBoard.config.typeBug": "Bug",
   "taskBoard.config.typeChore": "Manutenção",
   "taskBoard.config.typeFeature": "Funcionalidade",
