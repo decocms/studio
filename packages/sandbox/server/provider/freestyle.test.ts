@@ -407,6 +407,94 @@ describe("resume reclaims a daemon that lost its claim", () => {
   });
 });
 
+describe("a resumed daemon that never answers", () => {
+  test("is rebooted, then claimed", async () => {
+    let rebooted = false;
+    const execs: string[] = [];
+    const client = {
+      vms: {
+        get: async (slug: string) => ({
+          id: `id-${slug}`,
+          metadata: { "studio-daemon-token": "vm-token" },
+        }),
+        ref: () => ({
+          data: async () => ({
+            state: "paused",
+            sourceSnapshotSlugAtCreate: "studio-sandbox-abc",
+            metadata: {},
+          }),
+          start: async () => ({}),
+          exec: async ({ command }: { command: string }) => {
+            execs.push(command);
+            if (command === "reboot -f") rebooted = true;
+            return { statusCode: 0, stdout: "" };
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) =>
+        String(input).endsWith("/health") && !rebooted
+          ? new Response("", { status: 502 })
+          : Response.json({}),
+      { preconnect: realFetch.preconnect },
+    );
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      daemonBootTimeoutMs: 50,
+    });
+    await provider.ensure(ID);
+    expect(execs).toEqual(["reboot -f"]);
+    provider.close();
+  });
+});
+
+describe("delete", () => {
+  function vmWithShutdown(statusCode: number) {
+    const log: string[] = [];
+    const vm = {
+      id: "vm-1",
+      data: async () => ({ state: "running" }),
+      exec: async () => ({ statusCode, stdout: "" }),
+      delete: async () => void log.push("delete"),
+      update: async (o: { slug: string }) => void log.push(`slug=${o.slug}`),
+    };
+    const client = {
+      vms: {
+        get: async () => ({
+          id: "vm-1",
+          metadata: { "studio-daemon-token": "t" },
+        }),
+        ref: () => vm,
+      },
+      tls: {
+        rules: {
+          list: async () => ({ rules: [{ id: "r1", domain: "h.style.dev" }] }),
+          delete: async (id: string) => void log.push(`rule ${id}`),
+        },
+      },
+    } as unknown as Freestyle;
+    return { client, log };
+  }
+
+  test("deletes a VM whose shutdown sync went through", async () => {
+    const { client, log } = vmWithShutdown(0);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.delete("h");
+    expect(log).toEqual(["delete"]);
+    provider.close();
+  });
+
+  test("detaches a VM whose shutdown sync is not confirmed", async () => {
+    const { client, log } = vmWithShutdown(1);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.delete("h");
+    expect(log).toEqual(["rule r1", "slug="]);
+    provider.close();
+  });
+});
+
 describe("repo snapshots", () => {
   const TOKEN = "ghs_secret";
   const CLONE_URL = `https://x-access-token:${TOKEN}@github.com/acme/site.git`;

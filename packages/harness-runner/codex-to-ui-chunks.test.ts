@@ -199,3 +199,86 @@ describe("Codex chunks", () => {
     expect(translator.contextWindow).toBe(272000);
   });
 });
+
+describe("Codex chunks with studioCli", () => {
+  const command = `/bin/bash -lc 'decocms tools call TASK_BOARD_ITEM_CREATE --org example-org -d '"'"'{"title":"x"}'"'"''`;
+  const item = (extra: Record<string, unknown>) => ({
+    item: {
+      type: "commandExecution",
+      id: "cmd_1",
+      command,
+      cwd: "/repo",
+      ...extra,
+    },
+  });
+
+  test("one plain call renders as the tool, with its JSON result", () => {
+    const translator = new CodexChunkTranslator({ studioCli: true });
+    expect(
+      translator.translate("item/started", item({ status: "inProgress" })),
+    ).toEqual([
+      {
+        type: "tool-input-available",
+        toolCallId: "cmd_1",
+        toolName: "TASK_BOARD_ITEM_CREATE",
+        input: { title: "x" },
+      },
+    ]);
+    expect(
+      translator.translate(
+        "item/completed",
+        item({
+          status: "completed",
+          exitCode: 0,
+          aggregatedOutput: '{"item":{"id":"card_1"}}',
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "tool-output-available",
+        toolCallId: "cmd_1",
+        output: { item: { id: "card_1" } },
+      },
+      { type: "finish-step" },
+      { type: "start-step" },
+    ]);
+  });
+
+  test("a non-zero exit is the tool's error", () => {
+    const translator = new CodexChunkTranslator({ studioCli: true });
+    translator.translate("item/started", item({ status: "inProgress" }));
+    expect(
+      translator.translate(
+        "item/completed",
+        item({
+          status: "failed",
+          exitCode: 1,
+          aggregatedOutput: 'HTTP 404 Not Found\n{"error":"Unknown tool"}\n',
+        }),
+      )[0],
+    ).toEqual({
+      type: "tool-output-error",
+      toolCallId: "cmd_1",
+      errorText: 'HTTP 404 Not Found\n{"error":"Unknown tool"}',
+    });
+  });
+
+  test("a compound command, or a run without studioCli, stays bash", () => {
+    const piped = new CodexChunkTranslator({ studioCli: true });
+    expect(
+      piped.translate("item/started", {
+        item: {
+          type: "commandExecution",
+          id: "cmd_2",
+          command: `bash -lc 'decocms tools call web_search --org o | jq .'`,
+        },
+      })[0],
+    ).toMatchObject({ toolName: "bash" });
+    expect(
+      new CodexChunkTranslator().translate(
+        "item/started",
+        item({ status: "inProgress" }),
+      )[0],
+    ).toMatchObject({ toolName: "bash" });
+  });
+});

@@ -16,6 +16,7 @@
  */
 
 import { getPublicUrl } from "@/core/server-constants";
+import { mintSignedGrant } from "@/core/signed-grant";
 import type { StudioContext } from "@/core/studio-context";
 
 const MCP_KEY_TTL_SECONDS = 3600;
@@ -82,6 +83,37 @@ export function mcpEndpointUrl(args: {
   return `${publicUrl}/api/${organization.slug}/mcp/self`;
 }
 
+/**
+ * What a minted key stores beside its permissions. A thread key carries its
+ * thread as a signed grant, which is the only source of the thread a
+ * key-authenticated call is bound to (`threadIdFromApiKey`).
+ */
+export function mcpKeyMetadata(args: {
+  organization: { id: string; slug?: string; name?: string };
+  target: McpEndpointTarget;
+  threadId?: string;
+  runMetadata?: Record<string, string>;
+}): Record<string, unknown> {
+  const { organization, target, threadId, runMetadata } = args;
+  return {
+    organization: {
+      id: organization.id,
+      slug: organization.slug,
+      name: organization.name,
+    },
+    ...(target === "thread" && threadId
+      ? {
+          threadGrant: mintSignedGrant({
+            threadId,
+            organizationId: organization.id,
+            expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
+          }),
+        }
+      : {}),
+    ...(runMetadata ? { runMetadata } : {}),
+  };
+}
+
 export async function mintMcpEndpoint(
   ctx: StudioContext,
   agentId: string,
@@ -125,14 +157,7 @@ export async function mintMcpEndpoint(
     // (auth/index.ts), the scope must be explicit; see the parameter.
     permissions,
     expiresIn: MCP_KEY_TTL_SECONDS,
-    metadata: {
-      organization: {
-        id: organization.id,
-        slug: organization.slug,
-        name: organization.name,
-      },
-      ...(runMetadata ? { runMetadata } : {}),
-    },
+    metadata: mcpKeyMetadata({ organization, target, threadId, runMetadata }),
   });
   return {
     url,
