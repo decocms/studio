@@ -133,15 +133,15 @@ describe("createS3DeliveryStore conditional PUTs", () => {
 });
 
 describe("deliveryKeys for revisions", () => {
-  it("keys a revision as a folder with data.json and meta.json", () => {
+  it("keys a revision as a folder with index.json and meta.json", () => {
     const id = newRevisionId();
-    expect(deliveryKeys.revisionData("acme", id)).toBe(
-      `sites/acme/revisions/${id}/data.json`,
+    expect(deliveryKeys.revisionIndex("acme", id)).toBe(
+      `sites/acme/revisions/${id}/index.json`,
     );
     expect(deliveryKeys.revisionMeta("acme", id)).toBe(
       `sites/acme/revisions/${id}/meta.json`,
     );
-    expect(() => deliveryKeys.revisionData("acme", "a".repeat(40))).toThrow();
+    expect(() => deliveryKeys.revisionIndex("acme", "a".repeat(40))).toThrow();
   });
 
   it("prefixes every key with DELIVERY_KEY_PREFIX (test-only)", () => {

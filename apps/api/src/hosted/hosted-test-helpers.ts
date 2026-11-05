@@ -6,8 +6,11 @@ import type { KVStorage } from "@/storage/kv";
 import type { DeliveryPurge } from "./delivery-purge";
 import {
   type DeliveryStore,
+  type GetOptions,
+  type NotModified,
   ObjectChangedError,
   type PutCondition,
+  type StoredObject,
 } from "./delivery-store";
 
 export function memoryDeliveryStore() {
@@ -16,10 +19,13 @@ export function memoryDeliveryStore() {
     { text: string; etag: string; cacheControl: string }
   >();
   const log: string[] = [];
+  /** Every read, `get <key>` (or `get <key> if-none-match`), in order. */
+  const reads: string[] = [];
   let n = 0;
   /** Runs before each write: a test throws here (an R2 429, a crash). */
   const hooks: {
     beforePut?: (key: string, condition: PutCondition | undefined) => void;
+    beforeGet?: (key: string) => void;
   } = {};
   const put = (
     key: string,
@@ -44,6 +50,26 @@ export function memoryDeliveryStore() {
     log.push(`put ${key}`);
     return { etag };
   };
+  function get(key: string): Promise<StoredObject | null>;
+  function get(
+    key: string,
+    options: GetOptions,
+  ): Promise<StoredObject | NotModified | null>;
+  async function get(
+    key: string,
+    options?: GetOptions,
+  ): Promise<StoredObject | NotModified | null> {
+    hooks.beforeGet?.(key);
+    reads.push(
+      options?.ifNoneMatch ? `get ${key} if-none-match` : `get ${key}`,
+    );
+    const o = objects.get(key);
+    if (!o) return null;
+    if (options?.ifNoneMatch && options.ifNoneMatch === o.etag) {
+      return { notModified: true };
+    }
+    return { text: o.text, etag: o.etag };
+  }
   const store: DeliveryStore = {
     async putText(key, text, cacheControl, condition) {
       return put(key, text, cacheControl, condition);
@@ -69,10 +95,7 @@ export function memoryDeliveryStore() {
     async putJson(key, value, cacheControl, condition) {
       return put(key, JSON.stringify(value), cacheControl, condition);
     },
-    async get(key) {
-      const o = objects.get(key);
-      return o ? { text: o.text, etag: o.etag } : null;
-    },
+    get,
     async delete(key) {
       objects.delete(key);
       log.push(`delete ${key}`);
@@ -90,6 +113,7 @@ export function memoryDeliveryStore() {
     store,
     objects,
     log,
+    reads,
     hooks,
     purge,
     failPurge: (fail: boolean) => {
