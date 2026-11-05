@@ -62,7 +62,7 @@ import {
   deliveryKeys,
   ObjectChangedError,
 } from "./delivery-store";
-import { newRevisionId, revisionTimeAfter } from "./revision-id";
+import { newRevisionId } from "./revision-id";
 
 /** Today's `PUBLISH_COMMIT_ATTEMPTS`: attempts in total on a lost race. */
 export const PUBLISH_ATTEMPTS = 3;
@@ -108,9 +108,9 @@ export interface CmsPublishDeps {
   /** The caller (Studio user id) and how it called (server-derived). */
   author: string;
   via: CmsVia;
-  /** Test seams. `newId` gets the time to mint at (`revisionTimeAfter`). */
+  /** Test seams. */
   now?: () => Date;
-  newId?: (nowMs: number) => string;
+  newId?: () => string;
   /** Runs before each latest.json write (tests make races here). */
   beforeLatestWrite?: (attempt: number) => Promise<void>;
 }
@@ -146,17 +146,13 @@ async function writeAndPoint(
   // Pure ASCII after the escaping: its length is its size in bytes.
   const bytes = data.length;
   if (bytes > MAX_SNAPSHOT_BYTES) throw new RevisionTooLargeError(bytes);
-  const previous = latest?.pointer.revision ?? null;
-  const now = deps.now?.() ?? new Date();
-  const id = (deps.newId ?? newRevisionId)(
-    revisionTimeAfter(previous, now.getTime()),
-  );
+  const id = (deps.newId ?? newRevisionId)();
   await writeRevision(deps.store, deps.site, id, data, {
     ...meta,
-    previous,
+    previous: latest?.pointer.revision ?? null,
     author: deps.author,
     via: deps.via,
-    publishedAt: now.toISOString(),
+    publishedAt: (deps.now?.() ?? new Date()).toISOString(),
   });
   await deps.beforeLatestWrite?.(attempt);
   try {
