@@ -6,8 +6,8 @@
  *   GET    /api/cms/:site/drafts                      list (the drafts table)
  *   POST   /api/cms/:site/drafts                      create, idempotent { name }
  *   GET    /api/cms/:site/drafts/:name                resolve (slug, ETag, preview link)
- *   DELETE /api/cms/:site/drafts/:name                discard (object, then row)
- *   POST   /api/cms/:site/drafts/:name/rpc            content protocol (save, editor reads, undo)
+ *   DELETE /api/cms/:site/drafts/:name                discard (files, index, then row)
+ *   POST   /api/cms/:site/drafts/:name/rpc            content protocol + cms.index / cms.blocks
  *   POST   /api/cms/:site/drafts/:name/publish        publish { message? }
  *   GET    /api/cms/:site/releases?cursor=            Releases, 50 revisions a page
  *   POST   /api/cms/:site/releases/:revision/rollback rollback / roll-forward { message? }
@@ -44,7 +44,9 @@ import { syncBlocksMajorMarker } from "@/hosted/blocks-major-marker";
 import {
   type CmsDrafts,
   createCmsDrafts,
+  type DraftState,
   draftResource,
+  draftToken,
   isValidDraftName,
 } from "@/hosted/cms-drafts";
 import {
@@ -55,9 +57,10 @@ import {
   RevisionTooLargeError,
   rollbackToRevision,
 } from "@/hosted/cms-publish";
-import { MalformedObjectError } from "@/hosted/cms-release";
+import { MalformedObjectError, readLatest } from "@/hosted/cms-release";
 import { InvalidCursorError, listCmsReleases } from "@/hosted/cms-releases";
-import { createCmsStorage, withConflictBlocks } from "@/hosted/cms-storage";
+import { applyNamesOf, dispatchCmsRpc } from "@/hosted/cms-rpc";
+import { createCmsStorage } from "@/hosted/cms-storage";
 import { type DeliveryPurge, deliveryPurge } from "@/hosted/delivery-purge";
 import {
   bareEtag,
@@ -342,11 +345,17 @@ function siteTokens(c: Context<CmsEnv>) {
   });
 }
 
-/** The request without `Accept-Encoding`: the conflict rewrite reads the body. */
+/** The request without `Accept-Encoding`: the route reads the handler's answers. */
 function uncompressed(request: Request): Request {
   const headers = new Headers(request.headers);
   headers.delete("accept-encoding");
   return new Request(request, { headers });
+}
+
+/** A draft's pointer version: the `draftToken` over the live revision. */
+async function tokenOf(c: Context<CmsEnv>, state: DraftState) {
+  const live = await readLatest(c.get("buckets").store, c.get("cmsSite").site);
+  return draftToken(live?.latest.revision ?? null, state);
 }
 
 export function createCmsRoutes(options: CmsRoutesOptions = {}) {
@@ -370,11 +379,15 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     }
     const site = c.get("cmsSite");
     try {
-      const { row, created, etag } = await c
+      const { row, created, state } = await c
         .get("drafts")
         .ensure(site.site, body.name, { userId: site.userId, via: site.via });
+      const token = await tokenOf(c, state);
       return c.json(
-        { ...draftResource(row, etag, previewOrigin(site)), created },
+        {
+          ...draftResource(row, state.index.etag, token, previewOrigin(site)),
+          created,
+        },
         200,
         {
           "Cache-Control": "no-store",
@@ -392,8 +405,14 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     try {
       const found = await c.get("drafts").resolve(site.site, name);
       if (!found) return fail(c, 404, "draft_not_found", "Draft not found");
+      const token = await tokenOf(c, found.state);
       return c.json(
-        draftResource(found.row, found.read.etag, previewOrigin(site)),
+        draftResource(
+          found.row,
+          found.state.index.etag,
+          token,
+          previewOrigin(site),
+        ),
         200,
         {
           "Cache-Control": "no-store",
@@ -430,10 +449,8 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     }
     if (!row) return fail(c, 404, "draft_not_found", "Draft not found");
     // Every block a save touches carries its precondition (the draft rule).
-    const unguarded = refuseUnguardedSave(
-      await saveRequestBody(c.req.raw),
-      "draft",
-    );
+    const body = await saveRequestBody(c.req.raw);
+    const unguarded = refuseUnguardedSave(body, "draft");
     if (unguarded) return unguarded;
     const { store, records } = c.get("buckets");
     const storage = createCmsStorage({
@@ -442,22 +459,27 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
       site: site.site,
       slug: row.slug,
       userId: site.userId,
+      via: site.via,
+      applyNames: applyNamesOf(body),
     });
     const origin = previewOrigin(site);
+    const onError = (error: unknown) =>
+      console.error("cms content protocol: internal error", {
+        site: site.site,
+        error: error instanceof Error ? error.message : String(error),
+      });
     const handler = createContentHandler(storage, {
       server: { name: "studio-cms", version: "1" },
-      // All or nothing: a lost race answers Unavailable, never a retry.
+      // All or nothing per file write: a lost race answers Unavailable.
       maxCommitAttempts: 1,
       bodyCacheBytes: 0,
       preview: origin ? { url: origin } : null,
-      onError: (error) =>
-        console.error("cms content protocol: internal error", {
-          site: site.site,
-          error: error instanceof Error ? error.message : String(error),
-        }),
+      onError,
     });
-    const response = await handler(uncompressed(c.req.raw));
-    return withConflictBlocks(response, storage.applyReads);
+    const request = uncompressed(c.req.raw);
+    // Not JSON, or over the size limit: the handler answers it whole.
+    if (body === undefined) return handler(request);
+    return dispatchCmsRpc(storage, handler, request, body, onError);
   });
 
   app.post("/:site/drafts/:name/publish", async (c) => {
@@ -465,11 +487,11 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     const site = c.get("cmsSite");
     if (!name) return fail(c, 404, "draft_not_found", "Draft not found");
     try {
-      const found = await c.get("drafts").resolve(site.site, name);
-      if (!found) return fail(c, 404, "draft_not_found", "Draft not found");
+      const row = await c.get("drafts").row(site.site, name);
+      if (!row) return fail(c, 404, "draft_not_found", "Draft not found");
       const result = await publishCmsDraft(
         await publishDeps(c, options),
-        { name, slug: found.row.slug },
+        { name, slug: row.slug },
         await messageOf(c),
       );
       return c.json(result);

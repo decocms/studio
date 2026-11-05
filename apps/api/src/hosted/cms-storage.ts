@@ -1,25 +1,24 @@
 /**
- * The content-protocol storage of a hosted CMS draft (contract §4.8): the
- * latest release (`latest.json` → `revisions/<id>/data.json`) with the
- * draft layered on, and no GitHub anywhere.
+ * The content-protocol storage of a hosted CMS draft (contract §4.2–§4.4):
+ * the live index (`latest.json`) with the draft's files overlaid, and no
+ * GitHub anywhere. No view lists every body: the index carries each name's
+ * version, and a body is read only when asked for, by its hash.
  *
- * - `blocks.list` (`snapshot()`): the latest revision's blocks with the draft
- *   applied (a set name replaces every spelling of it, a delete hides every
- *   spelling), each versioned with `blockVersion`. The revision is the
- *   draft's bare ETag only (`"none"` when its object is missing), and
- *   `resolvedRef` the latest revision id, so the editor's not-modified poll
- *   notices draft saves only.
- * - `blocks.apply` (an overlay storage, `writeSnapshot()`): the draft alone,
- *   read once with a strong read; each guard compares with the draft only
- *   (its version when it holds the block, `TOMBSTONE_VERSION` when it
- *   deletes it, `null` otherwise). The commit PUTs the draft with
- *   `If-Match` on that read's ETag (`If-None-Match: *` when missing),
- *   stamping `editors`. A lost race is `stale`, which the handler (one
- *   commit attempt) answers Unavailable; R2 429/5xx/network is Unavailable
- *   too. The read is kept, so a Conflict carries each refused block's value,
- *   version and editor from it (`withConflictBlocks`).
- * - `changes.*`: the draft's own names against the latest revision;
- *   `changes.discard` drops them from the draft (one conditional PUT).
+ * - `snapshot()`: the overlaid index's names and versions, with no body
+ *   read: latest.json, the draft index and every listed draft file. Its
+ *   revision is the `draftToken`, its `resolvedRef` the live revision.
+ * - `writeSnapshot()` (an overlay storage): only the draft index and the
+ *   files of the names this request's `blocks.apply` touches or guards.
+ *   Each guard compares with the draft alone (`set` → its version, `delete`
+ *   → `TOMBSTONE_VERSION`, missing or `published` → `null`).
+ * - `commit()`: `blocks.apply` as the design says: new names into the draft
+ *   index first, then the set files (targets before referrers), then the
+ *   deletes, one conditional PUT each. A PUT that fails stops the save with
+ *   the names that landed ({@link PartialApplyError}); nothing is retried.
+ * - `changes.*`: the draft's own names against the live index;
+ *   `changes.discard` leaves a `published` marker per name and drops the
+ *   names from the draft index.
+ * - `index()` / `blocks()`: Studio's `cms.index` and `cms.blocks`.
  * - `schema.get`: the record bucket's `schema.json`, revalidated with a
  *   conditional GET on the cached ETag on every read.
  */
@@ -30,9 +29,6 @@ import {
   type CommitAttempt,
   type CommitResult,
   type ContentStorage,
-  fullyDecodeFileName,
-  serializeBlock,
-  spellingKey,
   type StorageBase,
   type StorageChanges,
   type StorageFile,
@@ -43,18 +39,30 @@ import {
   TOMBSTONE_VERSION,
 } from "@decocms/blocks/protocol";
 import type { DraftConflictBlocks } from "@decocms/shared/blocks-major";
+import type { CmsVia } from "@/storage/types";
+import { type BlockMeta, blockMeta } from "./block-meta";
 import { blockVersion } from "./block-version";
 import {
-  type CmsDraftBody,
-  type DraftRead,
-  readDraftObject,
-  stampEditors,
-  writeDraftObject,
+  type DraftEditor,
+  type DraftFileRead,
+  type DraftIndexRead,
+  type DraftState,
+  draftToken,
+  editorOf,
+  holdsName,
+  mapBounded,
+  readDraftFiles,
+  readDraftIndex,
+  readDraftState,
+  updateDraftIndex,
+  writeDraftFile,
 } from "./cms-drafts";
 import {
-  readLatestPointer,
-  readRevision,
-  type RevisionContent,
+  type Latest,
+  readBlockBody,
+  readLatest,
+  readRevisionIndex,
+  type RevisionIndex,
 } from "./cms-release";
 import {
   bareEtag,
@@ -64,12 +72,11 @@ import {
 } from "./delivery-store";
 import type { RecordStore } from "./record-store";
 
-/** The spelling group (fully decoded name) a saved-block file belongs to. */
-function groupOf(file: string): string {
-  return fullyDecodeFileName(file).name;
-}
-
 const NO_REVISION = "none";
+/** Block bodies read at once from the bucket. */
+const BODY_READS = 16;
+/** `cms.blocks`: names in one call. */
+export const MAX_NAMES_PER_BLOCKS = 50;
 
 /** The schema per site, by ETag: revalidated on every read (a 304 when unchanged). */
 const schemaCache = new Map<string, { etag: string; text: string }>();
@@ -97,87 +104,86 @@ async function readSiteSchema(
   return { text: read.text, etag };
 }
 
-/** The draft's own block files and texts (its `set`). */
-function draftFiles(body: CmsDraftBody) {
-  const files: StorageFile[] = [];
-  const texts = new Map<string, string>();
-  for (const [name, block] of Object.entries(body.set)) {
-    const file = blockFileName(name);
-    const text = serializeBlock(block);
-    texts.set(file, text);
-    files.push({
-      file,
-      version: blockVersion(block),
-      size: Buffer.byteLength(text),
-    });
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function unavailableFrom(error: unknown): never {
+  if (error instanceof DeliveryUnavailableError) {
+    throw new StorageUnavailableError(error.message, 250);
   }
-  return { files, texts };
-}
-
-/** The draft as a save sees it: its blocks and a tombstone per deletion. */
-function overlayFiles(body: CmsDraftBody) {
-  const own = draftFiles(body);
-  const held = new Set(Object.keys(body.set).map(spellingKey));
-  const tombstones = body.delete
-    .filter((name) => !held.has(spellingKey(name)))
-    .map(
-      (name): StorageFile => ({
-        file: blockFileName(name),
-        version: TOMBSTONE_VERSION,
-        deleted: true,
-      }),
-    );
-  return { files: [...own.files, ...tombstones], texts: own.texts };
-}
-
-/** The base's files with the draft layered on. */
-function layeredFiles(base: StorageFile[], body: CmsDraftBody) {
-  const touched = new Set(
-    [...Object.keys(body.set), ...body.delete].map(spellingKey),
-  );
-  const own = draftFiles(body);
-  return {
-    files: [...base.filter((f) => !touched.has(groupOf(f.file))), ...own.files],
-    texts: own.texts,
-  };
+  throw error;
 }
 
 /**
- * The draft after one save: a put sets the block, whole, under the name
- * written, dropping every other spelling and a pending delete; a delete
- * drops the name from `set` and records it in `delete`.
+ * A `blocks.apply` that stopped part way (contract §4.3 step 7): the names
+ * in `landed` were written (with these versions, `"tombstone"` for a
+ * delete), the rest weren't. The client re-sends only the rest.
  */
-function applyAttempt(
-  body: CmsDraftBody,
-  attempt: { put: Record<string, string>; delete: string[] },
-): Pick<CmsDraftBody, "set" | "delete"> {
-  const set = { ...body.set };
-  const deleted = new Set(body.delete);
-  const dropGroup = (group: string) => {
-    for (const name of Object.keys(set)) {
-      if (spellingKey(name) === group) delete set[name];
-    }
-    for (const name of deleted) {
-      if (spellingKey(name) === group) deleted.delete(name);
-    }
-  };
-  const putGroups = new Set<string>();
-  for (const [file, content] of Object.entries(attempt.put)) {
-    const group = groupOf(file);
-    putGroups.add(group);
-    dropGroup(group);
-    set[blockNameFromFile(file)] = JSON.parse(content) as unknown;
+export class PartialApplyError extends StorageUnavailableError {
+  constructor(
+    readonly landed: Record<string, string>,
+    cause: unknown,
+  ) {
+    super(
+      `the save stopped after ${Object.keys(landed).length} block(s): ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+      250,
+    );
+    this.name = "PartialApplyError";
   }
-  for (const file of attempt.delete) {
-    const group = groupOf(file);
-    if (putGroups.has(group)) continue;
-    dropGroup(group);
-    deleted.add(blockNameFromFile(file));
+}
+
+/** One name of the overlaid index (latest ⊕ draft). */
+interface OverlayEntry {
+  version: string;
+  meta?: BlockMeta;
+  /** The draft's body, when the draft sets the name. */
+  draft?: Record<string, unknown>;
+}
+
+/**
+ * latest ⊕ draft (contract §3.6 step 3): a `set` replaces or adds the
+ * entry, with `meta` from the draft body; a `delete` removes it; a missing
+ * file or a `published` marker leaves production.
+ */
+function overlayIndex(
+  latest: Latest | null,
+  files: ReadonlyMap<string, DraftFileRead>,
+): Map<string, OverlayEntry> {
+  const out = new Map<string, OverlayEntry>();
+  for (const [name, entry] of Object.entries(latest?.blocks ?? {})) {
+    out.set(name, {
+      version: entry.version,
+      ...(entry.meta ? { meta: entry.meta } : {}),
+    });
   }
-  return {
-    set: Object.fromEntries(Object.entries(set)),
-    delete: [...deleted].sort(),
-  };
+  const sets: Array<[string, Record<string, unknown>]> = [];
+  for (const [name, read] of files) {
+    if (!holdsName(read)) continue;
+    if (read.file.operation === "delete") out.delete(name);
+    else sets.push([name, read.file.data]);
+  }
+  for (const [name] of sets) out.set(name, { version: "" });
+  const names = new Set(out.keys());
+  for (const [name, data] of sets) {
+    const meta = blockMeta(data, names);
+    out.set(name, {
+      version: blockVersion(data),
+      ...(Object.keys(meta).length > 0 ? { meta } : {}),
+      draft: data,
+    });
+  }
+  return out;
+}
+
+/** A name's version in the draft alone: what a hosted guard compares. */
+function draftVersion(read: DraftFileRead | undefined): string | null {
+  if (!holdsName(read)) return null;
+  return read.file.operation === "delete"
+    ? TOMBSTONE_VERSION
+    : blockVersion(read.file.data);
 }
 
 /** Every `expected` file is in `files` at that version (`null`: absent). */
@@ -191,16 +197,81 @@ function expectedHold(
   );
 }
 
-function unavailableFrom(error: unknown): never {
-  if (error instanceof DeliveryUnavailableError) {
-    throw new StorageUnavailableError(error.message, 250);
-  }
-  throw error;
+/**
+ * The set names in write order: a name another set name references (its
+ * `blockMeta` refs, restricted to the set) first; ties and cycles in
+ * code-unit order.
+ */
+export function targetsFirst(
+  sets: ReadonlyMap<string, Record<string, unknown>>,
+): string[] {
+  const names = [...sets.keys()].sort();
+  const known = new Set(names);
+  const order: string[] = [];
+  const state = new Map<string, "visiting" | "done">();
+  const visit = (name: string) => {
+    if (state.has(name)) return;
+    state.set(name, "visiting");
+    for (const ref of blockMeta(sets.get(name), known).refs ?? []) {
+      if (ref !== name) visit(ref);
+    }
+    state.set(name, "done");
+    order.push(name);
+  };
+  for (const name of names) visit(name);
+  return order;
+}
+
+/** What `cms.index` answers (contract §4.2). */
+export type CmsIndexResult =
+  | { notModified: true; revision: string }
+  | {
+      notModified: false;
+      revision: string;
+      resolvedRef: string | null;
+      sequence: number;
+      entries: Record<string, { version: string; meta?: BlockMeta }>;
+      draft: Record<
+        string,
+        {
+          operation: "set" | "delete";
+          version: string;
+          editor: DraftEditor | null;
+        }
+      >;
+    };
+
+/** What `cms.blocks` answers (contract §4.2). */
+export interface CmsBlocksResult {
+  blocks: Record<string, Record<string, unknown>>;
+  versions: Record<string, string>;
+  missing: string[];
+}
+
+/** The draft reads one `blocks.apply` was checked against. */
+export interface ApplyRead {
+  index: DraftIndexRead;
+  files: Map<string, DraftFileRead>;
+}
+
+interface ReadState {
+  latest: Latest | null;
+  state: DraftState;
+  overlay: Map<string, OverlayEntry>;
 }
 
 export interface CmsStorage extends ContentStorage {
-  /** The draft reads `blocks.apply` validated against, in order. */
-  readonly applyReads: DraftRead[];
+  /** The draft reads `blocks.apply` was checked against, in order. */
+  readonly applyReads: ApplyRead[];
+  /**
+   * The names the last partial `blocks.apply` landed (`-32008`'s
+   * `data.landed`), once; null when there was none since the last call.
+   */
+  takePartial(): Record<string, string> | null;
+  /** `cms.index`: the overlaid index, or `notModified` on the same token. */
+  index(ifNoneMatch?: string): Promise<CmsIndexResult>;
+  /** `cms.blocks`: the overlaid bodies of 1–50 names. */
+  blocks(names: readonly string[]): Promise<CmsBlocksResult>;
 }
 
 export function createCmsStorage(options: {
@@ -208,29 +279,29 @@ export function createCmsStorage(options: {
   records: RecordStore | null;
   site: string;
   slug: string;
-  /** Who saves through this storage (stamped into `editors`). */
+  /** Who saves through this storage (written into each draft file). */
   userId: string;
+  via?: CmsVia;
+  /**
+   * The names this request's `blocks.apply` calls write or guard: the only
+   * draft files `writeSnapshot()` reads. All of them when absent.
+   */
+  applyNames?: readonly string[];
   now?: () => number;
 }): CmsStorage {
   const { store, site, slug } = options;
+  const via: CmsVia = options.via ?? "studio";
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
-  const applyReads: DraftRead[] = [];
-  /** Draft reads by the revision they were reported with (`snapshot()`). */
-  const layered = new Map<
-    string,
-    { read: DraftRead; texts: Map<string, string> }
-  >();
+  const applyReads: ApplyRead[] = [];
+  let partial: Record<string, string> | null = null;
+  /** Reads by the revision they were reported with. */
+  const snaps = new Map<string, ReadState | ApplyRead>();
 
-  /** The latest revision, read once per request (a discard reads it again). */
-  let latestRead: Promise<RevisionContent | null> | null = null;
-  const readLatest = (fresh = false): Promise<RevisionContent | null> => {
+  /** latest.json, read once per request (a discard reads it again). */
+  let latestRead: Promise<Latest | null> | null = null;
+  const readLive = (fresh = false): Promise<Latest | null> => {
     if (!latestRead || fresh) {
-      const read = (async () => {
-        const latest = await readLatestPointer(store, site);
-        return latest
-          ? readRevision(store, site, latest.pointer.revision)
-          : null;
-      })();
+      const read = readLatest(store, site).then((r) => r?.latest ?? null);
       latestRead = read;
       read.catch(() => {
         if (latestRead === read) latestRead = null;
@@ -238,82 +309,224 @@ export function createCmsStorage(options: {
     }
     return latestRead.catch(unavailableFrom);
   };
-  const readDraft = () =>
-    readDraftObject(store, site, slug).catch(unavailableFrom);
-  const revisionOf = (read: DraftRead) => bareEtag(read.etag) ?? NO_REVISION;
-  const baseOf = (latest: RevisionContent | null): StorageBase => ({
-    revision: latest?.id ?? NO_REVISION,
-    resolvedRef: latest?.id ?? null,
-  });
-  const revisionAt = async (base: StorageBase) => {
-    const latest = await readLatest();
-    if ((latest?.id ?? NO_REVISION) === base.revision) return latest;
+  const readAll = async (): Promise<ReadState> => {
+    const [latest, state] = await Promise.all([
+      readLive(),
+      readDraftState(store, site, slug).catch(unavailableFrom),
+    ]);
+    return { latest, state, overlay: overlayIndex(latest, state.files) };
+  };
+  const indexAt = async (base: StorageBase): Promise<RevisionIndex | null> => {
+    const latest = await readLive();
+    if ((latest?.revision ?? NO_REVISION) === base.revision) return latest;
     return base.resolvedRef
-      ? readRevision(store, site, base.resolvedRef)
+      ? readRevisionIndex(store, site, base.resolvedRef).catch(unavailableFrom)
       : null;
   };
+  const bodyOf = (hash: string) =>
+    readBlockBody(store, site, hash).catch(unavailableFrom);
 
-  /** PUTs the draft over `read`; a lost race is `stale`. */
-  const write = async (
-    read: DraftRead,
-    next: Pick<CmsDraftBody, "set" | "delete">,
-  ): Promise<string | null | "stale"> => {
-    const body: CmsDraftBody = {
-      ...next,
-      editors: stampEditors(read.body, next, options.userId, now()),
+  const snapshotOf = (read: ReadState): StorageSnapshot => {
+    const revision = draftToken(read.latest?.revision ?? null, read.state);
+    snaps.set(revision, read);
+    return {
+      revision,
+      resolvedRef: read.latest?.revision ?? null,
+      files: [...read.overlay].map(([name, entry]) => ({
+        file: blockFileName(name),
+        version: entry.version,
+      })),
     };
-    try {
-      return await writeDraftObject(store, site, slug, body, read.etag);
-    } catch (error) {
-      if (error instanceof ObjectChangedError) return "stale";
-      return unavailableFrom(error);
-    }
   };
 
   const discard = async (attempt: CommitAttempt): Promise<CommitResult> => {
-    const latest = await readLatest(true);
+    const latest = await readLive(true);
     if (
       attempt.expectedBase !== undefined &&
-      (latest?.id ?? NO_REVISION) !== attempt.expectedBase
+      (latest?.revision ?? NO_REVISION) !== attempt.expectedBase
     ) {
       return { status: "stale" };
     }
-    const read =
-      layered.get(attempt.base.revision)?.read ?? (await readDraft());
-    const baseFiles = latest?.files ?? [];
-    if (
-      !expectedHold(layeredFiles(baseFiles, read.body).files, attempt.expected)
-    ) {
+    const snap = snaps.get(attempt.base.revision);
+    const read = snap && "overlay" in snap ? snap : await readAll();
+    if (!expectedHold(snapshotOf(read).files, attempt.expected)) {
       return { status: "stale" };
     }
-    const onBase = new Map(baseFiles.map((f) => [f.file, f.version]));
+    const names = [
+      ...new Set(
+        [...Object.keys(attempt.put), ...attempt.delete].map(blockNameFromFile),
+      ),
+    ].sort();
     const versions: Record<string, string> = {};
     for (const file of Object.keys(attempt.put)) {
-      const version = onBase.get(file);
-      if (version === undefined) return { status: "stale" };
-      versions[file] = version;
+      const entry = latest?.blocks[blockNameFromFile(file)];
+      if (!entry) return { status: "stale" };
+      versions[file] = entry.version;
     }
-    const groups = new Set(
-      [...Object.keys(attempt.put), ...attempt.delete].map(groupOf),
-    );
-    const etag = await write(read, {
-      set: Object.fromEntries(
-        Object.entries(read.body.set).filter(
-          ([n]) => !groups.has(spellingKey(n)),
-        ),
-      ),
-      delete: read.body.delete.filter((n) => !groups.has(spellingKey(n))),
-    });
-    if (etag === "stale") return { status: "stale" };
+    let last: string | null = null;
+    const dropped: string[] = [];
+    for (const name of names) {
+      const file = read.state.files.get(name);
+      if (!holdsName(file)) continue;
+      try {
+        last = await writeDraftFile(
+          store,
+          site,
+          slug,
+          name,
+          {
+            operation: "published",
+            revision: latest?.revision ?? null,
+            version: latest?.blocks[name]?.version ?? null,
+          },
+          file.etag,
+        );
+        dropped.push(name);
+      } catch (error) {
+        if (error instanceof ObjectChangedError) return { status: "stale" };
+        return unavailableFrom(error);
+      }
+    }
+    const drop = new Set(dropped);
+    await updateDraftIndex(store, site, slug, (listed) =>
+      listed.filter((n) => !drop.has(n)),
+    ).catch(unavailableFrom);
     return {
       status: "committed",
-      revision: bareEtag(etag) ?? NO_REVISION,
+      revision: `s-${bareEtag(last) ?? NO_REVISION}`,
       versions,
     };
   };
 
+  const apply = async (attempt: CommitAttempt): Promise<CommitResult> => {
+    const snap = snaps.get(attempt.base.revision);
+    const read: ApplyRead =
+      snap && !("overlay" in snap)
+        ? snap
+        : (applyReads.at(-1) ?? (await takeApplyRead()));
+    if (!expectedHold(applyFiles(read), attempt.expected)) {
+      partial = {};
+      throw new PartialApplyError({}, new Error("the draft changed"));
+    }
+    const sets = new Map<string, Record<string, unknown>>();
+    for (const [file, content] of Object.entries(attempt.put)) {
+      sets.set(blockNameFromFile(file), JSON.parse(content));
+    }
+    const deletes = [...new Set(attempt.delete.map(blockNameFromFile))]
+      .filter((name) => !sets.has(name))
+      .sort();
+    const landed: Record<string, string> = {};
+    const fileVersions: Record<string, string> = {};
+    const listed = new Set(read.index.names);
+    const added = [...sets.keys(), ...deletes].filter((n) => !listed.has(n));
+    try {
+      if (added.length > 0) {
+        await updateDraftIndex(
+          store,
+          site,
+          slug,
+          (names) => [...names, ...added],
+          read.index,
+        );
+      }
+    } catch (error) {
+      partial = { ...landed };
+      if (error instanceof DeliveryUnavailableError) {
+        throw new PartialApplyError(landed, error);
+      }
+      throw error;
+    }
+    let last: string | null = null;
+    const write = async (
+      name: string,
+      file: Parameters<typeof writeDraftFile>[4],
+      version: string,
+    ) => {
+      try {
+        last = await writeDraftFile(
+          store,
+          site,
+          slug,
+          name,
+          file,
+          read.files.get(name)?.etag ?? null,
+        );
+      } catch (error) {
+        partial = { ...landed };
+        if (
+          error instanceof ObjectChangedError ||
+          error instanceof DeliveryUnavailableError
+        ) {
+          throw new PartialApplyError(landed, error);
+        }
+        throw error;
+      }
+      landed[name] = version;
+      fileVersions[blockFileName(name)] = version;
+    };
+    const at = now();
+    for (const name of targetsFirst(sets)) {
+      const data = sets.get(name)!;
+      await write(
+        name,
+        { operation: "set", data, user: options.userId, via, at },
+        blockVersion(data),
+      );
+    }
+    for (const name of deletes) {
+      await write(
+        name,
+        { operation: "delete", user: options.userId, via, at },
+        TOMBSTONE_VERSION,
+      );
+    }
+    return {
+      status: "committed",
+      revision: `s-${bareEtag(last) ?? NO_REVISION}`,
+      versions: fileVersions,
+    };
+  };
+
+  /** The draft as a save sees it: only the names the save touches or guards. */
+  const takeApplyRead = async (): Promise<ApplyRead> => {
+    if (!options.applyNames) {
+      const state = await readDraftState(store, site, slug).catch(
+        unavailableFrom,
+      );
+      return { index: state.index, files: state.files };
+    }
+    const index = await readDraftIndex(store, site, slug).catch(
+      unavailableFrom,
+    );
+    const names = [...new Set(options.applyNames)];
+    const files = await readDraftFiles(store, site, slug, names).catch(
+      unavailableFrom,
+    );
+    return { index, files };
+  };
+
+  const applyFiles = (read: ApplyRead): StorageFile[] => {
+    const files: StorageFile[] = [];
+    for (const [name, file] of read.files) {
+      const version = draftVersion(file);
+      if (version === null) continue;
+      files.push({
+        file: blockFileName(name),
+        version,
+        ...(version === TOMBSTONE_VERSION ? { deleted: true as const } : {}),
+      });
+    }
+    return files;
+  };
+
   return {
     applyReads,
+
+    takePartial() {
+      const taken = partial;
+      partial = null;
+      return taken;
+    },
 
     describe: () => ({
       kind: "git",
@@ -324,33 +537,39 @@ export function createCmsStorage(options: {
     }),
 
     async snapshot(): Promise<StorageSnapshot> {
-      const [latest, read] = await Promise.all([readLatest(), readDraft()]);
-      const { files, texts } = layeredFiles(latest?.files ?? [], read.body);
-      const revision = revisionOf(read);
-      layered.set(revision, { read, texts });
-      return { revision, resolvedRef: latest?.id ?? null, files };
+      return snapshotOf(await readAll());
     },
 
     async writeSnapshot(): Promise<StorageSnapshot> {
-      const read = await readDraft();
+      const read = await takeApplyRead();
       applyReads.push(read);
-      const { files, texts } = overlayFiles(read.body);
-      const revision = revisionOf(read);
-      layered.set(revision, { read, texts });
-      return { revision, resolvedRef: null, files };
+      const revision = `w-${applyReads.length}`;
+      snaps.set(revision, read);
+      return { revision, resolvedRef: null, files: applyFiles(read) };
     },
 
     async readFiles(snap, files) {
-      const own =
-        layered.get(snap.revision)?.texts ?? new Map<string, string>();
-      // A save's overlay holds every file it lists: no release read.
-      const latest = files.every((f) => own.has(f)) ? null : await readLatest();
+      const known = snaps.get(snap.revision);
       const out: Record<string, StoredFileBody> = {};
-      for (const file of files) {
-        const text = own.get(file) ?? latest?.texts.get(file);
-        if (text === undefined) continue;
-        out[file] = { text, version: blockVersion(JSON.parse(text)) };
+      if (!known) return out;
+      if (!("overlay" in known)) {
+        for (const file of files) {
+          const held = known.files.get(blockNameFromFile(file));
+          if (holdsName(held) && held.file.operation === "set") {
+            out[file] = {
+              text: JSON.stringify(held.file.data),
+              version: blockVersion(held.file.data),
+            };
+          }
+        }
+        return out;
       }
+      await mapBounded(files, BODY_READS, async (file) => {
+        const entry = known.overlay.get(blockNameFromFile(file));
+        if (!entry) return;
+        const body = entry.draft ?? (await bodyOf(entry.version));
+        out[file] = { text: JSON.stringify(body), version: entry.version };
+      });
       return out;
     },
 
@@ -367,171 +586,177 @@ export function createCmsStorage(options: {
         : null;
     },
 
-    base: async () => baseOf(await readLatest()),
+    async base() {
+      const latest = await readLive();
+      return {
+        revision: latest?.revision ?? NO_REVISION,
+        resolvedRef: latest?.revision ?? null,
+      };
+    },
 
     async changes(base, snap): Promise<StorageChanges> {
-      const onBase = (await revisionAt(base))?.files ?? [];
-      const body = (layered.get(snap.revision)?.read ?? (await readDraft()))
-        .body;
-      const baseGroups = new Set(onBase.map((f) => groupOf(f.file)));
-      const deletions = body.delete.filter((n) =>
-        baseGroups.has(spellingKey(n)),
-      );
-      const touched = new Set([
-        ...Object.keys(body.set).map(spellingKey),
-        ...deletions.map(spellingKey),
-      ]);
-      const files = new Set(Object.keys(body.set).map(blockFileName));
-      for (const f of onBase)
-        if (touched.has(groupOf(f.file))) files.add(f.file);
-      const held = new Set(Object.keys(body.set).map(spellingKey));
-      const tombstones: StorageFile[] = deletions
-        .filter((n) => !held.has(spellingKey(n)))
-        .map((n) => ({
-          file: blockFileName(n),
-          version: TOMBSTONE_VERSION,
-          deleted: true,
-        }));
-      return { files: [...files].sort(), tombstones, baseFiles: onBase };
+      const onBase = (await indexAt(base))?.blocks ?? {};
+      const known = snaps.get(snap.revision);
+      const state =
+        known && "overlay" in known
+          ? known.state
+          : await readDraftState(store, site, slug).catch(unavailableFrom);
+      const files: string[] = [];
+      const tombstones: StorageFile[] = [];
+      const baseFiles: StorageFile[] = [];
+      for (const [name, read] of state.files) {
+        if (!holdsName(read)) continue;
+        const inBase = Object.hasOwn(onBase, name);
+        if (read.file.operation === "delete") {
+          if (!inBase) continue;
+          tombstones.push({
+            file: blockFileName(name),
+            version: TOMBSTONE_VERSION,
+            deleted: true,
+          });
+        }
+        files.push(blockFileName(name));
+        if (inBase) {
+          baseFiles.push({
+            file: blockFileName(name),
+            version: onBase[name]!.version,
+          });
+        }
+      }
+      return { files: files.sort(), tombstones, baseFiles };
     },
 
     async readBaseFiles(base, files) {
-      const revision = await revisionAt(base);
+      const index = await indexAt(base);
       const out: Record<string, StoredFileBody> = {};
-      for (const file of files) {
-        const text = revision?.texts.get(file);
-        if (text !== undefined) {
-          out[file] = { text, version: blockVersion(JSON.parse(text)) };
-        }
-      }
+      await mapBounded(files, BODY_READS, async (file) => {
+        const entry = index?.blocks[blockNameFromFile(file)];
+        if (!entry) return;
+        out[file] = {
+          text: JSON.stringify(await bodyOf(entry.version)),
+          version: entry.version,
+        };
+      });
       return out;
     },
 
     async commit(attempt): Promise<CommitResult> {
-      if (attempt.reason === "discard") return discard(attempt);
-      const read =
-        layered.get(attempt.base.revision)?.read ??
-        applyReads.at(-1) ??
-        (await readDraft());
-      if (!expectedHold(overlayFiles(read.body).files, attempt.expected)) {
-        return { status: "stale" };
+      return attempt.reason === "discard" ? discard(attempt) : apply(attempt);
+    },
+
+    async index(ifNoneMatch) {
+      const read = await readAll();
+      const revision = draftToken(read.latest?.revision ?? null, read.state);
+      if (ifNoneMatch !== undefined && ifNoneMatch === revision) {
+        return { notModified: true, revision };
       }
-      const next = applyAttempt(read.body, attempt);
-      const versions: Record<string, string> = {};
-      for (const [file, content] of Object.entries(attempt.put)) {
-        versions[file] = blockVersion(JSON.parse(content));
+      const entries: Record<string, { version: string; meta?: BlockMeta }> =
+        Object.create(null);
+      for (const [name, entry] of read.overlay) {
+        entries[name] = {
+          version: entry.version,
+          ...(entry.meta ? { meta: entry.meta } : {}),
+        };
       }
-      const recorded = new Set(next.delete.map(spellingKey));
-      for (const file of attempt.delete) {
-        if (recorded.has(groupOf(file))) versions[file] = TOMBSTONE_VERSION;
+      const draft: Extract<CmsIndexResult, { notModified: false }>["draft"] =
+        Object.create(null);
+      for (const [name, file] of read.state.files) {
+        if (!holdsName(file)) continue;
+        draft[name] = {
+          operation: file.file.operation,
+          version: draftVersion(file)!,
+          editor: editorOf(file.file),
+        };
       }
-      const etag = await write(read, next);
-      if (etag === "stale") return { status: "stale" };
       return {
-        status: "committed",
-        revision: bareEtag(etag) ?? NO_REVISION,
-        versions,
+        notModified: false,
+        revision,
+        resolvedRef: read.latest?.revision ?? null,
+        sequence: read.latest?.sequence ?? 0,
+        entries,
+        draft,
       };
+    },
+
+    async blocks(names) {
+      const [latest, index] = await Promise.all([
+        readLive(),
+        readDraftIndex(store, site, slug).catch(unavailableFrom),
+      ]);
+      const listed = new Set(index.names);
+      const unique = [...new Set(names)];
+      const files = await readDraftFiles(
+        store,
+        site,
+        slug,
+        unique.filter((n) => listed.has(n)),
+      ).catch(unavailableFrom);
+      const out: CmsBlocksResult = {
+        blocks: Object.create(null),
+        versions: Object.create(null),
+        missing: [],
+      };
+      await mapBounded(unique, BODY_READS, async (name) => {
+        const read = files.get(name);
+        if (holdsName(read)) {
+          if (read.file.operation === "delete") {
+            out.missing.push(name);
+            return;
+          }
+          out.blocks[name] = read.file.data;
+          out.versions[name] = blockVersion(read.file.data);
+          return;
+        }
+        const entry =
+          latest && Object.hasOwn(latest.blocks, name)
+            ? latest.blocks[name]
+            : undefined;
+        if (!entry) {
+          out.missing.push(name);
+          return;
+        }
+        const body = await bodyOf(entry.version);
+        if (!isRecord(body)) {
+          out.missing.push(name);
+          return;
+        }
+        out.blocks[name] = body;
+        out.versions[name] = entry.version;
+      });
+      out.missing.sort();
+      return out;
     },
   };
 }
 
-/** Each refused name as `read` (the save's own step-1 read) holds it. */
-function conflictBlocks(
-  read: DraftRead,
+/**
+ * Each refused name as `read` (the save's own step-1 read) holds it: the
+ * value, version and editor (`DraftConflictBlocks`), `null` when the draft
+ * doesn't hold it.
+ */
+export function conflictBlocks(
+  read: ApplyRead,
   names: readonly string[],
 ): DraftConflictBlocks["draft"] {
   const out: DraftConflictBlocks["draft"] = {};
-  const editorOf = (name: string) =>
-    Object.hasOwn(read.body.editors, name)
-      ? (read.body.editors[name] ?? null)
-      : null;
   for (const name of names) {
-    const key = spellingKey(name);
-    const setName = Object.keys(read.body.set).find(
-      (n) => spellingKey(n) === key,
-    );
-    if (setName !== undefined) {
-      const block = read.body.set[setName];
-      out[name] = {
-        block,
-        version: blockVersion(block),
-        editor: editorOf(setName),
-      };
-    } else {
-      const deleted = read.body.delete.find((n) => spellingKey(n) === key);
-      out[name] =
-        deleted !== undefined
-          ? {
-              block: null,
-              version: TOMBSTONE_VERSION,
-              editor: editorOf(deleted),
-            }
-          : null;
+    const file = read.files.get(name);
+    if (!holdsName(file)) {
+      out[name] = null;
+      continue;
     }
+    out[name] =
+      file.file.operation === "set"
+        ? {
+            block: file.file.data,
+            version: blockVersion(file.file.data),
+            editor: editorOf(file.file),
+          }
+        : {
+            block: null,
+            version: TOMBSTONE_VERSION,
+            editor: editorOf(file.file),
+          };
   }
   return out;
-}
-
-/** The read a Conflict was decided on: the one whose versions are its `actual`s. */
-function readOfConflict(
-  reads: readonly DraftRead[],
-  entries: Record<string, { actual?: unknown }>,
-): DraftRead | null {
-  for (const read of [...reads].reverse()) {
-    const blocks = conflictBlocks(read, Object.keys(entries));
-    const matches = Object.entries(entries).every(
-      ([name, entry]) =>
-        (blocks[name]?.version ?? null) === (entry.actual ?? null),
-    );
-    if (matches) return read;
-  }
-  return reads.at(-1) ?? null;
-}
-
-const CONFLICT = -32002;
-
-/**
- * The handler's answer with each Conflict carrying, per refused block, what
- * the draft held in the save's own read: value, version and editor
- * (contract §4.8.1). Never a re-read. Any other answer is returned as is.
- */
-export async function withConflictBlocks(
-  response: Response,
-  reads: readonly DraftRead[],
-): Promise<Response> {
-  if (reads.length === 0) return response;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await response.clone().text());
-  } catch {
-    return response;
-  }
-  const answers = Array.isArray(parsed) ? parsed : [parsed];
-  let changed = false;
-  for (const answer of answers) {
-    const error = (answer as { error?: { code?: unknown; data?: unknown } })
-      ?.error;
-    if (!error || error.code !== CONFLICT) continue;
-    const data = error.data as
-      | { entries?: Record<string, { actual?: unknown }> }
-      | undefined;
-    if (!data?.entries) continue;
-    const read = readOfConflict(reads, data.entries);
-    if (!read) continue;
-    (data as Record<string, unknown>).draft = conflictBlocks(
-      read,
-      Object.keys(data.entries),
-    );
-    changed = true;
-  }
-  if (!changed) return response;
-  const headers = new Headers(response.headers);
-  headers.delete("content-length");
-  headers.delete("content-encoding");
-  return new Response(JSON.stringify(parsed), {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
 }
