@@ -12,8 +12,6 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "releases",
   "hosting",
   "e2e",
-  "analytics",
-  "cdn",
   "automations",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
@@ -85,8 +83,6 @@ export const PROJECT_NATIVE_VIEW_IDS = [
   "releases",
   "hosting",
   "e2e",
-  "analytics",
-  "cdn",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 export type ProjectNativeViewId = (typeof PROJECT_NATIVE_VIEW_IDS)[number];
@@ -208,8 +204,6 @@ export function projectSidebarViewPresence(
     releases: hasClonableSource && native.releases,
     hosting: native.hosting,
     e2e: native.e2e,
-    analytics: native.analytics,
-    cdn: native.cdn,
     // Authored in the Site Editor decofile — only where a CMS source exists.
     experiments: hasClonableSource && native.experiments,
     // A v8 site's campaigns block, edited in the same draft as the pages.

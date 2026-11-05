@@ -55,10 +55,8 @@ export const PROJECT_ROUTE = {
   releases: "/$org/projects/$agentId/releases",
   hosting: "/$org/projects/$agentId/hosting",
   e2e: "/$org/projects/$agentId/e2e",
-  analytics: "/$org/projects/$agentId/analytics",
   experiments: "/$org/projects/$agentId/experiments",
   calendar: "/$org/projects/$agentId/calendar",
-  monitor: "/$org/projects/$agentId/cdn",
   plan: "/$org/projects/$agentId/plan",
   monitoring: "/$org/projects/$agentId/monitoring",
 } as const;

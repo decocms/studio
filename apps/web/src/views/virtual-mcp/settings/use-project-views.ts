@@ -441,8 +441,6 @@ export function useProjectViews({
     releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),
-    analytics: t("common.mainPanelTabs.analytics"),
-    cdn: t("common.mainPanelTabs.cdn"),
     automations: t("virtualMcp.layoutTabContent.automations"),
     experiments: t("experiments.title"),
     calendar: t("common.mainPanelTabs.calendar"),

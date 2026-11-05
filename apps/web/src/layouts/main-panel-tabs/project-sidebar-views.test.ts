@@ -29,17 +29,17 @@ const nativePresence = (
   releases: present.includes("releases"),
   hosting: present.includes("hosting"),
   e2e: present.includes("e2e"),
-  analytics: present.includes("analytics"),
-  cdn: present.includes("cdn"),
   experiments: present.includes("experiments"),
   calendar: present.includes("calendar"),
 });
 
 describe("project sidebar views", () => {
-  test("covers every persisted sidebar id exactly once", () => {
-    expect([...PROJECT_SIDEBAR_VIEW_IDS]).toEqual([
-      ...VirtualMcpSidebarViewSchema.options,
-    ]);
+  test("covers every persisted sidebar id but the retired apps, once", () => {
+    // Analytics and CDN moved into Monitor; saved layouts may still name them.
+    const retired = new Set(["analytics", "cdn"]);
+    expect<string[]>([...PROJECT_SIDEBAR_VIEW_IDS]).toEqual(
+      VirtualMcpSidebarViewSchema.options.filter((v) => !retired.has(v)),
+    );
     expect(new Set(PROJECT_SIDEBAR_VIEW_IDS).size).toBe(
       PROJECT_SIDEBAR_VIEW_IDS.length,
     );
@@ -57,7 +57,7 @@ describe("project sidebar views", () => {
   test("combines source and native presence in sidebar order", () => {
     const presence = projectSidebarViewPresence(
       true,
-      nativePresence(["cdn", "assets", "e2e"]),
+      nativePresence(["e2e", "assets", "hosting"]),
     );
 
     expect(availableProjectSidebarViews(presence)).toEqual([
@@ -66,8 +66,8 @@ describe("project sidebar views", () => {
       "board",
       "site-editor",
       "assets",
+      "hosting",
       "e2e",
-      "cdn",
       "automations",
     ]);
   });
@@ -221,15 +221,15 @@ describe("project sidebar views", () => {
   test("requires both presence and selection", () => {
     const presence = projectSidebarViewPresence(
       true,
-      nativePresence(["assets", "e2e", "cdn"]),
+      nativePresence(["assets", "e2e"]),
     );
     expect(
       selectedProjectSidebarViews(
-        ["board", "cdn", "assets", "hosting", "automations"],
+        ["board", "e2e", "assets", "hosting", "automations"],
         presence,
         1,
       ),
-    ).toEqual(["board", "assets", "cdn", "automations"]);
+    ).toEqual(["board", "assets", "e2e", "automations"]);
     expect(selectedProjectSidebarViews(undefined, presence)).toEqual([
       "overview",
       "reports",
@@ -303,12 +303,22 @@ describe("project sidebar views", () => {
     ]);
     expect(
       toggleProjectSidebarView(
-        ["cdn", "overview", "cdn", "automations"],
+        ["e2e", "overview", "e2e", "automations"],
         "overview",
         false,
         1,
       ),
-    ).toEqual(["cdn", "automations"]);
+    ).toEqual(["e2e", "automations"]);
+  });
+
+  test("drops the retired Analytics and CDN rows from a saved list", () => {
+    expect(
+      selectedProjectSidebarViews(
+        ["analytics", "cdn", "board"],
+        projectSidebarViewPresence(true, nativePresence([])),
+        1,
+      ),
+    ).toEqual(["board"]);
   });
 
   test("keeps native routes while presence discovery is pending", () => {

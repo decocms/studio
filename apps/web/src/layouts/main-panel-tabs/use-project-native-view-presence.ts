@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
@@ -8,10 +7,7 @@ import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useProjectContext } from "@/sdk";
-import {
-  resolveAgentSiteSlug,
-  resolveAnalyticsSiteSlug,
-} from "@decocms/shared/site-slug";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import {
   editsBlocksDraft,
   experimentsTabVisible,
@@ -47,45 +43,16 @@ export function useProjectNativeViewPresence(
   const hostedCms = mainSchema === "v8";
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
-  const monitorEnabled =
-    config.monitorEnabled === true || config.auth.localMode === true;
-  const siteAccessProbeEnabled =
-    (hostingEnabled || monitorEnabled) && !!siteSlug;
+  const siteAccessProbeEnabled = hostingEnabled && !!siteSlug;
 
   const siteAccess = useSiteAccess(org.slug, siteSlug, siteAccessProbeEnabled);
-  // Monitor reads the analytics site, which a migrated project may override.
-  const analyticsSlug = resolveAnalyticsSiteSlug(project);
-  const analyticsProbeEnabled =
-    monitorEnabled && !!analyticsSlug && analyticsSlug !== siteSlug;
-  const analyticsAccess = useSiteAccess(
-    org.slug,
-    analyticsSlug,
-    analyticsProbeEnabled,
-  );
-
   const ownsSite = siteAccess.data?.owned === true;
-  const ownsAnalyticsSite = analyticsProbeEnabled
-    ? analyticsAccess.data?.owned === true
-    : ownsSite;
   return {
     presence: {
       assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
       releases: hostedCms && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
-      // A site deco doesn't host reads the registration its project carries,
-      // through the analytics read surface alone: no control-plane needed.
-      analytics:
-        controlPlaneViews.analytics &&
-        ((hostingEnabled && ownsSite) ||
-          !!storedExternalRegistration(project?.metadata)),
-      // A v8 site's Monitor reads the telemetry of its own site (the one its
-      // token names); a v7 site's reads the analytics site. "error" is a site
-      // last found v8, which the tab opens as v8 too (`monitorKind`).
-      cdn:
-        monitorEnabled &&
-        (editsBlocksDraft(mainSchema) ? ownsSite : ownsAnalyticsSite) &&
-        controlPlaneViews.monitor,
       // Every v8 site: its A/B tests are content its editors own.
       experiments: experimentsTabVisible(
         controlPlaneViews.experiments,
@@ -103,9 +70,7 @@ export function useProjectNativeViewPresence(
     calendarPending: !!project && mainSchema === "loading",
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
-    siteAccessPending:
-      (siteAccessProbeEnabled && siteAccess.isPending) ||
-      (analyticsProbeEnabled && analyticsAccess.isPending),
+    siteAccessPending: siteAccessProbeEnabled && siteAccess.isPending,
   };
 }
 

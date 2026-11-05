@@ -855,23 +855,21 @@ const agentE2eRoute = createRoute({
   ),
 });
 
-const agentAnalyticsRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
+/** The retired Analytics app; its data lives in Monitor's Audience now. */
+const agentAnalyticsRedirectRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/analytics",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.analytics",
-    defaultMain: "analytics",
-    mainView: "analytics",
-  },
-  // `view` lets another tab deep-link straight to one of AnalyticsTab's
-  // DATA_VIEWS (e.g. Experiments' "ver dados" opens here with view=experiments)
-  // instead of always landing on "overview".
   validateSearch: z.object({ view: z.string().optional() }),
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-analytics.tsx"),
-  ),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/projects/$agentId/monitoring",
+      params,
+      search: {
+        view: search.view === "experiments" ? "experiments" : "audience",
+      },
+      replace: true,
+    });
+  },
 });
 
 /** The task board analytics, narrowed to this project's cards. */
@@ -922,22 +920,18 @@ const agentCalendarRoute = createRoute({
   ),
 });
 
-const agentMonitorRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
+/** The retired CDN app; its data lives in Monitor's Performance now. */
+const agentCdnRedirectRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
-  /** The stable tab id is `cdn`. Keeping that name in the canonical path also
-   * leaves the previously unambiguous project-first custom view `monitor`
-   * available to the compatibility catch-all below. */
   path: "/cdn",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.cdn",
-    defaultMain: "cdn",
-    mainView: "cdn",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$agentId/monitoring",
+      params,
+      search: { view: "performance" },
+      replace: true,
+    });
   },
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-monitor.tsx"),
-  ),
 });
 
 const appArgsSearchSchema = z.object({ args: z.string().optional() });
@@ -1768,11 +1762,11 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentReleasesRoute,
   agentHostingRoute,
   agentE2eRoute,
-  agentAnalyticsRoute,
+  agentAnalyticsRedirectRoute,
   projectTaskBoardAnalyticsRoute,
   agentExperimentsRoute,
   agentCalendarRoute,
-  agentMonitorRoute,
+  agentCdnRedirectRoute,
   agentAppRoute,
   agentViewRoute,
   agentOutputFileRoute,

@@ -9,11 +9,9 @@
 import type { ReactNode } from "react";
 import {
   ClockRewind,
-  BarChartSquare02,
   Beaker02,
   Calendar,
   CheckDone01,
-  Globe02,
   Image01,
   Lightning01,
   Lock01,
@@ -148,14 +146,6 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     e2e: {
       label: t("common.mainPanelTabs.e2e"),
       icon: <CheckDone01 size={16} />,
-    },
-    analytics: {
-      label: t("common.mainPanelTabs.analytics"),
-      icon: <BarChartSquare02 size={16} />,
-    },
-    cdn: {
-      label: t("common.mainPanelTabs.cdn"),
-      icon: <Globe02 size={16} />,
     },
     experiments: {
       label: t("experiments.title"),

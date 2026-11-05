@@ -43,10 +43,8 @@ export type TabRouteLocation =
         | "releases"
         | "hosting"
         | "e2e"
-        | "analytics"
         | "experiments"
-        | "calendar"
-        | "monitor";
+        | "calendar";
     }
   | { kind: "automations"; automationId?: string }
   | { kind: "app"; connectionId: string; toolName: string }
@@ -105,10 +103,8 @@ export type TabRouteTarget =
         | typeof PROJECT_ROUTE.releases
         | typeof PROJECT_ROUTE.hosting
         | typeof PROJECT_ROUTE.e2e
-        | typeof PROJECT_ROUTE.analytics
         | typeof PROJECT_ROUTE.experiments
-        | typeof PROJECT_ROUTE.calendar
-        | typeof PROJECT_ROUTE.monitor;
+        | typeof PROJECT_ROUTE.calendar;
       params: AgentParams;
       search: {};
     }
@@ -232,6 +228,9 @@ const PROJECT_DESTINATION_BY_TAB: Readonly<
   reports: "reports",
   plan: "plan",
   monitoring: "monitoring",
+  // The retired Analytics and CDN apps, still in saved per-thread layouts.
+  analytics: "monitoring",
+  cdn: "monitoring",
 };
 
 const AGENT_SECTION_BY_TAB: Readonly<
@@ -245,10 +244,8 @@ const AGENT_SECTION_BY_TAB: Readonly<
   releases: "releases",
   hosting: "hosting",
   e2e: "e2e",
-  analytics: "analytics",
   experiments: "experiments",
   calendar: "calendar",
-  cdn: "monitor",
 };
 
 /**
@@ -691,10 +688,8 @@ export function navigateToTabRouteTarget(
     case PROJECT_ROUTE.releases:
     case PROJECT_ROUTE.hosting:
     case PROJECT_ROUTE.e2e:
-    case PROJECT_ROUTE.analytics:
     case PROJECT_ROUTE.experiments:
     case PROJECT_ROUTE.calendar:
-    case PROJECT_ROUTE.monitor:
       navigate({
         to: target.to,
         params: target.params,

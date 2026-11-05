@@ -139,10 +139,12 @@ describe("tabRouteLocation", () => {
         section: "settings",
       });
     }
-    expect(tabRouteLocation("cdn")).toEqual({
-      kind: "agent-section",
-      section: "monitor",
-    });
+    for (const tab of ["analytics", "cdn"]) {
+      expect(tabRouteLocation(tab)).toEqual({
+        kind: "project-destination",
+        destination: "monitoring",
+      });
+    }
   });
 
   test("routes every built-in explicitly instead of treating it as metadata", () => {

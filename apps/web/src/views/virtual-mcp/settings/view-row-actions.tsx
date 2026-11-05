@@ -12,7 +12,6 @@ import {
   CheckDone01,
   Columns03,
   DotsVertical,
-  Globe02,
   Home02,
   Image01,
   Lightning01,
@@ -53,8 +52,6 @@ export function SidebarViewIcon({
   if (viewId === "releases") return <ClockRewind size={16} />;
   if (viewId === "hosting") return <Server01 size={16} />;
   if (viewId === "e2e") return <CheckDone01 size={16} />;
-  if (viewId === "analytics") return <BarChartSquare02 size={16} />;
-  if (viewId === "cdn") return <Globe02 size={16} />;
   if (viewId === "experiments" && blocksSite) return <Beaker02 size={16} />;
   if (viewId === "calendar") return <Calendar size={16} />;
   return <Lightning01 size={16} />;
