@@ -718,7 +718,13 @@ function Trend({ arms }: { arms: ArmView[] }) {
             margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           >
             <CartesianGrid vertical={false} strokeDasharray="4 4" />
-            <XAxis dataKey="label" tickLine={false} axisLine={false} />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={10}
+              padding={{ left: 16, right: 16 }}
+            />
             <YAxis
               tickLine={false}
               axisLine={false}

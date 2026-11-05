@@ -192,7 +192,7 @@ export const experiments = {
   "experiments.results.scrollHint": "Até onde a visita típica rola a página.",
   "experiments.results.jsErrors": "Visitantes com erro JS",
   "experiments.results.jsErrorsHint":
-    "Visitantes desta versão que tiveram pelo menos um erro de JavaScript em qualquer página. Não é só no carrinho.",
+    "Visitantes desta versão que tiveram pelo menos um erro de JavaScript em qualquer página do site.",
   "experiments.results.minutes": "{m} min {s} s",
   "experiments.results.seconds": "{s} s",
   "experiments.results.goals": "Metas",

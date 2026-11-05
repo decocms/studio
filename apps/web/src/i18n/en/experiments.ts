@@ -190,7 +190,7 @@ export const experiments = {
     "How far down the page a typical visit scrolls.",
   "experiments.results.jsErrors": "Visitors with JS errors",
   "experiments.results.jsErrorsHint":
-    "Visitors of this version who had at least one JavaScript error on any page. Not specific to the cart.",
+    "Visitors of this version who had at least one JavaScript error on any page of the site.",
   "experiments.results.minutes": "{m} min {s} s",
   "experiments.results.seconds": "{s} s",
   "experiments.results.goals": "Goals",
