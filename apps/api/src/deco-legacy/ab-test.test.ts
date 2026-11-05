@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { normalCdf, pBetter, sampleSize } from "./ab-test";
+import {
+  experimentStats,
+  normalCdf,
+  pBetter,
+  sampleSize,
+  type Variant,
+} from "./ab-test";
 
 describe("normalCdf", () => {
   test("is 0.5 at the mean", () => {
@@ -71,5 +77,41 @@ describe("sampleSize", () => {
     expect(n).not.toBeNull();
     expect(n).toBeGreaterThan(0);
     expect(Number.isInteger(n)).toBe(true);
+  });
+});
+
+describe("experimentStats", () => {
+  test("leaves the probabilities null while an arm has no data", () => {
+    const cases: [Variant, Variant][] = [
+      [
+        { successes: 0, total: 0 },
+        { successes: 3, total: 100 },
+      ],
+      [
+        { successes: 3, total: 100 },
+        { successes: 0, total: 100 },
+      ],
+      [
+        { successes: 0, total: 100 },
+        { successes: 0, total: 100 },
+      ],
+    ];
+    for (const [a, b] of cases) {
+      const stats = experimentStats(a, b, a.total + b.total);
+      expect(stats.probabilityVariantBest).toBeNull();
+      expect(stats.probabilityDefaultBest).toBeNull();
+    }
+  });
+
+  test("keeps the numbers once both arms converted", () => {
+    const a = { successes: 20, total: 1000 };
+    const b = { successes: 30, total: 1000 };
+    const p = pBetter(a, b);
+    expect(experimentStats(a, b, 2000)).toEqual({
+      totalParticipants: 2000,
+      sampleSize: sampleSize(a, b) ?? 1000,
+      probabilityVariantBest: p,
+      probabilityDefaultBest: 1 - p,
+    });
   });
 });

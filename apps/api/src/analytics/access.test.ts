@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import type { StudioContext } from "../core/studio-context";
 import { getSettings, setGlobalSettings } from "../settings";
-import { analyticsAccess, ownedAnalyticsSiteId } from "./access";
+import {
+  analyticsAccess,
+  isTenantScoped,
+  ownedAnalyticsSiteId,
+} from "./access";
 
 const ORG = "org-1";
 const registration = { id: "s123", key: "dq_abc" };
@@ -198,5 +202,21 @@ describe("ownedAnalyticsSiteId", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+});
+
+describe("isTenantScoped", () => {
+  const scope = { site: "s1", reader: "stats_reader", tenantScoped: true };
+  it("accepts only the tenant reader's answer for the same site", () => {
+    expect(isTenantScoped({ usageScope: scope }, "s1")).toBe(true);
+    expect(isTenantScoped({ usageScope: scope }, "s2")).toBe(false);
+    expect(
+      isTenantScoped({ usageScope: { ...scope, reader: "default" } }, "s1"),
+    ).toBe(false);
+    expect(
+      isTenantScoped({ usageScope: { ...scope, tenantScoped: false } }, "s1"),
+    ).toBe(false);
+    expect(isTenantScoped({}, "s1")).toBe(false);
+    expect(isTenantScoped(null, "s1")).toBe(false);
   });
 });

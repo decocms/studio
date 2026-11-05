@@ -53,7 +53,7 @@ import {
   linkAnalyticsSite,
 } from "../../customer-lake/client";
 import { getSettings } from "../../settings";
-import { analyticsAccess } from "../../analytics/access";
+import { analyticsAccess, isTenantScoped } from "../../analytics/access";
 import {
   lakeWindow,
   loadLakeAnalyticsView,
@@ -963,20 +963,10 @@ export const createHostingRoutes = () => {
     // scoped to THIS tenant before returning. A payload that isn't tenant-scoped
     // — or was scoped to a different site — could be someone else's numbers under
     // this customer's name, which is the one outcome that must never render.
-    const scope = (payload.usageScope ?? null) as {
-      site?: string | null;
-      reader?: string;
-      tenantScoped?: boolean;
-    } | null;
-    if (
-      !scope ||
-      scope.tenantScoped !== true ||
-      scope.reader !== "stats_reader" ||
-      scope.site !== siteId
-    ) {
+    if (!isTenantScoped(payload, siteId)) {
       console.error(
         `[analytics] refusing unscoped payload for site="${site}" (${siteId}):`,
-        scope,
+        payload.usageScope,
       );
       return c.json(
         { error: "analytics did not scope to this site; refusing to render" },
