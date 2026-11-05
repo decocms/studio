@@ -24,6 +24,7 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { assertMayMoveCredentials } from "./credential-origin-guard";
 import { toPublicConnection } from "./public-connection";
 import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
 import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
@@ -202,6 +203,8 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       // Ensure the URL is properly formatted
       finalConnectionUrl = buildVirtualUrl(virtualMcpId);
     }
+
+    await assertMayMoveCredentials(ctx, existing, finalConnectionUrl);
 
     // Handle MCP configuration state and scopes if present
     // IMPORTANT: configuration_state must never be null/undefined to ensure
