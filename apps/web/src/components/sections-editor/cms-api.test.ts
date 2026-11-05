@@ -36,13 +36,13 @@ describe("the hosted CMS client", () => {
         pointer: "delivery.decocms.com/sites/acme/drafts/s.json@e1",
       });
     }) as typeof fetch;
-    const draft = await ensureCmsDraft("org", "acme", "threads/t-1");
+    const draft = await ensureCmsDraft("acme", "threads/t-1");
     expect(draft.pointer).toBe(
       "delivery.decocms.com/sites/acme/drafts/s.json@e1",
     );
     expect(calls).toEqual([
       {
-        url: "/api/org/cms/acme/drafts",
+        url: "/api/cms/acme/drafts",
         method: "POST",
         body: JSON.stringify({ name: "threads/t-1" }),
       },

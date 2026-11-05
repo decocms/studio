@@ -1,7 +1,7 @@
 /**
  * Whether a project is a Blocks v8 site, for Studio's editor and hosted
  * screens: the project's `metadata.blocksMajor` marker alone, which
- * `deco schema push` sets (`PUT /api/:org/cms/:site/schema`; design table,
+ * `deco schema push` sets (`PUT /api/cms/:site/schema`; design table,
  * row 23). Nothing reads main's schema or git for it.
  *
  * - `"v8"` / `"v7"`: the marker says (not) v8.

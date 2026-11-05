@@ -1,7 +1,7 @@
 /**
  * The site id a project names, for linking it in `org_sites`
  * (hosted/claim-site.ts and the admin backfill). The hosted CMS itself is
- * keyed by the `org_sites` row (`/api/:org/cms/:site`), never by a project.
+ * keyed by the `org_sites` row (`/api/cms/:site`), never by a project.
  */
 
 import { isValidSiteSlug } from "@decocms/shared/site-slug";

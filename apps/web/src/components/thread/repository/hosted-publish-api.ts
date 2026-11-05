@@ -1,6 +1,6 @@
 /**
  * Publish for a hosted v8 site, on the hosted CMS
- * (`POST /api/:org/cms/:site/drafts/:branch/publish`, contract §4.9): a new
+ * (`POST /api/cms/:site/drafts/:branch/publish`, contract §4.9): a new
  * revision with the draft over the live one, made live, the draft emptied.
  * A lost race three times over is refused `production_moved`. The answer
  * keeps the shape the publish UI reads: `merged` with the new revision id
@@ -45,7 +45,6 @@ export async function publishHostedDraft(
     answer = await cmsJson<CmsPublishAnswer>(
       await fetch(
         cmsUrl(
-          params.orgSlug,
           params.site,
           `drafts/${encodeURIComponent(params.branch)}/publish`,
         ),

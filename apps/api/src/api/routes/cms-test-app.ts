@@ -10,12 +10,14 @@ import { memoryDeliveryStore, memoryKv } from "@/hosted/hosted-test-helpers";
 import type { Env } from "../hono-env";
 import { createCmsRoutes } from "./cms";
 
-export const ORG = "org_1";
+const ORG = "org_1";
 
 export interface CmsTestCaller {
   userId: string | null;
   method?: StudioContext["auth"]["method"];
   onBehalfOf?: boolean;
+  /** The organizations the caller is admitted to (default: `ORG`). */
+  orgs?: string[];
 }
 
 export function cmsTestApp(
@@ -23,6 +25,8 @@ export function cmsTestApp(
     hasCms?: boolean;
     configured?: boolean;
     sites?: Record<string, string>;
+    /** Organizations whose writes are blocked. */
+    blocked?: string[];
   } = {},
 ) {
   const delivery = memoryDeliveryStore();
@@ -41,7 +45,7 @@ export function cmsTestApp(
   let caller: CmsTestCaller = { userId: "usr_ana", method: "session" };
   const context = (): StudioContext =>
     ({
-      organization: { id: ORG, slug: "acme-org" },
+      // /api/cms/:site names no organization: the gates resolve it.
       auth: {
         ...(caller.userId ? { user: { id: caller.userId } } : {}),
         ...(caller.method ? { method: caller.method } : {}),
@@ -76,6 +80,7 @@ export function cmsTestApp(
     c.set("studioContext", context());
     await next();
   });
+  // Mounted as app.ts mounts it, at /api/cms (tests call /cms).
   app.route(
     "/cms",
     createCmsRoutes({
@@ -86,6 +91,17 @@ export function cmsTestApp(
       draftTable: () => table,
       siteDomains: async () => ["www.acme.com"],
       hasCms: async () => options.hasCms ?? true,
+      admit: async (c, organizationId) => {
+        if (!(caller.orgs ?? [ORG]).includes(organizationId)) return false;
+        c.var.studioContext.organization = {
+          id: organizationId,
+          slug: `${organizationId}-slug`,
+          name: organizationId,
+        };
+        return true;
+      },
+      isBlocked: async (_c, organizationId) =>
+        (options.blocked ?? []).includes(organizationId),
     }),
   );
   const call = async (

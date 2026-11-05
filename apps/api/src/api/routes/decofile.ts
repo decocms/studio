@@ -16,7 +16,7 @@
  * with, and gating this on it would strand an already-stamped session.
  *
  * The Blocks v8 hosted CMS is not served here: its content lives on R2
- * behind `/api/:org/cms/:site` (`cms.ts`), which reads no repository.
+ * behind `/api/cms/:site` (`cms.ts`), which reads no repository.
  *
  * Anonymous access: `resolveOrgFromPath` lets unauthenticated requests through
  * (membership is only enforced for signed-in principals), so the GET handler
@@ -227,7 +227,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
   // A Blocks v8 site (its marker, which `deco schema push` sets) keeps its
-  // content on the hosted CMS (R2, `/api/:org/cms/:site`): a write or a
+  // content on the hosted CMS (R2, `/api/cms/:site`): a write or a
   // publish here would commit content to git or merge a branch into main,
   // which deploys. Refused before any repository lookup, whatever the client.
   if (c.req.method !== "GET" && isBlocksV8Project(metadata)) {

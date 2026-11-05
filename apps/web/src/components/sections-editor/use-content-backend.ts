@@ -126,7 +126,7 @@ function hostedContentEndpoint(params: {
   branch: string;
 }): string {
   if (!params.site) throw new Error("this project names no site");
-  return cmsDraftRpcEndpoint(params.orgSlug, params.site, params.branch);
+  return cmsDraftRpcEndpoint(params.site, params.branch);
 }
 
 /**
@@ -259,7 +259,7 @@ export function useContentBackend(
           site,
           branch: branch!,
         }),
-        () => ensureCmsDraft(org.slug, site!, branch!),
+        () => ensureCmsDraft(site!, branch!),
       ),
     enabled: githubEnabled,
     staleTime: Number.POSITIVE_INFINITY,
