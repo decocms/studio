@@ -12,17 +12,6 @@ describe("blockMeta (the shared vectors)", () => {
     });
   }
 
-  it("the vectors pin meta.rules: a test and campaign uses, and a saved rule", () => {
-    const byName = new Map(vectors.cases.map((c) => [c.name, c]));
-    expect(byName.get("ab-test")?.meta).toMatchObject({
-      rules: ["", "Natal", "black-friday", "buy-button"],
-    });
-    expect(byName.get("summer-rule")?.meta).toEqual({
-      type: "campaign",
-      rules: ["summer"],
-    });
-  });
-
   it("a body that yields nothing gives {} and an entry without meta", async () => {
     expect(blockMeta(null, ["a"])).toEqual({});
     expect(blockMeta([{ __resolveType: "a" }], ["a"])).toEqual({});
@@ -37,46 +26,6 @@ describe("blockMeta (the shared vectors)", () => {
       e: { __resolveType: "z" },
     };
     expect(blockMeta(body, new Set(["b", "B"]))).toEqual({ refs: ["B", "b"] });
-  });
-
-  it("rules: every experiment/campaign name at any depth, deduped and code-unit sorted, whatever the index's names", () => {
-    const body = {
-      __resolveType: "multivariate",
-      variants: [
-        { rule: { __resolveType: "campaign", name: "b" }, value: 1 },
-        {
-          rule: {
-            __resolveType: "multi",
-            matchers: [
-              { __resolveType: "experiment", name: "B" },
-              { __resolveType: "campaign", name: "b" },
-            ],
-          },
-          value: { __resolveType: "lazy", value: { x: 1 } },
-        },
-        { rule: { __resolveType: "never" }, value: 2 },
-      ],
-    };
-    expect(blockMeta(body, [])).toEqual({
-      type: "multivariate",
-      rules: ["B", "b"],
-    });
-  });
-
-  it("not rules: a non-string name, an inline date, the whole map, multivariate's experiment field", () => {
-    const body = {
-      __resolveType: "multivariate",
-      experiment: "hero",
-      variants: [
-        { rule: { __resolveType: "experiment", name: 3 } },
-        { rule: { __resolveType: "date", start: "2026-01-01" } },
-        { value: { __resolveType: "experiments" } },
-      ],
-    };
-    expect(blockMeta(body, ["experiments"])).toEqual({
-      type: "multivariate",
-      refs: ["experiments"],
-    });
   });
 
   it("keeps an empty path, and only the CMS entry inlines its body", async () => {

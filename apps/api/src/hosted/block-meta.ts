@@ -15,14 +15,6 @@
  * - `refs`: every `__resolveType` string anywhere in the body (the top-level
  *   one included, every variant, `never` and `lazy` values included) that is
  *   one of `names`, deduped and sorted in code-unit order.
- * - `rules`: the names of the A/B tests and campaigns the body uses: every
- *   object anywhere in it (the top level included: a saved rule) that is the
- *   rule `experiment { name }` or `campaign { name }` with a string `name`
- *   (an empty one included), whether or not the `experiments`/`campaigns`
- *   block has it, deduped and sorted in code-unit order. The shapes Studio's
- *   Experiments and Campaigns views count as a use, so their "Used by" and a
- *   rename or delete read the index, not every body. A `{ "__resolveType":
- *   "experiments" }` value (a section reading the whole map) names none.
  *
  * A key is present only when it has a value (`refs: []` is left out), so a
  * body with nothing to say gives `{}` and its entry carries no `meta`.
@@ -37,8 +29,6 @@ export interface BlockMeta {
   path?: string;
   /** The block names the body references, deduped, in code-unit order. */
   refs?: string[];
-  /** The tests and campaigns the body's rules name, deduped, in code-unit order. */
-  rules?: string[];
 }
 
 /** One entry of a revision index. */
@@ -57,9 +47,6 @@ export type BlockIndex = Record<string, IndexEntry>;
 /** The well-known name whose body every index inlines as `data`. */
 export const INLINE_BLOCK = "CMS";
 
-/** The built-in rules that name an A/B test (`experiment`) or a campaign (`campaign`) by `name`. */
-const NAMED_RULES: ReadonlySet<unknown> = new Set(["experiment", "campaign"]);
-
 /** The metadata of one block body; `names` are the block names of the index being built. */
 export function blockMeta(
   body: unknown,
@@ -71,10 +58,8 @@ export function blockMeta(
   if (typeof body.path === "string") meta.path = body.path;
   const known: ReadonlySet<string> = isSet(names) ? names : new Set(names);
   const found = new Set<string>();
-  const rules = new Set<string>();
-  collect(body, known, found, rules);
+  collectRefs(body, known, found);
   if (found.size > 0) meta.refs = [...found].sort();
-  if (rules.size > 0) meta.rules = [...rules].sort();
   return meta;
 }
 
@@ -91,23 +76,17 @@ export async function indexEntry(
   return entry;
 }
 
-function collect(
-  node: unknown,
-  names: ReadonlySet<string>,
-  found: Set<string>,
-  rules: Set<string>,
-): void {
+function collectRefs(node: unknown, names: ReadonlySet<string>, found: Set<string>): void {
   if (Array.isArray(node)) {
-    for (const item of node) collect(item, names, found, rules);
+    for (const item of node) collectRefs(item, names, found);
     return;
   }
   if (!isRecord(node)) return;
-  if (NAMED_RULES.has(node.__resolveType) && typeof node.name === "string") rules.add(node.name);
   for (const [key, value] of Object.entries(node)) {
     if (key === "__resolveType") {
       if (typeof value === "string" && names.has(value)) found.add(value);
     } else {
-      collect(value, names, found, rules);
+      collectRefs(value, names, found);
     }
   }
 }
