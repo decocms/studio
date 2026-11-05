@@ -42,6 +42,7 @@ import {
   type DeletedConflict,
 } from "./named-rule-conflict";
 import { type HeldCopy, heldCopyVersion } from "./held-copy";
+import { copyDraftVersion } from "./draft-version";
 import { parsePageName } from "./page-list";
 import { blogBlockKind, blogBlockTitle, blogKindWord } from "./blog-block-name";
 import type { SchemaProperty } from "./resolve-schema";
@@ -279,11 +280,15 @@ interface HostedWriteContext {
 /**
  * The draft's version of each block, as a hosted write's `ifMatch`. A
  * version not known yet (the draft's changes weren't read) is read first;
- * still unknown, the write fails rather than going out unguarded.
+ * still unknown, the write fails rather than going out unguarded. A block
+ * in `copies` (the copy the write was built on) is guarded by that copy
+ * ({@link copyDraftVersion}), never by the version the index lists: a poll
+ * lists someone else's version before it loads their copy.
  */
 export async function hostedIfMatch(
   ctx: HostedWriteContext,
   blockKeys: readonly string[],
+  copies?: Readonly<Record<string, unknown>>,
 ): Promise<Record<string, string | null>> {
   const versionOf = (key: string) =>
     protocolBlockVersion(ctx.queryClient, ctx.cacheKey, key, ctx.backend);
@@ -301,7 +306,12 @@ export async function hostedIfMatch(
   }
   const ifMatch: Record<string, string | null> = {};
   for (const key of blockKeys) {
-    const version = versionOf(key);
+    const listed = versionOf(key);
+    if (listed === undefined) throw new HostedDraftUnreadError();
+    const version =
+      copies && Object.hasOwn(copies, key)
+        ? await copyDraftVersion(listed, copies[key])
+        : listed;
     if (version === undefined) throw new HostedDraftUnreadError();
     ifMatch[key] = version;
   }
@@ -383,9 +393,14 @@ export async function applyHostedChange(
       (key) => !Object.hasOwn(current.writes, key),
     );
     const touched = [...Object.keys(current.writes), ...deletes];
-    const ifMatch = await hostedIfMatch(ctx, touched);
-    // First attempt: a block built from the editor's own copy is guarded by
-    // that copy (later rounds by the draft's copy the refusal brought).
+    // First attempt: guarded by the copies the change was built on, and a
+    // block built from the editor's own copy by that copy (later rounds by
+    // the draft's copy the refusal brought).
+    const ifMatch = await hostedIfMatch(
+      ctx,
+      touched,
+      round === 0 ? base : undefined,
+    );
     if (round === 0) {
       for (const key of own) {
         if (Object.hasOwn(ifMatch, key)) {

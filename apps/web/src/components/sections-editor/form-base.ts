@@ -9,9 +9,7 @@ import {
 } from "./section-variants";
 import { unwrapSection } from "./unwrap-section";
 import type { SaveGuard } from "./use-save-block";
-import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
-import { draftVersionOf } from "./draft-version";
-import { isIndexStub } from "./hosted-content";
+import { copyDraftVersion } from "./draft-version";
 
 /**
  * The value an open section form starts from, in the same shape the form
@@ -219,7 +217,7 @@ export function formSaveExpects({
  * sends no guard.
  *
  * On a hosted v8 draft (`copy` given) a version read is the one of the copy
- * the save was built on, computed from it ({@link draftVersionOf}, the
+ * the save was built on, computed from it ({@link copyDraftVersion}, the
  * server's own content hash), never the draft's version as the index says
  * it: a poll puts someone else's version in the index before their copy of
  * the block is loaded (and never loads it over a block being saved), so the
@@ -255,7 +253,7 @@ export function formSaveGuard({
         if (formBase && formBase.version !== undefined && !rebased) {
           return guardOf(formBase.version);
         }
-        const version = await copyVersion(versionOf(blockKey), copy.value);
+        const version = await copyDraftVersion(versionOf(blockKey), copy.value);
         if (formBase) formBase.version = version;
         return guardOf(version);
       },
@@ -283,22 +281,6 @@ export function formSaveGuard({
     },
     reloadOnConflict: true,
   };
-}
-
-/**
- * The hosted draft's version of `value`, a copy of a block whose version in
- * the draft is `listed`: unknown and "not in the draft" (`null`, main's copy)
- * as listed, the tombstone for a block the draft deletes or one the editor
- * holds no copy of, otherwise the copy's own content hash.
- */
-async function copyVersion(
-  listed: string | null | undefined,
-  value: unknown,
-): Promise<string | null | undefined> {
-  if (listed === undefined || listed === null) return listed;
-  if (listed === DRAFT_TOMBSTONE_VERSION) return listed;
-  if (value === undefined || isIndexStub(value)) return listed;
-  return draftVersionOf(value);
 }
 
 /**

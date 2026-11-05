@@ -463,7 +463,14 @@ export function useSaveBlock(
       ? { [blockKey]: null }
       : shown
         ? { [blockKey]: await heldCopyVersion(shown) }
-        : await hostedIfMatch(ctx, [blockKey]);
+        : await hostedIfMatch(
+            ctx,
+            [blockKey],
+            // The copy the save was built on: guarded by it, never by the
+            // version the index lists (a poll lists theirs before their copy
+            // is loaded).
+            base ? { [blockKey]: base.value } : undefined,
+          );
     for (let round = 0; ; round++) {
       try {
         const result = await applyProtocolPatch(
