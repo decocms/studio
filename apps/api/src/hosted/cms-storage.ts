@@ -80,7 +80,7 @@ export function clearSchemaCache() {
 }
 
 /** Reads the site's schema.json, revalidating the cached copy. */
-export async function readSiteSchema(
+async function readSiteSchema(
   records: RecordStore | null,
   site: string,
 ): Promise<{ text: string; etag: string } | null> {
@@ -147,7 +147,7 @@ function layeredFiles(base: StorageFile[], body: CmsDraftBody) {
  * written, dropping every other spelling and a pending delete; a delete
  * drops the name from `set` and records it in `delete`.
  */
-export function applyAttempt(
+function applyAttempt(
   body: CmsDraftBody,
   attempt: { put: Record<string, string>; delete: string[] },
 ): Pick<CmsDraftBody, "set" | "delete"> {
@@ -437,7 +437,7 @@ export function createCmsStorage(options: {
 }
 
 /** Each refused name as `read` (the save's own step-1 read) holds it. */
-export function conflictBlocks(
+function conflictBlocks(
   read: DraftRead,
   names: readonly string[],
 ): DraftConflictBlocks["draft"] {

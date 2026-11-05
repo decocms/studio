@@ -8,7 +8,7 @@
  * Only Studio mints ids, one per publish or rollback attempt.
  */
 
-export const REVISION_ID_RE =
+const REVISION_ID_RE =
   /^[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export function isRevisionId(value: unknown): value is string {
