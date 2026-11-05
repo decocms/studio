@@ -179,7 +179,7 @@ describe("the hosted backend (the CMS on R2)", () => {
   test("the editor's probe of a v8 site makes no /decofile/ request", async () => {
     const seen: string[] = [];
     await probeGithub(
-      `http://studio.test${cmsUrl("org", "acme", "drafts/main/rpc")}`,
+      `http://studio.test${cmsUrl("acme", "drafts/main/rpc")}`,
       async (request) => {
         seen.push(new URL(request.url).pathname);
         return Response.json([
@@ -198,7 +198,7 @@ describe("the hosted backend (the CMS on R2)", () => {
     ).catch(() => {});
     expect(seen.length).toBeGreaterThan(0);
     for (const path of seen) {
-      expect(path).toBe("/api/org/cms/acme/drafts/main/rpc");
+      expect(path).toBe("/api/cms/acme/drafts/main/rpc");
     }
   });
 });
@@ -432,7 +432,7 @@ describe("the hosted probe on a draft that doesn't exist yet", () => {
     };
     return { rpc, ensure, calls };
   }
-  const endpoint = "http://studio.test/api/org/cms/acme/drafts/main/rpc";
+  const endpoint = "http://studio.test/api/cms/acme/drafts/main/rpc";
 
   test("probing alone never gets past the missing row", async () => {
     const { rpc } = cms();

@@ -1,6 +1,6 @@
 /**
  * The Releases screen's reads and writes, on the hosted CMS
- * (`/api/:org/cms/:site/releases`, contract §4.10 and §4.11): the site's
+ * (`/api/cms/:site/releases`, contract §4.10 and §4.11): the site's
  * revisions, newest first, 50 a page, each with its meta and whether it is
  * the one latest.json names (`current`), went live before (`was-live`) or
  * never did (`never-live`); and "Make current", a rollback: a new revision
@@ -64,7 +64,7 @@ export function useReleases(orgSlug: string, virtualMcpId: string) {
       if (!site) throw new Error("this project names no site");
       const query = pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : "";
       return cmsJson<ReleasesPage>(
-        await fetch(cmsUrl(orgSlug, site, `releases${query}`), {
+        await fetch(cmsUrl(site, `releases${query}`), {
           cache: "no-store",
         }),
       );
@@ -97,11 +97,7 @@ export function useReapply(orgSlug: string, virtualMcpId: string) {
           if (!site) throw new Error("this project names no site");
           return cmsJson<RollbackResult>(
             await fetch(
-              cmsUrl(
-                orgSlug,
-                site,
-                `releases/${encodeURIComponent(vars.id)}/rollback`,
-              ),
+              cmsUrl(site, `releases/${encodeURIComponent(vars.id)}/rollback`),
               {
                 method: "POST",
                 headers: { "content-type": "application/json" },

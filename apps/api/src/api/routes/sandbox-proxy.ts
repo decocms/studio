@@ -798,7 +798,7 @@ function isSetupStep(value: string): value is SetupStep {
 /**
  * A sandbox-less session of a Blocks v8 site (its `blocksMajor` marker) has
  * no git-shaped popover: its content lives on the hosted CMS
- * (`/api/:org/cms/:site`), so its `/git/*` routes answer 404 without reaching
+ * (`/api/cms/:site`), so its `/git/*` routes answer 404 without reaching
  * GitHub. A sandbox's own git (the daemon) and v7 sessions keep theirs.
  */
 export const hostedV8GitGone = createMiddleware<VmEnv>(async (c, next) => {

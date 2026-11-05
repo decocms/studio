@@ -926,7 +926,7 @@ interface HostedDraftPointer {
  * The `?__draft=` pointer of a project on Studio's hosted backend: its draft
  * on the delivery CDN, `<draft>@<etag>`, which the site's SDK revalidates on
  * every render. Opening the editor creates the draft (empty) when there is
- * none (`POST /api/:org/cms/:site/drafts {name: branch}`, `cms-api.ts`), and
+ * none (`POST /api/cms/:site/drafts {name: branch}`, `cms-api.ts`), and
  * each save moves the ETag (`adoptHostedSave`); Publish empties it at the
  * same address. `params` is `null` for any other backend. The pointer is
  * null only before the first answer (`pending`) or when the project names
@@ -945,11 +945,7 @@ export function useProtocolDraftRead(params: DecofileScopeParams | null): {
       params?.branch ?? "",
     ),
     queryFn: async (): Promise<HostedDraftPointer> => {
-      const draft = await ensureCmsDraft(
-        params!.orgSlug,
-        site!,
-        params!.branch,
-      );
+      const draft = await ensureCmsDraft(site!, params!.branch);
       const at = draft.pointer?.lastIndexOf("@") ?? -1;
       return {
         draft: draft.pointer && at > 0 ? draft.pointer.slice(0, at) : null,

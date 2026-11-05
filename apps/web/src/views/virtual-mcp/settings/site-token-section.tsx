@@ -4,7 +4,7 @@
  * only place settings show it; hover the row to copy it). A token is shown
  * once, in a dialog with its copy button; issuing always works, and the list
  * shows every token issued (their key ids, never the tokens). Keyed by the
- * site on the hosted CMS (`/api/:org/cms/:site/site-tokens`).
+ * site on the hosted CMS (`/api/cms/:site/site-tokens`).
  */
 
 import { useId, useState } from "react";
@@ -56,7 +56,7 @@ export function SiteTokenSection({
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const base = cmsUrl(orgSlug, projectSite, "site-tokens");
+  const base = cmsUrl(projectSite, "site-tokens");
   const key = KEYS.hostedSiteTokens(orgSlug, virtualMcpId);
   const [created, setCreated] = useState<string | null>(null);
   const siteIdField = useId();

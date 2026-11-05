@@ -99,7 +99,7 @@ describe("SiteTokenSection", () => {
     });
     expect(written).toEqual(["acme-store"]);
     // Keyed by the site on the hosted CMS, never the project.
-    expect(requested).toContain("/api/acme/cms/acme-store/site-tokens");
+    expect(requested).toContain("/api/cms/acme-store/site-tokens");
     expect(
       screen().getByText("Site ID copied to the clipboard"),
     ).toBeInTheDocument();

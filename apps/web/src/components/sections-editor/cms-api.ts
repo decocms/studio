@@ -1,10 +1,11 @@
 /**
  * The web editor's client for the hosted CMS on R2
- * (`/api/:org/cms/:site/...`): the site-keyed routes that replace the v8 git
+ * (`/api/cms/:site/...`): the site-keyed routes that replace the v8 git
  * path's `/decofile/:virtualMcpId/:branch`. No GitHub on any of them.
  *
- * The site is the project's `metadata.siteSlug`; the editor's draft is named
- * after its thread's branch, as today.
+ * The site is the project's `metadata.siteSlug`; the path names no
+ * organization (Studio finds the site's). The editor's draft is named after
+ * its thread's branch, as today.
  */
 
 import { canonicalJson } from "@decocms/blocks/protocol";
@@ -18,19 +19,15 @@ export function cmsSiteOf(
   return typeof slug === "string" && isValidSiteSlug(slug) ? slug : null;
 }
 
-/** `/api/:org/cms/:site/<path>`. */
-export function cmsUrl(orgSlug: string, site: string, path: string): string {
-  return `/api/${orgSlug}/cms/${encodeURIComponent(site)}/${path}`;
+/** `/api/cms/:site/<path>`. */
+export function cmsUrl(site: string, path: string): string {
+  return `/api/cms/${encodeURIComponent(site)}/${path}`;
 }
 
 /** The content-protocol endpoint of one draft (absolute, for the client). */
-export function cmsDraftRpcEndpoint(
-  orgSlug: string,
-  site: string,
-  draft: string,
-): string {
+export function cmsDraftRpcEndpoint(site: string, draft: string): string {
   return new URL(
-    cmsUrl(orgSlug, site, `drafts/${encodeURIComponent(draft)}/rpc`),
+    cmsUrl(site, `drafts/${encodeURIComponent(draft)}/rpc`),
     window.location.origin,
   ).href;
 }
@@ -81,12 +78,11 @@ export interface CmsDraft {
  * (insert-if-absent, so two tabs share one) and answers it either way.
  */
 export async function ensureCmsDraft(
-  orgSlug: string,
   site: string,
   name: string,
 ): Promise<CmsDraft> {
   return cmsJson<CmsDraft>(
-    await fetch(cmsUrl(orgSlug, site, "drafts"), {
+    await fetch(cmsUrl(site, "drafts"), {
       method: "POST",
       cache: "no-store",
       headers: { "content-type": "application/json" },
@@ -98,6 +94,8 @@ export async function ensureCmsDraft(
 /**
  * A block's version on the hosted CMS, as the server computes it: the first
  * 16 bytes of `sha256(canonicalJson(block))`, 22 characters of base64url.
+ * A copy of `@decocms/blocks/protocol`'s `blockVersion` until a release
+ * carries it (contract §1.3, known deviation; see `apps/api/src/hosted/block-version.ts`).
  */
 export async function cmsBlockVersion(block: unknown): Promise<string> {
   const digest = await crypto.subtle.digest(

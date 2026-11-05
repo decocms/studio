@@ -3,22 +3,25 @@
  * to the delivery and record buckets; Studio's editor, the `deco` CLI and
  * agents all call it. No route here reads a repository or calls GitHub.
  *
- *   GET    /api/:org/cms/:site/drafts                      list (the drafts table)
- *   POST   /api/:org/cms/:site/drafts                      create, idempotent { name }
- *   GET    /api/:org/cms/:site/drafts/:name                resolve (slug, ETag, preview link)
- *   DELETE /api/:org/cms/:site/drafts/:name                discard (row and object)
- *   POST   /api/:org/cms/:site/drafts/:name/rpc            content protocol (save, editor reads, undo)
- *   POST   /api/:org/cms/:site/drafts/:name/publish        publish { message? }
- *   GET    /api/:org/cms/:site/releases?cursor=            Releases, 50 revisions a page
- *   POST   /api/:org/cms/:site/releases/:revision/rollback rollback / roll-forward { message? }
- *   PUT    /api/:org/cms/:site/schema                      `deco schema push`
- *   GET    /api/:org/cms/:site/site-tokens                 list
- *   POST   /api/:org/cms/:site/site-tokens                 issue (shown once)
+ *   GET    /api/cms/:site/drafts                      list (the drafts table)
+ *   POST   /api/cms/:site/drafts                      create, idempotent { name }
+ *   GET    /api/cms/:site/drafts/:name                resolve (slug, ETag, preview link)
+ *   DELETE /api/cms/:site/drafts/:name                discard (object, then row)
+ *   POST   /api/cms/:site/drafts/:name/rpc            content protocol (save, editor reads, undo)
+ *   POST   /api/cms/:site/drafts/:name/publish        publish { message? }
+ *   GET    /api/cms/:site/releases?cursor=            Releases, 50 revisions a page
+ *   POST   /api/cms/:site/releases/:revision/rollback rollback / roll-forward { message? }
+ *   PUT    /api/cms/:site/schema                      `deco schema push`
+ *   GET    /api/cms/:site/site-tokens                 list
+ *   POST   /api/cms/:site/site-tokens                 issue (shown once)
  *
- * Every route runs exactly today's checks, in order (§4.1): an
- * authenticated caller (401), the `cms` plan gate (403, failing open), then
- * `org_sites` resolves the site within the path's org (404); then a
- * configured delivery bucket (503). No repository binding, no
+ * The path names no organization: `org_sites` (slug is its key) resolves
+ * the site's. Every route runs, in order (§4.1): an authenticated caller
+ * (401); the site and the caller's admission to its organization (404,
+ * the same answer for an unknown site and for one the caller can't reach,
+ * so existence doesn't leak); the `cms` plan gate on that organization
+ * (403, failing open); a blocked organization's writes (403 `org_blocked`);
+ * then a configured delivery bucket (503). No repository binding, no
  * `isProjectAllowed`, no `blocksMajor` check. A draft name travels
  * `encodeURIComponent`-encoded (`/` as `%2F`).
  */
@@ -29,7 +32,14 @@ import { isV8Schema, BLOCKS_V8_MAJOR } from "@decocms/shared/blocks-major";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { type Context, Hono } from "hono";
 import { createMiddleware } from "hono/factory";
+import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+import { isOrgBlocked } from "@/core/org-notice-gate";
 import { orgHasFeature } from "@/core/plan-feature-gate";
+import {
+  bindOrganization,
+  memberRole,
+  scopedToAnotherOrganization,
+} from "../middleware/resolve-org-from-path";
 import { syncBlocksMajorMarker } from "@/hosted/blocks-major-marker";
 import {
   type CmsDrafts,
@@ -45,6 +55,7 @@ import {
   RevisionTooLargeError,
   rollbackToRevision,
 } from "@/hosted/cms-publish";
+import { MalformedObjectError } from "@/hosted/cms-release";
 import { InvalidCursorError, listCmsReleases } from "@/hosted/cms-releases";
 import { createCmsStorage, withConflictBlocks } from "@/hosted/cms-storage";
 import { type DeliveryPurge, deliveryPurge } from "@/hosted/delivery-purge";
@@ -100,6 +111,13 @@ export interface CmsRoutesOptions {
   siteDomains?: SiteDomainsReader;
   /** The `cms` plan gate (tests pass an answer). */
   hasCms?: (c: Context<CmsEnv>, organizationId: string) => Promise<boolean>;
+  /**
+   * Admits the caller to the site's organization and binds the context to
+   * it; `false` when the caller can't reach it (tests pass a fake).
+   */
+  admit?: (c: Context<CmsEnv>, organizationId: string) => Promise<boolean>;
+  /** Whether the organization is blocked (tests pass an answer). */
+  isBlocked?: (c: Context<CmsEnv>, organizationId: string) => Promise<boolean>;
 }
 
 const MAX_SCHEMA_BYTES = 16 * 1024 * 1024;
@@ -149,6 +167,10 @@ function cmsError(c: Context<CmsEnv>, err: unknown) {
   if (err instanceof InvalidCursorError) {
     return fail(c, 400, "invalid_body", "Invalid cursor");
   }
+  if (err instanceof MalformedObjectError) {
+    console.error("cms: malformed delivery object", { error: err.message });
+    return fail(c, 500, "malformed", err.message);
+  }
   if (
     err instanceof DeliveryUnavailableError ||
     err instanceof StorageUnavailableError
@@ -166,18 +188,54 @@ function cmsError(c: Context<CmsEnv>, err: unknown) {
   return c.json({ error: message }, 500);
 }
 
-/** §4.1, in order: 401, 403 `feature_not_in_plan`, 404 `site_not_found`, 503. */
+/**
+ * The caller's admission to an organization, as `/api/:org` admits it
+ * (`resolveOrgFromPath`): not archived, no API key or token bound to another
+ * organization, and a member (or a task-board admin). Binds the context to
+ * it, as that middleware does.
+ */
+async function admitToOrganization(
+  c: Context<CmsEnv>,
+  organizationId: string,
+): Promise<boolean> {
+  const ctx = c.var.studioContext;
+  const userId = ctx.auth?.user?.id;
+  if (!ctx.db || !userId) return false;
+  const org = await ctx.db
+    .selectFrom("organization")
+    .select(["id", "slug", "name", "metadata"])
+    .where("id", "=", organizationId)
+    .executeTakeFirst();
+  if (!org || isOrgArchived(org)) return false;
+  if (scopedToAnotherOrganization(ctx, org.id)) return false;
+  const role = await memberRole(c, ctx.db, userId, org.id);
+  if (role === undefined) return false;
+  bindOrganization(ctx, org, role);
+  return true;
+}
+
+/**
+ * §4.1, in order: 401; 404 `site_not_found` (unknown, or not the caller's to
+ * reach); 403 `feature_not_in_plan`; 403 `org_blocked` (writes); 503.
+ */
 function gates(options: CmsRoutesOptions) {
   return createMiddleware<CmsEnv>(async (c, next) => {
     const ctx = c.var.studioContext;
-    const organization = ctx.organization;
-    if (!organization)
-      return c.json({ error: "Organization scope required" }, 500);
     const userId = ctx.auth?.user?.id;
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
+    const slug = c.req.param("site") ?? "";
+    const row = await ctx.storage.orgSites.getBySlug(slug);
+    // A tombstone (its org deleted) has no organization: not found either.
+    const organizationId = row?.organizationId ?? null;
+    const admitted =
+      organizationId !== null &&
+      (await (options.admit ?? admitToOrganization)(c, organizationId));
+    if (!row || organizationId === null || !admitted) {
+      return fail(c, 404, "site_not_found", "Site not found");
+    }
     const hasCms = options.hasCms
-      ? await options.hasCms(c, organization.id)
-      : await orgHasFeature(ctx, organization.id, "cms");
+      ? await options.hasCms(c, organizationId)
+      : await orgHasFeature(ctx, organizationId, "cms");
     if (!hasCms) {
       return fail(
         c,
@@ -186,10 +244,22 @@ function gates(options: CmsRoutesOptions) {
         "This organization's plan does not include the CMS",
       );
     }
-    const slug = c.req.param("site") ?? "";
-    const row = await ctx.storage.orgSites.getBySlug(slug);
-    if (!row || row.organizationId !== organization.id) {
-      return fail(c, 404, "site_not_found", "Site not found");
+    // A blocked organization loses its writes, as under /api/:org (enforceOrgBlock).
+    const write = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
+    const blocked =
+      write &&
+      (options.isBlocked
+        ? await options.isBlocked(c, organizationId)
+        : ctx.db
+          ? await isOrgBlocked(ctx.db, organizationId)
+          : false);
+    if (blocked) {
+      return fail(
+        c,
+        403,
+        "org_blocked",
+        "This organization is blocked. Resolve the outstanding notice to restore access.",
+      );
     }
     const buckets = (options.buckets ?? defaultBuckets)();
     if (!buckets) {
@@ -203,7 +273,7 @@ function gates(options: CmsRoutesOptions) {
     let project: CmsSite["project"] = null;
     if (row.projectId) {
       const found = await ctx.storage.virtualMcps.findById(row.projectId);
-      if (found && found.organization_id === organization.id) {
+      if (found && found.organization_id === organizationId) {
         project = {
           id: found.id,
           metadata: (found.metadata as Record<string, unknown> | null) ?? null,
@@ -211,7 +281,7 @@ function gates(options: CmsRoutesOptions) {
       }
     }
     c.set("cmsSite", {
-      organizationId: organization.id,
+      organizationId,
       site: row.slug,
       project,
       userId,
@@ -499,7 +569,14 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
   app.get("/:site/site-tokens", async (c) => {
     const site = c.get("cmsSite");
     const tokens = siteTokens(c);
-    if (!tokens) return c.json({ error: "site tokens not configured" }, 503);
+    if (!tokens) {
+      return fail(
+        c,
+        503,
+        "hosted_delivery_unconfigured",
+        "site tokens not configured",
+      );
+    }
     return c.json({
       site: site.site,
       tokens: await tokens.list(site.organizationId, site.site),
@@ -509,7 +586,14 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
   app.post("/:site/site-tokens", async (c) => {
     const site = c.get("cmsSite");
     const tokens = siteTokens(c);
-    if (!tokens) return c.json({ error: "site tokens not configured" }, 503);
+    if (!tokens) {
+      return fail(
+        c,
+        503,
+        "hosted_delivery_unconfigured",
+        "site tokens not configured",
+      );
+    }
     try {
       return c.json(await tokens.issue(site.organizationId, site.site));
     } catch (err) {

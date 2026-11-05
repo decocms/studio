@@ -6,9 +6,13 @@
  * `gitBlobSha(serializeBlock(block))`.
  *
  * `canonicalJson` is `@decocms/blocks/protocol`'s own. The contract adds a
- * `blockVersion` export to that package; until a release carries it, this
- * is the same function over the same canonical form, checked against the
- * contract's vectors (`block-version.test.ts`).
+ * `blockVersion` export (and its fixtures) to that package; no release
+ * carries it yet, and Studio can't take it from the `cdn-cms/sdk-cli` branch
+ * without publishing a package (no preview releases; a git dependency gets
+ * the unbuilt monorepo root, no subpath). So this is a copy, a known
+ * deviation (contract §1.3): the same function over the same canonical
+ * form, checked against the contract's vectors (`revision-id.test.ts`,
+ * `cms-storage.test.ts`). Swap it for the package's export once released.
  */
 
 import { createHash } from "node:crypto";
