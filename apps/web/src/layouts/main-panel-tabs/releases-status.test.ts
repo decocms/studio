@@ -13,7 +13,6 @@ import {
   canReapply,
   isLatest,
   isUnreadable,
-  listedRevisions,
   releaseTitle,
   revisionTime,
 } from "./releases-status";
@@ -45,25 +44,13 @@ const revision = (
 describe("Latest is the revision latest.json names", () => {
   test("only the current row is Latest", () => {
     expect(isLatest(revision(NEW, "current"))).toBe(true);
-    expect(isLatest(revision(OLD, "was-live"))).toBe(false);
-  });
-
-  test("a revision latest.json never named isn't listed", () => {
-    expect(
-      listedRevisions([
-        revision(NEW, "current"),
-        revision(OLD, "never-live"),
-      ]).map((r) => r.id),
-    ).toEqual([NEW]);
+    expect(isLatest(revision(OLD, "listed"))).toBe(false);
   });
 });
 
 describe("a release whose details couldn't be read", () => {
   const broken: ReleaseRevision = { id: OLD, status: "unreadable" };
-  test("is listed, but isn't Latest, can't be previewed or made current", () => {
-    expect(
-      listedRevisions([revision(NEW, "current"), broken]).map((r) => r.status),
-    ).toEqual(["current", "unreadable"]);
+  test("isn't Latest, can't be previewed or made current", () => {
     expect(isUnreadable(broken)).toBe(true);
     expect(isUnreadable(revision(NEW, "current"))).toBe(false);
     expect(isLatest(broken)).toBe(false);
@@ -73,23 +60,19 @@ describe("a release whose details couldn't be read", () => {
 });
 
 describe("canPreviewRelease", () => {
-  test("any listed release can be previewed, the latest too", () => {
-    expect(canPreviewRelease(revision(OLD, "was-live"))).toBe(true);
+  test("any readable release can be previewed, the latest too", () => {
+    expect(canPreviewRelease(revision(OLD, "listed"))).toBe(true);
     expect(canPreviewRelease(revision(NEW, "current"))).toBe(true);
   });
-  test("not a revision that never went live, nor a git sha", () => {
-    expect(canPreviewRelease(revision(OLD, "never-live"))).toBe(false);
-    expect(canPreviewRelease(revision("a".repeat(40), "was-live"))).toBe(false);
+  test("not a git sha", () => {
+    expect(canPreviewRelease(revision("a".repeat(40), "listed"))).toBe(false);
   });
 });
 
 describe("canReapply", () => {
-  test("an earlier release that went live can be made current", () => {
-    expect(canReapply(revision(OLD, "was-live"))).toBe(true);
-  });
-  test("not the latest one, nor one that never went live", () => {
+  test("any readable release but the latest can be made current", () => {
+    expect(canReapply(revision(OLD, "listed"))).toBe(true);
     expect(canReapply(revision(NEW, "current"))).toBe(false);
-    expect(canReapply(revision(OLD, "never-live"))).toBe(false);
   });
 });
 

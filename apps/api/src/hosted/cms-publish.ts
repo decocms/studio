@@ -48,7 +48,6 @@ import {
   draftChangesNothing,
   type LatestPointer,
   MAX_SNAPSHOT_BYTES,
-  MalformedObjectError,
   readLatestPointer,
   readRevision,
   readRevisionMeta,
@@ -89,14 +88,6 @@ export class RevisionNotFoundError extends Error {
   constructor(id: string) {
     super(`revision ${id} not found`);
     this.name = "RevisionNotFoundError";
-  }
-}
-
-/** latest.json never named the rollback target. */
-export class NeverLiveError extends Error {
-  constructor(id: string) {
-    super(`revision ${id} never went live`);
-    this.name = "NeverLiveError";
   }
 }
 
@@ -243,30 +234,6 @@ export async function publishCmsDraft(
   throw new ProductionMovedError();
 }
 
-/**
- * Whether `target` is `from` or reached from it through `previous`. A
- * meta.json missing or unparseable on the way breaks the chain: that is
- * `MalformedObjectError`, not "never live".
- */
-export async function wentLive(
-  store: DeliveryStore,
-  site: string,
-  from: string | null,
-  target: string,
-): Promise<boolean> {
-  const seen = new Set<string>();
-  let id = from;
-  while (id && !seen.has(id)) {
-    if (id === target) return true;
-    seen.add(id);
-    const meta = await readRevisionMeta(store, site, id);
-    if (!meta)
-      throw new MalformedObjectError(deliveryKeys.revisionMeta(site, id));
-    id = meta.previous;
-  }
-  return false;
-}
-
 /** `2026-10-14 13:05 UTC`, or null for an unreadable date. */
 function utcMinute(date: string): string | null {
   const d = new Date(date);
@@ -300,10 +267,14 @@ function reapplyTitle(original: { message: string; date: string }): string {
 }
 
 export type CmsRollbackResult =
-  | { result: "published"; revision: string; previous: string }
-  | { result: "up-to-date"; revision: string };
+  | { result: "published"; revision: string; previous: string | null }
+  | { result: "up-to-date"; revision: string | null };
 
-/** Rollback / roll-forward to `target`: steps 1, 4 and 5. */
+/**
+ * Rollback / roll-forward to `target`, any revision with a readable
+ * meta.json and data.json (whether latest.json ever named it or not):
+ * steps 1, 4 and 5.
+ */
 export async function rollbackToRevision(
   deps: CmsPublishDeps,
   target: string,
@@ -312,23 +283,19 @@ export async function rollbackToRevision(
   const { store, site } = deps;
   const targetMeta = await readRevisionMeta(store, site, target);
   if (!targetMeta) throw new RevisionNotFoundError(target);
-  let checked = false;
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
     const latest = await readLatestPointer(store, site);
-    if (!latest) throw new NeverLiveError(target);
-    // History only grows: once reached, it stays reachable.
-    if (!checked) {
-      if (!(await wentLive(store, site, latest.pointer.revision, target))) {
-        throw new NeverLiveError(target);
-      }
-      checked = true;
-    }
     const [wanted, live] = await Promise.all([
       readRevision(store, site, target),
-      readRevision(store, site, latest.pointer.revision),
+      latest
+        ? readRevision(store, site, latest.pointer.revision)
+        : { blocks: {} },
     ]);
     if (canonicalJson(wanted.blocks) === canonicalJson(live.blocks)) {
-      return { result: "up-to-date", revision: latest.pointer.revision };
+      return {
+        result: "up-to-date",
+        revision: latest?.pointer.revision ?? null,
+      };
     }
     const id = await writeAndPoint(
       deps,
@@ -349,7 +316,7 @@ export async function rollbackToRevision(
     return {
       result: "published",
       revision: id,
-      previous: latest.pointer.revision,
+      previous: latest?.pointer.revision ?? null,
     };
   }
   throw new ProductionMovedError();

@@ -48,7 +48,6 @@ import {
   isValidDraftName,
 } from "@/hosted/cms-drafts";
 import {
-  NeverLiveError,
   ProductionMovedError,
   publishCmsDraft,
   RevisionNotFoundError,
@@ -154,9 +153,6 @@ function previewOrigin(site: CmsSite): string | null {
 function cmsError(c: Context<CmsEnv>, err: unknown) {
   if (err instanceof ProductionMovedError) {
     return fail(c, 409, "production_moved", "production moved, try again");
-  }
-  if (err instanceof NeverLiveError) {
-    return fail(c, 409, "never_live", "This revision never went live");
   }
   if (err instanceof RevisionNotFoundError) {
     return fail(c, 404, "revision_not_found", "Revision not found");
