@@ -259,6 +259,8 @@ type Behaviour = NonNullable<
 /** One arm as the screen reads it, whichever backend answered. */
 interface ArmView {
   id: string;
+  /** What people call the version: its description when short, else its id. */
+  name: string;
   role: "control" | "test" | null;
   weight: number | null;
   visitors: number;
@@ -330,6 +332,15 @@ function duration(seconds: number, t: TFunction): string {
     : t("experiments.results.seconds", { s });
 }
 
+const NAME_MAX = 40;
+
+/** A variant's description reads as its name ("Carrinho novo") when it is one
+ *  short line; a longer description is an explanation, so the id stays. */
+function armName(variants: Experiment["variants"], id: string): string {
+  const d = variants.find((v) => v.id === id)?.description?.trim();
+  return d && d.length <= NAME_MAX && !/[\r\n]/.test(d) ? d : id;
+}
+
 /** Control first, then the treatment, then any other arm. */
 function toArms(r: ResultsBody, variants: Experiment["variants"]): ArmView[] {
   const arms = r.arms ?? [];
@@ -344,6 +355,7 @@ function toArms(r: ResultsBody, variants: Experiment["variants"]): ArmView[] {
       );
       return {
         id: v?.id ?? key,
+        name: armName(variants, v?.id ?? key),
         role: key === "default" ? "control" : "test",
         weight: v?.weight ?? null,
         visitors: r.visitors[key],
@@ -376,6 +388,7 @@ function toArms(r: ResultsBody, variants: Experiment["variants"]): ArmView[] {
     .sort((a, b) => rank(a.id) - rank(b.id))
     .map((a) => ({
       id: a.id,
+      name: armName(variants, a.id),
       role: a.id === control ? "control" : a.id === treatment ? "test" : null,
       weight: weight(a.id),
       visitors: a.visitors,
@@ -429,7 +442,12 @@ function ArmName({ arm }: { arm: ArmView }) {
   const t = useT();
   return (
     <div className="flex items-center gap-2 whitespace-nowrap">
-      <span className="font-medium">{arm.id}</span>
+      <span className="font-medium">{arm.name}</span>
+      {arm.name !== arm.id && (
+        <span className="font-mono text-xs text-muted-foreground">
+          {arm.id}
+        </span>
+      )}
       {arm.role && (
         <Badge variant={arm.role === "control" ? "outline" : "secondary"}>
           {t(
@@ -464,9 +482,9 @@ function VerdictCard({
   const left = daysLeft(control.counts, test.counts, days);
   const title =
     c.verdict === "ahead"
-      ? t("experiments.results.verdict.ahead", { arm: test.id })
+      ? t("experiments.results.verdict.ahead", { arm: test.name })
       : c.verdict === "behind"
-        ? t("experiments.results.verdict.behind", { arm: test.id })
+        ? t("experiments.results.verdict.behind", { arm: test.name })
         : t(`experiments.results.verdict.${c.verdict}`);
   const compare =
     c.lift === null || c.low === null || c.high === null
@@ -476,8 +494,8 @@ function VerdictCard({
             ? "experiments.results.verdict.compareExposed"
             : "experiments.results.verdict.compareVisitors",
           {
-            test: test.id,
-            control: control.id,
+            test: test.name,
+            control: control.name,
             testRate: pct(c.treatmentRate),
             controlRate: pct(c.controlRate),
             lift: signedPct(c.lift),
@@ -695,7 +713,7 @@ function Trend({ arms }: { arms: ArmView[] }) {
   const config = Object.fromEntries(
     arms.map((a, i) => [
       a.id,
-      { label: a.id, color: `var(--chart-${(i % 5) + 1})` },
+      { label: a.name, color: `var(--chart-${(i % 5) + 1})` },
     ]),
   );
   return (
@@ -708,7 +726,7 @@ function Trend({ arms }: { arms: ArmView[] }) {
                 className="size-2 rounded-full"
                 style={{ backgroundColor: config[a.id]?.color }}
               />
-              {a.id}
+              {a.name}
             </span>
           ))}
         </div>
