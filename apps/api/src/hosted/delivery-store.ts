@@ -2,13 +2,15 @@
  * The hosted Deco CMS delivery bucket: an R2 bucket served read-only at
  * `https://delivery.decocms.com`, written by Studio through R2's S3 API.
  *
- *   sites/<site>/latest.json                     { revision, previewHosts }
- *   sites/<site>/revisions/<id>/data.json        { blocks }
+ *   sites/<site>/blocks/<hash>.json              one block body (immutable)
+ *   sites/<site>/revisions/<id>/index.json       { revision, sequence, blocks }
  *   sites/<site>/revisions/<id>/meta.json        { previous, draft?, reapplyOf?, author, via, message, publishedAt }
- *   sites/<site>/drafts/<slug>.json              { set, delete, editors }
+ *   sites/<site>/latest.json                     the live index + previewHosts
+ *   sites/<site>/drafts/<slug>/index.json        { names }
+ *   sites/<site>/drafts/<slug>/<name>.json       one draft file per block name
  *
- * Keys are only ever built here, from a validated site slug, revision id or
- * draft slug, so no caller can address anything
+ * Keys are only ever built here, from a validated site slug, block hash,
+ * revision id, draft slug or block name, so no caller can address anything
  * outside its site's prefix. Every key starts with the `DELIVERY_KEY_PREFIX`
  * setting (test-only, empty in production).
  */
@@ -21,6 +23,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { blockFileName, isBlockFileName } from "@decocms/blocks/protocol";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import { getSettings } from "@/settings";
 import { isRevisionId } from "./revision-id";
@@ -30,12 +33,17 @@ export const DELIVERY_ORIGIN = "https://delivery.decocms.com";
 /** 16 random bytes, base64url without padding. */
 const DRAFT_SLUG_RE = /^[A-Za-z0-9_-]{22}$/;
 
+/** A block hash: `blockVersion`, 22 base64url characters. */
+const BLOCK_HASH_RE = /^[A-Za-z0-9_-]{22}$/;
+
 /**
  * The edge holds latest.json up to 1 h (purged after every write); browsers
  * and servers revalidate on every read, so no unchecked stale pointer is used.
  */
 export const CACHE_LATEST = "public, max-age=0, s-maxage=3600, must-revalidate";
 export const CACHE_REVISION = "public, max-age=31536000, immutable";
+/** A block object never changes: its key is its content's hash. */
+export const CACHE_BLOCK = "public, max-age=31536000, immutable";
 export const CACHE_DRAFT = "no-cache, max-age=0, must-revalidate";
 
 /** The test-only key prefix (`DELIVERY_KEY_PREFIX`), `""` in production. */
@@ -53,19 +61,44 @@ function revisionFolder(site: string, id: string): string {
   return `${siteKey(site)}/revisions/${id}/`;
 }
 
+function draftFolder(site: string, slug: string): string {
+  if (!DRAFT_SLUG_RE.test(slug)) throw new Error("invalid draft slug");
+  return `${siteKey(site)}/drafts/${slug}/`;
+}
+
+/**
+ * A block's draft file name: `blockFileName(name)`, except that the block
+ * named `index` is `%69ndex.json`, so it can't be the draft index.
+ * `blockNameFromFile` (one decode) gives the name back either way.
+ */
+export function draftFileName(name: string): string {
+  const file = name === "index" ? "%69ndex.json" : blockFileName(name);
+  if (name.length === 0 || !isBlockFileName(file)) {
+    throw new Error(`invalid block name: ${JSON.stringify(name)}`);
+  }
+  return file;
+}
+
 export const deliveryKeys = {
   latest: (site: string) => `${siteKey(site)}/latest.json`,
+  /** A block body by its hash (immutable): `blocks/<hash>.json`. */
+  block: (site: string, hash: string) => {
+    if (!BLOCK_HASH_RE.test(hash)) throw new Error("invalid block hash");
+    return `${siteKey(site)}/blocks/${hash}.json`;
+  },
   revisions: (site: string) => `${siteKey(site)}/revisions/`,
-  /** A revision's blocks (immutable): `revisions/<id>/data.json`. */
-  revisionData: (site: string, id: string) =>
-    `${revisionFolder(site, id)}data.json`,
+  /** A revision's index (immutable): `revisions/<id>/index.json`. */
+  revisionIndex: (site: string, id: string) =>
+    `${revisionFolder(site, id)}index.json`,
   /** A revision's meta (immutable): `revisions/<id>/meta.json`. */
   revisionMeta: (site: string, id: string) =>
     `${revisionFolder(site, id)}meta.json`,
-  draft: (site: string, slug: string) => {
-    if (!DRAFT_SLUG_RE.test(slug)) throw new Error("invalid draft slug");
-    return `${siteKey(site)}/drafts/${slug}.json`;
-  },
+  /** The names a draft holds: `drafts/<slug>/index.json`. */
+  draftIndex: (site: string, slug: string) =>
+    `${draftFolder(site, slug)}index.json`,
+  /** One block's draft file: `drafts/<slug>/<draftFileName(name)>`. */
+  draftFile: (site: string, slug: string, name: string) =>
+    `${draftFolder(site, slug)}${draftFileName(name)}`,
 };
 
 /** A new draft slug: unguessable, since holding its URL is the read grant. */
@@ -84,6 +117,25 @@ export function bareEtag(etag: string | null | undefined): string | null {
 export interface StoredObject {
   text: string;
   etag: string | null;
+}
+
+/** A conditional read's answer when the object still has the ETag sent. */
+export interface NotModified {
+  notModified: true;
+}
+
+export interface GetOptions {
+  /** Answer {@link NotModified} while the object's ETag is this one. */
+  ifNoneMatch?: string | null;
+}
+
+/** {@link DeliveryStore.get}, with its conditional form. */
+export interface DeliveryGet {
+  (key: string): Promise<StoredObject | null>;
+  (
+    key: string,
+    options: GetOptions,
+  ): Promise<StoredObject | NotModified | null>;
 }
 
 /**
@@ -137,18 +189,18 @@ export interface DeliveryStore {
     /** Write only if the object is still as read; else {@link ObjectChangedError}. */
     condition?: PutCondition,
   ): Promise<{ etag: string | null }>;
-  /**
-   * Writes an already serialized JSON text as is (a revision's `data.json`,
-   * whose escaping the caller chose).
-   */
+  /** Writes an already serialized JSON text as is (an index, a block body). */
   putText(
     key: string,
     text: string,
     cacheControl: string,
     condition?: PutCondition,
   ): Promise<{ etag: string | null }>;
-  /** The object, or null when there is none. */
-  get(key: string): Promise<StoredObject | null>;
+  /**
+   * The object, or null when there is none; with `ifNoneMatch`, `{
+   * notModified: true }` while the object still has that ETag.
+   */
+  get: DeliveryGet;
   delete(key: string): Promise<void>;
   /**
    * One page of the "folders" right under `prefix` (a delimiter listing,
@@ -181,6 +233,11 @@ function isUnavailable(error: unknown): boolean {
   const status = (error as { $metadata?: { httpStatusCode?: number } })
     ?.$metadata?.httpStatusCode;
   return status === undefined || status === 429 || status >= 500;
+}
+
+function isNotModified(error: unknown): boolean {
+  const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return e?.name === "NotModified" || e?.$metadata?.httpStatusCode === 304;
 }
 
 function isNotFound(error: unknown): boolean {
@@ -244,25 +301,40 @@ export function createS3DeliveryStore(config: {
       throw error;
     }
   };
+  function get(key: string): Promise<StoredObject | null>;
+  function get(
+    key: string,
+    options: GetOptions,
+  ): Promise<StoredObject | NotModified | null>;
+  async function get(
+    key: string,
+    options?: GetOptions,
+  ): Promise<StoredObject | NotModified | null> {
+    try {
+      const res = await client.send(
+        new GetObjectCommand({
+          Bucket,
+          Key: key,
+          ...(options?.ifNoneMatch ? { IfNoneMatch: options.ifNoneMatch } : {}),
+        }),
+      );
+      const text = (await res.Body?.transformToString("utf-8")) ?? "";
+      return { text, etag: res.ETag ?? null };
+    } catch (error) {
+      if (options?.ifNoneMatch && isNotModified(error)) {
+        return { notModified: true };
+      }
+      if (isNotFound(error)) return null;
+      if (isUnavailable(error)) throw new DeliveryUnavailableError(key, error);
+      throw error;
+    }
+  }
   return {
     putJson: (key, value, cacheControl, condition) =>
       put(key, JSON.stringify(value), cacheControl, condition),
     putText: (key, text, cacheControl, condition) =>
       put(key, text, cacheControl, condition),
-    async get(key) {
-      try {
-        const res = await client.send(
-          new GetObjectCommand({ Bucket, Key: key }),
-        );
-        const text = (await res.Body?.transformToString("utf-8")) ?? "";
-        return { text, etag: res.ETag ?? null };
-      } catch (error) {
-        if (isNotFound(error)) return null;
-        if (isUnavailable(error))
-          throw new DeliveryUnavailableError(key, error);
-        throw error;
-      }
-    },
+    get,
     async delete(key) {
       try {
         await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
@@ -330,10 +402,10 @@ export function deliveryStore(): DeliveryStore | null {
 
 /**
  * A draft's pointer target without scheme or version
- * (`delivery.decocms.com/sites/<site>/drafts/<slug>.json`), the form the SDK's
- * `?__draft=<pointer>@<version>` carries.
+ * (`delivery.decocms.com/sites/<site>/drafts/<slug>/index.json`), the form
+ * the SDK's `?__draft=<pointer>@<version>` carries.
  */
 export function draftPointerTarget(site: string, slug: string): string {
   const origin = new URL(getSettings().deliveryPublicOrigin ?? DELIVERY_ORIGIN);
-  return `${origin.host}/${deliveryKeys.draft(site, slug)}`;
+  return `${origin.host}/${deliveryKeys.draftIndex(site, slug)}`;
 }
