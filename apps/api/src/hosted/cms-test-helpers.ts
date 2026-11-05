@@ -5,13 +5,21 @@
 
 import type { DraftStoragePort } from "@/storage/ports";
 import type { CmsDraftRow } from "@/storage/types";
+import { type BlockIndex, indexEntry } from "./block-meta";
 import {
-  readLatestPointer,
+  readLatest,
   type RevisionMeta,
-  serializeRevisionData,
-  writeLatestPointer,
+  serializeIndex,
+  writeBlockObject,
+  writeLatest,
   writeRevision,
 } from "./cms-release";
+import {
+  type DraftFile,
+  readDraftFile,
+  updateDraftIndex,
+  writeDraftFile,
+} from "./cms-drafts";
 import type { DeliveryStore } from "./delivery-store";
 import type { RecordStore } from "./record-store";
 
@@ -74,27 +82,79 @@ export function memoryRecordStore(): RecordStore & {
   };
 }
 
-/** Writes a live revision of `blocks` (data, meta, latest.json) for tests. */
+/**
+ * Writes a live revision of `blocks` for tests, as publish would: each
+ * body at `blocks/<hash>.json`, the revision's index and meta, then
+ * latest.json (the next `sequence`). Returns the index's entries.
+ */
 export async function seedRelease(
   store: DeliveryStore,
   site: string,
   id: string,
   blocks: Record<string, unknown>,
   meta: Partial<RevisionMeta> = {},
-) {
-  const latest = await readLatestPointer(store, site);
-  await writeRevision(store, site, id, serializeRevisionData(blocks), {
-    previous: latest?.pointer.revision ?? null,
+): Promise<BlockIndex> {
+  const live = await readLatest(store, site);
+  const names = Object.keys(blocks);
+  const entries: BlockIndex = Object.fromEntries(
+    Object.entries(blocks).map(([name, body]) => [
+      name,
+      indexEntry(name, body, names),
+    ]),
+  );
+  for (const [name, body] of Object.entries(blocks)) {
+    await writeBlockObject(
+      store,
+      site,
+      entries[name]!.version,
+      JSON.stringify(body),
+    );
+  }
+  const index = {
+    revision: id,
+    sequence: (live?.latest.sequence ?? 0) + 1,
+    blocks: entries,
+  };
+  await writeRevision(store, site, serializeIndex(index), id, {
+    previous: live?.latest.revision ?? null,
     author: "usr_seed",
     via: "studio",
     message: "",
     publishedAt: "2026-11-03T12:00:00.000Z",
     ...meta,
   });
-  await writeLatestPointer(
+  await writeLatest(
     store,
     site,
-    { revision: id, previewHosts: [] },
-    latest?.etag ?? null,
+    { ...index, previewHosts: [] },
+    live?.etag ?? null,
   );
+  return entries;
+}
+
+/** Writes a draft file the way a save would: the name into the index first. */
+export async function seedDraftFile(
+  store: DeliveryStore,
+  site: string,
+  slug: string,
+  name: string,
+  file: DraftFile,
+): Promise<string | null> {
+  await updateDraftIndex(store, site, slug, (names) => [...names, name]);
+  const current = await readDraftFile(store, site, slug, name);
+  return writeDraftFile(store, site, slug, name, file, current.etag);
+}
+
+/** A `set` draft file by `user` at Unix second `at`. */
+export function setFile(
+  data: Record<string, unknown>,
+  user = "usr_ana",
+  at = 1793800000,
+): DraftFile {
+  return { operation: "set", data, user, via: "studio", at };
+}
+
+/** A `delete` draft file by `user` at Unix second `at`. */
+export function deleteFile(user = "usr_ana", at = 1793800000): DraftFile {
+  return { operation: "delete", user, via: "studio", at };
 }
