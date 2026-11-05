@@ -329,6 +329,33 @@ describe("readRevisionMeta", () => {
     expect(first?.author).toBe("usr_seed");
     expect(gets).toBe(1);
   });
+
+  it("never caches a read or parse failure: a fixed meta.json is seen on the next read", async () => {
+    const { delivery } = setup();
+    const id = newRevisionId(clock++);
+    await seedRelease(delivery.store, SITE, id, { a: {} });
+    clearRevisionCache();
+    const key = deliveryKeys.revisionMeta(SITE, id);
+    const good = delivery.objects.get(key)!;
+    delivery.objects.set(key, { text: "{nope", etag: '"x"', cacheControl: "" });
+    await expect(
+      readRevisionMeta(delivery.store, SITE, id),
+    ).rejects.toBeInstanceOf(MalformedObjectError);
+    const get = delivery.store.get.bind(delivery.store);
+    let failing = true;
+    delivery.store.get = (async (k: string) => {
+      if (failing) throw new DeliveryUnavailableError(k, new Error("503"));
+      return get(k);
+    }) as typeof delivery.store.get;
+    await expect(
+      readRevisionMeta(delivery.store, SITE, id),
+    ).rejects.toBeInstanceOf(DeliveryUnavailableError);
+    failing = false;
+    delivery.objects.set(key, good);
+    expect((await readRevisionMeta(delivery.store, SITE, id))?.author).toBe(
+      "usr_seed",
+    );
+  });
 });
 
 describe("rollbackToRevision", () => {
