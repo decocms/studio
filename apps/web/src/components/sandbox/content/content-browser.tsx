@@ -1,4 +1,3 @@
-import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -14,14 +13,11 @@ import {
   AlertCircle,
   CornerUpRight,
   Cube01,
-  File02,
   Globe01,
   Grid01,
   LayoutAlt01,
   Plus,
   SearchLg,
-  Tag01,
-  Users01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -113,35 +109,10 @@ import {
 } from "./redirect-data";
 import { RedirectTypeBadge } from "./redirect-type-badge";
 import {
-  type BlogEntry,
-  type BlogKind,
-  BLOG_KINDS,
-  BLOG_SINGULAR,
-  buildBlogBlock,
-  emptyBlogPayload,
-  generateBlogKey,
-  uniqueCategorySlug,
-  getBlogPayload,
-  isBlogKind,
-  listAllPostPayloads,
-  missingFieldsLabel,
-  postIdOfKey,
-  buildPostBlock,
-  removeCategoryFromPost,
-  scanBlogEntries,
-  stampPostModified,
-} from "./blog/blog-data";
-import {
   type ContentSearchParams,
   variantFocusFromSearch,
 } from "./content-search-params";
 import type { VariantFocus } from "@/components/sections-editor/named-rule-uses";
-import {
-  rescheduleToDay,
-  scheduledPostPayload,
-} from "./blog/post-calendar-data";
-import { usePostStatusMove } from "./blog/use-post-status-move";
-import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
 import { SavedPageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
@@ -162,11 +133,6 @@ import {
   isProtocolProject,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
-import {
-  categoryAncestors,
-  type CategoryTreeRow,
-  orderCategoryTree,
-} from "./blog/category-tree";
 import {
   GroupHeader,
   groupSavedSectionsByResolveType,
@@ -202,24 +168,6 @@ const CmsSettingsEditor = lazy(() =>
   })),
 );
 
-const PostEditor = lazy(() =>
-  import("./blog/post-editor").then((m) => ({ default: m.PostEditor })),
-);
-
-const RecordEditor = lazy(() =>
-  import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
-);
-
-const BlogContext = lazy(() =>
-  import("./blog/context").then((m) => ({
-    default: m.BlogContext,
-  })),
-);
-
-const CategoryEditor = lazy(() =>
-  import("./blog/category-editor").then((m) => ({ default: m.CategoryEditor })),
-);
-
 const SectionsEditor = lazy(() =>
   import("@/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
@@ -238,10 +186,6 @@ const VariantCalendar = lazy(() =>
   })),
 );
 
-const PostCalendar = lazy(() =>
-  import("./blog/post-calendar").then((m) => ({ default: m.PostCalendar })),
-);
-
 const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
@@ -254,58 +198,36 @@ export type CollectionId =
   | "seo"
   | "settings"
   | "calendar"
-  | "post-schedule"
   | "loaders"
   | "actions"
-  | "redirects"
-  | "context"
-  | BlogKind;
+  | "redirects";
 
 /**
- * The collection actually shown.
- *
- * `activeCollection` is local state and the context tab is reachable only by
- * clicking its row, so no link can land on it — but someone already there when
- * an admin turns the AI-blog flag off would be looking at a tab the menu no
- * longer lists. Normalising once at the source spares every reader downstream
- * a guard of its own.
+ * The collection actually shown. A Blocks (v8) site's campaigns are the
+ * Calendar view, not a tab here, so a Calendar left selected falls back to
+ * Pages.
  */
 export function visibleCollection(
   active: CollectionId,
-  blogAi: boolean,
-  /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
 ): CollectionId {
-  if (active === "context" && !blogAi) return "posts";
-  if (blocksV8 && active === "calendar") return "pages";
-  return active;
+  return blocksV8 && active === "calendar" ? "pages" : active;
 }
 
 /**
- * A `?contentCollection=` deep link's collection: a blog collection (the Blog
- * Manager's "Editar no Studio") and, on a Blocks v8 site, Sections (the
- * Experiments tab's links). Anything else opens Pages.
+ * A `?contentCollection=` deep link's collection: on a Blocks v8 site,
+ * Sections (the Experiments tab's links). Anything else opens Pages; a blog
+ * collection never reaches here, because the router hands it to Blog.
  */
 export function deepLinkCollection(
   param: string | undefined,
   blocksV8: boolean,
 ): CollectionId | null {
-  if (!param) return null;
-  if (isBlogKind(param as CollectionId)) return param as CollectionId;
-  if (!blocksV8) return null;
-  return param === "sections" ? param : null;
+  return blocksV8 && param === "sections" ? param : null;
 }
 
 export type CollectionCounts = Record<
-  | "pages"
-  | "sections"
-  | "apps"
-  | "loaders"
-  | "actions"
-  | "redirects"
-  | "posts"
-  | "authors"
-  | "categories",
+  "pages" | "sections" | "apps" | "loaders" | "actions" | "redirects",
   number
 >;
 
@@ -321,7 +243,6 @@ type Selection =
   /** A catalogue app with no block yet: the panel that installs it. */
   | { collection: "available-app"; id: string }
   | { collection: "redirects"; key: string }
-  | { collection: BlogKind; key: string }
   | null;
 
 /** A raw manifest section the user can customize and save as a global block. */
@@ -342,7 +263,6 @@ type DeleteTarget =
   | { kind: "page"; key: string; label: string }
   | { kind: "section"; key: string; label: string }
   | { kind: "redirect"; key: string; label: string }
-  | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
   | null;
 
 export interface ContentBrowserProps {
@@ -499,23 +419,17 @@ function ContentBrowserReady({
     { fetchEnabled: devServerReady },
   );
 
-  // Blog Manager's "Editar no Studio" redirect: ?contentCollection=posts&
-  // contentItem=<blockKey> pre-selects a blog collection and opens a specific
-  // record. Read once via a lazy initializer (not an effect) — normal
-  // navigation takes over afterwards, same one-shot shape as the storefront
-  // "." deep-link below.
+  // The Experiments tab's links: ?contentCollection=sections&contentItem=
+  // <blockKey> opens a saved section. Read once via a lazy initializer (not an
+  // effect) — normal navigation takes over afterwards, same one-shot shape as
+  // the storefront "." deep-link below.
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
       deepLinkCollection(contentDeepLink.contentCollection, !runsSiteCode) ??
       "pages",
   );
-  const blogAi = useBlogAi();
-  const activeCollection = visibleCollection(
-    storedCollection,
-    blogAi,
-    !runsSiteCode,
-  );
+  const activeCollection = visibleCollection(storedCollection, !runsSiteCode);
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
   // Calendar views. Both keep the open thread, so they work in this same draft.
@@ -525,8 +439,7 @@ function ContentBrowserReady({
     },
   };
   const [selection, setSelection] = useState<Selection>(() =>
-    contentDeepLink.contentItem &&
-    (isBlogKind(activeCollection) || activeCollection === "sections")
+    contentDeepLink.contentItem && activeCollection === "sections"
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
       : null,
   );
@@ -639,8 +552,6 @@ function ContentBrowserReady({
     }
   }
   const [searchQuery, setSearchQuery] = useState("");
-  // Posts workspace view + grouping — lifted so they survive opening a post.
-  const [postsView, setPostsView] = useState<PostsView>("list");
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
@@ -747,19 +658,6 @@ function ContentBrowserReady({
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
 
-  const postMove = usePostStatusMove({
-    orgSlug,
-    virtualMcpId,
-    branch,
-    decofile: decofile ?? {},
-    onMoved: (fromKey: string, toKey: string) =>
-      setSelection((current) =>
-        current?.collection === "posts" && current.key === fromKey
-          ? { collection: "posts", key: toKey }
-          : current,
-      ),
-  });
-
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
   const [pageDialogError, setPageDialogError] = useState<string | undefined>();
@@ -769,10 +667,7 @@ function ContentBrowserReady({
   >();
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
-  const deleteNoun =
-    deleteTarget?.kind === "blog"
-      ? BLOG_SINGULAR[deleteTarget.blogKind]
-      : (deleteTarget?.kind ?? "item");
+  const deleteNoun = deleteTarget?.kind ?? "item";
   const deleteDescription =
     deleteTarget?.kind === "section"
       ? t(
@@ -851,11 +746,6 @@ function ContentBrowserReady({
   const availableSections: AvailableSectionEntry[] =
     activeCollection === "sections" ? listAvailableSections(meta) : [];
   const siteApp = findSiteAppEntry(decofile, meta);
-  const allBlogEntries = scanBlogEntries(decofile);
-  const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
-  const blogEntries = isBlogKind(activeCollection)
-    ? allBlogEntries[activeCollection]
-    : [];
 
   // Listed (and their saved blocks edited) on every backend; only Run needs
   // site code.
@@ -878,7 +768,6 @@ function ContentBrowserReady({
   // Loader/action-only sites are still editable — don't gate them out.
   if (
     !hasEditableDecoContent(decofile, meta) &&
-    !showBlog &&
     loadersCount === 0 &&
     actionsCount === 0
   ) {
@@ -898,9 +787,6 @@ function ContentBrowserReady({
     loaders: loadersCount,
     actions: actionsCount,
     redirects: redirects.length,
-    posts: allBlogEntries.posts.length,
-    authors: allBlogEntries.authors.length,
-    categories: allBlogEntries.categories.length,
   };
   const takenPaths = new Set(pages.map((p) => normalizePagePath(p.path)));
   const takenPageNames = new Set(pages.map((p) => p.name));
@@ -1374,146 +1260,12 @@ function ContentBrowserReady({
     }
   };
 
-  // ------------------ Blog CRUD ------------------
-  const handleCreateBlog = async (kind: BlogKind) => {
-    const key = generateBlogKey(decofile, kind);
-    const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
-    try {
-      const created = await saveBlock.mutateAsync({ blockKey: key, data });
-      if (!keptTheirVersion(created)) {
-        toast.success(`Created ${BLOG_SINGULAR[kind]}`);
-      }
-      setSelection({ collection: kind, key });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create");
-    }
-  };
-
-  /** Calendar "+" on a day: a post scheduled for that day, opened to edit. */
-  const handleCreateScheduledPost = async (day: Date) => {
-    const key = generateBlogKey(decofile, "posts");
-    const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
-    try {
-      const created = await saveBlock.mutateAsync({ blockKey: key, data });
-      if (!keptTheirVersion(created)) {
-        toast.success(t("sandbox.postCalendar.createdScheduledPost"));
-      }
-      setActiveCollection("posts");
-      setPrevCollection("posts");
-      setSelection({ collection: "posts", key });
-      setOpenPageSeoKey(null);
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sandbox.postCalendar.couldNotCreate"),
-      );
-    }
-  };
-
-  /** Calendar drag: move an already-scheduled post to another day. */
-  const handleReschedulePost = async (key: string, day: Date) => {
-    const source = decofile[key] as Record<string, unknown> | undefined;
-    const payload = source
-      ? rescheduleToDay(getBlogPayload(source, "posts"), day)
-      : null;
-    if (!payload) {
-      toast.error(t("sandbox.postCalendar.onlyScheduledCanMove"));
-      return;
-    }
-    try {
-      await saveBlock.mutateAsync({
-        blockKey: key,
-        data: buildBlogBlock(key, "posts", payload),
-      });
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sandbox.postCalendar.couldNotReschedule"),
-      );
-    }
-  };
-
-  const handleDuplicateBlog = async (entry: BlogEntry) => {
-    const source = decofile[entry.key] as Record<string, unknown> | undefined;
-    if (!source) {
-      toast.error("Record not found.");
-      return;
-    }
-    const key = generateBlogKey(decofile, entry.kind);
-    const labelKey = entry.kind === "posts" ? "title" : "name";
-    const payload: Record<string, unknown> = {
-      ...structuredClone(getBlogPayload(source, entry.kind)),
-      [labelKey]: `${entry.label} (copy)`,
-    };
-    // A clone keeping the slug would answer for the original. Categories
-    // only: a duplicated post still carries the source slug.
-    if (entry.kind === "categories") {
-      const taken = allBlogEntries.categories
-        .map((c) => c.slug ?? "")
-        .filter(Boolean);
-      payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
-    }
-    try {
-      const duplicated = await saveBlock.mutateAsync({
-        blockKey: key,
-        data: buildBlogBlock(key, entry.kind, payload),
-      });
-      if (!keptTheirVersion(duplicated)) {
-        toast.success(`Duplicated "${entry.label}"`);
-      }
-      setSelection({ collection: entry.kind, key });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Duplicate failed");
-    }
-  };
-
-  /** Jump to the posts workspace from a category's "Manage posts" action. */
-  const handleManagePosts = () => {
-    setActiveCollection("posts");
-    setPrevCollection("posts");
-    setSelection(null);
-    setOpenPageSeoKey(null);
-    setSearchQuery("");
-  };
-
   // ------------------ Delete ------------------
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    let deleted: unknown;
     try {
-      const { kind, key, label } = deleteTarget;
-      if (kind === "blog") {
-        // Deleting a category cascades to posts: they carry a denormalized
-        // copy of the category slug, so drop it everywhere first — otherwise
-        // posts keep a reference to a category that no longer exists. Posts
-        // first, then the category, so a failed cascade leaves it recoverable.
-        if (deleteTarget.blogKind === "categories") {
-          const slugValue = getBlogPayload(
-            decofile[key] as Record<string, unknown> | undefined,
-            "categories",
-          ).slug;
-          const slug = typeof slugValue === "string" ? slugValue : "";
-          if (slug) {
-            // Both forms: a draft denormalizes the category too, and
-            // writing it back as a live block would publish it.
-            for (const { key: postKey, payload } of listAllPostPayloads(
-              decofile,
-            )) {
-              const next = removeCategoryFromPost(payload, slug);
-              if (next === payload) continue;
-              await saveBlock.mutateAsync({
-                blockKey: postKey,
-                data: buildPostBlock(postKey, stampPostModified(next)),
-              });
-            }
-          }
-        }
-        deleted = await deleteBlock.mutateAsync({ blockKey: key });
-      } else {
-        deleted = await deleteBlock.mutateAsync({ blockKey: key });
-      }
+      const { key, label } = deleteTarget;
+      const deleted = await deleteBlock.mutateAsync({ blockKey: key });
       setDeleteTarget(null);
       // The user kept their version (the hook said so in its own toast).
       if (keptTheirVersion(deleted)) return;
@@ -1553,19 +1305,6 @@ function ContentBrowserReady({
         >
           {activeCollection === "calendar" ? (
             <VariantCalendar decofile={decofile} />
-          ) : activeCollection === "post-schedule" ? (
-            <PostCalendar
-              decofile={decofile}
-              isCreating={saveBlock.isPending}
-              onCreate={(day) => void handleCreateScheduledPost(day)}
-              onReschedule={(key, day) => void handleReschedulePost(key, day)}
-              onSelect={(key) => {
-                setActiveCollection("posts");
-                setPrevCollection("posts");
-                setSelection({ collection: "posts", key });
-                setOpenPageSeoKey(null);
-              }}
-            />
           ) : activeCollection === "site" ? (
             siteApp ? (
               <AppEditor
@@ -1599,14 +1338,6 @@ function ContentBrowserReady({
               // draft; the defaults are saved with the first real change.
               persistDefaults={typesMode ? false : undefined}
             />
-          ) : activeCollection === "context" ? (
-            <BlogContext
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              decofile={decofile}
-              meta={meta}
-            />
           ) : activeCollection === "seo" ? (
             <SeoEditor
               orgSlug={orgSlug}
@@ -1634,45 +1365,6 @@ function ContentBrowserReady({
               isCreating={saveBlock.isPending}
               onCreateAvailable={handleCreateAvailableSection}
               onSaveReferencedBlock={saveReferencedBlock}
-            />
-          ) : activeCollection === "posts" ? (
-            <PostsWorkspace
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              decofile={decofile}
-              view={postsView}
-              selectedKey={
-                selection?.collection === "posts" ? selection.key : null
-              }
-              onViewChange={(next) => {
-                setPostsView(next);
-                setSelection(null);
-              }}
-              onClose={() => setSelection(null)}
-              onOpen={(key) => {
-                setSelection({ collection: "posts", key });
-                setOpenPageSeoKey(null);
-              }}
-              move={postMove}
-              meta={meta}
-              renderDetail={(key, controls) => (
-                <PostEditor
-                  key={`post:${postIdOfKey(key)}`}
-                  orgSlug={orgSlug}
-                  virtualMcpId={virtualMcpId}
-                  branch={branch}
-                  blockKey={key}
-                  block={decofile[key] as Record<string, unknown>}
-                  decofile={decofile}
-                  meta={meta}
-                  previewBaseUrl={sitePreviewUrl}
-                  move={postMove}
-                  onClose={controls?.onClose}
-                  expanded={controls?.expanded}
-                  onToggleExpand={controls?.onToggleExpand}
-                />
-              )}
             />
           ) : selection?.collection === "available-app" ? (
             (() => {
@@ -1728,37 +1420,6 @@ function ContentBrowserReady({
                     }
                   : {})}
               />
-            ) : selection.collection === "categories" ? (
-              <CategoryEditor
-                key={`category:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                onManagePosts={() => handleManagePosts()}
-                onOpenPost={(key) => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection({ collection: "posts", key });
-                  setOpenPageSeoKey(null);
-                }}
-                previewBaseUrl={sitePreviewUrl}
-              />
-            ) : selection.collection === "authors" ? (
-              <RecordEditor
-                key={`authors:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                kind="authors"
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                meta={meta}
-                decofile={decofile}
-              />
             ) : selection.collection === "redirects" ? (
               <RedirectEditor
                 key={`redirect:${selection.key}`}
@@ -1810,15 +1471,13 @@ function ContentBrowserReady({
           ) : (
             <EmptyMessage
               title={`Select ${
-                isBlogKind(activeCollection)
-                  ? `a ${BLOG_SINGULAR[activeCollection]}`
-                  : activeCollection === "pages"
-                    ? "a page"
-                    : activeCollection === "apps"
-                      ? "an app"
-                      : activeCollection === "redirects"
-                        ? "a redirect"
-                        : "a section"
+                activeCollection === "pages"
+                  ? "a page"
+                  : activeCollection === "apps"
+                    ? "an app"
+                    : activeCollection === "redirects"
+                      ? "a redirect"
+                      : "a section"
               } to edit`}
               description={
                 activeCollection === "apps"
@@ -1833,8 +1492,7 @@ function ContentBrowserReady({
   );
 
   // ------------------ Render ------------------
-  // `saveBlock` too: a category delete rewrites its posts before unlinking it.
-  const isDeleting = deleteBlock.isPending || saveBlock.isPending;
+  const isDeleting = deleteBlock.isPending;
   return (
     <BlocksSiteEditorProvider value={!runsSiteCode}>
       <div className="flex h-full w-full">
@@ -1860,8 +1518,6 @@ function ContentBrowserReady({
             active={activeCollection}
             counts={counts}
             hidden={hiddenCollections}
-            showBlog={showBlog}
-            showContext={blogAi}
             onSelect={(id) => {
               setActiveCollection(id);
               setSelection(null);
@@ -1873,10 +1529,7 @@ function ContentBrowserReady({
           activeCollection !== "seo" &&
           activeCollection !== "site" &&
           activeCollection !== "settings" &&
-          activeCollection !== "context" &&
           activeCollection !== "calendar" &&
-          activeCollection !== "post-schedule" &&
-          activeCollection !== "posts" &&
           activeCollection !== "loaders" &&
           activeCollection !== "actions" && (
             <ItemList
@@ -1892,7 +1545,6 @@ function ContentBrowserReady({
                   ? (installApp.variables?.blockKey ?? null)
                   : null
               }
-              blogEntries={blogEntries}
               decofile={decofile}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
@@ -1903,8 +1555,6 @@ function ContentBrowserReady({
                   openCreatePage();
                 } else if (activeCollection === "redirects") {
                   openCreateRedirect();
-                } else if (isBlogKind(activeCollection)) {
-                  void handleCreateBlog(activeCollection);
                 }
               }}
               onDuplicatePage={openDuplicatePage}
@@ -1937,15 +1587,6 @@ function ContentBrowserReady({
                   kind: "redirect",
                   key: entry.key,
                   label: entry.from || entry.key,
-                })
-              }
-              onDuplicateBlog={handleDuplicateBlog}
-              onDeleteBlog={(e) =>
-                setDeleteTarget({
-                  kind: "blog",
-                  blogKind: e.kind,
-                  key: e.key,
-                  label: e.label,
                 })
               }
             />
@@ -2136,7 +1777,6 @@ function ItemList({
   appCatalog,
   canInstallApps,
   installingAppId,
-  blogEntries,
   decofile,
   searchQuery,
   onSearchChange,
@@ -2153,8 +1793,6 @@ function ItemList({
   onRenameSection,
   onDeleteSection,
   onDeleteRedirect,
-  onDuplicateBlog,
-  onDeleteBlog,
 }: {
   activeCollection: CollectionId;
   pages: PageEntry[];
@@ -2166,7 +1804,6 @@ function ItemList({
   canInstallApps: boolean;
   /** Catalogue id of the app being installed right now, if any. */
   installingAppId: string | null;
-  blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
   searchQuery: string;
   onSearchChange: (q: string) => void;
@@ -2183,10 +1820,7 @@ function ItemList({
   onRenameSection: (section: GlobalSectionEntry) => void;
   onDeleteSection: (section: GlobalSectionEntry) => void;
   onDeleteRedirect: (entry: RedirectEntry) => void;
-  onDuplicateBlog: (entry: BlogEntry) => void;
-  onDeleteBlog: (entry: BlogEntry) => void;
 }) {
-  const t = useT();
   const q = searchQuery.toLowerCase();
   const filteredPages = pages.filter(
     (p) =>
@@ -2223,22 +1857,9 @@ function ItemList({
       entry.vendor.toLowerCase().includes(q) ||
       entry.category.toLowerCase().includes(q),
   );
-  const filteredBlog = blogEntries.filter(
-    (e) =>
-      !q ||
-      e.label.toLowerCase().includes(q) ||
-      e.subtitle.toLowerCase().includes(q),
-  );
-  // Flat while searching: a match under a filtered-out parent would hide.
-  const blogRows: CategoryTreeRow[] =
-    activeCollection === "categories" && !q
-      ? orderCategoryTree(filteredBlog)
-      : filteredBlog.map((entry) => ({ entry, depth: 0 }));
-
   const placeholder = `Search ${activeCollection}…`;
-  const createTooltip = isBlogKind(activeCollection)
-    ? `Create new ${BLOG_SINGULAR[activeCollection]}`
-    : activeCollection === "redirects"
+  const createTooltip =
+    activeCollection === "redirects"
       ? "Create new redirect"
       : "Create new page";
   // Sections are created by saving an available section, not via the "+".
@@ -2491,64 +2112,7 @@ function ItemList({
                 />
               ))
             )
-          ) : filteredBlog.length === 0 ? (
-            <ListEmpty
-              hasItems={blogEntries.length > 0}
-              emptyLabel={`No ${activeCollection} yet.`}
-              emptyHint={`Click "+" to create your first ${
-                isBlogKind(activeCollection)
-                  ? BLOG_SINGULAR[activeCollection]
-                  : "item"
-              }.`}
-            />
-          ) : (
-            blogRows.map(({ entry, depth }) => {
-              const isActive =
-                selection?.collection === entry.kind &&
-                selection.key === entry.key;
-              return (
-                <div key={entry.key} style={{ paddingLeft: depth * 16 }}>
-                  <ItemRow
-                    icon={
-                      entry.kind === "posts"
-                        ? File02
-                        : entry.kind === "authors"
-                          ? Users01
-                          : Tag01
-                    }
-                    title={entry.label}
-                    invalid={entry.missing.length > 0}
-                    invalidReason={
-                      entry.missing.length > 0
-                        ? t("sandbox.itemRow.missingFields", {
-                            fields: missingFieldsLabel(entry.missing, t),
-                          })
-                        : undefined
-                    }
-                    warning={entry.duplicateName}
-                    warningReason={t("sandbox.itemRow.duplicateName")}
-                    subtitle={
-                      depth > 0
-                        ? categoryAncestors(entry.slug ?? "", filteredBlog)
-                            .map((c) => c.slug)
-                            .join(" / ")
-                        : entry.subtitle
-                    }
-                    active={isActive}
-                    onClick={() =>
-                      onSelect({ collection: entry.kind, key: entry.key })
-                    }
-                    menu={
-                      <ItemActions
-                        onDuplicate={() => onDuplicateBlog(entry)}
-                        onDelete={() => onDeleteBlog(entry)}
-                      />
-                    }
-                  />
-                </div>
-              );
-            })
-          )}
+          ) : null}
         </div>
       </ScrollArea>
     </div>

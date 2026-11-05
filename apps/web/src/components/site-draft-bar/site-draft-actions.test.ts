@@ -32,6 +32,17 @@ describe("the site's draft bar", () => {
     });
   }
 
+  /** Blog runs only in a sandbox, on its own drafts, under the same bar: it
+   *  shows where the writer is (draft, branch) and Publishes their Blog draft. */
+  for (const file of ["agent-blog.tsx", "agent-blog-post.tsx"]) {
+    test(`${file} mounts the bar on every site`, () => {
+      const source = readFileSync(join(routes, file), "utf8");
+      expect(source).toContain("actions={<SiteDraftActions />}");
+      expect(source).not.toContain("<CmsHeaderActions");
+      expect(source).not.toContain("<ChatModeRow");
+    });
+  }
+
   test("the site editor mounts the bar on every site, with no v7/v8 switch", () => {
     // `siteDraftBarParts` holds main's rules (site-draft-bar-parts.test.ts),
     // so a v7 site gets main's bar from the same component, and a v8 site's

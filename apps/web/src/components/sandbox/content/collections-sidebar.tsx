@@ -1,20 +1,14 @@
 import {
-  BookOpen01,
   Calendar,
-  CalendarDate,
   ChevronDown,
   CornerUpRight,
   Database01,
-  File02,
   Globe01,
   Grid01,
   LayoutAlt01,
   Settings01,
   Sliders02,
-  Stars02,
   CreditCardSearch,
-  Tag01,
-  Users01,
   Zap,
 } from "@untitledui/icons";
 import { useState } from "react";
@@ -25,7 +19,7 @@ import {
 } from "@decocms/ui/components/collapsible.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { CollectionGroupLabel, CollectionRow } from "./collection-row";
+import { CollectionRow } from "./collection-row";
 import type { CollectionCounts, CollectionId } from "./content-browser";
 
 const ADVANCED_IDS = ["sections", "apps", "loaders", "actions"] as const;
@@ -35,17 +29,12 @@ export function CollectionsSidebar({
   active,
   counts,
   hidden = NONE_HIDDEN,
-  showBlog,
-  showContext,
   onSelect,
 }: {
   active: CollectionId;
   counts: CollectionCounts;
   /** Collections this site has no use for, left out of the list. */
   hidden?: readonly CollectionId[];
-  showBlog: boolean;
-  /** The brand context tab, which the org's AI-blog flag governs. */
-  showContext: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   const t = useT();
@@ -108,49 +97,6 @@ export function CollectionsSidebar({
           shown={shown}
           onSelect={onSelect}
         />
-        {showBlog && (
-          <>
-            <CollectionGroupLabel
-              icon={BookOpen01}
-              label={t("sandbox.collectionsSidebar.blog")}
-            />
-            {showContext && (
-              <CollectionRow
-                icon={Stars02}
-                label={t("sandbox.collectionsSidebar.context")}
-                active={active === "context"}
-                onClick={() => onSelect("context")}
-              />
-            )}
-            <CollectionRow
-              icon={File02}
-              label={t("sandbox.collectionsSidebar.posts")}
-              count={counts.posts}
-              active={active === "posts"}
-              onClick={() => onSelect("posts")}
-            />
-            <CollectionRow
-              icon={Users01}
-              label={t("sandbox.collectionsSidebar.authors")}
-              count={counts.authors}
-              active={active === "authors"}
-              onClick={() => onSelect("authors")}
-            />
-            <CollectionRow
-              icon={Tag01}
-              label={t("sandbox.collectionsSidebar.categories")}
-              count={counts.categories}
-              active={active === "categories"}
-              onClick={() => onSelect("categories")}
-            />
-            <CollectionRow
-              icon={CalendarDate}
-              label={t("sandbox.collectionsSidebar.postSchedule")}
-              active={active === "post-schedule"}
-              onClick={() => onSelect("post-schedule")}
-            />
-          </>
-        )}
       </nav>
     </div>
   );

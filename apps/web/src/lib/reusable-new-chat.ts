@@ -2,6 +2,7 @@ import type { Task } from "@/components/chat/task/types";
 import { findLastThreadForAgent } from "@/lib/find-last-thread-for-agent";
 import { threadRuntimeMatches } from "@/lib/thread-runtime-match";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import { isBlogDraftBranch } from "@decocms/shared/branch-name";
 
 /**
  * The current user's existing empty "New chat" thread for this agent, or
@@ -23,13 +24,19 @@ import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
  * entry point that navigates to an agent (the breadcrumb picker, the org-home
  * resolver, the repo switcher, …) reuses this so re-selecting an agent focuses
  * its empty chat instead of minting another.
+ *
+ * Blog's drafts stay Blog's: a Blog draft is reused only from Blog
+ * (`blogDrafts`), and Blog reuses nothing else. A Blog draft rarely gets a
+ * message, so it would otherwise read as everyone's empty chat.
  */
 export function findReusableNewChat(
   threads: Task[],
   agentId: string,
   userId: string | undefined,
   expectedRuntime?: ThreadRuntime,
+  opts?: { blogDrafts?: boolean },
 ): Task | undefined {
+  const blogDrafts = opts?.blogDrafts ?? false;
   return threads.find(
     (t) =>
       !t.hidden &&
@@ -37,6 +44,7 @@ export function findReusableNewChat(
       t.created_by === userId &&
       t.title === "New chat" &&
       !t.harness_id &&
+      isBlogDraftBranch(t.branch) === blogDrafts &&
       threadRuntimeMatches(t, expectedRuntime),
   );
 }

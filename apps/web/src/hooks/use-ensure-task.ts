@@ -37,6 +37,13 @@ import type { Task } from "../components/chat/task/types";
 import { useThreadManager } from "../components/chat/store/hooks";
 import { useProjectContext } from "@/sdk";
 import { claimThreadIntent } from "@/lib/thread-intent";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+
+/** What a row this hook has to CREATE is stamped with. */
+export interface EnsureTaskDefaults {
+  branch?: string;
+  runtime?: ThreadRuntime;
+}
 
 type State =
   | { status: "loading" }
@@ -47,10 +54,12 @@ type State =
 export function useEnsureTask(
   id: string | null,
   virtualMcpId: string,
-  /** Branch to stamp when this hook has to CREATE the row (drafts mode lands a
-   *  fresh entry thread on production instead of an auto-minted unnamed draft).
-   *  Ignored for existing rows and overridden by an explicit parked intent. */
-  defaultBranch?: string,
+  /** What to stamp when this hook has to CREATE the row `id` (drafts mode
+   *  lands a fresh entry thread on a draft, never on production). Asked per
+   *  id, at the create: the caller's view may have changed since it minted
+   *  that id. Ignored for existing rows and overridden by an explicit parked
+   *  intent. */
+  defaultsFor?: (id: string) => EnsureTaskDefaults,
 ): State {
   const manager = useThreadManager();
   const { locator } = useProjectContext();
@@ -115,15 +124,18 @@ export function useEnsureTask(
   // oxlint-enable react/set-state-in-effect
 
   const ensureCreate = useMutation<Task, Error, string>({
-    mutationFn: async (taskId) =>
-      manager.create({
+    mutationFn: async (taskId) => {
+      const defaults = defaultsFor?.(taskId);
+      return manager.create({
         id: taskId,
         virtual_mcp_id: virtualMcpId,
-        // Default branch first so an explicit parked intent still wins below.
-        ...(defaultBranch ? { branch: defaultBranch } : {}),
+        // Defaults first so an explicit parked intent still wins below.
+        ...(defaults?.branch ? { branch: defaults.branch } : {}),
+        ...(defaults?.runtime ? { runtime: defaults.runtime } : {}),
         // What the failed create asked for; the runtime it stamps is permanent.
         ...claimThreadIntent(sessionStorage, locator, taskId),
-      }),
+      });
+    },
   });
 
   // Fire create only after fetchThread has confirmed the row doesn't exist

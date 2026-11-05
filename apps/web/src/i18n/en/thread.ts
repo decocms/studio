@@ -11,6 +11,7 @@ export const thread = {
   "thread.branchPicker.advancedBack": "Back",
   "thread.branchPicker.cancel": "Cancel",
   "thread.branchPicker.defaultVersionName": "Draft",
+  "thread.branchPicker.blogDraftName": "Blog Draft",
   "thread.branchPicker.delete": "Delete",
   "thread.branchPicker.deleteConfirm":
     'Delete "{name}"? This can\'t be undone.',

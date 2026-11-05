@@ -24,6 +24,7 @@ import { findReusableNewChat } from "@/lib/reusable-new-chat";
 import { hideAbandonedNewChats } from "@/lib/thread-list-visibility";
 import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
 import { useSandboxOnlyChats } from "@/hooks/use-organization-settings";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
 import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 import { GlobalSearchDialog } from "@/layouts/tasks-panel/global-search-dialog";
 import { findArchiveFallback } from "./archive-fallback";
@@ -86,6 +87,7 @@ export function useThreadsPanel({
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const projectDefaultRuntime = useProjectDefaultRuntime();
   const sandboxOnlyChats = useSandboxOnlyChats();
+  const draftKind = useViewDraftKind();
 
   const {
     threads: allThreads,
@@ -224,11 +226,13 @@ export function useThreadsPanel({
     const currentAgentId = activeAgentId ?? decopilotId;
     track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
     closeAfterNavigation();
+    const blog = draftKind === "blog";
     const existing = findReusableNewChat(
       allThreads,
       currentAgentId,
       currentUserId,
-      projectDefaultRuntime(currentAgentId),
+      blog ? "sandbox" : projectDefaultRuntime(currentAgentId),
+      { blogDrafts: blog },
     );
     if (existing) {
       setTaskId(existing.id, existing.virtual_mcp_id, { newThread: true });

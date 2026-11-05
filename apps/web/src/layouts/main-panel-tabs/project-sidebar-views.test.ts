@@ -65,6 +65,7 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
+      "blog",
       "assets",
       "e2e",
       "cdn",
@@ -90,6 +91,7 @@ describe("project sidebar views", () => {
       "board",
       "site-editor",
       "experiments",
+      "blog",
       "automations",
     ]);
   });
@@ -136,7 +138,14 @@ describe("project sidebar views", () => {
           nativePresence([]),
         ),
       ),
-    ).toEqual(["overview", "reports", "board", "site-editor", "automations"]);
+    ).toEqual([
+      "overview",
+      "reports",
+      "board",
+      "site-editor",
+      "blog",
+      "automations",
+    ]);
   });
 
   test("reuses an agent-route shell and fails open while a destination scope resolves", () => {
@@ -160,6 +169,7 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
+      "blog",
       "assets",
     ]);
     expect(effectiveProjectSidebarViews(null)).toEqual(
@@ -180,6 +190,7 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
+      "blog",
     ]);
     expect(
       selectedProjectSidebarViews(
@@ -188,7 +199,7 @@ describe("project sidebar views", () => {
         undefined,
         offeredProjectSidebarViews(undefined, false),
       ),
-    ).toEqual(["overview", "reports", "board", "site-editor"]);
+    ).toEqual(["overview", "reports", "board", "site-editor", "blog"]);
   });
 
   test("v8: an unversioned project also shows Experiments and Calendar", () => {
@@ -210,6 +221,7 @@ describe("project sidebar views", () => {
       "site-editor",
       "calendar",
       "experiments",
+      "blog",
     ]);
   });
 
@@ -235,6 +247,7 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
+      "blog",
     ]);
   });
 
@@ -299,6 +312,7 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
+      "blog",
       "assets",
     ]);
     expect(
@@ -428,6 +442,7 @@ describe("Calendar and Experiments on a Blocks (v8) site", () => {
       "site-editor",
       "calendar",
       "experiments",
+      "blog",
     ]);
   });
 
@@ -484,16 +499,17 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
 
   test("a list saved before they were defaults gets them on a Blocks site", () => {
     const offered = offeredProjectSidebarViews(undefined, true);
-    expect(offered).toEqual(["calendar", "experiments"]);
+    expect(offered).toEqual(["blog", "calendar", "experiments"]);
     expect(selectedProjectSidebarViews(saved, v8, 1, offered)).toEqual([
       "site-editor",
       "calendar",
       "experiments",
+      "blog",
     ]);
   });
 
   test("never on a v7 site", () => {
-    expect(offeredProjectSidebarViews(undefined, false)).toEqual([]);
+    expect(offeredProjectSidebarViews(undefined, false)).toEqual(["blog"]);
     const v7 = projectSidebarViewPresence(
       true,
       nativePresence(["experiments"]),
@@ -505,7 +521,7 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
         1,
         offeredProjectSidebarViews(undefined, false),
       ),
-    ).toEqual(["site-editor"]);
+    ).toEqual(["site-editor", "blog"]);
   });
 
   test("once: after a save, hiding one sticks", () => {
@@ -517,23 +533,28 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
     );
     const next = toggleProjectSidebarView(shown, "calendar", false, 1);
     const seen = seenProjectSidebarViewsAfterSave(undefined, true);
-    expect(seen).toEqual(["calendar", "experiments"]);
+    expect(seen).toEqual(["calendar", "experiments", "blog"]);
     // Read back: nothing is offered again, the saved list decides.
     const offered = offeredProjectSidebarViews(seen, true);
     expect(offered).toEqual([]);
     expect(selectedProjectSidebarViews(next, v8, 1, offered)).toEqual([
       "site-editor",
       "experiments",
+      "blog",
     ]);
   });
 
   test("a save on a v7 site leaves them to offer once it becomes a Blocks site", () => {
-    expect(seenProjectSidebarViewsAfterSave(undefined, false)).toBeUndefined();
-    expect(seenProjectSidebarViewsAfterSave(null, false)).toBeNull();
+    // Only Blog, which every site gets, is seen by a v7 save.
+    expect(seenProjectSidebarViewsAfterSave(undefined, false)).toEqual([
+      "blog",
+    ]);
+    expect(seenProjectSidebarViewsAfterSave(null, false)).toEqual(["blog"]);
     expect(seenProjectSidebarViewsAfterSave(["calendar"], false)).toEqual([
       "calendar",
+      "blog",
     ]);
-    expect(offeredProjectSidebarViews(["calendar"], true)).toEqual([
+    expect(offeredProjectSidebarViews(["calendar", "blog"], true)).toEqual([
       "experiments",
     ]);
   });
@@ -562,5 +583,63 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
         offeredProjectSidebarViews(undefined, true),
       ),
     ).not.toContain("calendar");
+  });
+});
+
+/**
+ * Blog arrived after projects could save an exact list. A list saved before it
+ * existed could not have turned it off, so reading its absence as "off" would
+ * hide the view from everyone who ever opened the Layout panel.
+ */
+describe("Blog added once to every site's saved list", () => {
+  const v7 = projectSidebarViewPresence(true, nativePresence([]));
+  const saved = ["overview", "board"] as const;
+
+  test("a list saved before Blog existed gets it, keeping its other opt-outs", () => {
+    expect(
+      selectedProjectSidebarViews(
+        saved,
+        v7,
+        1,
+        offeredProjectSidebarViews(undefined, false),
+      ),
+    ).toEqual(["overview", "board", "blog"]);
+  });
+
+  test("an all-off saved before Blog existed still offers it, once", () => {
+    const offered = offeredProjectSidebarViews(undefined, false);
+    expect(effectiveProjectSidebarViews([], 1, offered)).toEqual(["blog"]);
+    expect(effectiveProjectSidebarViews(null, 1, offered)).toEqual(["blog"]);
+  });
+
+  test("once: after a save, a hidden Blog stays hidden", () => {
+    const shown = effectiveProjectSidebarViews(
+      saved,
+      1,
+      offeredProjectSidebarViews(undefined, false),
+    );
+    const next = toggleProjectSidebarView(shown, "blog", false, 1);
+    const seen = seenProjectSidebarViewsAfterSave(undefined, false);
+    expect(
+      selectedProjectSidebarViews(
+        next,
+        v7,
+        1,
+        offeredProjectSidebarViews(seen, false),
+      ),
+    ).toEqual(["overview", "board"]);
+  });
+
+  test("needs a source, like the Site Editor", () => {
+    expect(projectSidebarViewPresence(false, nativePresence([])).blog).toBe(
+      false,
+    );
+    expect(
+      projectSidebarViewUnavailable(
+        "blog",
+        projectSidebarViewPresence(false, nativePresence([])),
+        { assets: true, siteAccess: true },
+      ),
+    ).toBe(true);
   });
 });

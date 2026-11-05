@@ -83,10 +83,8 @@ import { useReleases } from "./use-releases";
 import { useReleases as useHostedReleases } from "@/layouts/main-panel-tabs/releases-api.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import { authClient } from "@/lib/auth-client.ts";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
+import { branchUserLabel } from "@decocms/shared/branch-name";
+import { nextDraftBranch } from "@/lib/draft-kind";
 
 interface Props {
   virtualMcpId: string;
@@ -295,7 +293,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         hosted,
         branch,
         baseBranch,
-        nextBranch: () => generateBranchName(branchUserLabel(session?.user)),
+        // The same kind of draft: a Blog draft stays Blog's.
+        nextBranch: () =>
+          nextDraftBranch(branch, branchUserLabel(session?.user)),
         setCurrentTaskBranch,
         deleteRelease,
       }),

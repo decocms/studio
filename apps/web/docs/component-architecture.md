@@ -211,6 +211,26 @@ export default function SiteEditorRoute() {
 }
 ```
 
+Blog is its own destination rather than a view of that surface, because its
+editing screen needs the whole panel: `/blog` is the browser (posts, authors,
+categories, schedule, brand context) and `/blog/posts/$postId` is one post's
+screen, with the editor beside the site's render of it. The post is addressed
+by **post id**, never by decofile block key — a status change moves the block
+between its planning and live forms, and a key in the URL would break on it.
+
+That screen measures its own container with `useElementWidth` and keeps both
+panes mounted at every width, so toggling them, and resizing the conversation
+across the breakpoint, never reload the preview. `post-split-layout.ts` owns
+the rule; `?blogView=` carries it, so a link reads as a split on a wide panel
+and as one pane on a narrow one.
+
+Blog always runs in a sandbox, on drafts of its own: `blog-draft-` branches,
+named "Blog Draft N", under the same draft bar as the Site Editor
+(`SiteDraftActions`). The shell enforces it (`lib/draft-kind.ts`): with no
+`?thread=` a view resumes or mints a draft of its kind, and a thread the view
+can't show (Blog on Fast Preview, a site view on a Blog draft) is sent to the
+view's own. Threads created from Blog are Blog drafts too.
+
 The drawer stays outside the body's error boundary. `aside` is a second surface
 beside the content on desktop, such as the Library's file preview; the route
 composes it, and with the conversation open the Library shows the file in the

@@ -15,10 +15,9 @@ import {
   repoToolTarget,
   resolveRepositoryAttachment,
 } from "@/lib/repository-binding.ts";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
+import { branchUserLabel } from "@decocms/shared/branch-name";
+import { draftAfterPublish } from "@/lib/draft-kind";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -220,6 +219,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
    */
   const { previewUrl } = useSandboxLifecycle();
   const { previewServerUrl, projectDefault } = useSessionRuntime(virtualMcpId);
+  const draftKind = useViewDraftKind();
 
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {
@@ -305,12 +305,16 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const switchToFreshBranch = async () => {
     // Always land on a fresh editable draft, never on read-only production.
     const published = branch;
-    const nextBranch = generateBranchName(branchUserLabel(session?.user));
-    // A new branch in this session would boot another sandbox (pods are keyed by branch).
-    if (projectDefault === "cms") {
-      createTask({ runtime: "cms", branch: nextBranch });
+    const next = draftAfterPublish({
+      viewKind: draftKind,
+      branch,
+      projectDefault,
+      userLabel: branchUserLabel(session?.user),
+    });
+    if (next.kind === "new-thread") {
+      createTask({ runtime: next.runtime, branch: next.branch });
     } else {
-      await setCurrentTaskBranch(nextBranch);
+      await setCurrentTaskBranch(next.branch);
     }
     if (published && published !== baseBranch) {
       await deleteRelease(published);

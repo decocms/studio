@@ -40,6 +40,8 @@ import {
   parsePinnedViewTabId,
 } from "@/layouts/main-panel-tabs/tab-id";
 import type { ThreadLayout } from "@/lib/thread-layout-memory";
+import type { DraftThread } from "@/lib/draft-kind";
+import { tabForThread } from "@/layouts/main-panel-tabs/tab-draft-kind";
 
 export interface ResolveTaskSwitchInput {
   /** The current (source) thread's agent and open view. */
@@ -58,6 +60,10 @@ export interface ResolveTaskSwitchInput {
   opts?: { autosend?: boolean; panel?: string; newThread?: boolean };
   /** `?autosend` sentinel value, injected to avoid an import cycle. */
   autosendValue: string;
+  /** The thread being switched to, when known: a view that can't show it
+   *  (Blog and a Fast Preview thread, a site view and a Blog draft) gives way
+   *  to one that can. */
+  target?: DraftThread;
 }
 
 /** Where the switch lands: the view, and the search that describes the rest. */
@@ -121,5 +127,5 @@ export function resolveTaskSwitchSearch(
 
   if (sidepanel !== undefined) next.sidepanel = sidepanel;
   if (opts?.autosend) next.autosend = autosendValue;
-  return { tabId, search: next };
+  return { tabId: tabForThread(tabId, input.target), search: next };
 }

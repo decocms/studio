@@ -164,8 +164,8 @@ export function useProjectViews({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
-  // A Blocks (v8) site: Experiments and Calendar are offered once on top of
-  // a list saved before they were defaults, until the next save.
+  // Blog, and on a Blocks (v8) site Experiments and Calendar, are offered
+  // once on top of a list saved before they were defaults, until the next save.
   const blocksSite = nativeViews.presence.calendar;
   const formSidebarViewsSeen = form.watch("metadata.sidebarViewsSeen");
   const formSidebarViews = effectiveProjectSidebarViews(
@@ -386,19 +386,16 @@ export function useProjectViews({
       shouldDirty: true,
     });
     form.setValue("metadata.sidebarViewsVersion", 1, { shouldDirty: true });
-    // A Blocks (v8) site: the list this change was made on showed the
-    // offered views, so from now on the saved list alone decides and hiding
-    // one sticks. Any other site saves exactly what it did before.
-    if (blocksSite) {
-      form.setValue(
-        "metadata.sidebarViewsSeen",
-        seenProjectSidebarViewsAfterSave(
-          virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
-          blocksSite,
-        ),
-        { shouldDirty: true },
-      );
-    }
+    // The list this change was made on showed the offered views, so from now
+    // on the saved list alone decides and hiding one sticks.
+    form.setValue(
+      "metadata.sidebarViewsSeen",
+      seenProjectSidebarViewsAfterSave(
+        virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
+        blocksSite,
+      ),
+      { shouldDirty: true },
+    );
     optimisticSidebarViews.stage(nextSidebarViews, sidebarViews);
     const nextDefaultMain = defaultMainViewAfterSidebarToggle(
       currentDefaultMain,
@@ -437,6 +434,7 @@ export function useProjectViews({
     reports: t("sidebar.navDestinations.reports"),
     board: t("sidebar.navDestinations.tasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
+    blog: t("sidebar.projectNav.blog"),
     assets: t("common.mainPanelTabs.assets"),
     releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),

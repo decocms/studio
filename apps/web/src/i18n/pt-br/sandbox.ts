@@ -498,6 +498,9 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.offDescription":
     "Sem a visão Conteúdo nem o formulário de Blocos no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
+  "sandbox.blogWorkspace.noBlogApp": "Este site não tem blog",
+  "sandbox.blogWorkspace.noBlogAppHint":
+    "Instale o app de blog, ou crie uma página com a seção de post, e seus posts, autores e categorias aparecem aqui.",
   "sandbox.collectionsSidebar.actions": "Ações",
   "sandbox.collectionsSidebar.advanced": "Avançado",
   "sandbox.collectionsSidebar.apps": "Apps",
@@ -883,16 +886,13 @@ export const sandbox = {
   "sandbox.plainBlocks.listItemPlaceholder": "Item de lista",
   "sandbox.plainBlocks.numberedLabel": "Numerada",
   "sandbox.plainBlocks.quotePlaceholder": "Citação",
-  "sandbox.postBoard.close": "Fechar",
   "sandbox.postBoard.archived": "Movido para Arquivado",
-  "sandbox.postBoard.collapse": "Recolher para o painel",
   "sandbox.postBoard.collapseLane": "Recolher {lane}",
   "sandbox.postBoard.delete": "Excluir",
   "sandbox.postBoard.emptyDescription":
     "Gere algumas ideias e transforme-as em posts publicados.",
   "sandbox.postBoard.emptyTitle": "Nenhum post ainda",
   "sandbox.postBoard.duplicateTitle": "Título duplicado",
-  "sandbox.postBoard.expand": "Expandir para página inteira",
   "sandbox.postBoard.expandLane": "Expandir {lane}",
   "sandbox.postBoard.laneEmpty": "Nada aqui ainda",
   "sandbox.postBoard.laneArchived": "Arquivado",
@@ -926,7 +926,6 @@ export const sandbox = {
     "Nada para importar — o conteúdo estava vazio.",
   "sandbox.postBoard.imported": "Importado — revise e publique.",
   "sandbox.postBoard.readyToSchedule": "Pronto para agendar",
-  "sandbox.postBoard.selectPrompt": "Selecione um post para vê-lo aqui.",
   "sandbox.postBoard.untitled": "Post sem título",
   "sandbox.postBoard.generatingLabel": "Gerando…",
   "sandbox.postBoard.usesCredits": "Usa créditos de IA",
@@ -985,17 +984,34 @@ export const sandbox = {
     "Nenhuma categoria ainda — crie algumas na coleção de categorias.",
   "sandbox.postEditor.noContentYet":
     "Este post ainda não tem conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
+  "sandbox.postEditScreen.notFound": "Este post não existe mais",
+  "sandbox.postEditScreen.notFoundHint":
+    "Ele pode ter sido excluído, ou o link aponta para um id que este site não tem.",
+  "sandbox.postEditScreen.edit": "Editar",
+  "sandbox.postEditScreen.preview": "Visualizar",
+  "sandbox.postPreview.desktop": "Desktop",
+  "sandbox.postPreview.frameTitle": "Visualização do post",
+  "sandbox.postPreview.missingParams": "Falta dado para montar a URL",
+  "sandbox.postPreview.missingParamsHint":
+    "Defina o slug do post e, quando a rota do blog usa uma, a categoria.",
+  "sandbox.postPreview.mobile": "Celular",
+  "sandbox.postPreview.noOrigin": "Esperando o site",
+  "sandbox.postPreview.noOriginHint":
+    "A visualização aparece assim que o site deste projeto estiver no ar.",
+  "sandbox.postPreview.noRoute": "Este site não tem página de post",
+  "sandbox.postPreview.noRouteHint":
+    "Crie uma página com a seção de post do blog, ou defina o pageSlug do app de blog, e a visualização passa a renderizar.",
+  "sandbox.postPreview.openInNewTab": "Abrir em nova aba",
+  "sandbox.postPreview.planningSoon": "Prévia de rascunho em breve",
+  "sandbox.postPreview.planningSoonHint":
+    "Por enquanto, o post aparece aqui depois de agendado.",
+  "sandbox.postPreview.refresh": "Atualizar",
   "sandbox.postEditor.postTitlePlaceholder": "Título do post",
   "sandbox.postEditor.readTimeLabel": "Tempo de leitura (minutos)",
-  "sandbox.postEditor.previewRequiresSlugAndCategory":
-    "Defina o slug do post (e sua categoria) mais o pageSlug do aplicativo de blog para visualizar",
-  "sandbox.postEditor.previewTooltip":
-    "Abrir visualização do post em uma nova aba",
   "sandbox.postEditor.scheduledDatetimeDescription":
     "Quando este post entra no ar. O site publica sozinho depois que esse momento passa.",
   "sandbox.postEditor.scheduledDatetimeLabel": "Entra no ar em",
   "sandbox.postEditor.removePropLabel": "Remover propriedade",
-  "sandbox.postEditor.seePreview": "Ver visualização",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Selecionar autores",
   "sandbox.postEditor.selectCategoriesPlaceholder": "Selecionar categorias",
   "sandbox.postEditor.seoCanonicalLabel": "URL canônica",

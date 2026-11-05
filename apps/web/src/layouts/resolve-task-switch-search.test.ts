@@ -253,3 +253,66 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
     });
   });
 });
+
+/**
+ * Blog runs only in a sandbox, and the site's views never run on a Blog
+ * draft. A switch that carried the view anyway would be bounced back by the
+ * shell: a click that visibly does nothing.
+ */
+describe("a carried view that can't show the target thread", () => {
+  const switchFrom = (
+    tabId: string,
+    target: { branch: string; metadata: { runtime: "cms" | "sandbox" } },
+  ) =>
+    resolveTaskSwitchSearch({
+      prev: { virtualmcpid: "project-example", tabId },
+      decopilotId: DECOPILOT,
+      savedLayout: null,
+      autosendValue: AUTOSEND,
+      target,
+    }).tabId;
+
+  test("Blog gives way to the Site Editor for a Fast Preview thread", () => {
+    expect(
+      switchFrom("blog", { branch: "sacci-a", metadata: { runtime: "cms" } }),
+    ).toBe("site-editor");
+    expect(
+      switchFrom("blog-post:abc", {
+        branch: "sacci-a",
+        metadata: { runtime: "cms" },
+      }),
+    ).toBe("site-editor");
+  });
+
+  test("a site view gives way to Blog for a Blog draft", () => {
+    for (const tabId of ["site-editor", "content", "experiments", "calendar"]) {
+      expect(
+        switchFrom(tabId, {
+          branch: "blog-draft-sacci-a",
+          metadata: { runtime: "sandbox" },
+        }),
+      ).toBe("blog");
+    }
+  });
+
+  test("a view that can show the thread stays", () => {
+    expect(
+      switchFrom("blog", {
+        branch: "blog-draft-sacci-a",
+        metadata: { runtime: "sandbox" },
+      }),
+    ).toBe("blog");
+    expect(
+      switchFrom("site-editor", {
+        branch: "sacci-a",
+        metadata: { runtime: "cms" },
+      }),
+    ).toBe("site-editor");
+    expect(
+      switchFrom("settings", {
+        branch: "blog-draft-sacci-a",
+        metadata: { runtime: "sandbox" },
+      }),
+    ).toBe("settings");
+  });
+});

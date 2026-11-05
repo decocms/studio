@@ -38,6 +38,12 @@ import {
 } from "@/lib/autosend";
 import { clearThreadIntent, writeThreadIntent } from "@/lib/thread-intent";
 import {
+  branchUserLabel,
+  isBlogDraftBranch,
+} from "@decocms/shared/branch-name";
+import { blogThreadDefaults } from "@/lib/draft-kind";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
+import {
   getOrOpenStream,
   type ConnStatus,
   type RequestOptions,
@@ -683,6 +689,8 @@ export function ChatContextProvider({
   // Sandbox-only chats get one sandbox each, so a new chat never inherits one.
   const sandboxOnlyChats = useSandboxOnlyChats();
   const carryOverBranch = sandboxOnlyChats ? null : currentBranch;
+  /** A chat opened from Blog is a Blog draft in a sandbox (`blogThreadDefaults`). */
+  const draftKind = useViewDraftKind();
 
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
   // task's branch so the new thread lands on the same warm sandbox. The
@@ -694,10 +702,16 @@ export function ChatContextProvider({
   }): string => {
     const newId = crypto.randomUUID();
     // A caller-supplied branch wins over the active task's branch carry-over.
-    const branch = opts?.branch ?? carryOverBranch;
+    const requested = opts?.branch ?? carryOverBranch;
+    const blog =
+      draftKind === "blog"
+        ? blogThreadDefaults(requested, branchUserLabel(session?.user))
+        : null;
+    const branch = blog?.branch ?? requested;
+    const runtime = opts?.runtime ?? blog?.runtime;
     // Parked for the route loader's create-on-404 fallback — see thread-intent.
     writeThreadIntent(sessionStorage, locator, newId, {
-      ...(opts?.runtime ? { runtime: opts.runtime } : {}),
+      ...(runtime ? { runtime } : {}),
       ...(branch ? { branch } : {}),
     });
     void threadActions
@@ -705,7 +719,7 @@ export function ChatContextProvider({
         id: newId,
         virtual_mcp_id: virtualMcpId,
         ...(branch ? { branch } : {}),
-        ...(opts?.runtime ? { runtime: opts.runtime } : {}),
+        ...(runtime ? { runtime } : {}),
       })
       .then(() => {
         // The create landed, so the parked intent has no claimant.
@@ -732,18 +746,24 @@ export function ChatContextProvider({
   }) => {
     const newId = crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
-    const carryBranch = targetVmcp === virtualMcpId ? carryOverBranch : null;
+    const sameAgent = targetVmcp === virtualMcpId;
+    const carryBranch = sameAgent ? carryOverBranch : null;
+    const blog =
+      sameAgent && draftKind === "blog"
+        ? blogThreadDefaults(carryBranch, branchUserLabel(session?.user))
+        : null;
+    const branch = blog?.branch ?? carryBranch;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
-    if (carryBranch) {
-      writeThreadIntent(sessionStorage, locator, newId, {
-        branch: carryBranch,
-      });
-    }
+    writeThreadIntent(sessionStorage, locator, newId, {
+      ...(blog ? { runtime: blog.runtime } : {}),
+      ...(branch ? { branch } : {}),
+    });
     void threadActions
       .create({
         id: newId,
         virtual_mcp_id: targetVmcp,
-        ...(carryBranch ? { branch: carryBranch } : {}),
+        ...(branch ? { branch } : {}),
+        ...(blog ? { runtime: blog.runtime } : {}),
       })
       .then(() => {
         clearThreadIntent(sessionStorage, locator, newId);
@@ -1086,7 +1106,10 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
               } as Task["metadata"],
             });
           }
-          cb.openPanel("site-editor");
+          // A Blog draft's chat keeps the writer on Blog.
+          if (!isBlogDraftBranch(data?.branch ?? cb.currentBranch)) {
+            cb.openPanel("site-editor");
+          }
           return;
         }
       },
@@ -1179,7 +1202,8 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
             lastPreviewPageKey(cb.orgSlug, cb.virtualMcpId, cb.currentBranch),
             navigate.data.path,
           );
-          cb.openPanel("site-editor");
+          // A Blog draft's chat keeps the writer on Blog.
+          if (!isBlogDraftBranch(cb.currentBranch)) cb.openPanel("site-editor");
         }
         cb.onToolCall(event as never);
       },

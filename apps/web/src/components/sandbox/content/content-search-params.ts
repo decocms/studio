@@ -14,8 +14,10 @@ import type { VariantFocus } from "@/components/sections-editor/named-rule-uses"
  *
  * `contentPageId`/`contentPath`/`contentPathTemplate`: storefront "." deep-link
  * (set by `/choose-editor`) — the CMS page id, the concrete URL and its route
- * template. `contentCollection`/`contentItem`: Blog Manager "Editar no Studio"
- * — a blog collection plus the decofile block key of the record to open.
+ * template. `contentCollection`/`contentItem`: a collection plus the decofile
+ * block key of the record to open — a blog collection from the Blog Manager's
+ * "Editar no Studio", which the router hands to Blog, or a v8 site's Sections
+ * from the Experiments tab.
  * `contentPageVariant`/`contentSection`/`contentVariant`: the place in that
  * page or section to open, 0-based ("Open" in a test's "Used by"); a value
  * that isn't a place is dropped, not an error.

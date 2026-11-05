@@ -8,6 +8,7 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "site-editor",
   "calendar",
   "experiments",
+  "blog",
   "assets",
   "releases",
   "hosting",
@@ -25,6 +26,7 @@ export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
   "reports",
   "board",
   "site-editor",
+  "blog",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Unversioned values came from the first native-only rollout, in which core
@@ -32,45 +34,62 @@ export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
 export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
 
 /**
+ * Views every project gets once on top of a list saved before they existed: a
+ * selection made without a row could not have turned it off. Offered until
+ * the project's next sidebar save records them in `sidebarViewsSeen`; from
+ * then on the saved list alone decides, so hiding one sticks.
+ */
+const ADDED_SIDEBAR_VIEWS = [
+  "blog",
+] as const satisfies readonly ProjectSidebarViewId[];
+
+/**
  * Views a Blocks (v8) site gets once on top of a list saved before they were
  * defaults (PO decision): its A/B tests and campaigns are content its editors
- * own. Offered until the project's next sidebar save records them in
- * `sidebarViewsSeen`; from then on the saved list alone decides, so hiding
- * one sticks. A v7 site is never offered them.
+ * own. Offered and recorded like {@link ADDED_SIDEBAR_VIEWS}, but a v7 site is
+ * never offered them.
  */
 const BLOCKS_SITE_SIDEBAR_VIEWS = [
   "calendar",
   "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
+function offerableProjectSidebarViews(
+  blocksSite: boolean,
+): readonly ProjectSidebarViewId[] {
+  return blocksSite
+    ? [...ADDED_SIDEBAR_VIEWS, ...BLOCKS_SITE_SIDEBAR_VIEWS]
+    : ADDED_SIDEBAR_VIEWS;
+}
+
 /**
- * The views to add once to this project's saved list: the Blocks site views
- * it hasn't seen yet, on a Blocks site; none elsewhere. Pass the result to
- * {@link effectiveProjectSidebarViews} and friends.
+ * The views to add once to this project's saved list: the ones it hasn't
+ * seen yet among those every site gets and, on a Blocks site, the Blocks site
+ * views. Pass the result to {@link effectiveProjectSidebarViews} and friends.
  */
 export function offeredProjectSidebarViews(
   seen: readonly VirtualMcpSidebarView[] | null | undefined,
   blocksSite: boolean,
 ): ProjectSidebarViewId[] {
-  if (!blocksSite) return [];
   const already = new Set(seen ?? []);
-  return BLOCKS_SITE_SIDEBAR_VIEWS.filter((view) => !already.has(view));
+  return offerableProjectSidebarViews(blocksSite).filter(
+    (view) => !already.has(view),
+  );
 }
 
 /**
- * `sidebarViewsSeen` to save with a sidebar change: on a Blocks site, the
- * offered views are seen now (the list the change was made on had them), so
- * the saved list decides from then on. Elsewhere it stays as it was, so a
+ * `sidebarViewsSeen` to save with a sidebar change: the views offered on this
+ * site are seen now (the list the change was made on had them), so the saved
+ * list decides from then on. The Blocks site views stay unseen elsewhere, so a
  * site that becomes a Blocks site still gets them once.
  */
 export function seenProjectSidebarViewsAfterSave(
   seen: readonly VirtualMcpSidebarView[] | null | undefined,
   blocksSite: boolean,
-): VirtualMcpSidebarView[] | null | undefined {
-  if (!blocksSite) return seen === null ? null : seen ? [...seen] : seen;
+): VirtualMcpSidebarView[] {
   const next = new Set<VirtualMcpSidebarView>([
     ...(seen ?? []),
-    ...BLOCKS_SITE_SIDEBAR_VIEWS,
+    ...offerableProjectSidebarViews(blocksSite),
   ]);
   return PROJECT_SIDEBAR_VIEW_IDS.filter((view) => next.has(view));
 }
@@ -78,7 +97,7 @@ export function seenProjectSidebarViewsAfterSave(
 export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 
 /** Native panels whose availability is discovered from project resources. */
-export const PROJECT_NATIVE_VIEW_IDS = [
+const PROJECT_NATIVE_VIEW_IDS = [
   "calendar",
   "experiments",
   "assets",
@@ -109,7 +128,7 @@ export interface ProjectSidebarViewsMetadata {
   /** Canonical location. With version 1, null or [] disables every row. */
   sidebarViews?: readonly VirtualMcpSidebarView[] | null;
   sidebarViewsVersion?: typeof PROJECT_SIDEBAR_VIEWS_VERSION;
-  /** Views offered once on top of the saved list (see BLOCKS_SITE_SIDEBAR_VIEWS). */
+  /** Views offered once on top of the saved list (see ADDED_SIDEBAR_VIEWS). */
   sidebarViewsSeen?: readonly VirtualMcpSidebarView[] | null;
   /** Deprecated location, retained only while persisted agents migrate. */
   ui?: {
@@ -203,6 +222,11 @@ export function projectSidebarViewPresence(
     reports: hasClonableSource,
     board: hasClonableSource,
     "site-editor": hasClonableSource,
+    /** Same source requirement as the Site Editor: blog records are decofile
+     *  blocks. Whether the site actually has a blog app is the view's own
+     *  empty state to explain — a row whose existence waits on a decofile read
+     *  would blink in, or never appear. */
+    blog: hasClonableSource,
     assets: native.assets,
     // Hosted Deco CMS releases: a v8 site's repo history.
     releases: hasClonableSource && native.releases,

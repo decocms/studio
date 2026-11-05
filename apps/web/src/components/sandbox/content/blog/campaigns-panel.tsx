@@ -35,6 +35,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useOptionalChatTask } from "@/components/chat/chat-context";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
@@ -138,14 +139,17 @@ export function CampaignsPanel({
     copyScope({ orgSlug, virtualMcpId, branch }),
   );
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  const threadId = useOptionalChatTask()?.taskId ?? null;
 
-  /** The store pickers address the site by these coordinates; campaigns are a
-   *  thread-less surface, which the contract allows. */
+  /** The store pickers address the site by these coordinates. The session's
+   *  thread rides along when there is one: it is how the proxy knows the
+   *  session runs in a sandbox (Blog's always does), instead of probing while
+   *  the pod boots. */
   const sandboxRef: PreviewProxyRef = {
     orgSlug,
     virtualMcpId,
     branch,
-    threadId: null,
+    threadId,
   };
 
   const hasAi = useHostedAiProviderKeys().length > 0;
