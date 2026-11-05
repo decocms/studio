@@ -214,9 +214,8 @@ interface NamedRuleWrite {
   pinned: Record<string, string | null>;
   /**
    * The copies the change was built on (the cache when it was made), by
-   * block. On a hosted draft a block missing from `pinned` is guarded by
-   * its copy's content hash when the write runs, never by the version the
-   * index lists then.
+   * block. On a hosted draft each block the draft holds is guarded by its
+   * copy's content hash, never by the version the index lists.
    */
   copies: Record<string, unknown>;
 }
@@ -274,12 +273,12 @@ export function useApplyNamedRule({
         ...Object.keys(write.writes),
         ...write.deletes.filter((key) => !Object.hasOwn(write.writes, key)),
       ];
-      const versions: Record<string, string | null | undefined> = {
-        ...write.pinned,
-      };
+      const versions: Record<string, string | null | undefined> = {};
       for (const key of touched) {
-        if (Object.hasOwn(versions, key)) continue;
-        versions[key] = await copyVersion(key, write.copies);
+        const listed = Object.hasOwn(write.pinned, key)
+          ? write.pinned[key]
+          : protocolBlockVersion(queryClient, cacheKey, key, protocol);
+        versions[key] = await copyGuard(listed, key, write.copies);
       }
       const plan = planNamedRuleApply(write, (blockKey) => versions[blockKey]);
       if (plan.kind === "unread") throw unreadConflict(plan.blockKeys);
@@ -496,37 +495,33 @@ export function useApplyNamedRule({
   };
 
   /**
-   * The draft's version of `blockKey` as the guard of a write built on
-   * `copies`. On a hosted draft a block the draft holds is guarded by its
-   * copy's own content hash ({@link copyDraftVersion}), never by the
-   * version the index lists: a poll lists someone else's version before it
-   * loads their copy (and never reloads a block being saved), so a write
-   * built on the older copy, guarded by the listed version, would go over
-   * their change unasked. Guarded by its copy, it is refused and
-   * reconciled. Other backends: the version listed.
+   * The guard of `blockKey` in a write built on `copies`, the draft listing
+   * it at `listed`. On a hosted draft a block the draft holds is guarded by
+   * its copy's own content hash ({@link copyDraftVersion}), never by the
+   * listed version: a poll lists someone else's version before it loads
+   * their copy (and never reloads a block being saved), so a write built on
+   * the older copy, guarded by the listed version, would go over their
+   * change unasked. Guarded by its copy, it is refused and reconciled.
+   * Other backends: the version listed.
    */
-  const copyVersion = async (
+  const copyGuard = async (
+    listed: string | null | undefined,
     blockKey: string,
-    copies: Record<string, unknown> | undefined,
+    copies: Record<string, unknown>,
   ): Promise<string | null | undefined> => {
-    const listed = protocolBlockVersion(
-      queryClient,
-      cacheKey,
-      blockKey,
-      protocol,
-    );
-    if (!hosted || !copies || !Object.hasOwn(copies, blockKey)) return listed;
+    if (!hosted || !Object.hasOwn(copies, blockKey)) return listed;
     return copyDraftVersion(listed, copies[blockKey]);
   };
 
   /**
-   * The versions of the copies a change was built on (`copies`, the cache
-   * when it was made), for every block no earlier save still on its way
-   * holds (those are guarded when the write runs, after that save landed,
-   * by the same copies). A block with no known version (the editor's
-   * bookkeeping was lost) is read now: when it is stored exactly as the
-   * change found it, the version just read is its copy's; when it isn't,
-   * someone else changed it: `null`, nothing is written.
+   * The versions the draft lists for the copies a change was built on
+   * (`copies`, the cache when it was made), for every block no earlier save
+   * still on its way holds (those are read when the write runs, after that
+   * save landed). A block with no known version (the editor's bookkeeping
+   * was lost) is read now: when it is stored exactly as the change found
+   * it, the version just read is its copy's; when it isn't, someone else
+   * changed it: `null`, nothing is written. On a hosted draft the write
+   * guards each by its copy ({@link copyGuard}).
    */
   const pinVersions = async (
     touched: string[],
@@ -537,7 +532,12 @@ export function useApplyNamedRule({
     const unread: string[] = [];
     for (const key of touched) {
       if (saving.has(key)) continue;
-      const version = await copyVersion(key, copies);
+      const version = protocolBlockVersion(
+        queryClient,
+        cacheKey,
+        key,
+        protocol,
+      );
       if (version === undefined) unread.push(key);
       else pinned[key] = version;
     }
@@ -553,7 +553,12 @@ export function useApplyNamedRule({
       ) {
         return null;
       }
-      const version = await copyVersion(key, copies);
+      const version = protocolBlockVersion(
+        queryClient,
+        cacheKey,
+        key,
+        protocol,
+      );
       if (version === undefined) return null;
       pinned[key] = version;
     }
