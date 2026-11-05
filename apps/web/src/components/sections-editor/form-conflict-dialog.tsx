@@ -33,6 +33,7 @@ import {
   type ValuePreview,
 } from "./form-conflict";
 import type { ConflictAuthor } from "./conflict-author";
+import { useKeepTyping } from "./keep-typing";
 
 /**
  * Asks the user whose version to keep when they and someone else changed the
@@ -93,6 +94,7 @@ export function FormConflictDialog({
   open,
   authorPending = false,
   waitForAuthor = false,
+  keepTyping = false,
   ...props
 }: FormConflictChoicesProps & {
   open: boolean;
@@ -108,11 +110,19 @@ export function FormConflictDialog({
    * campaign windows, named from the members already read).
    */
   waitForAuthor?: boolean;
+  /**
+   * Opened from a form the user may still be typing in (the section form):
+   * the keystrokes typed as it opens go on into their field, and so into
+   * "You (not saved yet)", instead of being lost on the dialog
+   * (keep-typing.ts).
+   */
+  keepTyping?: boolean;
 }) {
   const { data: session } = authClient.useSession();
   const waiting = waitForAuthor && authorPending;
   // Decided when it first shows (the dialog is mounted per conflict).
   const [anonymousTitle] = useState(() => authorPending && !waitForAuthor);
+  const noteTyping = useKeepTyping(keepTyping && open && !waiting);
   return (
     // Controlled with no onOpenChange: only saving a choice closes it.
     <AlertDialog open={open && !waiting}>
@@ -121,6 +131,7 @@ export function FormConflictDialog({
           "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg",
         )}
         data-testid="form-conflict-dialog"
+        onOpenAutoFocus={noteTyping}
         onEscapeKeyDown={(event) => event.preventDefault()}
       >
         <FormConflictChoices
