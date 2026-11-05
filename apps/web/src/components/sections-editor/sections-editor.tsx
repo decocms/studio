@@ -1598,6 +1598,17 @@ export function SectionsEditor({
     const target: FormSaveTarget = given ?? openFormTarget(sectionIndex);
     const targetSectionVariantIndex = target.sectionVariantIndex;
     const formBase = target.formBase;
+    // A choice waits for this section: nothing is saved until it is made,
+    // and what the user types meanwhile is their version in the dialog at
+    // once ("You (not saved yet)"), with no typing pause.
+    const runNow =
+      immediate ||
+      waitingChoiceBase(
+        formConflictsRef.current,
+        formBase,
+        target,
+        sectionIndex,
+      ) !== null;
     const pending = pendingSectionSaveRef.current;
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -1970,7 +1981,7 @@ export function SectionsEditor({
       sectionVariantIndex: targetSectionVariantIndex,
       write,
     };
-    if (immediate) {
+    if (runNow) {
       pendingSectionSaveRef.current = null;
       write();
       return;
@@ -4953,6 +4964,7 @@ export function SectionsEditor({
               // windows name a field; elsewhere as before.
               fieldsAsLabeled={hostedConflictDraft !== null}
               fresh={waitingChoice.fresh}
+              keepTyping
               onChoose={(pointer, choice) =>
                 setConflictChoices({
                   ...waitingChoice.choices,
