@@ -37,7 +37,13 @@ import {
   planHostedConflict,
   pointerBlockKey,
 } from "./hosted-reconcile";
-import { ensureEveryHostedBlock } from "./hosted-content";
+import {
+  type ContentIndex,
+  ensureHostedBlocks,
+  indexRuleUsers,
+  listingOf,
+} from "./hosted-content";
+import { NAMED_RULE_BLOCKS } from "./named-rule-loads";
 import { type CampaignWindow, namedRuleKindOfBlock } from "./named-rules";
 import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
@@ -65,6 +71,17 @@ export interface NamedRuleChange {
    * what the editor didn't show. Other backends: ignored.
    */
   basis?: Record<string, unknown>;
+}
+
+/**
+ * What a read of the draft made now loads on a hosted draft, besides the
+ * `experiments` and `campaigns` blocks: `blocks` by name, and the blocks
+ * whose index `meta.rules` names one of `usersOf` (the uses a rename
+ * rewrites, a delete counts). Other backends read every block anyway.
+ */
+export interface NamedRuleReread {
+  blocks?: readonly string[];
+  usersOf?: readonly string[];
 }
 
 export type NamedRuleApplyPlan =
@@ -319,7 +336,7 @@ export function useApplyNamedRule({
     const stored =
       protocol && adoptRefusedDraft(queryClient, protocol, cacheKey, refusal)
         ? (queryClient.getQueryData<Record<string, unknown>>(queryKey) ?? {})
-        : await reread();
+        : await reread({ blocks: touched });
     if (!stored) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
         ...SAVE_TOAST,
@@ -484,7 +501,7 @@ export function useApplyNamedRule({
       else pinned[key] = version;
     }
     if (unread.length === 0) return pinned;
-    const fresh = await reread();
+    const fresh = await reread({ blocks: unread });
     if (!fresh) return null;
     for (const key of unread) {
       const had = !!copies && Object.hasOwn(copies, key);
@@ -513,7 +530,9 @@ export function useApplyNamedRule({
    * so a use or a name another tab added meanwhile counts. `null` when it can't be
    * read; the caller then changes nothing.
    */
-  const reread = async (): Promise<Record<string, unknown> | null> => {
+  const reread = async (
+    options: NamedRuleReread = {},
+  ): Promise<Record<string, unknown> | null> => {
     if (!protocol) return null;
     try {
       const content = await rereadProtocolContent(
@@ -524,17 +543,28 @@ export function useApplyNamedRule({
       );
       if (!protocol.hosted) return content.blocks;
       // Hosted: the read answers the index and only the bodies loaded so
-      // far. A block another editor saved since (a new use of the test or
-      // campaign, say) is loaded too, so the plan sees every use.
-      await ensureEveryHostedBlock(
+      // far. The index just read says which blocks use the name now (its
+      // `meta.rules`, a use another editor saved since included): those are
+      // loaded, with the tests and campaigns blocks, so the plan sees every
+      // use. Every other block is its index stub, which counts its uses.
+      const index = queryClient.getQueryData<ContentIndex>(
+        KEYS.contentIndex(cacheKey),
+      );
+      await ensureHostedBlocks(
         queryClient,
         protocol.hosted,
         cacheKey,
+        [
+          ...NAMED_RULE_BLOCKS,
+          ...(options.blocks ?? []),
+          ...indexRuleUsers(index, options.usersOf ?? []),
+        ],
         savingBlockKeys(queryClient, params),
       );
-      return (
+      return listingOf(
+        index,
         queryClient.getQueryData<Record<string, unknown>>(queryKey) ??
-        content.blocks
+          content.blocks,
       );
     } catch {
       return null;
@@ -550,8 +580,9 @@ export function useApplyNamedRule({
    */
   const planStored = async (
     plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
+    options?: NamedRuleReread,
   ): Promise<NamedRuleChange | null> => {
-    const fresh = await reread();
+    const fresh = await reread(options);
     if (!fresh) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
         ...SAVE_TOAST,

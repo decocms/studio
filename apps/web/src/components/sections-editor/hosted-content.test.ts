@@ -23,10 +23,11 @@ import {
 } from "./content-sync";
 import {
   type ContentIndex,
-  ensureEveryHostedBlock,
   ensureHostedBlocks,
   type HostedCall,
+  indexRuleUsers,
   indexStubRefs,
+  indexStubRules,
   isIndexStub,
   listingOf,
   stubNames,
@@ -71,12 +72,24 @@ function hostedServer() {
     failOnce: new Set<string>(),
   };
   const revision = () => `t${state.token}`;
-  /** The index's `refs`: the saved block names the body's `__resolveType`s name. */
+  /**
+   * The index's `refs` (the saved block names the body's `__resolveType`s
+   * name) and `rules` (the names its `experiment`/`campaign` rules use).
+   */
   const refsMeta = (body: unknown) => {
     const found = new Set<string>();
+    const rules = new Set<string>();
     const walk = (value: unknown) => {
       if (Array.isArray(value)) return value.forEach(walk);
       if (!value || typeof value !== "object") return;
+      const node = value as Record<string, unknown>;
+      if (
+        (node.__resolveType === "experiment" ||
+          node.__resolveType === "campaign") &&
+        typeof node.name === "string"
+      ) {
+        rules.add(node.name);
+      }
       for (const [key, inner] of Object.entries(value)) {
         if (key === "__resolveType" && typeof inner === "string") {
           found.add(inner);
@@ -87,7 +100,10 @@ function hostedServer() {
     const refs = [...found]
       .filter((n) => Object.hasOwn(state.bodies, n))
       .sort();
-    return refs.length > 0 ? { refs } : {};
+    return {
+      ...(refs.length > 0 ? { refs } : {}),
+      ...(rules.size > 0 ? { rules: [...rules].sort() } : {}),
+    };
   };
   /** `cms.blocks` fails (Unavailable) this many more times. */
   let blocksFailures = 0;
@@ -369,6 +385,33 @@ describe("hosted saves", () => {
     );
   });
 
+  it("a saved entry's meta carries the tests and campaigns it uses, before the next poll", async () => {
+    const queryClient = new QueryClient();
+    const { backend } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      {
+        set: {
+          home: {
+            __resolveType: "page",
+            path: "/new",
+            v: { __resolveType: "experiment", name: "hero" },
+            w: { __resolveType: "campaign", name: "" },
+          },
+        },
+      },
+      { home: null },
+    );
+    expect(
+      queryClient.getQueryData<ContentIndex>(KEYS.contentIndex(CACHE_KEY))
+        ?.entries.home?.meta,
+    ).toEqual({ type: "page", path: "/new", rules: ["", "hero"] });
+  });
+
   it("a save that landed in part adopts what landed and sends only the rest, once", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = hostedServer();
@@ -468,6 +511,32 @@ describe("helpers that scan bodies, over a hosted listing", () => {
     expect(indexStubRefs({ __resolveType: "Header" })).toEqual([]);
   });
 
+  it("a stub carries the tests and campaigns its body uses (meta.rules)", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedServer();
+    state.bodies.home = {
+      __resolveType: "page",
+      path: "/",
+      sections: {
+        __resolveType: "multivariate",
+        variants: [
+          { rule: { __resolveType: "campaign", name: "summer" }, value: [] },
+          { rule: { __resolveType: "experiment", name: "hero" }, value: [] },
+        ],
+      },
+    };
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    const index = queryClient.getQueryData<ContentIndex>(
+      KEYS.contentIndex(CACHE_KEY),
+    );
+    const listing = listingOf(index, loadedBodies(queryClient));
+    expect(indexStubRules(listing.home)).toEqual(["hero", "summer"]);
+    expect(indexStubRules(listing.about)).toEqual([]);
+    expect(indexStubRules({ __resolveType: "page" })).toEqual([]);
+    expect(indexRuleUsers(index, ["summer"])).toEqual(["home"]);
+    expect(indexRuleUsers(index, ["winter"])).toEqual([]);
+  });
+
   it("previews a saved section on a page that uses it, through stubs and saved blocks between", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = hostedServer();
@@ -563,24 +632,34 @@ describe("a named rule planned from a read made now (hosted)", () => {
     },
   });
 
-  it("loads a use another editor saved after this view loaded, so a rename rewrites it", async () => {
+  it("loads only the blocks the index says use the name, a use another editor saved since included", async () => {
     const queryClient = new QueryClient();
     const { state, backend, hosted, writeElsewhere } = hostedServer();
     state.bodies.experiments = { __resolveType: "split-traffic", hero: 0 };
     state.versions.experiments = "vE";
     await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
-    await ensureEveryHostedBlock(queryClient, hosted, CACHE_KEY);
     // Another editor puts the test on a new page.
     writeElsewhere("promo", usesHero("/promo"));
     state.blocksCalls.length = 0;
     await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
     // The poll alone doesn't read a body no view opened...
     expect(loadedBodies(queryClient)?.promo).toBeUndefined();
-    // ...the plan's read does, and only that one.
-    await ensureEveryHostedBlock(queryClient, hosted, CACHE_KEY);
-    expect(state.blocksCalls).toEqual([["promo"]]);
+    // ...the index says who uses the name, and the plan's read loads only
+    // those (and the tests): never home, about or Header.
+    const index = queryClient.getQueryData<ContentIndex>(
+      KEYS.contentIndex(CACHE_KEY),
+    );
+    const users = indexRuleUsers(index, ["hero"]);
+    expect(users).toEqual(["promo"]);
+    await ensureHostedBlocks(queryClient, hosted, CACHE_KEY, [
+      "experiments",
+      ...users,
+    ]);
+    expect(state.blocksCalls).toEqual([["experiments", "promo"]]);
+    const listing = listingOf(index, loadedBodies(queryClient));
+    expect(isIndexStub(listing.home)).toBe(true);
     const change = planNamedRuleRename(
-      loadedBodies(queryClient)!,
+      listing,
       "experiments",
       "hero",
       "launch",
@@ -589,6 +668,25 @@ describe("a named rule planned from a read made now (hosted)", () => {
       "experiments",
       "promo",
     ]);
+  });
+
+  it("plans no rename while a block that uses the name is still a stub", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend, hosted } = hostedServer();
+    state.bodies.experiments = { __resolveType: "split-traffic", hero: 0 };
+    state.versions.experiments = "vE";
+    state.bodies.promo = usesHero("/promo");
+    state.versions.promo = "vP";
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await ensureHostedBlocks(queryClient, hosted, CACHE_KEY, ["experiments"]);
+    const index = queryClient.getQueryData<ContentIndex>(
+      KEYS.contentIndex(CACHE_KEY),
+    );
+    const listing = listingOf(index, loadedBodies(queryClient));
+    expect(isIndexStub(listing.promo)).toBe(true);
+    expect(
+      planNamedRuleRename(listing, "experiments", "hero", "launch"),
+    ).toBeNull();
   });
 });
 

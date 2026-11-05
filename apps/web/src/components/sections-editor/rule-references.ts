@@ -4,9 +4,16 @@
  * every block refers to, plus the blocks that take a kind's whole map as a
  * prop. One walk serves both: deleting an unused saved rule and the "Used by"
  * lists of the Experiments and Campaigns views.
+ *
+ * On a hosted draft the decofile is a listing (hosted-content.ts): a block
+ * not loaded is an index stub, read through its index `refs` and `rules`
+ * instead of its body. A stub's use has no path inside the block (`[]`): it
+ * counts, and a rewrite loads the block first (`planNamedRuleRename` plans
+ * nothing over a stub).
  */
 
 import type { ChangeDetail } from "@decocms/blocks/protocol";
+import { indexStubRefs, indexStubRules, isIndexStub } from "./hosted-content";
 import { isSavedMatcherBlockReference } from "./matcher-rules";
 import {
   canRenameExperiment,
@@ -16,6 +23,7 @@ import {
   namedRule,
   namedRuleKindInfo,
   namedRuleKindOfBlock,
+  namedRuleNames,
   namedRuleOf,
   readNamedRuleBlock,
   withRenamedNamedRuleEntry,
@@ -126,7 +134,16 @@ export function findSavedMatcherReferences(
 ): SavedRuleUse[] {
   if (!blockKey) return [];
   const found: SavedRuleUse[] = [];
+  const isSavedRule = () =>
+    isSavedMatcherBlockReference({ __resolveType: blockKey }, decofile, meta);
   forEachDecofileObject(decofile, blockKey, (node, at) => {
+    if (at.parent === null && isIndexStub(node)) {
+      // A block not loaded: its index refs say whether it uses the rule.
+      if (indexStubRefs(node).includes(blockKey) && isSavedRule()) {
+        found.push(locationOf(at));
+      }
+      return;
+    }
     if (node.__resolveType !== blockKey) return;
     if (!isSavedMatcherBlockReference(node, decofile, meta)) return;
     const variant = variantOf(at);
@@ -219,6 +236,28 @@ interface Hit {
 }
 
 /**
+ * The kinds whose block, in any of `decofiles`, holds a name: what an index
+ * stub's `rules` (one list of names for both kinds) count for. A name no
+ * block holds counts for neither until the block that uses it is loaded,
+ * so a test or campaign that isn't there is only ever listed from a body.
+ */
+export function namedRuleKindsHolding(
+  ...decofiles: Array<Record<string, unknown>>
+): (name: string) => NamedRuleKind[] {
+  const held = NAMED_RULE_KINDS.map((kind) => {
+    const names = new Set<string>();
+    for (const decofile of decofiles) {
+      for (const name of namedRuleNames(readNamedRuleBlock(decofile, kind))) {
+        names.add(name);
+      }
+    }
+    return [kind, names] as const;
+  });
+  return (name) =>
+    held.filter(([, names]) => names.has(name)).map(([kind]) => kind);
+}
+
+/**
  * Every block that uses an A/B test or a campaign:
  *
  * - By name: a rule `experiment { name }` or `campaign { name }` anywhere (a
@@ -231,10 +270,15 @@ interface Hit {
  *   A `date` rule with its own dates names no campaign and isn't listed.
  * - Whole: a value `{ "__resolveType": "experiments" }` or `"campaigns"`
  *   (a section prop), while that block is the kind's (or not saved yet).
+ * - An index stub (a block not loaded): each name of its `rules`, for the
+ *   kinds `stubKinds` says hold it (by default the kinds whose block in
+ *   `decofile` has it); its `refs` to a kind's block are whole uses, and to
+ *   a saved rule are uses through it.
  */
 export function findRuleReferences(
   decofile: Record<string, unknown>,
   meta?: LiveMeta | null,
+  options?: { stubKinds?: (name: string) => NamedRuleKind[] },
 ): RuleReferences {
   const hits: Hit[] = [];
   const out = emptyReferences();
@@ -243,7 +287,21 @@ export function findRuleReferences(
       (kind) => readNamedRuleBlock(decofile, kind).kind !== "conflict",
     ),
   );
+  const stubKinds = options?.stubKinds ?? namedRuleKindsHolding(decofile);
   forEachDecofileObject(decofile, null, (node, at) => {
+    if (at.parent === null && isIndexStub(node)) {
+      const location = { blockKey: at.blockKey, path: [] };
+      for (const ref of indexStubRefs(node)) {
+        const kind = namedRuleKindOfBlock(ref);
+        if (kind && wholeKinds.has(kind)) {
+          out[kind].wholeBlock.push({ kind, ...location });
+        }
+      }
+      for (const name of indexStubRules(node)) {
+        for (const kind of stubKinds(name)) hits.push({ kind, name, location });
+      }
+      return;
+    }
     const whole = namedRuleKindOfBlock(node.__resolveType);
     if (whole && wholeKinds.has(whole)) {
       out[whole].wholeBlock.push({ kind: whole, ...locationOf(at) });
@@ -417,8 +475,10 @@ export function markReferenceStates(
  * `from` (saved rules included) with that rule naming `to`. `null` when
  * nothing can be renamed: the block conflicts, `from` isn't saved, `to` is
  * empty or taken, or `from` is a running A/B test (its name is locked:
- * visitors are grouped by it). A block that reads the whole map in its own code isn't
- * rewritten (`wholeBlock` lists them, for the editor to point out).
+ * visitors are grouped by it), or a block that uses it isn't loaded (an
+ * index stub: the caller loads the users first). A block that reads the
+ * whole map in its own code isn't rewritten (`wholeBlock` lists them, for
+ * the editor to point out).
  */
 export function planNamedRuleRename(
   decofile: Record<string, unknown>,
@@ -448,6 +508,7 @@ export function planNamedRuleRename(
     // A use through a saved rule is rewritten where the rule itself is.
     if (use.via.length > 0) continue;
     const current = writes[use.blockKey] ?? decofile[use.blockKey];
+    if (isIndexStub(current)) return null;
     if (!isPlainRecord(current)) continue;
     writes[use.blockKey] = replaceAt(current, use.path, namedRule(kind, to));
   }

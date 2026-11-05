@@ -21,6 +21,7 @@ import {
   findRuleReferences,
   type MarkedRuleReferences,
   markReferenceStates,
+  namedRuleKindsHolding,
   publishedDecofile,
   type ReferenceState,
   type RuleVariant,
@@ -110,20 +111,27 @@ function computeNamedRuleUses(input: {
   changeCount: number | undefined;
   sides: Record<string, ChangeDetail> | undefined;
 }): NamedRuleUses {
-  const draft = findRuleReferences(input.decofile, input.meta);
   const published =
     input.changeCount === 0
       ? input.decofile
       : input.sides
         ? publishedDecofile(input.decofile, input.sides)
         : null;
+  // A block not loaded (hosted) counts through its index `rules`, for the
+  // kinds that hold the name on either side, so a use both sides share is
+  // read the same on each.
+  const stubKinds = namedRuleKindsHolding(
+    input.decofile,
+    ...(published && published !== input.decofile ? [published] : []),
+  );
+  const draft = findRuleReferences(input.decofile, input.meta, { stubKinds });
   if (published === null) {
     return { refs: markReferenceStates(draft, draft), published: null };
   }
   const live =
     published === input.decofile
       ? draft
-      : findRuleReferences(published, input.meta);
+      : findRuleReferences(published, input.meta, { stubKinds });
   return { refs: markReferenceStates(draft, live), published };
 }
 
