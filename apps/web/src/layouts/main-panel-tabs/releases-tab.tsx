@@ -161,6 +161,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
     revisions.flatMap((r) => (isUnreadable(r) ? [] : [[r.id, r] as const])),
   );
   const current = revisions.find(isLatest) ?? null;
+  const live = releases.data.pages[0]?.live ?? null;
   const titleOf = (revision: ReadableRelease) =>
     releaseTitle(t, revision.meta, language);
   const authorOf = (revision: ReadableRelease) =>
@@ -192,6 +193,14 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
       }
     } catch (error) {
       const code = error instanceof CmsRequestError ? error.code : null;
+      if (code === "not_published") {
+        // Never published: nothing to make current over (contract §4.11).
+        toastPublishFailed(t, {
+          tone: "warning",
+          headline: t("releases.notPublished"),
+        });
+        return;
+      }
       if (code === "production_moved") {
         toastPublishFailed(t, {
           tone: "warning",
@@ -231,7 +240,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
     ? t("releases.lastPublished", {
         when: formatRelativeTime(new Date(current.meta.publishedAt), language),
       })
-    : releases.data.pages[0]?.live
+    : live
       ? null
       : t("releases.nothingPublished");
 
@@ -312,7 +321,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                   ) : null}
                 </div>
                 {latest ? <LatestPill /> : null}
-                {canReapply(revision) || previewUrl ? (
+                {canReapply(revision, live) || previewUrl ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -336,7 +345,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                           {t("releases.preview")}
                         </DropdownMenuItem>
                       ) : null}
-                      {canReapply(revision) ? (
+                      {canReapply(revision, live) ? (
                         <DropdownMenuItem
                           disabled={reapply.isPending}
                           onSelect={() => setConfirm(revision)}

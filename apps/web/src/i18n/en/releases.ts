@@ -31,6 +31,8 @@ export const releases = {
   "releases.alreadyShown": "Your site already has this release's content.",
   "releases.publishedMeanwhile":
     "Someone published while you were making this release current, so nothing changed. Try again.",
+  "releases.notPublished":
+    "Your site hasn't been published yet. Publish it once before bringing back an earlier release.",
   "releases.reapplyOf": "Made current: {title}",
   "releases.reapplyOfDate": "Made current: release from {when}",
   "releases.sameContentAs": "Same content as the release from {when}",
