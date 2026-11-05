@@ -82,6 +82,10 @@ export const sectionsEditor = {
     "Nenhum teste ainda. Digite um nome para criar um.",
   "sectionsEditor.namedRulePicker.noCampaigns":
     "Nenhuma campanha ainda. Digite um nome para criar uma.",
+  "sectionsEditor.namedRulePicker.loadFailedTests":
+    "Não foi possível carregar seus testes.",
+  "sectionsEditor.namedRulePicker.loadFailedCampaigns":
+    "Não foi possível carregar suas campanhas.",
   "sectionsEditor.namedRulePicker.createTest": "Criar teste “{name}”",
   "sectionsEditor.namedRulePicker.createCampaign": "Criar campanha “{name}”",
   "sectionsEditor.namedRulePicker.shareOfVisitors": "{share}% dos visitantes",

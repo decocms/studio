@@ -322,6 +322,7 @@ export function MultivariateFieldWrapper({
           selected: namedRuleOf(currentRule),
           campaignPrefill: inlineDateWindow(currentRule),
           onPick: handlePickNamedRule,
+          ...(namedSupport.load ? { load: namedSupport.load } : {}),
         }
       : undefined;
   const namedRow = namedSupport
