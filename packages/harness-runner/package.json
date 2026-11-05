@@ -15,6 +15,7 @@
     "codex-to-ui-chunks.ts",
     "live-messages.ts",
     "session-id.ts",
+    "studio-cli.ts",
     "to-ui-chunks.ts"
   ],
   "scripts": {

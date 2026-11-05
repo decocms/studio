@@ -15,6 +15,7 @@ import {
   orgOutputFallbackInstruction,
   sandboxStateInstruction,
   selectRunConnections,
+  runStudioSurface,
   isUnreachableStatus,
   ndjsonLines,
   pushSandboxEnv,
@@ -166,6 +167,47 @@ describe("selectRunConnections", () => {
         }).map((c) => c.id),
       ).toEqual(["conn_github", "conn_vtex"]);
     }
+  });
+});
+
+describe("runStudioSurface", () => {
+  const connections = [
+    { id: "conn_own" },
+    { id: "conn_other" },
+    { id: "conn_figma", connection_url: "https://mcp.figma.com/mcp" },
+  ];
+  const surface = (
+    overrides: { selfTools?: string[]; organizationSlug?: string } = {},
+  ) => {
+    const { mounted, ...rest } = runStudioSurface({
+      organizationSlug: "acme",
+      selfTools: ["CONNECTION_TOOL_CALL"],
+      ...overrides,
+      connections,
+      ownIds: new Set(["conn_own"]),
+    });
+    return { mounted: mounted.map((c) => c.id), ...rest };
+  };
+
+  test("calls the agent's own through Studio, keeps sign-in servers, and sends the CLI", () => {
+    expect(surface()).toEqual({
+      mounted: ["conn_figma"],
+      studioCli: { org: "acme" },
+    });
+  });
+
+  // A reviewer's or Jira run's key has no CONNECTION_TOOL_CALL.
+  test("still mounts the agent's own when the key cannot call them through Studio", () => {
+    expect(surface({ selfTools: ["TASK_BOARD_ITEM_LIST"] })).toEqual({
+      mounted: ["conn_own", "conn_figma"],
+      studioCli: { org: "acme" },
+    });
+  });
+
+  test("no slug, no CLI", () => {
+    expect(surface({ organizationSlug: undefined })).toEqual({
+      mounted: ["conn_own", "conn_figma"],
+    });
   });
 });
 

@@ -9,8 +9,9 @@ const threads: Record<string, { title: string }> = {
   thrd_review: { title: "Reviewer: Add an H1" },
 };
 
-function app() {
+function app(auth: StudioContext["auth"] = {}) {
   const ctx = {
+    auth,
     storage: { threads: { get: async (id: string) => threads[id] ?? null } },
   } as unknown as StudioContext;
   const hono = new Hono<{ Variables: { studioContext: StudioContext } }>();
@@ -24,8 +25,12 @@ function app() {
   return hono;
 }
 
-function listTools(path: string, params: Record<string, unknown> = {}) {
-  return app().request(path, {
+function listTools(
+  path: string,
+  params: Record<string, unknown> = {},
+  auth?: StudioContext["auth"],
+) {
+  return app(auth).request(path, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -96,6 +101,25 @@ describe("thread MCP route", () => {
   it("keeps a plain JSON response when no progress was asked for", async () => {
     const res = await listTools("/mcp/thread/thrd_chat");
     expect(res.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("refuses a key bound to another thread", async () => {
+    const res = await listTools(
+      "/mcp/thread/thrd_review",
+      {},
+      {
+        boundThreadId: "thrd_chat",
+      },
+    );
+    expect(res.status).toBe(403);
+    const own = await listTools(
+      "/mcp/thread/thrd_chat",
+      {},
+      {
+        boundThreadId: "thrd_chat",
+      },
+    );
+    expect(own.status).toBe(200);
   });
 
   it("offers no standalone GET stream", async () => {

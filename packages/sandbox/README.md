@@ -106,7 +106,8 @@ bun run --cwd=packages/sandbox check
 bun run --cwd=packages/sandbox test
 ```
 
-Package the type generator baked into sandbox images:
+Package what sandbox images bake in from this revision (the type generator, the
+harness runner, and the `decocms` CLI with its decocms-studio skill plugin):
 
 ```bash
 bun run --cwd=packages/sandbox build

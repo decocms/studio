@@ -17,6 +17,7 @@ import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
 import { z } from "zod";
+import { readSignedGrant } from "./signed-grant";
 import { ConnectionStorage } from "../storage/connection";
 import { ConnectionCredentialVaultStorage } from "../storage/connection-credential-vault";
 import {
@@ -150,6 +151,33 @@ export function runMetadataFromApiKey(
     return undefined;
   }
   return parsed.data;
+}
+
+const ThreadGrantSchema = z.object({
+  threadId: z.string().min(1),
+  organizationId: z.string(),
+  expiresAt: z.number(),
+});
+
+/**
+ * The thread a sandbox run's key is bound to (see `mcpKeyMetadata`). Read from
+ * the key's stored metadata only: the run holds the bearer, so a thread named
+ * by a header, query or body would let it act on another run's thread. Signed,
+ * because a caller can write any metadata on a key it creates (`API_KEY_CREATE`).
+ */
+export function threadIdFromApiKey(
+  metadata: Record<string, unknown> | undefined,
+  organizationId: string | undefined,
+  now: number = Date.now(),
+): string | undefined {
+  const token = metadata?.threadGrant;
+  if (typeof token !== "string") return undefined;
+  const grant = ThreadGrantSchema.safeParse(readSignedGrant(token));
+  return grant.success &&
+    grant.data.organizationId === organizationId &&
+    grant.data.expiresAt > now
+    ? grant.data.threadId
+    : undefined;
 }
 
 export interface StudioContextConfig {
@@ -1654,6 +1682,11 @@ export async function createStudioContextFactory(
 
     if (authResult.apiKey) {
       studioAuth.apiKey = authResult.apiKey;
+      const boundThreadId = threadIdFromApiKey(
+        authResult.apiKey.metadata,
+        authResult.organization?.id,
+      );
+      if (boundThreadId) studioAuth.boundThreadId = boundThreadId;
     }
 
     // Organization from Better Auth (OAuth session or API key metadata)
