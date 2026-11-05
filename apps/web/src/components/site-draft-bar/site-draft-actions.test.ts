@@ -10,9 +10,10 @@ import { join } from "node:path";
  */
 describe("the site's draft bar", () => {
   const routes = join(import.meta.dir, "../../routes/workspace");
+  // Experiments lives in Monitor's Experiments view (`monitoring.tsx`).
   for (const file of [
     "agent-site-editor.tsx",
-    "agent-experiments.tsx",
+    "monitoring.tsx",
     "agent-calendar.tsx",
   ]) {
     test(`${file} mounts the shared SiteDraftActions`, () => {

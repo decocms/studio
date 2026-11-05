@@ -139,10 +139,36 @@ describe("tabRouteLocation", () => {
         section: "settings",
       });
     }
-    for (const tab of ["analytics", "cdn"]) {
-      expect(tabRouteLocation(tab)).toEqual({
+  });
+
+  test("opens each retired app in the Monitor view that took it over", () => {
+    const rows = [
+      ["analytics", "audience"],
+      ["cdn", "performance"],
+      ["experiments", "experiments"],
+    ] as const;
+    for (const [tabId, view] of rows) {
+      expect(tabRouteLocation(tabId)).toEqual({
         kind: "project-destination",
         destination: "monitoring",
+        monitorView: view,
+      });
+      expect(tabRouteTarget({ org: "acme", agentId: "vir_1", tabId })).toEqual({
+        to: "/$org/projects/$agentId/monitoring",
+        params: { org: "acme", agentId: "vir_1" },
+        search: { view },
+      });
+      expect(
+        tabRouteTarget({
+          org: "acme",
+          agentId: "vir_1",
+          tabId,
+          destinationScope: "organization",
+        }),
+      ).toEqual({
+        to: "/$org/monitoring",
+        params: { org: "acme" },
+        search: { view },
       });
     }
   });

@@ -97,7 +97,11 @@ export function projectLink(
     case "releases":
       return { to: PROJECT_ROUTE.releases, params };
     case "experiments":
-      return { to: PROJECT_ROUTE.experiments, params };
+      return {
+        to: PROJECT_ROUTE.monitoring,
+        params,
+        search: { view: "experiments" },
+      };
     case "connectSources":
       return { to: PROJECT_ROUTE.connectSources, params };
     default: {

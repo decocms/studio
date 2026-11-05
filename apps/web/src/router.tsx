@@ -888,21 +888,18 @@ const projectTaskBoardAnalyticsRoute = createRoute({
   ),
 });
 
-const agentExperimentsRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
+/** The retired Experiments app; Monitor's Experiments view renders it now. */
+const agentExperimentsRedirectRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/experiments",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.experiments",
-    defaultMain: "experiments",
-    mainView: "experiments",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$agentId/monitoring",
+      params,
+      search: { view: "experiments" },
+      replace: true,
+    });
   },
-  // `?ui=legacy` previews the pre-flag tab without flipping the org's flag.
-  validateSearch: z.object({ ui: z.literal("legacy").optional() }),
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-experiments.tsx"),
-  ),
 });
 
 const agentCalendarRoute = createRoute({
@@ -1764,7 +1761,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentE2eRoute,
   agentAnalyticsRedirectRoute,
   projectTaskBoardAnalyticsRoute,
-  agentExperimentsRoute,
+  agentExperimentsRedirectRoute,
   agentCalendarRoute,
   agentCdnRedirectRoute,
   agentAppRoute,

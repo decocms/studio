@@ -296,6 +296,7 @@ describe("translateLegacyThreadRoute", () => {
       ["e2e", "/$org/projects/$agentId/e2e"],
       ["analytics", "/$org/projects/$agentId/monitoring"],
       ["cdn", "/$org/projects/$agentId/monitoring"],
+      ["experiments", "/$org/projects/$agentId/monitoring"],
       ["connect-sources", "/$org/projects/$agentId/connect-sources"],
     ] as const;
 

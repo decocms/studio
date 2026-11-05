@@ -8,10 +8,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useProjectMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { useProjectContext } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
-import {
-  editsBlocksDraft,
-  experimentsTabVisible,
-} from "./experiments-tab-choice";
+import { editsBlocksDraft } from "./experiments-tab-choice";
 import type { ProjectNativeViewPresence } from "./project-sidebar-views";
 
 export interface ProjectNativeViewPresenceResult {
@@ -53,11 +50,6 @@ export function useProjectNativeViewPresence(
       releases: hostedCms && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
-      // Every v8 site: its A/B tests are content its editors own.
-      experiments: experimentsTabVisible(
-        controlPlaneViews.experiments,
-        mainSchema,
-      ),
       // Every v8 site: its campaigns are content its editors own.
       calendar: editsBlocksDraft(mainSchema),
     },

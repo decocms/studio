@@ -2,7 +2,6 @@
 
 import {
   ClockRewind,
-  Beaker02,
   Calendar,
   CheckDone01,
   FileSearch02,
@@ -74,12 +73,6 @@ const APPS: Record<
     Icon: Zap,
     to: PROJECT_ROUTE.automations,
     tone: "bg-app-automations/15 text-app-automations",
-  },
-  experiments: {
-    labelKey: "projects.apps.experiments",
-    Icon: Beaker02,
-    to: PROJECT_ROUTE.experiments,
-    tone: "bg-app-experiments/15 text-app-experiments",
   },
   calendar: {
     labelKey: "projects.apps.calendar",

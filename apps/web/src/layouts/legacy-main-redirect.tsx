@@ -231,16 +231,6 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
-    case PROJECT_ROUTE.experiments:
-      return (
-        <Navigate
-          to={PROJECT_ROUTE.experiments}
-          params={route.params}
-          search={search}
-          hash={true}
-          replace
-        />
-      );
     case PROJECT_ROUTE.calendar:
       return (
         <Navigate

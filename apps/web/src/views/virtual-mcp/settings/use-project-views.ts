@@ -442,7 +442,6 @@ export function useProjectViews({
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),
     automations: t("virtualMcp.layoutTabContent.automations"),
-    experiments: t("experiments.title"),
     calendar: t("common.mainPanelTabs.calendar"),
   };
 
@@ -490,8 +489,6 @@ export function useProjectViews({
   return {
     /** Every view this project can open, in sidebar order. */
     projectViews: availableSidebarViews,
-    /** A Blocks (v8) site (its Calendar is present). */
-    blocksSite,
     labels: sidebarViewLabels,
     pinned: (viewId: ProjectSidebarViewId) => sidebarViews.includes(viewId),
     isMainView: (value: string) => defaultMainView === value,

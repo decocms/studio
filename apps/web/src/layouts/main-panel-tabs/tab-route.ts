@@ -43,7 +43,6 @@ export type TabRouteLocation =
         | "releases"
         | "hosting"
         | "e2e"
-        | "experiments"
         | "calendar";
     }
   | { kind: "automations"; automationId?: string }
@@ -53,10 +52,16 @@ export type TabRouteLocation =
   | { kind: "output-deck"; path: string }
   | { kind: "library-file"; path: string }
   | { kind: "connect-sources" }
-  | { kind: "project-destination"; destination: ProjectTabDestination }
+  | {
+      kind: "project-destination";
+      destination: ProjectTabDestination;
+      monitorView?: RetiredAppMonitorView;
+    }
   | { kind: "org-destination"; destination: OrgTabDestination };
 
 export type ProjectTabDestination = "tasks" | "reports" | "plan" | "monitoring";
+/** The Monitor view that took over a retired app. */
+type RetiredAppMonitorView = "audience" | "performance" | "experiments";
 export type OrgTabDestination = "home" | "library" | "discover";
 
 type AgentParams = { org: string; agentId: string };
@@ -75,7 +80,11 @@ export type TabRouteTarget =
   | { to: typeof DESTINATION_ROUTE.library; params: OrgParams; search: {} }
   | { to: typeof DESTINATION_ROUTE.discover; params: OrgParams; search: {} }
   | { to: typeof DESTINATION_ROUTE.plan; params: OrgParams; search: {} }
-  | { to: typeof DESTINATION_ROUTE.monitoring; params: OrgParams; search: {} }
+  | {
+      to: typeof DESTINATION_ROUTE.monitoring;
+      params: OrgParams;
+      search: { view?: RetiredAppMonitorView };
+    }
   | { to: typeof PROJECT_ROUTE.root; params: AgentParams; search: {} }
   | {
       to: typeof PROJECT_ROUTE.tasks;
@@ -84,7 +93,11 @@ export type TabRouteTarget =
     }
   | { to: typeof PROJECT_ROUTE.reports; params: AgentParams; search: {} }
   | { to: typeof PROJECT_ROUTE.plan; params: AgentParams; search: {} }
-  | { to: typeof PROJECT_ROUTE.monitoring; params: AgentParams; search: {} }
+  | {
+      to: typeof PROJECT_ROUTE.monitoring;
+      params: AgentParams;
+      search: { view?: RetiredAppMonitorView };
+    }
   | { to: typeof PROJECT_ROUTE.siteEditor; params: AgentParams; search: {} }
   | {
       to: typeof PROJECT_ROUTE.siteEditorContent;
@@ -103,7 +116,6 @@ export type TabRouteTarget =
         | typeof PROJECT_ROUTE.releases
         | typeof PROJECT_ROUTE.hosting
         | typeof PROJECT_ROUTE.e2e
-        | typeof PROJECT_ROUTE.experiments
         | typeof PROJECT_ROUTE.calendar;
       params: AgentParams;
       search: {};
@@ -228,9 +240,17 @@ const PROJECT_DESTINATION_BY_TAB: Readonly<
   reports: "reports",
   plan: "plan",
   monitoring: "monitoring",
-  // The retired Analytics and CDN apps, still in saved per-thread layouts.
+  // The retired apps below, still in saved per-thread layouts.
   analytics: "monitoring",
   cdn: "monitoring",
+  experiments: "monitoring",
+};
+
+/** The Monitor view each retired app opens, as its old URL redirects. */
+const MONITOR_VIEW_BY_TAB: Readonly<Record<string, RetiredAppMonitorView>> = {
+  analytics: "audience",
+  cdn: "performance",
+  experiments: "experiments",
 };
 
 const AGENT_SECTION_BY_TAB: Readonly<
@@ -244,7 +264,6 @@ const AGENT_SECTION_BY_TAB: Readonly<
   releases: "releases",
   hosting: "hosting",
   e2e: "e2e",
-  experiments: "experiments",
   calendar: "calendar",
 };
 
@@ -310,7 +329,12 @@ export function tabRouteLocation(tabId: string): TabRouteLocation {
 
   const projectDestination = PROJECT_DESTINATION_BY_TAB[normalized];
   if (projectDestination) {
-    return { kind: "project-destination", destination: projectDestination };
+    const monitorView = MONITOR_VIEW_BY_TAB[normalized];
+    return {
+      kind: "project-destination",
+      destination: projectDestination,
+      ...(monitorView ? { monitorView } : {}),
+    };
   }
 
   const destination = ORG_DESTINATION_BY_TAB[normalized];
@@ -359,10 +383,14 @@ export function tabRouteTarget(input: {
           return organizationScope
             ? { to: DESTINATION_ROUTE.plan, params: { org }, search: {} }
             : { to: PROJECT_ROUTE.plan, params, search: {} };
-        case "monitoring":
+        case "monitoring": {
+          const search = location.monitorView
+            ? { view: location.monitorView }
+            : {};
           return organizationScope
-            ? { to: DESTINATION_ROUTE.monitoring, params: { org }, search: {} }
-            : { to: PROJECT_ROUTE.monitoring, params, search: {} };
+            ? { to: DESTINATION_ROUTE.monitoring, params: { org }, search }
+            : { to: PROJECT_ROUTE.monitoring, params, search };
+        }
       }
     }
     case "org-destination": {
@@ -688,7 +716,6 @@ export function navigateToTabRouteTarget(
     case PROJECT_ROUTE.releases:
     case PROJECT_ROUTE.hosting:
     case PROJECT_ROUTE.e2e:
-    case PROJECT_ROUTE.experiments:
     case PROJECT_ROUTE.calendar:
       navigate({
         to: target.to,
