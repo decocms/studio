@@ -11,7 +11,7 @@
  * forgotten, because the switch WAS the gate — every view went through it, so a
  * deep link obeyed the plan for free. This one can be forgotten: a new gated
  * view has to remember to wrap itself, and the six that exist today
- * (`tasks`, `project-tasks`, `agent-monitor` and the three Site Editor routes)
+ * (`tasks`, `project-tasks`, the org's `monitoring` and the three Site Editor routes)
  * are the whole list. `featureForTab` still answers the same tab -> feature
  * question for the sidebar's locks, so the two can disagree now where they
  * previously could not; keep them in step.
