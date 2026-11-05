@@ -3,11 +3,16 @@ import { en } from "@/i18n/en/index.ts";
 import { interpolate } from "@/i18n/interpolate.ts";
 import { ptBR } from "@/i18n/pt-br/index.ts";
 import type { TFunction } from "@/i18n/use-t.ts";
-import type { ReleaseRevision, ReleaseStatus } from "./releases-api";
+import type {
+  ReadableRelease,
+  ReleaseRevision,
+  ReleaseStatus,
+} from "./releases-api";
 import {
   canPreviewRelease,
   canReapply,
   isLatest,
+  isUnreadable,
   listedRevisions,
   releaseTitle,
   revisionTime,
@@ -23,8 +28,8 @@ const NEW = "fe6c5e0da3ee-0193a1f2-5c11-7d02-8b4e-2f6a9c1d3e77";
 const revision = (
   id: string,
   status: ReleaseStatus,
-  meta: Partial<ReleaseRevision["meta"]> = {},
-): ReleaseRevision => ({
+  meta: Partial<ReadableRelease["meta"]> = {},
+): ReadableRelease => ({
   id,
   status,
   meta: {
@@ -50,6 +55,20 @@ describe("Latest is the revision latest.json names", () => {
         revision(OLD, "never-live"),
       ]).map((r) => r.id),
     ).toEqual([NEW]);
+  });
+});
+
+describe("a release whose details couldn't be read", () => {
+  const broken: ReleaseRevision = { id: OLD, status: "unreadable" };
+  test("is listed, but isn't Latest, can't be previewed or made current", () => {
+    expect(
+      listedRevisions([revision(NEW, "current"), broken]).map((r) => r.status),
+    ).toEqual(["current", "unreadable"]);
+    expect(isUnreadable(broken)).toBe(true);
+    expect(isUnreadable(revision(NEW, "current"))).toBe(false);
+    expect(isLatest(broken)).toBe(false);
+    expect(canPreviewRelease(broken)).toBe(false);
+    expect(canReapply(broken)).toBe(false);
   });
 });
 

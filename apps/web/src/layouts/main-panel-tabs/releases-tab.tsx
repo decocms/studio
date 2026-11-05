@@ -5,7 +5,8 @@
  * rollback, or a roll-forward), never moves the site back. "Latest" marks
  * the release latest.json names (releases-status.ts). A revision latest.json
  * never named (a publish that lost its race) is not listed and can't be made
- * current.
+ * current. A release whose details couldn't be read is a plain row with its
+ * date only: no actions.
  *
  * Business-user copy: no id, CDN or git words on screen. The author is a
  * Studio user id, shown by the org member's name. One toast per action
@@ -48,7 +49,12 @@ import {
 import { CmsRequestError } from "@/components/sections-editor/cms-api";
 import type { OrgMemberRow } from "@/components/sections-editor/conflict-author";
 import { useMembersQuery } from "@/hooks/use-members";
-import { type ReleaseRevision, useReapply, useReleases } from "./releases-api";
+import {
+  type ReadableRelease,
+  type ReleaseRevision,
+  useReapply,
+  useReleases,
+} from "./releases-api";
 import { releasePreviewUrl } from "@/components/sections-editor/preview-link";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
@@ -56,6 +62,7 @@ import {
   canReapply,
   formatWhen,
   isLatest,
+  isUnreadable,
   listedRevisions,
   releaseTitle,
   revisionTime,
@@ -75,6 +82,34 @@ function LatestPill() {
   );
 }
 
+/**
+ * A release whose details (its meta.json) couldn't be read: no note, author
+ * or actions, only the date its id carries.
+ */
+function UnreadableRow({ revision }: { revision: ReleaseRevision }) {
+  const t = useT();
+  const [{ language }] = usePreferences();
+  const when = revisionTime(revision.id);
+  return (
+    <li
+      id={`release-${revision.id}`}
+      data-testid="release-unreadable"
+      className="flex items-center gap-3 px-1 py-2"
+    >
+      <div className="min-w-0 flex-1" title={short(revision.id)}>
+        <p className="truncate text-sm text-muted-foreground">
+          {t("releases.unreadable")}
+        </p>
+        {when ? (
+          <p className="truncate text-xs text-muted-foreground">
+            {formatWhen(when, language)}
+          </p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
 export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const [{ language }] = usePreferences();
@@ -89,7 +124,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   // "Preview this version": the site's own page reading that release, from
   // the same address Studio's preview uses (its preview hosts honour it).
   const { previewServerUrl } = useSessionRuntime(virtualMcpId);
-  const [confirm, setConfirm] = useState<ReleaseRevision | null>(null);
+  const [confirm, setConfirm] = useState<ReadableRelease | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
 
   if (releases.isPending) {
@@ -127,16 +162,18 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const revisions = listedRevisions(
     releases.data.pages.flatMap((page) => page.revisions),
   );
-  const byId = new Map(revisions.map((r) => [r.id, r]));
+  const byId = new Map(
+    revisions.flatMap((r) => (isUnreadable(r) ? [] : [[r.id, r] as const])),
+  );
   const current = revisions.find(isLatest) ?? null;
-  const titleOf = (revision: ReleaseRevision) =>
+  const titleOf = (revision: ReadableRelease) =>
     releaseTitle(t, revision.meta, language);
-  const authorOf = (revision: ReleaseRevision) =>
+  const authorOf = (revision: ReadableRelease) =>
     members
       .find((m) => m.userId === revision.meta.author)
       ?.user?.name?.trim() || null;
 
-  const runReapply = async (revision: ReleaseRevision) => {
+  const runReapply = async (revision: ReadableRelease) => {
     const retry = () => void runReapply(revision);
     toast.loading(t("releases.reapplying"), {
       ...FRESH_TOAST,
@@ -221,6 +258,8 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <ul className="divide-y divide-border/60">
           {revisions.map((revision) => {
+            if (isUnreadable(revision))
+              return <UnreadableRow key={revision.id} revision={revision} />;
             const latest = isLatest(revision);
             // The original's row, when it is loaded (else plain text).
             const original = revision.meta.reapplyOf;
