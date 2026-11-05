@@ -2,15 +2,12 @@
 
 import {
   ClockRewind,
-  BarChartSquare02,
-  Beaker02,
   Calendar,
   CheckDone01,
   FileSearch02,
   Image01,
   LayoutAlt01,
   Server01,
-  Speedometer02,
   Zap,
 } from "@untitledui/icons";
 import type { ComponentType, ReactNode } from "react";
@@ -71,29 +68,11 @@ const APPS: Record<
     to: PROJECT_ROUTE.e2e,
     tone: "bg-app-e2e/15 text-app-e2e",
   },
-  analytics: {
-    labelKey: "projects.apps.analytics",
-    Icon: BarChartSquare02,
-    to: PROJECT_ROUTE.analytics,
-    tone: "bg-app-analytics/15 text-app-analytics",
-  },
-  cdn: {
-    labelKey: "projects.apps.cdn",
-    Icon: Speedometer02,
-    to: PROJECT_ROUTE.monitor,
-    tone: "bg-app-cdn/15 text-app-cdn",
-  },
   automations: {
     labelKey: "projects.apps.automations",
     Icon: Zap,
     to: PROJECT_ROUTE.automations,
     tone: "bg-app-automations/15 text-app-automations",
-  },
-  experiments: {
-    labelKey: "projects.apps.experiments",
-    Icon: Beaker02,
-    to: PROJECT_ROUTE.experiments,
-    tone: "bg-app-experiments/15 text-app-experiments",
   },
   calendar: {
     labelKey: "projects.apps.calendar",

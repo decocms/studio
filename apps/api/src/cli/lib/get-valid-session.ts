@@ -6,6 +6,21 @@ import {
   writeSession,
 } from "./session";
 
+/**
+ * The session expired and has no refresh token to renew it with. The file is
+ * kept: whatever wrote it (a login, or the environment that provided it) is
+ * the only thing that can replace it.
+ */
+export class SessionExpiredError extends Error {
+  readonly target: string;
+
+  constructor(target: string) {
+    super(`Session for ${target} expired and has no refresh token`);
+    this.name = "SessionExpiredError";
+    this.target = target;
+  }
+}
+
 /** Treat a session as expired this many seconds before its declared expiry, to avoid races. */
 const EXPIRY_SKEW_SECONDS = 60;
 
@@ -23,8 +38,10 @@ export interface GetValidSessionOptions {
  *
  * Returns null when:
  *  - no session file exists, OR
- *  - the session is expired and has no refresh token, OR
  *  - the refresh token is rejected by the server (invalid_grant).
+ *
+ * Throws SessionExpiredError when the session is expired and has no refresh
+ * token.
  *
  * Throws RefreshFailedError("transient") when the refresh request fails
  * for network/server reasons (5xx, fetch rejection) — callers can decide
@@ -40,6 +57,7 @@ export async function getValidSession(
 
   const now = opts.now ?? Date.now;
   if (!isExpired(session, now())) return session;
+  if (!session.refreshToken) throw new SessionExpiredError(session.target);
 
   try {
     const refreshed = await refreshSession(session, opts.fetch, now);

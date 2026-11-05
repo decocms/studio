@@ -7,7 +7,7 @@
  *
  * Only the chrome differs, and the caller owns it: the dialog wraps this in
  * <DialogContent> and supplies a built-in close X (so this renders a sr-only/
- * inline <DialogTitle> for a11y and a spacer to clear that X), while the panel
+ * inline <DialogTitle> for a11y and a bar whose padding clears that X), while the panel
  * wraps it in a plain column and gets an explicit close button here.
  */
 
@@ -173,7 +173,7 @@ export function LibraryFilePreview({
 
   // HTML hands the whole panel (toolbar included) to the shared surface so it
   // is pixel-identical to the chat deck tab. The dialog keeps a sr-only title
-  // for a11y and a spacer to clear its built-in close X; the panel appends an
+  // for a11y and the dialog bar, whose padding clears its built-in close X; the panel appends an
   // explicit close button. Keyed per file: the editor hook holds per-file
   // state (source cache, debounced saves) that must not survive a path switch.
   if (file && entry && isHtml(filename)) {
@@ -185,7 +185,7 @@ export function LibraryFilePreview({
           readUrl={file.downloadUrl}
           marker={entryMarker(entry)}
           toolbarClassName={
-            variant === "aside" ? barClassName(variant) : undefined
+            variant === "panel" ? undefined : barClassName(variant)
           }
           title={filename}
           placement={placement}
@@ -201,9 +201,7 @@ export function LibraryFilePreview({
                 placement={placement}
               />
               {seeInLibrary}
-              {isDialog ? (
-                <div className="w-8 shrink-0" />
-              ) : (
+              {!isDialog && (
                 <>
                   {expandButton}
                   <CloseButton onClose={onClose} placement={placement} />

@@ -13,6 +13,7 @@ import {
   GitMerge,
   Microphone01,
   LayoutAlt01,
+  PackagePlus,
   Pilcrow01,
   SearchLg,
   Stars02,
@@ -439,10 +440,20 @@ export function BlogSettings() {
 }
 
 /**
- * Which blocks editor the org's members get. Not a `FlagToggle`: any member may
- * switch it (ORGANIZATION_BLOCKS_EDITOR_SET), not only org:manage holders.
+ * Which blocks editor the org's members get, and what the editor may do.
+ *
+ * The editor switch is not a `FlagToggle`: any member may change it
+ * (ORGANIZATION_BLOCKS_EDITOR_SET), not only org:manage holders. The rest are
+ * org flags, written through ORGANIZATION_SETTINGS_UPDATE, so they are shown
+ * only to a member who can actually save them — a switch whose every click
+ * ends in a permission error reads as broken.
  */
-export function BlocksEditorSettings() {
+export function BlocksEditorSettings({
+  manageable = false,
+}: {
+  /** The viewer holds `org:manage`, so the org-flag switches can save. */
+  manageable?: boolean;
+}) {
   const t = useT();
   // The org's own choice, not one site's editor (v8 sites always get it).
   const enabled = useOrgFlag("new_blocks_editor");
@@ -468,12 +479,22 @@ export function BlocksEditorSettings() {
             />
           }
         />
-        <FlagToggle
-          flag="multi_app_preview"
-          icon={<Columns02 size={16} />}
-          titleKey="settings.multiAppPreview.title"
-          descriptionKey="settings.multiAppPreview.description"
-        />
+        {manageable && (
+          <>
+            <FlagToggle
+              flag="site_apps_install_enabled"
+              icon={<PackagePlus size={16} />}
+              titleKey="settings.siteAppsInstall.title"
+              descriptionKey="settings.siteAppsInstall.description"
+            />
+            <FlagToggle
+              flag="multi_app_preview"
+              icon={<Columns02 size={16} />}
+              titleKey="settings.multiAppPreview.title"
+              descriptionKey="settings.multiAppPreview.description"
+            />
+          </>
+        )}
       </SettingsCard>
     </SettingsSection>
   );

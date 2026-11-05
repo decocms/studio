@@ -345,7 +345,7 @@ test.describe("automation board column trigger", () => {
     expect((await builtin())?.active).toBe(false);
   });
 
-  test("a column's rules turn the automations that run there on and off", async ({
+  test("a column's sheet lists the automations that run there and opens them", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -363,28 +363,34 @@ test.describe("automation board column trigger", () => {
         }>("AUTOMATION_LIST", {})
       ).automations.find((a) => a.system_key === "implementer");
     await expect.poll(implementer).toBeDefined();
+    const builtin = (await implementer())!;
     // The board draws its lanes once it has a card.
     await call("TASK_BOARD_ITEM_CREATE", { title: "Something to do" });
-    await call("TASK_BOARD_PROMPT_UPSERT", {
-      columnKey: "in_progress",
-      prompt: "Follow the repo's conventions.",
-      skills: [],
-    });
 
     await page.goto(`/${orgSlug}/tasks`);
-    // The column's rules open from its "…" menu.
+    // The sheet opens from the column's "…" menu.
     const menu = page.getByRole("button", {
       name: "More actions for In Progress",
     });
     await menu.waitFor({ state: "attached", timeout: 30_000 });
     await menu.click({ force: true });
-    await page.getByRole("menuitem", { name: "Rules and automations" }).click();
-    const toggle = page.getByRole("switch", {
-      name: "Run Implementer on cards that land here",
-    });
-    await expect(toggle).toBeChecked();
-    await toggle.click();
+    await page.getByRole("menuitem", { name: "How this column works" }).click();
 
-    await expect.poll(async () => (await implementer())?.active).toBe(false);
+    const sheet = page.getByRole("dialog", { name: "In Progress" });
+    await expect(
+      sheet.getByText(
+        "The agent implements the task and opens a pull request for review.",
+      ),
+    ).toBeVisible();
+    // Read-only: the automation is edited on its own page, one click away.
+    const row = sheet.getByRole("link", { name: /Implementer/ });
+    await expect(row).toContainText(
+      builtin.active ? "Runs when a card enters" : "Off",
+    );
+    await expect(sheet.getByRole("switch")).toHaveCount(0);
+    await row.click();
+    await expect(page).toHaveURL((url) =>
+      url.pathname.endsWith(`/automations/${builtin.id}`),
+    );
   });
 });

@@ -3,7 +3,6 @@
  * status, period end. Platform-written only (the webhook is the writer).
  */
 
-import { sql } from "kysely";
 import type { Kysely, Selectable } from "kysely";
 import type { Database } from "./types";
 
@@ -17,8 +16,6 @@ function toBillingRow(
     stripeSubscriptionId: row.stripe_subscription_id,
     currentPeriodEnd: row.current_period_end,
     lastStripeEventAt: row.last_stripe_event_at,
-    freeTaskExecutions: row.free_task_executions,
-    monthlyTaskExecutions: row.monthly_task_executions,
   };
 }
 
@@ -31,10 +28,6 @@ export interface OrganizationBillingRow {
   /** Newest applied Stripe event's `created` time — the webhook skips
    *  deliveries older than this so out-of-order events can't regress state. */
   lastStripeEventAt: Date | null;
-  /** Operator-set per-org allowances replacing the deployment defaults
-   *  (migration 164). null = use the default. */
-  freeTaskExecutions: number | null;
-  monthlyTaskExecutions: number | null;
 }
 
 export class OrganizationBillingStorage {
@@ -53,9 +46,8 @@ export class OrganizationBillingStorage {
 
   /**
    * The org's billing row, creating the empty one if the creation-time seed
-   * never ran. Same self-heal `claimTaskUnderLimit` does, and for the same
-   * reason: the row is a lock anchor and a binding slot, never a fact about
-   * the org, so its absence must not decide anything.
+   * never ran. The row is a binding slot, never a fact about the org, so its
+   * absence must not decide anything.
    *
    * The webhook needs it because "no row" there meant a PAID checkout was
    * acknowledged and dropped — no plan, no refund, no orphan cleanup.
@@ -99,8 +91,7 @@ export class OrganizationBillingStorage {
    * The reconciliation input. Every other path back to Free is a WEBHOOK, and a
    * webhook is the one part of this system we do not control: Stripe gives up
    * after ~3 days of 5xx and disables an endpoint that keeps failing. Nothing
-   * else notices — `current_period_end` is written and then read only by the
-   * task-quota bucket key — so a lost `subscription.deleted` left an org holding
+   * else notices, so a lost `subscription.deleted` left an org holding
    * a paid tier, a funded provider key and every gated feature, permanently.
    *
    * A row that renewed normally has had `current_period_end` pushed forward by
@@ -213,198 +204,5 @@ export class OrganizationBillingStorage {
       .where("organization_id", "=", organizationId)
       .executeTakeFirst();
     return (result.numUpdatedRows ?? 0n) > 0n;
-  }
-
-  // Task-execution quota claims (billing/task-quota.ts): one row per
-  // reports-pushed task ever dispatched; period_key buckets the count.
-
-  /** This task's claim (run tally + charge state), or null when unclaimed. */
-  async taskClaim(
-    taskBoardItemId: string,
-  ): Promise<{ runCount: number; state: string } | null> {
-    const row = await this.db
-      .selectFrom("task_quota_claims")
-      .select(["run_count", "state"])
-      .where("task_board_item_id", "=", taskBoardItemId)
-      .executeTakeFirst();
-    return row ? { runCount: row.run_count, state: row.state } : null;
-  }
-
-  /** Claims charged against a period — the ONE definition of "counts"
-   *  (released ones were refunded), shared by the read and the claim
-   *  transaction so the two can never drift. */
-  private static liveClaimCount(
-    db: Kysely<Database>,
-    organizationId: string,
-    periodKey: string,
-  ): Promise<number> {
-    return db
-      .selectFrom("task_quota_claims")
-      .select((eb) => eb.fn.countAll().as("count"))
-      .where("organization_id", "=", organizationId)
-      .where("period_key", "=", periodKey)
-      .where("state", "<>", "released")
-      .executeTakeFirst()
-      .then((row) => Number(row?.count ?? 0));
-  }
-
-  async countTaskClaims(
-    organizationId: string,
-    periodKey: string,
-  ): Promise<number> {
-    return await OrganizationBillingStorage.liveClaimCount(
-      this.db,
-      organizationId,
-      periodKey,
-    );
-  }
-
-  /**
-   * Atomic claim-under-limit: locks the org's billing row (FOR UPDATE) so
-   * concurrent claims for the SAME org serialize — a burst of N parallel
-   * dispatches can never read the same stale count and all pass (the
-   * quota-cheat vector). Claims are rare events; the per-org lock is held
-   * for three indexed statements.
-   *
-   * The lock ANCHOR must exist or `FOR UPDATE` locks zero rows and the
-   * serialization silently degrades — so the billing row is self-healed
-   * first (orgs whose creation-time seed failed have none).
-   *
-   * A dispatch CHARGES (state `held`, counted); `releaseTaskClaim` refunds it
-   * only when the run demonstrably produced nothing. A released claim keeps
-   * its `run_count`, so re-dispatching it re-takes a slot but can never reset
-   * the per-task cap.
-   *
-   * Outcomes:
-   *  - "claimed": a fresh (or re-charged) claim consumed a period slot;
-   *  - "rerun": the task was already charged and its run_count incremented
-   *    (review bounces / conflict resolutions cost nothing extra);
-   *  - "runs_exhausted": the task's own run_count hit `maxRunsPerTask` — one
-   *    claim must not fund unlimited dispatches (re-delegation loop);
-   *  - "exhausted": the period bucket is full.
-   */
-  async claimTaskUnderLimit(
-    organizationId: string,
-    taskBoardItemId: string,
-    periodKey: string,
-    limit: number,
-    maxRunsPerTask: number,
-  ): Promise<"claimed" | "rerun" | "runs_exhausted" | "exhausted"> {
-    return await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("organization_billing")
-        .values({ organization_id: organizationId })
-        .onConflict((oc) => oc.column("organization_id").doNothing())
-        .execute();
-      await trx
-        .selectFrom("organization_billing")
-        .select("organization_id")
-        .where("organization_id", "=", organizationId)
-        .forUpdate()
-        .executeTakeFirstOrThrow();
-      const existing = await trx
-        .selectFrom("task_quota_claims")
-        .select(["run_count", "state"])
-        .where("task_board_item_id", "=", taskBoardItemId)
-        .executeTakeFirst();
-      // The per-task cap is checked FIRST and against the persisted tally, so
-      // a refunded claim can't be looped for free dispatches.
-      if (existing && existing.run_count >= maxRunsPerTask) {
-        return "runs_exhausted";
-      }
-      const countedForPeriod = () =>
-        OrganizationBillingStorage.liveClaimCount(
-          trx,
-          organizationId,
-          periodKey,
-        );
-      if (existing && existing.state !== "released") {
-        await trx
-          .updateTable("task_quota_claims")
-          .set({ run_count: existing.run_count + 1 })
-          .where("task_board_item_id", "=", taskBoardItemId)
-          .execute();
-        return "rerun";
-      }
-      if ((await countedForPeriod()) >= limit) return "exhausted";
-      if (existing) {
-        // Re-charge a refunded claim: it takes a slot again (under the
-        // CURRENT period's key) while the run tally carries over.
-        await trx
-          .updateTable("task_quota_claims")
-          .set({
-            state: "held",
-            period_key: periodKey,
-            run_count: existing.run_count + 1,
-          })
-          .where("task_board_item_id", "=", taskBoardItemId)
-          .execute();
-        return "claimed";
-      }
-      await trx
-        .insertInto("task_quota_claims")
-        .values({
-          task_board_item_id: taskBoardItemId,
-          organization_id: organizationId,
-          period_key: periodKey,
-          state: "held",
-        })
-        .execute();
-      return "claimed";
-    });
-  }
-
-  /** Refund a charged claim: the run produced nothing (see the single
-   *  decision site in tools/task-board/run-reactions.ts). Org-scoped so the
-   *  invariant doesn't rest on every future caller passing a scoped id.
-   *  Idempotent; `run_count` is left intact on purpose, so a refund can't be
-   *  looped into free dispatches. Returns whether a held claim actually
-   *  transitioned — false for a repeat release or a claim that never existed,
-   *  so telemetry can report only refunds that happened. */
-  async releaseTaskClaim(
-    organizationId: string,
-    taskBoardItemId: string,
-  ): Promise<boolean> {
-    const result = await this.db
-      .updateTable("task_quota_claims")
-      .set({ state: "released" })
-      .where("organization_id", "=", organizationId)
-      .where("task_board_item_id", "=", taskBoardItemId)
-      .where("state", "=", "held")
-      .executeTakeFirst();
-    return (result.numUpdatedRows ?? 0n) > 0n;
-  }
-
-  /**
-   * Undo a claim whose dispatch never started. Always rolls the run tally back —
-   * unlike a refund, where the run DID happen and only produced nothing, so its
-   * tally has to stand. Nothing ran here, so nothing may be spent: a task whose
-   * dispatch keeps failing (no model configured) would otherwise burn its
-   * per-task cap and die with a quota error for runs that never existed.
-   *
-   * `releaseSlot` is the difference between the two claim outcomes this undoes.
-   * A `"claimed"` dispatch TOOK a period slot, so it gives that back too. A
-   * `"rerun"` rode a slot an earlier run already paid for (and may have shipped
-   * a PR from) — releasing it would refund a run that really happened, so only
-   * the tally is rolled back.
-   *
-   * `greatest(…, 0)` because a claim can only be undone as many times as it was
-   * charged; a double call must not drive the cap negative.
-   */
-  async rollbackTaskClaim(
-    organizationId: string,
-    taskBoardItemId: string,
-    { releaseSlot }: { releaseSlot: boolean },
-  ): Promise<void> {
-    await this.db
-      .updateTable("task_quota_claims")
-      .set(() => ({
-        ...(releaseSlot ? { state: "released" as const } : {}),
-        run_count: sql<number>`greatest(run_count - 1, 0)`,
-      }))
-      .where("organization_id", "=", organizationId)
-      .where("task_board_item_id", "=", taskBoardItemId)
-      .where("state", "=", "held")
-      .execute();
   }
 }

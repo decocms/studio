@@ -7,7 +7,7 @@
   "dispatch-queue/thread-gate-workflow.ts": "2d778d4f178f8fc0517c6f7fb3bf145f765de3d1c8bae66e63d533fbfd840698",
   "file-storage/dbos-org-repo-sync.ts": "60e34fb4d43f48e35f5a91c573546d15a7a9776e4dbed4e0bd8597c6a1f5b3d1",
   "file-storage/dbos-public-sets-sync.ts": "816e1ae7d1d3a12f9e1213f1a1e5efdcc5e46efbcc203ce42a91c15ed0b59760",
-  "harnesses/decopilot/background-tool-workflow.ts": "1ae73b5a614ae6439942c1e52de52deeb3e18d1bb7e528be820720b592cfe833",
+  "harnesses/decopilot/background-tool-workflow.ts": "909b87406d0cdce42d12c19d2fd0c29113e2ec78d558a132f6159129028b339c",
   "jira/dbos-jira-trigger-sweep.ts": "649651ee57fde683050a71158bf0248162323875ffb705b39d7a549bddd8f20a",
   "monitoring/dbos-order-monitor.ts": "dd8ee6a9062b200237a9d2a0a776354c2e245b6d0081f42e9d44a17c398f4063",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",

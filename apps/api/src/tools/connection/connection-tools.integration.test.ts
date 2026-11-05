@@ -91,7 +91,6 @@ describe("Connection Tools", () => {
         connectionCredentialVault: new ConnectionCredentialVaultStorage(
           database.db,
         ),
-        subsidizedGatewayKeys: null as never,
         experiments: null as never,
         organizationSettings: {
           get: async () => null,

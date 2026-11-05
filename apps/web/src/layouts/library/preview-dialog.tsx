@@ -23,7 +23,11 @@ export function LibraryPreviewDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="flex h-[88vh] w-[94vw] max-w-none! flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl!">
+      <DialogContent
+        className="flex h-[88vh] w-[94vw] max-w-none! flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl!"
+        // Centred on the h-11 bar, inside the space its pr-12 leaves.
+        closeButtonClassName="top-2 right-3"
+      >
         <LibraryFilePreview
           previewPath={previewPath}
           onClose={onClose}

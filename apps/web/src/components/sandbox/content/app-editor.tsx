@@ -1,4 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ChevronRight } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
@@ -9,7 +10,7 @@ import { AddSectionModal } from "@/components/sections-editor/add-section-modal"
 import { useSectionPreviewBase } from "@/components/sections-editor/use-section-preview-base";
 import { appLabel } from "@/components/sections-editor/page-list";
 import {
-  isResolvableManifestApp,
+  hasManifestBlockSchema,
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
@@ -20,7 +21,10 @@ import {
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
-import { resolveAppEditorSchema } from "./app-editor-schema";
+import {
+  hasEditableAppEditorSchema,
+  resolveAppEditorSchema,
+} from "./app-editor-schema";
 import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
@@ -65,11 +69,11 @@ function AppEditorForm({
   decofile,
   title: titleOverride,
   excludeFields,
-  schemaPending = false,
   previewBaseUrl = null,
   notice,
   saveGuard,
   persistDefaults,
+  schemaWaiting = true,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -81,7 +85,6 @@ function AppEditorForm({
   title?: string;
   /** Top-level schema fields to omit (e.g. site `seo` is edited in the SEO tab). */
   excludeFields?: readonly string[];
-  schemaPending?: boolean;
   previewBaseUrl?: string | null;
   /** Shown above the form (e.g. that the block is not saved yet). */
   notice?: ReactNode;
@@ -89,9 +92,18 @@ function AppEditorForm({
   saveGuard?: SaveGuard;
   /** `false`: the form's `@default`s are saved with the first change, not when it opens. */
   persistDefaults?: boolean;
+  /**
+   * Whether the owner is still re-reading `/live/_meta` for this block. It
+   * owns the budget that ends the wait (see `schema-poll`), and without it
+   * this form promises a build that is no longer coming. Defaults to true for
+   * a caller with no poll of its own, which is the behaviour it had before.
+   */
+  schemaWaiting?: boolean;
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
+  /** Whether a build that could still generate this block's schema exists. */
+  const session = useSessionRuntime(virtualMcpId);
   // Section-gallery previews render against the sandbox dev server, falling
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
@@ -102,8 +114,27 @@ function AppEditorForm({
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
   const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
-  const hasEditableFields =
-    !!schema && Object.keys(schema.properties ?? {}).length > 0;
+  const hasEditableFields = hasEditableAppEditorSchema(
+    resolveType,
+    meta,
+    excludeFields,
+  );
+  /**
+   * The manifest has no entry for this block yet — an app installed into the
+   * working tree, waiting for the build that generates its schema. One state,
+   * not two: a spinner and a message that took turns as the dev server went
+   * down and came back read as two different answers to the same question.
+   *
+   * Only where a build is actually coming. A Fast Preview session never builds
+   * anything, a block with no `__resolveType` has nothing to look up, and a
+   * wait whose budget ran out is over — all three are "there is no form here",
+   * and waiting on them spins forever.
+   */
+  const awaitingSchema =
+    schemaWaiting &&
+    resolveType !== "" &&
+    !(session.resolved && session.runtime === "cms") &&
+    !hasManifestBlockSchema(resolveType, meta);
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 
@@ -284,18 +315,16 @@ function AppEditorForm({
                 onRequestAddSection={handleRequestAddSection}
                 sandbox={{ orgSlug, virtualMcpId, branch, threadId }}
               />
-            ) : schemaPending ? (
-              <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">
-                <Spinner className="size-4" />
-                {t("sandbox.appEditor.loadingSchema")}
-              </div>
             ) : (
-              <div className="py-6 text-center text-xs text-muted-foreground">
-                {t(
-                  isResolvableManifestApp(meta, resolveType)
-                    ? "sandbox.appEditor.noEditableSchema"
-                    : "sandbox.appEditor.schemaAwaitsBuild",
-                )}
+              <div className="flex flex-col items-center gap-3 py-6 text-center text-xs text-muted-foreground">
+                {awaitingSchema && <Spinner className="size-4" />}
+                <p>
+                  {t(
+                    awaitingSchema
+                      ? "sandbox.appEditor.schemaAwaitsBuild"
+                      : "sandbox.appEditor.noEditableSchema",
+                  )}
+                </p>
               </div>
             )}
           </div>

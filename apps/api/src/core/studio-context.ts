@@ -223,6 +223,13 @@ export interface StudioAuth {
 
   /** Org the {@link permissions} map was resolved for (cross-org reuse guard). */
   permissionsOrganizationId?: string;
+
+  /**
+   * The thread the caller's API key was minted for (a sandbox run's key), from
+   * the key's stored metadata — never from the request. Such a caller gets
+   * that thread's tool surface on `/api/:org/tools`.
+   */
+  boundThreadId?: string;
 }
 
 // ============================================================================
@@ -302,7 +309,6 @@ import type { OrganizationJoinRequestStorage } from "../storage/organization-joi
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
-import type { SubsidizedGatewayKeyStorage } from "@/storage/subsidized-gateway-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
@@ -359,7 +365,6 @@ export interface StudioStorage {
   projectSidebar: ProjectSidebarStorage;
   experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;
-  subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgSites: OrgSiteStorage;

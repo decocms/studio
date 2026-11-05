@@ -20,7 +20,11 @@ import type { SandboxConfig } from "@/components/sections-editor/fields/field-pr
 import type { ReferencedBlockSaveFn } from "@/components/sections-editor/save-referenced-block";
 import { useT } from "@/i18n/use-t.ts";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
-import { type BlogBlockType, discoverBlogBlockTypes } from "./blog-data";
+import {
+  type BlogBlockType,
+  customBlogSectionPaths,
+  discoverBlogBlockTypes,
+} from "./blog-data";
 import { BlockPicker } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
 import { type RawBlock } from "./blocks/block-registry";
@@ -98,7 +102,10 @@ export function BlockDocument({
 }) {
   const t = useT();
   const hideDefaults = useHideDefaultBlogBlocks();
-  const blockTypes = discoverBlogBlockTypes(meta, { hideDefaults });
+  const blockTypes = discoverBlogBlockTypes(meta, {
+    hideDefaults,
+    customPaths: decofile ? customBlogSectionPaths(decofile) : [],
+  });
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     seedBlockItems(value),

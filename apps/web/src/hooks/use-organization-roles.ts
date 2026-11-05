@@ -8,6 +8,7 @@
 import { CONNECTION_SCOPE_KEY } from "@decocms/shared/auth/connection-scope";
 import { permissionListFilter } from "@decocms/shared/auth/permission-list";
 import { PROJECT_SCOPE_KEY } from "@decocms/shared/auth/project-scope";
+import { useCapabilities } from "@/hooks/use-capability";
 import { useOrgAuthClient } from "@/hooks/use-org-auth-client";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
@@ -157,11 +158,15 @@ function parsePermission(
 /**
  * Hook to get all organization roles (built-in + custom)
  *
+ * Custom roles come from Better Auth's listRoles, which is owner/admin-only and
+ * logs a server error for anyone else, so other members get the built-ins.
+ *
  * @returns List of roles available for the organization
  */
 export function useOrganizationRoles() {
   const { locator } = useProjectContext();
   const orgAuth = useOrgAuthClient();
+  const { isPrivileged } = useCapabilities();
 
   const {
     data: customRolesData,
@@ -185,6 +190,7 @@ export function useOrganizationRoles() {
         return [];
       }
     },
+    enabled: isPrivileged,
     staleTime: 30000, // Cache for 30 seconds
   });
 

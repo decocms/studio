@@ -1,12 +1,20 @@
 /** Project settings tabs. Existing `?section=` links keep their destinations. */
 
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import { Database01, Link01, Settings01 } from "@untitledui/icons";
+import {
+  Database01,
+  GitBranch01,
+  LayoutAlt01,
+  Link01,
+  Settings01,
+} from "@untitledui/icons";
 import type { ComponentType, SVGProps } from "react";
 
 export const PROJECT_SETTINGS_SECTION_KEYS = [
   "general",
+  "views",
   "connections",
+  "repository",
   "site",
 ] as const;
 
@@ -28,10 +36,20 @@ export const PROJECT_SETTINGS_SECTIONS: Record<
     titleKey: "virtualMcp.settings.general.title",
     descriptionKey: "virtualMcp.settings.general.description",
   },
+  views: {
+    icon: LayoutAlt01,
+    titleKey: "virtualMcp.settings.views.title",
+    descriptionKey: "virtualMcp.settings.views.description",
+  },
   connections: {
     icon: Link01,
     titleKey: "virtualMcp.settings.connections.title",
     descriptionKey: "virtualMcp.settings.connections.description",
+  },
+  repository: {
+    icon: GitBranch01,
+    titleKey: "virtualMcp.settings.repository.title",
+    descriptionKey: "virtualMcp.settings.repository.description",
   },
   site: {
     icon: Database01,

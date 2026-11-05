@@ -59,7 +59,6 @@
 
 import type { StudioContextFactory } from "@/automations/fire";
 import type { StudioContext } from "@/core/studio-context";
-import type { OrganizationBillingStorage } from "@/storage/organization-billing";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { TaskBoardItem } from "@/storage/types";
 import {
@@ -77,9 +76,7 @@ import {
   emitTaskBoardUpdated,
   handTaskToHuman,
   reactToFailedTaskRun,
-  refundUnproductiveTaskClaims,
 } from "./run-reactions";
-import { TaskQuotaError } from "@/billing/task-quota";
 import { ABANDONED_FAILURE_REASON } from "./stall-recovery";
 import { STALL_FAILURE_REASON } from "@/api/routes/decopilot/run-reactor";
 import { THREAD_EXPIRY_MS } from "@/tools/thread/helpers";
@@ -107,7 +104,7 @@ const DEFAULT_BATCH_SIZE = 50;
 
 /** How long to wait before retrying a retry whose DISPATCH threw (not the run —
  *  the enqueue itself). Short: nothing was spent, and the failure is usually a
- *  blip in the context factory or the quota read. */
+ *  blip in the context factory. */
 const REARM_DELAY_MS = 60 * 1000;
 
 /** How long a card may sit In Review with no linked PR, or In Progress after
@@ -122,20 +119,6 @@ const NO_PR_HANDOFF_GRACE_MS = 15 * 60 * 1000;
  *  failure) always wins the normal case, short enough that a card whose pod died
  *  mid-reaction recovers on its own. */
 const UNHANDLED_FAILURE_GRACE_MS = 2 * 60 * 1000;
-
-/**
- * True for a retry dispatch failure that a later tick cannot fix.
- *
- * Everything else the dispatch can throw (the context factory, a quota READ, a
- * DB blip) is a blip worth re-arming for. A quota REJECTION is not: the
- * per-task cap and an exhausted period bucket both stay exhausted, and the
- * re-arm deliberately leaves `attempts` untouched — so that one failure mode
- * would re-throw every minute forever with a budget that never terminates.
- * Pure — unit-tested.
- */
-export function isPermanentDispatchFailure(err: unknown): boolean {
-  return err instanceof TaskQuotaError;
-}
 
 /**
  * True when a PR-less card has been In Review long enough to hand over.
@@ -169,7 +152,6 @@ export class TaskBoardReviewSweeper {
   constructor(
     private readonly taskBoard: TaskBoardStorage,
     private readonly contextFactory: StudioContextFactory,
-    private readonly billing: OrganizationBillingStorage,
     private readonly options: TaskBoardReviewSweeperOptions = {},
   ) {}
 
@@ -279,7 +261,7 @@ export class TaskBoardReviewSweeper {
    * no longer advances to In Review, that would be a permanent strand. This is
    * the floor: the reaction is idempotent (it re-reads the card and both writes
    * are conditional on In Progress), so re-running it costs a query and fixes the
-   * gap and refunds the claim.
+   * gap.
    */
   private async reactToUnhandledFailures(limit: number): Promise<void> {
     const stuck = await this.taskBoard.listItemsStuckAfterFailure(
@@ -292,12 +274,6 @@ export class TaskBoardReviewSweeper {
           `[task-board-review-sweeper] reacting to an unhandled failure on ${id}`,
         );
         await reactToFailedTaskRun(this.taskBoard, threadId, organizationId);
-        await refundUnproductiveTaskClaims(
-          this.taskBoard,
-          this.billing,
-          threadId,
-          organizationId,
-        );
       } catch (err) {
         console.error(
           `[task-board-review-sweeper] unhandled-failure reaction for ${id} failed`,
@@ -432,23 +408,10 @@ export class TaskBoardReviewSweeper {
           `[task-board-review-sweeper] retry dispatch for ${id} failed`,
           err,
         );
-        // A failure no later tick can fix must not be re-armed (see
-        // `isPermanentDispatchFailure`) — the card would sit In Progress with
-        // no run behind it and the same rejection every minute. Send it back
-        // to Backlog with the reason, the same terminal the retry budget itself
-        // has when it runs out.
-        if (isPermanentDispatchFailure(err)) {
-          await this.returnToBacklog(
-            id,
-            organizationId,
-            err instanceof Error ? err.message : String(err),
-          );
-          continue;
-        }
         // The claim already cleared `retry_at`, so leaving it here would spend
         // the attempt on a run that never started — the exact silent strand this
         // whole path exists to remove. Re-arm it instead: the dispatch itself can
-        // fail on infrastructure (the context factory, the quota read), and that
+        // fail on infrastructure (the context factory), and that
         // deserves the same recovery as the run it was going to start. The
         // attempt counter is untouched, so the budget still terminates.
         await this.taskBoard
@@ -467,48 +430,6 @@ export class TaskBoardReviewSweeper {
       }
     }
     return count;
-  }
-
-  /**
-   * Park a card a retry can no longer help back in Backlog, with the reason on
-   * its timeline — the same landing `reactToFailedTaskRun` gives a card that
-   * runs out of retry budget, so a human sees one shape for "the agent stopped
-   * and it needs you" rather than a card frozen In Progress.
-   */
-  private async returnToBacklog(
-    id: string,
-    organizationId: string,
-    reason: string,
-  ): Promise<void> {
-    try {
-      const item = await this.taskBoard.getById(id, organizationId);
-      if (!item || item.status !== LANES.progress) return;
-      const returned = await this.taskBoard.returnToBacklogAfterFailure(
-        id,
-        organizationId,
-        item.updatedBy,
-      );
-      if (!returned) return;
-      await this.taskBoard
-        .recordActivity({
-          taskBoardItemId: id,
-          action: "status_changed",
-          actorId: null,
-          data: {
-            from: LANES.progress,
-            to: LANES.intake,
-            reason,
-            retriesSpent: item.retryAttempts,
-          },
-        })
-        .catch(() => {});
-      emitTaskBoardUpdated(organizationId, returned);
-    } catch (err) {
-      console.error(
-        `[task-board-review-sweeper] returning ${id} to backlog failed`,
-        err,
-      );
-    }
   }
 
   /**

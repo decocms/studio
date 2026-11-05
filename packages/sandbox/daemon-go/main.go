@@ -1432,9 +1432,13 @@ func main() {
 			"rebase":  routes.GitRebase(gitDeps),
 		},
 		setup: map[string]http.HandlerFunc{
-			"clone":   routes.Setup("clone", func(string) { d.orchestrator.ResumeFrom(setup.StepClone) }),
-			"install": routes.Setup("install", func(string) { d.orchestrator.ResumeFrom(setup.StepInstall) }),
-			"start":   routes.Setup("start", func(string) { d.orchestrator.ResumeFrom(setup.StepStart) }),
+			"clone": routes.Setup("clone", func(bool) { d.orchestrator.ResumeFrom(setup.StepClone) }),
+			// `force` is honoured by install and start; each documents what it
+			// bypasses on the orchestrator. It is carried into the queued step
+			// rather than applied here, so a step already in flight cannot undo
+			// it.
+			"install": routes.Setup("install", d.orchestrator.ResumeInstall),
+			"start":   routes.Setup("start", d.orchestrator.ResumeStart),
 		},
 		tasksList:    routes.TasksList(tasksDeps),
 		tasksGet:     routes.TasksGet(tasksDeps),

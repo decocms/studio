@@ -65,7 +65,7 @@ export function useApiKeysList(options?: {
 export function useCreateApiKey(): UseMutationResult<
   CreatedApiKey,
   Error,
-  { name: string; permissions?: Record<string, string[]> }
+  { name: string; permissions: Record<string, string[]>; expiresIn?: number }
 > {
   const { org } = useProjectContext();
   const client = useMCPClient({
@@ -79,10 +79,7 @@ export function useCreateApiKey(): UseMutationResult<
     mutationFn: async (input) => {
       const result = (await client.callTool({
         name: "API_KEY_CREATE",
-        arguments: {
-          name: input.name,
-          permissions: input.permissions ?? { "*": ["*"] },
-        },
+        arguments: input,
       })) as ToolEnvelope<CreatedApiKey>;
       return unwrap(result, "Failed to create API key");
     },

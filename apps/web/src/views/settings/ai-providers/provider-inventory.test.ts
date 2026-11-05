@@ -27,11 +27,10 @@ const anthropic: AiProviderInfo = {
 };
 
 describe("AI provider inventory", () => {
-  test("keeps legacy credentials in inventory without treating them as hosted", () => {
+  test("does not treat legacy credentials as hosted", () => {
     const keys = [key("claude", "claude-code"), key("codex", "codex")];
 
     expect(getProviderInventoryState(keys)).toEqual({
-      hasInventory: true,
       hasHostedProvider: false,
       hasDeco: false,
     });

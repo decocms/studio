@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  elementCtr,
   frameUrl,
   gateViews,
   parseHeatmap,
@@ -61,6 +62,63 @@ const payload = {
       cells: {},
     },
   ],
+  hmValueSummary: [
+    {
+      visitors: "50",
+      conv_visitors: "5",
+      conv_views: "6",
+      orders: "6",
+      revenue: 1000,
+      cvr_pct: 10,
+      rev_per_visitor: 20,
+      small_sample: 0,
+    },
+  ],
+  hmValue: [
+    {
+      root: "fs:hero#0",
+      el: "123",
+      clicks: "10",
+      click_visitors: "8",
+      conv_visitors: "4",
+      orders: "4",
+      revenue: 800,
+      cvr_pct: 50,
+      rev_per_visitor: 100,
+      cvr_index: 5,
+      rpv_index: 5,
+      small_sample: 1,
+    },
+  ],
+  hmValueLeaks: [
+    {
+      root: "",
+      el: "456",
+      clicks: "2",
+      click_visitors: "40",
+      conv_visitors: "0",
+      orders: "0",
+      revenue: 0,
+      cvr_pct: 0,
+      rev_per_visitor: 0,
+      cvr_index: 0,
+      rpv_index: 0,
+      small_sample: 0,
+      rev_gap: 577.78,
+    },
+  ],
+  heatmapValue: {
+    goal: "purchase",
+    unit: "visitor",
+    attribution: "associative",
+    windowMinutes: 30,
+    minSample: 30,
+    summable: false,
+    sampled: true,
+    causal: false,
+    currency: "BRL",
+    supported: true,
+  },
   hmGrid: [{ fixed: 1, xb: 3, yb: 4, clicks: "5" }],
   hmScroll: [
     { depth: 10, views: "20", reach_pct: 100 },
@@ -98,6 +156,47 @@ describe("parseHeatmap", () => {
     expect(empty.scale).toBe(1);
     expect(empty.avgDepth).toBeNull();
     expect(empty.elements).toEqual([]);
+  });
+
+  it("keys element money by the same key the element list uses", () => {
+    expect(m.value.get("fs:hero#0|123")).toMatchObject({
+      clickVisitors: 8,
+      convVisitors: 4,
+      revenue: 800,
+      rpvIndex: 5,
+      smallSample: true,
+    });
+    expect(m.valueSummary).toMatchObject({ visitors: 50, revenue: 1000 });
+    expect(m.valueLeaks[0]).toMatchObject({ key: "|456", clickVisitors: 40 });
+  });
+
+  it("carries the caveats, and assumes the unsafe reading when they are absent", () => {
+    expect(m.valueModel).toMatchObject({
+      unit: "visitor",
+      attribution: "associative",
+      summable: false,
+      currency: "BRL",
+      supported: true,
+    });
+    // A payload from before `heatmapValue` existed must not be read as "this is
+    // summable, exact and causal" — the defaults are the cautious ones.
+    const old = parseHeatmap({ heatmapValue: {} }).valueModel;
+    expect(old).toMatchObject({
+      summable: false,
+      sampled: true,
+      causal: false,
+    });
+    expect(parseHeatmap({}).valueModel).toBeNull();
+  });
+
+  it("has no baseline when the page sold nothing, rather than a zeroed one", () => {
+    // All-zero would render as "this page converts nobody", which is a claim
+    // about the site; absent renders as "nothing to compare against".
+    expect(
+      parseHeatmap({ hmValueSummary: [{ visitors: "0" }] }).valueSummary,
+    ).toBeNull();
+    expect(parseHeatmap({}).value.size).toBe(0);
+    expect(parseHeatmap({}).valueLeaks).toEqual([]);
   });
 });
 
@@ -256,5 +355,66 @@ describe("heatmap tab gating", () => {
     expect(pickView(undefined, without)).toBe("overview");
     expect(pickView("vitals", without)).toBe("vitals");
     expect(pickView("heatmap", gateViews(views, ["heatmap"]))).toBe("heatmap");
+  });
+});
+
+describe("elementCtr", () => {
+  const m = parseHeatmap({
+    hmSummary: [{ views: "1000" }],
+    hmSections: [{ root: "fs:hero#0", seen_views: "400", reach_pct: 40 }],
+    hmElements: [
+      { root: "fs:hero#0", el: "1", clicks: "90", views: "60" },
+      { root: "", el: "2", clicks: "5", views: "5" },
+    ],
+  });
+
+  it("divides by the views that SAW the element's section, not by the page", () => {
+    const hero = m.elements.find((e) => e.el === "1");
+    expect(hero && elementCtr(m, hero)).toEqual({ ctr: 0.15, seen: 400 });
+  });
+
+  it("falls back to page views outside any section", () => {
+    const loose = m.elements.find((e) => e.el === "2");
+    expect(loose && elementCtr(m, loose)).toEqual({ ctr: 0.005, seen: 1000 });
+  });
+});
+
+describe("hmFunnel", () => {
+  it("splits the page baseline from the element rows", () => {
+    const m = parseHeatmap({
+      hmFunnel: [
+        {
+          root: "",
+          el: "0",
+          visitors: "50",
+          viewed: "20",
+          carted: "5",
+          checkout: "2",
+          bought: "1",
+        },
+        {
+          root: "fs:hero#0",
+          el: "1",
+          visitors: "10",
+          viewed: "8",
+          carted: "3",
+          checkout: "1",
+          bought: "1",
+        },
+      ],
+    });
+    expect(m.pageFunnel).toEqual({
+      visitors: 50,
+      viewed: 20,
+      carted: 5,
+      checkout: 2,
+      bought: 1,
+    });
+    expect(m.funnel.get("fs:hero#0|1")?.carted).toBe(3);
+    expect(m.funnel.size).toBe(1);
+  });
+
+  it("has no baseline when the panel is absent", () => {
+    expect(parseHeatmap({}).pageFunnel).toBeNull();
   });
 });

@@ -8,12 +8,10 @@
 import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
-// Shared with the quota gate, which charges the same class of task.
 import {
   IMPLEMENTER_SYSTEM_KEY,
   LINKED_CHATS_SYSTEM_KEY,
 } from "../automations/builtin";
-import { isReportsTask } from "../billing/task-quota";
 import { isBoardRunThread } from "../tools/task-board/task-run-context";
 import { createAutomationsStorage } from "./automations";
 import type {
@@ -32,6 +30,7 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   type TaskBoardHarnessId,
   DEFAULT_TASK_TYPE,
+  isReportsTask,
   isReviewerThreadTitle,
   LANES,
 } from "@decocms/shared/task-board";
@@ -661,14 +660,11 @@ export class TaskBoardStorage {
    * `external_key` instead of re-creating the card. A hard delete would
    * silently undo itself on the next scan — the import matches only OPEN items
    * by key, and a deleted row matches nothing. Keeping the row also keeps the
-   * card's comments, activity, threads and quota claim, so a restore brings
-   * back the same card, and deleting one can't refund a charged slot via
-   * `task_quota_claims`' ON DELETE CASCADE.
+   * card's comments, activity and threads, so a restore brings back the same
+   * card.
    *
-   * The predicate is `isReportsTask`, NOT "has an external_key" — the quota
-   * gate charges on `created_by = "system"`, and an imported item may omit its
-   * key. Keying dismissal on the key would leave keyless system cards
-   * hard-deletable, and therefore refundable.
+   * The predicate is `isReportsTask`, NOT "has an external_key": an imported
+   * item may omit its key.
    *
    * User-created cards are deleted outright.
    */

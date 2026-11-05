@@ -142,36 +142,7 @@ export const common = {
   "common.iconPicker.randomIcon": "Random icon",
   "common.iconPicker.uploadHint": "Click to upload an image (max 2MB)",
   "common.iconPicker.uploadTab": "Upload",
-  "common.importFromDecoDialog.cancel": "Cancel",
-  "common.importFromDecoDialog.failedToConnectGithub":
-    "Failed to connect GitHub",
-  "common.importFromDecoDialog.failedToCreateAgent":
-    "Failed to create the imported project",
-  "common.importFromDecoDialog.failedToPrepareImport":
-    "Failed to prepare deco.cx import",
-  "common.importFromDecoDialog.githubNotConnected":
-    "GitHub is not connected. Complete GitHub setup and try again.",
-  "common.importFromDecoDialog.import": "Import",
-  "common.importFromDecoDialog.importFailed": "Import failed: {error}",
-  "common.importFromDecoDialog.importSuccess": "Imported {slug} from deco.cx",
-  "common.importFromDecoDialog.importing": "Importing...",
-  "common.importFromDecoDialog.installGithubApp":
-    'Install the GitHub App on the "{owner}" organization to import this site. {installUrl}',
   "common.loading": "Loading",
-  "common.importFromDecoDialog.loadingSites": "Loading sites...",
-  "common.importFromDecoDialog.noSitesFound":
-    "No sites found for this account.",
-  "common.importFromDecoDialog.noSitesMatch": 'No sites match "{search}"',
-  "common.importFromDecoDialog.retryGithubSetup": "Retry GitHub setup",
-  "common.importFromDecoDialog.searchPlaceholder": "Search sites...",
-  "common.importFromDecoDialog.selectGithubConnection":
-    "Select a GitHub connection",
-  "common.importFromDecoDialog.settingUpGithub":
-    "Setting up GitHub connection...",
-  "common.importFromDecoDialog.siteNoLongerAvailable":
-    "Selected site is no longer available",
-  "common.importFromDecoDialog.title": "Import from deco.cx",
-  "common.importFromDecoDialog.unknownError": "Unknown error",
   "common.index.pageNotFound": "Page not found",
   "common.index.pageNotFoundDescription":
     "The page you are looking for does not exist or has been moved.",
@@ -179,9 +150,14 @@ export const common = {
   "common.inviteMemberDialog.emailLabel": "Email addresses",
   "common.inviteMemberDialog.emailPlaceholder":
     "Enter email addresses separated by commas or new lines\ne.g. user1@example.com, user2@example.com\nor one per line",
+  "common.inviteMemberDialog.errorAlreadyInvited":
+    "{email} already has a pending invitation. Ask them to accept it, or manage it under Members.",
+  "common.inviteMemberDialog.errorAlreadyMember":
+    "{email} is already a member of this organization",
   "common.inviteMemberDialog.errorFailedInvite":
     "Failed to invite {count} member(s)",
   "common.inviteMemberDialog.errorGeneric": "Failed to invite members",
+  "common.inviteMemberDialog.errorInviteEmail": "Couldn't invite {email}",
   "common.inviteMemberDialog.errorNoValidEmail":
     "Please enter at least one valid email address",
   "common.inviteMemberDialog.errorSelectRole": "Please select a role",
@@ -200,6 +176,9 @@ export const common = {
   "common.inviteMemberDialog.title": "Invite members",
   "common.keyboardShortcutsDialog.title": "Keyboard Shortcuts",
   "common.noAccessScreen.askAdminToInvite": "Ask an admin to invite you.",
+  "common.noAccessScreen.adminJoin": "Join as admin",
+  "common.noAccessScreen.adminJoinFailed": "Failed to join the organization",
+  "common.noAccessScreen.adminJoining": "Joining…",
   "common.noAccessScreen.couldNotFind":
     "We couldn't find an organization called",
   "common.noAccessScreen.noAccess": "No access",
@@ -248,9 +227,6 @@ export const common = {
   "common.toolSetSelector.searchPlaceholder": "Search MCP Servers...",
   "common.toolSetSelector.selectConnection":
     "Select a connection to view its tools",
-  "common.createAgentDropdown.createFromScratch": "Create from scratch",
-  "common.createAgentDropdown.importFromGitHub": "Import repository",
-  "common.createAgentDropdown.importFromDeco": "Import from deco.cx",
   "common.mainPanelTabs.preview": "Preview",
   "common.mainPanelTabs.code": "Code",
   "common.mainPanelTabs.content": "Content",
@@ -258,10 +234,7 @@ export const common = {
   "common.mainPanelTabs.releases": "Releases",
   "common.mainPanelTabs.hosting": "Hosting",
   "common.mainPanelTabs.e2e": "E2E",
-  "common.mainPanelTabs.analytics": "Analytics",
-  "common.mainPanelTabs.experiments": "Experiments",
   "common.mainPanelTabs.calendar": "Calendar",
-  "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
   "common.taskBoard.feedView": "Feed",

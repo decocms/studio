@@ -24,7 +24,7 @@ export const SUPERSEDED_TERMINAL_CODE = "superseded";
 
 /**
  * Stable marker on every `SandboxUnreachableError` message — same convention as
- * `[SUBSCRIPTION_REQUIRED]` and `[CREDITS]`: a prefix that survives the trip
+ * `[CREDITS]`: a prefix that survives the trip
  * through an error part's text, so a reader downstream can recognize the class
  * without matching prose.
  *

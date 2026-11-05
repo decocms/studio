@@ -36,6 +36,18 @@ export function parseRepositoryBinding(
   return repo;
 }
 
+interface SandboxCloneInfo {
+  cloneUrl: string;
+  gitUserName: string;
+  gitUserEmail: string;
+}
+
+/**
+ * A sandbox being reused gets a clone URL whose token outlives a long turn's
+ * last push; GitHub App installation tokens live about an hour.
+ */
+const REUSE_TOKEN_BUFFER_MS = 30 * 60_000;
+
 /**
  * Refreshes the GitHub token baked into the sandbox clone URL and patches the
  * running daemon config so git push can sync `origin` before publishing.
@@ -47,6 +59,45 @@ export async function refreshSandboxGitCredentials(
   handle: string,
   repository: RepositoryBinding,
 ): Promise<void> {
+  const info = await resolveSandboxCloneInfo(ctx, repository, {
+    forceRefresh: true,
+  });
+  const operator = coAuthorFromStudioContext(ctx);
+  await putSandboxConfig(runner, handle, {
+    git: {
+      repository: { cloneUrl: info.cloneUrl },
+      identity: { userName: info.gitUserName, userEmail: info.gitUserEmail },
+    },
+    ...(operator ? { operator } : {}),
+  });
+}
+
+/**
+ * Hands a sandbox that is being reused a clone URL with a live token. Only
+ * `provider.ensure` bakes a fresh one, and reuse skips it, so without this a
+ * long-lived VM keeps the token it was created with and every push fails once
+ * that expires. The daemon ignores an unchanged URL, so a token still cached
+ * costs one config request.
+ */
+export async function rotateReusedSandboxGitCredential(
+  ctx: StudioContext,
+  runner: Pick<SandboxProvider, "proxyDaemonRequest">,
+  handle: string,
+  repository: RepositoryBinding,
+): Promise<void> {
+  const { cloneUrl } = await resolveSandboxCloneInfo(ctx, repository, {
+    bufferMs: REUSE_TOKEN_BUFFER_MS,
+  });
+  await putSandboxConfig(runner, handle, {
+    git: { repository: { cloneUrl } },
+  });
+}
+
+async function resolveSandboxCloneInfo(
+  ctx: StudioContext,
+  repository: RepositoryBinding,
+  freshness: { forceRefresh: true } | { bufferMs: number },
+): Promise<SandboxCloneInfo> {
   const organizationId = ctx.organization?.id;
   if (!organizationId) {
     throw new GitPushAuthError(RECONNECT_ERROR);
@@ -62,15 +113,13 @@ export async function refreshSandboxGitCredentials(
     repositoryRecord &&
     (await repositoryUsesStudioCredentials(ctx.storage, repositoryRecord))
   ) {
-    const info = await cloneInfoForRepository(ctx, repositoryRecord, {
-      forceRefresh: true,
-    }).catch((error) => {
-      throw new GitPushAuthError(
-        error instanceof Error ? error.message : RECONNECT_ERROR,
-      );
-    });
-    await pushGitConfig(ctx, runner, handle, info);
-    return;
+    return cloneInfoForRepository(ctx, repositoryRecord, freshness).catch(
+      (error) => {
+        throw new GitPushAuthError(
+          error instanceof Error ? error.message : RECONNECT_ERROR,
+        );
+      },
+    );
   }
 
   const connectionId =
@@ -85,19 +134,20 @@ export async function refreshSandboxGitCredentials(
     ctx,
     connectionId,
     organizationId,
-    forceRefresh: true,
+    forceRefresh: "forceRefresh" in freshness,
     onLegacyMintError: (error) => {
       const message = error instanceof Error ? error.message : RECONNECT_ERROR;
       throw new GitPushAuthError(message);
     },
   });
 
-  const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
+  return buildCloneInfo(
     connectionId,
     repository.owner,
     repository.name,
     ctx.db,
     ctx.vault,
+    "bufferMs" in freshness ? { bufferMs: freshness.bufferMs } : undefined,
   ).catch((error) => {
     // Strip buildCloneInfo's SANDBOX_START_ERROR_CODES prefix so it doesn't leak raw into the publish-dialog UI.
     const { code, message } = decodeSandboxStartError(
@@ -105,33 +155,17 @@ export async function refreshSandboxGitCredentials(
     );
     throw code ? new GitPushAuthError(message) : error;
   });
-
-  await pushGitConfig(ctx, runner, handle, {
-    cloneUrl,
-    gitUserName,
-    gitUserEmail,
-  });
 }
 
-async function pushGitConfig(
-  ctx: StudioContext,
+async function putSandboxConfig(
   runner: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
-  info: { cloneUrl: string; gitUserName: string; gitUserEmail: string },
+  patch: Record<string, unknown>,
 ): Promise<void> {
-  const { cloneUrl, gitUserName, gitUserEmail } = info;
-  const operator = coAuthorFromStudioContext(ctx);
-
   const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
     method: "PUT",
     headers: new Headers({ "content-type": "application/json" }),
-    body: JSON.stringify({
-      git: {
-        repository: { cloneUrl },
-        identity: { userName: gitUserName, userEmail: gitUserEmail },
-      },
-      ...(operator ? { operator } : {}),
-    }),
+    body: JSON.stringify(patch),
   });
 
   if (!res.ok) {

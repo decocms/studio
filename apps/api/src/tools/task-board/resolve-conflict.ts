@@ -8,7 +8,7 @@
  * offering "Ship to production" (the merge would 405) — it offers "Resolve
  * conflict" instead, and that button lands here. Unlike the automatic path this
  * is NOT gated on `auto_merge` or a self-cap: a person clicked it, so the only
- * gates are the paywall and the shared dispatch fence.
+ * gate is the shared dispatch fence.
  *
  * Reuses the exact machinery the automatic reaction does — the atomic
  * `claimConflictResolution` fence (Ready for Deployment + Super Agent → In Progress) so a
@@ -35,10 +35,6 @@ import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
-import {
-  ensureTaskExecutionAllowed,
-  userInitiatedTaskQuotaConfig,
-} from "@/billing/task-quota";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
 import { fireImplementer } from "@/automations/fire-implementer";
@@ -103,9 +99,6 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
       );
     }
 
-    // Paywall before any write; exempt from the per-task run cap (human-asked).
-    await ensureTaskExecutionAllowed(ctx, item, userInitiatedTaskQuotaConfig());
-
     // Atomic dispatch fence shared with the automatic reaction (see doc above).
     const claimed = await ctx.storage.taskBoard.claimConflictResolution(
       id,
@@ -125,7 +118,6 @@ export const TASK_BOARD_RESOLVE_CONFLICT = defineTool({
         pr: { number: pr.number, url: pr.url },
         resolveConflict: true,
         runClass: "retry",
-        userInitiated: true,
       });
     } catch (err) {
       // Dispatch failed after the fence bounced the status — bounce it back.

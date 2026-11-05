@@ -125,7 +125,7 @@ function bodyFromRun(body: string, threadId: string, orgSlug: string): string {
 export const TASK_BOARD_COMMENT_CREATE = defineTool({
   name: "TASK_BOARD_COMMENT_CREATE",
   description:
-    "Post a comment on a task board item, or a reply to one. " +
+    "Post a comment (its text in `body`) on a task board item, or a reply to one. " +
     'Inside a task run a new comment is `internal` by default: handoff for other agents, hidden from the people reading the task. Pass `audience: "human"` for the note written for them. A reply takes the audience of the comment it answers unless you pass one.',
   annotations: {
     title: "Create Task Comment",
@@ -136,7 +136,12 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
   },
   inputSchema: z.object({
     taskBoardItemId: z.string(),
-    body: z.string().trim().min(1).max(MAX_COMMENT_BODY_LENGTH),
+    body: z
+      .string()
+      .trim()
+      .min(1)
+      .max(MAX_COMMENT_BODY_LENGTH)
+      .describe("The comment's text, in Markdown."),
     /** Reply target. Replying to a reply lands on its thread root. */
     parentId: z.string().nullish(),
     audience: z.enum(TASK_COMMENT_AUDIENCES).optional(),

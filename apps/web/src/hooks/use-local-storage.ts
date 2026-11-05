@@ -72,7 +72,11 @@ export function useLocalStorage<T>(
         : updater;
 
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(key, JSON.stringify(next));
+      // A full or blocked storage must not abort the caller's action (e.g. the
+      // navigation that follows); the in-memory value still updates below.
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {}
     }
     queryClientInstance.setQueryData(queryKey, next);
   };

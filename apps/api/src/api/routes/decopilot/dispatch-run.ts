@@ -34,10 +34,6 @@ import {
   type VoiceTranscript,
 } from "@decocms/shared/voice";
 import { withVoiceResponseStyle } from "@/voice/prompt";
-import {
-  applySubsidizedBilling,
-  resolveSubsidizedPayer,
-} from "@/billing/subsidized-runs";
 import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
 import { NoResultError } from "kysely";
@@ -286,12 +282,6 @@ export async function resolveSecretModelSource(
   organizationId: string,
   credentialId: string,
   modelId: string,
-  /** Subscription-billed runs (reports-task executions) swap the PAYER only:
-   *  the org's resolved model/provider run as-is on the org's subsidy key
-   *  (per-client gateway org — exact COGS attribution). Resolved ONCE per
-   *  dispatch by the caller and shared across slots; undefined leaves the
-   *  run on the org's own key. */
-  subsidyApiKey?: string,
 ): Promise<DecopilotSecretModelSource> {
   // Replace Kysely's raw NoResultError with a clear, permanent one (#2265) — any other rejection (a transient DB/vault failure) propagates unchanged.
   const { keyInfo, apiKey } = await ctx.storage.aiProviderKeys
@@ -303,14 +293,11 @@ export async function resolveSecretModelSource(
         `Model credential ${credentialId} was not found — configure a model provider before running this agent`,
       );
     });
-  const source = applySubsidizedBilling(
-    createSecretModelSource({
-      providerId: keyInfo.providerId,
-      apiKey,
-      modelId,
-    }),
-    subsidyApiKey,
-  );
+  const source = createSecretModelSource({
+    providerId: keyInfo.providerId,
+    apiKey,
+    modelId,
+  });
 
   // OpenRouter identifies the app by `HTTP-Referer` (that's what promotes a
   // request out of the "Unknown" bucket in its dashboard/rankings); `X-Title`
@@ -960,13 +947,6 @@ async function prepareRun(
     // credentials in parallel — one resolution per configured slot, each
     // against its own credential. The harness receives serializable secret
     // sources and reconstructs SDK providers inside the hosted harness.
-    // ONE subsidy resolution per dispatch, shared by every slot below —
-    // resolving per slot would N-way race the first-use key provisioning.
-    const subsidyApiKey = await resolveSubsidizedPayer(
-      ctx,
-      input.organizationId,
-      ctx.metadata?.runMetadata,
-    );
     // A user's own plan is not an org key: `userPlanCredential` below carries
     // it to the sandbox.
     const resolveSlot = (slot?: ModelSelection) =>
@@ -976,7 +956,6 @@ async function prepareRun(
             input.organizationId,
             slot.credentialId,
             slot.id,
-            subsidyApiKey,
           )
         : Promise.resolve(undefined);
     const [

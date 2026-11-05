@@ -149,38 +149,7 @@ export const common = {
   "common.iconPicker.randomIcon": "Ícone aleatório",
   "common.iconPicker.uploadHint": "Clique para enviar uma imagem (máx 2MB)",
   "common.iconPicker.uploadTab": "Upload",
-  "common.importFromDecoDialog.cancel": "Cancelar",
-  "common.importFromDecoDialog.failedToConnectGithub":
-    "Falha ao conectar GitHub",
-  "common.importFromDecoDialog.failedToCreateAgent":
-    "Falha ao criar o projeto importado",
-  "common.importFromDecoDialog.failedToPrepareImport":
-    "Falha ao preparar a importação da deco.cx",
-  "common.importFromDecoDialog.githubNotConnected":
-    "GitHub não está conectado. Conclua a configuração do GitHub e tente novamente.",
-  "common.importFromDecoDialog.import": "Importar",
-  "common.importFromDecoDialog.importFailed": "Falha na importação: {error}",
-  "common.importFromDecoDialog.importSuccess": "Importado {slug} de deco.cx",
-  "common.importFromDecoDialog.importing": "Importando...",
-  "common.importFromDecoDialog.installGithubApp":
-    'Instale o aplicativo GitHub na organização "{owner}" para importar este site. {installUrl}',
   "common.loading": "Carregando",
-  "common.importFromDecoDialog.loadingSites": "Carregando sites...",
-  "common.importFromDecoDialog.noSitesFound":
-    "Nenhum site encontrado para esta conta.",
-  "common.importFromDecoDialog.noSitesMatch":
-    'Nenhum site corresponde a "{search}"',
-  "common.importFromDecoDialog.retryGithubSetup":
-    "Tentar configurar GitHub novamente",
-  "common.importFromDecoDialog.searchPlaceholder": "Procurar sites...",
-  "common.importFromDecoDialog.selectGithubConnection":
-    "Selecione uma conexão GitHub",
-  "common.importFromDecoDialog.settingUpGithub":
-    "Configurando conexão com GitHub...",
-  "common.importFromDecoDialog.siteNoLongerAvailable":
-    "O site selecionado não está mais disponível",
-  "common.importFromDecoDialog.title": "Importar de deco.cx",
-  "common.importFromDecoDialog.unknownError": "Erro desconhecido",
   "common.index.pageNotFound": "Página não encontrada",
   "common.index.pageNotFoundDescription":
     "A página que você está procurando não existe ou foi movida.",
@@ -188,9 +157,15 @@ export const common = {
   "common.inviteMemberDialog.emailLabel": "Endereços de e-mail",
   "common.inviteMemberDialog.emailPlaceholder":
     "Digite os endereços de e-mail separados por vírgulas ou quebras de linha\ne.g. usuario1@example.com, usuario2@example.com\nou um por linha",
+  "common.inviteMemberDialog.errorAlreadyInvited":
+    "{email} já tem um convite pendente. Peça para aceitar o convite ou gerencie-o em Membros.",
+  "common.inviteMemberDialog.errorAlreadyMember":
+    "{email} já é membro desta organização",
   "common.inviteMemberDialog.errorFailedInvite":
     "Falha ao convidar {count} membro(s)",
   "common.inviteMemberDialog.errorGeneric": "Falha ao convidar membros",
+  "common.inviteMemberDialog.errorInviteEmail":
+    "Não foi possível convidar {email}",
   "common.inviteMemberDialog.errorNoValidEmail":
     "Digite pelo menos um endereço de e-mail válido",
   "common.inviteMemberDialog.errorSelectRole": "Selecione uma função",
@@ -210,6 +185,10 @@ export const common = {
   "common.keyboardShortcutsDialog.title": "Atalhos de teclado",
   "common.noAccessScreen.askAdminToInvite":
     "Peça a um administrador que o convide.",
+  "common.noAccessScreen.adminJoin": "Entrar como admin",
+  "common.noAccessScreen.adminJoinFailed":
+    "Não foi possível entrar na organização",
+  "common.noAccessScreen.adminJoining": "Entrando…",
   "common.noAccessScreen.couldNotFind":
     "Não conseguimos encontrar uma organização chamada",
   "common.noAccessScreen.noAccess": "Sem acesso",
@@ -259,9 +238,6 @@ export const common = {
   "common.toolSetSelector.searchPlaceholder": "Pesquisar servidores MCP...",
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
-  "common.createAgentDropdown.createFromScratch": "Criar do zero",
-  "common.createAgentDropdown.importFromGitHub": "Importar repositório",
-  "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
   "common.mainPanelTabs.preview": "Visualização",
   "common.mainPanelTabs.code": "Código",
   "common.mainPanelTabs.content": "Conteúdo",
@@ -269,10 +245,7 @@ export const common = {
   "common.mainPanelTabs.releases": "Releases",
   "common.mainPanelTabs.hosting": "Hospedagem",
   "common.mainPanelTabs.e2e": "E2E",
-  "common.mainPanelTabs.analytics": "Analytics",
-  "common.mainPanelTabs.experiments": "Experimentos",
   "common.mainPanelTabs.calendar": "Calendário",
-  "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
   "common.taskBoard.feedView": "Feed",

@@ -46,7 +46,7 @@ export const sidebar = {
   "sidebar.customize.projectOptions": "Opções do projeto",
   "sidebar.customize.folderOptions": "Opções da pasta",
   "sidebar.projects.heading": "Projetos",
-  "sidebar.scope.allProjects": "Todos os projetos",
+  "sidebar.scope.backTo": "Voltar para {name}",
   "sidebar.picker.ariaLabel": "Organiza\u00e7\u00e3o e projeto: {name}",
   "sidebar.picker.projectInOrg": "{project} — {org}",
   "sidebar.picker.newOrganization": "Nova organização",
@@ -77,6 +77,8 @@ export const sidebar = {
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
   "sidebar.showMoreButton.loading": "Carregando…",
   "sidebar.showMoreButton.showMore": "Mostrar mais",
+  "sidebar.linkClaude.button": "Conectar Claude",
+  "sidebar.linkClaude.relink": "Reconectar Claude",
   "sidebar.sidebarFooter.inviteMembers": "Convidar membros",
   "sidebar.sidebarResizeHandle.ariaLabel": "Redimensionar barra lateral",
   "sidebar.sidebarResizeHandle.title":

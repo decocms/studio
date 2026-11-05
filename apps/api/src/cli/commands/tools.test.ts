@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeSession } from "../lib/session";
-import { toolsCommand } from "./tools";
+import { formatToolSignature, toolsCommand } from "./tools";
 
 const TOOLS = {
   tools: [
@@ -94,6 +94,32 @@ describe("toolsCommand list", () => {
     expect(out).toEqual(["ORGANIZATION_LIST\tList organizations."]);
   });
 
+  it("ranks name matches before description-only matches", async () => {
+    const tools = {
+      tools: [
+        { name: "TAGS_CREATE", description: "Create a tag for a task." },
+        { name: "TASK_BOARD_ITEM_CREATE", description: "Create a card." },
+        { name: "AUTOMATION_ADD", description: "Run on task events." },
+        { name: "TASK_BOARD_ITEM_LIST", description: "List cards." },
+        { name: "THREAD_GET", description: "Get one thread." },
+      ],
+    };
+    await toolsCommand({
+      dataDir: dir,
+      subcommand: "list",
+      arg: "Task",
+      org: "my-org",
+      fetch: respondWith(tools),
+    });
+
+    expect(out.map((line) => line.split("\t")[0])).toEqual([
+      "TASK_BOARD_ITEM_CREATE",
+      "TASK_BOARD_ITEM_LIST",
+      "TAGS_CREATE",
+      "AUTOMATION_ADD",
+    ]);
+  });
+
   it("prints full tool objects with --json", async () => {
     await toolsCommand({
       dataDir: dir,
@@ -134,7 +160,7 @@ describe("toolsCommand list", () => {
 });
 
 describe("toolsCommand describe", () => {
-  it("prints the tool's schema", async () => {
+  it("prints the tool's signature", async () => {
     const code = await toolsCommand({
       dataDir: dir,
       subcommand: "describe",
@@ -144,7 +170,21 @@ describe("toolsCommand describe", () => {
     });
 
     expect(code).toBe(0);
-    expect(JSON.parse(out[0]!)).toEqual(TOOLS.tools[0]);
+    expect(out).toEqual(["THREAD_LIST — List threads.\ninput: none"]);
+  });
+
+  it("prints the full tool object with --json", async () => {
+    const code = await toolsCommand({
+      dataDir: dir,
+      subcommand: "describe",
+      arg: "THREAD_LIST",
+      org: "my-org",
+      json: true,
+      fetch: respondWith(TOOLS),
+    });
+
+    expect(code).toBe(0);
+    expect(out).toEqual([JSON.stringify(TOOLS.tools[0], null, 2)]);
   });
 
   it("exits 1 for an unknown tool", async () => {
@@ -158,6 +198,155 @@ describe("toolsCommand describe", () => {
 
     expect(code).toBe(1);
     expect(err.join("\n")).toContain("Unknown tool: NOPE");
+  });
+});
+
+describe("formatToolSignature", () => {
+  it("prints one line per field with type, requiredness and description", () => {
+    expect(
+      formatToolSignature({
+        name: "TASK_BOARD_ITEM_UPDATE",
+        description: "Update a card.\nMore detail.",
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          openWorldHint: true,
+        },
+        inputSchema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            body: {
+              description: "Markdown body,\n  shown on the card.",
+              anyOf: [{ type: "string", maxLength: 50 }, { type: "null" }],
+            },
+            assigneeId: { type: ["string", "null"] },
+            status: { type: "string", enum: ["todo", "done"] },
+            audience: {
+              anyOf: [
+                { type: "string", const: "human" },
+                { type: "string", const: "internal" },
+              ],
+            },
+            limit: { type: "integer", default: 20 },
+            dueDate: { type: "string", format: "date-time" },
+          },
+          required: ["id", "limit", "audience"],
+        },
+      }),
+    ).toBe(
+      [
+        "TASK_BOARD_ITEM_UPDATE — Update a card.",
+        "annotations: destructiveHint",
+        "input:",
+        "  id (string, required)",
+        "  body (string, optional|nullable) — Markdown body, shown on the card.",
+        "  assigneeId (string, optional|nullable)",
+        '  status ("todo"|"done", optional)',
+        '  audience ("human"|"internal", required)',
+        "  limit (integer, optional, default 20)",
+        "  dueDate (string<date-time>, optional)",
+      ].join("\n"),
+    );
+  });
+
+  it("summarizes nested objects and arrays one level deep", () => {
+    expect(
+      formatToolSignature({
+        name: "X",
+        inputSchema: {
+          type: "object",
+          properties: {
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  note: { type: ["string", "null"] },
+                  meta: {
+                    type: "object",
+                    properties: { deep: { type: "string" } },
+                  },
+                },
+                required: ["id"],
+              },
+            },
+            tags: { type: "array", items: { enum: ["a", "b"] } },
+            marks: { type: "array", items: { enum: ['x|"}'] } },
+            pair: {
+              type: "array",
+              prefixItems: [{ type: "string" }, { type: "number" }],
+            },
+            labels: {
+              type: "object",
+              additionalProperties: { type: "string" },
+            },
+            extra: { type: "object", additionalProperties: {} },
+            choice: {
+              oneOf: [
+                {
+                  type: "object",
+                  properties: { kind: { const: "a" } },
+                  required: ["kind"],
+                },
+                { type: "null" },
+              ],
+            },
+            anything: {},
+          },
+          required: ["items"],
+        },
+      }),
+    ).toBe(
+      [
+        "X",
+        "input:",
+        "  items ({ id: string, note?: string|null, meta?: object }[], required)",
+        '  tags (("a"|"b")[], optional)',
+        '  marks ("x|\\"}"[], optional)',
+        "  pair ([string, number], optional)",
+        "  labels ({ [key]: string }, optional)",
+        "  extra (object, optional)",
+        '  choice ({ kind: "a" }, optional|nullable)',
+        "  anything (any, optional)",
+      ].join("\n"),
+    );
+  });
+
+  it("says when a tool takes no input", () => {
+    for (const inputSchema of [
+      undefined,
+      {},
+      { type: "object" },
+      { type: "object", properties: {} },
+    ]) {
+      expect(formatToolSignature({ name: "PING", inputSchema })).toBe(
+        "PING\ninput: none",
+      );
+    }
+  });
+
+  it("prints a union input on one line", () => {
+    expect(
+      formatToolSignature({
+        name: "X",
+        inputSchema: {
+          oneOf: [
+            {
+              type: "object",
+              properties: { id: { type: "string" } },
+              required: ["id"],
+            },
+            {
+              type: "object",
+              properties: { slug: { type: "string" } },
+              required: ["slug"],
+            },
+          ],
+        },
+      }),
+    ).toBe("X\ninput: { id: string }|{ slug: string }");
   });
 });
 
@@ -193,6 +382,41 @@ describe("toolsCommand call", () => {
     });
 
     expect(calls[0]!.init.body).toBe("{}");
+  });
+
+  it("uses the only session on disk, for a studio on a non-default port", async () => {
+    const sandboxDir = await mkdtemp(join(tmpdir(), "deco-tools-port-"));
+    try {
+      await writeFile(
+        join(sandboxDir, "session.studio.example.ts.net_10000.json"),
+        JSON.stringify({
+          target: "https://studio.example.ts.net:10000",
+          clientId: "sandbox-run",
+          user: { sub: "u_1" },
+          accessToken: "studio_api_key",
+          createdAt: "2026-05-04T00:00:00.000Z",
+        }),
+        { mode: 0o600 },
+      );
+      const code = await toolsCommand({
+        dataDir: sandboxDir,
+        subcommand: "call",
+        arg: "THREAD_GET",
+        org: "my-org",
+        fetch: respondWith({}),
+        output,
+      });
+
+      expect(code).toBe(0);
+      expect(calls[0]!.url).toBe(
+        "https://studio.example.ts.net:10000/api/my-org/tools/THREAD_GET",
+      );
+      expect(new Headers(calls[0]!.init.headers).get("authorization")).toBe(
+        "Bearer studio_api_key",
+      );
+    } finally {
+      await rm(sandboxDir, { recursive: true, force: true });
+    }
   });
 
   it("exits 1 on a tool error and keeps the error body", async () => {

@@ -3,9 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Edit01, Trash01 } from "@untitledui/icons";
-import { Avatar } from "@decocms/ui/components/avatar.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
-import { SettingsCardItem } from "@/components/settings/settings-section";
+import { DropdownMenuItem } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +28,7 @@ import {
 } from "@/utils/openai-compatible-presets";
 import { PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import { EditProviderKeyDialog } from "./edit-provider-dialog";
+import { AccountLogo, AccountMenu, AccountRow } from "./account-row";
 import { useT } from "@/i18n/use-t.ts";
 
 interface ProviderKeyRowProps {
@@ -97,46 +96,27 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
 
   return (
     <>
-      <SettingsCardItem
-        icon={
-          logo ? (
-            <img
-              src={logo}
-              alt={displayName}
-              className="size-8 rounded-md object-contain dark:bg-white dark:p-0.5"
-            />
-          ) : (
-            <Avatar
-              fallback={displayName.charAt(0)}
-              className="size-8 bg-primary/10 text-primary"
-            />
-          )
-        }
+      <AccountRow
+        icon={<AccountLogo src={logo} alt={displayName} />}
         title={displayName}
-        description={description}
+        meta={description}
         action={
-          <div className="flex items-center gap-0.5">
+          <AccountMenu>
             {provider ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("settings.providerKeyRow.editProviderKey")}
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => setEditOpen(true)}
-              >
-                <Edit01 size={14} />
-              </Button>
+              <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+                <Edit01 />
+                {t("settings.providerKeyRow.edit")}
+              </DropdownMenuItem>
             ) : null}
-            <Button
-              variant="ghost-destructive"
-              size="icon-sm"
-              aria-label={t("settings.providerKeyRow.deleteProviderKey")}
+            <DropdownMenuItem
+              variant="destructive"
               disabled={isDeleting}
-              onClick={() => setConfirmDelete(true)}
+              onSelect={() => setConfirmDelete(true)}
             >
-              <Trash01 size={14} />
-            </Button>
-          </div>
+              <Trash01 />
+              {t("settings.providerKeyRow.delete")}
+            </DropdownMenuItem>
+          </AccountMenu>
         }
       />
 

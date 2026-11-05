@@ -34,4 +34,36 @@ describe("useLocalStorage", () => {
       b: 1,
     });
   });
+
+  it("updates the value and does not throw when storage rejects the write", async () => {
+    const { result } = renderHook(
+      () => useLocalStorage<number>("full-storage-key", 0),
+      { wrapper },
+    );
+
+    // happy-dom's Storage is a proxy: assigning `setItem` on it stores an item
+    // instead of replacing the method, so swap the whole global.
+    const original = globalThis.localStorage;
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        setItem: () => {
+          throw new DOMException("quota exceeded", "QuotaExceededError");
+        },
+      },
+    });
+    try {
+      act(() => {
+        const [, setValue] = result.current;
+        expect(() => setValue(1)).not.toThrow();
+      });
+    } finally {
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        value: original,
+      });
+    }
+
+    await waitFor(() => expect(result.current[0]).toBe(1));
+  });
 });

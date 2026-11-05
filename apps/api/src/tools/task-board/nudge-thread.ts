@@ -11,7 +11,6 @@
  * "already nudged" marker of its own.
  */
 
-import { taskRunMetadata } from "@/billing/subsidized-runs";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
 import {
   assertAiBudget,
@@ -27,6 +26,7 @@ import {
 } from "@/dispatch-queue/run-priority";
 import type { TaskBoardItem, Thread } from "@/storage/types";
 import { getDecopilotId } from "@decocms/shared/sdk";
+import { resolveTaskRunModel } from "./task-run-harness";
 
 export async function nudgeThreadTurn(
   ctx: StudioContext,
@@ -66,7 +66,11 @@ export async function nudgeThreadTurn(
   }
   await assertAiBudget(ctx, organizationId, "continuing a task agent");
 
-  const model = await resolveTier(ctx, "smart");
+  const userId = item.assignedBy ?? item.createdBy;
+  const model =
+    thread.harness_id === "claude-code"
+      ? await resolveTaskRunModel(ctx, organizationId, userId, "claude-code")
+      : await resolveTier(ctx, "smart");
   const agentId = thread.virtual_mcp_id ?? getDecopilotId(organizationId);
 
   const requestMessage = {
@@ -103,7 +107,7 @@ export async function nudgeThreadTurn(
         toolApprovalLevel: "auto",
         mode: "default",
         organizationId,
-        userId: item.assignedBy ?? item.createdBy,
+        userId,
         // The thread's OWN runtime, not a hardcoded Decopilot: a Super Agent
         // task on an org with a repo runs `claude-code`, and dispatching it as
         // Decopilot would answer with a different agent than the one that did
@@ -118,7 +122,7 @@ export async function nudgeThreadTurn(
         ...(thread.branch ? { branch: thread.branch } : {}),
         taskId: thread.id,
         runMetadata: {
-          ...taskRunMetadata(item),
+          taskBoardItemId: item.id,
           ...(opts.runClass ? { [RUN_CLASS_METADATA_KEY]: opts.runClass } : {}),
         },
       },

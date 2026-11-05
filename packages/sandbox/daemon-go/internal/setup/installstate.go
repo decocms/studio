@@ -50,10 +50,3 @@ func (s *InstallState) IsInstalledFor(cfg *config.Enriched, branchHead string) b
 	defer s.mu.Unlock()
 	return s.ok && s.fingerprint == Fingerprint(cfg, branchHead)
 }
-
-func (s *InstallState) Clear() {
-	s.mu.Lock()
-	s.fingerprint = ""
-	s.ok = false
-	s.mu.Unlock()
-}

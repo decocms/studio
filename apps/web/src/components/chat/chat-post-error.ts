@@ -11,7 +11,7 @@
  * Pure, and its own module so it can be unit-tested without @decocms/ui.
  */
 
-/** Same marker convention as `[CREDITS]` / `[SUBSCRIPTION_REQUIRED]`: the chat
+/** Same marker convention as `[CREDITS]`: the chat
  *  store keeps a plain `Error`, so the message is the only channel a
  *  classification survives on. */
 const PLAN_PREFIXES = {

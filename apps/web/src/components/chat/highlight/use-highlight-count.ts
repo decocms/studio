@@ -19,7 +19,6 @@ import { extractPendingPlans } from "./extract-pending-plans";
 import { isSuggestTaskPending } from "./is-suggest-task-pending";
 import { isCreditError } from "../is-credit-error";
 import { planRefusalKind, type PlanRefusalKind } from "../chat-post-error";
-import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { useChatStream } from "../context";
 import { useFeature } from "@/hooks/use-entitlements";
 
@@ -30,12 +29,6 @@ export interface HighlightFlags {
    *  rather than the raw-message error card: the user is being asked to buy
    *  something, not shown a fault. */
   planRefusal: PlanRefusalKind | null;
-  /** Non-null when the run errored on the org's auto-task quota — e.g. a
-   *  reviewer thread bouncing the task back to the Super Agent hit the
-   *  org/task's execution limit. Renders inline, not as a sales paywall (this
-   *  is an automated review flow, not a user-initiated purchase moment) —
-   *  see `SubscriptionLimitHighlight`. */
-  subscriptionErrorKind: ReturnType<typeof subscriptionErrorKind>;
   hasTodos: boolean;
   showError: boolean;
   showWarning: boolean;
@@ -60,7 +53,6 @@ export interface DeriveHighlightFlagsInput {
 const EMPTY_FLAGS: HighlightFlags = {
   isCreditExhausted: false,
   planRefusal: null,
-  subscriptionErrorKind: null,
   hasTodos: false,
   showError: false,
   showWarning: false,
@@ -112,13 +104,10 @@ export function deriveHighlightFlags(
 
   const todos = deriveCurrentTodos(messages);
 
-  // A subscription-quota error renders as its own inline card (with tailored
-  // copy, no CTA — see SubscriptionLimitHighlight), not the generic raw-message
+  // A plan refusal renders as its own card below, not the generic raw-message
   // error card.
-  const subKind = !isStreaming ? subscriptionErrorKind(error) : null;
-  // Same rule, same reason, for a plan refusal: it has its own card below.
   const planRefusal = !isStreaming ? planRefusalKind(error) : null;
-  const showError = !isStreaming && !!error && !subKind && !planRefusal;
+  const showError = !isStreaming && !!error && !planRefusal;
   const hasApprovals =
     pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
   const hasPlans = pendingPlans.length > 0;
@@ -140,7 +129,6 @@ export function deriveHighlightFlags(
   return {
     isCreditExhausted: false,
     planRefusal,
-    subscriptionErrorKind: subKind,
     hasTodos: todos.length > 0,
     showError,
     showWarning,
@@ -186,7 +174,6 @@ export function useHighlightCount(): number {
   return (
     Number(flags.hasTodos) +
     Number(flags.showError) +
-    Number(!!flags.subscriptionErrorKind) +
     Number(!!flags.planRefusal) +
     Number(flags.showWarning) +
     Number(flags.hasApprovals) +

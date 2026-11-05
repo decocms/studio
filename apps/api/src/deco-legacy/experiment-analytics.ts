@@ -17,7 +17,7 @@
 import { getSettings } from "../settings";
 import { analyticsQuery, isAnalyticsConfigured } from "./clickhouse-analytics";
 import { toOneDollarHostname } from "./onedollarstats";
-import { pBetter, sampleSize as sampleSizeOf, type Variant } from "./ab-test";
+import { experimentStats, type Variant } from "./ab-test";
 
 const OD_API = "https://deco.lilstts.com/plausible";
 const OD_TIMEOUT_MS = 12_000;
@@ -36,8 +36,9 @@ export interface ExperimentResults {
   stats: {
     totalParticipants: number;
     sampleSize: number;
-    probabilityVariantBest: number;
-    probabilityDefaultBest: number;
+    /** Null while either arm has no visitors or no conversions. */
+    probabilityVariantBest: number | null;
+    probabilityDefaultBest: number | null;
   };
 }
 
@@ -237,23 +238,17 @@ export async function queryExperimentResults(
     total: visitors.variant,
   };
 
-  const rawSampleSize = sampleSizeOf(defaultVariant, testVariant);
-  const size =
-    rawSampleSize == null || Number.isNaN(rawSampleSize) ? 1000 : rawSampleSize;
-  const probabilityVariantBest = pBetter(defaultVariant, testVariant);
-
   return {
     status: "ok",
     results: {
       visitors,
       goals: goalCounts,
       timeseries: mergedTimeseries,
-      stats: {
-        totalParticipants: visitors.default + visitors.variant,
-        sampleSize: size,
-        probabilityVariantBest,
-        probabilityDefaultBest: 1 - probabilityVariantBest,
-      },
+      stats: experimentStats(
+        defaultVariant,
+        testVariant,
+        visitors.default + visitors.variant,
+      ),
     },
   };
 }
