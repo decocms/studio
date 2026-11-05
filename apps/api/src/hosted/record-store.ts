@@ -36,7 +36,7 @@ export interface RecordStore {
   ): Promise<SchemaRead | null>;
 }
 
-export function recordKeys(prefix = getSettings().recordKeyPrefix ?? "") {
+function recordKeys(prefix = getSettings().recordKeyPrefix ?? "") {
   return {
     schema: (site: string) => {
       if (!isValidSiteSlug(site)) throw new Error(`invalid site id: ${site}`);
@@ -50,7 +50,7 @@ function status(error: unknown): number | undefined {
     ?.httpStatusCode;
 }
 
-export function createS3RecordStore(config: {
+function createS3RecordStore(config: {
   endpoint: string;
   bucket: string;
   accessKeyId: string;

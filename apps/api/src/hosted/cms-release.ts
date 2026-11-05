@@ -132,7 +132,7 @@ export interface RevisionContent {
   names: Map<string, string>;
 }
 
-export function revisionContent(id: string, blocks: Blocks): RevisionContent {
+function revisionContent(id: string, blocks: Blocks): RevisionContent {
   const files: StorageFile[] = [];
   const texts = new Map<string, string>();
   const names = new Map<string, string>();

@@ -18,7 +18,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-export function isApplyCall(value: unknown): value is ApplyCall {
+function isApplyCall(value: unknown): value is ApplyCall {
   return (
     isRecord(value) &&
     value.method === "blocks.apply" &&

@@ -43,7 +43,7 @@ interface Cursor {
   token: string;
 }
 
-export function encodeCursor(cursor: Cursor): string {
+function encodeCursor(cursor: Cursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf-8").toString("base64url");
 }
 
