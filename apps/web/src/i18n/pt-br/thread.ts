@@ -180,10 +180,6 @@ export const thread = {
   "thread.publishPopover.settings": "Configurações",
   "thread.publishPopover.settingsDetail": "Telemetria e analytics",
   "thread.publishPopover.globalSection": "Seção global",
-  "thread.publishPopover.missingTest":
-    "Usa um teste que não está nos seus testes A/B",
-  "thread.publishPopover.missingCampaign":
-    "Usa uma campanha que não está nas suas campanhas",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
     "Última publicação {when} por {name}",

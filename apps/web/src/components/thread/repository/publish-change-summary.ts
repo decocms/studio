@@ -109,12 +109,6 @@ export interface PublishChange {
   fromJson: Record<string, unknown> | null;
   toJson: Record<string, unknown> | null;
   /**
-   * v8: its rules name a test or campaign of these kinds that the draft
-   * doesn't have (deleted, discarded, never created). The card says so;
-   * nothing is blocked.
-   */
-  missingRules?: NamedRuleKind[];
-  /**
    * The site's A/B tests or campaigns block, known when the card is built
    * (from the current blocks, either side, or its name when no content can be
    * read), so the card says so before and whether or not its sides load.
@@ -1067,11 +1061,6 @@ interface ContentChangesInput {
    */
   meta?: LiveMeta | null;
   /**
-   * Per block, the kinds of test or campaign its rules name that the draft
-   * doesn't have (named-rule-uses.ts `blocksUsingMissingNamedRules`).
-   */
-  missingRules?: ReadonlyMap<string, NamedRuleKind[]>;
-  /**
    * Studio's hosted draft: a blog record is named by its title and kind
    * (its block `name` is its key). Other sources name it as before.
    */
@@ -1088,7 +1077,7 @@ interface ContentChangesInput {
 export function summarizeContentChanges(
   input: ContentChangesInput,
 ): PublishChangeSummary {
-  const { changes, sides, lookup, meta, missingRules, hosted } = input;
+  const { changes, sides, lookup, meta, hosted } = input;
   const pages: PublishChange[] = [];
   const blocks: PublishChange[] = [];
   /** The sides of `name` the server couldn't read (any spelling's file). */
@@ -1118,14 +1107,12 @@ export function summarizeContentChanges(
     const headShape = readBlockShape(lookup, name);
     const nameShape = headShape ?? toJson ?? fromJson;
     const unreadable = unreadableOf(name);
-    const missing = missingRules?.get(name);
     const common = {
       blockKey: name,
       status,
       filepaths: [],
       entry: { name, version: change.version },
       ...(unreadable.length > 0 ? { unreadable } : {}),
-      ...(missing && missing.length > 0 ? { missingRules: missing } : {}),
       fromJson: maskSecrets(fromJson),
       toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),
     };
