@@ -113,6 +113,12 @@ const oauthCallbackRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/oauth-callback.tsx")),
 });
 
+const oauthConsentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/oauth/consent",
+  component: lazyRouteComponent(() => import("./routes/oauth-consent.tsx")),
+});
+
 const oauthCallbackAiProviderRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/oauth/callback/ai-provider",
@@ -1823,6 +1829,7 @@ const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   betterAuthRoutes,
   oauthCallbackRoute,
+  oauthConsentRoute,
   oauthCallbackAiProviderRoute,
 ]);
 
