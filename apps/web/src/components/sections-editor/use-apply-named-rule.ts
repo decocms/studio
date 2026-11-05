@@ -40,11 +40,13 @@ import {
 import {
   type ContentIndex,
   ensureHostedBlocks,
-  indexRuleUsers,
   listingOf,
 } from "./hosted-content";
-import { NAMED_RULE_BLOCKS } from "./named-rule-loads";
-import { type CampaignWindow, namedRuleKindOfBlock } from "./named-rules";
+import {
+  type CampaignWindow,
+  NAMED_RULE_BLOCKS,
+  namedRuleKindOfBlock,
+} from "./named-rules";
 import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
 import { isSaveConflict } from "./serve-save-error";
@@ -55,8 +57,8 @@ import { applyMoveToDecofile } from "./use-move-blocks";
 
 /**
  * One change to the site's A/B tests or campaigns (named-rules.ts): the
- * `experiments` or `campaigns` block, and the blocks whose rules use its
- * names (a page or section given a new rule, every rule a rename rewrites).
+ * `experiments` or `campaigns` block, and the page or section given a new
+ * rule that names one.
  */
 export interface NamedRuleChange {
   /** Blocks written whole. */
@@ -75,13 +77,11 @@ export interface NamedRuleChange {
 
 /**
  * What a read of the draft made now loads on a hosted draft, besides the
- * `experiments` and `campaigns` blocks: `blocks` by name, and the blocks
- * whose index `meta.rules` names one of `usersOf` (the uses a rename
- * rewrites, a delete counts). Other backends read every block anyway.
+ * `experiments` and `campaigns` blocks: `blocks` by name (the blocks a
+ * reconcile touches). Other backends read every block anyway.
  */
 export interface NamedRuleReread {
   blocks?: readonly string[];
-  usersOf?: readonly string[];
 }
 
 export type NamedRuleApplyPlan =
@@ -526,8 +526,8 @@ export function useApplyNamedRule({
 
   /**
    * The draft as stored right now (content-protocol-api.ts
-   * `rereadProtocolContent`): what a delete, an Undo or a rename plans from,
-   * so a use or a name another tab added meanwhile counts. `null` when it can't be
+   * `rereadProtocolContent`): what a delete or an Undo plans from, so a name
+   * another tab added or changed meanwhile counts. `null` when it can't be
    * read; the caller then changes nothing.
    */
   const reread = async (
@@ -543,10 +543,9 @@ export function useApplyNamedRule({
       );
       if (!protocol.hosted) return content.blocks;
       // Hosted: the read answers the index and only the bodies loaded so
-      // far. The index just read says which blocks use the name now (its
-      // `meta.rules`, a use another editor saved since included): those are
-      // loaded, with the tests and campaigns blocks, so the plan sees every
-      // use. Every other block is its index stub, which counts its uses.
+      // far. The tests and campaigns blocks (and the blocks a reconcile
+      // touches) are loaded at the index just read; every other block stays
+      // its index stub.
       const index = queryClient.getQueryData<ContentIndex>(
         KEYS.contentIndex(cacheKey),
       );
@@ -554,11 +553,7 @@ export function useApplyNamedRule({
         queryClient,
         protocol.hosted,
         cacheKey,
-        [
-          ...NAMED_RULE_BLOCKS,
-          ...(options.blocks ?? []),
-          ...indexRuleUsers(index, options.usersOf ?? []),
-        ],
+        [...NAMED_RULE_BLOCKS, ...(options.blocks ?? [])],
         savingBlockKeys(queryClient, params),
       );
       return listingOf(
@@ -571,39 +566,9 @@ export function useApplyNamedRule({
     }
   };
 
-  /**
-   * A change planned from the draft as stored right now, for one that takes a
-   * name away (a rename): a use another tab added meanwhile is rewritten
-   * with the others, never left naming a test or campaign that is gone.
-   * `null`, with one calm toast, when the draft can't be read or the change
-   * no longer fits what is stored (it now shows that).
-   */
-  const planStored = async (
-    plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
-    options?: NamedRuleReread,
-  ): Promise<NamedRuleChange | null> => {
-    const fresh = await reread(options);
-    if (!fresh) {
-      toast.info(t("sectionsEditor.namedRules.unavailable"), {
-        ...SAVE_TOAST,
-        description: t("sectionsEditor.namedRules.unavailableHint"),
-      });
-      return null;
-    }
-    const change = plan(fresh);
-    if (!change) {
-      toast.info(t("sectionsEditor.namedRules.changedMeanwhile"), {
-        ...SAVE_TOAST,
-        description: t("sectionsEditor.namedRules.changedMeanwhileHint"),
-      });
-    }
-    return change;
-  };
-
   return {
     apply,
     reread,
-    planStored,
     isPending: mutation.isPending,
     /**
      * A change's `basis` guards it (hosted v8): an editor keeps the copy it

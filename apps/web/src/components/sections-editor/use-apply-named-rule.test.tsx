@@ -11,7 +11,6 @@ import {
   ErrorCode,
 } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
-import { planNamedRuleRename } from "./rule-references";
 import { planNamedRulePick } from "./named-rule-picker";
 import type { ProtocolBackend } from "./content-backend";
 import { resetContentSync } from "./content-sync";
@@ -307,33 +306,6 @@ describe("planNamedRuleApply", () => {
     });
   });
 
-  it("guards a campaign rename: the block and every page that names it", () => {
-    const draft = {
-      campaigns: {
-        __resolveType: "calendar",
-        "black-friday": { start: "2026-11-27T00:00:00-03:00" },
-      },
-      home: page({ __resolveType: "campaign", name: "black-friday" }),
-      about: page({ __resolveType: "always" }),
-    };
-    const rename = planNamedRuleRename(
-      draft,
-      "campaigns",
-      "black-friday",
-      "Black Friday",
-    )!;
-    const plan = planNamedRuleApply(rename, (key) => `${key}@3`);
-    expect(plan.kind).toBe("apply");
-    if (plan.kind !== "apply") return;
-    expect(plan.ifMatch).toEqual({
-      campaigns: "campaigns@3",
-      home: "home@3",
-    });
-    expect(plan.patch.set?.home).toEqual(
-      page({ __resolveType: "campaign", name: "Black Friday" }),
-    );
-  });
-
   it("asks for a read when a block's version isn't known yet", () => {
     expect(planNamedRuleApply({ writes: { home } }, () => undefined)).toEqual({
       kind: "unread",
@@ -602,60 +574,6 @@ describe("useApplyNamedRule", () => {
       fresh.value = await result.current.reread();
     });
     expect(fresh.value).toBeNull();
-  });
-
-  it("a rename planned from the stored draft renames a use another tab added", async () => {
-    const { queryClient, result } = setup();
-    // A paused test (a running one keeps its name).
-    const experiments = { __resolveType: "split-traffic", hero: 0 };
-    // This editor holds `home` and `experiments`; another tab then put
-    // "hero" on `promo`, which this editor hasn't read.
-    server.blocks = { home, experiments };
-    server.versions = { home: "home@0", experiments: "experiments@0" };
-    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { home, experiments });
-    queryClient.setQueryData(KEYS.contentVersions(CACHE_KEY), {
-      home: "home@0",
-      experiments: "experiments@0",
-    });
-    server.blocks = { home, promo: homeWithTest, experiments };
-    server.versions = {
-      home: "home@0",
-      promo: "promo@1",
-      experiments: "experiments@0",
-    };
-    let outcome: unknown;
-    await act(async () => {
-      const change = await result.current.planStored((stored) =>
-        planNamedRuleRename(stored, "experiments", "hero", "launch"),
-      );
-      outcome = change ? await result.current.apply(change) : null;
-    });
-    expect(outcome).toEqual({ ok: true });
-    // Nothing is left naming "hero".
-    expect(server.blocks.experiments).toEqual({
-      __resolveType: "split-traffic",
-      launch: 0,
-    });
-    expect(server.blocks.promo).toEqual(
-      page({ __resolveType: "experiment", name: "launch" }),
-    );
-    expect(server.applied.at(-1)?.ifMatch).toMatchObject({
-      experiments: "experiments@0",
-      promo: "promo@1",
-    });
-  });
-
-  it("plans nothing when the draft can't be read", async () => {
-    const { result } = setup();
-    server.unreachable = true;
-    const plan = mock(() => ({ writes: {} }));
-    let change: unknown = "unset";
-    await act(async () => {
-      change = await result.current.planStored(plan);
-    });
-    expect(change).toBeNull();
-    expect(plan).not.toHaveBeenCalled();
-    expect(server.applied).toEqual([]);
   });
 });
 
