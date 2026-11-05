@@ -93,8 +93,11 @@ describe("drafts", () => {
       via: "cli",
       created: true,
     });
-    expect(created.body.pointer).toBe(
-      `delivery.decocms.com/sites/acme/drafts/${created.body.slug}.json@${created.body.etag}`,
+    // The draft index's key, at the draft token (22 base64url characters).
+    expect(created.body.pointer).toMatch(
+      new RegExp(
+        `^delivery\\.decocms\\.com/sites/acme/drafts/${created.body.slug}/index\\.json@[A-Za-z0-9_-]{22}$`,
+      ),
     );
     expect(created.body.previewUrl).toBe(
       `https://preview.acme.com/?__draft=${encodeURIComponent(created.body.pointer)}`,
@@ -152,6 +155,53 @@ describe("drafts", () => {
     await t.call("POST", "acme/drafts", { name: "d" });
     const res = await t.rpc("acme", "d", "blocks.apply", { set: { a: {} } });
     expect(res.body.error.code).toBe(-32602);
+  });
+});
+
+describe("rpc: cms.index and cms.blocks", () => {
+  it("answers Studio's methods with the protocol's, in one batch, in order", async () => {
+    const t = cmsTestApp();
+    await t.call("POST", "acme/drafts", { name: "d" });
+    const saved = await t.rpc("acme", "d", "blocks.apply", {
+      set: { home: { __resolveType: "website/pages/Page.tsx", path: "/" } },
+      ifMatch: { home: null },
+    });
+    expect(saved.body.error).toBeUndefined();
+    const res = await t.call("POST", "acme/drafts/d/rpc", [
+      { jsonrpc: "2.0", id: 1, method: "cms.index", params: {} },
+      { jsonrpc: "2.0", id: 2, method: "schema.get", params: {} },
+      { jsonrpc: "2.0", id: 3, method: "changes.list", params: {} },
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "cms.blocks",
+        params: { names: ["home", "x"] },
+      },
+    ]);
+    expect(res.status).toBe(200);
+    expect(res.body.map((a: { id: number }) => a.id)).toEqual([1, 2, 3, 4]);
+    expect(res.body[0].result.entries.home.meta).toEqual({
+      type: "website/pages/Page.tsx",
+      path: "/",
+    });
+    expect(res.body[0].result.draft.home.editor.userId).toBeDefined();
+    expect(Object.keys(res.body[2].result.changes)).toEqual(["home"]);
+    expect(res.body[3].result).toMatchObject({
+      blocks: { home: { __resolveType: "website/pages/Page.tsx", path: "/" } },
+      missing: ["x"],
+    });
+    const again = await t.rpc("acme", "d", "cms.index", {
+      ifNoneMatch: res.body[0].result.revision,
+    });
+    expect(again.body.result).toEqual({
+      notModified: true,
+      revision: res.body[0].result.revision,
+    });
+    // The draft resource's pointer carries the same token.
+    const draft = await t.call("GET", "acme/drafts/d");
+    expect(draft.body.pointer.endsWith(`@${res.body[0].result.revision}`)).toBe(
+      true,
+    );
   });
 });
 
