@@ -17,7 +17,7 @@ import {
   type PreviewDraftModifiers,
 } from "./preview-draft-link";
 
-const POINTER = "delivery.decocms.com/sites/acme/drafts/s1.json@e1";
+const POINTER = "delivery.decocms.com/sites/acme/drafts/s1/index.json@e1";
 const SITE = "https://www.acme.com";
 const SHA = "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55";
 const SCOPE = "org/vm-1";
@@ -59,7 +59,7 @@ describe("a just-published revision held over the emptied draft", () => {
         previewOptions: {},
       }),
     ).toBe(
-      "delivery.decocms.com/sites/acme/drafts/s1.json?__variant=pages-home%40sections%3D1@e1",
+      "delivery.decocms.com/sites/acme/drafts/s1/index.json?__variant=pages-home%40sections%3D1@e1",
     );
     expect(
       previewDraftValue({
@@ -108,7 +108,7 @@ describe("previewDraftValue: the one __draft a hosted preview sends", () => {
       },
     });
     expect(value).toBe(
-      "delivery.decocms.com/sites/acme/drafts/s1.json?__variant=pages-home%40sections%3D1&__at=2026-10-23T10%3A00%3A00-03%3A00&__test=hero%3Don@e1",
+      "delivery.decocms.com/sites/acme/drafts/s1/index.json?__variant=pages-home%40sections%3D1&__at=2026-10-23T10%3A00%3A00-03%3A00&__test=hero%3Don@e1",
     );
     expect(
       previewDraftValue({
@@ -151,7 +151,7 @@ const STATES = {
   "pointer read": { hostedPointerPending: false, pointer: POINTER },
   "pointer read after a publish (emptied, new version)": {
     hostedPointerPending: false,
-    pointer: "delivery.decocms.com/sites/acme/drafts/s1.json@e2",
+    pointer: "delivery.decocms.com/sites/acme/drafts/s1/index.json@e2",
   },
   "no draft store (read answered, no pointer)": {
     hostedPointerPending: false,

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
-const AUTOSAVE_DELAY = 700;
+/** At least 1 s per block (see the editor's `AUTOSAVE_DELAY`). */
+const AUTOSAVE_DELAY = 1000;
 
 /**
  * Local draft state that persists via `save` after a debounce. Each edit

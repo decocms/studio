@@ -44,7 +44,7 @@ function cms(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
         via: "studio",
         createdAt: "2026-11-04T00:00:00.000Z",
         etag: "e1",
-        pointer: `delivery.test/sites/${SITE}/drafts/d1.json@e1`,
+        pointer: `delivery.test/sites/${SITE}/drafts/d1/index.json@e1`,
         previewUrl: null,
       }),
     );

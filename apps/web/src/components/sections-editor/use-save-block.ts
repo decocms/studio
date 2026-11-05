@@ -76,8 +76,12 @@ import {
   heldCopyVersion,
 } from "./held-copy";
 
-/** Debounce window for form-driven block autosaves (ms). */
-export const AUTOSAVE_DELAY = 700;
+/**
+ * Debounce window for form-driven block autosaves (ms): at least 1 s per
+ * block, so a hosted draft file takes about one write a second while typing
+ * (the design's rate for the CDN's object store).
+ */
+export const AUTOSAVE_DELAY = 1000;
 
 interface UseSaveBlockParams {
   orgSlug: string;
