@@ -819,7 +819,12 @@ async function readHostedContent(
     await ensureHostedBlocks(queryClient, rpc, cacheKey, moved, saving);
   }
   // Someone else changed the draft: the rest of the editor catches up too.
-  if (currentIndex && elsewhere) {
+  // Not for a change the editor already holds: a refused save carried the
+  // draft's copy of its blocks (`adoptRefusedDraft`), so the poll right
+  // after it brings that same change. Refreshing then would re-read the
+  // changes and the pointer and reload the preview ("Saving…") under the
+  // conflict dialog the refusal opened, for nothing new.
+  if (currentIndex && elsewhere && indexDiffers(currentIndex, index)) {
     externalContentChange({
       queryClient,
       orgSlug: params.orgSlug,
@@ -832,6 +837,21 @@ async function readHostedContent(
   const blocks =
     queryClient.getQueryData<Record<string, unknown>>(blocksKey) ?? kept;
   return { blocks, meta };
+}
+
+/**
+ * Whether the index read differs from the one held in a name or a version,
+ * of the draft's names or of the overlaid entries (what the editor shows).
+ */
+function indexDiffers(held: ContentIndex, read: ContentIndex): boolean {
+  if (draftDiffers(held.draft, read.draft)) return true;
+  const names = Object.keys(read.entries);
+  if (names.length !== Object.keys(held.entries).length) return true;
+  return names.some(
+    (name) =>
+      !Object.hasOwn(held.entries, name) ||
+      held.entries[name]?.version !== read.entries[name]?.version,
+  );
 }
 
 /** Whether two answers of the draft's names differ in a name or a version. */

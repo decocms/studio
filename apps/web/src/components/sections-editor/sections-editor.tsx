@@ -57,6 +57,7 @@ import {
   showMergeInForm,
   trackFormChange,
   type FormBase,
+  waitingChoiceBase,
 } from "./form-base";
 import {
   type ConflictChoices,
@@ -1671,7 +1672,16 @@ export function SectionsEditor({
       // The form waits for the user's choice between their version and
       // someone else's: nothing of it is saved until then, and what they
       // change meanwhile is part of their version.
-      if (formBase && waitsForChoice(formBase, nextValue)) return;
+      // A save of a section whose choice waits, built from another record
+      // of the form (queued before the re-read, or started again since),
+      // waits for it too.
+      const waitingBase = waitingChoiceBase(
+        formConflictsRef.current,
+        formBase,
+        target,
+        sectionIndex,
+      );
+      if (waitingBase && waitsForChoice(waitingBase, nextValue)) return;
       const latestDecofile = latestRef.current.decofile;
       const {
         rawSections: latestRawSections,

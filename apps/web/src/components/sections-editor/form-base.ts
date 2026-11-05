@@ -297,3 +297,40 @@ export function conflictRetry(
     ? { delay: 0, immediate: true }
     : { delay: CONFLICT_RETRY_BASE_MS * 2 ** conflicts, immediate: false };
 }
+
+/** Where a form's save goes, as {@link waitingChoiceBase} compares it. */
+export interface WaitingChoiceTarget {
+  pageKey: string | null;
+  global: boolean;
+  pageVariantIndex: number;
+  sectionVariantIndex: number;
+}
+
+/**
+ * The form whose choice between two versions a save waits for: its own,
+ * when the user's choice for it waits, else the one waiting for the same
+ * section (same page, page variant, section and section variant), whichever
+ * form record the save was built from. A save queued before the editor
+ * re-read the section, or built from a form record started again since,
+ * then waits for the user's choice too, rather than writing over their
+ * version while the dialog asks. Null when no choice waits for the section.
+ */
+export function waitingChoiceBase(
+  waiting: ReadonlyArray<{ formBase: FormBase; target: WaitingChoiceTarget }>,
+  formBase: FormBase | null,
+  target: WaitingChoiceTarget,
+  sectionIndex: number,
+): FormBase | null {
+  if (formBase && waiting.some((item) => item.formBase === formBase)) {
+    return formBase;
+  }
+  const same = waiting.find(
+    (item) =>
+      item.formBase.sectionIndex === sectionIndex &&
+      item.target.pageKey === target.pageKey &&
+      item.target.global === target.global &&
+      item.target.pageVariantIndex === target.pageVariantIndex &&
+      item.target.sectionVariantIndex === target.sectionVariantIndex,
+  );
+  return same?.formBase ?? null;
+}

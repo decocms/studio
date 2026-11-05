@@ -14,6 +14,7 @@ import {
   sectionFormSource,
   showMergeInForm,
   trackFormChange,
+  waitingChoiceBase,
 } from "./form-base";
 import type { ParsedSection } from "./parse-sections";
 import type { RawSection } from "./section-types";
@@ -425,5 +426,47 @@ describe("conflictRetry", () => {
       delay: CONFLICT_RETRY_BASE_MS * 4,
       immediate: false,
     });
+  });
+});
+
+describe("waitingChoiceBase (a save while the user's choice waits)", () => {
+  const record = (sectionIndex: number): FormBase => ({
+    sectionIndex,
+    variantIndex: 0,
+    base: { title: "stored" },
+    emitted: { title: "mine" },
+    sectionCount: 3,
+    own: [],
+  });
+  const at = {
+    pageKey: "pages-home",
+    global: false,
+    pageVariantIndex: 0,
+    sectionVariantIndex: 0,
+  };
+  const asked = record(1);
+  const waiting = [{ formBase: asked, target: at }];
+
+  it("a save of the form whose choice waits waits for it", () => {
+    expect(waitingChoiceBase(waiting, asked, at, 1)).toBe(asked);
+  });
+
+  it("a save of the same section built from another record of the form (queued before a re-read, or started again since) waits for the same choice", () => {
+    expect(waitingChoiceBase(waiting, record(1), at, 1)).toBe(asked);
+    expect(waitingChoiceBase(waiting, null, at, 1)).toBe(asked);
+  });
+
+  it("a save of another section, page variant, section variant or page goes ahead", () => {
+    expect(waitingChoiceBase(waiting, record(2), at, 2)).toBeNull();
+    expect(
+      waitingChoiceBase(waiting, null, { ...at, pageVariantIndex: 1 }, 1),
+    ).toBeNull();
+    expect(
+      waitingChoiceBase(waiting, null, { ...at, sectionVariantIndex: 1 }, 1),
+    ).toBeNull();
+    expect(
+      waitingChoiceBase(waiting, null, { ...at, pageKey: "pages-about" }, 1),
+    ).toBeNull();
+    expect(waitingChoiceBase([], record(1), at, 1)).toBeNull();
   });
 });
