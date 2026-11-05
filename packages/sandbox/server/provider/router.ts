@@ -86,6 +86,14 @@ export class SandboxProviderRouter implements SandboxProvider {
    */
   private readonly strays = new Map<string, SandboxProviderKind>();
 
+  /**
+   * The latest ensure per handle. Placement reads what exists, so two at once
+   * each found nothing and put one sandbox on each provider.
+   *
+   * ponytail: in-process; replicas would need the state store's lock.
+   */
+  private readonly ensuring = new Map<string, Promise<unknown>>();
+
   private readonly freestyleShare: number;
 
   constructor(
@@ -173,8 +181,24 @@ export class SandboxProviderRouter implements SandboxProvider {
   }
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
-    const { provider: _requested, ...rest } = opts;
     const handle = computeHandle(id);
+    const run = (this.ensuring.get(handle) ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => this.ensureOne(handle, id, opts));
+    this.ensuring.set(handle, run);
+    try {
+      return await run;
+    } finally {
+      if (this.ensuring.get(handle) === run) this.ensuring.delete(handle);
+    }
+  }
+
+  private async ensureOne(
+    handle: string,
+    id: SandboxId,
+    opts: EnsureOptions,
+  ): Promise<Sandbox> {
+    const { provider: _requested, ...rest } = opts;
     const placed = await this.place(handle, opts);
     this.remember(handle, placed.kind);
     // A new sandbox on the stray's provider replaces it; stop deleting it.
@@ -208,8 +232,8 @@ export class SandboxProviderRouter implements SandboxProvider {
       this.picked.delete(handle);
       throw tagSandboxProvider(err, fallback);
     }
-    // A resumed sandbox moved: its work was published to git on the way out
-    // and the new one cloned the same branch. One owner per handle.
+    // A resumed sandbox moved and the new one cloned the same branch. One
+    // owner per handle; a Freestyle VM whose sync fails is detached, not deleted.
     if (placed.reason === "existing") this.retire(placed.kind, handle);
     return {
       ...sandbox,

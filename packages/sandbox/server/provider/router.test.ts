@@ -315,4 +315,23 @@ describe("SandboxProviderRouter", () => {
     });
     expect(kubernetes.calls).toContain("delete");
   });
+
+  test("two ensures for one handle land on one provider", async () => {
+    const fsState: { owns?: boolean } = {};
+    const freestyle = fake("fs", fsState);
+    const create = freestyle.ensure.bind(freestyle);
+    freestyle.ensure = async (...args) => {
+      await sleep(20);
+      fsState.owns = true;
+      return create(...args);
+    };
+    const kubernetes = fake("k8s");
+    const router = new SandboxProviderRouter({ kubernetes, freestyle });
+    const [a, b] = await Promise.all([
+      router.ensure(ID, { provider: "freestyle" }),
+      router.ensure(ID, { provider: "kubernetes" }),
+    ]);
+    expect([a.previewUrl, b.previewUrl]).toEqual(["fs", "fs"]);
+    expect(kubernetes.calls).not.toContain("ensure");
+  });
 });
