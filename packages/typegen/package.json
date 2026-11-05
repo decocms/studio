@@ -19,7 +19,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "json-schema-to-typescript": "^15.0.4",
     "prettier": "^3.6.2"
   },
