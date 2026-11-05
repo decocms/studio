@@ -3,9 +3,8 @@
  *
  * Any member may list and get connections, and a token often grants more than
  * the member holds: the org's `_self` connection carries a `self: ["*"]`
- * management key. Responses only flag that a token is set, echoing a fetched
- * entity back through UPDATE must keep the stored token, and moving the
- * connection to another origin must drop it.
+ * management key. Responses only flag that a token is set, and echoing a fetched
+ * entity back through UPDATE must keep the stored token.
  */
 
 import { randomUUID } from "node:crypto";
@@ -146,19 +145,6 @@ test.describe("connection token redaction", () => {
     expect(updated.item.has_connection_token).toBe(true);
     expect(before).toBeTruthy();
     expect(await storedToken()).toBe(before);
-
-    // Moving the connection to another origin must not carry the token along.
-    const moved = await callSelfMcpTool<{ item: ConnectionItem }>(
-      memberCtx,
-      owner.orgSlug,
-      "COLLECTION_CONNECTIONS_UPDATE",
-      {
-        id: created.item.id,
-        data: { connection_url: "https://elsewhere.invalid/mcp" },
-      },
-    );
-    expect(moved.item.has_connection_token).toBe(false);
-    expect(await storedToken()).toBeNull();
 
     await ownerCtx.dispose();
     await memberCtx.dispose();

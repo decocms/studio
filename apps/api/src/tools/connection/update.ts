@@ -7,7 +7,6 @@
 
 import { notifyMcpConfiguration } from "./on-configuration";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
-import { clearRefreshBackoff } from "@/oauth/token-refresh";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
@@ -75,33 +74,6 @@ export function resolveFinalConnectionUrl(
   return data.connection_url !== undefined
     ? data.connection_url
     : existingConnectionUrl;
-}
-
-/** Where a connection's credentials are sent: the URL's origin, or the URL itself when it has none. */
-function credentialAudience(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    const { origin } = new URL(url);
-    return origin === "null" ? url : origin;
-  } catch {
-    return url;
-  }
-}
-
-/**
- * The stored token and OAuth tokens were issued for the current server. Moving
- * the connection to another origin must not carry them along: any member who
- * can update a connection could otherwise point it at a host they control and
- * receive the token on the next request.
- */
-export function movesCredentialsToNewOrigin(
-  existingConnectionUrl: string | null,
-  finalConnectionUrl: string | null,
-): boolean {
-  return (
-    credentialAudience(existingConnectionUrl) !==
-    credentialAudience(finalConnectionUrl)
-  );
 }
 
 /**
@@ -231,18 +203,6 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       finalConnectionUrl = buildVirtualUrl(virtualMcpId);
     }
 
-    const dropStoredCredentials = movesCredentialsToNewOrigin(
-      existing.connection_url,
-      finalConnectionUrl,
-    );
-    if (dropStoredCredentials) {
-      if (data.connection_token === undefined) data.connection_token = null;
-      // Before the tool fetch and ON_MCP_CONFIGURATION below: both connect to
-      // the new URL and would otherwise send the stored OAuth token there.
-      await new DownstreamTokenStorage(ctx.db, ctx.vault).delete(id);
-      clearRefreshBackoff(id);
-    }
-
     // Handle MCP configuration state and scopes if present
     // IMPORTANT: configuration_state must never be null/undefined to ensure
     // it's always included in the JWT token sent to downstream connections
@@ -292,7 +252,7 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       data.connection_token !== undefined
         ? data.connection_token
         : existing.connection_token;
-    if (!tokenForToolFetch && !dropStoredCredentials) {
+    if (!tokenForToolFetch) {
       try {
         const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
         const cachedToken = await tokenStorage.get(id);

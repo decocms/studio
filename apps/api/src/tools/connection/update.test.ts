@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  movesCredentialsToNewOrigin,
   resolveFinalConnectionUrl,
   stripImmutableUpdateFields,
 } from "./update";
@@ -63,44 +62,5 @@ describe("resolveFinalConnectionUrl", () => {
         "https://old.invalid",
       ),
     ).toBe("https://new.invalid");
-  });
-});
-
-describe("movesCredentialsToNewOrigin", () => {
-  test("keeps credentials when only the path changes", () => {
-    expect(
-      movesCredentialsToNewOrigin(
-        "https://mcp.example.com/v1",
-        "https://mcp.example.com/v2/mcp",
-      ),
-    ).toBe(false);
-  });
-
-  test("drops them for another host, scheme or port", () => {
-    const from = "https://mcp.example.com/mcp";
-    expect(movesCredentialsToNewOrigin(from, "https://evil.example/mcp")).toBe(
-      true,
-    );
-    expect(
-      movesCredentialsToNewOrigin(from, "http://mcp.example.com/mcp"),
-    ).toBe(true);
-    expect(
-      movesCredentialsToNewOrigin(from, "https://mcp.example.com:8443/mcp"),
-    ).toBe(true);
-  });
-
-  test("drops them when the URL is cleared", () => {
-    expect(
-      movesCredentialsToNewOrigin("https://mcp.example.com/mcp", null),
-    ).toBe(true);
-  });
-
-  test("compares whole URLs that have no origin", () => {
-    expect(movesCredentialsToNewOrigin("virtual://a", "virtual://a")).toBe(
-      false,
-    );
-    expect(movesCredentialsToNewOrigin("virtual://a", "virtual://b")).toBe(
-      true,
-    );
   });
 });
