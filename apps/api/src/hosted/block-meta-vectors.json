@@ -1,0 +1,232 @@
+{
+  "names": [
+    "CMS",
+    "extends",
+    "footer",
+    "footer-a",
+    "header",
+    "home",
+    "plain",
+    "redirects",
+    "variants"
+  ],
+  "cases": [
+    {
+      "name": "home",
+      "body": {
+        "__resolveType": "website/pages/Page.tsx",
+        "path": "/",
+        "sections": [
+          {
+            "__resolveType": "header"
+          },
+          {
+            "__resolveType": "footer"
+          },
+          {
+            "__resolveType": "site/sections/Hero.tsx",
+            "title": "Olá"
+          }
+        ]
+      },
+      "version": "D8NyAZf7d5YahxJT5yN79A",
+      "meta": {
+        "type": "website/pages/Page.tsx",
+        "path": "/",
+        "refs": [
+          "footer",
+          "header"
+        ]
+      },
+      "entry": {
+        "version": "D8NyAZf7d5YahxJT5yN79A",
+        "meta": {
+          "type": "website/pages/Page.tsx",
+          "path": "/",
+          "refs": [
+            "footer",
+            "header"
+          ]
+        }
+      }
+    },
+    {
+      "name": "footer",
+      "body": {
+        "__resolveType": "site/sections/Footer.tsx",
+        "columns": [
+          {
+            "__resolveType": "footer-b"
+          },
+          {
+            "__resolveType": "footer-a"
+          },
+          {
+            "__resolveType": "footer-a"
+          }
+        ]
+      },
+      "version": "6-WZ8yiUs_rKrbuJOftvQA",
+      "meta": {
+        "type": "site/sections/Footer.tsx",
+        "refs": [
+          "footer-a"
+        ]
+      },
+      "entry": {
+        "version": "6-WZ8yiUs_rKrbuJOftvQA",
+        "meta": {
+          "type": "site/sections/Footer.tsx",
+          "refs": [
+            "footer-a"
+          ]
+        }
+      }
+    },
+    {
+      "name": "footer-a",
+      "body": {
+        "__resolveType": "site/sections/Links.tsx",
+        "links": []
+      },
+      "version": "FKbaI1TQOkKUaJDToMSDXg",
+      "meta": {
+        "type": "site/sections/Links.tsx"
+      },
+      "entry": {
+        "version": "FKbaI1TQOkKUaJDToMSDXg",
+        "meta": {
+          "type": "site/sections/Links.tsx"
+        }
+      }
+    },
+    {
+      "name": "plain",
+      "body": {
+        "title": "no type"
+      },
+      "version": "nDqa9jpXsR-37zvd7Y5rrw",
+      "meta": {},
+      "entry": {
+        "version": "nDqa9jpXsR-37zvd7Y5rrw"
+      }
+    },
+    {
+      "name": "variants",
+      "body": {
+        "__resolveType": "multivariate",
+        "variants": [
+          {
+            "rule": {
+              "__resolveType": "never"
+            },
+            "value": {
+              "__resolveType": "Promo"
+            }
+          },
+          {
+            "rule": {
+              "__resolveType": "always"
+            },
+            "value": {
+              "__resolveType": "lazy",
+              "value": {
+                "__resolveType": "header"
+              }
+            }
+          }
+        ]
+      },
+      "version": "NY3fN7vf-0QANkzlwdvuKg",
+      "meta": {
+        "type": "multivariate",
+        "refs": [
+          "header"
+        ]
+      },
+      "entry": {
+        "version": "NY3fN7vf-0QANkzlwdvuKg",
+        "meta": {
+          "type": "multivariate",
+          "refs": [
+            "header"
+          ]
+        }
+      }
+    },
+    {
+      "name": "extends",
+      "body": {
+        "__resolveType": "header",
+        "title": "override",
+        "path": "/x"
+      },
+      "version": "zuj5u8YTRDdaEv_7wSwnjg",
+      "meta": {
+        "type": "header",
+        "path": "/x",
+        "refs": [
+          "header"
+        ]
+      },
+      "entry": {
+        "version": "zuj5u8YTRDdaEv_7wSwnjg",
+        "meta": {
+          "type": "header",
+          "path": "/x",
+          "refs": [
+            "header"
+          ]
+        }
+      }
+    },
+    {
+      "name": "redirects",
+      "body": {
+        "__resolveType": "website/loaders/redirects.ts",
+        "redirects": [
+          {
+            "from": "/old",
+            "to": "/new",
+            "type": "permanent"
+          }
+        ]
+      },
+      "version": "b5gi6Yu1_tmkwW6fWbs02Q",
+      "meta": {
+        "type": "website/loaders/redirects.ts"
+      },
+      "entry": {
+        "version": "b5gi6Yu1_tmkwW6fWbs02Q",
+        "meta": {
+          "type": "website/loaders/redirects.ts"
+        }
+      }
+    },
+    {
+      "name": "CMS",
+      "body": {
+        "__resolveType": "cms-settings",
+        "telemetry": {
+          "enabled": false
+        }
+      },
+      "version": "sBqXj5u549za_Plbqc6R_g",
+      "meta": {
+        "type": "cms-settings"
+      },
+      "entry": {
+        "version": "sBqXj5u549za_Plbqc6R_g",
+        "meta": {
+          "type": "cms-settings"
+        },
+        "data": {
+          "__resolveType": "cms-settings",
+          "telemetry": {
+            "enabled": false
+          }
+        }
+      }
+    }
+  ]
+}
