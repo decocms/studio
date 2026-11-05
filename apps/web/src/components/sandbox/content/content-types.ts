@@ -22,7 +22,12 @@ import { normalizePagePath } from "@/components/sections-editor/page-path-utils"
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
 import { underlyingSectionResolveType } from "@/components/sections-editor/section-catalog";
 import { CMS_SETTINGS_RESOLVE_TYPE } from "./cms-settings";
-import { getRedirectPayload, type RedirectType } from "./redirect-data";
+import {
+  getRedirectPayload,
+  REDIRECTS_RESOLVE_TYPE,
+  redirectRuleBlocks,
+  type RedirectType,
+} from "./redirect-data";
 
 export type EntryStatus = "published" | "changed" | "new" | "deleted";
 
@@ -295,11 +300,16 @@ export function buildContentTypes(input: {
     if (!type) continue;
     const spelling = spellingKey(key);
     seen.add(spelling);
-    const entry: ContentEntry = {
-      key,
-      block: value,
-      status: entryStatus(bySpelling.get(spelling)?.change),
-    };
+    const status = entryStatus(bySpelling.get(spelling)?.change);
+    // The redirects block (hosted v8): one entry per rule, keyed
+    // `Redirects#<position>`, each with the block's status.
+    if (value.__resolveType === REDIRECTS_RESOLVE_TYPE) {
+      for (const [ruleKey, rule] of redirectRuleBlocks(key, value)) {
+        add(type, { key: ruleKey, block: rule, status });
+      }
+      continue;
+    }
+    const entry: ContentEntry = { key, block: value, status };
     typed.set(spelling, { type, entry });
     add(type, entry);
   }

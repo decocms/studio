@@ -193,3 +193,129 @@ export function generateRedirectBlockKey(
   }
   throw new Error("Could not generate a unique redirect block key");
 }
+
+/**
+ * Hosted Blocks (v8) sites route only the one redirects block (contract
+ * §3.8): `{ "__resolveType": "redirects", "redirects": [...] }`, named
+ * `Redirects` (`redirects` is a reserved type name). Each item keeps either
+ * shape a per-rule block has, without its `__resolveType`; the editor lists
+ * its items as entries keyed `Redirects#<position>`.
+ */
+export const REDIRECTS_BLOCK = "Redirects";
+export const REDIRECTS_RESOLVE_TYPE = "redirects";
+
+const RULE_KEY_PREFIX = `${REDIRECTS_BLOCK}#`;
+
+/** The position of a rule of the redirects block, from its entry key; null for any other key. */
+export function redirectRuleIndex(key: string): number | null {
+  if (!key.startsWith(RULE_KEY_PREFIX)) return null;
+  const index = Number(key.slice(RULE_KEY_PREFIX.length));
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+function rulesOf(block: unknown): Record<string, unknown>[] {
+  if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+  const rules = (block as { redirects?: unknown }).redirects;
+  return Array.isArray(rules)
+    ? rules.filter(
+        (r): r is Record<string, unknown> =>
+          !!r && typeof r === "object" && !Array.isArray(r),
+      )
+    : [];
+}
+
+/** One rule of the redirects block, as a payload. */
+function readRule(rule: Record<string, unknown>): RedirectPayload {
+  return "redirect" in rule
+    ? readRedirect(rule)
+    : readFlatRedirect({ ...rule, __resolveType: FLAT_REDIRECT_RESOLVE_TYPE });
+}
+
+/** The rule a payload stores, keeping the fields of `base` the editor doesn't know. */
+function buildRule(
+  payload: RedirectPayload,
+  base?: Record<string, unknown>,
+): Record<string, unknown> {
+  const { __resolveType: _type, ...rule } = buildRedirectBlock(payload, {
+    ...base,
+  });
+  return rule;
+}
+
+/**
+ * The redirects block's rules as per-rule blocks (what `getRedirectPayload`
+ * reads), keyed `Redirects#<position>`, for lists built over blocks.
+ */
+export function redirectRuleBlocks(
+  name: string,
+  block: unknown,
+): Array<[string, Record<string, unknown>]> {
+  return rulesOf(block).map((rule, i) => [
+    `${name}#${i}`,
+    "redirect" in rule
+      ? { ...rule, __resolveType: REDIRECT_RESOLVE_TYPE }
+      : { ...rule, __resolveType: FLAT_REDIRECT_RESOLVE_TYPE },
+  ]);
+}
+
+/** The redirects block's rules as entries (`Redirects#<position>`). */
+export function extractRedirectRules(
+  decofile: Record<string, unknown>,
+): RedirectEntry[] {
+  return rulesOf(decofile[REDIRECTS_BLOCK]).map((rule, i) => ({
+    key: `${RULE_KEY_PREFIX}${i}`,
+    ...readRule(rule),
+  }));
+}
+
+/** The payload of the rule at `index` (empty defaults when there is none). */
+export function getRedirectRulePayload(
+  block: unknown,
+  index: number,
+): RedirectPayload {
+  const rule = rulesOf(block)[index];
+  return rule ? readRule(rule) : readRedirect(undefined);
+}
+
+/** The redirects block (any other fields kept) with its rules replaced. */
+function withRules(
+  block: unknown,
+  rules: Record<string, unknown>[],
+): Record<string, unknown> {
+  const base =
+    block && typeof block === "object" && !Array.isArray(block)
+      ? (block as Record<string, unknown>)
+      : {};
+  return { ...base, __resolveType: REDIRECTS_RESOLVE_TYPE, redirects: rules };
+}
+
+/** The redirects block with one more rule, at the end; created when absent. */
+export function appendRedirectRule(
+  block: unknown,
+  payload: RedirectPayload,
+): Record<string, unknown> {
+  return withRules(block, [...rulesOf(block), buildRule(payload)]);
+}
+
+/** The redirects block with the rule at `index` replaced. */
+export function setRedirectRule(
+  block: unknown,
+  index: number,
+  payload: RedirectPayload,
+): Record<string, unknown> {
+  const rules = rulesOf(block);
+  const next = rules.slice();
+  next[index] = buildRule(payload, rules[index]);
+  return withRules(block, next);
+}
+
+/** The redirects block without the rule at `index`. */
+export function removeRedirectRule(
+  block: unknown,
+  index: number,
+): Record<string, unknown> {
+  return withRules(
+    block,
+    rulesOf(block).filter((_, i) => i !== index),
+  );
+}
