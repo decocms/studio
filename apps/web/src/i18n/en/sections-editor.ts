@@ -219,6 +219,9 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.create": "Create",
   "sectionsEditor.namedRules.openEditor": "Open the site editor",
   "sectionsEditor.namedRules.tryAgain": "Try again",
+  "sectionsEditor.hosted.blockLoadFailed": "Couldn't load this block.",
+  "sectionsEditor.hosted.blockLoadFailedHint":
+    "Studio tries again on its own in a moment.",
   "sectionsEditor.field.missingRequired": "Missing a required field",
   "sectionsEditor.field.missingRequiredTooltip":
     "Required field not filled in.",

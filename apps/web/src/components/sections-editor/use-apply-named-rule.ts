@@ -37,6 +37,7 @@ import {
   planHostedConflict,
   pointerBlockKey,
 } from "./hosted-reconcile";
+import { ensureEveryHostedBlock } from "./hosted-content";
 import { type CampaignWindow, namedRuleKindOfBlock } from "./named-rules";
 import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
@@ -521,7 +522,20 @@ export function useApplyNamedRule({
         params,
         cacheKey,
       );
-      return content.blocks;
+      if (!protocol.hosted) return content.blocks;
+      // Hosted: the read answers the index and only the bodies loaded so
+      // far. A block another editor saved since (a new use of the test or
+      // campaign, say) is loaded too, so the plan sees every use.
+      await ensureEveryHostedBlock(
+        queryClient,
+        protocol.hosted,
+        cacheKey,
+        savingBlockKeys(queryClient, params),
+      );
+      return (
+        queryClient.getQueryData<Record<string, unknown>>(queryKey) ??
+        content.blocks
+      );
     } catch {
       return null;
     }

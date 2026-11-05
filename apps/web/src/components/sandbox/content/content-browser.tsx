@@ -588,7 +588,7 @@ function ContentBrowserReady({
             ? openBlockKey
             : REDIRECTS_BLOCK,
         ];
-  const openBlockReady = useEnsureDecofileBlocks(
+  const openBlockLoad = useEnsureDecofileBlocks(
     hostedDraft ? scope : null,
     openBlockNames,
     { withRefs: true },
@@ -1596,8 +1596,18 @@ function ContentBrowserReady({
   };
 
   // The editor side, as every collection shows it (hosted v8: once the open
-  // block is loaded).
-  const editorPane = !openBlockReady ? (
+  // block is loaded; a load that failed says so and is tried again).
+  const editorPane = openBlockLoad.failed ? (
+    <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+      <EmptyMessage
+        title={t("sectionsEditor.hosted.blockLoadFailed")}
+        description={t("sectionsEditor.hosted.blockLoadFailedHint")}
+      />
+      <Button variant="outline" size="sm" onClick={openBlockLoad.retry}>
+        {t("sectionsEditor.namedRules.tryAgain")}
+      </Button>
+    </div>
+  ) : !openBlockLoad.ready ? (
     <div className="h-full w-full flex items-center justify-center">
       <Spinner className="size-5 text-muted-foreground" />
     </div>

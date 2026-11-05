@@ -1,3 +1,5 @@
+import { isIndexStub } from "./hosted-content";
+import { isSiteAppBlock } from "./page-list";
 import type { LiveMeta } from "./resolve-schema";
 import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { unwrapSeoConfig, wrapSeoPersistValue } from "./seo-lazy-render";
@@ -56,6 +58,27 @@ function looksLikeSeo(obj: Record<string, unknown>, meta?: LiveMeta): boolean {
 }
 
 /**
+ * The blocks {@link findSiteSeoEntry} may find the site's SEO in, by name
+ * and type alone (a hosted listing's stubs carry both): the site app block
+ * and the blocks of an SEO type. What a hosted SEO view loads first.
+ */
+export function siteSeoBlockNames(
+  decofile: Record<string, unknown>,
+  meta?: LiveMeta,
+): string[] {
+  return Object.entries(decofile)
+    .filter(([key, val]) => {
+      if (!isPlainObject(val)) return false;
+      const rt = val.__resolveType;
+      return (
+        isSiteAppBlock(key, val) ||
+        (typeof rt === "string" && isSeoSectionResolveType(rt, meta))
+      );
+    })
+    .map(([key]) => key);
+}
+
+/**
  * Finds the site-level (default) SEO that pages inherit from. Deco sites store
  * this in one of a few shapes, checked in order:
  *
@@ -64,6 +87,9 @@ function looksLikeSeo(obj: Record<string, unknown>, meta?: LiveMeta): boolean {
  *      true "applied to every page unless overridden" default.
  *   2. A standalone SEO block — a decofile entry whose own `__resolveType` is
  *      an SEO type (the block *is* the SEO).
+ *
+ * A hosted index stub (a body not loaded yet) is never one: its SEO isn't
+ * known until it is loaded ({@link siteSeoBlockNames}).
  */
 export function findSiteSeoEntry(
   decofile: Record<string, unknown>,
@@ -71,7 +97,7 @@ export function findSiteSeoEntry(
 ): SiteSeoEntry | null {
   // 1) SEO nested on a non-page config block.
   for (const [key, val] of Object.entries(decofile)) {
-    if (!isPlainObject(val)) continue;
+    if (!isPlainObject(val) || isIndexStub(val)) continue;
     const obj = val;
     const rt = obj.__resolveType;
     if (typeof rt === "string" && isPageResolveTypeOnBlocksSite(rt, meta))
@@ -98,7 +124,7 @@ export function findSiteSeoEntry(
 
   // 2) Standalone SEO block.
   for (const [key, val] of Object.entries(decofile)) {
-    if (!isPlainObject(val)) continue;
+    if (!isPlainObject(val) || isIndexStub(val)) continue;
     const obj = val;
     if (
       typeof obj.__resolveType === "string" &&

@@ -172,17 +172,20 @@ function SiteDraftLoaded({
   const decofileQuery = useDecofile(params);
   const metaQuery = useLiveMeta(params);
   // Hosted v8: these views read the rules and every block that uses them
-  // ("Used by"), so they load every body the index names.
+  // ("Used by", and the uses a rename or delete rewrites). A use names a test
+  // or campaign inside a body (`experiment { name }`), which the index's
+  // `refs` don't carry (they name saved blocks), so they load every body the
+  // index names: once, then only the names a poll shows new or moved.
   const scope = { orgSlug, virtualMcpId, branch };
-  const loaded = useEnsureDecofileBlocks(
+  const load = useEnsureDecofileBlocks(
     scope,
     useIndexNamesOfType(scope, () => true),
   );
   const decofile = decofileQuery.data as Record<string, unknown> | undefined;
   const meta = metaQuery.data;
 
-  if (!decofile || !meta || !loaded) {
-    if (decofileQuery.isError || metaQuery.isError) {
+  if (!decofile || !meta || !load.ready) {
+    if (decofileQuery.isError || metaQuery.isError || load.failed) {
       return (
         <SiteDraftGuide
           icon={icon}
@@ -191,8 +194,9 @@ function SiteDraftLoaded({
           action={{
             label: t("sectionsEditor.namedRules.tryAgain"),
             onClick: () => {
-              void decofileQuery.refetch();
-              void metaQuery.refetch();
+              if (decofileQuery.isError) void decofileQuery.refetch();
+              if (metaQuery.isError) void metaQuery.refetch();
+              if (load.failed) load.retry();
             },
           }}
         />

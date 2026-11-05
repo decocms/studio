@@ -225,6 +225,10 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.create": "Criar",
   "sectionsEditor.namedRules.openEditor": "Abrir o editor do site",
   "sectionsEditor.namedRules.tryAgain": "Tentar de novo",
+  "sectionsEditor.hosted.blockLoadFailed":
+    "Não foi possível carregar este bloco.",
+  "sectionsEditor.hosted.blockLoadFailedHint":
+    "O Studio tenta de novo sozinho em instantes.",
   "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
   "sectionsEditor.field.missingRequiredTooltip":
     "Campo obrigatório não preenchido.",
