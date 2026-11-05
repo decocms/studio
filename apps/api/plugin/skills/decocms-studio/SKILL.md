@@ -33,6 +33,11 @@ not work around a missing session with API keys, MCP tokens or presigned URLs.
 A self-hosted or local studio adds `--target <url>` to every command, e.g.
 `--target http://localhost:3000`.
 
+Inside a Studio sandbox run the session is provided: never run
+`decocms auth login` or pass `--target` there. If a call says it is not logged
+in, the session expired, or it cannot refresh, report that error to the user
+instead of asking them to log in.
+
 Done when `whoami` prints the user the person expects. Its `Target` is the
 studio origin used in the links below.
 

@@ -1,4 +1,5 @@
 import type { UIMessageChunk } from "ai";
+import { studioCliOutput, studioToolCallFromCodexCommand } from "./studio-cli";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -10,10 +11,16 @@ export function record(value: unknown): Record<string, unknown> {
 
 function tool(
   item: Record<string, unknown>,
-): { name: string; input: unknown } | null {
+  studioCli: boolean,
+): { name: string; input: unknown; studioCli?: true } | null {
   switch (item.type) {
-    case "commandExecution":
+    case "commandExecution": {
+      const call = studioCli
+        ? studioToolCallFromCodexCommand(item.command)
+        : null;
+      if (call) return { ...call, studioCli: true };
       return { name: "bash", input: { command: item.command, cwd: item.cwd } };
+    }
     case "fileChange":
       return { name: "edit", input: { changes: item.changes } };
     case "mcpToolCall":
@@ -55,6 +62,9 @@ export class CodexChunkTranslator {
   private usageBaseline:
     | { input: number; output: number; cached: number }
     | undefined;
+
+  /** `studioCli`: a command that is one `decocms tools call` renders as that tool. */
+  constructor(private readonly options: { studioCli?: boolean } = {}) {}
 
   close(): UIMessageChunk[] {
     const chunks: UIMessageChunk[] = [];
@@ -205,7 +215,7 @@ export class CodexChunkTranslator {
     const id = item.id;
     const done = method === "item/completed";
     const chunks: UIMessageChunk[] = [];
-    const call = tool(item);
+    const call = tool(item, Boolean(this.options.studioCli));
     if (call) {
       if (!this.calls.has(id)) {
         chunks.push(...this.close(), {
@@ -216,7 +226,30 @@ export class CodexChunkTranslator {
         });
         this.calls.add(id);
       }
-      if (done) {
+      if (done && call.studioCli) {
+        const output =
+          typeof item.aggregatedOutput === "string"
+            ? item.aggregatedOutput
+            : "";
+        const failed = item.status !== "completed" || item.exitCode !== 0;
+        chunks.push(
+          failed
+            ? {
+                type: "tool-output-error",
+                toolCallId: id,
+                errorText:
+                  output.trim() ||
+                  `decocms exited with ${String(item.exitCode ?? item.status)}`,
+              }
+            : {
+                type: "tool-output-available",
+                toolCallId: id,
+                output: studioCliOutput(output),
+              },
+          { type: "finish-step" },
+          { type: "start-step" },
+        );
+      } else if (done) {
         const failed =
           item.status === "failed" ||
           item.status === "declined" ||

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
   brokenStudioMcp,
@@ -6,10 +9,12 @@ import {
   createDeltaCoalescer,
   errorFinishChunks,
   interactiveToolHook,
+  planModeStudioCliHook,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
   promptFromUserMessage,
+  studioMcpPreflight,
 } from "./claude-code";
 import { UiChunkTranslator } from "./to-ui-chunks";
 
@@ -670,6 +675,55 @@ describe("interactiveToolHook", () => {
   });
 });
 
+describe("planModeStudioCliHook", () => {
+  const decide = (command: string) =>
+    planModeStudioCliHook.hooks[0]!(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command },
+        tool_use_id: "call-1",
+        session_id: "s",
+        transcript_path: "/t",
+        cwd: "/",
+      },
+      "call-1",
+      { signal: new AbortController().signal },
+    );
+  const denied = { hookSpecificOutput: { permissionDecision: "deny" } };
+
+  test("denies any decocms command but a plain research call", async () => {
+    for (const command of [
+      "decocms tools call COLLECTION_VIRTUAL_MCP_LIST --org example-org",
+      "decocms tools call COLLECTION_VIRTUAL_MCP_CREATE --org example-org -d '{}'",
+      "ls && decocms tools call web_search --org example-org -d '{}'",
+      "decocms api /api/example-org/fs/home/list",
+    ]) {
+      expect(await decide(command)).toMatchObject(denied);
+    }
+  });
+
+  test("leaves research calls and other commands to the normal gate", async () => {
+    expect(
+      await decide(
+        `decocms tools call web_search --org example-org -d '{"query":"x"}'`,
+      ),
+    ).toEqual({});
+    expect(await decide("git status")).toEqual({});
+  });
+
+  test("is mounted only for a plan-mode CLI run", () => {
+    const hooks = (overrides: Partial<HarnessStreamInputWire>) =>
+      options(overrides).hooks?.PreToolUse ?? [];
+    const cli = { studioCli: { org: "example-org" } };
+    expect(hooks({ mode: "plan", ...cli })).toContain(planModeStudioCliHook);
+    expect(hooks({ mode: "plan" })).not.toContain(planModeStudioCliHook);
+    expect(hooks({ mode: "default", ...cli })).not.toContain(
+      planModeStudioCliHook,
+    );
+  });
+});
+
 describe("permission callback", () => {
   const decide = (mode: "default" | "plan", toolName: string) =>
     options({ mode }).canUseTool!(
@@ -694,6 +748,166 @@ describe("permission callback", () => {
     expect(await decide("plan", "Bash")).toMatchObject({ behavior: "deny" });
     expect(await decide("plan", "mcp__studio__web_search")).toMatchObject({
       behavior: "allow",
+    });
+  });
+});
+
+describe("studioCli runs", () => {
+  const studio = {
+    url: "https://studio.example/api/example-org/mcp/thread/thrd_1",
+    headers: { Authorization: "Bearer k" },
+    expiresAt: 1,
+  };
+  const linear = {
+    name: "linear",
+    url: "https://studio.example/api/example-org/mcp/conn_1",
+    headers: { Authorization: "Bearer k" },
+  };
+  const cliInput = (overrides: Partial<HarnessStreamInputWire> = {}) =>
+    input({
+      mcp: studio,
+      orgMcps: [linear],
+      studioCli: { org: "example-org" },
+      ...overrides,
+    });
+  const cliOptions = (overrides: Partial<HarnessStreamInputWire> = {}) =>
+    buildOptions({
+      input: cliInput(overrides),
+      sessionId: "11111111-1111-5111-8111-111111111111",
+      resume: false,
+      studioCliHome: "/tmp/studio-cli-example",
+    });
+
+  test("mounts the org's servers but not Studio's", () => {
+    expect(mcpServersFor(cliInput())).toEqual({
+      linear: { type: "http", url: linear.url, headers: linear.headers },
+    });
+    expect(cliOptions({ orgMcps: [] }).mcpServers).toBeUndefined();
+  });
+
+  test("has no Studio MCP to preflight; without the field the preflight is unchanged", () => {
+    const failed = [{ name: "studio", status: "failed" }];
+    expect(studioMcpPreflight(cliInput(), failed)).toBe(null);
+    expect(studioMcpPreflight(input({ mcp: studio }), failed)).toBe(
+      "studio=failed",
+    );
+  });
+
+  test("points the CLI at the run's session dir and tells the model about it", () => {
+    const opts = cliOptions();
+    expect(opts.env?.DECOCMS_HOME).toBe("/tmp/studio-cli-example");
+    expect(opts.env?.PATH).toBe(process.env.PATH);
+    const append = (opts.systemPrompt as { append: string }).append;
+    expect(append).toContain("decocms-studio skill");
+    expect(append).toContain("`example-org`");
+  });
+
+  test("loads the image's decocms-studio plugin and strips DATA_DIR", () => {
+    const prev = {
+      plugin: process.env.DECOCMS_STUDIO_PLUGIN_DIR,
+      plugins: process.env.CLAUDE_CODE_PLUGIN_DIRS,
+      data: process.env.DATA_DIR,
+    };
+    const restore = (name: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    };
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "studio-plugin-"));
+      process.env.DECOCMS_STUDIO_PLUGIN_DIR = dir;
+      process.env.CLAUDE_CODE_PLUGIN_DIRS = "/skills/org";
+      process.env.DATA_DIR = "/data";
+      const opts = cliOptions();
+      expect(opts.plugins).toEqual([
+        { type: "local", path: "/skills/org" },
+        { type: "local", path: dir },
+      ]);
+      expect(opts.env).not.toHaveProperty("DATA_DIR");
+      expect(options().plugins).toEqual([
+        { type: "local", path: "/skills/org" },
+      ]);
+      process.env.DECOCMS_STUDIO_PLUGIN_DIR = join(dir, "missing");
+      expect(cliOptions().plugins).toEqual([
+        { type: "local", path: "/skills/org" },
+      ]);
+    } finally {
+      restore("DECOCMS_STUDIO_PLUGIN_DIR", prev.plugin);
+      restore("CLAUDE_CODE_PLUGIN_DIRS", prev.plugins);
+      restore("DATA_DIR", prev.data);
+    }
+  });
+
+  test("without the field, options are what they were", () => {
+    const opts = buildOptions({
+      input: input({ mcp: studio }),
+      sessionId: "11111111-1111-5111-8111-111111111111",
+      resume: false,
+      studioCliHome: "/tmp/studio-cli-example",
+    });
+    expect(opts).not.toHaveProperty("env");
+    expect((opts.systemPrompt as { append: string }).append).not.toContain(
+      "decocms",
+    );
+    expect(Object.keys(opts.mcpServers ?? {})).toEqual(["studio"]);
+  });
+
+  describe("plan mode", () => {
+    const decide = (
+      command: string,
+      overrides: Partial<HarnessStreamInputWire> = {},
+      extra: Record<string, unknown> = {},
+    ) =>
+      cliOptions({ mode: "plan", ...overrides }).canUseTool!(
+        "Bash",
+        { command, ...extra },
+        {
+          signal: new AbortController().signal,
+          toolUseID: "call-1",
+          requestId: "r",
+        },
+      );
+
+    test("allows a plain research-tool call", async () => {
+      for (const name of ["web_search", "deep_research", "research_result"]) {
+        expect(
+          await decide(
+            `decocms tools call ${name} --org example-org -d '{"query":"x"}'`,
+          ),
+        ).toMatchObject({ behavior: "allow" });
+      }
+    });
+
+    test("denies every other command, tool, or shape", async () => {
+      for (const command of [
+        `decocms tools call TASK_BOARD_ITEM_CREATE --org example-org -d '{}'`,
+        `decocms tools call web_search --org example-org -d '{}' && rm -rf .`,
+        `decocms tools call web_search --org example-org -d @args.json`,
+        `decocms api /api/example-org/fs/home/list`,
+        "ls",
+      ]) {
+        expect(await decide(command)).toMatchObject({ behavior: "deny" });
+      }
+      expect(
+        await decide(
+          `decocms tools call web_search --org example-org`,
+          {},
+          { run_in_background: true },
+        ),
+      ).toMatchObject({ behavior: "deny" });
+    });
+
+    test("a run without the field does not allow the CLI", async () => {
+      expect(
+        await options({ mode: "plan" }).canUseTool!(
+          "Bash",
+          { command: "decocms tools call web_search --org example-org" },
+          {
+            signal: new AbortController().signal,
+            toolUseID: "call-1",
+            requestId: "r",
+          },
+        ),
+      ).toMatchObject({ behavior: "deny" });
     });
   });
 });

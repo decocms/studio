@@ -256,6 +256,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Forward a sandbox run's metadata (such as a webhook trigger's run_metadata) to the MCP tools it calls, as hosted Decopilot runs do. Off by default.",
     ),
+  sandbox_studio_cli: z
+    .boolean()
+    .optional()
+    .describe(
+      "A sandbox run reaches Studio through the decocms CLI (with the run's own key) instead of a mounted Studio MCP server, and the agent's own connections are called through Studio rather than mounted one server each. Off by default.",
+    ),
   sandbox_repo_snapshots: z
     .boolean()
     .optional()

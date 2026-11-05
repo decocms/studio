@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeSession } from "../lib/session";
@@ -193,6 +193,41 @@ describe("toolsCommand call", () => {
     });
 
     expect(calls[0]!.init.body).toBe("{}");
+  });
+
+  it("uses the only session on disk, for a studio on a non-default port", async () => {
+    const sandboxDir = await mkdtemp(join(tmpdir(), "deco-tools-port-"));
+    try {
+      await writeFile(
+        join(sandboxDir, "session.studio.example.ts.net_10000.json"),
+        JSON.stringify({
+          target: "https://studio.example.ts.net:10000",
+          clientId: "sandbox-run",
+          user: { sub: "u_1" },
+          accessToken: "studio_api_key",
+          createdAt: "2026-05-04T00:00:00.000Z",
+        }),
+        { mode: 0o600 },
+      );
+      const code = await toolsCommand({
+        dataDir: sandboxDir,
+        subcommand: "call",
+        arg: "THREAD_GET",
+        org: "my-org",
+        fetch: respondWith({}),
+        output,
+      });
+
+      expect(code).toBe(0);
+      expect(calls[0]!.url).toBe(
+        "https://studio.example.ts.net:10000/api/my-org/tools/THREAD_GET",
+      );
+      expect(new Headers(calls[0]!.init.headers).get("authorization")).toBe(
+        "Bearer studio_api_key",
+      );
+    } finally {
+      await rm(sandboxDir, { recursive: true, force: true });
+    }
   });
 
   it("exits 1 on a tool error and keeps the error body", async () => {

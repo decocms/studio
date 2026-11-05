@@ -60,6 +60,23 @@ describe("release change classification", () => {
     ]);
   });
 
+  test("a CLI or skill change also bumps the sandbox manifest", () => {
+    for (const file of [
+      "apps/api/src/cli.ts",
+      "apps/api/src/cli/commands/tools.ts",
+      "apps/api/plugin/skills/decocms-studio/SKILL.md",
+    ]) {
+      expect(releaseManifestCandidates([file])).toEqual([
+        "apps/api/package.json",
+        "packages/sandbox-controller/package.json",
+        "packages/sandbox/package.json",
+      ]);
+    }
+    expect(releaseManifestCandidates(["apps/api/src/app.ts"])).toEqual([
+      "apps/api/package.json",
+    ]);
+  });
+
   test("a change to a bundled source also bumps sandbox-controller", () => {
     expect(
       releaseManifestCandidates([

@@ -152,6 +152,20 @@ export function runMetadataFromApiKey(
   return parsed.data;
 }
 
+const BoundThreadIdSchema = z.string().min(1);
+
+/**
+ * The thread a sandbox run's key is bound to (see `mcpKeyMetadata`). Read from
+ * the key's stored metadata only: the run holds the bearer, so a thread named
+ * by a header, query or body would let it act on another run's thread.
+ */
+export function threadIdFromApiKey(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  const parsed = BoundThreadIdSchema.safeParse(metadata?.threadId);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export interface StudioContextConfig {
   db: Kysely<Database>;
   auth: BetterAuthInstance;
@@ -1654,6 +1668,8 @@ export async function createStudioContextFactory(
 
     if (authResult.apiKey) {
       studioAuth.apiKey = authResult.apiKey;
+      const boundThreadId = threadIdFromApiKey(authResult.apiKey.metadata);
+      if (boundThreadId) studioAuth.boundThreadId = boundThreadId;
     }
 
     // Organization from Better Auth (OAuth session or API key metadata)

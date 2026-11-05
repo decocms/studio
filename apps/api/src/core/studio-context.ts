@@ -223,6 +223,13 @@ export interface StudioAuth {
 
   /** Org the {@link permissions} map was resolved for (cross-org reuse guard). */
   permissionsOrganizationId?: string;
+
+  /**
+   * The thread the caller's API key was minted for (a sandbox run's key), from
+   * the key's stored metadata — never from the request. Such a caller gets
+   * that thread's tool surface on `/api/:org/tools`.
+   */
+  boundThreadId?: string;
 }
 
 // ============================================================================

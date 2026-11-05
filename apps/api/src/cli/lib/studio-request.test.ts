@@ -176,9 +176,24 @@ describe("writeResponse", () => {
   });
 
   it("hints at logging in again to the session's studio on 401", async () => {
-    const { code } = await collect(new Response("", { status: 401 }));
+    const code = await writeResponse(
+      new Response("", { status: 401 }),
+      { ...session, refreshToken: "rt_1" },
+      async () => {},
+    );
     expect(code).toBe(1);
     expect(errors.join("\n")).toContain(
+      "Run `decocms auth login --target https://studio.example.com` to authenticate again.",
+    );
+  });
+
+  it("on 401 without a refresh token, says to report an environment-provided session", async () => {
+    const { code } = await collect(new Response("", { status: 401 }));
+    expect(code).toBe(1);
+    const message = errors.join("\n");
+    expect(message).toContain("provided by the environment");
+    expect(message).toContain("report this error instead of logging in");
+    expect(message).toContain(
       "decocms auth login --target https://studio.example.com",
     );
   });

@@ -112,3 +112,46 @@ test("a persistent runner answers the next turn on the same SDK session", async 
     delete process.env.HARNESS_RUNNER_PERSISTENT;
   }
 });
+
+test("a kept session's CLI session file carries each turn's key", async () => {
+  process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "runner-"));
+  process.env.HARNESS_RUNNER_PERSISTENT = "1";
+  try {
+    const { runClaudeCode } = await import("./claude-code");
+    const { processStudioCliHome } = await import("./studio-cli");
+    const turn = (key: string, expiresAt: number) =>
+      ({
+        ...input,
+        mcp: {
+          url: "https://studio.example.test/api/example-org/mcp/thread/thrd_1",
+          headers: { Authorization: `Bearer ${key}` },
+          expiresAt,
+        },
+        studioCli: { org: "example-org" },
+      }) as HarnessStreamInputWire;
+    const sessionFile = async () =>
+      JSON.parse(
+        await Bun.file(
+          join(
+            await processStudioCliHome(),
+            "session.studio.example.test.json",
+          ),
+        ).text(),
+      );
+
+    await runClaudeCode(turn("key_one", 1_900_000_000_000), collect);
+    expect(await sessionFile()).toMatchObject({
+      accessToken: "key_one",
+      expiresAt: 1_900_000_000,
+    });
+    const before = queries;
+    await runClaudeCode(turn("key_two", 1_900_003_600_000), collect);
+    expect(queries).toBe(before);
+    expect(await sessionFile()).toMatchObject({
+      accessToken: "key_two",
+      expiresAt: 1_900_003_600,
+    });
+  } finally {
+    delete process.env.HARNESS_RUNNER_PERSISTENT;
+  }
+});

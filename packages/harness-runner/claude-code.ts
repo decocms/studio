@@ -10,7 +10,8 @@
  *
  * Tools come from three places and none needs configuring here: Claude Code's
  * built-ins operate on the checkout, Studio's own tools arrive over MCP from the
- * endpoint minted for this run, and the org's MCP connections arrive as one
+ * endpoint minted for this run (or, with `studioCli`, through the `decocms` CLI
+ * holding that run's key), and the org's MCP connections arrive as one
  * server each (`orgMcps`, when the org opted in). Permissions are bypassed —
  * the pod is the isolation boundary. The only prompts that still reach Studio
  * are the user's own questions and plans (see `interactiveToolHook`).
@@ -32,6 +33,15 @@ import {
   mergeTurnResults,
   type LiveMessageInbox,
 } from "./live-messages";
+import {
+  isPlainObject,
+  processStudioCliHome,
+  studioCliEnv,
+  studioCliInstruction,
+  studioCliPluginDir,
+  studioToolCall,
+  writeStudioCliSession,
+} from "./studio-cli";
 import {
   turnFinishChunks,
   turnStartChunks,
@@ -301,8 +311,13 @@ function skillsInstruction(): string {
  */
 const INTERACTIVE_TOOLS = new Set(["AskUserQuestion", "ExitPlanMode"]);
 /** Studio research tools a plan may use; they read the web, never the workspace. */
+const RESEARCH_TOOLS = new Set([
+  "web_search",
+  "deep_research",
+  "research_result",
+]);
 const PLAN_MODE_RESEARCH_TOOLS = new Set(
-  ["web_search", "deep_research", "research_result"].map(
+  [...RESEARCH_TOOLS].map(
     (name) => `mcp__${ENVS.STUDIO_MCP_SERVER_NAME}__${name}`,
   ),
 );
@@ -350,15 +365,60 @@ const allowAll: CanUseTool = async (_toolName, input) => ({
   updatedInput: input,
 });
 
-/** Plan mode auto-allows read-only tools; anything that asks would change something. */
-const planModeGate: CanUseTool = async (toolName, input) =>
-  PLAN_MODE_RESEARCH_TOOLS.has(toolName)
-    ? { behavior: "allow", updatedInput: input }
-    : {
-        behavior: "deny",
-        message:
-          "Plan mode: do not make changes. Present the plan with ExitPlanMode.",
+function isResearchCall(
+  toolName: string,
+  input: Record<string, unknown>,
+  studioCli: boolean,
+): boolean {
+  if (PLAN_MODE_RESEARCH_TOOLS.has(toolName)) return true;
+  if (!studioCli || toolName !== "Bash" || input.run_in_background === true) {
+    return false;
+  }
+  const call = studioToolCall(input.command);
+  return call !== null && RESEARCH_TOOLS.has(call.name);
+}
+
+/**
+ * Plan mode's only gate on Studio through the CLI. A hook, not `canUseTool`:
+ * Claude Code approves some Bash commands in plan mode without ever asking the
+ * callback, and a `decocms tools call` it approves can be any Studio tool.
+ * Exported for the unit test.
+ */
+export const planModeStudioCliHook: HookCallbackMatcher = {
+  matcher: "Bash",
+  hooks: [
+    async (hookInput) => {
+      if (hookInput.hook_event_name !== "PreToolUse") return {};
+      const input = isPlainObject(hookInput.tool_input)
+        ? hookInput.tool_input
+        : {};
+      const command = typeof input.command === "string" ? input.command : "";
+      if (!command.includes("decocms") || isResearchCall("Bash", input, true)) {
+        return {};
+      }
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse" as const,
+          permissionDecision: "deny" as const,
+          permissionDecisionReason:
+            "Plan mode: only web_search, deep_research and research_result may be called through decocms. Present the plan with ExitPlanMode.",
+        },
       };
+    },
+  ],
+};
+
+/** Plan mode auto-allows read-only tools; anything that asks would change something. */
+const planModeGate =
+  (studioCli: boolean): CanUseTool =>
+  async (toolName, input) =>
+    isResearchCall(toolName, input, studioCli)
+      ? { behavior: "allow", updatedInput: input }
+      : {
+          behavior: "deny",
+          message:
+            "Plan mode: do not make changes. Present the plan with ExitPlanMode.",
+        };
 
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
@@ -366,8 +426,16 @@ export function buildOptions(args: {
   sessionId: string;
   resume: boolean;
   onAwaitUser?: (toolCallId: string) => void;
+  /** The dir holding this run's CLI session; only read when `input.studioCli` is set. */
+  studioCliHome?: string;
 }): Options {
-  const { input, sessionId, resume, onAwaitUser } = args;
+  const { input, sessionId, resume, onAwaitUser, studioCliHome } = args;
+  const preToolUse = [
+    ...(onAwaitUser ? [interactiveToolHook(onAwaitUser)] : []),
+    ...(input.mode === "plan" && input.studioCli
+      ? [planModeStudioCliHook]
+      : []),
+  ];
   const cwd = input.workspace.cwd ?? undefined;
   const instructions = input.agent.instructions;
   const model = process.env[ENVS.MODEL_ENV];
@@ -376,26 +444,31 @@ export function buildOptions(args: {
     instructions,
     skillsInstruction(),
     ORG_FS_INSTRUCTION,
+    input.studioCli ? studioCliInstruction(input.studioCli.org) : undefined,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)
     .join("\n\n");
   const executable = process.env[ENVS.EXECUTABLE_ENV];
-  const pluginDirs = (process.env[ENVS.PLUGIN_DIRS_ENV] ?? "")
-    .split(":")
-    .filter(Boolean);
+  const studioCliPlugin = input.studioCli ? studioCliPluginDir() : null;
+  const pluginDirs = [
+    ...(process.env[ENVS.PLUGIN_DIRS_ENV] ?? "").split(":").filter(Boolean),
+    ...(studioCliPlugin ? [studioCliPlugin] : []),
+  ];
   const mcpServers = mcpServersFor(input);
   return {
     ...(cwd ? { cwd } : {}),
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
+    ...(input.studioCli && studioCliHome
+      ? { env: studioCliEnv(process.env, studioCliHome) }
+      : {}),
     // The pod is the isolation boundary and no approval UI exists upstream.
     permissionMode: input.mode === "plan" ? "plan" : "bypassPermissions",
     // Also what offers AskUserQuestion: without a callback the CLI has nobody to
     // ask, so it drops the tool. Under bypassPermissions it is never called.
-    canUseTool: input.mode === "plan" ? planModeGate : allowAll,
-    ...(onAwaitUser
-      ? { hooks: { PreToolUse: [interactiveToolHook(onAwaitUser)] } }
-      : {}),
+    canUseTool:
+      input.mode === "plan" ? planModeGate(Boolean(input.studioCli)) : allowAll,
+    ...(preToolUse.length ? { hooks: { PreToolUse: preToolUse } } : {}),
     // Keep Claude Code's own prompt (it is what makes the built-in tools work)
     // and append the Studio agent's instructions rather than replacing it.
     systemPrompt: {
@@ -484,8 +557,9 @@ export function mcpServersFor(
     };
   }
   // Decopilot's in-process runs carry the empty sentinel; a server pointing at
-  // an empty URL fails the SDK's startup connect.
-  if (input.mcp.url) {
+  // an empty URL fails the SDK's startup connect. A `studioCli` run reaches
+  // Studio through the CLI instead.
+  if (input.mcp.url && !input.studioCli) {
     servers[ENVS.STUDIO_MCP_SERVER_NAME] = {
       type: "http" as const,
       url: input.mcp.url,
@@ -519,6 +593,14 @@ export function brokenStudioMcp(
   );
   if (broken.length === 0) return null;
   return broken.map((server) => `${server.name}=${server.status}`).join(" ");
+}
+
+/** The preflight for this run: a `studioCli` run mounts no Studio MCP to wait for. */
+export function studioMcpPreflight(
+  input: HarnessStreamInputWire,
+  servers: { name: string; status: string }[],
+): string | null {
+  return input.studioCli ? null : brokenStudioMcp(servers, input.mcp.url);
 }
 
 /**
@@ -868,7 +950,9 @@ async function runTurn(
   let sessionId = stored || crypto.randomUUID();
   let resumeSession = stored.length > 0;
 
-  const translator = new UiChunkTranslator();
+  const translator = new UiChunkTranslator({
+    studioCli: Boolean(input.studioCli),
+  });
   let messageId: string | undefined;
   // Chunks translated before the turn's message id is known. Every chunk has to
   // land after `turnStartChunks`, and that needs the id — so anything the SDK
@@ -917,8 +1001,13 @@ async function runTurn(
    * next Studio turn.
    */
   let sessionHasQueuedWork = false;
+  let studioCliHome: string | undefined;
 
   try {
+    if (input.studioCli) {
+      studioCliHome = await processStudioCliHome();
+      await writeStudioCliSession(studioCliHome, input);
+    }
     if (live && (await reuseLiveSession(live))) return;
     let forkedForSession = false;
     let restartedWithoutResume = false;
@@ -1080,6 +1169,7 @@ async function runTurn(
         sessionId,
         resume: resumeSession,
         onAwaitUser: (toolCallId) => gate.awaitUser(toolCallId),
+        studioCliHome,
       }),
     });
     channel?.send(userTurn(promptForRun(input)));
@@ -1202,7 +1292,7 @@ async function runTurn(
         // A run that cannot reach Studio (no board update, no state change)
         // still produces a confident-looking answer — the failure that reads as
         // success. Never run in that state; the caller retries instead.
-        const broken = brokenStudioMcp(message.mcp_servers, input.mcp.url);
+        const broken = studioMcpPreflight(input, message.mcp_servers);
         if (broken) {
           // End the session before the caller retries. Abandoning the iteration
           // is not enough: the CLI process stays alive holding this session id,

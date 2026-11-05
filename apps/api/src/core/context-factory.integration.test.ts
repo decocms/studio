@@ -343,6 +343,51 @@ describe("createStudioContextFactory", () => {
       expect(studioCtx.organization?.name).toBe("Organization A");
     });
 
+    it("binds the context to the thread in the key's metadata, and to no thread from the request", async () => {
+      const factoryFor = (metadata: Record<string, unknown>) =>
+        createStudioContextFactory({
+          db: database.db,
+          auth: {
+            api: {
+              getMcpSession: vi.fn().mockResolvedValue(null),
+              verifyApiKey: vi.fn().mockResolvedValue({
+                valid: true,
+                key: {
+                  id: "key_run",
+                  name: "Run Key",
+                  userId: "user_1",
+                  permissions: { self: ["*"] },
+                  metadata,
+                },
+              }),
+              setActiveOrganization: vi.fn().mockResolvedValue(null),
+            },
+          } as unknown as BetterAuthInstance,
+          encryption: { key: "test_key" },
+          observability: {
+            tracer: trace.getTracer("test"),
+            meter: {} as unknown as Meter,
+          },
+          monitoringEngines: stubMonitoringEngines(),
+        });
+      const organization = { id: "org_a", slug: "org-a", name: "A" };
+      const request = createMockRequest({
+        url: "https://studio.example.com/api/org-a/tools?threadId=thrd_other",
+        headers: {
+          Authorization: "Bearer api_key_run",
+          "x-thread-id": "thrd_other",
+        },
+      });
+
+      const bound = await (
+        await factoryFor({ organization, threadId: "thrd_1" })
+      )(request);
+      expect(bound.auth.boundThreadId).toBe("thrd_1");
+
+      const unbound = await (await factoryFor({ organization }))(request);
+      expect(unbound.auth.boundThreadId).toBeUndefined();
+    });
+
     it("should have undefined organization when API key has no org metadata", async () => {
       const mockAuthWithoutOrg = {
         api: {
