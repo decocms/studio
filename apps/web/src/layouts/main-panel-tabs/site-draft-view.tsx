@@ -12,7 +12,11 @@ import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useConflictMembers } from "@/components/sections-editor/conflict-author";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useEnsureDecofileBlocks,
+  useIndexNamesOfType,
+} from "@/components/sections-editor/use-decofile";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { useT } from "@/i18n/use-t.ts";
@@ -167,10 +171,17 @@ function SiteDraftLoaded({
   const params = { orgSlug, virtualMcpId, branch, threadId, previewUrl: null };
   const decofileQuery = useDecofile(params);
   const metaQuery = useLiveMeta(params);
+  // Hosted v8: these views read the rules and every block that uses them
+  // ("Used by"), so they load every body the index names.
+  const scope = { orgSlug, virtualMcpId, branch };
+  const loaded = useEnsureDecofileBlocks(
+    scope,
+    useIndexNamesOfType(scope, () => true),
+  );
   const decofile = decofileQuery.data as Record<string, unknown> | undefined;
   const meta = metaQuery.data;
 
-  if (!decofile || !meta) {
+  if (!decofile || !meta || !loaded) {
     if (decofileQuery.isError || metaQuery.isError) {
       return (
         <SiteDraftGuide

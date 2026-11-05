@@ -1,4 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  listingOf,
+  useContentIndex,
+  useEnsureHostedBlocks,
+} from "./hosted-content";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -184,7 +189,10 @@ export function useDecofile(
       );
     },
   });
-  return useQuery({
+  // Studio's hosted CMS: the query holds only the bodies loaded so far; its
+  // readers see every name of the index (an unloaded one as a stub).
+  const hostedIndex = useContentIndex(protocol?.hosted ? key : "");
+  const query = useQuery({
     queryKey,
     queryFn: async () => {
       if (protocol) {
@@ -287,4 +295,46 @@ export function useDecofile(
     retryDelay: (attempt) =>
       exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
   });
+  const hostedListing =
+    hostedIndex && query.data
+      ? listingOf(hostedIndex, query.data as Record<string, unknown>)
+      : undefined;
+  return protocol?.hosted && hostedListing
+    ? ({ ...query, data: hostedListing } as typeof query)
+    : query;
+}
+
+/**
+ * Studio's hosted CMS: loads the bodies of `names` (and, with `withRefs`,
+ * of the blocks they reference directly) a view opens, through
+ * `cms.blocks`, and again when the index moves their versions. True once
+ * they're loaded, and always for every other backend (it holds every body).
+ */
+export function useEnsureDecofileBlocks(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+  names: readonly string[],
+  options?: { withRefs?: boolean },
+): boolean {
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const key = useDecofileCacheKey(params);
+  const rpc = backend.kind === "protocol" ? backend.hosted : undefined;
+  return useEnsureHostedBlocks(rpc, key, names, options);
+}
+
+/**
+ * Names of the index whose type `matches` (`""` for a block with no type;
+ * hosted CMS only, empty otherwise).
+ */
+export function useIndexNamesOfType(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+  matches: (type: string) => boolean,
+): string[] {
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const key = useDecofileCacheKey(params);
+  const index = useContentIndex(
+    backend.kind === "protocol" && backend.hosted ? key : "",
+  );
+  return Object.entries(index?.entries ?? {})
+    .filter(([, entry]) => matches(entry.meta?.type ?? ""))
+    .map(([name]) => name);
 }

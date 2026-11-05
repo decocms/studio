@@ -907,6 +907,9 @@ export const KEYS = {
   // Per block, the content-protocol version of the copy the editor holds.
   contentVersions: (cacheKey: string) =>
     ["content-versions", cacheKey] as const,
+  // A hosted v8 draft's index (`cms.index`): every name's version and meta,
+  // and the names the draft holds with their draft versions.
+  contentIndex: (cacheKey: string) => ["content-index", cacheKey] as const,
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
