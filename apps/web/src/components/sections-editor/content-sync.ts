@@ -40,6 +40,7 @@ import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
 import { announceContentWrite } from "./content-writes-channel";
 import { decofileWriteMutationKey, decofileWriteScope } from "./decofile-api";
+import { holdPreviewRevision } from "./preview-draft-link";
 import { sandboxGitStatusQueryPrefix } from "../thread/repository/sandbox-git-api";
 
 export type ContentChangeKind =
@@ -137,7 +138,10 @@ function subscribeContentSync(scope: string, listener: () => void) {
 
 /** Test seam: forget every project's state. */
 export function resetContentSync() {
-  for (const store of stores.values()) clearTimer(store);
+  for (const [scope, store] of stores) {
+    clearTimer(store);
+    holdPreviewRevision(scope, null);
+  }
   stores.clear();
 }
 
@@ -227,6 +231,13 @@ export interface ContentChange {
 type ContentWrite<T> = ContentChange & {
   write: () => Promise<T>;
   refreshOnError?: boolean;
+  /**
+   * A Publish's or "Make current"'s new revision id, from its answer: the
+   * hosted previews show it by id until the next content change
+   * (preview-draft-link.ts `holdPreviewRevision`), not the emptied draft over
+   * whatever release the site serves yet. Any other change lets it go.
+   */
+  shownRevision?: (result: T) => string | null;
 };
 
 function isHosted(backend: ContentBackend | null): boolean {
@@ -356,6 +367,9 @@ async function runBegun<T>(
   if (target.backend?.kind === "protocol" && target.cacheKey) {
     announceContentWrite(target.cacheKey);
   }
+  // Before the refresh moves the pointer: a Publish's previews go straight
+  // to its revision; any other change goes back to the draft.
+  holdPreviewRevision(scope, change.shownRevision?.(result) ?? null);
   if (change.adopted) {
     // Saved once the server confirmed: the answer moved the pointer and the
     // changes already; whatever else the change re-reads runs on its own,
@@ -455,6 +469,8 @@ export function useContentDiscardListener(
 export function externalContentChange(target: ContentSyncTarget) {
   const scope = contentSyncScope(target.orgSlug, target.virtualMcpId);
   if (getContentSyncState(scope).inFlight > 0) return;
+  // Someone else's change: the draft pointer again, over the latest release.
+  holdPreviewRevision(scope, null);
   void contentChanged(target, { kind: "external" })
     .then(({ navigates }) => {
       const store = storeOf(scope);

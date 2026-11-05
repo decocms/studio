@@ -237,6 +237,9 @@ export function useCmsPublishActions(
         kind: "publish",
         reread: true,
         refreshOnError: true,
+        // The editor's preview shows the new revision until the next change.
+        shownRevision: (published) =>
+          published.result === "merged" ? published.sha : null,
         // The hosted CMS publishes the site's draft named after the branch.
         write: () =>
           publishHostedDraft(

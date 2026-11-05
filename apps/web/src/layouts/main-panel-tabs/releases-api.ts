@@ -102,6 +102,9 @@ export function useReapply(orgSlug: string, virtualMcpId: string) {
         kind: "reapply",
         reread: true,
         refreshOnError: true,
+        // The editor's preview shows the revision made current (or, already
+        // shown, the live one) until the next change.
+        shownRevision: (made) => made.revision,
         write: async () => {
           if (!site) throw new Error("this project names no site");
           return cmsJson<RollbackResult>(
