@@ -5,6 +5,7 @@
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ChatLayout } from "@/components/chat-layout";
+import { SiteDraftActions } from "@/components/site-draft-bar/site-draft-actions";
 import {
   MonitorPage,
   type MonitorSelection,
@@ -168,8 +169,14 @@ function MonitoringContent() {
 }
 
 export default function MonitoringRoute() {
+  const { view } = useMonitorSearch();
   return (
-    <ChatLayout.Content>
+    <ChatLayout.Content
+      // A Blocks (v8) site's tests are edits to its draft: publish them here.
+      actions={
+        view === "experiments" ? <SiteDraftActions blocksOnly /> : undefined
+      }
+    >
       <MonitoringContent />
     </ChatLayout.Content>
   );

@@ -11,7 +11,6 @@ import { isSurfaceTab } from "./source-system-tabs";
  */
 export function featureForTab(tabId: string): Feature | null {
   if (tabId === "board") return "kanban";
-  if (tabId === "cdn") return "monitoring";
   // Preview / Content / Code are three views of one Site Editor surface.
   if (isSurfaceTab(tabId)) return "cms";
   return null;

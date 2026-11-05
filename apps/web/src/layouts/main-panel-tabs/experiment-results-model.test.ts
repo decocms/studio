@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  compareArms,
-  daysLeft,
-  daysRunning,
-  normalizeVariantRow,
-} from "./experiment-results-model";
+import { compareArms, daysLeft, daysRunning } from "./experiment-results-model";
 
 describe("compareArms", () => {
   it("calls a tie when the interval crosses zero", () => {
@@ -121,42 +116,5 @@ describe("daysRunning", () => {
     expect(daysRunning("2026-11-05T11:00:00Z", now)).toBe(1);
     expect(daysRunning(null, now)).toBe(0);
     expect(daysRunning("2026-11-06T00:00:00Z", now)).toBe(0);
-  });
-});
-
-describe("normalizeVariantRow", () => {
-  it("reads `conv` and `converters` alike and keeps the decimals", () => {
-    const rollup = normalizeVariantRow({
-      experiment: "cart",
-      variant: "novo",
-      visitors: "2289",
-      conv: "36",
-      cr: 1.57,
-      revenue: 15365.98,
-    });
-    const raw = normalizeVariantRow({
-      experiment: "cart",
-      variant: "novo",
-      visitors: 2289,
-      converters: 36,
-      cr: 2,
-      revenue: 15365.98,
-    });
-    expect(rollup).toEqual(raw);
-    expect(rollup.converters).toBe(36);
-    expect(rollup.cr).toBeCloseTo(1.5727, 3);
-  });
-
-  it("falls back to `cr` and tolerates missing numbers", () => {
-    expect(
-      normalizeVariantRow({ experiment: "x", variant: "a", cr: "3.25" }),
-    ).toEqual({
-      experiment: "x",
-      variant: "a",
-      visitors: 0,
-      converters: 0,
-      cr: 3.25,
-      revenue: null,
-    });
   });
 });

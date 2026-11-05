@@ -7,12 +7,10 @@ import {
   ClockRewind,
   ArrowUpRight,
   BarChartSquare02,
-  Beaker02,
   Calendar,
   CheckDone01,
   Columns03,
   DotsVertical,
-  Globe02,
   Home02,
   Image01,
   Lightning01,
@@ -36,15 +34,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sidebar-views";
 
-export function SidebarViewIcon({
-  viewId,
-  blocksSite = false,
-}: {
-  viewId: ProjectSidebarViewId;
-  /** A Blocks (v8) site: Experiments wears its beaker, as in the sidebar.
-   *  Elsewhere it keeps the generic icon, as before. */
-  blocksSite?: boolean;
-}) {
+export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
   if (viewId === "overview") return <Home02 size={16} />;
   if (viewId === "reports") return <BarChartSquare02 size={16} />;
   if (viewId === "board") return <Columns03 size={16} />;
@@ -53,9 +43,6 @@ export function SidebarViewIcon({
   if (viewId === "releases") return <ClockRewind size={16} />;
   if (viewId === "hosting") return <Server01 size={16} />;
   if (viewId === "e2e") return <CheckDone01 size={16} />;
-  if (viewId === "analytics") return <BarChartSquare02 size={16} />;
-  if (viewId === "cdn") return <Globe02 size={16} />;
-  if (viewId === "experiments" && blocksSite) return <Beaker02 size={16} />;
   if (viewId === "calendar") return <Calendar size={16} />;
   return <Lightning01 size={16} />;
 }

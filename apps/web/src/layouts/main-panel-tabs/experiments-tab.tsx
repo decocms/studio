@@ -1260,7 +1260,7 @@ function ExperimentDetail({
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link
-                to={PROJECT_ROUTE.analytics}
+                to={PROJECT_ROUTE.monitoring}
                 params={{ org, agentId }}
                 search={{ view: "experiments" }}
               >

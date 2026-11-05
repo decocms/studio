@@ -2,7 +2,7 @@
  * Monitor for Blocks v8 sites: the site's own telemetry (requests, upstream
  * calls, errors), read through `/api/:org/monitor/:site/site/data`, which
  * checks the org owns the site and scopes every query to it. v7 sites keep
- * the CDN Monitor (`cdn-tab.tsx`); `CdnTab` picks one from main's schema.
+ * the CDN Monitor; Monitor's Performance view picks one from main's schema.
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";

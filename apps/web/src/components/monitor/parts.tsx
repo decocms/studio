@@ -83,7 +83,6 @@ export type ProjectScreen =
   | "monitoring"
   | "releases"
   | "experiments"
-  | "analytics"
   | "connectSources";
 
 export function projectLink(
@@ -98,9 +97,11 @@ export function projectLink(
     case "releases":
       return { to: PROJECT_ROUTE.releases, params };
     case "experiments":
-      return { to: PROJECT_ROUTE.experiments, params };
-    case "analytics":
-      return { to: PROJECT_ROUTE.analytics, params };
+      return {
+        to: PROJECT_ROUTE.monitoring,
+        params,
+        search: { view: "experiments" },
+      };
     case "connectSources":
       return { to: PROJECT_ROUTE.connectSources, params };
     default: {
