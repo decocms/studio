@@ -4,8 +4,8 @@
  *
  * "Latest" is the revision latest.json names: the newest one a Publish (or
  * a "Make current") put on the CDN. It says nothing about what a visitor's
- * page shows at this second; the screen never claims that. A revision
- * latest.json never named (a publish that lost its race) is not listed.
+ * page shows at this second; the screen never claims that. Every other
+ * revision is listed the same way, a publish that lost its race included.
  */
 
 import {
@@ -21,16 +21,6 @@ import type {
   ReleaseRevision,
   UnreadableRelease,
 } from "./releases-api";
-
-/**
- * The rows the screen lists: every revision that went live, and any whose
- * details couldn't be read.
- */
-export function listedRevisions(
-  revisions: readonly ReleaseRevision[],
-): ReleaseRevision[] {
-  return revisions.filter((r) => r.status !== "never-live");
-}
 
 /** Whether the row is the latest release (what latest.json names). */
 export function isLatest(
@@ -54,17 +44,14 @@ export function isUnreadable(
 export function canPreviewRelease(
   revision: Pick<ReleaseRevision, "id" | "status">,
 ): boolean {
-  return (
-    (revision.status === "current" || revision.status === "was-live") &&
-    isReleaseRevision(revision.id)
-  );
+  return revision.status !== "unreadable" && isReleaseRevision(revision.id);
 }
 
-/** Whether a row offers "Make current": an earlier release that went live. */
+/** Whether a row offers "Make current": any readable one but the latest. */
 export function canReapply(
   revision: ReleaseRevision,
 ): revision is ReadableRelease {
-  return revision.status === "was-live";
+  return revision.status === "listed";
 }
 
 // The server's note words ("Made current: …", "release from …"), shared with

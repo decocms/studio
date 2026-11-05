@@ -2,20 +2,16 @@
  * The Releases tab on the hosted CMS (contract §4.10): one delimiter LIST of
  * `revisions/`, 50 revision folders a page, newest first (the ids' inverted
  * time prefix), then one `meta.json` GET per folder; a folder without
- * `meta.json` (a publish that crashed before it) is skipped, unless the walk
- * below expects it.
+ * `meta.json` (a publish that crashed before it) is skipped, unless
+ * latest.json names it (then it is `unreadable`).
  *
- * Live is the revision latest.json names. Walking back from it through each
- * meta's `previous` says which revisions went live; any other is "never
- * live" (a lost publish race, or a crash before latest.json moved) and
- * can't be reapplied. The walk's next expected id rides in the cursor, so a
- * later page continues it.
+ * Every listed revision is a plain row, except the one latest.json names
+ * (`current`). `meta.previous` isn't walked: the list says nothing about
+ * which revisions went live.
  *
- * A `meta.json` that can't be read (unparseable, or its GET failed) never
- * fails the page: the folder is an `unreadable` row with its id only. So is
- * a folder the walk expects that has no `meta.json`. The walk stops at an
- * unreadable row it expected: every older revision is "never live", as
- * when the walk can't reach it.
+ * A `meta.json` that doesn't parse never fails the page: the folder is an
+ * `unreadable` row with its id only. A failed GET (R2 429/5xx/network)
+ * fails it like any other read (503 `unavailable`).
  */
 
 import {
@@ -24,16 +20,13 @@ import {
   readRevisionMeta,
   type RevisionMeta,
 } from "./cms-release";
-import {
-  type DeliveryStore,
-  DeliveryUnavailableError,
-  deliveryKeys,
-} from "./delivery-store";
+import { type DeliveryStore, deliveryKeys } from "./delivery-store";
 import { isRevisionId } from "./revision-id";
 
 export const RELEASES_PAGE_SIZE = 50;
 
-export type ReleaseStatus = "current" | "was-live" | "never-live";
+/** `current`: the one latest.json names; `listed`: any other. */
+export type ReleaseStatus = "current" | "listed";
 
 export type ReleaseRow =
   | { id: string; status: ReleaseStatus; meta: RevisionMeta }
@@ -48,7 +41,6 @@ export interface ReleasesPage {
 
 interface Cursor {
   token: string;
-  expect: string | null;
 }
 
 export function encodeCursor(cursor: Cursor): string {
@@ -60,13 +52,9 @@ export function decodeCursor(value: string): Cursor | null {
   try {
     const parsed = JSON.parse(
       Buffer.from(value, "base64url").toString("utf-8"),
-    ) as {
-      token?: unknown;
-      expect?: unknown;
-    };
-    if (typeof parsed.token !== "string" || !parsed.token) return null;
-    if (parsed.expect !== null && !isRevisionId(parsed.expect)) return null;
-    return { token: parsed.token, expect: parsed.expect as string | null };
+    ) as { token?: unknown } | null;
+    if (typeof parsed?.token !== "string" || !parsed.token) return null;
+    return { token: parsed.token };
   } catch {
     return null;
   }
@@ -81,7 +69,7 @@ export class InvalidCursorError extends Error {
 
 const UNREADABLE = Symbol("unreadable");
 
-/** The folder's meta, null when it has none, UNREADABLE when it can't be read. */
+/** The folder's meta, null when it has none, UNREADABLE when it doesn't parse. */
 async function readListedMeta(
   store: DeliveryStore,
   site: string,
@@ -90,11 +78,7 @@ async function readListedMeta(
   try {
     return await readRevisionMeta(store, site, id);
   } catch (error) {
-    if (
-      error instanceof MalformedObjectError ||
-      error instanceof DeliveryUnavailableError
-    )
-      return UNREADABLE;
+    if (error instanceof MalformedObjectError) return UNREADABLE;
     throw error;
   }
 }
@@ -108,7 +92,6 @@ export async function listCmsReleases(
   if (cursor && !from) throw new InvalidCursorError();
   const latest = await readLatestPointer(store, site);
   const live = latest?.pointer.revision ?? null;
-  let expect = from ? from.expect : live;
   const prefix = deliveryKeys.revisions(site);
   const page = await store.listPage(prefix, {
     delimiter: "/",
@@ -124,25 +107,18 @@ export async function listCmsReleases(
   const revisions: ReleaseRow[] = [];
   for (const [i, id] of ids.entries()) {
     const meta = metas[i];
-    if (meta === UNREADABLE || (meta === null && id === expect)) {
+    if (meta === UNREADABLE || (meta === null && id === live))
       revisions.push({ id, status: "unreadable" });
-      // A broken link: the walk can't go past it.
-      if (id === expect) expect = null;
-      continue;
-    }
-    if (!meta) continue;
-    let status: ReleaseStatus = "never-live";
-    if (id === expect) {
-      status = id === live ? "current" : "was-live";
-      expect = meta.previous;
-    }
-    revisions.push({ id, status, meta });
+    else if (meta)
+      revisions.push({
+        id,
+        status: id === live ? "current" : "listed",
+        meta,
+      });
   }
   return {
     live,
     revisions,
-    nextCursor: page.nextToken
-      ? encodeCursor({ token: page.nextToken, expect })
-      : null,
+    nextCursor: page.nextToken ? encodeCursor({ token: page.nextToken }) : null,
   };
 }

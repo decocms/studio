@@ -125,7 +125,7 @@ describe("the hosted CMS lifecycle with GitHub off", () => {
     const releases = await t.call("GET", "acme/releases");
     expect(
       releases.body.revisions.map((r: { status: string }) => r.status),
-    ).toEqual(["current", "was-live"]);
+    ).toEqual(["current", "listed"]);
     expect(releases.body.revisions[0].meta).toMatchObject({
       via: "cli",
       author: "usr_bob",

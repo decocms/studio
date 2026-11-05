@@ -8,7 +8,10 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { clearRevisionCache } from "@/hosted/cms-release";
 import { clearSchemaCache } from "@/hosted/cms-storage";
 import { seedRelease } from "@/hosted/cms-test-helpers";
-import { deliveryKeys } from "@/hosted/delivery-store";
+import {
+  DeliveryUnavailableError,
+  deliveryKeys,
+} from "@/hosted/delivery-store";
 import { newRevisionId } from "@/hosted/revision-id";
 import { SCHEMA_TEXT } from "@/hosted/hosted-test-helpers";
 import { cmsTestApp } from "./cms-test-app";
@@ -212,7 +215,7 @@ describe("releases and rollback", () => {
     expect((await t.call("GET", "acme/releases?cursor=zzz")).status).toBe(400);
   });
 
-  it("an unreadable meta.json is a broken row; a rollback to or through it is 500 malformed", async () => {
+  it("an unparseable meta.json is a broken row; a rollback to it is 500 malformed, past it works", async () => {
     const t = cmsTestApp();
     const [r1, r2, r3] = [1, 2, 3].map((n) =>
       newRevisionId(Date.parse("2026-11-01T00:00:00.000Z") + n),
@@ -229,16 +232,31 @@ describe("releases and rollback", () => {
     expect(res.body.revisions).toEqual([
       expect.objectContaining({ id: r3, status: "current" }),
       { id: r2, status: "unreadable" },
-      expect.objectContaining({ id: r1, status: "never-live" }),
+      expect.objectContaining({ id: r1, status: "listed" }),
     ]);
-    for (const target of [r2, r1]) {
-      const rolled = await t.call(
-        "POST",
-        `acme/releases/${target}/rollback`,
-        {},
+    const broken = await t.call("POST", `acme/releases/${r2}/rollback`, {});
+    expect(broken.status).toBe(500);
+    expect(broken.body.code).toBe("malformed");
+    const rolled = await t.call("POST", `acme/releases/${r1}/rollback`, {});
+    expect(rolled.status).toBe(200);
+    expect(rolled.body).toMatchObject({ result: "published", previous: r3 });
+  });
+
+  it("a meta.json GET failing (R2 5xx) is 503 unavailable, not a broken row", async () => {
+    const t = cmsTestApp();
+    const r1 = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));
+    await seedRelease(t.delivery.store, "acme", r1, { a: {} });
+    const key = deliveryKeys.revisionMeta("acme", r1);
+    const get = t.delivery.store.get.bind(t.delivery.store);
+    t.delivery.store.get = (async (k: string, options?: unknown) => {
+      if (k === key) throw new DeliveryUnavailableError(k, new Error("503"));
+      return (get as (k: string, o?: unknown) => ReturnType<typeof get>)(
+        k,
+        options,
       );
-      expect(rolled.status).toBe(500);
-      expect(rolled.body.code).toBe("malformed");
-    }
+    }) as typeof t.delivery.store.get;
+    const res = await t.call("GET", "acme/releases");
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe("unavailable");
   });
 });

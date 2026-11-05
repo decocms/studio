@@ -2,10 +2,9 @@
  * The Releases screen's reads and writes, on the hosted CMS
  * (`/api/cms/:site/releases`, contract §4.10 and §4.11): the site's
  * revisions, newest first, 50 a page, each with its meta and whether it is
- * the one latest.json names (`current`), went live before (`was-live`) or
- * never did (`never-live`), or a row whose meta.json couldn't be read
- * (`unreadable`, its id only); and "Make current", a rollback: a new revision
- * with an earlier one's content.
+ * the one latest.json names (`current`) or any other (`listed`), or a row
+ * whose meta.json couldn't be read (`unreadable`, its id only); and "Make
+ * current", a rollback: a new revision with another one's content.
  */
 
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
@@ -32,7 +31,8 @@ export interface RevisionMeta {
   publishedAt: string;
 }
 
-export type ReleaseStatus = "current" | "was-live" | "never-live";
+/** `current`: the one latest.json names; `listed`: any other. */
+export type ReleaseStatus = "current" | "listed";
 
 export interface ReadableRelease {
   id: string;
@@ -57,8 +57,8 @@ export interface ReleasesPage {
 
 /** "Make current"'s answer (contract §4.11). */
 export type RollbackResult =
-  | { result: "published"; revision: string; previous: string }
-  | { result: "up-to-date"; revision: string };
+  | { result: "published"; revision: string; previous: string | null }
+  | { result: "up-to-date"; revision: string | null };
 
 /** The project's site, which the hosted CMS keys everything on. */
 function useProjectSite(virtualMcpId: string): string | null {
