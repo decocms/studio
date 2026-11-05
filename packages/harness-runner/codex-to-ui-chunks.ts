@@ -239,7 +239,7 @@ export class CodexChunkTranslator {
                 toolCallId: id,
                 errorText:
                   output.trim() ||
-                  `decocms exited with ${String(item.exitCode ?? item.status)}`,
+                  `decocms exited with ${item.exitCode == null ? `status ${String(item.status)}` : `code ${String(item.exitCode)}`}`,
               }
             : {
                 type: "tool-output-available",

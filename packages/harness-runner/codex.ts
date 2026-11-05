@@ -31,12 +31,15 @@ const isReadonly = (input: HarnessStreamInputWire) =>
 /**
  * The org slug when this run reaches Studio through the CLI. Read-only runs
  * keep the MCP: their `read-only` sandbox has no network for shell commands,
- * while Codex itself still reaches MCP servers for the research tools.
+ * while Codex itself still reaches MCP servers for the research tools. So does
+ * a run with a tool allowlist: `enabled_tools` is what enforces it.
  */
 export function codexStudioCliOrg(
   input: HarnessStreamInputWire,
 ): string | null {
-  return input.studioCli && !isReadonly(input) ? input.studioCli.org : null;
+  return input.studioCli && !isReadonly(input) && !input.toolAllowlist
+    ? input.studioCli.org
+    : null;
 }
 
 /** Plugin dirs whose `skills/*` this run's Codex discovers. */

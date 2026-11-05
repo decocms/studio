@@ -698,6 +698,9 @@ describe("planModeStudioCliHook", () => {
       "decocms tools call COLLECTION_VIRTUAL_MCP_CREATE --org example-org -d '{}'",
       "ls && decocms tools call web_search --org example-org -d '{}'",
       "decocms api /api/example-org/fs/home/list",
+      "de''cocms tools call COLLECTION_VIRTUAL_MCP_CREATE --org example-org -d '{}'",
+      "d\\ecocms tools call COLLECTION_VIRTUAL_MCP_CREATE --org example-org",
+      '"deco"cms tools call COLLECTION_VIRTUAL_MCP_CREATE --org example-org',
     ]) {
       expect(await decide(command)).toMatchObject(denied);
     }

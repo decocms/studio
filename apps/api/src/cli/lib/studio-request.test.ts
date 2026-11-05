@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Session } from "./session";
-import { readDataArg, studioFetch, writeResponse } from "./studio-request";
+import { type Session, writeSession } from "./session";
+import {
+  readDataArg,
+  requireSession,
+  studioFetch,
+  writeResponse,
+} from "./studio-request";
 
 const session: Session = {
   target: "https://studio.example.com",
@@ -198,9 +203,42 @@ describe("writeResponse", () => {
     );
   });
 
+  it("treats an empty refresh token as none on 401", async () => {
+    await writeResponse(
+      new Response("", { status: 401 }),
+      { ...session, refreshToken: "" },
+      async () => {},
+    );
+    expect(errors.join("\n")).toContain("provided by the environment");
+  });
+
   it("handles an empty body", async () => {
     const { code, body } = await collect(new Response(null, { status: 204 }));
     expect(code).toBe(0);
     expect(body).toBe("");
+  });
+});
+
+describe("requireSession", () => {
+  it("on an expired session with no refresh token, says to report an environment-provided session", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "studio-request-"));
+    const errors: string[] = [];
+    const errSpy = spyOn(console, "error").mockImplementation(
+      (msg: unknown) => {
+        errors.push(String(msg));
+      },
+    );
+    try {
+      await writeSession(dataDir, { ...session, expiresAt: 1 });
+      expect(
+        await requireSession({ dataDir, target: session.target }),
+      ).toBeNull();
+      expect(errors.join("\n")).toContain(
+        "expired and has no refresh token. If this session was provided by the environment",
+      );
+    } finally {
+      errSpy.mockRestore();
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 });

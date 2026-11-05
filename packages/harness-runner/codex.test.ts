@@ -99,6 +99,13 @@ describe("Codex MCP policy", () => {
     }
   });
 
+  test("a studioCli run with a tool allowlist keeps the Studio MCP, which enforces it", () => {
+    const allowlisted = { ...input, toolAllowlist: ["TASK_BOARD_ITEM_LIST"] };
+    const cli = { ...allowlisted, studioCli: { org: "example-org" } };
+    expect(codexStudioCliOrg(cli)).toBe(null);
+    expect(codexConfig(cli)).toEqual(codexConfig(allowlisted));
+  });
+
   test("a studioCli run also discovers the image's decocms-studio skills", () => {
     const prev = {
       plugin: process.env.DECOCMS_STUDIO_PLUGIN_DIR,

@@ -16,6 +16,7 @@
  */
 
 import { getPublicUrl } from "@/core/server-constants";
+import { mintSignedGrant } from "@/core/signed-grant";
 import type { StudioContext } from "@/core/studio-context";
 
 const MCP_KEY_TTL_SECONDS = 3600;
@@ -84,8 +85,8 @@ export function mcpEndpointUrl(args: {
 
 /**
  * What a minted key stores beside its permissions. A thread key carries its
- * thread, which is the only source of the thread a key-authenticated call is
- * bound to (`threadIdFromApiKey`). Pure, so the unit test owns the shape.
+ * thread as a signed grant, which is the only source of the thread a
+ * key-authenticated call is bound to (`threadIdFromApiKey`).
  */
 export function mcpKeyMetadata(args: {
   organization: { id: string; slug?: string; name?: string };
@@ -100,7 +101,15 @@ export function mcpKeyMetadata(args: {
       slug: organization.slug,
       name: organization.name,
     },
-    ...(target === "thread" && threadId ? { threadId } : {}),
+    ...(target === "thread" && threadId
+      ? {
+          threadGrant: mintSignedGrant({
+            threadId,
+            organizationId: organization.id,
+            expiresAt: Date.now() + MCP_KEY_TTL_SECONDS * 1000,
+          }),
+        }
+      : {}),
     ...(runMetadata ? { runMetadata } : {}),
   };
 }

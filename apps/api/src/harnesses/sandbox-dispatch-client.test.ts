@@ -177,11 +177,9 @@ describe("runStudioSurface", () => {
     { id: "conn_figma", connection_url: "https://mcp.figma.com/mcp" },
   ];
   const surface = (
-    flags: Record<string, unknown> | undefined,
     overrides: { selfTools?: string[]; organizationSlug?: string } = {},
   ) => {
     const { mounted, ...rest } = runStudioSurface({
-      flags,
       organizationSlug: "acme",
       selfTools: ["CONNECTION_TOOL_CALL"],
       ...overrides,
@@ -191,36 +189,23 @@ describe("runStudioSurface", () => {
     return { mounted: mounted.map((c) => c.id), ...rest };
   };
 
-  test("flag off mounts the agent's own and sign-in servers, and no CLI", () => {
-    for (const flags of [undefined, {}, { sandbox_studio_cli: false }]) {
-      expect(surface(flags)).toEqual({ mounted: ["conn_own", "conn_figma"] });
-    }
-  });
-
-  test("flag on calls the agent's own through Studio, keeps sign-in servers, and sends the CLI", () => {
-    expect(surface({ sandbox_studio_cli: true })).toEqual({
+  test("calls the agent's own through Studio, keeps sign-in servers, and sends the CLI", () => {
+    expect(surface()).toEqual({
       mounted: ["conn_figma"],
       studioCli: { org: "acme" },
     });
   });
 
   // A reviewer's or Jira run's key has no CONNECTION_TOOL_CALL.
-  test("flag on still mounts the agent's own when the key cannot call them through Studio", () => {
-    expect(
-      surface(
-        { sandbox_studio_cli: true },
-        { selfTools: ["TASK_BOARD_ITEM_LIST"] },
-      ),
-    ).toEqual({
+  test("still mounts the agent's own when the key cannot call them through Studio", () => {
+    expect(surface({ selfTools: ["TASK_BOARD_ITEM_LIST"] })).toEqual({
       mounted: ["conn_own", "conn_figma"],
       studioCli: { org: "acme" },
     });
   });
 
   test("no slug, no CLI", () => {
-    expect(
-      surface({ sandbox_studio_cli: true }, { organizationSlug: undefined }),
-    ).toEqual({
+    expect(surface({ organizationSlug: undefined })).toEqual({
       mounted: ["conn_own", "conn_figma"],
     });
   });

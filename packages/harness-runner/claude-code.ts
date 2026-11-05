@@ -393,7 +393,12 @@ export const planModeStudioCliHook: HookCallbackMatcher = {
         ? hookInput.tool_input
         : {};
       const command = typeof input.command === "string" ? input.command : "";
-      if (!command.includes("decocms") || isResearchCall("Bash", input, true)) {
+      // `de''cocms` and `d\ecocms` still run decocms.
+      const unquoted = command.replace(/['"\\]/g, "");
+      if (
+        !unquoted.includes("decocms") ||
+        isResearchCall("Bash", input, true)
+      ) {
         return {};
       }
       return {

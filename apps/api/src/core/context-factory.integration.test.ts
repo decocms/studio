@@ -7,6 +7,7 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
+import { mcpKeyMetadata } from "../mcp-clients/virtual-mcp/mint-endpoint";
 import { createStudioContextFactory } from "./context-factory";
 import type { BetterAuthInstance } from "./studio-context";
 import type { QueryEngine } from "../monitoring/query-engine";
@@ -380,12 +381,24 @@ describe("createStudioContextFactory", () => {
       });
 
       const bound = await (
-        await factoryFor({ organization, threadId: "thrd_1" })
+        await factoryFor(
+          mcpKeyMetadata({
+            organization,
+            target: "thread",
+            threadId: "thrd_1",
+          }),
+        )
       )(request);
       expect(bound.auth.boundThreadId).toBe("thrd_1");
 
-      const unbound = await (await factoryFor({ organization }))(request);
-      expect(unbound.auth.boundThreadId).toBeUndefined();
+      // A key whose creator wrote the thread into its metadata is not bound.
+      for (const metadata of [
+        { organization },
+        { organization, threadId: "thrd_1" },
+      ]) {
+        const unbound = await (await factoryFor(metadata))(request);
+        expect(unbound.auth.boundThreadId).toBeUndefined();
+      }
     });
 
     it("should have undefined organization when API key has no org metadata", async () => {

@@ -143,22 +143,24 @@ describe("tools REST for any other caller", () => {
     expect(await listed(app({ user }).hono)).toEqual([...TOOL_BY_NAME.keys()]);
   });
 
-  it("runs a tool with no thread context", async () => {
+  it("refuses a thread-only tool outside a thread", async () => {
     const { hono, interestWrites } = app({ user });
     const res = await call(hono, "update_interests", interests);
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(403);
     expect(((await res.json()) as { error: string }).error).toContain(
       "only available on a thread's MCP endpoint",
     );
     expect(interestWrites).toEqual([]);
   });
 
-  it("does not refuse a tool a chat's surface leaves out", async () => {
+  it("reaches a tool a chat's surface leaves out", async () => {
     const res = await call(
       app({ user }).hono,
       "TASK_BOARD_REVIEW_DECISION",
       {},
     );
-    expect(res.status).not.toBe(404);
+    // Its own input validation answers, so the route did not refuse the name.
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "Invalid input" });
   });
 });

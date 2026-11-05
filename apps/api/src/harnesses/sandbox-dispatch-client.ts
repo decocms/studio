@@ -355,9 +355,9 @@ export class SandboxDispatchClient {
    * its Studio endpoint. Mounted, Claude Code announces every tool by name on
    * the first turn — ~90 connections came to ~200k prompt tokens a request.
    *
-   * Under `sandbox_studio_cli` the run reaches Studio with the `decocms` CLI
-   * (`studioCli`) on the same key, and the agent's own aggregations are called
-   * through it like the rest (see {@link runStudioSurface}).
+   * The run reaches Studio with the `decocms` CLI (`studioCli`) on the same
+   * key, and the agent's own aggregations are called through it when the key
+   * carries `CONNECTION_TOOL_CALL` (see {@link runStudioSurface}).
    *
    * The connections are resolved BEFORE the key is minted, because they are
    * part of its scope: every proxied tool call is authorized as
@@ -426,7 +426,6 @@ export class SandboxDispatchClient {
       ),
     );
     const { mounted, studioCli } = runStudioSurface({
-      flags: settings?.flags,
       organizationSlug: organization.slug,
       selfTools,
       connections,
@@ -1556,23 +1555,21 @@ export function selectRunConnections<
  * How a run reaches Studio and which of its granted connections it mounts as
  * MCP servers of their own. A sandbox sign-in server always is: the proxy
  * can't reach it. The agent's own aggregations are too, unless the run uses
- * the `decocms` CLI (`sandbox_studio_cli`) and its key may call them through
- * Studio (`CONNECTION_TOOL_CALL`). Pure, so the unit test owns the flag branch.
+ * the `decocms` CLI (every run in an org with a slug) and its key may call
+ * them through Studio (`CONNECTION_TOOL_CALL`).
  */
 export function runStudioSurface<
   T extends { id: string; connection_url?: string | null },
 >(args: {
-  flags: Record<string, unknown> | null | undefined;
   organizationSlug: string | undefined;
   /** The `self` tools the run's key carries. */
   selfTools: readonly string[];
   connections: readonly T[];
   ownIds: ReadonlySet<string>;
 }): { mounted: T[]; studioCli?: { org: string } } {
-  const studioCli =
-    orgFlagEnabled(args.flags, "sandbox_studio_cli") && args.organizationSlug
-      ? { org: args.organizationSlug }
-      : undefined;
+  const studioCli = args.organizationSlug
+    ? { org: args.organizationSlug }
+    : undefined;
   const ownViaStudio =
     studioCli !== undefined && args.selfTools.includes("CONNECTION_TOOL_CALL");
   const mounted = args.connections.filter(

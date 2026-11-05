@@ -203,8 +203,12 @@ describe("mcpKeyMetadata", () => {
       target: "thread",
       threadId: "thrd_1",
     });
-    expect(metadata).toEqual({ organization: org, threadId: "thrd_1" });
-    expect(threadIdFromApiKey(metadata)).toBe("thrd_1");
+    expect(metadata).toEqual({
+      organization: org,
+      threadGrant: expect.any(String),
+    });
+    expect(threadIdFromApiKey(metadata, org.id)).toBe("thrd_1");
+    expect(threadIdFromApiKey(metadata, "org_2")).toBeUndefined();
   });
 
   it("binds no other key to a thread", () => {
@@ -215,7 +219,7 @@ describe("mcpKeyMetadata", () => {
         threadId: "thrd_1",
       });
       expect(metadata).toEqual({ organization: org });
-      expect(threadIdFromApiKey(metadata)).toBeUndefined();
+      expect(threadIdFromApiKey(metadata, org.id)).toBeUndefined();
     }
   });
 
@@ -229,7 +233,7 @@ describe("mcpKeyMetadata", () => {
       }),
     ).toEqual({
       organization: org,
-      threadId: "thrd_1",
+      threadGrant: expect.any(String),
       runMetadata: { tenant: "shop.example" },
     });
   });

@@ -142,9 +142,7 @@ export async function writeResponse(
   if (!res.ok) {
     console.error(`HTTP ${res.status} ${res.statusText}`.trim());
     if (res.status === 401) {
-      console.error(
-        renewAdvice(session.target, session.refreshToken !== undefined),
-      );
+      console.error(renewAdvice(session.target, Boolean(session.refreshToken)));
     }
   }
   if (res.body) {
