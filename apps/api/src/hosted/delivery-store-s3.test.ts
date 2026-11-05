@@ -90,6 +90,32 @@ describe("createS3DeliveryStore conditional PUTs", () => {
     }
   });
 
+  it("delete and listPage map 429/5xx to Unavailable, like get", async () => {
+    for (const [status, code] of [
+      [429, "SlowDown"],
+      [503, "ServiceUnavailable"],
+    ] as const) {
+      answer = { status, code };
+      const deleted = await store.delete("sites/acme/drafts/x.json").then(
+        () => "ok" as const,
+        (error: unknown) => error,
+      );
+      expect(deleted).toBeInstanceOf(DeliveryUnavailableError);
+      const listed = await store
+        .listPage("sites/acme/revisions/", {
+          delimiter: "/",
+          maxKeys: 50,
+          continuationToken: null,
+        })
+        .then(
+          () => "ok" as const,
+          (error: unknown) => error,
+        );
+      expect(listed).toBeInstanceOf(DeliveryUnavailableError);
+    }
+    answer = { status: 200, code: "" };
+  });
+
   it("an unconditional write keeps the SDK's retries", async () => {
     const error = await putWith(503, "ServiceUnavailable", false);
     expect(error).not.toBeInstanceOf(ObjectChangedError);

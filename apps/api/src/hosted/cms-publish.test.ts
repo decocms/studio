@@ -16,6 +16,7 @@ import {
 } from "./cms-publish";
 import {
   clearRevisionCache,
+  MalformedObjectError,
   readLatestPointer,
   readRevision,
   readRevisionMeta,
@@ -275,6 +276,58 @@ describe("publishCmsDraft", () => {
     expect(
       await readRevisionMeta(delivery.store, SITE, ids[0]!),
     ).not.toBeNull();
+  });
+});
+
+describe("rollbackToRevision: a broken history chain", () => {
+  it("a meta.json missing or unparseable on the walk is malformed, not never_live", async () => {
+    for (const broken of ["missing", "unparseable"] as const) {
+      clearRevisionCache();
+      const ctx = setup();
+      const r1 = newRevisionId(clock++);
+      const r2 = newRevisionId(clock++);
+      const r3 = newRevisionId(clock++);
+      await seedRelease(ctx.delivery.store, SITE, r1, { a: { v: 1 } });
+      await seedRelease(ctx.delivery.store, SITE, r2, { a: { v: 2 } });
+      await seedRelease(ctx.delivery.store, SITE, r3, { a: { v: 3 } });
+      const key = deliveryKeys.revisionMeta(SITE, r2);
+      if (broken === "missing") ctx.delivery.objects.delete(key);
+      else
+        ctx.delivery.objects.set(key, {
+          text: "{nope",
+          etag: '"x"',
+          cacheControl: "",
+        });
+      await expect(rollbackToRevision(ctx.deps, r1, "")).rejects.toBeInstanceOf(
+        MalformedObjectError,
+      );
+    }
+  });
+});
+
+describe("readRevisionMeta", () => {
+  it("caches a parsed meta.json by (site, id), never an absent one", async () => {
+    const { delivery } = setup();
+    const id = newRevisionId(clock++);
+    let gets = 0;
+    const get = delivery.store.get.bind(delivery.store);
+    delivery.store.get = (async (key: string, options?: unknown) => {
+      gets++;
+      return (get as (k: string, o?: unknown) => ReturnType<typeof get>)(
+        key,
+        options,
+      );
+    }) as typeof delivery.store.get;
+    expect(await readRevisionMeta(delivery.store, SITE, id)).toBeNull();
+    expect(await readRevisionMeta(delivery.store, SITE, id)).toBeNull();
+    expect(gets).toBe(2);
+    await seedRelease(delivery.store, SITE, id, { a: {} });
+    gets = 0;
+    const first = await readRevisionMeta(delivery.store, SITE, id);
+    const second = await readRevisionMeta(delivery.store, SITE, id);
+    expect(second).toEqual(first);
+    expect(first?.author).toBe("usr_seed");
+    expect(gets).toBe(1);
   });
 });
 
