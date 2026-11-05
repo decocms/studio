@@ -14,14 +14,32 @@
  */
 
 import { spellingKey } from "@decocms/blocks/protocol";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMembersQuery } from "@/hooks/use-members";
 import { authClient } from "@/lib/auth-client";
 import { KEYS } from "@/lib/query-keys";
 import type { ContentBackend } from "./content-backend";
+import { versionTag } from "./conflict-editor";
 import type { DecofileScopeParams } from "./decofile-api";
 
 export { rememberConflictEditor, versionTag } from "./conflict-editor";
+
+/**
+ * The tag of "their version" a conflict dialog about `blockKey` shows, for
+ * {@link useConflictAuthor}: the block as the editor holds it now, whole.
+ * A refusal records its editor under the tag of the whole block it carried
+ * (`rememberConflictEditor`), and puts that block in the cache; a section
+ * form's dialog shows only the section's values (an inline section is a part
+ * of the page block), so a tag of those would never find the record.
+ */
+export function heldBlockTag(
+  blocks: Record<string, unknown> | null | undefined,
+  blockKey: string | null,
+): string | null {
+  if (!blockKey || !blocks || !Object.hasOwn(blocks, blockKey)) return null;
+  return versionTag(canonicalBlockJson(blocks[blockKey] ?? null));
+}
 
 /** What the dialog shows: a member's name and avatar, or only the time. */
 export interface ConflictAuthor {
