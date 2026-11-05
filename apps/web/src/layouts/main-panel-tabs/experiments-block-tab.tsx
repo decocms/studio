@@ -7,11 +7,9 @@
  * experiment records, suggestions or agent tools are used here.
  *
  * A test's status comes from its share: 0 off, 100 everyone, anything
- * between running. A running test's name is locked (visitors are grouped by
- * it); renaming one that isn't running rewrites every rule that names it in
- * the same change. "Used by" lists the pages and sections that use it, with
- * the uses not published yet marked. Delete is never blocked; pages that
- * still use a test that isn't there are listed under the tests.
+ * between running. The tab doesn't say where a test is used and doesn't
+ * rename one; Delete just deletes, with an Undo (`deco check` reports a rule
+ * that names a test that isn't there).
  */
 
 import { useState } from "react";
@@ -29,8 +27,6 @@ import {
   SiteDraftViewHeader,
 } from "@/components/site-draft-bar/view-header";
 import { planNamedRuleSet } from "@/components/sections-editor/named-rule-edits";
-import { NamedRuleUsedBy } from "@/components/sections-editor/named-rule-used-by";
-import type { NamedRuleUseRow } from "@/components/sections-editor/named-rule-uses";
 import {
   NamedRuleCreateDialog,
   NamedRuleDetailDelete,
@@ -38,11 +34,7 @@ import {
   NamedRuleDetailTitle,
   NamedRuleDraftNotes,
   NamedRuleEntryBadge,
-  NamedRuleRenameSection,
   namedRuleDetailProps,
-  namedRuleDetailUses,
-  namedRuleUsesLabel,
-  useNamedRuleRename,
   useNamedRuleView,
 } from "@/components/sections-editor/named-rule-view";
 import {
@@ -50,7 +42,6 @@ import {
   useCopyEpochs,
 } from "@/components/sections-editor/held-copy";
 import {
-  canRenameExperiment,
   type ExperimentStatus,
   namedRuleKindInfo,
 } from "@/components/sections-editor/named-rules";
@@ -59,7 +50,6 @@ import {
   type ExperimentRowModel,
   experimentRows,
   removedExperiments,
-  contentSearchForUse,
 } from "./experiments-v8-model";
 import {
   SiteDraftGuide,
@@ -202,24 +192,15 @@ export function ExperimentsBlockReady({
     );
   }
 
-  const rows = experimentRows(decofile, view.uses);
-  const removed = removedExperiments(decofile, view.uses);
-
-  const openUse = (row: NamedRuleUseRow) =>
-    openPanel("content", {
-      search: (prev) => ({ ...prev, ...contentSearchForUse(row) }),
-    });
+  const rows = experimentRows(decofile, view.published);
+  const removed = removedExperiments(decofile, view.published);
 
   const opened = rows.find((row) => row.name === view.openName) ?? null;
   if (opened) {
     return (
       <ExperimentBlockDetail
         key={`${opened.name}:${copyEpoch}`}
-        {...namedRuleDetailProps(view, opened, {
-          decofile,
-          meta,
-          onOpenUse: openUse,
-        })}
+        {...namedRuleDetailProps(view, opened, { decofile, meta })}
       />
     );
   }
@@ -261,13 +242,7 @@ export function ExperimentsBlockReady({
               ))}
             </Card>
           )}
-          <NamedRuleDraftNotes
-            kind="experiments"
-            missing={view.missing}
-            missingNames={view.missingNames}
-            removed={removed}
-            onOpenUse={openUse}
-          />
+          <NamedRuleDraftNotes kind="experiments" removed={removed} />
           <p className="text-xs text-muted-foreground">
             {t("experiments.v8.previewHint")}
           </p>
@@ -306,9 +281,6 @@ function ExperimentBlockRow({
         >
           {row.name}
         </button>
-        <span className="truncate text-xs text-muted-foreground">
-          {namedRuleUsesLabel(t, "experiments", row.uses)}
-        </span>
       </div>
       <span className="w-32 shrink-0 text-xs tabular-nums text-muted-foreground">
         {t("sectionsEditor.namedRulePicker.shareOfVisitors", {
@@ -330,17 +302,7 @@ const EXPERIMENTS_BLOCK = namedRuleKindInfo("experiments").blockKey;
 function ExperimentBlockDetail(
   props: NamedRuleDetailProps<ExperimentRowModel>,
 ) {
-  const {
-    row,
-    decofile,
-    meta,
-    uses,
-    pending,
-    holdsCopy,
-    onBack,
-    onOpenUse,
-    onSave,
-  } = props;
+  const { row, decofile, pending, holdsCopy, onBack, onSave } = props;
   const t = useT();
   // The share being edited, and the tests as they were when it was first
   // moved (the copy it is built on); `null` shows the share as stored. A
@@ -357,7 +319,6 @@ function ExperimentBlockDetail(
     }));
   const share = editing?.share ?? row.share;
   const shareDirty = share !== row.share;
-  const rename = useNamedRuleRename("experiments", props);
 
   const setTo = (value: number) => {
     const change = planNamedRuleSet(decofile, "experiments", row.name, value);
@@ -370,14 +331,6 @@ function ExperimentBlockDetail(
         : change,
     ).then((ok) => ok && setEditing(null));
   };
-
-  const { useRows, wholeRows } = namedRuleDetailUses(
-    "experiments",
-    row.name,
-    uses,
-    decofile,
-    meta,
-  );
 
   return (
     <Page>
@@ -464,33 +417,6 @@ function ExperimentBlockDetail(
               </Button>
             </div>
           </section>
-
-          <NamedRuleRenameSection
-            kind="experiments"
-            id="experiment-name"
-            rename={rename}
-            pending={pending}
-            wholeUses={wholeRows.length}
-            locked={
-              canRenameExperiment(row.share) ? undefined : (
-                <p
-                  className="text-xs text-muted-foreground"
-                  data-testid="experiment-name-locked"
-                >
-                  {t("experiments.v8.nameLocked")}
-                </p>
-              )
-            }
-          />
-
-          <NamedRuleUsedBy
-            kind="experiments"
-            rows={useRows}
-            wholeRows={wholeRows}
-            loading={!uses}
-            marked={!!uses?.published}
-            onOpen={onOpenUse}
-          />
         </div>
       </Page.Content>
     </Page>

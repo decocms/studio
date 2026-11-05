@@ -274,8 +274,6 @@ export const experiments = {
   "experiments.v8.status.off": "Off",
   "experiments.v8.status.running": "Running",
   "experiments.v8.status.everyone": "Everyone",
-  "experiments.v8.usedBy": "Used by {count}",
-  "experiments.v8.notUsed": "Not used yet",
   "experiments.v8.state.new": "Not published yet",
   "experiments.v8.state.changed": "Changed in your draft",
   "experiments.v8.removedTitle": "Removed in your draft",
@@ -293,13 +291,6 @@ export const experiments = {
   "experiments.v8.save": "Save",
   "experiments.v8.turnOff": "Turn off",
   "experiments.v8.showEveryone": "Show to everyone",
-  "experiments.v8.renameHint":
-    "Every variant that uses this test is updated in the same change.",
-  "experiments.v8.renamed": "Test renamed to “{name}”",
-  "experiments.v8.renameWholeHint":
-    "Sections that read every test in their own code still look for the old name. Update them in the site editor.",
-  "experiments.v8.nameLocked":
-    "The name can't change while the test runs: visitors are grouped by it. Turn the test off to rename it.",
   "experiments.v8.delete": "Delete test",
   "experiments.v8.deleted": "Test “{name}” deleted from your draft",
   "experiments.v8.deletedHint":

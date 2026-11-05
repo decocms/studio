@@ -99,9 +99,8 @@ export interface MultivariateFieldWrapperProps extends FieldProps {
 }
 
 /**
- * The variant a form's root variants block opens on: `index` (a saved section
- * opened from a test's or campaign's "Used by", then the one last shown), or
- * the first when `null`. `remember` hears each variant shown, so the form
+ * The variant a form's root variants block opens on: `index` (the one last
+ * shown), or the first when `null`. `remember` hears each variant shown, so the form
  * opens on it again when it is rebuilt (a save from elsewhere).
  */
 export interface RootVariantFocus {

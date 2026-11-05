@@ -12,11 +12,10 @@ import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useConflictMembers } from "@/components/sections-editor/conflict-author";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { namedRuleViewNames } from "@/components/sections-editor/named-rule-loads";
+import { NAMED_RULE_BLOCKS } from "@/components/sections-editor/named-rules";
 import {
   useDecofile,
   useEnsureDecofileBlocks,
-  useHostedContentIndex,
 } from "@/components/sections-editor/use-decofile";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -24,7 +23,6 @@ import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
 import { isSiteNotOwned, SiteNotOwnedState } from "./blocks-tab-states";
 import { usePanelNavigate } from "./use-panel-navigate";
-import { preloadSiteEditorContentOnShow } from "./preload-site-editor-content";
 
 export interface SiteDraftGuideAction {
   label: string;
@@ -174,15 +172,11 @@ function SiteDraftLoaded({
   const metaQuery = useLiveMeta(params);
   const decofile = decofileQuery.data as Record<string, unknown> | undefined;
   const meta = metaQuery.data;
-  // Hosted v8: "Used by" counts read the index (each entry's `meta.rules`
-  // names the tests and campaigns its body uses), so these views load only
-  // the `experiments` and `campaigns` blocks and the users of a name neither
-  // holds (named-rule-loads.ts); an opened name and a rename or delete load
-  // that name's users. No view loads every body.
-  const scope = { orgSlug, virtualMcpId, branch };
+  // Hosted v8: these views read the `experiments` and `campaigns` blocks
+  // only. They say nowhere where a name is used, so no other body loads.
   const load = useEnsureDecofileBlocks(
-    scope,
-    namedRuleViewNames(useHostedContentIndex(scope), decofile, meta),
+    { orgSlug, virtualMcpId, branch },
+    NAMED_RULE_BLOCKS,
   );
 
   if (!decofile || !meta || !load.ready) {
@@ -206,9 +200,6 @@ function SiteDraftLoaded({
     return <>{skeleton}</>;
   }
   return (
-    // Their "Used by" opens the site editor: its code is ready by the click.
-    <div className="contents" ref={preloadSiteEditorContentOnShow}>
-      {children({ orgSlug, virtualMcpId, branch, threadId, decofile, meta })}
-    </div>
+    <>{children({ orgSlug, virtualMcpId, branch, threadId, decofile, meta })}</>
   );
 }

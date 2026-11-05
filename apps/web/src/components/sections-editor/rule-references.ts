@@ -1,35 +1,19 @@
 /**
- * Where a decofile uses its rules: the saved matcher blocks a rule points at,
- * and the named rules (an A/B test's or a campaign's name, named-rules.ts)
- * every block refers to, plus the blocks that take a kind's whole map as a
- * prop. One walk serves both: deleting an unused saved rule and the "Used by"
- * lists of the Experiments and Campaigns views.
+ * Where a decofile uses its rules: the saved matcher blocks a rule points at
+ * (what keeps a saved rule from being cleaned up as unused), and the named
+ * rules (an A/B test's or a campaign's name, named-rules.ts) each block's
+ * rules name (what the Publish review checks against the `experiments` and
+ * `campaigns` blocks, named-rule-uses.ts).
  *
  * On a hosted draft the decofile is a listing (hosted-content.ts): a block
- * not loaded is an index stub, read through its index `refs` and `rules`
- * instead of its body. A stub's use has no path inside the block (`[]`): it
- * counts, and a rewrite loads the block first (`planNamedRuleRename` plans
- * nothing over a stub).
+ * not loaded is an index stub. Its index `refs` say whether it references a
+ * saved rule; the names its rules use are only read from a loaded body.
  */
 
-import type { ChangeDetail } from "@decocms/blocks/protocol";
-import { indexStubRefs, indexStubRules, isIndexStub } from "./hosted-content";
+import { indexStubRefs, isIndexStub } from "./hosted-content";
 import { isSavedMatcherBlockReference } from "./matcher-rules";
-import {
-  canRenameExperiment,
-  isPlainRecord,
-  NAMED_RULE_KINDS,
-  type NamedRuleKind,
-  namedRule,
-  namedRuleKindInfo,
-  namedRuleKindOfBlock,
-  namedRuleNames,
-  namedRuleOf,
-  readNamedRuleBlock,
-  withRenamedNamedRuleEntry,
-} from "./named-rules";
+import { type NamedRuleKind, namedRuleOf } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
-import { isMultivariateResolveType } from "./variant-shape";
 
 /** Keys and indexes from a block's top to a value inside it. */
 export type BlockPath = ReadonlyArray<string | number>;
@@ -103,21 +87,6 @@ function forEachDecofileObject(
   }
 }
 
-/** The variant a rule belongs to, when it is a variant's rule. */
-export interface RuleVariant {
-  /** Path to the variants block (`multivariate`, or a v7 flag). */
-  containerPath: BlockPath;
-  containerType: string;
-  index: number;
-  /** The variants block's `experiment` (v8), when set. */
-  experiment?: string;
-}
-
-/** A place that references a saved matcher block. */
-export interface SavedRuleUse extends BlockLocation {
-  variant?: RuleVariant;
-}
-
 /**
  * Every place that references the saved matcher block `blockKey`. Shape-blind
  * on purpose: every object in the decofile is inspected, not just page
@@ -131,9 +100,9 @@ export function findSavedMatcherReferences(
   decofile: Record<string, unknown>,
   blockKey: string,
   meta?: LiveMeta | null,
-): SavedRuleUse[] {
+): BlockLocation[] {
   if (!blockKey) return [];
-  const found: SavedRuleUse[] = [];
+  const found: BlockLocation[] = [];
   const isSavedRule = () =>
     isSavedMatcherBlockReference({ __resolveType: blockKey }, decofile, meta);
   forEachDecofileObject(decofile, blockKey, (node, at) => {
@@ -146,24 +115,17 @@ export function findSavedMatcherReferences(
     }
     if (node.__resolveType !== blockKey) return;
     if (!isSavedMatcherBlockReference(node, decofile, meta)) return;
-    const variant = variantOf(at);
-    found.push({ ...locationOf(at), ...(variant ? { variant } : {}) });
+    found.push(locationOf(at));
   });
   return found;
 }
 
-/** One block that uses a named rule. */
+/** One block whose rules name an A/B test or a campaign. */
 export interface RuleReference {
   kind: NamedRuleKind;
   name: string;
   /** The block that uses it. */
   blockKey: string;
-  /**
-   * Path to the rule in `blockKey`: the named rule itself, or (through a
-   * saved rule) the reference to the saved rule.
-   */
-  path: BlockPath;
-  variant?: RuleVariant;
   /**
    * Saved matcher blocks the rule is reached through, nearest to `blockKey`
    * first: `[]` when the block uses the named rule itself.
@@ -173,152 +135,42 @@ export interface RuleReference {
   savedRule: boolean;
 }
 
-/**
- * A block that takes a kind's whole map, as a prop or any other value
- * `{ "__resolveType": "experiments" }` (or `"campaigns"`): a section that
- * decides in its own code. It may read any name, so it is listed apart from
- * the uses by name.
- */
-export interface WholeBlockReference {
-  kind: NamedRuleKind;
-  blockKey: string;
-  /** Path to the reference in `blockKey`. */
-  path: BlockPath;
-}
-
-/** One kind's uses: per name, and of the whole block. */
-export interface KindReferences {
-  byName: Map<string, RuleReference[]>;
-  wholeBlock: WholeBlockReference[];
-}
-
-/** Per kind, the blocks that use it. */
-export type RuleReferences = Record<NamedRuleKind, KindReferences>;
-
-function emptyReferences(): RuleReferences {
-  return {
-    experiments: { byName: new Map(), wholeBlock: [] },
-    campaigns: { byName: new Map(), wholeBlock: [] },
-  };
-}
-
-function variantOf(entry: WalkEntry): RuleVariant | undefined {
-  // container.variants[index].rule…
-  for (let at: WalkEntry | null = entry; at; at = at.parent) {
-    const variant = at.parent;
-    const list = variant?.parent;
-    const container = list?.parent;
-    if (!variant || !list || !container) return undefined;
-    if (
-      at.key === "rule" &&
-      typeof variant.key === "number" &&
-      list.key === "variants" &&
-      isPlainRecord(container.node) &&
-      isMultivariateResolveType(container.node.__resolveType)
-    ) {
-      const experiment = container.node.experiment;
-      return {
-        containerPath: pathOf(container),
-        containerType: container.node.__resolveType as string,
-        index: variant.key,
-        ...(typeof experiment === "string" ? { experiment } : {}),
-      };
-    }
-  }
-  return undefined;
-}
-
-interface Hit {
-  kind: NamedRuleKind;
-  name: string;
-  location: BlockLocation;
-  variant?: RuleVariant;
-}
+/** Per kind, per name, the blocks whose rules name it. */
+export type RuleReferences = Record<
+  NamedRuleKind,
+  Map<string, RuleReference[]>
+>;
 
 /**
- * The kinds whose block, in any of `decofiles`, holds a name: what an index
- * stub's `rules` (one list of names for both kinds) count for. A name no
- * block holds counts for neither until the block that uses it is loaded,
- * so a test or campaign that isn't there is only ever listed from a body.
- */
-export function namedRuleKindsHolding(
-  ...decofiles: Array<Record<string, unknown>>
-): (name: string) => NamedRuleKind[] {
-  const held = NAMED_RULE_KINDS.map((kind) => {
-    const names = new Set<string>();
-    for (const decofile of decofiles) {
-      for (const name of namedRuleNames(readNamedRuleBlock(decofile, kind))) {
-        names.add(name);
-      }
-    }
-    return [kind, names] as const;
-  });
-  return (name) =>
-    held.filter(([, names]) => names.has(name)).map(([kind]) => kind);
-}
-
-/**
- * Every block that uses an A/B test or a campaign:
- *
- * - By name: a rule `experiment { name }` or `campaign { name }` anywhere (a
- *   variant's rule in a v8 `multivariate` or a v7 variants flag, inside a
- *   `multi`, inside a `lazy` value). A name in a rule is listed even when the
- *   `experiments`/`campaigns` block doesn't have it. Content isn't meant to
- *   keep such a rule in a saved rule block, but older content may: a block
- *   whose rule references a saved matcher block that uses the name (at any
- *   depth of saved rules) counts as using it, and so does the saved rule.
- *   A `date` rule with its own dates names no campaign and isn't listed.
- * - Whole: a value `{ "__resolveType": "experiments" }` or `"campaigns"`
- *   (a section prop), while that block is the kind's (or not saved yet).
- * - An index stub (a block not loaded): each name of its `rules`, for the
- *   kinds `stubKinds` says hold it (by default the kinds whose block in
- *   `decofile` has it); its `refs` to a kind's block are whole uses, and to
- *   a saved rule are uses through it.
+ * Every block whose rules name an A/B test or a campaign: a rule
+ * `experiment { name }` or `campaign { name }` anywhere (a variant's rule in
+ * a v8 `multivariate` or a v7 variants flag, inside a `multi`, inside a
+ * `lazy` value), whether or not the `experiments`/`campaigns` block has the
+ * name. Content isn't meant to keep such a rule in a saved rule block, but
+ * older content may: a block whose rule references a saved matcher block
+ * that uses the name (at any depth of saved rules) counts as using it, and
+ * so does the saved rule. A `date` rule with its own dates names no
+ * campaign and isn't listed. A block not loaded (an index stub) names none.
  */
 export function findRuleReferences(
   decofile: Record<string, unknown>,
   meta?: LiveMeta | null,
-  options?: { stubKinds?: (name: string) => NamedRuleKind[] },
 ): RuleReferences {
-  const hits: Hit[] = [];
-  const out = emptyReferences();
-  const wholeKinds = new Set(
-    NAMED_RULE_KINDS.filter(
-      (kind) => readNamedRuleBlock(decofile, kind).kind !== "conflict",
-    ),
-  );
-  const stubKinds = options?.stubKinds ?? namedRuleKindsHolding(decofile);
+  const hits: Array<{ kind: NamedRuleKind; name: string; blockKey: string }> =
+    [];
+  const out: RuleReferences = { experiments: new Map(), campaigns: new Map() };
   forEachDecofileObject(decofile, null, (node, at) => {
-    if (at.parent === null && isIndexStub(node)) {
-      const location = { blockKey: at.blockKey, path: [] };
-      for (const ref of indexStubRefs(node)) {
-        const kind = namedRuleKindOfBlock(ref);
-        if (kind && wholeKinds.has(kind)) {
-          out[kind].wholeBlock.push({ kind, ...location });
-        }
-      }
-      for (const name of indexStubRules(node)) {
-        for (const kind of stubKinds(name)) hits.push({ kind, name, location });
-      }
-      return;
-    }
-    const whole = namedRuleKindOfBlock(node.__resolveType);
-    if (whole && wholeKinds.has(whole)) {
-      out[whole].wholeBlock.push({ kind: whole, ...locationOf(at) });
-      return;
-    }
+    if (at.parent === null && isIndexStub(node)) return;
     const named = namedRuleOf(node);
-    if (!named) return;
-    hits.push({ ...named, location: locationOf(at), variant: variantOf(at) });
+    if (named) hits.push({ ...named, blockKey: at.blockKey });
   });
 
   const add = (ref: RuleReference) => {
-    const byName = out[ref.kind].byName;
-    const list = byName.get(ref.name);
+    const list = out[ref.kind].get(ref.name);
     if (list) list.push(ref);
-    else byName.set(ref.name, [ref]);
+    else out[ref.kind].set(ref.name, [ref]);
   };
-  const usesOfSavedRule = new Map<string, SavedRuleUse[]>();
+  const usesOfSavedRule = new Map<string, BlockLocation[]>();
   const savedRuleUses = (blockKey: string) => {
     let uses = usesOfSavedRule.get(blockKey);
     if (!uses) {
@@ -331,17 +183,9 @@ export function findRuleReferences(
     isSavedMatcherBlockReference({ __resolveType: blockKey }, decofile, meta);
 
   for (const hit of hits) {
-    const { blockKey } = hit.location;
+    const { blockKey } = hit;
     const savedRule = isSavedRule(blockKey);
-    add({
-      kind: hit.kind,
-      name: hit.name,
-      blockKey,
-      path: hit.location.path,
-      ...(hit.variant ? { variant: hit.variant } : {}),
-      via: [],
-      savedRule,
-    });
+    add({ ...hit, via: [], savedRule });
     if (!savedRule) continue;
     // Follow the saved rule to the blocks that use it, and on through any
     // saved rule that uses it in turn (a cycle stops at a rule seen before).
@@ -360,8 +204,6 @@ export function findRuleReferences(
           kind: hit.kind,
           name: hit.name,
           blockKey: user,
-          path: use.path,
-          ...(use.variant ? { variant: use.variant } : {}),
           via,
           savedRule: userIsSavedRule,
         });
@@ -371,193 +213,6 @@ export function findRuleReferences(
         }
       }
     }
-  }
-  return out;
-}
-
-/**
- * Whether the published site uses a reference, as the draft has it:
- *
- * - `published`: the published content has the same use (the same block,
- *   through the same saved rules).
- * - `draft-only`: the draft added it; it goes live with the next Publish.
- * - `removed-in-draft`: the published content still uses it; the draft
- *   dropped it, and it stops at the next Publish.
- */
-export type ReferenceState = "published" | "draft-only" | "removed-in-draft";
-
-export interface MarkedRuleReference extends RuleReference {
-  state: ReferenceState;
-}
-
-export interface MarkedWholeBlockReference extends WholeBlockReference {
-  state: ReferenceState;
-}
-
-export interface MarkedKindReferences {
-  byName: Map<string, MarkedRuleReference[]>;
-  wholeBlock: MarkedWholeBlockReference[];
-}
-
-export type MarkedRuleReferences = Record<NamedRuleKind, MarkedKindReferences>;
-
-function referenceKey(ref: RuleReference): string {
-  return JSON.stringify([ref.blockKey, ...ref.via]);
-}
-
-/**
- * `draft`, each marked against `published` by `keyOf`, plus the published
- * ones the draft no longer has (once per key).
- */
-function markList<T>(
-  draft: T[],
-  published: T[],
-  keyOf: (ref: T) => string,
-): Array<T & { state: ReferenceState }> {
-  const live = new Set(published.map(keyOf));
-  const kept = new Set(draft.map(keyOf));
-  const marked: Array<T & { state: ReferenceState }> = draft.map((ref) => ({
-    ...ref,
-    state: live.has(keyOf(ref)) ? "published" : "draft-only",
-  }));
-  const removed = new Set<string>();
-  for (const ref of published) {
-    const key = keyOf(ref);
-    if (kept.has(key) || removed.has(key)) continue;
-    removed.add(key);
-    marked.push({ ...ref, state: "removed-in-draft" });
-  }
-  return marked;
-}
-
-/**
- * The draft's references, each marked against the published content's, plus
- * the published uses the draft no longer has. A block that uses a name (or
- * the whole block) more than once is compared as one use: the views list
- * blocks, not positions.
- */
-export function markReferenceStates(
-  draft: RuleReferences,
-  published: RuleReferences,
-): MarkedRuleReferences {
-  const out = {} as MarkedRuleReferences;
-  for (const kind of NAMED_RULE_KINDS) {
-    const byName = new Map<string, MarkedRuleReference[]>();
-    const names = new Set([
-      ...draft[kind].byName.keys(),
-      ...published[kind].byName.keys(),
-    ]);
-    for (const name of names) {
-      byName.set(
-        name,
-        markList(
-          draft[kind].byName.get(name) ?? [],
-          published[kind].byName.get(name) ?? [],
-          referenceKey,
-        ),
-      );
-    }
-    out[kind] = {
-      byName,
-      wholeBlock: markList(
-        draft[kind].wholeBlock,
-        published[kind].wholeBlock,
-        (ref) => ref.blockKey,
-      ),
-    };
-  }
-  return out;
-}
-
-/**
- * The blocks a rename of `from` to `to` writes, in one change: the kind's
- * block with the entry renamed in place, and every block whose rule names
- * `from` (saved rules included) with that rule naming `to`. `null` when
- * nothing can be renamed: the block conflicts, `from` isn't saved, `to` is
- * empty or taken, or `from` is a running A/B test (its name is locked:
- * visitors are grouped by it), or a block that uses it isn't loaded (an
- * index stub: the caller loads the users first). A block that reads the
- * whole map in its own code isn't rewritten (`wholeBlock` lists them, for
- * the editor to point out).
- */
-export function planNamedRuleRename(
-  decofile: Record<string, unknown>,
-  kind: NamedRuleKind,
-  from: string,
-  to: string,
-  meta?: LiveMeta | null,
-): { writes: Record<string, Record<string, unknown>> } | null {
-  const read = readNamedRuleBlock(decofile, kind);
-  if (read.kind !== "saved") return null;
-  if (!to.trim() || from === to) return null;
-  if (!Object.hasOwn(read.values, from) || Object.hasOwn(read.block, to)) {
-    return null;
-  }
-  if (
-    kind === "experiments" &&
-    !canRenameExperiment(read.values[from] as number)
-  ) {
-    return null;
-  }
-  const { blockKey } = namedRuleKindInfo(kind);
-  const writes: Record<string, Record<string, unknown>> = {
-    [blockKey]: withRenamedNamedRuleEntry(read.block, from, to),
-  };
-  const uses = findRuleReferences(decofile, meta)[kind].byName.get(from) ?? [];
-  for (const use of uses) {
-    // A use through a saved rule is rewritten where the rule itself is.
-    if (use.via.length > 0) continue;
-    const current = writes[use.blockKey] ?? decofile[use.blockKey];
-    if (isIndexStub(current)) return null;
-    if (!isPlainRecord(current)) continue;
-    writes[use.blockKey] = replaceAt(current, use.path, namedRule(kind, to));
-  }
-  return { writes };
-}
-
-/**
- * A copy of `root` with the object at `path` merged with `value` (keeping
- * its other fields), every container on the way copied, `root` untouched.
- */
-function replaceAt(
-  root: Record<string, unknown>,
-  path: BlockPath,
-  value: Record<string, unknown>,
-): Record<string, unknown> {
-  const merge = (node: unknown, depth: number): unknown => {
-    if (depth === path.length) {
-      return isPlainRecord(node) ? { ...node, ...value } : node;
-    }
-    const key = path[depth]!;
-    if (Array.isArray(node) && typeof key === "number") {
-      const copy = node.slice();
-      copy[key] = merge(node[key], depth + 1);
-      return copy;
-    }
-    if (isPlainRecord(node) && typeof key === "string") {
-      return { ...node, [key]: merge(node[key], depth + 1) };
-    }
-    return node;
-  };
-  return merge(root, 0) as Record<string, unknown>;
-}
-
-/**
- * The published content, from the draft's and both sides of its changes
- * (`changes.get`): each changed block as it was before (absent when it is
- * new). A change whose sides weren't read, or whose published side couldn't
- * be read (no `before` though the base has a version), keeps the draft's
- * copy.
- */
-export function publishedDecofile(
-  draft: Record<string, unknown>,
-  sides: Record<string, ChangeDetail>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...draft };
-  for (const [blockKey, side] of Object.entries(sides)) {
-    if (side.kind === null) continue;
-    if (side.before !== null) out[blockKey] = side.before;
-    else if (side.baseVersion === null) delete out[blockKey];
   }
   return out;
 }

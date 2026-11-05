@@ -115,7 +115,6 @@ import {
   type NamedRuleFieldSupport,
 } from "./named-rule-step";
 import { RootVariantFocusProvider } from "./fields/multivariate-field-wrapper";
-import type { VariantFocus } from "./named-rule-uses";
 import {
   namedRuleKindInfo,
   namedRuleOf,
@@ -327,7 +326,6 @@ export function SectionsEditor({
   onViewJsonFile,
   onFocusedBlockChange,
   onVariantPreviewOverride,
-  focusVariant,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -370,12 +368,6 @@ export function SectionsEditor({
    * nothing selected).
    */
   onVariantPreviewOverride?: (params: string[] | null) => void;
-  /**
-   * Opens the page (or saved section) on this place once its content is
-   * read: "Open" in a test's or campaign's "Used by". `seq` tells a new
-   * request from the same one seen again.
-   */
-  focusVariant?: (VariantFocus & { seq: number }) | null;
 }) {
   const t = useT();
   const task = useOptionalChatTask();
@@ -435,14 +427,8 @@ export function SectionsEditor({
   const [prevExternalSeq, setPrevExternalSeq] = useState<
     number | null | undefined
   >(undefined);
-  const [seenFocusSeq, setSeenFocusSeq] = useState<number | null>(null);
-  const [pendingFocus, setPendingFocus] = useState<VariantFocus | null>(null);
-  if (focusVariant && focusVariant.seq !== seenFocusSeq) {
-    setSeenFocusSeq(focusVariant.seq);
-    setPendingFocus(focusVariant);
-  }
-  // A saved section's variant to open its form on (`focusVariant`, then the
-  // one last shown, so a rebuilt form stays on it).
+  // A saved section's variant to open its form on: the one last shown, so a
+  // rebuilt form stays on it.
   const [globalVariantFocus, setGlobalVariantFocus] = useState<number | null>(
     null,
   );
@@ -1114,47 +1100,6 @@ export function SectionsEditor({
     setPrevExternalSeq(externalSelection?.seq ?? null);
     if (typeof externalSelectedIndex === "number") {
       openSectionAt(externalSelectedIndex, 0);
-    }
-  }
-
-  // "Open" from a test's or campaign's "Used by": once the content is read,
-  // go to the page variant first (its sections are another list), then open
-  // the section on its variant. A place that is gone opens the page as is.
-  if (pendingFocus && (isGlobalBlockMode ? globalBlockData : pageData)) {
-    const wantPage = pendingFocus.pageVariant;
-    const pageThere =
-      !isGlobalBlockMode &&
-      wantPage !== undefined &&
-      wantPage < pageVariants.length;
-    if (pageThere && wantPage !== safeVariantIndex) {
-      selectPageVariant(wantPage);
-    } else {
-      setPendingFocus(null);
-      const { section, variant } = pendingFocus;
-      if (isGlobalBlockMode) {
-        if (variant !== undefined) {
-          setGlobalVariantFocus(variant);
-          setFieldBreadcrumbs([]);
-          setFormResetKey((key) => key + 1);
-        }
-      } else if (
-        section !== undefined &&
-        openSectionAt(section, variant ?? 0)
-      ) {
-        // The preview shows that variant too, once this render is done.
-        const rawSection = rawSections[section]!;
-        const parsed = parsedSections[section]!;
-        const mvObj = parsed.isMultivariate
-          ? getMultivariateSectionObject(rawSection, parsed)
-          : null;
-        if (mvObj && variant !== undefined) {
-          queueMicrotask(() =>
-            syncVariantPreviewOverride(mvObj, section, variant),
-          );
-        }
-      } else if (pageThere) {
-        selectPageVariant(wantPage);
-      }
     }
   }
 

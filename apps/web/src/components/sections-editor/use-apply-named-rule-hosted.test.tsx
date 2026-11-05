@@ -13,17 +13,15 @@ import type { ProtocolBackend } from "./content-backend";
 import { resetContentSync } from "./content-sync";
 import type { HostedCall } from "./hosted-content";
 import { isIndexStub } from "./hosted-content";
-import { namedRuleUseCounts } from "./named-rule-uses";
-import { planNamedRuleRename } from "./rule-references";
 import * as realBackend from "./use-content-backend";
 import * as realDecofile from "./use-decofile";
 import * as realSessionRuntime from "@/hooks/use-session-runtime";
 import * as realLocalPreview from "@/hooks/use-local-preview-url";
 
 /**
- * A rename or delete on Studio's hosted draft reads the index now and loads
- * only the blocks it says use the name (`meta.rules`), with the tests and
- * campaigns blocks: never every body.
+ * A delete or an Undo on Studio's hosted draft reads the index now and loads
+ * only the tests and campaigns blocks: never the pages that use the name
+ * (Studio counts no uses; a delete just deletes).
  */
 
 const ORG = "acme";
@@ -66,10 +64,10 @@ function reset() {
   // The index's meta, as the server's blockMeta writes it.
   server.metas = {
     experiments: { type: "split-traffic" },
-    home: { type: PAGE, path: "/", rules: ["hero"] },
+    home: { type: PAGE, path: "/" },
     about: { type: PAGE, path: "/about" },
     Header: { type: "site/sections/Header.tsx" },
-    "Hero test": { type: "experiment", rules: ["hero"] },
+    "Hero test": { type: "experiment" },
     promo: { type: PAGE, path: "/promo", refs: ["Hero test"] },
   };
   server.blocksCalls = [];
@@ -191,57 +189,24 @@ function setup() {
 
 const loadedNames = () => server.blocksCalls.flat().sort();
 
-const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
-const meta = {
-  manifest: {
-    blocks: {
-      matchers: { experiment: builtIn, campaign: builtIn },
-      content: { "split-traffic": builtIn, calendar: builtIn },
-      pages: {},
-    },
-  },
-  schema: {},
-} as never;
-
-describe("a rename or delete on the hosted draft", () => {
-  it("a rename loads the tests and the name's users only, and rewrites them", async () => {
-    const { result } = setup();
-    let change: Awaited<ReturnType<typeof result.current.planStored>> = null;
-    await act(async () => {
-      change = await result.current.planStored(
-        (stored) =>
-          planNamedRuleRename(stored, "experiments", "hero", "launch", meta),
-        { usersOf: ["hero"] },
-      );
-    });
-    expect(loadedNames()).toEqual(["Hero test", "experiments", "home"]);
-    expect(Object.keys(change!.writes).sort()).toEqual([
-      "Hero test",
-      "experiments",
-      "home",
-    ]);
-  });
-
-  it("a delete's read counts every use from the index, loading only the users", async () => {
+describe("a delete or an Undo on the hosted draft", () => {
+  it("reads only the tests and campaigns blocks; every other block stays a stub", async () => {
     const { result } = setup();
     let fresh: Record<string, unknown> | null = null;
     await act(async () => {
-      fresh = await result.current.reread({ usersOf: ["hero"] });
-    });
-    expect(loadedNames()).toEqual(["Hero test", "experiments", "home"]);
-    // promo (through the saved rule) is counted from its stub.
-    expect(isIndexStub(fresh!.promo)).toBe(true);
-    expect(namedRuleUseCounts(fresh!, meta, "experiments", "hero")).toEqual({
-      pages: 2,
-      sections: 0,
-    });
-  });
-
-  it("an Undo's read loads only the tests and campaigns blocks", async () => {
-    const { result } = setup();
-    await act(async () => {
-      await result.current.reread();
+      fresh = await result.current.reread();
     });
     expect(loadedNames()).toEqual(["experiments"]);
+    expect(isIndexStub(fresh!.home)).toBe(true);
+    expect(isIndexStub(fresh!.promo)).toBe(true);
+    expect(fresh!.experiments).toEqual(server.bodies.experiments);
+  });
+
+  it("a reconcile's read loads the blocks it touches too", async () => {
+    const { result } = setup();
+    await act(async () => {
+      await result.current.reread({ blocks: ["home"] });
+    });
+    expect(loadedNames()).toEqual(["experiments", "home"]);
   });
 });

@@ -1423,8 +1423,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.status.ended": "Encerrada",
   "sandbox.dateCampaigns.status.always": "Sempre ativa",
   "sandbox.dateCampaigns.status.unreadable": "Datas ilegíveis",
-  "sandbox.dateCampaigns.usedBy": "Usada em {count}",
-  "sandbox.dateCampaigns.notUsed": "Ainda não usada",
   "sandbox.dateCampaigns.state.new": "Ainda não publicada",
   "sandbox.dateCampaigns.state.changed": "Alterada no seu rascunho",
   "sandbox.dateCampaigns.removedTitle": "Removidas no seu rascunho",
@@ -1434,15 +1432,10 @@ export const sandbox = {
     "Uma das datas não pode ser lida, então as variantes dela não aparecem. Escolha novas datas e salve.",
   "sandbox.dateCampaigns.publishedWindow": "Publicado: {window}",
   "sandbox.dateCampaigns.saveDates": "Salvar datas",
-  "sandbox.dateCampaigns.renameHint":
-    "Toda variante que usa esta campanha é atualizada na mesma mudança.",
-  "sandbox.dateCampaigns.renameWholeHint":
-    "Seções que leem todas as campanhas no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
   "sandbox.dateCampaigns.delete": "Excluir campanha",
   "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
   "sandbox.dateCampaigns.deletedHint":
     "Ela sai do site quando você publicar. Desfazer traz ela de volta.",
-  "sandbox.dateCampaigns.renamed": "Campanha renomeada para “{name}”",
   "sandbox.dateCampaigns.allCampaigns": "Todas as campanhas",
   "sandbox.dateCampaigns.today": "Hoje",
   "sandbox.dateCampaigns.previous": "Antes",

@@ -48,10 +48,9 @@ mock.module("./use-panel-navigate", () => ({
 mock.module("@/components/sections-editor/named-rule-view", () => ({
   ...realView,
   useNamedRuleView: () => ({
-    uses: null,
+    published: null,
     apply: async () => ({ ok: true }),
     reread: async () => null,
-    planStored: async () => null,
     isPending: false,
     holdsCopy,
     openName: "hero",
@@ -59,8 +58,6 @@ mock.module("@/components/sections-editor/named-rule-view", () => ({
     creating: false,
     setCreating: () => {},
     blocked: null,
-    missing: [],
-    missingNames: 0,
     save: async (change: NamedRuleChange | null) => {
       saves.push(change);
       return false;

@@ -4,18 +4,17 @@
  * blocks a view opens"; contract §5):
  *
  * - `cms.index` (polled with the schema and the changes) answers every
- *   name's version and small metadata (`type`, `path`, `refs`, `rules`)
- *   and, for the names the draft holds, their draft version and editor. It
- *   is kept in `KEYS.contentIndex`; the draft versions are what a save's
- *   `ifMatch` carries.
+ *   name's version and small metadata (`type`, `path`, `refs`) and, for the
+ *   names the draft holds, their draft version and editor. It is kept in
+ *   `KEYS.contentIndex`; the draft versions are what a save's `ifMatch`
+ *   carries.
  * - `KEYS.decofile` holds only the bodies loaded so far. `ensureHostedBlocks`
  *   loads the ones a view opens, through `cms.blocks` (50 names a call).
  * - List views see {@link listingOf}: every name of the index, an unloaded
- *   one as a stub carrying only its type, path, direct references and the
- *   tests and campaigns it uses (`INDEX_STUB`, {@link indexStubRefs},
- *   {@link indexStubRules}). A stub is never saved ({@link stubNames}); a
- *   helper that scans bodies reads a stub's references and rules instead of
- *   its (absent) body.
+ *   one as a stub carrying only its type, path and direct references
+ *   (`INDEX_STUB`, {@link indexStubRefs}). A stub is never saved
+ *   ({@link stubNames}); a helper that scans bodies reads a stub's
+ *   references instead of its (absent) body.
  */
 
 import type { QueryClient } from "@tanstack/react-query";
@@ -35,7 +34,7 @@ import { keepContentBookkeeping } from "./content-bookkeeping";
 /** One name of the overlaid index (latest ⊕ draft), as `cms.index` answers it. */
 export interface HostedIndexEntry {
   version: string;
-  meta?: { type?: string; path?: string; refs?: string[]; rules?: string[] };
+  meta?: { type?: string; path?: string; refs?: string[] };
 }
 
 /** A name the draft holds. */
@@ -142,8 +141,6 @@ export function createHostedRpc(
 const INDEX_STUB = "__indexStub";
 /** An index stub's direct references (the index's `meta.refs`). */
 const INDEX_STUB_REFS = "__indexRefs";
-/** The tests and campaigns an index stub's body uses (the index's `meta.rules`). */
-const INDEX_STUB_RULES = "__indexRules";
 
 /** Whether `value` is an index stub (or a copy of one). */
 export function isIndexStub(value: unknown): boolean {
@@ -167,18 +164,6 @@ export function indexStubRefs(value: unknown): string[] {
     : [];
 }
 
-/**
- * The names of the A/B tests and campaigns an index stub's block uses (its
- * index `meta.rules`: one list for both kinds); `[]` for anything else.
- */
-export function indexStubRules(value: unknown): string[] {
-  if (!isIndexStub(value)) return [];
-  const rules = (value as Record<string, unknown>)[INDEX_STUB_RULES];
-  return Array.isArray(rules)
-    ? rules.filter((rule): rule is string => typeof rule === "string")
-    : [];
-}
-
 /** The names of `set` whose value is an index stub: never written. */
 export function stubNames(set: Record<string, unknown> | undefined): string[] {
   return Object.entries(set ?? {})
@@ -188,8 +173,8 @@ export function stubNames(set: Record<string, unknown> | undefined): string[] {
 
 /**
  * Every name of the index, for list views: a loaded body as it is, any
- * other as a stub with its raw type, path, direct references and rules.
- * Index order.
+ * other as a stub with its raw type, path and direct references. Index
+ * order.
  */
 export function listingOf(
   index: ContentIndex | undefined,
@@ -208,9 +193,6 @@ export function listingOf(
       ...(entry.meta?.path !== undefined ? { path: entry.meta.path } : {}),
       ...(entry.meta?.refs?.length
         ? { [INDEX_STUB_REFS]: entry.meta.refs }
-        : {}),
-      ...(entry.meta?.rules?.length
-        ? { [INDEX_STUB_RULES]: entry.meta.rules }
         : {}),
     };
   }
@@ -240,35 +222,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-/** The rules that name an A/B test or a campaign by `name`. */
-const NAMED_RULE_TYPES: ReadonlySet<unknown> = new Set([
-  "experiment",
-  "campaign",
-]);
-
-function collectTypes(value: unknown, types: Set<string>, rules: Set<string>) {
+function collectTypes(value: unknown, out: Set<string>) {
   if (Array.isArray(value)) {
-    for (const item of value) collectTypes(item, types, rules);
+    for (const item of value) collectTypes(item, out);
     return;
   }
   if (!isRecord(value)) return;
-  if (
-    NAMED_RULE_TYPES.has(value.__resolveType) &&
-    typeof value.name === "string"
-  ) {
-    rules.add(value.name);
-  }
   for (const [key, inner] of Object.entries(value)) {
-    if (key === "__resolveType" && typeof inner === "string") types.add(inner);
-    else collectTypes(inner, types, rules);
+    if (key === "__resolveType" && typeof inner === "string") out.add(inner);
+    else collectTypes(inner, out);
   }
 }
 
 /**
  * The index meta of a body this editor just saved (the server's
- * `blockMeta`: `type`, `path`, `refs` and `rules`), so a list shows a new
- * page's path, and the Experiments and Calendar views its uses, before the
- * next poll.
+ * `blockMeta`), so a list shows a new page's path before the next poll.
  */
 function indexMetaOf(
   body: unknown,
@@ -279,11 +247,9 @@ function indexMetaOf(
   if (typeof body.__resolveType === "string") meta.type = body.__resolveType;
   if (typeof body.path === "string") meta.path = body.path;
   const found = new Set<string>();
-  const rules = new Set<string>();
-  collectTypes(body, found, rules);
+  collectTypes(body, found);
   const refs = [...found].filter((n) => names.has(n)).sort();
   if (refs.length > 0) meta.refs = refs;
-  if (rules.size > 0) meta.rules = [...rules].sort();
   return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
@@ -420,38 +386,6 @@ export async function ensureHostedBlocks(
     waits.push(load);
   }
   await Promise.all(waits);
-}
-
-/**
- * The names whose index entry says their body uses one of `rules` (its
- * `meta.rules`: an A/B test's or a campaign's name, either kind), in index
- * order. What a rename or delete of a test or campaign loads to rewrite or
- * count its uses, instead of every body.
- */
-export function indexRuleUsers(
-  index: ContentIndex | undefined,
-  rules: Iterable<string>,
-): string[] {
-  const wanted = new Set(rules);
-  if (!index || wanted.size === 0) return [];
-  return Object.entries(index.entries)
-    .filter(([, entry]) => entry.meta?.rules?.some((rule) => wanted.has(rule)))
-    .map(([name]) => name);
-}
-
-/**
- * The names whose index entry references one of `names` directly (its
- * `meta.refs`), in index order.
- */
-export function indexReferrers(
-  index: ContentIndex | undefined,
-  names: Iterable<string>,
-): string[] {
-  const wanted = new Set(names);
-  if (!index || wanted.size === 0) return [];
-  return Object.entries(index.entries)
-    .filter(([, entry]) => entry.meta?.refs?.some((ref) => wanted.has(ref)))
-    .map(([name]) => name);
 }
 
 async function loadBlocks(

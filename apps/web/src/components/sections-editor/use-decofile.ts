@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  type ContentIndex,
   type HostedBlocksLoad,
   listingOf,
   useContentIndex,
@@ -332,22 +331,12 @@ export function useIndexNamesOfType(
   params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
   matches: (type: string) => boolean,
 ): string[] {
-  const index = useHostedContentIndex(params);
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const key = useDecofileCacheKey(params);
+  const index = useContentIndex(
+    backend.kind === "protocol" && backend.hosted ? key : "",
+  );
   return Object.entries(index?.entries ?? {})
     .filter(([, entry]) => matches(entry.meta?.type ?? ""))
     .map(([name]) => name);
-}
-
-/**
- * Studio's hosted CMS: the draft's index as the last poll read it;
- * `undefined` for every other backend.
- */
-export function useHostedContentIndex(
-  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
-): ContentIndex | undefined {
-  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
-  const key = useDecofileCacheKey(params);
-  return useContentIndex(
-    backend.kind === "protocol" && backend.hosted ? key : "",
-  );
 }

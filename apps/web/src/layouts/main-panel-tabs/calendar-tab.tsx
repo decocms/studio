@@ -10,9 +10,7 @@ import { Calendar } from "@untitledui/icons";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { CampaignsView } from "@/components/sandbox/content/campaigns/campaigns-view";
 import { useT } from "@/i18n/use-t.ts";
-import { contentSearchForUse } from "./experiments-v8-model";
 import { SiteDraftView } from "./site-draft-view";
-import { usePanelNavigate } from "./use-panel-navigate";
 
 export function CalendarTabSkeleton() {
   return (
@@ -29,7 +27,6 @@ export function CalendarTabSkeleton() {
 
 export function CalendarTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
-  const { openPanel } = usePanelNavigate();
   return (
     <SiteDraftView
       virtualMcpId={virtualMcpId}
@@ -51,11 +48,6 @@ export function CalendarTab({ virtualMcpId }: { virtualMcpId: string }) {
             decofile={decofile}
             meta={meta}
             initialView="timeline"
-            onOpenUse={(row) =>
-              openPanel("content", {
-                search: (prev) => ({ ...prev, ...contentSearchForUse(row) }),
-              })
-            }
           />
         </div>
       )}

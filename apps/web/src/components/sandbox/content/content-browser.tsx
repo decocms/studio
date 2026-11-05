@@ -143,11 +143,7 @@ import {
   scanBlogEntries,
   stampPostModified,
 } from "./blog/blog-data";
-import {
-  type ContentSearchParams,
-  variantFocusFromSearch,
-} from "./content-search-params";
-import type { VariantFocus } from "@/components/sections-editor/named-rule-uses";
+import type { ContentSearchParams } from "./content-search-params";
 import {
   rescheduleToDay,
   scheduledPostPayload,
@@ -562,21 +558,6 @@ function ContentBrowserReady({
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
       : null,
   );
-  // The place in the open page or section to show: "Open" in a test's or
-  // campaign's "Used by" (here, or through the URL from the Experiments tab).
-  const [variantFocus, setVariantFocus] = useState<{
-    blockKey: string;
-    focus: VariantFocus;
-    seq: number;
-  } | null>(() => {
-    // A Blocks v8 site's links only (v7 opens the page as before).
-    const focus = runsSiteCode ? null : variantFocusFromSearch(contentDeepLink);
-    return focus && contentDeepLink.contentItem && selection
-      ? { blockKey: contentDeepLink.contentItem, focus, seq: 1 }
-      : null;
-  });
-  // It's for that one opening: once something else is open, it's done, so
-  // coming back to the page later opens it as usual.
   const selectedKey = selection && "key" in selection ? selection.key : null;
   // The open block and the blocks it references directly.
   const openBlockKey = selectedKey ?? openEntry?.key ?? null;
@@ -593,9 +574,6 @@ function ContentBrowserReady({
     openBlockNames,
     { withRefs: true },
   );
-  if (variantFocus && variantFocus.blockKey !== selectedKey) {
-    setVariantFocus(null);
-  }
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   /**
@@ -679,10 +657,6 @@ function ContentBrowserReady({
     if (match) {
       setActiveCollection("pages");
       setSelection({ collection: "pages", key: match.key, path: match.path });
-      const focus = runsSiteCode
-        ? null
-        : variantFocusFromSearch(contentDeepLink);
-      if (focus) setVariantFocus({ blockKey: match.key, focus, seq: 1 });
     }
   }
   const [searchQuery, setSearchQuery] = useState("");
@@ -1884,11 +1858,6 @@ function ContentBrowserReady({
                     openPageSeoKey === selection.key
                   }
                   onExitSeo={() => setOpenPageSeoKey(null)}
-                  focusVariant={
-                    variantFocus?.blockKey === selection.key
-                      ? { ...variantFocus.focus, seq: variantFocus.seq }
-                      : null
-                  }
                   onSelectRoot={() => {
                     setSelection(null);
                     setOpenPageSeoKey(null);

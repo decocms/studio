@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import type { ChangeDetail } from "@decocms/blocks/protocol";
 import {
   namedRuleEntryState,
   namedRulesRemovedInDraft,
@@ -14,18 +13,7 @@ import {
   namedRuleRowState,
   planNamedRulePick,
 } from "./named-rule-picker";
-import {
-  blocksUsingMissingNamedRules,
-  missingNamedRuleRowNames,
-  missingNamedRuleRows,
-  missingNamedRuleUseCounts,
-  missingNamedRules,
-  namedRuleUseCount,
-  namedRuleUseCounts,
-  namedRuleUseRows,
-  namedRuleUses,
-  variantFocusOf,
-} from "./named-rule-uses";
+import { blocksUsingMissingNamedRules } from "./named-rule-uses";
 
 const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
 const meta = {
@@ -56,377 +44,6 @@ const page = (name: string, path: string, rule: unknown) => ({
       { rule: { __resolveType: "always" }, value: lazy([]) },
     ],
   },
-});
-
-const side = (
-  before: Record<string, unknown> | null,
-  after: Record<string, unknown> | null,
-): ChangeDetail => ({
-  kind: after ? "set" : "delete",
-  before,
-  after,
-  version: after ? "v2" : null,
-  baseVersion: before ? "v1" : null,
-});
-
-describe("namedRuleUses", () => {
-  const published = {
-    experiments: { __resolveType: "split-traffic", "hero-test": 50 },
-    "pages-home-1": page("Home", "/", experiment("hero-test")),
-  };
-  const draft = {
-    ...published,
-    experiments: {
-      __resolveType: "split-traffic",
-      "hero-test": 50,
-      "cta-test": 10,
-    },
-    "pages-pdp-2": page("Product", "/p/:slug", experiment("hero-test")),
-    banner: {
-      __resolveType: "multivariate",
-      variants: [{ rule: experiment("cta-test"), value: lazy({}) }],
-    },
-  };
-  const sides = {
-    experiments: side(published.experiments, draft.experiments),
-    "pages-pdp-2": side(null, draft["pages-pdp-2"]),
-    banner: side(null, draft.banner),
-  };
-
-  it("marks the uses the draft added as not published yet", () => {
-    const uses = namedRuleUses({
-      decofile: draft,
-      meta,
-      changeCount: 3,
-      sides,
-    });
-    expect(uses.published).not.toBeNull();
-    const rows = namedRuleUseRows(
-      uses,
-      "experiments",
-      "hero-test",
-      draft,
-      meta,
-    );
-    expect(rows.map((r) => [r.title, r.path, r.variant, r.state])).toEqual([
-      ["Home", "/", 1, "published"],
-      ["Product", "/p/:slug", 1, "draft-only"],
-    ]);
-    expect(rows.every((r) => r.blockKind === "page")).toBe(true);
-    const cta = namedRuleUseRows(uses, "experiments", "cta-test", draft, meta);
-    expect(cta).toEqual([
-      {
-        blockKey: "banner",
-        blockKind: "section",
-        title: "Banner",
-        variant: 1,
-        focus: { variant: 0 },
-        wholeBlock: false,
-        state: "draft-only",
-      },
-    ]);
-  });
-
-  it("lists a use the draft removed, labelled from the published content", () => {
-    const { "pages-home-1": _home, ...withoutHome } = draft;
-    const uses = namedRuleUses({
-      decofile: withoutHome,
-      meta,
-      changeCount: 4,
-      sides: {
-        ...sides,
-        "pages-home-1": side(published["pages-home-1"], null),
-      },
-    });
-    const rows = namedRuleUseRows(
-      uses,
-      "experiments",
-      "hero-test",
-      withoutHome,
-      meta,
-    );
-    expect(rows.map((r) => [r.title, r.state])).toEqual([
-      ["Product", "draft-only"],
-      ["Home", "removed-in-draft"],
-    ]);
-    // The count is of what the draft uses.
-    expect(namedRuleUseCount(uses, "experiments", "hero-test")).toBe(1);
-  });
-
-  it("calls everything published when the draft has no changes", () => {
-    const uses = namedRuleUses({
-      decofile: published,
-      meta,
-      changeCount: 0,
-      sides: undefined,
-    });
-    expect(uses.published).toBe(published);
-    expect(
-      namedRuleUseRows(uses, "experiments", "hero-test", published, meta).map(
-        (r) => r.state,
-      ),
-    ).toEqual(["published"]);
-  });
-
-  it("shows no marks while the changes are still being read", () => {
-    const uses = namedRuleUses({
-      decofile: draft,
-      meta,
-      changeCount: undefined,
-      sides: undefined,
-    });
-    expect(uses.published).toBeNull();
-    expect(
-      namedRuleUseRows(uses, "experiments", "hero-test", draft, meta).map(
-        (r) => r.state,
-      ),
-    ).toEqual(["published", "published"]);
-  });
-
-  it("lists sections that read the whole block apart", () => {
-    const decofile = {
-      campaigns: {
-        __resolveType: "calendar",
-        "black-friday": { start: "2026-11-27T00:00:00-03:00" },
-      },
-      hero: {
-        __resolveType: "site/sections/Hero.tsx",
-        campaigns: { __resolveType: "campaigns" },
-      },
-      "pages-home-1": page("Home", "/", campaign("black-friday")),
-    };
-    const uses = namedRuleUses({
-      decofile,
-      meta,
-      changeCount: 0,
-      sides: undefined,
-    });
-    expect(
-      namedRuleUseRows(uses, "campaigns", null, decofile, meta).map((r) => [
-        r.blockKey,
-        r.wholeBlock,
-      ]),
-    ).toEqual([["hero", true]]);
-    expect(
-      namedRuleUseRows(uses, "campaigns", "black-friday", decofile, meta).map(
-        (r) => r.title,
-      ),
-    ).toEqual(["Home"]);
-  });
-
-  it("lists a block once per variant that uses the name", () => {
-    const decofile = {
-      "pages-home-1": {
-        __resolveType: "page",
-        name: "Home",
-        path: "/",
-        sections: {
-          __resolveType: "multivariate",
-          variants: [
-            { rule: experiment("t"), value: lazy([]) },
-            { rule: experiment("t"), value: lazy([]) },
-          ],
-        },
-      },
-    };
-    const uses = namedRuleUses({
-      decofile,
-      meta,
-      changeCount: 0,
-      sides: undefined,
-    });
-    expect(
-      namedRuleUseRows(uses, "experiments", "t", decofile, meta).map(
-        (r) => r.variant,
-      ),
-    ).toEqual([1, 2]);
-    expect(namedRuleUseCount(uses, "experiments", "t")).toBe(1);
-  });
-});
-
-describe("where Open lands", () => {
-  const at = (containerPath: Array<string | number>, index: number) => ({
-    containerPath,
-    index,
-  });
-
-  it("a page variant's rule opens that page variant", () => {
-    expect(variantFocusOf("page", [], at(["sections"], 1))).toEqual({
-      pageVariant: 1,
-    });
-  });
-
-  it("a section variant's rule opens the section on that variant", () => {
-    expect(variantFocusOf("page", [], at(["sections", 2], 1))).toEqual({
-      section: 2,
-      variant: 1,
-    });
-    // Past a lazy-render wrapper.
-    expect(
-      variantFocusOf("page", [], at(["sections", 2, "section"], 0)),
-    ).toEqual({ section: 2, variant: 0 });
-  });
-
-  it("inside a page variant, both: v7 lists and v8 lazy blocks", () => {
-    expect(
-      variantFocusOf(
-        "page",
-        [],
-        at(["sections", "variants", 1, "value", 3], 2),
-      ),
-    ).toEqual({ pageVariant: 1, section: 3, variant: 2 });
-    expect(
-      variantFocusOf(
-        "page",
-        [],
-        at(["sections", "variants", 0, "value", "value", 4, "section"], 1),
-      ),
-    ).toEqual({ pageVariant: 0, section: 4, variant: 1 });
-  });
-
-  it("a variant inside a section's field opens the section", () => {
-    expect(
-      variantFocusOf("page", [], at(["sections", 2, "props", "image"], 1)),
-    ).toEqual({ section: 2 });
-    // A rule that is no variant's: where it is.
-    expect(
-      variantFocusOf("page", ["sections", 5, "matcher"], undefined),
-    ).toEqual({ section: 5 });
-  });
-
-  it("a variant in a field of a section's variant opens the section on that variant", () => {
-    expect(
-      variantFocusOf(
-        "page",
-        [],
-        at(["sections", 2, "variants", 1, "value", "props", "image"], 0),
-      ),
-    ).toEqual({ section: 2, variant: 1 });
-    // Past a lazy-render wrapper, inside a page variant.
-    expect(
-      variantFocusOf(
-        "page",
-        [],
-        at(
-          [
-            "sections",
-            "variants",
-            0,
-            "value",
-            3,
-            "section",
-            "variants",
-            2,
-            "value",
-            "image",
-          ],
-          1,
-        ),
-      ),
-    ).toEqual({ pageVariant: 0, section: 3, variant: 2 });
-    // A saved section: its own variant the field is in.
-    expect(
-      variantFocusOf("section", [], at(["variants", 1, "value", "image"], 0)),
-    ).toEqual({ variant: 1 });
-  });
-
-  it("a saved section's own variant, and nothing for a field's", () => {
-    expect(variantFocusOf("section", [], at([], 2))).toEqual({ variant: 2 });
-    expect(variantFocusOf("section", [], at(["section"], 1))).toEqual({
-      variant: 1,
-    });
-    expect(variantFocusOf("section", [], at(["image"], 1))).toEqual({});
-  });
-
-  it("lists each section that uses the name, named, with its place", () => {
-    const decofile = {
-      "pages-home-1": {
-        __resolveType: "page",
-        name: "Home",
-        path: "/",
-        sections: [
-          { __resolveType: "site/sections/Header.tsx" },
-          {
-            __resolveType: "multivariate",
-            variants: [
-              {
-                rule: campaign("bf"),
-                value: lazy({ __resolveType: "site/sections/Hero.tsx" }),
-              },
-              {
-                rule: { __resolveType: "always" },
-                value: lazy({ __resolveType: "site/sections/Hero.tsx" }),
-              },
-            ],
-          },
-          {
-            __resolveType: "multivariate",
-            variants: [
-              {
-                rule: campaign("bf"),
-                value: lazy({ __resolveType: "site/sections/Shelf.tsx" }),
-              },
-            ],
-          },
-        ],
-      },
-    };
-    const uses = namedRuleUses({
-      decofile,
-      meta,
-      changeCount: 0,
-      sides: undefined,
-    });
-    const rows = namedRuleUseRows(uses, "campaigns", "bf", decofile, meta);
-    expect(rows.map((r) => [r.section, r.variant, r.focus])).toEqual([
-      ["Hero", 1, { section: 1, variant: 0 }],
-      ["Shelf", 1, { section: 2, variant: 0 }],
-    ]);
-  });
-});
-
-describe("a use removed in the draft", () => {
-  it("names the section it had in the published page", () => {
-    const hero = (rule: unknown) => ({
-      __resolveType: "multivariate",
-      variants: [
-        { rule, value: lazy({ __resolveType: "site/sections/Hero.tsx" }) },
-        {
-          rule: { __resolveType: "always" },
-          value: lazy({ __resolveType: "site/sections/Hero.tsx" }),
-        },
-      ],
-    });
-    const published = {
-      campaigns: { __resolveType: "calendar", bf: {} },
-      "pages-home-1": {
-        __resolveType: "page",
-        name: "Home",
-        path: "/",
-        sections: [
-          { __resolveType: "site/sections/Header.tsx" },
-          hero(campaign("bf")),
-        ],
-      },
-    };
-    // The draft dropped the Header and the campaign: index 1 is now gone,
-    // index 0 is the Hero, which no longer uses it.
-    const draftPage = {
-      ...published["pages-home-1"],
-      sections: [hero({ __resolveType: "always" })],
-    };
-    const draft = { ...published, "pages-home-1": draftPage };
-    const uses = namedRuleUses({
-      decofile: draft,
-      meta,
-      changeCount: 1,
-      sides: { "pages-home-1": side(published["pages-home-1"], draftPage) },
-    });
-    const rows = namedRuleUseRows(uses, "campaigns", "bf", draft, meta);
-    expect(rows.map((r) => [r.state, r.section, r.focus])).toEqual([
-      ["removed-in-draft", "Hero", { section: 1, variant: 0 }],
-    ]);
-  });
 });
 
 describe("named rule edits", () => {
@@ -593,9 +210,6 @@ describe("a test or campaign that isn't there", () => {
       tests: { __resolveType: "experiments" },
     },
   };
-  const usesOf = (draft: Record<string, unknown>) =>
-    namedRuleUses({ decofile: draft, meta, changeCount: 0, sides: undefined });
-
   it("is deleted even while pages use it", () => {
     expect(planNamedRuleDelete(decofile, "experiments", "used")).toEqual({
       writes: { experiments: { __resolveType: "split-traffic", free: 10 } },
@@ -604,47 +218,20 @@ describe("a test or campaign that isn't there", () => {
     expect(planNamedRuleDelete(decofile, "experiments", "gone")).toBeNull();
   });
 
-  it("lists the pages whose rules still name it, through saved rules too", () => {
+  it("flags the pages whose rules still name it, through saved rules too", () => {
     const draft = {
       ...decofile,
       experiments: { __resolveType: "split-traffic", free: 10 },
       "Used test": experiment("used"),
       "pages-promo": page("Promo", "/promo", { __resolveType: "Used test" }),
     };
-    const uses = usesOf(draft);
-    expect(missingNamedRules(uses, "experiments", draft)).toEqual(["used"]);
-    expect(missingNamedRules(uses, "campaigns", draft)).toEqual([]);
     expect(
-      missingNamedRuleRows(uses, "experiments", draft, meta).map((row) => [
-        row.title,
-        row.path,
-        row.variant,
-      ]),
-    ).toEqual([
-      ["Home", "/", 1],
-      ["Promo", "/promo", 1],
-    ]);
-    expect(
-      missingNamedRuleRows(usesOf(decofile), "experiments", decofile, meta),
-    ).toEqual([]);
-  });
-
-  it("doesn't count a use the draft already removed", () => {
-    const draft = {
-      ...decofile,
-      experiments: { __resolveType: "split-traffic", free: 10 },
-      "pages-home": page("Home", "/", { __resolveType: "always" }),
-    };
-    const uses = namedRuleUses({
-      decofile: draft,
-      meta,
-      changeCount: 1,
-      sides: {
-        "pages-home": side(decofile["pages-home"], draft["pages-home"]),
-      },
+      Object.fromEntries(blocksUsingMissingNamedRules(draft, meta)),
+    ).toEqual({
+      "pages-home": ["experiments"],
+      "Used test": ["experiments"],
+      "pages-promo": ["experiments"],
     });
-    expect(missingNamedRules(uses, "experiments", draft)).toEqual([]);
-    expect(missingNamedRuleRows(uses, "experiments", draft, meta)).toEqual([]);
   });
 
   it("flags each block that names one, for the kinds the schema has", () => {
@@ -676,22 +263,10 @@ describe("one definition of a missing name, everywhere", () => {
     "pages-home": page("Home", "/", experiment("hero")),
   };
 
-  it("the picker row, the tab's list and the Publish review all call it missing", () => {
+  it("the picker row and the Publish review both call it missing", () => {
     const kinds = namedRulePickerKinds(meta, draft);
     expect(kinds[0]!.entries.map((e) => e.name)).toEqual(["ok"]);
     expect(namedRuleRowState(experiment("hero"), kinds)?.missing).toBe(true);
-    const uses = namedRuleUses({
-      decofile: draft,
-      meta,
-      changeCount: 0,
-      sides: undefined,
-    });
-    expect(missingNamedRules(uses, "experiments", draft)).toEqual(["hero"]);
-    expect(
-      missingNamedRuleRows(uses, "experiments", draft, meta).map(
-        (r) => r.title,
-      ),
-    ).toEqual(["Home"]);
     expect([...blocksUsingMissingNamedRules(draft, meta)]).toEqual([
       ["pages-home", ["experiments"]],
     ]);
@@ -749,92 +324,7 @@ describe("a block that holds something else (a clash)", () => {
         draft,
       ),
     ).toBeNull();
-    const uses = namedRuleUses({
-      decofile: draft,
-      meta,
-      changeCount: 0,
-      sides: undefined,
-    });
-    expect(missingNamedRules(uses, "experiments", draft)).toEqual([]);
-    expect(missingNamedRuleRows(uses, "experiments", draft, meta)).toEqual([]);
     expect(blocksUsingMissingNamedRules(draft, meta).size).toBe(0);
-    expect(missingNamedRuleUseCounts(draft, meta).size).toBe(0);
-  });
-});
-
-describe("counting where a name is used", () => {
-  const section = (rule: unknown) => ({
-    __resolveType: "site/sections/Hero.tsx",
-    title: {
-      __resolveType: "multivariate",
-      variants: [{ rule, value: "B" }],
-    },
-  });
-  const draft = {
-    experiments: { __resolveType: "split-traffic", kept: 10 },
-    "pages-a": page("A", "/a", experiment("gone")),
-    "pages-b": page("B", "/b", experiment("gone")),
-    Hero: section(experiment("gone")),
-    Other: section(experiment("kept")),
-  };
-
-  it("says pages and sections apart", () => {
-    expect(missingNamedRuleUseCounts(draft, meta).get("experiments")).toEqual({
-      pages: 2,
-      sections: 1,
-      names: 1,
-    });
-    expect(namedRuleUseCounts(draft, meta, "experiments", "kept")).toEqual({
-      pages: 0,
-      sections: 1,
-    });
-  });
-});
-
-describe("how many names are missing, for a test or tests", () => {
-  const draft = {
-    experiments: { __resolveType: "split-traffic", kept: 10 },
-    "pages-a": page("A", "/a", experiment("gone")),
-    "pages-b": page("B", "/b", experiment("gone")),
-  };
-  const usesOf = (decofile: Record<string, unknown>) =>
-    namedRuleUses({ decofile, meta, changeCount: 0, sides: undefined });
-
-  it("one name used in several places is one name", () => {
-    expect(missingNamedRuleUseCounts(draft, meta).get("experiments")).toEqual({
-      pages: 2,
-      sections: 0,
-      names: 1,
-    });
-    expect(
-      missingNamedRuleRowNames(usesOf(draft), "experiments", draft, meta),
-    ).toBe(1);
-  });
-
-  it("two names, even on one page, are two", () => {
-    const two = {
-      ...draft,
-      "pages-b": page("B", "/b", experiment("other")),
-    };
-    expect(missingNamedRuleUseCounts(two, meta).get("experiments")).toEqual({
-      pages: 2,
-      sections: 0,
-      names: 2,
-    });
-    expect(
-      missingNamedRuleRowNames(usesOf(two), "experiments", two, meta),
-    ).toBe(2);
-    const onePage = {
-      experiments: draft.experiments,
-      "pages-a": page("A", "/a", {
-        __resolveType: "multi",
-        op: "and",
-        matchers: [experiment("gone"), experiment("other")],
-      }),
-    };
-    expect(missingNamedRuleUseCounts(onePage, meta).get("experiments")).toEqual(
-      { pages: 1, sections: 0, names: 2 },
-    );
   });
 });
 
@@ -858,26 +348,11 @@ describe("the missing-name flags are computed once per draft", () => {
   it("reads the same draft and schema once, however many renders ask", () => {
     const { proxy, reads } = counted({ ...base });
     const flags = blocksUsingMissingNamedRules(proxy, meta);
-    const counts = missingNamedRuleUseCounts(proxy, meta);
     const after = reads.count;
     expect(after).toBeGreaterThan(0);
     for (let render = 0; render < 5; render++) {
       expect(blocksUsingMissingNamedRules(proxy, meta)).toBe(flags);
-      expect(missingNamedRuleUseCounts(proxy, meta)).toBe(counts);
     }
-    expect(reads.count).toBe(after);
-  });
-
-  it("the tab's rows too, for the same uses", () => {
-    const { proxy, reads } = counted({ ...base });
-    const input = { decofile: proxy, meta, changeCount: 0, sides: undefined };
-    const uses = namedRuleUses(input);
-    const rows = missingNamedRuleRows(uses, "experiments", proxy, meta);
-    const after = reads.count;
-    // A render builds a new input object from the same query data.
-    const again = namedRuleUses({ ...input });
-    expect(again).toBe(uses);
-    expect(missingNamedRuleRows(again, "experiments", proxy, meta)).toBe(rows);
     expect(reads.count).toBe(after);
   });
 
