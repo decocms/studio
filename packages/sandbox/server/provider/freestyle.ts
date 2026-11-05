@@ -145,6 +145,8 @@ export interface FreestyleSandboxProviderOptions {
   meter?: Meter;
   /** Replaces the API client, for tests. */
   client?: Freestyle;
+  /** How long a started VM's daemon gets to answer /health, for tests. */
+  daemonBootTimeoutMs?: number;
 }
 
 interface Found {
@@ -162,6 +164,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly idleTimeoutSeconds: number;
   private readonly idlePauseMs: number;
   private readonly autoDeleteSeconds: number;
+  private readonly daemonBootTimeoutMs: number;
 
   private readonly domainSuffix: string;
   private readonly timeDaemonRequest: ReturnType<typeof daemonProxyTimer>;
@@ -219,6 +222,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
     this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
+    this.daemonBootTimeoutMs =
+      opts.daemonBootTimeoutMs ?? DAEMON_BOOT_TIMEOUT_MS;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
     if (this.idlePauseMs > 0) {
@@ -625,7 +630,15 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     const { state, sourceSnapshotSlugAtCreate, metadata } =
       await found.vm.data();
     if (state !== "running") await found.vm.start();
-    await this.waitForDaemon(found.daemon.url);
+    await this.waitForDaemon(found.daemon.url).catch(async (err) => {
+      // A guest can resume wedged. Rebooted, its daemon comes back on the
+      // snapshot's sentinel, which `reclaim` below claims again.
+      console.warn(`[${LOG_LABEL}] ${handle}: ${errMsg(err)}; rebooting`);
+      await found.vm
+        .exec({ command: "reboot -f", timeoutMs: 10_000 })
+        .catch(() => {});
+      await this.waitForDaemon(found.daemon.url);
+    });
     // A repo snapshot's daemon still holds its base's sentinel.
     const sentinelSlug = metadata[BASE_KEY] ?? sourceSnapshotSlugAtCreate;
     if (sentinelSlug) {
@@ -910,30 +923,65 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   private async waitForDaemon(url: string): Promise<void> {
-    const deadline = Date.now() + DAEMON_BOOT_TIMEOUT_MS;
+    const deadline = Date.now() + this.daemonBootTimeoutMs;
     while (Date.now() < deadline) {
       if (await daemonAnswers(url)) return;
       await sleep(HEALTH_POLL_MS);
     }
     throw new Error(
-      `sandbox daemon at ${url} did not answer /health within ${DAEMON_BOOT_TIMEOUT_MS / 1000}s`,
+      `sandbox daemon at ${url} did not answer /health within ${this.daemonBootTimeoutMs / 1000}s`,
     );
   }
 
+  /**
+   * Deletes the VM only once its shutdown sync is confirmed. Otherwise the
+   * user's unpushed work may still be on its disk, so it is detached instead:
+   * the handle is free for a new sandbox, and the VM stays recoverable by id
+   * until Freestyle's auto-delete.
+   */
   async delete(handle: string): Promise<void> {
     this.cancelRelease(handle);
     const found = await this.find(handle, { refresh: true });
     this.lookups.delete(handle);
     if (!found) return;
-    // SIGTERM first: the daemon publishes unsaved work to git on shutdown.
-    // Then the sidecar, which detaches and flushes its mounts.
-    await found.vm
-      .exec({
-        command: `docker stop -t 30 ${CONTAINER}; docker stop -t 10 ${SIDECAR}`,
+    if (await this.syncedOnShutdown(found.vm)) {
+      await found.vm.delete();
+      return;
+    }
+    const { rules } = await this.freestyle.tls.rules.list({
+      vmId: found.vm.id,
+    });
+    for (const rule of rules) await this.freestyle.tls.rules.delete(rule.id);
+    await found.vm.update({ slug: "" });
+    this.appIngress.delete(handle);
+    console.warn(
+      `[${LOG_LABEL}] ${handle}: shutdown sync not confirmed; detached VM ${found.vm.id} instead of deleting it`,
+    );
+  }
+
+  /**
+   * Stops the daemon, which publishes unsaved work to git on SIGTERM, then the
+   * sidecar, which flushes its mounts. The daemon exits 0 even when that
+   * publish fails, so its log decides.
+   */
+  private async syncedOnShutdown(vm: Vm): Promise<boolean> {
+    try {
+      const { state } = await vm.data();
+      if (state !== "running") await vm.start();
+      const res = await vm.exec({
+        command: [
+          "since=$(date +%s)",
+          `docker stop -t 30 ${CONTAINER} >/dev/null`,
+          `code=$(docker inspect -f '{{.State.ExitCode}}' ${CONTAINER})`,
+          `docker stop -t 10 ${SIDECAR} >/dev/null`,
+          `[ "$code" = 0 ] && ! docker logs --since "$since" ${CONTAINER} 2>&1 | grep -q "shutdown publish failed"`,
+        ].join("; "),
         timeoutMs: 60_000,
-      })
-      .catch(() => {});
-    await found.vm.delete();
+      });
+      return res.statusCode === 0;
+    } catch {
+      return false;
+    }
   }
 
   async lastTermination(_handle: string): Promise<PodTermination | null> {
