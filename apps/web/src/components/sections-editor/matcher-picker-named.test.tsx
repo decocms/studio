@@ -771,3 +771,150 @@ describe("the rule picker on a hosted draft: the tests and campaigns load as it 
     );
   });
 });
+
+describe("a variant's rule on a hosted draft: a name is missing only once the tests and campaigns are loaded", () => {
+  /** What the editor holds before they load: the index's stub, no names. */
+  const STUBS: NamedRulePickerKind[] = [
+    { kind: "experiments", state: "saved", entries: [] },
+    { kind: "campaigns", state: "saved", entries: [] },
+  ];
+
+  function Harness({
+    rule,
+    loaded,
+    onRequest,
+  }: {
+    rule: Record<string, unknown>;
+    /** The kinds once the blocks are loaded. */
+    loaded: NamedRulePickerKind[];
+    onRequest?: () => void;
+  }) {
+    const [ready, setReady] = useState(false);
+    const kinds = ready ? loaded : STUBS;
+    const named = namedRuleOf(rule);
+    return (
+      <VariantRuleEditor
+        currentRt={named ? (rule.__resolveType as string) : "multi"}
+        currentLabel="Rule"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{
+          kinds,
+          selected: named,
+          onPick: () => {},
+          load: {
+            ready,
+            failed: false,
+            retry: () => {},
+            request: () => {
+              onRequest?.();
+              setReady(true);
+            },
+          },
+        }}
+        namedRow={namedRuleRowState(rule, kinds)}
+        rule={rule}
+        decofile={{}}
+      />
+    );
+  }
+
+  test("a test that exists: they are asked for, and it is never said to be missing or offered to create", async () => {
+    const request = mock(() => {});
+    render(
+      <Harness
+        rule={{ __resolveType: "experiment", name: "hero-test" }}
+        loaded={KINDS}
+        onRequest={request}
+      />,
+    );
+    const body = within(document.body);
+    expect(await body.findByText("50% of visitors")).toBeTruthy();
+    expect(request).toHaveBeenCalled();
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.queryByRole("button", { name: "Create it" })).toBeNull();
+  });
+
+  test("while they load, nothing is said to be missing and nothing is offered to create", () => {
+    const rule = { __resolveType: "experiment", name: "hero-test" };
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{
+          kinds: STUBS,
+          selected: namedRuleOf(rule),
+          onPick: () => {},
+          load: {
+            ready: false,
+            failed: false,
+            retry: () => {},
+            request: () => {},
+          },
+        }}
+        namedRow={namedRuleRowState(rule, STUBS)}
+        rule={rule}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByTestId("named-rule-row")).toBeTruthy();
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.queryByRole("button", { name: "Create it" })).toBeNull();
+  });
+
+  test("a test that isn't there is said to be missing once they are loaded", async () => {
+    render(
+      <Harness
+        rule={{ __resolveType: "experiment", name: "gone" }}
+        loaded={KINDS}
+      />,
+    );
+    const body = within(document.body);
+    expect((await body.findByTestId("named-rule-missing")).textContent).toBe(
+      "This test isn't in your A/B tests. Pick another, create it, or remove this variant.",
+    );
+  });
+
+  test("a campaign that exists inside a combined rule is never said to be missing", async () => {
+    const request = mock(() => {});
+    render(
+      <Harness
+        rule={{
+          __resolveType: "multi",
+          op: "and",
+          matchers: [{ __resolveType: "campaign", name: "black-friday" }],
+        }}
+        loaded={[
+          KINDS[0]!,
+          {
+            kind: "campaigns",
+            state: "saved",
+            entries: [{ name: "black-friday", summary: "" }],
+          },
+        ]}
+        onRequest={request}
+      />,
+    );
+    await act(async () => {});
+    expect(request).toHaveBeenCalled();
+    expect(
+      within(document.body).queryByTestId("named-rule-missing-within"),
+    ).toBeNull();
+  });
+});
