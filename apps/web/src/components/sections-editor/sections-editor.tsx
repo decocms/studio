@@ -25,7 +25,11 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
-import { useDecofile, useDecofileCacheKey } from "./use-decofile";
+import {
+  useDecofile,
+  useDecofileCacheKey,
+  useEnsureDecofileBlocks,
+} from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
 import {
@@ -713,7 +717,43 @@ export function SectionsEditor({
     meta ?? undefined,
   );
 
-  if (!previewReady || decofileLoading || metaLoading) {
+  // Hosted v8: the decofile holds only the index's stubs until a view loads
+  // the bodies it opens. The open page (or global block) and the blocks it
+  // references directly are loaded here, so every way into the editor (the
+  // site editor's panel as well as the content browser) shows its sections.
+  const hostedOpenKey =
+    activeGlobalBlockKey ??
+    (decofile && meta
+      ? (findPageForPath(
+          extractPages(decofile, meta),
+          currentPath,
+          activePageBlockKey,
+        )?.key ?? null)
+      : null);
+  const hostedOpenLoad = useEnsureDecofileBlocks(
+    { orgSlug, virtualMcpId, branch },
+    hostedOpenKey ? [hostedOpenKey] : [],
+    { withRefs: true },
+  );
+
+  if (hostedOpenLoad.failed) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
+        <p>{t("sectionsEditor.hosted.blockLoadFailed")}</p>
+        <p>{t("sectionsEditor.hosted.blockLoadFailedHint")}</p>
+        <Button variant="outline" size="sm" onClick={hostedOpenLoad.retry}>
+          {t("sectionsEditor.namedRules.tryAgain")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (
+    !previewReady ||
+    decofileLoading ||
+    metaLoading ||
+    !hostedOpenLoad.ready
+  ) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <Spinner className="size-5 text-muted-foreground" />
