@@ -23,6 +23,7 @@ import {
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -48,7 +49,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { TaskMessage } from "./task-message";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { useEditorUploads } from "@/components/markdown-editor/editor-uploads";
 import {
@@ -109,7 +110,7 @@ function useAgentMentions(): MentionAgent[] {
     {
       id: SUPER_AGENT_ASSIGNEE_ID,
       name: t("taskBoard.taskDialog.superAgentLabel"),
-      icon: <SuperAgentIcon size={20} />,
+      icon: <SuperAgentIcon size={24} />,
     },
   ];
 }
@@ -160,8 +161,10 @@ export function CommentThreadCard({
       data-testid="comment-thread"
       data-expanded={expanded}
       className={cn(
-        "flex flex-col rounded-xl border bg-card px-4 pb-3",
-        live ? "border-success/50" : "border-border/70",
+        "surface flex flex-col px-4 pb-3",
+        // The edge follows the badge: live green, amber when it needs you.
+        thread.run?.status === "running" && "shadow-edge-success",
+        thread.run?.status === "waiting" && "shadow-edge-warning",
       )}
     >
       <CommentEntry
@@ -182,13 +185,14 @@ export function CommentThreadCard({
         onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
       />
       {!expanded && lastReply && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => setExpanded(true)}
-          className="-mx-1.5 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="-mx-2 w-auto min-w-0 justify-start font-normal text-muted-foreground"
         >
-          <ChevronRight size={14} className="shrink-0" />
-          <span className="shrink-0 font-medium">
+          <ChevronRight />
+          <span className="shrink-0 font-medium text-foreground">
             {thread.replies.length === 1
               ? t("taskBoard.agentThread.repliesCountOne")
               : t("taskBoard.agentThread.repliesCount", {
@@ -198,20 +202,21 @@ export function CommentThreadCard({
           <span className="min-w-0 truncate">
             · {lastReply.author.name}: {plainExcerpt(lastReply.body)}
           </span>
-        </button>
+        </Button>
       )}
       {expanded && thread.run && thread.replies.length > 0 && !live && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => {
             setExpanded(false);
             setReplying(false);
           }}
-          className="-mx-1.5 flex w-fit cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="-mx-2 w-fit font-normal text-muted-foreground"
         >
-          <ChevronDown size={14} />
+          <ChevronDown />
           {t("taskBoard.agentThread.hideReplies")}
-        </button>
+        </Button>
       )}
       {(expanded ? thread.replies : []).map((reply, i) => (
         <Fragment key={reply.id}>
@@ -252,15 +257,16 @@ export function CommentThreadCard({
             />
           </div>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => {
               setExpanded(true);
               setReplying(true);
             }}
-            className="ml-11 mt-1 flex w-fit cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="mt-1 ml-10 w-fit font-normal text-muted-foreground"
           >
-            <MessageTextSquare01 size={14} />
+            <MessageTextSquare01 />
             {t(
               replyRoute === "steer"
                 ? "taskBoard.agentThread.replySteer"
@@ -268,7 +274,7 @@ export function CommentThreadCard({
                   ? "taskBoard.agentThread.replyRevive"
                   : "taskBoard.agentThread.reply",
             )}
-          </button>
+          </Button>
         ))}
     </div>
   );
@@ -280,8 +286,9 @@ function StopRunButton({ onStop }: { onStop: () => Promise<void> }) {
   const t = useT();
   const [stopping, setStopping] = useState(false);
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost-destructive"
+      size="xs"
       disabled={stopping}
       onClick={async () => {
         setStopping(true);
@@ -291,15 +298,15 @@ function StopRunButton({ onStop }: { onStop: () => Promise<void> }) {
           setStopping(false);
         }
       }}
-      className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-60"
+      className="h-5"
     >
-      {stopping ? <Spinner size="xs" /> : <StopSquare size={12} />}
+      {stopping ? <Spinner size="2xs" /> : <StopSquare className="size-3" />}
       {t(
         stopping
           ? "taskBoard.agentThread.stopping"
           : "taskBoard.agentThread.stop",
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -313,50 +320,77 @@ function plainExcerpt(markdown: string): string {
     .trim();
 }
 
+/** How each run state reads: a status badge, its glyph, its label. */
+function runStatusBadge(status: CommentRun["status"]): {
+  variant: "success" | "warning" | "destructive" | "muted";
+  /** `[a&]:hover` in the badge only covers links; the status opens the run. */
+  hover: string;
+  icon: ReactNode;
+  label: TranslationKey;
+} {
+  switch (status) {
+    case "running":
+      return {
+        variant: "success",
+        hover: "hover:bg-success/15",
+        icon: <Spinner size="2xs" />,
+        label: "taskBoard.agentThread.statusRunning",
+      };
+    case "waiting":
+      return {
+        variant: "warning",
+        hover: "hover:bg-warning/15",
+        icon: <AlertCircle />,
+        label: "taskBoard.agentThread.statusWaiting",
+      };
+    case "failed":
+      return {
+        variant: "destructive",
+        hover: "hover:bg-destructive/15",
+        icon: <AlertCircle />,
+        label: "taskBoard.agentThread.statusFailed",
+      };
+    case "stopped":
+      return {
+        variant: "muted",
+        hover: "hover:bg-secondary-hover",
+        icon: <StopCircle />,
+        label: "taskBoard.agentThread.statusStopped",
+      };
+    case "done":
+      return {
+        variant: "muted",
+        hover: "hover:bg-secondary-hover",
+        icon: <CheckCircle />,
+        label: "taskBoard.agentThread.statusDone",
+      };
+    default: {
+      const unhandled: never = status;
+      throw new Error(`Unhandled run status: ${String(unhandled)}`);
+    }
+  }
+}
+
 /** The run's state beside the comment that started it. */
 function RunStatus({ run }: { run: CommentRun }) {
   const t = useT();
-  const chip = cn(
-    "flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
-  );
-  const body =
-    run.status === "running" ? (
-      <span className={cn(chip, "bg-success/10 text-success")}>
-        <Spinner size="xs" />
-        {t("taskBoard.agentThread.statusRunning")}
-      </span>
-    ) : run.status === "waiting" ? (
-      <span className={cn(chip, "bg-warning/15 text-warning")}>
-        <AlertCircle size={12} />
-        {t("taskBoard.agentThread.statusWaiting")}
-      </span>
-    ) : run.status === "stopped" ? (
-      <span className={cn(chip, "bg-muted text-muted-foreground")}>
-        <StopCircle size={12} />
-        {t("taskBoard.agentThread.statusStopped")}
-      </span>
-    ) : run.status === "failed" ? (
-      <span className={cn(chip, "bg-destructive/10 text-destructive")}>
-        <AlertCircle size={12} />
-        {t("taskBoard.agentThread.statusFailed")}
-      </span>
-    ) : (
-      <span className={cn(chip, "bg-muted text-muted-foreground")}>
-        <CheckCircle size={12} />
-        {t("taskBoard.agentThread.statusDone")}
-      </span>
-    );
+  const { variant, hover, icon, label } = runStatusBadge(run.status);
   return run.onOpen ? (
-    <button
-      type="button"
-      onClick={run.onOpen}
-      className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
-      aria-label={t("taskBoard.agentThread.openRun")}
-    >
-      {body}
-    </button>
+    <Badge variant={variant} asChild className={cn("cursor-pointer", hover)}>
+      <button
+        type="button"
+        onClick={run.onOpen}
+        aria-label={t("taskBoard.agentThread.openRun")}
+      >
+        {icon}
+        {t(label)}
+      </button>
+    </Badge>
   ) : (
-    body
+    <Badge variant={variant}>
+      {icon}
+      {t(label)}
+    </Badge>
   );
 }
 
@@ -570,13 +604,11 @@ function AgentRouteNote({ route }: { route: AgentRoute }) {
   return (
     <div
       data-testid="agent-route-note"
-      className={cn(
-        "flex items-start gap-2 text-xs",
-        route === "busy" ? "text-muted-foreground" : "text-success",
-      )}
+      className="text-meta flex items-start gap-2"
     >
       <SuperAgentIcon size={16} />
-      <span className="leading-4">
+      {/* Coloured here, not beside `text-meta`: tailwind-merge drops one. */}
+      <span className={cn(route !== "busy" && "text-success")}>
         {t(
           route === "start"
             ? "taskBoard.agentThread.routeStart"
@@ -738,7 +770,7 @@ function CommentComposer({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs text-muted-foreground"
+              className="text-muted-foreground"
               onClick={(e) => {
                 e.stopPropagation();
                 onCancel();
