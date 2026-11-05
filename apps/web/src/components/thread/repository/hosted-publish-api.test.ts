@@ -31,7 +31,7 @@ describe("publishHostedDraft", () => {
     );
     expect(result).toEqual({ result: "merged", sha: REVISION });
     expect(sent).toHaveLength(1);
-    expect(sent[0]!.url).toBe("/api/acme/cms/acme-store/drafts/main/publish");
+    expect(sent[0]!.url).toBe("/api/cms/acme-store/drafts/main/publish");
     expect(sent[0]!.init?.method).toBe("POST");
     expect(JSON.parse(String(sent[0]!.init?.body))).toEqual({
       message: "Summer sale",

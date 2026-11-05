@@ -32,12 +32,35 @@ describe("gates, in today's order", () => {
     });
   });
 
-  it("404 site_not_found for a site of another org or none", async () => {
+  it("404 site_not_found, the same answer, for an unknown site and one of an org the caller isn't in", async () => {
     const t = cmsTestApp({ sites: { acme: "org_1", other: "org_2" } });
-    expect((await t.call("GET", "other/drafts")).body.code).toBe(
-      "site_not_found",
-    );
-    expect((await t.call("GET", "nope/drafts")).status).toBe(404);
+    const other = await t.call("GET", "other/drafts");
+    const none = await t.call("GET", "nope/drafts");
+    expect(other.status).toBe(404);
+    expect(none.status).toBe(404);
+    expect(other.body).toEqual({
+      error: "Site not found",
+      code: "site_not_found",
+    });
+    expect(none.body).toEqual(other.body);
+    // Not even the plan gate tells them apart.
+    const noPlan = cmsTestApp({ hasCms: false, sites: { other: "org_2" } });
+    expect((await noPlan.call("GET", "other/drafts")).body).toEqual(other.body);
+  });
+
+  it("the path names no org: the site's org is resolved from org_sites", async () => {
+    const t = cmsTestApp({ sites: { acme: "org_1", other: "org_2" } });
+    t.as({ userId: "usr_ana", method: "session", orgs: ["org_2"] });
+    expect((await t.call("GET", "other/drafts")).status).toBe(200);
+    expect((await t.call("GET", "acme/drafts")).status).toBe(404);
+  });
+
+  it("403 org_blocked for a blocked org's writes; its reads still answer", async () => {
+    const t = cmsTestApp({ blocked: ["org_1"] });
+    expect((await t.call("GET", "acme/drafts")).status).toBe(200);
+    const res = await t.call("POST", "acme/drafts", { name: "x" });
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("org_blocked");
   });
 
   it("503 when the delivery bucket isn't configured, after the site check", async () => {
@@ -148,6 +171,32 @@ describe("schema push", () => {
     expect((await t.call("PUT", "acme/schema", undefined, "nope")).status).toBe(
       400,
     );
+  });
+});
+
+describe("codes for the other failures (§4.3)", () => {
+  it("500 malformed for a delivery object this Studio didn't write", async () => {
+    const t = cmsTestApp();
+    t.delivery.objects.set("sites/acme/latest.json", {
+      text: "{not json",
+      etag: '"x"',
+      cacheControl: "",
+    });
+    const res = await t.call("GET", "acme/releases");
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({
+      error: "sites/acme/latest.json is malformed",
+      code: "malformed",
+    });
+  });
+
+  it("503 hosted_delivery_unconfigured when site tokens aren't configured", async () => {
+    const t = cmsTestApp();
+    for (const method of ["GET", "POST"]) {
+      const res = await t.call(method, "acme/site-tokens");
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe("hosted_delivery_unconfigured");
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 /**
  * The project's Blocks v8 marker, `metadata.blocksMajor: 8`, is set only by
- * `deco schema push` (`PUT /api/:org/cms/:site/schema`, through
+ * `deco schema push` (`PUT /api/cms/:site/schema`, through
  * `syncBlocksMajorMarker` in `blocks-major-marker.ts`) from the schema it
  * pushed. No code reads git to compute it: a new thread's default runtime
  * (`defaultThreadRuntime`) and Studio's editor and hosted screens read the

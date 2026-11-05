@@ -658,9 +658,7 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     await act(() => done);
     // Published: the dialog keeps its list through the close (publish-hold.ts).
     expect(await done).toBe(true);
-    expect(calls).toEqual([
-      `/api/${ORG}/cms/acme-site/drafts/${BRANCH}/publish`,
-    ]);
+    expect(calls).toEqual([`/api/cms/acme-site/drafts/${BRANCH}/publish`]);
     expect(reads.releases).toBe(before.releases + 1);
     expect(reads.pointer).toBe(before.pointer + 1);
     expect(onPublished).toHaveBeenCalledTimes(1);
