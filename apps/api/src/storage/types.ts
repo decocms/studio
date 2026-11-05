@@ -1640,7 +1640,7 @@ export interface CmsDraftTable {
   site: string;
   /** Unique within the site; the Studio editor's draft is its thread's branch. */
   name: string;
-  /** The random slug of `sites/<site>/drafts/<slug>.json`; never changes. */
+  /** The random slug of the draft folder `sites/<site>/drafts/<slug>/`; never changes. */
   slug: string;
   created_by: string;
   via: CmsVia;
