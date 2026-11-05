@@ -403,7 +403,11 @@ const plugins = [
     },
   }),
 
-  sso(authConfig.ssoConfig ? createSSOConfig(authConfig.ssoConfig) : undefined),
+  sso({
+    ...(authConfig.ssoConfig ? createSSOConfig(authConfig.ssoConfig) : {}),
+    // Self-service `/sso/register` would let any user add a global IdP; org SSO uses its own routes.
+    providersLimit: 0,
+  }),
 
   ...(authConfig.magicLinkConfig?.enabled &&
   authConfig.emailProviders &&
