@@ -13,6 +13,7 @@
  */
 
 import type { ContentClient, DescribeResult } from "@decocms/blocks/protocol";
+import type { HostedRpc } from "./hosted-content";
 import { isLoopbackEndpoint, type ServeProblem } from "./deco-serve-connection";
 
 export type ContentSource = "github" | "local" | "sandbox";
@@ -28,6 +29,11 @@ export interface ProtocolBackend {
   hasSchema?: boolean;
   /** Studio's hosted backend: the hosted CMS site the draft lives on. */
   site?: string | null;
+  /**
+   * Studio's hosted backend: its draft endpoint for `cms.index` and
+   * `cms.blocks`, which the editor reads in place of `blocks.list`.
+   */
+  hosted?: HostedRpc;
 }
 
 export type ContentBackend =

@@ -10,6 +10,7 @@ import {
 } from "@decocms/blocks/protocol";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { cmsDraftRpcEndpoint, cmsSiteOf, ensureCmsDraft } from "./cms-api";
+import { createHostedRpc, type HostedRpc } from "./hosted-content";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -39,6 +40,8 @@ import { isV8Schema } from "@decocms/shared/blocks-major";
 
 export interface Probe {
   client: ContentClient;
+  /** The hosted CMS's draft endpoint, for `cms.index` and `cms.blocks`. */
+  hosted?: HostedRpc;
   describe: DescribeResult;
   /** Whether the endpoint has a schema (see `isSchemaAbsent`). */
   hasSchema: boolean;
@@ -109,7 +112,9 @@ export async function probeHosted(
   doFetch?: (request: Request) => Promise<Response>,
 ): ReturnType<typeof probeGithub> {
   await ensureDraft();
-  return probeGithub(endpoint, doFetch);
+  const probed = await probeGithub(endpoint, doFetch);
+  if (!probed || probed === GITHUB_SITE_NOT_OWNED) return probed;
+  return { ...probed, hosted: createHostedRpc(endpoint, doFetch) };
 }
 
 /** How often a failed probe is retried, so a backend recovers on its own. */
@@ -511,5 +516,6 @@ function toBackend(
     describe: probed.describe,
     cacheKeySuffix,
     hasSchema: probed.hasSchema,
+    ...(probed.hosted ? { hosted: probed.hosted } : {}),
   };
 }

@@ -20,6 +20,7 @@ import { useEffect } from "react";
 import { ServeLostError } from "./serve-save-error";
 import {
   ContentProtocolError,
+  ErrorCode,
   type BlocksApplyResult,
   type BlocksListResult,
   type ChangesGetResult,
@@ -56,6 +57,16 @@ import {
 } from "./content-write-keys";
 import type { LiveMeta } from "./resolve-schema";
 import { isSchemaAbsent, noSchemaMeta } from "./schemaless";
+import {
+  adoptDraftCopyIntoIndex,
+  adoptSaveIntoIndex,
+  type CmsIndexResult,
+  type ContentIndex,
+  draftVersionIn as indexDraftVersion,
+  ensureHostedBlocks,
+  type HostedRpc,
+  stubNames,
+} from "./hosted-content";
 
 /**
  * The read error while a protocol backend can't be used; the 502 keeps the
@@ -111,6 +122,12 @@ export function protocolBlockVersion(
   backend?: Pick<ProtocolBackend, "source"> | null,
 ): string | null | undefined {
   if (backend?.source === "github") {
+    // The draft's versions, as the last `cms.index` (and this editor's saves
+    // since) say; the changes list on a backend that answers no index.
+    const index = queryClient.getQueryData<ContentIndex>(
+      KEYS.contentIndex(cacheKey),
+    );
+    if (index) return indexDraftVersion(index, blockKey);
     return draftBlockVersion(queryClient, cacheKey, blockKey);
   }
   const versions = queryClient.getQueryData<Record<string, string>>(
@@ -318,7 +335,8 @@ function adoptHostedSave(
       markDraftTombstone(queryClient, cacheKey, name, true);
     }
   }
-  // The hosted CMS answers the draft's ETag as the revision.
+  // The hosted CMS answers a revision that moves with each save
+  // (`s-<ETag of the last file written>`).
   const draftEtag = result.revision;
   if (draftEtag && draftEtag !== "none") {
     queryClient.setQueryData<HostedDraftPointer>(
@@ -511,6 +529,22 @@ async function readContent(
     conditional && currentMeta ? seen?.schemaVersion : undefined;
   const changesKey = KEYS.contentChanges(cacheKey);
   const seenChanges = queryClient.getQueryData<ContentChanges>(changesKey);
+  if (backend.source === "github" && backend.hosted) {
+    return readHostedContent(
+      queryClient,
+      backend,
+      backend.hosted,
+      params,
+      cacheKey,
+      {
+        conditional,
+        seen,
+        currentMeta,
+        schemaIfNoneMatch,
+        seenChanges,
+      },
+    );
+  }
 
   const [listed, schema, changed] = await guarded(
     queryClient,
@@ -634,6 +668,249 @@ async function readContent(
 }
 
 /**
+ * The hosted draft's poll: `cms.index` (conditional on the revision last
+ * seen) with `schema.get` and `changes.list`, never `blocks.list`. The index
+ * goes to `KEYS.contentIndex`; `KEYS.decofile` keeps only the bodies already
+ * loaded, minus the names the index no longer has, and a loaded body whose
+ * version the index moved is loaded again (`cms.blocks`). A block being
+ * saved keeps the editor's copy.
+ */
+async function readHostedContent(
+  queryClient: QueryClient,
+  backend: ProtocolBackend,
+  rpc: HostedRpc,
+  params: DecofileScopeParams,
+  cacheKey: string,
+  read: {
+    conditional: boolean;
+    seen: ContentRevisions | undefined;
+    currentMeta: LiveMeta | undefined;
+    schemaIfNoneMatch: string | undefined;
+    seenChanges: ContentChanges | undefined;
+  },
+): Promise<ProtocolContent> {
+  const blocksKey = KEYS.decofile(cacheKey);
+  const indexKey = KEYS.contentIndex(cacheKey);
+  const revisionsKey = KEYS.contentRevision(cacheKey);
+  const versionsKey = KEYS.contentVersions(cacheKey);
+  const metaKey = protocolMetaQueryKey(params, backend);
+  const changesKey = KEYS.contentChanges(cacheKey);
+  const currentIndex = queryClient.getQueryData<ContentIndex>(indexKey);
+  const indexIfNoneMatch =
+    read.conditional && currentIndex ? read.seen?.revision : undefined;
+  const [indexed, schema, changed] = await guarded(
+    queryClient,
+    backend,
+    params,
+    () =>
+      rpc.batch([
+        {
+          method: "cms.index",
+          params: indexIfNoneMatch ? { ifNoneMatch: indexIfNoneMatch } : {},
+        },
+        {
+          method: "schema.get",
+          params: read.schemaIfNoneMatch
+            ? { ifNoneMatch: read.schemaIfNoneMatch }
+            : {},
+        },
+        { method: "changes.list", params: changesListParams(read.seenChanges) },
+      ]),
+  );
+  const adopted =
+    queryClient.getQueryData<ContentRevisions>(revisionsKey)?.revision;
+  const raced = adopted !== undefined && adopted !== read.seen?.revision;
+  if (changed?.ok && !raced) {
+    const listedChanges = adoptChangesList(
+      read.seenChanges,
+      changed.result as ChangesListResult,
+    );
+    if (listedChanges) queryClient.setQueryData(changesKey, listedChanges);
+  }
+  if (!indexed?.ok) throw indexed?.error ?? new Error("no cms.index");
+  if (!schema) throw new Error("no schema.get");
+  const answer = indexed.result as CmsIndexResult;
+  const absent = isSchemaAbsent(schema);
+  const schemaRead =
+    schema.ok && !absent ? (schema.result as SchemaGetResult) : null;
+  if (
+    (answer.notModified && !currentIndex) ||
+    (schemaRead?.notModified && !read.currentMeta)
+  ) {
+    return readContent(queryClient, backend, params, cacheKey, false);
+  }
+  const meta: LiveMeta | ContentProtocolError = absent
+    ? noSchemaMeta()
+    : !schemaRead
+      ? (schema as { error: ContentProtocolError }).error
+      : schemaRead.notModified
+        ? read.currentMeta!
+        : (schemaRead.schema as LiveMeta);
+  if (!(meta instanceof ContentProtocolError)) {
+    queryClient.setQueryData(metaKey, meta);
+  }
+  const schemaVersion = !schemaRead
+    ? undefined
+    : schemaRead.notModified
+      ? read.seen?.schemaVersion
+      : (schemaRead.version ?? undefined);
+  const loaded =
+    queryClient.getQueryData<Record<string, unknown>>(blocksKey) ?? {};
+  if (answer.notModified || raced) {
+    queryClient.setQueryData<ContentRevisions>(revisionsKey, {
+      revision: raced ? adopted : read.seen?.revision,
+      schemaVersion,
+    });
+    queryClient.setQueryData(blocksKey, loaded);
+    return { blocks: loaded, meta };
+  }
+  const index: ContentIndex = {
+    revision: answer.revision,
+    resolvedRef: answer.resolvedRef,
+    sequence: answer.sequence,
+    entries: answer.entries,
+    draft: answer.draft,
+  };
+  queryClient.setQueryData(indexKey, index);
+  // Another editor's save: the preview follows the draft as the index saw
+  // it. (After this editor's save — a `s-…` revision, contract §4.3 step 6 —
+  // the pointer already moved with it, and the first poll's "modified" is
+  // that same save.)
+  const elsewhere =
+    !!read.seen?.revision &&
+    !read.seen.revision.startsWith("s-") &&
+    index.revision !== read.seen.revision;
+  if (elsewhere) {
+    queryClient.setQueryData<HostedDraftPointer>(
+      KEYS.protocolDraftRead(
+        params.orgSlug,
+        params.virtualMcpId,
+        params.branch,
+      ),
+      (pointer) =>
+        pointer ? { ...pointer, version: index.revision } : pointer,
+    );
+  }
+  queryClient.setQueryData<ContentRevisions>(revisionsKey, {
+    revision: index.revision,
+    schemaVersion,
+  });
+  const saving = savingBlockKeys(queryClient, params);
+  // Gone from the index: gone from the loaded bodies (unless being saved).
+  const versions =
+    queryClient.getQueryData<Record<string, string>>(versionsKey) ?? {};
+  const kept: Record<string, unknown> = {};
+  const keptVersions: Record<string, string> = {};
+  const moved: string[] = [];
+  for (const [name, body] of Object.entries(loaded)) {
+    const entry = index.entries[name];
+    if (!entry && !saving.has(name)) continue;
+    kept[name] = body;
+    if (versions[name] !== undefined) keptVersions[name] = versions[name];
+    if (entry && !saving.has(name) && versions[name] !== entry.version) {
+      moved.push(name);
+    }
+  }
+  queryClient.setQueryData(blocksKey, kept);
+  queryClient.setQueryData(versionsKey, keptVersions);
+  if (moved.length > 0) {
+    await ensureHostedBlocks(queryClient, rpc, cacheKey, moved, saving);
+  }
+  // Someone else changed the draft: the rest of the editor catches up too.
+  if (currentIndex && elsewhere) {
+    externalContentChange({
+      queryClient,
+      orgSlug: params.orgSlug,
+      virtualMcpId: params.virtualMcpId,
+      branch: params.branch,
+      backend,
+      cacheKey,
+    });
+  }
+  const blocks =
+    queryClient.getQueryData<Record<string, unknown>>(blocksKey) ?? kept;
+  return { blocks, meta };
+}
+
+/** The guards of the names `part` touches. */
+function guardsOf(
+  ifMatch: Record<string, string | null>,
+  part: DecofilePatchBody,
+): Record<string, string | null> {
+  const names = [...Object.keys(part.set ?? {}), ...(part.delete ?? [])];
+  return Object.fromEntries(
+    names.filter((n) => Object.hasOwn(ifMatch, n)).map((n) => [n, ifMatch[n]!]),
+  );
+}
+
+/**
+ * The blocks that landed before a hosted save failed part way
+ * (Unavailable with `data.landed`, contract §4.3 step 7); undefined for
+ * any other error.
+ */
+function landedOf(error: unknown): Record<string, string> | undefined {
+  if (!(error instanceof ContentProtocolError)) return undefined;
+  if (error.code !== ErrorCode.Unavailable) return undefined;
+  const landed = (error.data as { landed?: unknown } | null)?.landed;
+  if (!landed || typeof landed !== "object" || Array.isArray(landed)) {
+    return undefined;
+  }
+  return Object.fromEntries(
+    Object.entries(landed).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
+
+/** `patch` without the names that already landed. */
+function withoutNames(
+  patch: DecofilePatchBody,
+  landed: Record<string, string>,
+): DecofilePatchBody {
+  const set = Object.fromEntries(
+    Object.entries(patch.set ?? {}).filter(([n]) => !Object.hasOwn(landed, n)),
+  );
+  const del = (patch.delete ?? []).filter((n) => !Object.hasOwn(landed, n));
+  return {
+    ...(Object.keys(set).length > 0 ? { set } : {}),
+    ...(del.length > 0 ? { delete: del } : {}),
+  } as DecofilePatchBody;
+}
+
+/** The landed part of a failed hosted save, adopted like a save of its own. */
+function adoptLanded(
+  queryClient: QueryClient,
+  params: DecofileScopeParams,
+  cacheKey: string,
+  patch: DecofilePatchBody,
+  landed: Record<string, string>,
+) {
+  keepContentBookkeeping(queryClient);
+  adoptHostedSave(queryClient, params, cacheKey, {
+    revision:
+      queryClient.getQueryData<ContentRevisions>(KEYS.contentRevision(cacheKey))
+        ?.revision ?? "",
+    versions: landed,
+  } as BlocksApplyResult);
+  adoptBlockVersions(
+    queryClient,
+    cacheKey,
+    Object.fromEntries(
+      Object.entries(landed).map(([n, v]) => [
+        n,
+        v === DRAFT_TOMBSTONE_VERSION ? null : v,
+      ]),
+    ),
+  );
+  adoptSaveIntoIndex(
+    queryClient,
+    cacheKey,
+    landed,
+    (patch.set ?? {}) as Record<string, unknown>,
+  );
+}
+
+/**
  * One `blocks.apply` (an edit), run as a content change (content-sync.ts): it
  * adopts the returned revision. On GitHub (Studio's hosted draft) the answer
  * alone updates the draft pointer (`useProtocolDraft`, whose version is the
@@ -665,6 +942,13 @@ export async function applyProtocolPatch(
         `A hosted save needs a precondition for every block it touches (missing: ${unguarded.join(", ")})`,
       );
     }
+    // A block whose body was never loaded is never written over.
+    const stubs = stubNames(patch.set as Record<string, unknown> | undefined);
+    if (stubs.length > 0) {
+      throw new Error(
+        `A hosted save can't write a block that isn't loaded (${stubs.join(", ")})`,
+      );
+    }
   }
   return runContentChange(
     {
@@ -679,20 +963,49 @@ export async function applyProtocolPatch(
       kind: "edit",
       adopted: backend.source === "github",
       write: async () => {
-        const result = await guarded(queryClient, backend, params, () =>
-          backend.client.blocksApply({
-            set: patch.set as
-              | Record<string, Record<string, unknown>>
-              | undefined,
-            delete: patch.delete,
-            ...(ifMatch ? { ifMatch } : {}),
-          }),
-        );
+        const send = (part: DecofilePatchBody) =>
+          guarded(queryClient, backend, params, () =>
+            backend.client.blocksApply({
+              set: part.set as
+                | Record<string, Record<string, unknown>>
+                | undefined,
+              delete: part.delete,
+              ...(ifMatch ? { ifMatch: guardsOf(ifMatch, part) } : {}),
+            }),
+          );
+        let result: BlocksApplyResult;
+        try {
+          result = await send(patch);
+        } catch (error) {
+          // Hosted: some of the blocks landed before a write failed. They
+          // are adopted, and only the rest is sent again, once, with the
+          // same guards (each file's guard makes the retry idempotent).
+          const landed =
+            backend.source === "github" ? landedOf(error) : undefined;
+          if (!landed) throw error;
+          const rest = withoutNames(patch, landed);
+          if (Object.keys(landed).length > 0) {
+            adoptLanded(queryClient, params, cacheKey, patch, landed);
+          }
+          const retried = await send(rest);
+          result = {
+            ...retried,
+            versions: { ...landed, ...retried.versions },
+          };
+        }
         keepContentBookkeeping(queryClient);
         const revision =
           backend.source === "github"
             ? adoptHostedSave(queryClient, params, cacheKey, result)
             : result.revision;
+        if (backend.source === "github") {
+          adoptSaveIntoIndex(
+            queryClient,
+            cacheKey,
+            result.versions ?? {},
+            (patch.set ?? {}) as Record<string, unknown>,
+          );
+        }
         queryClient.setQueryData<ContentRevisions>(
           KEYS.contentRevision(cacheKey),
           (seen) => ({ ...seen, revision }),
@@ -799,6 +1112,7 @@ function adoptRefusedDraftBlock(
   adoptBlockVersions(queryClient, cacheKey, {
     [blockKey]: deleted ? null : stored.version,
   });
+  adoptDraftCopyIntoIndex(queryClient, cacheKey, blockKey, stored);
 }
 
 /**
@@ -916,9 +1230,9 @@ export async function reloadProtocolBlock(
 
 /** What the session read answers for a hosted v8 project. */
 interface HostedDraftPointer {
-  /** `delivery.decocms.com/sites/<site>/drafts/<slug>.json`; null without a draft. */
+  /** `delivery.decocms.com/sites/<site>/drafts/<slug>/index.json`; null without a draft. */
   draft: string | null;
-  /** The draft object's ETag, so each save makes a new pointer. */
+  /** The draft's token (a save's revision after it), so each save makes a new pointer. */
   version: string | null;
 }
 
@@ -947,9 +1261,12 @@ export function useProtocolDraftRead(params: DecofileScopeParams | null): {
     queryFn: async (): Promise<HostedDraftPointer> => {
       const draft = await ensureCmsDraft(site!, params!.branch);
       const at = draft.pointer?.lastIndexOf("@") ?? -1;
+      // The pointer's own version (the draft token: it moves with any save
+      // of the draft, the index's ETag doesn't).
       return {
         draft: draft.pointer && at > 0 ? draft.pointer.slice(0, at) : null,
-        version: draft.etag,
+        version:
+          draft.pointer && at > 0 ? draft.pointer.slice(at + 1) : draft.etag,
       };
     },
     enabled: !!params && !!site,

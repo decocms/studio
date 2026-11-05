@@ -68,7 +68,7 @@ export interface CmsDraft {
   createdAt: string;
   /** The draft object's bare ETag. */
   etag: string | null;
-  /** `delivery.decocms.com/sites/<site>/drafts/<slug>.json@<etag>`. */
+  /** `delivery.decocms.com/sites/<site>/drafts/<slug>/index.json@<draftToken>` (the draft index; its version moves with every save). */
   pointer: string | null;
   previewUrl: string | null;
 }

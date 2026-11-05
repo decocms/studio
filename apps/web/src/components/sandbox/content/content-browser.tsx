@@ -45,7 +45,11 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useEnsureDecofileBlocks,
+  useIndexNamesOfType,
+} from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   liveMetaSchemaPollInterval,
@@ -105,9 +109,16 @@ import { RedirectFormDialog } from "./redirect-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
 import { useShownWhileClosing } from "./closing-dialog";
 import {
+  appendRedirectRule,
   buildRedirectBlock,
+  extractRedirectRules,
   extractRedirects,
   generateRedirectBlockKey,
+  REDIRECT_LOADER_RESOLVE_TYPES,
+  REDIRECTS_BLOCK,
+  REDIRECTS_RESOLVE_TYPE,
+  redirectRuleIndex,
+  removeRedirectRule,
   type RedirectEntry,
   type RedirectPayload,
 } from "./redirect-data";
@@ -123,6 +134,7 @@ import {
   uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
+  kindOfResolveType,
   listAllPostPayloads,
   missingFieldsLabel,
   postIdOfKey,
@@ -245,6 +257,16 @@ const PostCalendar = lazy(() =>
 const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
+
+/** Types whose list rows show fields of the body: loaded with the list (hosted v8). */
+function isBodyListedType(type: string): boolean {
+  return (
+    kindOfResolveType(type) !== null ||
+    type === REDIRECTS_RESOLVE_TYPE ||
+    type === "redirect" ||
+    REDIRECT_LOADER_RESOLVE_TYPES.has(type)
+  );
+}
 
 export type CollectionId =
   | "pages"
@@ -498,6 +520,16 @@ function ContentBrowserReady({
     fetchParams,
     { fetchEnabled: devServerReady },
   );
+  // Hosted v8: the lists read only the index; the bodies a view shows are
+  // loaded as it opens them (useEnsureDecofileBlocks). Type lists whose rows
+  // show fields of the body (blog records, redirect rules, the site app)
+  // load their blocks.
+  const scope = { orgSlug, virtualMcpId, branch };
+  const typeListNames = useIndexNamesOfType(
+    hostedDraft ? scope : null,
+    isBodyListedType,
+  );
+  useEnsureDecofileBlocks(hostedDraft ? scope : null, typeListNames);
 
   // Blog Manager's "Editar no Studio" redirect: ?contentCollection=posts&
   // contentItem=<blockKey> pre-selects a blog collection and opens a specific
@@ -546,6 +578,21 @@ function ContentBrowserReady({
   // It's for that one opening: once something else is open, it's done, so
   // coming back to the page later opens it as usual.
   const selectedKey = selection && "key" in selection ? selection.key : null;
+  // The open block and the blocks it references directly.
+  const openBlockKey = selectedKey ?? openEntry?.key ?? null;
+  const openBlockNames =
+    openBlockKey === null
+      ? []
+      : [
+          redirectRuleIndex(openBlockKey) === null
+            ? openBlockKey
+            : REDIRECTS_BLOCK,
+        ];
+  const openBlockReady = useEnsureDecofileBlocks(
+    hostedDraft ? scope : null,
+    openBlockNames,
+    { withRefs: true },
+  );
   if (variantFocus && variantFocus.blockKey !== selectedKey) {
     setVariantFocus(null);
   }
@@ -1360,13 +1407,25 @@ function ContentBrowserReady({
   };
 
   const submitRedirectDialog = async (values: RedirectPayload) => {
-    const key = generateRedirectBlockKey(decofile, values.from);
-    const data = buildRedirectBlock(values);
+    // Hosted v8 routes only the redirects block: a new rule is appended to
+    // it (created when absent).
+    const rules = hostedDraft ? extractRedirectRules(decofile).length : null;
+    const key =
+      rules === null
+        ? generateRedirectBlockKey(decofile, values.from)
+        : REDIRECTS_BLOCK;
+    const data =
+      rules === null
+        ? buildRedirectBlock(values)
+        : appendRedirectRule(decofile[REDIRECTS_BLOCK], values);
     try {
       const created = await saveBlock.mutateAsync({ blockKey: key, data });
       if (!keptTheirVersion(created)) toast.success("Created redirect");
       setRedirectDialogOpen(false);
-      setSelection({ collection: "redirects", key });
+      setSelection({
+        collection: "redirects",
+        key: rules === null ? key : `${REDIRECTS_BLOCK}#${rules}`,
+      });
     } catch (err) {
       setRedirectDialogError(
         err instanceof Error ? err.message : "Could not create redirect",
@@ -1511,6 +1570,15 @@ function ContentBrowserReady({
           }
         }
         deleted = await deleteBlock.mutateAsync({ blockKey: key });
+      } else if (redirectRuleIndex(key) !== null) {
+        // A rule of the redirects block: the block, without it.
+        deleted = await saveBlock.mutateAsync({
+          blockKey: REDIRECTS_BLOCK,
+          data: removeRedirectRule(
+            decofile[REDIRECTS_BLOCK],
+            redirectRuleIndex(key)!,
+          ),
+        });
       } else {
         deleted = await deleteBlock.mutateAsync({ blockKey: key });
       }
@@ -1527,8 +1595,13 @@ function ContentBrowserReady({
     }
   };
 
-  // The editor side, as every collection shows it.
-  const editorPane = (
+  // The editor side, as every collection shows it (hosted v8: once the open
+  // block is loaded).
+  const editorPane = !openBlockReady ? (
+    <div className="h-full w-full flex items-center justify-center">
+      <Spinner className="size-5 text-muted-foreground" />
+    </div>
+  ) : (
     <>
       {activeCollection === "loaders" || activeCollection === "actions" ? (
         <RunnableBlocksBrowser
@@ -1766,7 +1839,13 @@ function ContentBrowserReady({
                 virtualMcpId={virtualMcpId}
                 branch={branch}
                 blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
+                block={
+                  decofile[
+                    redirectRuleIndex(selection.key) === null
+                      ? selection.key
+                      : REDIRECTS_BLOCK
+                  ] as Record<string, unknown>
+                }
               />
             ) : (
               <NamedRuleViewsProvider value={namedRuleViews}>
