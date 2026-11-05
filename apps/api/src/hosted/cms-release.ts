@@ -47,7 +47,10 @@ export interface RevisionMeta {
   publishedAt: string;
 }
 
-/** latest.json is not what this Studio writes: nothing is decided on it. */
+/**
+ * A delivery object is not what this Studio writes (or, for a named
+ * revision, is missing): nothing is decided on it. HTTP 500 `malformed`.
+ */
 export class MalformedObjectError extends Error {
   constructor(key: string) {
     super(`${key} is malformed`);
@@ -183,10 +186,17 @@ export async function readRevision(
   return content;
 }
 
-/** Test-only: forget cached revisions. */
+/** Test-only: forget cached revisions and metas. */
 export function clearRevisionCache() {
   revisions.clear();
+  metas.clear();
 }
+
+/** A parsed meta.json is immutable too: cached by (site, id); absent ones aren't. */
+const metas = createTtlLruCache<RevisionMeta>({
+  ttlMs: 60 * 60_000,
+  maxSize: 4096,
+});
 
 const VIAS: ReadonlySet<string> = new Set([
   "studio",
@@ -213,19 +223,32 @@ function parseMeta(value: unknown): RevisionMeta | null {
   };
 }
 
-/** The revision's meta, or null when it has none (a publish that crashed). */
+/**
+ * The revision's meta, or null when it has none (a publish that crashed);
+ * `MalformedObjectError` when it is there but unparseable. Parsed metas are
+ * cached by (site, id): a revision's meta.json is written once, create-only.
+ */
 export async function readRevisionMeta(
   store: DeliveryStore,
   site: string,
   id: string,
 ): Promise<RevisionMeta | null> {
-  const object = await store.get(deliveryKeys.revisionMeta(site, id));
+  const cacheKey = `${site}\0${id}`;
+  const hit = metas.get(cacheKey);
+  if (hit) return hit;
+  const key = deliveryKeys.revisionMeta(site, id);
+  const object = await store.get(key);
   if (!object) return null;
+  let meta: RevisionMeta | null;
   try {
-    return parseMeta(JSON.parse(object.text));
+    meta = parseMeta(JSON.parse(object.text));
   } catch {
-    return null;
+    meta = null;
   }
+  // Present but not a meta.json this Studio wrote (contract §4.3).
+  if (!meta) throw new MalformedObjectError(key);
+  metas.set(cacheKey, meta);
+  return meta;
 }
 
 /**

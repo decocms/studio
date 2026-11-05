@@ -11,14 +11,15 @@ import { type Kysely, sql } from "kysely";
  * Unique on (site, name): creating a draft inserts the row when it is
  * absent, and the loser of a race reads the winner's row. Listing a site's
  * drafts is a query here, for `deco drafts list` and Studio alike.
- * Discarding deletes the row and the object.
+ * Discarding deletes the object and the row. Releasing a site (deleting
+ * its `org_sites` row) deletes its draft rows with it (ON DELETE CASCADE).
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
     .createTable("drafts")
     .ifNotExists()
     .addColumn("site", "text", (col) =>
-      col.notNull().references("org_sites.slug"),
+      col.notNull().references("org_sites.slug").onDelete("cascade"),
     )
     .addColumn("name", "text", (col) => col.notNull())
     .addColumn("slug", "text", (col) => col.notNull().unique())

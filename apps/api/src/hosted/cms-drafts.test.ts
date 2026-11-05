@@ -54,6 +54,30 @@ describe("cms drafts", () => {
     expect(await drafts.discard(SITE, "x")).toBe(false);
   });
 
+  it("discard deletes the object before the row: a failed delete keeps the row, so it can be retried", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createCmsDrafts({
+      table: memoryDraftTable(),
+      store: delivery.store,
+    });
+    const { row } = await drafts.ensure(SITE, "x", {
+      userId: "u1",
+      via: "token",
+    });
+    const remove = delivery.store.delete.bind(delivery.store);
+    delivery.store.delete = async () => {
+      throw new Error("R2 is down");
+    };
+    await expect(drafts.discard(SITE, "x")).rejects.toThrow("R2 is down");
+    expect((await drafts.resolve(SITE, "x"))?.row.slug).toBe(row.slug);
+    delivery.store.delete = remove;
+    expect(await drafts.discard(SITE, "x")).toBe(true);
+    expect(await drafts.resolve(SITE, "x")).toBeNull();
+    expect(delivery.objects.has(deliveryKeys.draft(SITE, row.slug))).toBe(
+      false,
+    );
+  });
+
   it("names follow the branch rule, at most 255 characters", () => {
     expect(isValidDraftName("threads/abc-123")).toBe(true);
     expect(isValidDraftName("-x")).toBe(false);

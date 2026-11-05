@@ -48,6 +48,7 @@ import {
   draftChangesNothing,
   type LatestPointer,
   MAX_SNAPSHOT_BYTES,
+  MalformedObjectError,
   readLatestPointer,
   readRevision,
   readRevisionMeta,
@@ -242,7 +243,11 @@ export async function publishCmsDraft(
   throw new ProductionMovedError();
 }
 
-/** Whether `target` is `from` or reached from it through `previous`. */
+/**
+ * Whether `target` is `from` or reached from it through `previous`. A
+ * meta.json missing or unparseable on the way breaks the chain: that is
+ * `MalformedObjectError`, not "never live".
+ */
 export async function wentLive(
   store: DeliveryStore,
   site: string,
@@ -254,7 +259,10 @@ export async function wentLive(
   while (id && !seen.has(id)) {
     if (id === target) return true;
     seen.add(id);
-    id = (await readRevisionMeta(store, site, id))?.previous ?? null;
+    const meta = await readRevisionMeta(store, site, id);
+    if (!meta)
+      throw new MalformedObjectError(deliveryKeys.revisionMeta(site, id));
+    id = meta.previous;
   }
   return false;
 }

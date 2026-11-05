@@ -263,8 +263,11 @@ export function createCmsDrafts(deps: {
     async discard(site, name) {
       const row = await table.get(site, name);
       if (!row) return false;
-      await table.delete(site, name);
+      // The object first: when its delete fails the row stays, so the
+      // discard can be retried (a row without its object is a draft never
+      // written, which ensure recreates).
       await store.delete(deliveryKeys.draft(site, row.slug));
+      await table.delete(site, name);
       return true;
     },
   };
