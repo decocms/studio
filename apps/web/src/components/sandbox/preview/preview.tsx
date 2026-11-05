@@ -179,7 +179,10 @@ import {
   useContentRevision,
   useProtocolDraftRead,
 } from "@/components/sections-editor/content-protocol-api";
-import { publishPreviewDraft } from "@/components/sections-editor/preview-draft-link";
+import {
+  publishPreviewDraft,
+  useHeldPreviewRevision,
+} from "@/components/sections-editor/preview-draft-link";
 import { hostedPreviewUrls } from "./hosted-preview-urls";
 import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editing-gate";
 import { type PreviewDeviceSize, withDeviceHint } from "./device-hint";
@@ -918,18 +921,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // A hosted draft's `__draft`: its pointer with the forced variants and the
   // "Preview as" options. The frame and every link (new tab, publish dialog,
   // compare) send exactly this value (preview-draft-link.ts).
+  const previewDraftScope = virtualMcpId
+    ? contentSyncScope(org.slug, virtualMcpId)
+    : null;
+  // Right after a Publish or "Make current": that revision, by its id.
+  const heldRevision = useHeldPreviewRevision(previewDraftScope);
   const hostedUrls = hostedDraft
     ? hostedPreviewUrls({
         display,
         path: resolvedPath,
         pointer: hostedPointer,
+        heldRevision,
         device: previewDeviceSize,
         forcedVariants,
         previewOptions: appliedPreviewOptions,
       })
-    : null;
-  const previewDraftScope = virtualMcpId
-    ? contentSyncScope(org.slug, virtualMcpId)
     : null;
   const previewDraftModifiersKey = JSON.stringify([
     forcedVariants,
