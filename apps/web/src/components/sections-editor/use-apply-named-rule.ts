@@ -25,6 +25,7 @@ import {
   decofileWriteScope,
 } from "./decofile-api";
 import { conflictAuthorDraft } from "./conflict-author";
+import { copyDraftVersion } from "./draft-version";
 import { formatCampaignDate, formatCampaignWindow } from "./format-matcher";
 import { bumpCopyEpoch, copyScope } from "./held-copy";
 import { type ConflictField, resolveFormConflict } from "./form-conflict";
@@ -211,6 +212,13 @@ interface NamedRuleWrite {
    * editor still on its way: it takes the version that save answers.
    */
   pinned: Record<string, string | null>;
+  /**
+   * The copies the change was built on (the cache when it was made), by
+   * block. On a hosted draft a block missing from `pinned` is guarded by
+   * its copy's content hash when the write runs, never by the version the
+   * index lists then.
+   */
+  copies: Record<string, unknown>;
 }
 
 /** A version unknown when the write runs: as refused, so nothing is guessed. */
@@ -231,11 +239,12 @@ function unreadConflict(blockKeys: string[]): ContentProtocolError {
  * named-rule-conflict.tsx); the user's picks are saved, guarded again.
  * Nothing is written over someone else's change without that choice.
  *
- * The guard is the version of the copy the change was built on. The cache
- * already holds the editor's earlier saves still on their way, so a block
- * one of them holds is guarded by the version that save answers, read when
- * this write runs (after it landed, as a section form's is); every other
- * block by the version known when the change was made. The change's blocks
+ * The guard is the version of the copy the change was built on (on a hosted
+ * draft, that copy's own content hash, never the version the index lists).
+ * The cache already holds the editor's earlier saves still on their way, so
+ * a block one of them holds is guarded when this write runs (after that
+ * save landed, as a section form's is); every other block when the change
+ * was made. The change's blocks
  * count as being saved while it waits, so a poll meanwhile keeps their
  * copies and versions, and someone else's save of them is still refused.
  */
@@ -261,11 +270,18 @@ export function useApplyNamedRule({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async (write: NamedRuleWrite) => {
-      const plan = planNamedRuleApply(write, (blockKey) =>
-        Object.hasOwn(write.pinned, blockKey)
-          ? write.pinned[blockKey]
-          : protocolBlockVersion(queryClient, cacheKey, blockKey, protocol),
-      );
+      const touched = [
+        ...Object.keys(write.writes),
+        ...write.deletes.filter((key) => !Object.hasOwn(write.writes, key)),
+      ];
+      const versions: Record<string, string | null | undefined> = {
+        ...write.pinned,
+      };
+      for (const key of touched) {
+        if (Object.hasOwn(versions, key)) continue;
+        versions[key] = await copyVersion(key, write.copies);
+      }
+      const plan = planNamedRuleApply(write, (blockKey) => versions[blockKey]);
       if (plan.kind === "unread") throw unreadConflict(plan.blockKeys);
       return applyProtocolPatch(
         queryClient,
@@ -423,7 +439,13 @@ export function useApplyNamedRule({
     );
     void queryClient.cancelQueries({ queryKey });
     try {
-      await mutation.mutateAsync({ writes, deletes, pinned });
+      const copies: Record<string, unknown> = {};
+      for (const key of touched) {
+        if (previous && Object.hasOwn(previous, key)) {
+          copies[key] = previous[key];
+        }
+      }
+      await mutation.mutateAsync({ writes, deletes, pinned, copies });
       return { ok: true };
     } catch (error) {
       queryClient.setQueryData(
@@ -474,13 +496,37 @@ export function useApplyNamedRule({
   };
 
   /**
+   * The draft's version of `blockKey` as the guard of a write built on
+   * `copies`. On a hosted draft a block the draft holds is guarded by its
+   * copy's own content hash ({@link copyDraftVersion}), never by the
+   * version the index lists: a poll lists someone else's version before it
+   * loads their copy (and never reloads a block being saved), so a write
+   * built on the older copy, guarded by the listed version, would go over
+   * their change unasked. Guarded by its copy, it is refused and
+   * reconciled. Other backends: the version listed.
+   */
+  const copyVersion = async (
+    blockKey: string,
+    copies: Record<string, unknown> | undefined,
+  ): Promise<string | null | undefined> => {
+    const listed = protocolBlockVersion(
+      queryClient,
+      cacheKey,
+      blockKey,
+      protocol,
+    );
+    if (!hosted || !copies || !Object.hasOwn(copies, blockKey)) return listed;
+    return copyDraftVersion(listed, copies[blockKey]);
+  };
+
+  /**
    * The versions of the copies a change was built on (`copies`, the cache
    * when it was made), for every block no earlier save still on its way
-   * holds (those take that save's answer when the write runs). A block with
-   * no known version (the editor's bookkeeping was lost) is read now: when
-   * it is stored exactly as the change found it, the version just read is
-   * its copy's; when it isn't, someone else changed it: `null`, nothing is
-   * written.
+   * holds (those are guarded when the write runs, after that save landed,
+   * by the same copies). A block with no known version (the editor's
+   * bookkeeping was lost) is read now: when it is stored exactly as the
+   * change found it, the version just read is its copy's; when it isn't,
+   * someone else changed it: `null`, nothing is written.
    */
   const pinVersions = async (
     touched: string[],
@@ -491,12 +537,7 @@ export function useApplyNamedRule({
     const unread: string[] = [];
     for (const key of touched) {
       if (saving.has(key)) continue;
-      const version = protocolBlockVersion(
-        queryClient,
-        cacheKey,
-        key,
-        protocol,
-      );
+      const version = await copyVersion(key, copies);
       if (version === undefined) unread.push(key);
       else pinned[key] = version;
     }
@@ -512,12 +553,7 @@ export function useApplyNamedRule({
       ) {
         return null;
       }
-      const version = protocolBlockVersion(
-        queryClient,
-        cacheKey,
-        key,
-        protocol,
-      );
+      const version = await copyVersion(key, copies);
       if (version === undefined) return null;
       pinned[key] = version;
     }
