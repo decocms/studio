@@ -72,7 +72,7 @@ export interface HostedRpc {
 }
 
 /** `cms.blocks`'s limit of names per call. */
-export const BLOCKS_PER_CALL = 50;
+const BLOCKS_PER_CALL = 50;
 /** The protocol's limit of calls per batch. */
 const CALLS_PER_BATCH = 10;
 
@@ -135,7 +135,7 @@ export function createHostedRpc(
 }
 
 /** The key that marks an index stub: a block whose body isn't loaded. */
-export const INDEX_STUB = "__indexStub";
+const INDEX_STUB = "__indexStub";
 
 /** Whether `value` is an index stub (or a copy of one). */
 export function isIndexStub(value: unknown): boolean {
@@ -183,10 +183,7 @@ export function listingOf(
 }
 
 /** The names `name`'s body references directly, as the index says. */
-export function refsOf(
-  index: ContentIndex | undefined,
-  name: string,
-): string[] {
+function refsOf(index: ContentIndex | undefined, name: string): string[] {
   return index?.entries[name]?.meta?.refs ?? [];
 }
 
@@ -220,7 +217,7 @@ function collectTypes(value: unknown, out: Set<string>) {
  * The index meta of a body this editor just saved (the server's
  * `blockMeta`), so a list shows a new page's path before the next poll.
  */
-export function indexMetaOf(
+function indexMetaOf(
   body: unknown,
   names: ReadonlySet<string>,
 ): HostedIndexEntry["meta"] {

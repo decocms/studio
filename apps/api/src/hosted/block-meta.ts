@@ -36,7 +36,7 @@ export interface IndexEntry {
 export type BlockIndex = Record<string, IndexEntry>;
 
 /** The settings block, whose body every index inlines. */
-export const CMS_SETTINGS_BLOCK = "CMS";
+const CMS_SETTINGS_BLOCK = "CMS";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
