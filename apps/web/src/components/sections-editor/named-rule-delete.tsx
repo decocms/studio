@@ -6,8 +6,9 @@
  * `missingNamedRules`).
  *
  * Delete reads the draft as stored right now (another tab may have changed
- * it) and plans from that copy; Undo puts back only the deleted name onto
- * the block as it is then, so a test or campaign created since stays.
+ * it), with the blocks the index says use the name, and plans from that
+ * copy; Undo puts back only the deleted name onto the block as it is then,
+ * so a test or campaign created since stays.
  */
 
 import { useState } from "react";
@@ -28,6 +29,7 @@ import {
 import type {
   NamedRuleApplyOutcome,
   NamedRuleChange,
+  NamedRuleReread,
 } from "./use-apply-named-rule";
 
 export function NamedRuleDeleteButton({
@@ -47,7 +49,9 @@ export function NamedRuleDeleteButton({
   pending: boolean;
   apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
   /** The draft as stored right now; `null` when it can't be read. */
-  reread: () => Promise<Record<string, unknown> | null>;
+  reread: (
+    options?: NamedRuleReread,
+  ) => Promise<Record<string, unknown> | null>;
   /** The name left the draft. */
   onDeleted: () => void;
   /** Undo: writes the change that puts the name back. */
@@ -58,8 +62,8 @@ export function NamedRuleDeleteButton({
   const [checking, setChecking] = useState(false);
 
   /** The draft right now, or a calm toast and `null`. */
-  const readNow = async () => {
-    const fresh = await reread();
+  const readNow = async (options?: NamedRuleReread) => {
+    const fresh = await reread(options);
     if (!fresh) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
         ...SAVE_TOAST,
@@ -97,7 +101,8 @@ export function NamedRuleDeleteButton({
     setChecking(true);
     let fresh: Record<string, unknown> | null;
     try {
-      fresh = await readNow();
+      // The name's users too (hosted), so the toast counts every use.
+      fresh = await readNow({ usersOf: [name] });
     } finally {
       setChecking(false);
     }

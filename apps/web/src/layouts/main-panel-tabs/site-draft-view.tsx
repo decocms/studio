@@ -12,10 +12,11 @@ import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useConflictMembers } from "@/components/sections-editor/conflict-author";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { namedRuleViewNames } from "@/components/sections-editor/named-rule-loads";
 import {
   useDecofile,
   useEnsureDecofileBlocks,
-  useIndexNamesOfType,
+  useHostedContentIndex,
 } from "@/components/sections-editor/use-decofile";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -171,18 +172,18 @@ function SiteDraftLoaded({
   const params = { orgSlug, virtualMcpId, branch, threadId, previewUrl: null };
   const decofileQuery = useDecofile(params);
   const metaQuery = useLiveMeta(params);
-  // Hosted v8: these views read the rules and every block that uses them
-  // ("Used by", and the uses a rename or delete rewrites). A use names a test
-  // or campaign inside a body (`experiment { name }`), which the index's
-  // `refs` don't carry (they name saved blocks), so they load every body the
-  // index names: once, then only the names a poll shows new or moved.
+  const decofile = decofileQuery.data as Record<string, unknown> | undefined;
+  const meta = metaQuery.data;
+  // Hosted v8: "Used by" counts read the index (each entry's `meta.rules`
+  // names the tests and campaigns its body uses), so these views load only
+  // the `experiments` and `campaigns` blocks and the users of a name neither
+  // holds (named-rule-loads.ts); an opened name and a rename or delete load
+  // that name's users. No view loads every body.
   const scope = { orgSlug, virtualMcpId, branch };
   const load = useEnsureDecofileBlocks(
     scope,
-    useIndexNamesOfType(scope, () => true),
+    namedRuleViewNames(useHostedContentIndex(scope), decofile, meta),
   );
-  const decofile = decofileQuery.data as Record<string, unknown> | undefined;
-  const meta = metaQuery.data;
 
   if (!decofile || !meta || !load.ready) {
     if (decofileQuery.isError || metaQuery.isError || load.failed) {

@@ -41,13 +41,16 @@ import {
   readNamedRuleBlock,
 } from "./named-rules";
 import type { LiveMeta } from "./resolve-schema";
+import { namedRuleDetailNames } from "./named-rule-loads";
 import { planNamedRuleRename } from "./rule-references";
 import { SAVE_TOAST, toastKeptTheirs } from "./site-editor-toast";
 import {
   type NamedRuleApplyOutcome,
   type NamedRuleChange,
+  type NamedRuleReread,
   useApplyNamedRule,
 } from "./use-apply-named-rule";
+import { useEnsureDecofileBlocks, useHostedContentIndex } from "./use-decofile";
 import { useNamedRuleUses } from "./use-named-rule-uses";
 
 /**
@@ -142,6 +145,16 @@ export function useNamedRuleView(
   );
   const [openName, setOpenName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Hosted: the opened name's "Used by" rows (the variant and section of
+  // each use) read its users' bodies, loaded as it opens.
+  const scope = { orgSlug, virtualMcpId, branch };
+  const index = useHostedContentIndex(scope);
+  const openedLoad = useEnsureDecofileBlocks(
+    scope,
+    openName === null
+      ? []
+      : namedRuleDetailNames(index, decofile, meta, kind, openName),
+  );
 
   const save: NamedRuleSave = async (
     change,
@@ -190,6 +203,8 @@ export function useNamedRuleView(
 
   return {
     uses,
+    /** The opened name's users are loaded (always, off hosted). */
+    openedUsesReady: openedLoad.ready,
     apply,
     reread,
     planStored,
@@ -341,10 +356,13 @@ export interface NamedRuleDetailProps<Row extends { name: string }> {
   onSave: NamedRuleSave;
   onRenamed: (name: string) => void;
   apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
-  reread: () => Promise<Record<string, unknown> | null>;
+  reread: (
+    options?: NamedRuleReread,
+  ) => Promise<Record<string, unknown> | null>;
   /** Plans a rename from the draft as stored now (use-apply-named-rule.ts). */
   planStored: (
     plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
+    options?: NamedRuleReread,
   ) => Promise<NamedRuleChange | null>;
   onDeleted: () => void;
   onUndo: (change: NamedRuleChange) => void;
@@ -407,7 +425,8 @@ export function namedRuleDetailProps<Row extends { name: string }>(
     row,
     decofile: input.decofile,
     meta: input.meta,
-    uses: view.uses,
+    // "Used by" says it is loading until the name's users are.
+    uses: view.openedUsesReady ? view.uses : null,
     pending: view.isPending,
     holdsCopy: view.holdsCopy,
     onBack: () => view.setOpenName(null),
@@ -461,8 +480,10 @@ export function useNamedRuleRename(
   const rename = async () => {
     const next = name.trim();
     if (problem || next === current) return;
-    const plan = await props.planStored((stored) =>
-      planNamedRuleRename(stored, kind, current, next, props.meta),
+    // Read with the blocks that use the name now: the rename rewrites them.
+    const plan = await props.planStored(
+      (stored) => planNamedRuleRename(stored, kind, current, next, props.meta),
+      { usersOf: [current] },
     );
     if (
       plan &&
