@@ -19,7 +19,7 @@ import {
   fetchWithCache,
   REVALIDATE_MIN_INTERVAL_MS,
 } from "../../mcp-clients/mcp-list-cache";
-import { listToolsWithTimeout } from "../../mcp-clients";
+import { listStoredConnectionTools } from "../../mcp-clients";
 import { MCP_LIST_TOOLS_TIMEOUT_MS } from "../../core/constants";
 import {
   createDevAssetsConnectionEntity,
@@ -64,12 +64,14 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
       isDevAssetsConnection(input.id, organization.id)
     ) {
       return {
-        item: createDevAssetsConnectionEntity(organization.id, getBaseUrl()),
+        item: toPublicConnection(
+          createDevAssetsConnectionEntity(organization.id, getBaseUrl()),
+        ),
       };
     }
 
     // A link names the connection by its URL slug; slugs can't contain `_`, so ids never take that path.
-    let connection = await ctx.storage.connections.findById(input.id);
+    let connection = await ctx.storage.connections.findPublicById(input.id);
     if (!connection && isValidUrlSlug(input.id)) {
       const resolved = await ctx.storage.connections.resolveUrlSlug(
         organization.id,
@@ -77,7 +79,7 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
         "connection",
       );
       connection = resolved
-        ? await ctx.storage.connections.findById(resolved.id)
+        ? await ctx.storage.connections.findPublicById(resolved.id)
         : null;
     }
 
@@ -95,7 +97,11 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
               return listManagementTools() as Promise<unknown[]>;
             }
           : () =>
-              listToolsWithTimeout(connection, ctx, MCP_LIST_TOOLS_TIMEOUT_MS);
+              listStoredConnectionTools(
+                connection.id,
+                ctx,
+                MCP_LIST_TOOLS_TIMEOUT_MS,
+              );
       const tools = await fetchWithCache(
         "tools",
         connection.id,
@@ -110,7 +116,7 @@ export const COLLECTION_CONNECTIONS_GET = defineTool({
     }
 
     return {
-      item: toPublicConnection(connection),
+      item: connection,
     };
   },
 });

@@ -33,6 +33,7 @@ import type {
   StdioConnectionParameters,
 } from "../tools/connection/schema";
 import { isStdioParameters } from "../tools/connection/schema";
+import type { PublicConnectionEntity } from "../tools/connection/public-connection";
 import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
@@ -70,6 +71,15 @@ const JSON_FIELDS = [
   "bindings",
 ] as const;
 
+type ConnectionListOptions = {
+  includeVirtual?: boolean;
+  slug?: string;
+  where?: WhereExpression;
+  orderBy?: OrderByExpression[];
+  limit?: number;
+  offset?: number;
+};
+
 /** Raw database row type */
 type RawConnectionRow = {
   id: string;
@@ -96,6 +106,41 @@ type RawConnectionRow = {
   created_at: Date | string;
   updated_at: Date | string;
 };
+/** A row read without `connection_token`: only whether one is stored. */
+type PublicConnectionRow = Omit<RawConnectionRow, "connection_token"> & {
+  has_connection_token: boolean;
+};
+
+/** Every column `deserializeConnection` reads except `connection_token`. */
+const PUBLIC_COLUMNS = [
+  "id",
+  "organization_id",
+  "created_by",
+  "updated_by",
+  "title",
+  "description",
+  "icon",
+  "app_name",
+  "app_id",
+  "slug",
+  "url_slug",
+  "connection_type",
+  "connection_url",
+  "connection_headers",
+  "oauth_config",
+  "configuration_state",
+  "configuration_scopes",
+  "metadata",
+  "bindings",
+  "status",
+  "created_at",
+  "updated_at",
+] as const;
+
+const hasConnectionToken = sql<boolean>`connection_token is not null`.as(
+  "has_connection_token",
+);
+
 /** Top-level columns on the connections table that are safe for user-controlled WHERE filtering */
 const TOP_LEVEL_COLUMNS = new Set([
   "id",
@@ -318,20 +363,71 @@ export class ConnectionStorage implements ConnectionStoragePort {
     return row ? this.deserializeConnection(row as RawConnectionRow) : null;
   }
 
-  async list(
-    organizationId: string,
-    options?: {
-      includeVirtual?: boolean;
-      slug?: string;
-      where?: WhereExpression;
-      orderBy?: OrderByExpression[];
-      limit?: number;
-      offset?: number;
-    },
-  ): Promise<{ items: ConnectionEntity[]; totalCount: number }> {
+  /** `findById` for responses: never reads or decrypts `connection_token`. */
+  async findPublicById(
+    id: string,
+    organizationId?: string,
+  ): Promise<PublicConnectionEntity | null> {
+    const decopilotOrgId = isDecopilot(id);
+    if (decopilotOrgId) {
+      const { connection_token, ...rest } = getWellKnownDecopilotConnection(
+        organizationId ?? decopilotOrgId,
+      );
+      return { ...rest, has_connection_token: !!connection_token };
+    }
+
     let query = this.db
       .selectFrom("connections")
-      .selectAll()
+      .select(PUBLIC_COLUMNS)
+      .select(hasConnectionToken)
+      .where("id", "=", id);
+
+    if (organizationId) {
+      query = query.where("organization_id", "=", organizationId);
+    }
+
+    const row = await query.executeTakeFirst();
+    return row
+      ? this.deserializePublicConnection(row as PublicConnectionRow)
+      : null;
+  }
+
+  async list(
+    organizationId: string,
+    options?: ConnectionListOptions,
+  ): Promise<{ items: ConnectionEntity[]; totalCount: number }> {
+    const { query, countQuery } = this.listQuery(organizationId, options);
+    const [countResult, rows] = await Promise.all([
+      countQuery.executeTakeFirst(),
+      query.selectAll().execute(),
+    ]);
+    const items = await Promise.all(
+      rows.map((row) => this.deserializeConnection(row as RawConnectionRow)),
+    );
+    return { items, totalCount: countResult?.count ?? 0 };
+  }
+
+  /** `list` for responses: never reads or decrypts `connection_token`. */
+  async listPublic(
+    organizationId: string,
+    options?: ConnectionListOptions,
+  ): Promise<{ items: PublicConnectionEntity[]; totalCount: number }> {
+    const { query, countQuery } = this.listQuery(organizationId, options);
+    const [countResult, rows] = await Promise.all([
+      countQuery.executeTakeFirst(),
+      query.select(PUBLIC_COLUMNS).select(hasConnectionToken).execute(),
+    ]);
+    const items = await Promise.all(
+      rows.map((row) =>
+        this.deserializePublicConnection(row as PublicConnectionRow),
+      ),
+    );
+    return { items, totalCount: countResult?.count ?? 0 };
+  }
+
+  private listQuery(organizationId: string, options?: ConnectionListOptions) {
+    let query = this.db
+      .selectFrom("connections")
       .where("organization_id", "=", organizationId);
 
     // By default, exclude VIRTUAL connections unless explicitly requested
@@ -350,7 +446,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
 
     // Count before pagination — built off the pre-orderBy/limit `query`, so it's independent of both.
     const countQuery = this.db
-      .selectFrom(query.as("filtered"))
+      .selectFrom(query.select("id").as("filtered"))
       .select(sql<number>`count(*)::int`.as("count"));
 
     // Apply orderBy
@@ -373,17 +469,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       query = query.offset(options.offset);
     }
 
-    const [countResult, rows] = await Promise.all([
-      countQuery.executeTakeFirst(),
-      query.execute(),
-    ]);
-    const totalCount = countResult?.count ?? 0;
-
-    const items = await Promise.all(
-      rows.map((row) => this.deserializeConnection(row as RawConnectionRow)),
-    );
-
-    return { items, totalCount };
+    return { query, countQuery };
   }
 
   /**
@@ -680,7 +766,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
    * non-active DB status from a prior disable) are suppressed immediately.
    */
   private async handleDecryptFailures(
-    row: RawConnectionRow,
+    row: Omit<RawConnectionRow, "connection_token">,
     failures: Array<{ label: string; error: unknown }>,
   ): Promise<void> {
     const context = `connection ${row.id} (org: ${row.organization_id}, type: ${row.connection_type}, title: ${row.title})`;
@@ -724,16 +810,25 @@ export class ConnectionStorage implements ConnectionStoragePort {
     }
   }
 
+  private async deserializePublicConnection(
+    row: PublicConnectionRow,
+  ): Promise<PublicConnectionEntity> {
+    const { connection_token: _skipped, ...rest } =
+      await this.deserializeConnection(row);
+    return { ...rest, has_connection_token: row.has_connection_token };
+  }
+
   /**
    * Deserialize database row to entity
    */
   private async deserializeConnection(
-    row: RawConnectionRow,
+    row: RawConnectionRow | PublicConnectionRow,
   ): Promise<ConnectionEntity> {
     const decryptErrors: Array<{ label: string; error: unknown }> = [];
+    const readsToken = "connection_token" in row;
 
     let decryptedToken: string | null = null;
-    if (row.connection_token) {
+    if (readsToken && row.connection_token) {
       try {
         decryptedToken = await this.vault.decrypt(row.connection_token);
       } catch (error) {
@@ -808,6 +903,9 @@ export class ConnectionStorage implements ConnectionStoragePort {
 
     if (decryptErrors.length > 0) {
       await this.handleDecryptFailures(row, decryptErrors);
+    } else if (!readsToken) {
+      // A read that skipped the token can't vouch for it; recording success
+      // here would reset the failure count the token's own reads build up.
     } else if (
       row.connection_token ||
       row.configuration_state ||

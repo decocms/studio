@@ -169,6 +169,70 @@ describe("ConnectionStorage", () => {
     });
   });
 
+  describe("public reads", () => {
+    const createWithToken = (title: string) =>
+      storage.create({
+        organization_id: "org_456",
+        created_by: "user_123",
+        title,
+        connection_type: "HTTP",
+        connection_url: "https://public-read.example.com/mcp",
+        connection_token: "public-read-secret",
+      });
+
+    it("never decrypts or returns the token, only whether one is stored", async () => {
+      const withToken = await createWithToken("With token");
+      const withoutToken = await storage.create({
+        organization_id: "org_456",
+        created_by: "user_123",
+        title: "Without token",
+        connection_type: "HTTP",
+        connection_url: "https://public-read.example.com/mcp",
+      });
+      const ciphertext = (
+        await database.db
+          .selectFrom("connections")
+          .select("connection_token")
+          .where("id", "=", withToken.id)
+          .executeTakeFirstOrThrow()
+      ).connection_token;
+      const decrypted: string[] = [];
+      const spyStorage = new ConnectionStorage(database.db, {
+        decrypt: async (value: string) => {
+          decrypted.push(value);
+          return vault.decrypt(value);
+        },
+      } as CredentialVault);
+
+      const found = await spyStorage.findPublicById(withToken.id, "org_456");
+      const { items, totalCount } = await spyStorage.listPublic("org_456");
+
+      expect(found).not.toHaveProperty("connection_token");
+      expect(found?.has_connection_token).toBe(true);
+      expect(items.every((c) => !("connection_token" in c))).toBe(true);
+      expect(
+        items.find((c) => c.id === withToken.id)?.has_connection_token,
+      ).toBe(true);
+      expect(
+        items.find((c) => c.id === withoutToken.id)?.has_connection_token,
+      ).toBe(false);
+      expect(totalCount).toBe((await storage.list("org_456")).totalCount);
+      expect(decrypted).not.toContain(ciphertext);
+    });
+
+    it("reports a stored token that no longer decrypts as stored", async () => {
+      const created = await createWithToken("Rotated key");
+      const otherKey = new ConnectionStorage(
+        database.db,
+        new CredentialVault(CredentialVault.generateKey()),
+      );
+
+      const found = await otherKey.findPublicById(created.id);
+
+      expect(found?.has_connection_token).toBe(true);
+    });
+  });
+
   describe("list", () => {
     it("should list all connections for an organization", async () => {
       await storage.create({

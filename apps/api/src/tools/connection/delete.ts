@@ -22,7 +22,6 @@ import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
 import { clearRefreshBackoff } from "../../oauth/token-refresh";
 import { isDevAssetsConnection, usesLocalObjectStorage } from "./dev-assets";
-import { toPublicConnection } from "./public-connection";
 import { ConnectionEntitySchema } from "./schema";
 
 const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
@@ -69,7 +68,7 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     }
 
     // Fetch connection before deleting to return the entity
-    const connection = await ctx.storage.connections.findById(input.id);
+    const connection = await ctx.storage.connections.findPublicById(input.id);
     if (!connection) {
       throw new Error(`Connection not found: ${input.id}`);
     }
@@ -176,7 +175,7 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     }
 
     return {
-      item: toPublicConnection(connection),
+      item: connection,
     };
   },
 });
