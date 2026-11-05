@@ -292,7 +292,13 @@ export function adoptSaveIntoIndex(
   );
 }
 
-/** The draft's copy of one block, as a refused save carried it, kept in the index. */
+/**
+ * The draft's copy of one block, as a refused save carried it, kept in the
+ * index: its draft entry and, the index being latest overlaid with the
+ * draft, its entry (version, and meta from the body; none for a deletion).
+ * The next poll then finds the index as the editor holds it, and doesn't
+ * take the change the refusal already showed for a new one.
+ */
 export function adoptDraftCopyIntoIndex(
   queryClient: QueryClient,
   cacheKey: string,
@@ -304,6 +310,7 @@ export function adoptDraftCopyIntoIndex(
     (index) => {
       if (!index) return index;
       const draft = { ...index.draft };
+      const entries = { ...index.entries };
       if (stored === null) delete draft[name];
       else {
         draft[name] = {
@@ -311,8 +318,17 @@ export function adoptDraftCopyIntoIndex(
           version: stored.version,
           editor: draft[name]?.editor ?? null,
         };
+        if (stored.block === null) delete entries[name];
+        else {
+          const names = new Set([...Object.keys(entries), name]);
+          const meta = indexMetaOf(stored.block, names);
+          entries[name] = {
+            version: stored.version,
+            ...(meta ? { meta } : {}),
+          };
+        }
       }
-      return { ...index, draft };
+      return { ...index, entries, draft };
     },
   );
 }
@@ -509,8 +525,16 @@ export function useEnsureHostedBlocks(
   const pending = wanted.some(
     (name) => !loaded || !Object.hasOwn(loaded, name),
   );
+  // A body wanted and not held (never loaded, or dropped from the cache
+  // since) is part of the key, so its load runs again even when the index
+  // didn't move its version: the view would otherwise wait on it for good.
   const key = wanted
-    .map((name) => `${name}@${index?.entries[name]?.version ?? ""}`)
+    .map(
+      (name) =>
+        `${name}@${index?.entries[name]?.version ?? ""}${
+          loaded && Object.hasOwn(loaded, name) ? "" : "!"
+        }`,
+    )
     .join("\n");
   // The failures of the load of `key` so far, and the attempt to run.
   const [failure, setFailure] = useState<{

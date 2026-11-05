@@ -11,11 +11,16 @@ import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
 import type { ProtocolBackend } from "./content-backend";
 import {
+  adoptRefusedDraft,
   applyProtocolPatch,
   pollProtocolContent,
   protocolBlockVersion,
 } from "./content-protocol-api";
-import { resetContentSync } from "./content-sync";
+import {
+  contentSyncScope,
+  getContentSyncState,
+  resetContentSync,
+} from "./content-sync";
 import {
   type ContentIndex,
   ensureEveryHostedBlock,
@@ -678,5 +683,73 @@ describe("a save that lands in part twice", () => {
     expect(protocolBlockVersion(queryClient, CACHE_KEY, "home", backend)).toBe(
       null,
     );
+  });
+});
+
+describe("a refused save, then the poll (the conflict dialog is open)", () => {
+  const epoch = () => getContentSyncState(contentSyncScope(ORG, VM)).epoch;
+  /** A refused save of `name`, carrying the draft's copy (-32002). */
+  const refusal = (name: string, block: unknown, version: string) =>
+    new ContentProtocolError(ErrorCode.Conflict, "a precondition failed", {
+      entries: { [name]: { expected: "vOld", actual: version } },
+      draft: { [name]: { block, version, editor: { userId: "u2", at: 1 } } },
+    });
+  /** Lets a refresh the poll started (in the background) run. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const theirs = {
+    __resolveType: "page",
+    path: "/",
+    sections: ["Header"],
+    title: "theirs",
+  };
+
+  it("brings only the change the refusal carried: no refresh (changes, pointer, preview, form) under the dialog", async () => {
+    const queryClient = new QueryClient();
+    const { backend, state, writeElsewhere } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await ensureHostedBlocks(queryClient, backend.hosted!, CACHE_KEY, ["home"]);
+    writeElsewhere("home", theirs);
+    expect(
+      adoptRefusedDraft(
+        queryClient,
+        backend,
+        CACHE_KEY,
+        refusal("home", theirs, state.versions.home!),
+      ),
+    ).toBe(true);
+    // The refusal's copy is the index's now too.
+    expect(
+      queryClient.getQueryData<ContentIndex>(KEYS.contentIndex(CACHE_KEY))
+        ?.entries.home?.version,
+    ).toBe(state.versions.home!);
+    const before = epoch();
+    const loads = state.blocksCalls.length;
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await settle();
+    expect(epoch()).toBe(before);
+    expect(state.blocksCalls).toHaveLength(loads);
+    expect(loadedBodies(queryClient)?.home).toEqual(theirs);
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "home", backend)).toBe(
+      state.versions.home!,
+    );
+  });
+
+  it("still catches up with a change the refusal didn't carry", async () => {
+    const queryClient = new QueryClient();
+    const { backend, state, writeElsewhere } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await ensureHostedBlocks(queryClient, backend.hosted!, CACHE_KEY, ["home"]);
+    writeElsewhere("home", theirs);
+    adoptRefusedDraft(
+      queryClient,
+      backend,
+      CACHE_KEY,
+      refusal("home", theirs, state.versions.home!),
+    );
+    writeElsewhere("about", { __resolveType: "page", path: "/about-us" });
+    const before = epoch();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await settle();
+    expect(epoch()).toBe(before + 1);
   });
 });

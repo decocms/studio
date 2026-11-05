@@ -87,3 +87,34 @@ describe("useEnsureHostedBlocks: a failed load", () => {
     expect(calls).toHaveLength(2);
   });
 });
+
+describe("useEnsureHostedBlocks: a body dropped from the cache", () => {
+  it("is loaded again though the index didn't move its version, so the view never waits on it for good", async () => {
+    const { rpc, calls } = rpcFailing({ left: 0 });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData<ContentIndex>(KEYS.contentIndex(CACHE_KEY), {
+      revision: "t1",
+      resolvedRef: null,
+      sequence: 1,
+      entries: { home: { version: "vH", meta: { type: "page", path: "/" } } },
+      draft: {},
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useEnsureHostedBlocks(rpc, CACHE_KEY, ["home"]),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(calls).toEqual([["home"]]);
+    act(() => {
+      queryClient.setQueryData<Record<string, unknown>>(
+        KEYS.decofile(CACHE_KEY),
+        {},
+      );
+    });
+    await waitFor(() => expect(calls).toEqual([["home"], ["home"]]));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+  });
+});
