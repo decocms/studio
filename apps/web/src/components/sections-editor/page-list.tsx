@@ -11,6 +11,7 @@ import {
   underlyingSectionResolveType,
 } from "./section-catalog";
 import { extractRedirects } from "@/components/sandbox/content/redirect-data";
+import { indexStubRefs, isIndexStub } from "./hosted-content";
 
 export interface PageEntry {
   key: string;
@@ -215,10 +216,24 @@ function referencesAny(
 }
 
 /**
+ * Whether the block `value` references one of `keys`. A hosted index stub
+ * (a body not loaded, hosted-content.ts) answers from its index references.
+ */
+function blockReferencesAny(
+  value: unknown,
+  keys: ReadonlySet<string>,
+): boolean {
+  return isIndexStub(value)
+    ? indexStubRefs(value).some((ref) => keys.has(ref))
+    : referencesAny(value, keys);
+}
+
+/**
  * The pages whose content shows the saved block `blockKey`: those that
  * reference it (`{ "__resolveType": blockKey }` at any depth, inside a lazy
  * wrapper too) or reference another saved block that does. In decofile order.
- * Reads only the content already in hand: no request, no site code.
+ * Reads only the content already in hand: no request, no site code. On the
+ * hosted CMS a block not loaded counts by its index references.
  */
 export function pagesShowingBlock(
   decofile: Record<string, unknown>,
@@ -233,14 +248,15 @@ export function pagesShowingBlock(
     grew = false;
     for (const [key, value] of Object.entries(decofile)) {
       if (shown.has(key) || pageKeys.has(key)) continue;
-      if (referencesAny(value, shown)) {
+      if (blockReferencesAny(value, shown)) {
         shown.add(key);
         grew = true;
       }
     }
   }
   return pages.filter(
-    (page) => page.key !== blockKey && referencesAny(decofile[page.key], shown),
+    (page) =>
+      page.key !== blockKey && blockReferencesAny(decofile[page.key], shown),
   );
 }
 

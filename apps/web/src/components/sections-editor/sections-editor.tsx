@@ -79,6 +79,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema, type SchemaProperty } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
+import { useEnsureSiteSeoBlocks } from "./seo-editor";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import {
   activeSeoResolveType,
@@ -704,6 +705,13 @@ export function SectionsEditor({
   // Bumped by a content change this form didn't make (content-sync.ts).
   const contentEpoch = useContentSyncState(orgSlug, virtualMcpId).epoch;
   const [seenContentEpoch, setSeenContentEpoch] = useState(contentEpoch);
+
+  // Hosted v8: the site's SEO block is loaded while the page's SEO is open.
+  useEnsureSiteSeoBlocks(
+    editingSeo ? { orgSlug, virtualMcpId, branch } : null,
+    decofile ?? undefined,
+    meta ?? undefined,
+  );
 
   if (!previewReady || decofileLoading || metaLoading) {
     return (

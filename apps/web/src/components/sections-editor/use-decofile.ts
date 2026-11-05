@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  type HostedBlocksLoad,
   listingOf,
   useContentIndex,
   useEnsureHostedBlocks,
@@ -307,14 +308,15 @@ export function useDecofile(
 /**
  * Studio's hosted CMS: loads the bodies of `names` (and, with `withRefs`,
  * of the blocks they reference directly) a view opens, through
- * `cms.blocks`, and again when the index moves their versions. True once
- * they're loaded, and always for every other backend (it holds every body).
+ * `cms.blocks`, and again when the index moves their versions. `ready`
+ * once they're loaded, and always for every other backend (it holds every
+ * body); `failed` while a load that failed waits to be tried again.
  */
 export function useEnsureDecofileBlocks(
   params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
   names: readonly string[],
   options?: { withRefs?: boolean },
-): boolean {
+): HostedBlocksLoad {
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
   const key = useDecofileCacheKey(params);
   const rpc = backend.kind === "protocol" ? backend.hosted : undefined;

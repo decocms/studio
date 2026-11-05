@@ -773,13 +773,15 @@ async function readHostedContent(
   };
   queryClient.setQueryData(indexKey, index);
   // Another editor's save: the preview follows the draft as the index saw
-  // it. (After this editor's save — a `s-…` revision, contract §4.3 step 6 —
-  // the pointer already moved with it, and the first poll's "modified" is
-  // that same save.)
+  // it. After this editor's save (a `s-…` revision, contract §4.3 step 6)
+  // the pointer already moved with it, and the first poll's "modified" may
+  // be that same save: it is someone else's only when the draft's versions
+  // differ from the ones this editor holds (its saves adopted theirs).
   const elsewhere =
     !!read.seen?.revision &&
-    !read.seen.revision.startsWith("s-") &&
-    index.revision !== read.seen.revision;
+    index.revision !== read.seen.revision &&
+    (!read.seen.revision.startsWith("s-") ||
+      (!!currentIndex && draftDiffers(currentIndex.draft, index.draft)));
   if (elsewhere) {
     queryClient.setQueryData<HostedDraftPointer>(
       KEYS.protocolDraftRead(
@@ -830,6 +832,19 @@ async function readHostedContent(
   const blocks =
     queryClient.getQueryData<Record<string, unknown>>(blocksKey) ?? kept;
   return { blocks, meta };
+}
+
+/** Whether two answers of the draft's names differ in a name or a version. */
+function draftDiffers(
+  held: ContentIndex["draft"],
+  read: ContentIndex["draft"],
+): boolean {
+  const names = Object.keys(read);
+  if (names.length !== Object.keys(held).length) return true;
+  return names.some(
+    (name) =>
+      !Object.hasOwn(held, name) || held[name]?.version !== read[name]?.version,
+  );
 }
 
 /** The guards of the names `part` touches. */
@@ -987,7 +1002,19 @@ export async function applyProtocolPatch(
           if (Object.keys(landed).length > 0) {
             adoptLanded(queryClient, params, cacheKey, patch, landed);
           }
-          const retried = await send(rest);
+          let retried: BlocksApplyResult;
+          try {
+            retried = await send(rest);
+          } catch (again) {
+            // The retry stopped part way too: what it wrote is adopted as
+            // well, so the next save of those blocks carries their new
+            // versions, not a guard its own write already moved.
+            const landedAgain = landedOf(again);
+            if (landedAgain && Object.keys(landedAgain).length > 0) {
+              adoptLanded(queryClient, params, cacheKey, rest, landedAgain);
+            }
+            throw again;
+          }
           result = {
             ...retried,
             versions: { ...landed, ...retried.versions },

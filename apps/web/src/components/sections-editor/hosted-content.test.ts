@@ -18,12 +18,17 @@ import {
 import { resetContentSync } from "./content-sync";
 import {
   type ContentIndex,
+  ensureEveryHostedBlock,
   ensureHostedBlocks,
   type HostedCall,
+  indexStubRefs,
   isIndexStub,
   listingOf,
   stubNames,
 } from "./hosted-content";
+import { pagesShowingBlock, previewPageForBlock } from "./page-list";
+import { findSiteSeoEntry } from "./seo-block";
+import { planNamedRuleRename } from "./rule-references";
 
 const ORG = "acme";
 const VM = "vm-1";
@@ -61,6 +66,26 @@ function hostedServer() {
     failOnce: new Set<string>(),
   };
   const revision = () => `t${state.token}`;
+  /** The index's `refs`: the saved block names the body's `__resolveType`s name. */
+  const refsMeta = (body: unknown) => {
+    const found = new Set<string>();
+    const walk = (value: unknown) => {
+      if (Array.isArray(value)) return value.forEach(walk);
+      if (!value || typeof value !== "object") return;
+      for (const [key, inner] of Object.entries(value)) {
+        if (key === "__resolveType" && typeof inner === "string") {
+          found.add(inner);
+        } else walk(inner);
+      }
+    };
+    walk(body);
+    const refs = [...found]
+      .filter((n) => Object.hasOwn(state.bodies, n))
+      .sort();
+    return refs.length > 0 ? { refs } : {};
+  };
+  /** `cms.blocks` fails (Unavailable) this many more times. */
+  let blocksFailures = 0;
   const indexAnswer = (ifNoneMatch?: string) =>
     ifNoneMatch === revision()
       ? { notModified: true, revision: revision() }
@@ -77,6 +102,7 @@ function hostedServer() {
                 meta: {
                   type: body.__resolveType as string,
                   ...(typeof body.path === "string" ? { path: body.path } : {}),
+                  ...refsMeta(body),
                 },
               },
             ]),
@@ -96,6 +122,15 @@ function hostedServer() {
       case "cms.blocks": {
         const names = (call.params as { names: string[] }).names;
         state.blocksCalls.push(names);
+        if (blocksFailures > 0) {
+          blocksFailures--;
+          return {
+            ok: false,
+            error: new ContentProtocolError(ErrorCode.Unavailable, "busy", {
+              retryAfterMs: 10,
+            }),
+          };
+        }
         const blocks: Record<string, unknown> = {};
         const versions: Record<string, string> = {};
         const missing: string[] = [];
@@ -181,7 +216,10 @@ function hostedServer() {
     cacheKeySuffix: "",
     hosted,
   };
-  return { state, backend, hosted, writeElsewhere };
+  const failBlocks = (times: number) => {
+    blocksFailures = times;
+  };
+  return { state, backend, hosted, writeElsewhere, failBlocks };
 }
 
 const loadedBodies = (queryClient: QueryClient) =>
@@ -403,5 +441,242 @@ describe("hosted saves", () => {
       KEYS.contentIndex(CACHE_KEY),
     );
     expect(index?.entries.about).toBeUndefined();
+  });
+});
+
+describe("helpers that scan bodies, over a hosted listing", () => {
+  it("a stub carries its index references", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedServer();
+    state.bodies.home = {
+      __resolveType: "page",
+      path: "/",
+      sections: [{ __resolveType: "Header" }],
+    };
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    const listing = listingOf(
+      queryClient.getQueryData<ContentIndex>(KEYS.contentIndex(CACHE_KEY)),
+      loadedBodies(queryClient),
+    );
+    expect(indexStubRefs(listing.home)).toEqual(["Header"]);
+    expect(indexStubRefs(listing.about)).toEqual([]);
+    expect(indexStubRefs({ __resolveType: "Header" })).toEqual([]);
+  });
+
+  it("previews a saved section on a page that uses it, through stubs and saved blocks between", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedServer();
+    state.bodies.home = {
+      __resolveType: "website/pages/Page.tsx",
+      path: "/",
+      sections: [{ __resolveType: "Shell" }],
+    };
+    state.bodies.Shell = {
+      __resolveType: "site/sections/Shell.tsx",
+      top: { __resolveType: "Header" },
+    };
+    state.versions.Shell = "vS";
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    // Nothing is loaded: every block is a stub.
+    const listing = listingOf(
+      queryClient.getQueryData<ContentIndex>(KEYS.contentIndex(CACHE_KEY)),
+      loadedBodies(queryClient),
+    );
+    expect(pagesShowingBlock(listing, "Header").map((p) => p.key)).toEqual([
+      "home",
+    ]);
+    expect(previewPageForBlock(listing, "Header")?.key).toBe("home");
+    expect(previewPageForBlock(listing, "about" as string)).toBeNull();
+  });
+
+  it("the site SEO is never read from a stub", () => {
+    const stubbed = listingOf(
+      {
+        revision: "t1",
+        resolvedRef: null,
+        sequence: 1,
+        entries: {
+          site: { version: "v1", meta: { type: "site/apps/site.ts" } },
+        },
+        draft: {},
+      },
+      {},
+    );
+    expect(findSiteSeoEntry(stubbed)).toBeNull();
+    const loaded = listingOf(
+      {
+        revision: "t1",
+        resolvedRef: null,
+        sequence: 1,
+        entries: {
+          site: { version: "v1", meta: { type: "site/apps/site.ts" } },
+        },
+        draft: {},
+      },
+      {
+        site: {
+          __resolveType: "site/apps/site.ts",
+          seo: { title: "Capy" },
+        },
+      },
+    );
+    expect(findSiteSeoEntry(loaded)).toMatchObject({
+      blockKey: "site",
+      kind: "nested",
+      seoData: { title: "Capy" },
+    });
+  });
+});
+
+describe("a failed cms.blocks", () => {
+  it("rejects the load, and the next one that needs it reads it", async () => {
+    const queryClient = new QueryClient();
+    const { backend, hosted, failBlocks } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    failBlocks(1);
+    await expect(
+      ensureHostedBlocks(queryClient, hosted, CACHE_KEY, ["home"]),
+    ).rejects.toThrow("busy");
+    expect(loadedBodies(queryClient)?.home).toBeUndefined();
+    await ensureHostedBlocks(queryClient, hosted, CACHE_KEY, ["home"]);
+    expect(loadedBodies(queryClient)?.home).toMatchObject({ path: "/" });
+  });
+});
+
+describe("a named rule planned from a read made now (hosted)", () => {
+  const usesHero = (path: string) => ({
+    __resolveType: "page",
+    path,
+    sections: {
+      __resolveType: "multivariate",
+      variants: [
+        {
+          rule: { __resolveType: "experiment", name: "hero" },
+          value: [],
+        },
+      ],
+    },
+  });
+
+  it("loads a use another editor saved after this view loaded, so a rename rewrites it", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend, hosted, writeElsewhere } = hostedServer();
+    state.bodies.experiments = { __resolveType: "split-traffic", hero: 0 };
+    state.versions.experiments = "vE";
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await ensureEveryHostedBlock(queryClient, hosted, CACHE_KEY);
+    // Another editor puts the test on a new page.
+    writeElsewhere("promo", usesHero("/promo"));
+    state.blocksCalls.length = 0;
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    // The poll alone doesn't read a body no view opened...
+    expect(loadedBodies(queryClient)?.promo).toBeUndefined();
+    // ...the plan's read does, and only that one.
+    await ensureEveryHostedBlock(queryClient, hosted, CACHE_KEY);
+    expect(state.blocksCalls).toEqual([["promo"]]);
+    const change = planNamedRuleRename(
+      loadedBodies(queryClient)!,
+      "experiments",
+      "hero",
+      "launch",
+    );
+    expect(change && Object.keys(change.writes).sort()).toEqual([
+      "experiments",
+      "promo",
+    ]);
+  });
+});
+
+describe("other editors' saves, noticed by the poll", () => {
+  const pointerKey: readonly unknown[] = KEYS.protocolDraftRead(
+    ORG,
+    VM,
+    BRANCH,
+  );
+
+  it("after this editor's save, a poll that brings only that save moves nothing", async () => {
+    const queryClient = new QueryClient();
+    const { backend } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { home: { __resolveType: "page", path: "/" } } },
+      { home: null },
+    );
+    queryClient.setQueryData<{ version: string }>(pointerKey, {
+      version: "mine",
+    });
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    expect(queryClient.getQueryData<{ version: string }>(pointerKey)).toEqual({
+      version: "mine",
+    });
+  });
+
+  it("another editor's save right after this editor's moves the preview", async () => {
+    const queryClient = new QueryClient();
+    const { backend, writeElsewhere } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { home: { __resolveType: "page", path: "/" } } },
+      { home: null },
+    );
+    queryClient.setQueryData<{ version: string }>(pointerKey, {
+      version: "mine",
+    });
+    writeElsewhere("about", { __resolveType: "page", path: "/about-us" });
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    const index = queryClient.getQueryData<ContentIndex>(
+      KEYS.contentIndex(CACHE_KEY),
+    );
+    expect(queryClient.getQueryData<{ version: string }>(pointerKey)).toEqual({
+      version: index!.revision,
+    });
+  });
+});
+
+describe("a save that lands in part twice", () => {
+  it("adopts what each attempt landed, so no next guard is stale", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    state.failOnce.add("about");
+    state.failOnce.add("home");
+    await expect(
+      applyProtocolPatch(
+        queryClient,
+        backend,
+        params,
+        CACHE_KEY,
+        {
+          set: {
+            Header: { __resolveType: "site/sections/Header.tsx", title: "a" },
+            about: { __resolveType: "page", path: "/about" },
+            home: { __resolveType: "page", path: "/" },
+          },
+        },
+        { Header: null, about: null, home: null },
+      ),
+    ).rejects.toThrow("busy");
+    // 1st: Header landed, about failed; retry: about landed, home failed.
+    expect(state.applied.map((p) => Object.keys(p.set ?? {}))).toEqual([
+      ["Header", "about", "home"],
+      ["about", "home"],
+    ]);
+    expect(
+      protocolBlockVersion(queryClient, CACHE_KEY, "Header", backend),
+    ).toBe(state.versions.Header);
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "about", backend)).toBe(
+      state.versions.about,
+    );
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "home", backend)).toBe(
+      null,
+    );
   });
 });

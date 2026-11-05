@@ -11,13 +11,15 @@
  * - `KEYS.decofile` holds only the bodies loaded so far. `ensureHostedBlocks`
  *   loads the ones a view opens, through `cms.blocks` (50 names a call).
  * - List views see {@link listingOf}: every name of the index, an unloaded
- *   one as a stub carrying only its type and path (`INDEX_STUB`). A stub is
- *   never saved ({@link stubNames}).
+ *   one as a stub carrying only its type, path and direct references
+ *   (`INDEX_STUB`, {@link indexStubRefs}). A stub is never saved
+ *   ({@link stubNames}); a helper that scans bodies reads a stub's
+ *   references instead of its (absent) body.
  */
 
 import type { QueryClient } from "@tanstack/react-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   type BatchCall,
   type BatchOutcome,
@@ -25,6 +27,7 @@ import {
   ErrorCode,
 } from "@decocms/blocks/protocol";
 import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
+import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { keepContentBookkeeping } from "./content-bookkeeping";
 
@@ -136,6 +139,8 @@ export function createHostedRpc(
 
 /** The key that marks an index stub: a block whose body isn't loaded. */
 const INDEX_STUB = "__indexStub";
+/** An index stub's direct references (the index's `meta.refs`). */
+const INDEX_STUB_REFS = "__indexRefs";
 
 /** Whether `value` is an index stub (or a copy of one). */
 export function isIndexStub(value: unknown): boolean {
@@ -147,6 +152,18 @@ export function isIndexStub(value: unknown): boolean {
   );
 }
 
+/**
+ * The names an index stub's block references directly (its index
+ * `meta.refs`); `[]` for anything else.
+ */
+export function indexStubRefs(value: unknown): string[] {
+  if (!isIndexStub(value)) return [];
+  const refs = (value as Record<string, unknown>)[INDEX_STUB_REFS];
+  return Array.isArray(refs)
+    ? refs.filter((ref): ref is string => typeof ref === "string")
+    : [];
+}
+
 /** The names of `set` whose value is an index stub: never written. */
 export function stubNames(set: Record<string, unknown> | undefined): string[] {
   return Object.entries(set ?? {})
@@ -156,7 +173,8 @@ export function stubNames(set: Record<string, unknown> | undefined): string[] {
 
 /**
  * Every name of the index, for list views: a loaded body as it is, any
- * other as a stub with its raw type and path. Index order.
+ * other as a stub with its raw type, path and direct references. Index
+ * order.
  */
 export function listingOf(
   index: ContentIndex | undefined,
@@ -173,6 +191,9 @@ export function listingOf(
       [INDEX_STUB]: true,
       ...(entry.meta?.type ? { __resolveType: entry.meta.type } : {}),
       ...(entry.meta?.path !== undefined ? { path: entry.meta.path } : {}),
+      ...(entry.meta?.refs?.length
+        ? { [INDEX_STUB_REFS]: entry.meta.refs }
+        : {}),
     };
   }
   // A block saved here and not yet in a polled index.
@@ -351,6 +372,32 @@ export async function ensureHostedBlocks(
   await Promise.all(waits);
 }
 
+/**
+ * Loads every body the index names that isn't loaded at the index's
+ * version: what a plan over every block reads first. A named rule's use is
+ * found only in bodies (the index's `refs` name saved blocks, never a
+ * test or campaign), so a rename or delete that rewrites each use, planned
+ * from a read made now, must see the blocks another editor saved since
+ * this view loaded. Only the names new or moved since are read.
+ */
+export function ensureEveryHostedBlock(
+  queryClient: QueryClient,
+  rpc: HostedRpc,
+  cacheKey: string,
+  saving: ReadonlySet<string> = new Set(),
+): Promise<void> {
+  const index = queryClient.getQueryData<ContentIndex>(
+    KEYS.contentIndex(cacheKey),
+  );
+  return ensureHostedBlocks(
+    queryClient,
+    rpc,
+    cacheKey,
+    Object.keys(index?.entries ?? {}),
+    saving,
+  );
+}
+
 async function loadBlocks(
   queryClient: QueryClient,
   rpc: HostedRpc,
@@ -410,17 +457,39 @@ export function useContentIndex(cacheKey: string): ContentIndex | undefined {
   return data;
 }
 
+/** Where a view's {@link useEnsureHostedBlocks} load stands. */
+export interface HostedBlocksLoad {
+  /** Every name wanted that the index has is loaded (always, off hosted). */
+  ready: boolean;
+  /** The last load failed; it is tried again on its own, or with `retry`. */
+  failed: boolean;
+  /** Try the load again now. */
+  retry: () => void;
+}
+
+/** The longest wait before a failed load is tried again on its own. */
+const RETRY_CAP_MS = 30_000;
+
+/** The wait the server asked for (`-32008` `data.retryAfterMs`), if any. */
+function retryAfterOf(error: unknown): number | undefined {
+  if (!(error instanceof ContentProtocolError)) return undefined;
+  const after = (error.data as { retryAfterMs?: unknown } | null)?.retryAfterMs;
+  return typeof after === "number" && after > 0 ? after : undefined;
+}
+
 /**
  * Loads `names` (and the names their bodies reference directly, when
  * `withRefs`) once the index is read, and again when the index moves their
- * versions. True once every one the index has is loaded.
+ * versions. A failed load (design "Failures": a failed read is retried by
+ * the next one that needs it) is tried again on its own, after the wait the
+ * server asked for or with backoff, and says so (`failed`) meanwhile.
  */
 export function useEnsureHostedBlocks(
   rpc: HostedRpc | null | undefined,
   cacheKey: string,
   names: readonly string[],
   options?: { withRefs?: boolean },
-): boolean {
+): HostedBlocksLoad {
   const queryClient = useQueryClient();
   const index = useContentIndex(cacheKey);
   const { data: loaded } = useQuery<Record<string, unknown>>({
@@ -443,14 +512,59 @@ export function useEnsureHostedBlocks(
   const key = wanted
     .map((name) => `${name}@${index?.entries[name]?.version ?? ""}`)
     .join("\n");
+  // The failures of the load of `key` so far, and the attempt to run.
+  const [failure, setFailure] = useState<{
+    key: string;
+    count: number;
+    retryAfterMs: number | undefined;
+  } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const failures = failure?.key === key ? failure : null;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- loads what the view opens when the index names it
   useEffect(() => {
     if (!rpc || !key) return;
+    let current = true;
     // `key` carries the names wanted and their versions.
     const names = key
       .split("\n")
       .map((line) => line.slice(0, line.lastIndexOf("@")));
-    void ensureHostedBlocks(queryClient, rpc, cacheKey, names).catch(() => {});
-  }, [rpc, queryClient, cacheKey, key]);
-  return !rpc || !pending;
+    ensureHostedBlocks(queryClient, rpc, cacheKey, names).then(
+      () => {
+        if (current) setFailure((f) => (f?.key === key ? null : f));
+      },
+      (error: unknown) => {
+        if (!current) return;
+        setFailure((f) => ({
+          key,
+          count: (f?.key === key ? f.count : 0) + 1,
+          retryAfterMs: retryAfterOf(error),
+        }));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [rpc, queryClient, cacheKey, key, attempt]);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- a timer that tries a failed load again
+  useEffect(() => {
+    if (!failures) return;
+    const wait = Math.min(
+      RETRY_CAP_MS,
+      failures.retryAfterMs ??
+        exponentialBackoffWithJitter(
+          RETRY_CAP_MS,
+          1000,
+          failures.count - 1,
+          2,
+          0.5,
+        ),
+    );
+    const timer = setTimeout(() => setAttempt((n) => n + 1), wait);
+    return () => clearTimeout(timer);
+  }, [failures]);
+  return {
+    ready: !rpc || !pending,
+    failed: !!rpc && pending && failures !== null,
+    retry: () => setAttempt((n) => n + 1),
+  };
 }
