@@ -221,7 +221,7 @@ describe("publishCmsDraft", () => {
     await publishCmsDraft(deps, draft, "");
     const live = await readLatest(delivery.store, SITE);
     expect(live?.latest.blocks.CMS).toEqual(
-      indexEntry("CMS", { __resolveType: "cms-settings", a: 1 }, ["CMS"]),
+      await indexEntry("CMS", { __resolveType: "cms-settings", a: 1 }, ["CMS"]),
     );
     expect(live?.latest.blocks.CMS?.data).toEqual({
       __resolveType: "cms-settings",
@@ -378,12 +378,12 @@ describe("publishCmsDraft", () => {
 });
 
 describe("composeIndex", () => {
-  it("keeps unchanged entries as they are, even refs to a name since deleted", () => {
+  it("keeps unchanged entries as they are, even refs to a name since deleted", async () => {
     const base = {
       home: { version: "a".repeat(22), meta: { refs: ["gone"] } },
       gone: { version: "b".repeat(22) },
     };
-    const out = composeIndex(base, new Map(), new Set(["gone"]));
+    const out = await composeIndex(base, new Map(), new Set(["gone"]));
     expect(out).toEqual({ home: base.home });
   });
 });

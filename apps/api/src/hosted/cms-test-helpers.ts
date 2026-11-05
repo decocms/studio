@@ -97,10 +97,12 @@ export async function seedRelease(
   const live = await readLatest(store, site);
   const names = Object.keys(blocks);
   const entries: BlockIndex = Object.fromEntries(
-    Object.entries(blocks).map(([name, body]) => [
-      name,
-      indexEntry(name, body, names),
-    ]),
+    await Promise.all(
+      Object.entries(blocks).map(
+        async ([name, body]) =>
+          [name, await indexEntry(name, body, names)] as const,
+      ),
+    ),
   );
   for (const [name, body] of Object.entries(blocks)) {
     await writeBlockObject(

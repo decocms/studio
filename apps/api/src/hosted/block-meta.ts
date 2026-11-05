@@ -1,85 +1,121 @@
 /**
- * A block's entry in a hosted revision index (`revisions/<id>/index.json`,
- * `latest.json`): its version plus the small metadata routing and the
- * reference walk need without reading the body (contract §2.1).
+ * Index entries of a hosted release (see /next/hosted-releases-internals):
+ * `revisions/<id>/index.json` and `latest.json` map each block name to its
+ * hash (`version`) plus the little metadata routing and the reference walk
+ * need, so neither needs a block body.
  *
- * - `type`: the body's raw `__resolveType` (no alias mapping);
- * - `path`: the body's top-level `path` string, whatever the type;
- * - `refs`: every `__resolveType` string anywhere in the body (every
- *   variant, `never` and `lazy` included, the top-level one too) that is a
- *   block name of the index being built, deduped, code-unit sorted.
+ * `blockMeta(body, names)` is the one helper Studio, the SDK and the CLI use
+ * to compute that metadata, so all three write and read the same entries.
+ * Pure, synchronous, browser-safe; its only import is the dependency-free
+ * canonical hash (for `indexEntry`).
  *
- * Each key is present only when non-empty; an entry carries `meta` only when
- * it has a key, and `data` (the body) only for the CMS settings block.
+ * - `type`: the body's raw top-level `__resolveType`, copied without alias
+ *   mapping (readers map it with their alias rules).
+ * - `path`: the body's top-level `path`, when it is a string (any type).
+ * - `refs`: every `__resolveType` string anywhere in the body (the top-level
+ *   one included, every variant, `never` and `lazy` values included) that is
+ *   one of `names`, deduped and sorted in code-unit order.
+ * - `rules`: the names of the A/B tests and campaigns the body uses: every
+ *   object anywhere in it (the top level included: a saved rule) that is the
+ *   rule `experiment { name }` or `campaign { name }` with a string `name`
+ *   (an empty one included), whether or not the `experiments`/`campaigns`
+ *   block has it, deduped and sorted in code-unit order. The shapes Studio's
+ *   Experiments and Campaigns views count as a use, so their "Used by" and a
+ *   rename or delete read the index, not every body. A `{ "__resolveType":
+ *   "experiments" }` value (a section reading the whole map) names none.
  *
- * `@decocms/blocks/protocol`'s own `blockMeta` (on the `cdn-cms/cas` branch)
- * is the same function. No release carries it yet, and Studio can't take it
- * from the branch without publishing a package (see `block-version.ts`), so
- * this is a copy, checked against the byte-identical
- * `block-meta-vectors.json`. Swap it for the package's export once released.
+ * A key is present only when it has a value (`refs: []` is left out), so a
+ * body with nothing to say gives `{}` and its entry carries no `meta`.
  */
+import { blockVersion } from "./canonical.ts";
 
-import { blockVersion } from "./block-version";
-
+/** What an index says about a block, besides its hash. */
 export interface BlockMeta {
+  /** The body's raw `__resolveType`. */
   type?: string;
+  /** The body's top-level `path`. */
   path?: string;
+  /** The block names the body references, deduped, in code-unit order. */
   refs?: string[];
+  /** The tests and campaigns the body's rules name, deduped, in code-unit order. */
+  rules?: string[];
 }
 
+/** One entry of a revision index. */
 export interface IndexEntry {
+  /** `blockVersion(body)`: the hash the body is stored under (`blocks/<version>.json`). */
   version: string;
+  /** Omitted when empty. */
   meta?: BlockMeta;
+  /** The body itself, only on the CMS settings entry (`CMS`). */
   data?: unknown;
 }
 
+/** A revision index's blocks: block name → entry. */
 export type BlockIndex = Record<string, IndexEntry>;
 
-/** The settings block, whose body every index inlines. */
-const CMS_SETTINGS_BLOCK = "CMS";
+/** The well-known name whose body every index inlines as `data`. */
+export const INLINE_BLOCK = "CMS";
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
+/** The built-in rules that name an A/B test (`experiment`) or a campaign (`campaign`) by `name`. */
+const NAMED_RULES: ReadonlySet<unknown> = new Set(["experiment", "campaign"]);
 
-function collectResolveTypes(value: unknown, out: Set<string>) {
-  if (Array.isArray(value)) {
-    for (const item of value) collectResolveTypes(item, out);
-    return;
-  }
-  if (!isPlainObject(value)) return;
-  for (const [key, inner] of Object.entries(value)) {
-    if (key === "__resolveType" && typeof inner === "string") out.add(inner);
-    else collectResolveTypes(inner, out);
-  }
-}
-
+/** The metadata of one block body; `names` are the block names of the index being built. */
 export function blockMeta(
   body: unknown,
   names: ReadonlySet<string> | readonly string[],
 ): BlockMeta {
-  if (!isPlainObject(body)) return {};
-  const known: ReadonlySet<string> =
-    names instanceof Set ? names : new Set(names as readonly string[]);
   const meta: BlockMeta = {};
+  if (!isRecord(body)) return meta;
   if (typeof body.__resolveType === "string") meta.type = body.__resolveType;
   if (typeof body.path === "string") meta.path = body.path;
+  const known: ReadonlySet<string> = isSet(names) ? names : new Set(names);
   const found = new Set<string>();
-  collectResolveTypes(body, found);
-  const refs = [...found].filter((name) => known.has(name)).sort();
-  if (refs.length > 0) meta.refs = refs;
+  const rules = new Set<string>();
+  collect(body, known, found, rules);
+  if (found.size > 0) meta.refs = [...found].sort();
+  if (rules.size > 0) meta.rules = [...rules].sort();
   return meta;
 }
 
-export function indexEntry(
+/** The index entry for a block: its hash, its metadata when any, and its body when it is `CMS`. */
+export async function indexEntry(
   name: string,
   body: unknown,
   names: ReadonlySet<string> | readonly string[],
-): IndexEntry {
+): Promise<IndexEntry> {
+  const entry: IndexEntry = { version: await blockVersion(body) };
   const meta = blockMeta(body, names);
-  return {
-    version: blockVersion(body),
-    ...(Object.keys(meta).length > 0 ? { meta } : {}),
-    ...(name === CMS_SETTINGS_BLOCK ? { data: body } : {}),
-  };
+  if (Object.keys(meta).length > 0) entry.meta = meta;
+  if (name === INLINE_BLOCK) entry.data = body;
+  return entry;
+}
+
+function collect(
+  node: unknown,
+  names: ReadonlySet<string>,
+  found: Set<string>,
+  rules: Set<string>,
+): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collect(item, names, found, rules);
+    return;
+  }
+  if (!isRecord(node)) return;
+  if (NAMED_RULES.has(node.__resolveType) && typeof node.name === "string") rules.add(node.name);
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "__resolveType") {
+      if (typeof value === "string" && names.has(value)) found.add(value);
+    } else {
+      collect(value, names, found, rules);
+    }
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSet(value: ReadonlySet<string> | readonly string[]): value is ReadonlySet<string> {
+  return !Array.isArray(value);
 }
