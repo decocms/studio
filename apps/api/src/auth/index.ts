@@ -40,7 +40,12 @@ import { getDb, getDatabaseUrl, getDbDialect } from "../database";
 import { findOrgByPreviousSlug } from "../core/org-previous-slug";
 import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
-import { emailButton, emailParagraph, emailTemplate } from "./email-template";
+import {
+  emailButton,
+  emailParagraph,
+  emailTemplate,
+  escapeHtml,
+} from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
 import { hoistOrgLogo } from "./hoist-org-logo";
@@ -171,16 +176,19 @@ if (
     const sendEmail = createEmailSender(inviteProvider);
 
     sendInvitationEmail = async (data) => {
-      const inviterName = data.inviter.user?.name || data.inviter.user?.email;
+      const inviterName = escapeHtml(
+        data.inviter.user?.name || data.inviter.user?.email,
+      );
+      const orgName = escapeHtml(data.organization.name);
       const acceptUrl = `${getBaseUrl()}/auth/accept-invitation?invitationId=${data.invitation.id}&redirectTo=/${data.organization.slug}`;
 
       await sendEmail({
         to: data.email,
         subject: `You've been invited to join ${data.organization.name}`,
         html: emailTemplate({
-          preheader: `${inviterName} has invited you to join ${data.organization.name} on deco Studio.`,
+          preheader: `${inviterName} has invited you to join ${orgName} on deco Studio.`,
           heading: "You've been invited",
-          subheading: `<strong>${inviterName}</strong> has invited you to join <strong>${data.organization.name}</strong> on deco Studio.`,
+          subheading: `<strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> on deco Studio.`,
           body: emailButton("Accept invitation", acceptUrl),
           footnote:
             "If you weren\u2019t expecting an invitation, you can safely ignore this email.",

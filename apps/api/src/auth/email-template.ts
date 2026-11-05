@@ -5,6 +5,20 @@
  * same base layout so they look and feel consistent out of the box.
  */
 
+/**
+ * Escapes HTML-significant characters. Apply to any user-controlled string
+ * (display name, organization name, etc.) before interpolating it into an
+ * email template — those values aren't otherwise validated against markup.
+ */
+export function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 interface EmailTemplateOptions {
   /** Short preview text shown in the inbox before opening the email. */
   preheader?: string;
