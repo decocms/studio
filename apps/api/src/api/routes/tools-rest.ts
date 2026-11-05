@@ -14,6 +14,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
+import { ConflictError } from "../../core/conflict-error";
 import { GatewayRefusalError } from "../../ai-providers/adapters/deco-ai-gateway";
 import { OrgBlockedError } from "../../core/org-notice-gate";
 import { resolveToolByName, TOOL_BY_NAME } from "../../tools";
@@ -86,6 +87,9 @@ export const createToolsRestRoutes = () => {
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         return c.json({ error: error.message }, 401);
+      }
+      if (error instanceof ConflictError) {
+        return c.json({ error: error.message }, 409);
       }
       if (error instanceof OrgBlockedError) {
         return c.json({ error: error.message, code: error.code }, 403);
