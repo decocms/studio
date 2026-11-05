@@ -192,7 +192,11 @@ export function clearRevisionCache() {
   metas.clear();
 }
 
-/** A parsed meta.json is immutable too: cached by (site, id); absent ones aren't. */
+/**
+ * A parsed meta.json is immutable too: cached by (site, id). Only one read
+ * and parsed is: never a miss (404) or a read or parse failure, so a fixed
+ * object is seen on the next read.
+ */
 const metas = createTtlLruCache<RevisionMeta>({
   ttlMs: 60 * 60_000,
   maxSize: 4096,
