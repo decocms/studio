@@ -34,6 +34,7 @@ import {
   setBoardMoveListener,
   TaskBoardStorage,
 } from "../storage/task-board";
+import { SqlThreadStorage } from "../storage/threads";
 import type { TaskBoardItemStatus } from "../storage/types";
 import {
   type BoardTransitionDeps,
@@ -71,6 +72,8 @@ describe("board column transition trigger (real Postgres)", () => {
     fire: FireAutomationContext;
     idempotencyKey: string;
   }[];
+  /** Fires held until the card's live run ends. */
+  let held: { fire: FireAutomationContext; itemId: string }[];
   /** The sweep's clock: every move below is placed relative to it. */
   const NOW = Date.now();
 
@@ -89,6 +92,7 @@ describe("board column transition trigger (real Postgres)", () => {
       storage: { taskBoard, automations },
     } as unknown as StudioContext;
     handed = [];
+    held = [];
     // The fire workflow's own card step, minus the queue.
     deps = {
       automations,
@@ -102,6 +106,9 @@ describe("board column transition trigger (real Postgres)", () => {
         if (automation && fire.triggerId && fire.target?.kind === "card") {
           await runOnCardStep(automation, fire.triggerId, fire.target);
         }
+      },
+      fireAfterLiveRun: async (fire, opts) => {
+        held.push({ fire, itemId: opts.itemId });
       },
     };
     orgCtx = ctx;
@@ -362,6 +369,57 @@ describe("board column transition trigger (real Postgres)", () => {
     } finally {
       setBoardMoveListener(null);
     }
+  });
+
+  /** A run working `itemId`: started, with a message, not finished. */
+  async function liveRunOn(itemId: string) {
+    const thread = await new SqlThreadStorage(database.db).create({
+      organization_id: ORG,
+      title: "Super Agent: run",
+      status: "in_progress",
+      message_storage_version: 2,
+      created_by: USER,
+    });
+    await taskBoard.linkThread(itemId, thread.id, ORG);
+    await database.db
+      .insertInto("thread_message_parts")
+      .values({
+        id: `${thread.id}:m:0`,
+        seq: 0,
+        org_id: ORG,
+        thread_id: thread.id,
+        run_id: thread.id,
+        message_id: `${thread.id}:m`,
+        role: "user",
+        kind: "text",
+        payload: JSON.stringify({ type: "text", text: "go" }),
+        created_at: new Date().toISOString(),
+      })
+      .execute();
+  }
+
+  it("holds the fire on a card a run still works until the run ends", async () => {
+    const trigger = await triggerOn("qa");
+    const moved = await card([{ from: "in_review", to: "qa", secondsAgo: 30 }]);
+    await liveRunOn(moved.id);
+
+    await sweepSettledMoves(deps, NOW, SETTLE_MS);
+
+    // Claimed once, then held rather than skipped as busy.
+    expect(await fires()).toBe(1);
+    expect(handed).toEqual([]);
+    expect(held).toEqual([
+      {
+        fire: expect.objectContaining({
+          triggerId: trigger.id,
+          target: expect.objectContaining({
+            itemId: moved.id,
+            columnKey: "qa",
+          }),
+        }),
+        itemId: moved.id,
+      },
+    ]);
   });
 
   it("hands a fire to the automation workflow with the card as its target", async () => {

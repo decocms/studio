@@ -88,6 +88,15 @@ export type CardRunOutcome =
  * conditional write that checks its column, so two fires can never both
  * start a run.
  */
+/** A run is working the card: started, and not finished or abandoned. */
+export function hasLiveRun(item: Pick<TaskBoardItem, "threads">): boolean {
+  return item.threads.some(
+    (t) =>
+      t.hasMessages &&
+      (t.status === "in_progress" || t.status === "requires_action"),
+  );
+}
+
 export async function runAutomationOnCard(
   ctx: StudioContext,
   automation: Automation,
@@ -106,15 +115,7 @@ export async function runAutomationOnCard(
     return await runManuallyOnCard(ctx, automation, item, triggerId, target);
   }
   if (item.status !== target.columnKey) return { skipped: "moved_on" };
-  if (
-    item.threads.some(
-      (t) =>
-        t.hasMessages &&
-        (t.status === "in_progress" || t.status === "requires_action"),
-    )
-  ) {
-    return { skipped: "busy" };
-  }
+  if (hasLiveRun(item)) return { skipped: "busy" };
   if (item.assigneeId && item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) {
     return { skipped: "owned" };
   }
