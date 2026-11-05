@@ -7,7 +7,9 @@ import type { PreviewDeviceSize } from "@/components/sandbox/preview/device-hint
 import { compareDraftLink } from "@/components/thread/repository/cms-publish-compare-path";
 import type { PreviewOptions } from "./preview-link";
 import {
+  getHeldPreviewRevision,
   getPreviewDraft,
+  holdPreviewRevision,
   previewDraftLink,
   previewDraftPageLink,
   previewDraftValue,
@@ -20,10 +22,80 @@ const SITE = "https://www.acme.com";
 const SHA = "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55";
 const SCOPE = "org/vm-1";
 
-afterEach(() => publishPreviewDraft(SCOPE, null));
+afterEach(() => {
+  publishPreviewDraft(SCOPE, null);
+  holdPreviewRevision(SCOPE, null);
+});
 
 const draftOf = (url: string | null) =>
   url === null ? null : new URL(url).searchParams.get("__draft");
+
+describe("a just-published revision held over the emptied draft", () => {
+  test("the value is the revision, with the preview options, while held", () => {
+    expect(
+      previewDraftValue({
+        pointer: POINTER,
+        heldRevision: SHA,
+        forcedVariants: [],
+        previewOptions: {},
+      }),
+    ).toBe(SHA);
+    expect(
+      previewDraftValue({
+        pointer: POINTER,
+        heldRevision: SHA,
+        forcedVariants: [],
+        previewOptions: { at: "2026-10-23T10:00:00Z" },
+      }),
+    ).toBe(`${SHA}?__at=2026-10-23T10%3A00%3A00Z`);
+  });
+
+  test("forced variants keep the draft pointer (a revision id can't carry them); no pointer, no value", () => {
+    expect(
+      previewDraftValue({
+        pointer: POINTER,
+        heldRevision: SHA,
+        forcedVariants: ["pages-home@sections=1"],
+        previewOptions: {},
+      }),
+    ).toBe(
+      "delivery.decocms.com/sites/acme/drafts/s1.json?__variant=pages-home%40sections%3D1@e1",
+    );
+    expect(
+      previewDraftValue({
+        pointer: null,
+        heldRevision: SHA,
+        forcedVariants: [],
+        previewOptions: {},
+      }),
+    ).toBeNull();
+  });
+
+  test("holdPreviewRevision keeps a revision id per project; anything else lets it go", () => {
+    holdPreviewRevision(SCOPE, SHA);
+    expect(getHeldPreviewRevision(SCOPE)).toBe(SHA);
+    expect(getHeldPreviewRevision("org/other")).toBeNull();
+    holdPreviewRevision(SCOPE, "not-a-revision");
+    expect(getHeldPreviewRevision(SCOPE)).toBeNull();
+    holdPreviewRevision(SCOPE, SHA);
+    holdPreviewRevision(SCOPE, null);
+    expect(getHeldPreviewRevision(SCOPE)).toBeNull();
+  });
+
+  test("the frame's URL and new-tab link carry it too", () => {
+    const urls = hostedPreviewUrls({
+      display: { mode: "production", iframeBase: SITE },
+      path: "/",
+      pointer: POINTER,
+      heldRevision: SHA,
+      device: "desktop" as PreviewDeviceSize,
+      forcedVariants: [],
+      previewOptions: {},
+    });
+    expect(draftOf(urls.newTab)).toBe(SHA);
+    expect(draftOf(urls.frame)).toBe(SHA);
+  });
+});
 
 describe("previewDraftValue: the one __draft a hosted preview sends", () => {
   test("the pointer with the forced variants and the preview options", () => {
