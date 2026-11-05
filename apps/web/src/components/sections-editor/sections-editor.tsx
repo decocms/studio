@@ -76,7 +76,7 @@ import { FormConflictDialog } from "./form-conflict-dialog";
 import {
   conflictAuthorDraft,
   useConflictAuthor,
-  versionTag,
+  heldBlockTag,
 } from "./conflict-author";
 import { BlockConflictError } from "./decofile-api";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
@@ -692,12 +692,13 @@ export function SectionsEditor({
     virtualMcpId,
     branch,
   });
+  // Their version is tagged as the block the save writes, whole, as the
+  // refusal recorded who changed it: the dialog's values are only the
+  // section's.
   const conflictAuthor = useConflictAuthor(
     hostedConflictDraft,
     formConflicts[0]?.blockKey ?? null,
-    formConflicts[0]
-      ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
-      : null,
+    heldBlockTag(decofile, formConflicts[0]?.blockKey ?? null),
   );
 
   // Declared above the early returns below: a hook after a conditional return
