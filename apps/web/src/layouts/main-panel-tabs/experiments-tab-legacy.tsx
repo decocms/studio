@@ -230,10 +230,20 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-const pct = (n: number) => `${Math.round(n * 100)}%`;
+const pct = (n: number) =>
+  new Intl.NumberFormat(undefined, {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(n);
 const num = (n: number) => new Intl.NumberFormat().format(n);
 const rate = (n: number, of: number) =>
-  of > 0 ? `${((100 * n) / of).toFixed(1)}%` : "—";
+  of > 0
+    ? new Intl.NumberFormat(undefined, {
+        style: "percent",
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }).format(n / of)
+    : "—";
 const money = (n: number) =>
   new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 2,
@@ -428,10 +438,10 @@ function Results({
                         {num(b.clicksPerVisitor)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {b.medianScrollDepth}%
+                        {pct(b.medianScrollDepth / 100)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {b.errorPct}%
+                        {rate(b.errorPct, 100)}
                       </TableCell>
                     </TableRow>
                   ),
