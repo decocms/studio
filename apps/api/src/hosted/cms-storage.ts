@@ -120,7 +120,7 @@ function unavailableFrom(error: unknown): never {
  * in `landed` were written (with these versions, `"tombstone"` for a
  * delete), the rest weren't. The client re-sends only the rest.
  */
-export class PartialApplyError extends StorageUnavailableError {
+class PartialApplyError extends StorageUnavailableError {
   constructor(
     readonly landed: Record<string, string>,
     cause: unknown,

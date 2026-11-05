@@ -194,7 +194,7 @@ export function serializeIndex(index: RevisionIndex): string {
 }
 
 /** latest.json's text: the revision's index, with the preview hosts. */
-export function serializeLatest(latest: Latest): string {
+function serializeLatest(latest: Latest): string {
   return JSON.stringify({
     revision: latest.revision,
     sequence: latest.sequence,
