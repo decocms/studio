@@ -14,7 +14,6 @@ import type { ProtocolBackend } from "@/components/sections-editor/content-backe
 import { protocolMetaQueryKey } from "@/components/sections-editor/content-protocol-api.ts";
 import type { DecofileScopeParams } from "@/components/sections-editor/decofile-api.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema.ts";
-import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses.ts";
 import {
   type ContentChanges,
   readContentChanges,
@@ -91,19 +90,12 @@ export function useContentPublishState(args: {
   const sides = useContentChangeSides(backend, cacheKey, changes);
   const lookup = useCurrentBlocks(cacheKey);
   const meta = useCachedSchema(backend, scope);
-  // Pages and sections whose rules name a test or campaign the draft doesn't
-  // have. The helper keeps its result for the same blocks and schema (the
-  // query cache's objects), so a render that changed neither reads it
-  // instead of walking the whole draft again.
-  const missingRules =
-    lookup && meta ? blocksUsingMissingNamedRules(lookup, meta) : null;
   const summary = summarizeContentChanges({
     changes: changes.changes,
     sides: sides.data ?? null,
     lookup,
     meta,
     hosted: backend.source === "github",
-    ...(missingRules ? { missingRules } : {}),
   });
   return {
     changes,

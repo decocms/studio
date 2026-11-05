@@ -17,7 +17,6 @@ import {
 import { changeId } from "./cms-publish-change-card";
 import type { GitChangedFile, GitDiffResult } from "./sandbox-git-api";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses";
 import { parseSections } from "@/components/sections-editor/parse-sections";
 
 const HOME_KEY = "pages-home-c4bcbfb771e9";
@@ -1169,63 +1168,6 @@ describe("summarizeContentChanges (a v8 source's changes.list)", () => {
     ]);
     // Without the schema `page` is no page type: one global section.
     expect(summarizeContentChanges(input).pages).toEqual([]);
-  });
-
-  it("flags a page whose rule names a test the draft no longer has (a discard went through)", () => {
-    const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
-    const meta = {
-      blocksMajor: 8,
-      manifest: {
-        blocks: {
-          matchers: { always: builtIn, experiment: builtIn, campaign: builtIn },
-          loaders: { multivariate: builtIn, lazy: builtIn },
-          content: { "split-traffic": builtIn, calendar: builtIn },
-          pages: { page: builtIn },
-        },
-      },
-      schema: {},
-    } as unknown as LiveMeta;
-    const promo = {
-      __resolveType: "page",
-      name: "Promo",
-      path: "/promo",
-      sections: {
-        __resolveType: "multivariate",
-        variants: [
-          { rule: { __resolveType: "always" }, value: [] },
-          { rule: { __resolveType: "experiment", name: "hero" }, value: [] },
-        ],
-      },
-    };
-    // "A/B tests" was discarded: the page still names "hero", which is gone.
-    const lookup = {
-      "pages-promo": promo,
-      experiments: { __resolveType: "split-traffic" },
-    };
-    const summary = summarizeContentChanges({
-      changes: {
-        "pages-promo": { kind: "set", version: "v", baseVersion: null },
-      },
-      lookup,
-      meta,
-      missingRules: blocksUsingMissingNamedRules(lookup, meta),
-    });
-    expect(summary.pages[0]!.missingRules).toEqual(["experiments"]);
-    // With the test there, nothing is flagged.
-    const withTest = {
-      ...lookup,
-      experiments: { __resolveType: "split-traffic", hero: 50 },
-    };
-    expect(
-      summarizeContentChanges({
-        changes: {
-          "pages-promo": { kind: "set", version: "v", baseVersion: null },
-        },
-        lookup: withTest,
-        meta,
-        missingRules: blocksUsingMissingNamedRules(withTest, meta),
-      }).pages[0]!.missingRules,
-    ).toBeUndefined();
   });
 });
 
