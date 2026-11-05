@@ -286,6 +286,47 @@ describe("Connection Tools", () => {
       expect(callback.arguments.vault.token).toStartWith("stv_");
     });
 
+    it("notifies ON_MCP_CONFIGURATION on create even without a credential grant", async () => {
+      const callTool = vi.fn().mockResolvedValue({});
+      setMockMcpClient({ callTool });
+
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+
+      const result = await COLLECTION_CONNECTIONS_CREATE.execute(
+        {
+          data: {
+            id: "conn_create_plain_config_subject",
+            title: "Create Plain Config Subject",
+            connection_type: "HTTP",
+            connection_url: "https://create-plain-config.invalid/mcp",
+            connection_token: null,
+            configuration_state: { apiKey: { value: "secret" } },
+            configuration_scopes: ["apiKey::read"],
+          },
+        },
+        ctx,
+      );
+
+      const callback = callTool.mock.calls[0]?.[0];
+      expect(callback).toBeDefined();
+      if (!callback) {
+        throw new Error("Expected ON_MCP_CONFIGURATION callback");
+      }
+      expect(callback.name).toBe("ON_MCP_CONFIGURATION");
+      expect(callback.arguments.firstRun).toBe(true);
+      expect(callback.arguments.vault).toBeUndefined();
+
+      await expect(
+        ctx.storage.connectionCredentialVault.findActiveWorkloadToken({
+          organizationId: "org_123",
+          subjectConnectionId: result.item.id,
+        }),
+      ).resolves.toBeNull();
+    });
+
     it("cleans up a newly created connection when initial vault bootstrap delivery fails", async () => {
       const target = await ctx.storage.connections.create({
         id: "conn_create_vault_failure_target",
