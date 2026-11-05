@@ -1,12 +1,10 @@
 /**
  * Releases tab (the `releases` route) — a hosted v8 site's releases on the
- * hosted CMS, newest first: one row per revision that went live. "Make
- * current" on an earlier one publishes a NEW release with its content (a
+ * hosted CMS, newest first: one row per revision. "Make current" on any
+ * other than the latest publishes a NEW release with its content (a
  * rollback, or a roll-forward), never moves the site back. "Latest" marks
- * the release latest.json names (releases-status.ts). A revision latest.json
- * never named (a publish that lost its race) is not listed and can't be made
- * current. A release whose details couldn't be read is a plain row with its
- * date only: no actions.
+ * the release latest.json names (releases-status.ts). A release whose
+ * details couldn't be read is a plain row with its date only: no actions.
  *
  * Business-user copy: no id, CDN or git words on screen. The author is a
  * Studio user id, shown by the org member's name. One toast per action
@@ -63,7 +61,6 @@ import {
   formatWhen,
   isLatest,
   isUnreadable,
-  listedRevisions,
   releaseTitle,
   revisionTime,
 } from "./releases-status";
@@ -159,9 +156,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
-  const revisions = listedRevisions(
-    releases.data.pages.flatMap((page) => page.revisions),
-  );
+  const revisions = releases.data.pages.flatMap((page) => page.revisions);
   const byId = new Map(
     revisions.flatMap((r) => (isUnreadable(r) ? [] : [[r.id, r] as const])),
   );

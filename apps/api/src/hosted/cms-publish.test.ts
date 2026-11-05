@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import { readDraftObject, writeDraftObject } from "./cms-drafts";
 import {
   PUBLISH_ATTEMPTS,
-  NeverLiveError,
   ProductionMovedError,
   publishCmsDraft,
   RevisionNotFoundError,
@@ -202,7 +201,7 @@ describe("publishCmsDraft", () => {
       header: { t: 2 },
       theirs: { t: 9 },
     });
-    // The first attempt's revision stays, never live.
+    // The first attempt's revision stays: latest.json never names it.
     expect(
       await readRevisionMeta(delivery.store, SITE, ids[0]!),
     ).not.toBeNull();
@@ -279,29 +278,37 @@ describe("publishCmsDraft", () => {
   });
 });
 
-describe("rollbackToRevision: a broken history chain", () => {
-  it("a meta.json missing or unparseable on the walk is malformed, not never_live", async () => {
-    for (const broken of ["missing", "unparseable"] as const) {
-      clearRevisionCache();
-      const ctx = setup();
-      const r1 = newRevisionId(clock++);
-      const r2 = newRevisionId(clock++);
-      const r3 = newRevisionId(clock++);
-      await seedRelease(ctx.delivery.store, SITE, r1, { a: { v: 1 } });
-      await seedRelease(ctx.delivery.store, SITE, r2, { a: { v: 2 } });
-      await seedRelease(ctx.delivery.store, SITE, r3, { a: { v: 3 } });
-      const key = deliveryKeys.revisionMeta(SITE, r2);
-      if (broken === "missing") ctx.delivery.objects.delete(key);
-      else
-        ctx.delivery.objects.set(key, {
-          text: "{nope",
-          etag: '"x"',
-          cacheControl: "",
-        });
-      await expect(rollbackToRevision(ctx.deps, r1, "")).rejects.toBeInstanceOf(
-        MalformedObjectError,
-      );
-    }
+describe("rollbackToRevision: unreadable objects", () => {
+  it("the target's meta.json unparseable is malformed; one on its history doesn't matter", async () => {
+    const ctx = setup();
+    const r1 = newRevisionId(clock++);
+    const r2 = newRevisionId(clock++);
+    const r3 = newRevisionId(clock++);
+    await seedRelease(ctx.delivery.store, SITE, r1, { a: { v: 1 } });
+    await seedRelease(ctx.delivery.store, SITE, r2, { a: { v: 2 } });
+    await seedRelease(ctx.delivery.store, SITE, r3, { a: { v: 3 } });
+    const unparseable = { text: "{nope", etag: '"x"', cacheControl: "" };
+    ctx.delivery.objects.set(deliveryKeys.revisionMeta(SITE, r2), unparseable);
+    await expect(rollbackToRevision(ctx.deps, r2, "")).rejects.toBeInstanceOf(
+      MalformedObjectError,
+    );
+    // No walk of previous: r1 is reapplied past r2's broken meta.json.
+    expect(await rollbackToRevision(ctx.deps, r1, "")).toMatchObject({
+      result: "published",
+      previous: r3,
+    });
+  });
+
+  it("the target's data.json missing is malformed", async () => {
+    const ctx = setup();
+    const r1 = newRevisionId(clock++);
+    const r2 = newRevisionId(clock++);
+    await seedRelease(ctx.delivery.store, SITE, r1, { a: { v: 1 } });
+    await seedRelease(ctx.delivery.store, SITE, r2, { a: { v: 2 } });
+    ctx.delivery.objects.delete(deliveryKeys.revisionData(SITE, r1));
+    await expect(rollbackToRevision(ctx.deps, r1, "")).rejects.toBeInstanceOf(
+      MalformedObjectError,
+    );
   });
 });
 
@@ -405,8 +412,8 @@ describe("rollbackToRevision", () => {
     expect(delivery.log.length).toBe(before);
   });
 
-  it("refuses a revision latest.json never named, and one with no meta", async () => {
-    const { delivery, deps } = await history();
+  it("reapplies a revision latest.json never named (a lost race); refuses one with no meta", async () => {
+    const { delivery, deps, r2 } = await history();
     const orphan = newRevisionId(clock++);
     await delivery.store.putText(
       deliveryKeys.revisionData(SITE, orphan),
@@ -416,19 +423,41 @@ describe("rollbackToRevision", () => {
     await expect(rollbackToRevision(deps, orphan, "")).rejects.toBeInstanceOf(
       RevisionNotFoundError,
     );
+    await expect(
+      rollbackToRevision(deps, newRevisionId(clock++), ""),
+    ).rejects.toBeInstanceOf(RevisionNotFoundError);
     await delivery.store.putJson(
       deliveryKeys.revisionMeta(SITE, orphan),
       {
-        previous: null,
+        previous: r2,
         author: "u",
         via: "studio",
-        message: "",
+        message: "Lost the race",
         publishedAt: "2026-11-04T00:00:00.000Z",
       },
       "",
     );
-    await expect(rollbackToRevision(deps, orphan, "")).rejects.toBeInstanceOf(
-      NeverLiveError,
-    );
+    const result = await rollbackToRevision(deps, orphan, "");
+    expect(result).toMatchObject({ result: "published", previous: r2 });
+    const id = (result as { revision: string }).revision;
+    expect((await readRevision(delivery.store, SITE, id)).blocks).toEqual({
+      x: {},
+    });
+    expect(await readRevisionMeta(delivery.store, SITE, id)).toMatchObject({
+      reapplyOf: orphan,
+      message: "Made current: Lost the race",
+    });
+  });
+
+  it("reapplies a revision before the first latest.json, as publish does", async () => {
+    const { delivery, deps } = setup();
+    const crashed = newRevisionId(clock++);
+    await seedRelease(delivery.store, SITE, crashed, { a: { v: 1 } });
+    delivery.objects.delete(deliveryKeys.latest(SITE));
+    const result = await rollbackToRevision(deps, crashed, "");
+    expect(result).toMatchObject({ result: "published", previous: null });
+    expect(
+      (await readLatestPointer(delivery.store, SITE))?.pointer.revision,
+    ).toBe((result as { revision: string }).revision);
   });
 });
