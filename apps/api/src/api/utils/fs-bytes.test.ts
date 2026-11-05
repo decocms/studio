@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
-import { downloadsOnly, fsByteResponse } from "./fs-bytes";
+import { USER_HTML_CSP, downloadsOnly, fsByteResponse } from "./fs-bytes";
 
 const BYTES = new TextEncoder().encode("<svg><script>alert(1)</script></svg>");
 
@@ -76,10 +76,16 @@ describe("fsByteResponse", () => {
     }
   });
 
-  it("leaves HTML previews and plain images as they were", async () => {
-    expect(
-      (await headersFor("decks/q3.html")).get("content-security-policy"),
-    ).toContain("allow-scripts");
+  it("runs an HTML preview's scripts in an opaque origin", async () => {
+    const html = await headersFor("decks/q3.html");
+    expect(html.get("content-security-policy")).toBe(USER_HTML_CSP);
+    expect(USER_HTML_CSP).toStartWith("sandbox ");
+    expect(USER_HTML_CSP).toContain("allow-scripts");
+    expect(USER_HTML_CSP).not.toContain("allow-same-origin");
+    expect(html.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("leaves plain images as they were", async () => {
     const png = await headersFor("editor-images/shot.png");
     expect(png.get("content-security-policy")).toBeNull();
     expect(png.get("content-disposition")).toBeNull();
