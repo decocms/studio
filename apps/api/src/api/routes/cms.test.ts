@@ -7,6 +7,9 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { clearRevisionCache } from "@/hosted/cms-release";
 import { clearSchemaCache } from "@/hosted/cms-storage";
+import { seedRelease } from "@/hosted/cms-test-helpers";
+import { deliveryKeys } from "@/hosted/delivery-store";
+import { newRevisionId } from "@/hosted/revision-id";
 import { SCHEMA_TEXT } from "@/hosted/hosted-test-helpers";
 import { cmsTestApp } from "./cms-test-app";
 
@@ -207,5 +210,35 @@ describe("releases and rollback", () => {
       (await t.call("POST", "acme/releases/abc/rollback", {})).body.code,
     ).toBe("revision_not_found");
     expect((await t.call("GET", "acme/releases?cursor=zzz")).status).toBe(400);
+  });
+
+  it("an unreadable meta.json is a broken row; a rollback to or through it is 500 malformed", async () => {
+    const t = cmsTestApp();
+    const [r1, r2, r3] = [1, 2, 3].map((n) =>
+      newRevisionId(Date.parse("2026-11-01T00:00:00.000Z") + n),
+    ) as [string, string, string];
+    for (const id of [r1, r2, r3])
+      await seedRelease(t.delivery.store, "acme", id, { a: { id } });
+    t.delivery.objects.set(deliveryKeys.revisionMeta("acme", r2), {
+      text: "{nope",
+      etag: '"x"',
+      cacheControl: "",
+    });
+    const res = await t.call("GET", "acme/releases");
+    expect(res.status).toBe(200);
+    expect(res.body.revisions).toEqual([
+      expect.objectContaining({ id: r3, status: "current" }),
+      { id: r2, status: "unreadable" },
+      expect.objectContaining({ id: r1, status: "never-live" }),
+    ]);
+    for (const target of [r2, r1]) {
+      const rolled = await t.call(
+        "POST",
+        `acme/releases/${target}/rollback`,
+        {},
+      );
+      expect(rolled.status).toBe(500);
+      expect(rolled.body.code).toBe("malformed");
+    }
   });
 });

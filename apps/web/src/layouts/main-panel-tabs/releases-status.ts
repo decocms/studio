@@ -16,9 +16,16 @@ import {
 } from "@decocms/shared/release-notes";
 import type { TFunction } from "@/i18n/use-t.ts";
 import { isReleaseRevision } from "@/components/sections-editor/preview-link";
-import type { ReleaseRevision } from "./releases-api";
+import type {
+  ReadableRelease,
+  ReleaseRevision,
+  UnreadableRelease,
+} from "./releases-api";
 
-/** The rows the screen lists: every revision that went live. */
+/**
+ * The rows the screen lists: every revision that went live, and any whose
+ * details couldn't be read.
+ */
 export function listedRevisions(
   revisions: readonly ReleaseRevision[],
 ): ReleaseRevision[] {
@@ -26,8 +33,17 @@ export function listedRevisions(
 }
 
 /** Whether the row is the latest release (what latest.json names). */
-export function isLatest(revision: Pick<ReleaseRevision, "status">): boolean {
+export function isLatest(
+  revision: ReleaseRevision,
+): revision is ReadableRelease {
   return revision.status === "current";
+}
+
+/** Whether the row's details (its meta.json) couldn't be read. */
+export function isUnreadable(
+  revision: ReleaseRevision,
+): revision is UnreadableRelease {
+  return revision.status === "unreadable";
 }
 
 /**
@@ -38,11 +54,16 @@ export function isLatest(revision: Pick<ReleaseRevision, "status">): boolean {
 export function canPreviewRelease(
   revision: Pick<ReleaseRevision, "id" | "status">,
 ): boolean {
-  return revision.status !== "never-live" && isReleaseRevision(revision.id);
+  return (
+    (revision.status === "current" || revision.status === "was-live") &&
+    isReleaseRevision(revision.id)
+  );
 }
 
 /** Whether a row offers "Make current": an earlier release that went live. */
-export function canReapply(revision: Pick<ReleaseRevision, "status">): boolean {
+export function canReapply(
+  revision: ReleaseRevision,
+): revision is ReadableRelease {
   return revision.status === "was-live";
 }
 

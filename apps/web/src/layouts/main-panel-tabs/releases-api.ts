@@ -3,7 +3,8 @@
  * (`/api/cms/:site/releases`, contract §4.10 and §4.11): the site's
  * revisions, newest first, 50 a page, each with its meta and whether it is
  * the one latest.json names (`current`), went live before (`was-live`) or
- * never did (`never-live`); and "Make current", a rollback: a new revision
+ * never did (`never-live`), or a row whose meta.json couldn't be read
+ * (`unreadable`, its id only); and "Make current", a rollback: a new revision
  * with an earlier one's content.
  */
 
@@ -33,11 +34,19 @@ export interface RevisionMeta {
 
 export type ReleaseStatus = "current" | "was-live" | "never-live";
 
-export interface ReleaseRevision {
+export interface ReadableRelease {
   id: string;
   status: ReleaseStatus;
   meta: RevisionMeta;
 }
+
+/** A revision whose meta.json couldn't be read: its id, no meta. */
+export interface UnreadableRelease {
+  id: string;
+  status: "unreadable";
+}
+
+export type ReleaseRevision = ReadableRelease | UnreadableRelease;
 
 export interface ReleasesPage {
   /** The revision latest.json names; null before the first publish. */
