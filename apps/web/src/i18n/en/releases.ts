@@ -35,6 +35,7 @@ export const releases = {
   "releases.reapplyOfDate": "Made current: release from {when}",
   "releases.sameContentAs": "Same content as the release from {when}",
   "releases.untitled": "Published changes",
+  "releases.unreadable": "This release's details couldn't be read",
   "releases.loadMore": "Load more",
   "releases.cancel": "Cancel",
 };

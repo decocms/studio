@@ -26,6 +26,7 @@ export const releases = {
   "releases.reapplyOfDate": "Tornada atual: release de {when}",
   "releases.sameContentAs": "Mesmo conteúdo da release de {when}",
   "releases.untitled": "Alterações publicadas",
+  "releases.unreadable": "Não foi possível ler os detalhes desta release",
   "releases.loadMore": "Carregar mais",
   "releases.cancel": "Cancelar",
 } satisfies Record<keyof typeof enReleases, string>;
