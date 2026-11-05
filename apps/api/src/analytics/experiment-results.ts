@@ -52,12 +52,15 @@ const Payload = z.object({
   expResults: z.array(Measures),
   expDaily: z.array(Measures.extend({ day: z.string() })).catch([]),
   expBehaviour: z.array(Behaviour.extend({ variant: z.string() })).catch([]),
+  currency: z.string().nullable().catch(null).optional(),
 });
 type Payload = z.infer<typeof Payload>;
 
 interface ExperimentArm {
   id: string;
   visitors: number;
+  /** Converters on `statsGoal` among every visitor. */
+  converters: number;
   /** Null when the experiment has no exposure event among its goals. */
   exposed: number | null;
   /** Converters on `statsGoal` among the exposed. */
@@ -65,12 +68,25 @@ interface ExperimentArm {
   purchases: number;
   revenue: number;
   behaviour: z.infer<typeof Behaviour> | null;
+  /** The arm's `expDaily` rows, oldest first: the same counts per UTC day. */
+  daily: ArmDay[];
+}
+
+interface ArmDay {
+  date: string;
+  visitors: number;
+  exposed: number | null;
+  /** Converters on `statsGoal` among every visitor. */
+  converters: number;
+  convertersAmongExposed: number | null;
 }
 
 type DecoExperimentResults = ExperimentResults & {
   /** The goal the timeseries (unless it plots visitors) and statistics use. */
   statsGoal: string;
   arms: ExperimentArm[];
+  /** The currency the read surface scoped revenue to, when it names one. */
+  currency: string | null;
 };
 
 interface DecoExperimentInput {
@@ -150,11 +166,13 @@ function toExperimentResults(
   const behaviour = new Map(
     payload.expBehaviour.map(({ variant, ...b }) => [variant, b]),
   );
+  const days = [...payload.expDaily].sort((a, b) => a.day.localeCompare(b.day));
   const arms = ids.map((id): ExperimentArm => {
     const r = row(id);
     return {
       id,
       visitors: r.visitors,
+      converters: r.converters[statsGoal] ?? 0,
       exposed: hasExposure ? (r.exposed ?? 0) : null,
       convertersAmongExposed: hasExposure
         ? (r.convertersExposed?.[statsGoal] ?? 0)
@@ -162,6 +180,17 @@ function toExperimentResults(
       purchases: r.purchases,
       revenue: r.revenue,
       behaviour: behaviour.get(id) ?? null,
+      daily: days
+        .filter((d) => d.variant === id)
+        .map((d) => ({
+          date: d.day,
+          visitors: d.visitors,
+          exposed: hasExposure ? (d.exposed ?? 0) : null,
+          converters: d.converters[statsGoal] ?? 0,
+          convertersAmongExposed: hasExposure
+            ? (d.convertersExposed?.[statsGoal] ?? 0)
+            : null,
+        })),
     };
   });
 
@@ -217,6 +246,7 @@ function toExperimentResults(
     ),
     statsGoal,
     arms,
+    currency: payload.currency ?? null,
   };
 }
 

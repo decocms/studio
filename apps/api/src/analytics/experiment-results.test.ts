@@ -204,6 +204,7 @@ describe("readDecoExperimentResults", () => {
         {
           id: "old",
           visitors: 1000,
+          converters: 20,
           exposed: 100,
           convertersAmongExposed: 15,
           purchases: 21,
@@ -215,26 +216,56 @@ describe("readDecoExperimentResults", () => {
             medianScrollDepth: 38,
             errorPct: 2.2,
           },
+          // Sorted by day although the payload is not.
+          daily: [
+            {
+              date: "2026-03-08",
+              visitors: 400,
+              exposed: 40,
+              converters: 8,
+              convertersAmongExposed: 6,
+            },
+            {
+              date: "2026-03-09",
+              visitors: 600,
+              exposed: 60,
+              converters: 12,
+              convertersAmongExposed: 9,
+            },
+          ],
         },
         {
           id: "new",
           visitors: 200,
+          converters: 5,
           exposed: 20,
           convertersAmongExposed: 4,
           purchases: 6,
           revenue: 1200.25,
           behaviour: null,
+          daily: [
+            {
+              date: "2026-03-08",
+              visitors: 80,
+              exposed: 8,
+              converters: 2,
+              convertersAmongExposed: 2,
+            },
+          ],
         },
         {
           id: "unused",
           visitors: 0,
+          converters: 0,
           exposed: 0,
           convertersAmongExposed: 0,
           purchases: 0,
           revenue: 0,
           behaviour: null,
+          daily: [],
         },
       ]);
+      expect(out?.currency).toBeNull();
       // Among the exposed, not among every visitor.
       expect(out?.stats.totalParticipants).toBe(1200);
       expect(out?.stats.probabilityVariantBest).toBe(
@@ -248,6 +279,7 @@ describe("readDecoExperimentResults", () => {
   it("compares visitors when no exposure was asked", async () => {
     const plain = {
       ...recordedPayload,
+      currency: "BRL",
       expResults: recordedPayload.expResults.map(
         ({ exposed: _e, convertersExposed: _c, ...r }) => r,
       ),
@@ -268,6 +300,14 @@ describe("readDecoExperimentResults", () => {
         ),
       ).toBe(false);
       expect(out?.arms?.[0]?.exposed).toBeNull();
+      expect(out?.currency).toBe("BRL");
+      expect(out?.arms?.[0]?.daily[0]).toEqual({
+        date: "2026-03-08",
+        visitors: 400,
+        exposed: null,
+        converters: 8,
+        convertersAmongExposed: null,
+      });
       expect(out?.stats.probabilityVariantBest).toBe(
         pBetter({ successes: 20, total: 1000 }, { successes: 5, total: 200 }),
       );

@@ -92,6 +92,7 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import { LiveGlobe, type LiveGeoRow } from "./analytics-globe-tab.tsx";
 import { HeatmapView } from "./analytics-heatmap-tab.tsx";
 import { gateViews, pickView } from "./analytics-heatmap-model.ts";
+import { normalizeVariantRow } from "./experiment-results-model.ts";
 
 // --- control-plane REST DTOs (client-safe fields only) ---------------------
 
@@ -1502,6 +1503,116 @@ function ErrorsDashboard({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
+// --- experiments: every running test's arms, in words ------------------------
+
+/** The Experiments view's `variants` panel. The generic table titled it with
+ *  raw keys, renamed a column with the range (`conv` from the rollup,
+ *  `converters` from raw events), rounded the rate to a whole percent and
+ *  printed revenue without its currency. */
+function ExperimentsDashboard({
+  payload,
+  asOf,
+}: {
+  payload: Record<string, unknown>;
+  asOf?: number;
+}) {
+  const t = useT();
+  const { variants, ...rest } = payload;
+  const rows = (Array.isArray(variants) ? variants : []).map(
+    normalizeVariantRow,
+  );
+  const others = Object.entries(rest).some(
+    ([k, v]) => !META_KEYS.has(k) && Array.isArray(v) && v.length > 0,
+  );
+  if (rows.length === 0) return <ViewPanels payload={rest} t={t} asOf={asOf} />;
+  const currency =
+    typeof payload.currency === "string" && payload.currency
+      ? payload.currency
+      : null;
+  const money = (n: number) =>
+    new Intl.NumberFormat(undefined, {
+      ...(currency ? { style: "currency", currency } : {}),
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+  const rate = (n: number) =>
+    new Intl.NumberFormat(undefined, {
+      style: "percent",
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(n / 100);
+  const hasRevenue = rows.some((r) => r.revenue !== null);
+  const head =
+    "h-8 whitespace-nowrap text-2xs font-medium text-muted-foreground";
+  const cell = "whitespace-nowrap py-1.5 text-sm tabular-nums text-right";
+  return (
+    <div className="flex flex-col gap-4">
+      <Card title={panelTitle("variants", t)}>
+        <div className="overflow-x-auto">
+          <Table variant="flush">
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className={head}>
+                  {t("mainPanelTabs.analyticsTab.variants.experiment")}
+                </TableHead>
+                <TableHead className={head}>
+                  {t("mainPanelTabs.analyticsTab.variants.variant")}
+                </TableHead>
+                <TableHead className={cn(head, "text-right")}>
+                  {t("mainPanelTabs.analyticsTab.variants.visitors")}
+                </TableHead>
+                <TableHead className={cn(head, "text-right")}>
+                  {t("mainPanelTabs.analyticsTab.variants.converters")}
+                </TableHead>
+                <TableHead className={cn(head, "text-right")}>
+                  {t("mainPanelTabs.analyticsTab.variants.cr")}
+                </TableHead>
+                {hasRevenue && (
+                  <TableHead className={cn(head, "text-right")}>
+                    {t("mainPanelTabs.analyticsTab.variants.revenue")}
+                  </TableHead>
+                )}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r, i) => (
+                <TableRow
+                  key={`${r.experiment}:${r.variant}`}
+                  className="border-border/50"
+                >
+                  <TableCell className="whitespace-nowrap py-1.5 font-mono text-xs text-muted-foreground">
+                    {rows[i - 1]?.experiment === r.experiment
+                      ? ""
+                      : r.experiment}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap py-1.5 text-sm text-foreground">
+                    {r.variant}
+                  </TableCell>
+                  <TableCell className={cell}>
+                    {formatNumber(r.visitors)}
+                  </TableCell>
+                  <TableCell className={cell}>
+                    {formatNumber(r.converters)}
+                  </TableCell>
+                  <TableCell className={cn(cell, "font-medium")}>
+                    {rate(r.cr)}
+                  </TableCell>
+                  {hasRevenue && (
+                    <TableCell className={cell}>
+                      {r.revenue === null ? "—" : money(r.revenue)}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+      {others && <ViewPanels payload={rest} t={t} asOf={asOf} />}
+    </div>
+  );
+}
+
 // --- the active view (one at a time, driven by the tab bar) ------------------
 
 function ActiveView({
@@ -1560,6 +1671,14 @@ function ActiveView({
     );
   }
   if (view === "errors") return <ErrorsDashboard payload={response.data} />;
+  if (view === "experiments") {
+    return (
+      <ExperimentsDashboard
+        payload={response.data}
+        asOf={query.dataUpdatedAt}
+      />
+    );
+  }
   if (view === "overview") {
     return (
       <OverviewDashboard

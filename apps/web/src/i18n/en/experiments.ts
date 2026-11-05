@@ -125,23 +125,80 @@ export const experiments = {
     "No analytics traffic found for {site}. The site may not be sending analytics events yet, or its traffic is reported under another site.",
   "experiments.results.empty": "No participants yet for this experiment.",
   "experiments.results.control": "Control",
+  "experiments.results.test": "Test",
   "experiments.results.variant": "Variant",
+  "experiments.results.weight": "{weight}% of traffic",
+  "experiments.results.arm": "Version",
+  "experiments.results.armsTitle": "Versions",
   "experiments.results.visitors": "Visitors",
-  "experiments.results.participants": "Participants",
-  "experiments.results.sampleSize": "Target sample size",
-  "experiments.results.probBest": "Probability variant best",
-  "experiments.results.goal": "Goal",
-  "experiments.results.sourceDeco": "Source: Deco Analytics",
-  "experiments.results.exposed": "Exposed",
-  "experiments.results.exposedConversion": "Conversion among exposed ({goal})",
+  "experiments.results.visitorsHint":
+    "Counted once a day: someone who comes back on another day counts again.",
+  "experiments.results.exposed": "Saw the change",
+  "experiments.results.exposedHint":
+    "Visitors who reached the part of the site the test changes.",
+  "experiments.results.conversion": "Conversion",
+  "experiments.results.conversionHintExposed":
+    "Of the visitors who saw the change, the share who reached the goal “{goal}”.",
+  "experiments.results.conversionHintVisitors":
+    "Of all visitors, the share who reached the goal “{goal}”.",
+  "experiments.results.difference": "Difference",
+  "experiments.results.differenceHint":
+    "How much the test converts above or below control, and the range the real difference falls in 95 times out of 100.",
+  "experiments.results.reference": "Baseline",
+  "experiments.results.range": "{low} to {high}",
+  "experiments.results.orders": "Orders",
   "experiments.results.revenue": "Revenue",
   "experiments.results.revenuePerVisitor": "Revenue per visitor",
+  "experiments.results.averageOrder": "Average order",
+  "experiments.results.verdict.few": "Not enough data yet",
+  "experiments.results.verdict.tie": "Tied so far",
+  "experiments.results.verdict.ahead": "“{arm}” is ahead",
+  "experiments.results.verdict.behind": "“{arm}” is behind",
+  "experiments.results.verdict.compareExposed":
+    "“{test}” converts {testRate} of the visitors who saw the change, against {controlRate} for “{control}”: a difference of {lift} (range {low} to {high}).",
+  "experiments.results.verdict.compareVisitors":
+    "“{test}” converts {testRate} of its visitors, against {controlRate} for “{control}”: a difference of {lift} (range {low} to {high}).",
+  "experiments.results.verdict.noBase":
+    "Control has no conversions yet, so there is nothing to compare against.",
+  "experiments.results.verdict.tieHint":
+    "The range includes zero, so neither version is better yet.",
+  "experiments.results.verdict.sureHint":
+    "A difference this size is unlikely to be chance (95% confidence).",
+  "experiments.results.verdict.fewHint":
+    "Each version needs at least {total} visitors and {successes} conversions before the comparison means anything.",
+  "experiments.results.progress.running": "Running for {days} days.",
+  "experiments.results.progress.runningOne": "Running for 1 day.",
+  "experiments.results.progress.left":
+    "At the current traffic, about {days} more days to detect a {mde} difference.",
+  "experiments.results.progress.leftOne":
+    "At the current traffic, about 1 more day to detect a {mde} difference.",
+  "experiments.results.progress.enough":
+    "There is already enough data to detect a {mde} difference.",
+  "experiments.results.progress.unknown":
+    "Not enough data yet to estimate how long it will take.",
+  "experiments.results.trend": "Conversion by day",
   "experiments.results.behaviour": "Behaviour per visitor",
-  "experiments.results.pageviews": "Pageviews",
-  "experiments.results.activeSeconds": "Active time (s)",
+  "experiments.results.pageviews": "Pages viewed",
+  "experiments.results.pageviewsHint": "Average pages viewed per visitor.",
+  "experiments.results.activeTime": "Active time",
+  "experiments.results.activeTimeHint":
+    "Average time per visitor with the page open and in use.",
   "experiments.results.clicks": "Clicks",
+  "experiments.results.clicksHint": "Average clicks per visitor.",
   "experiments.results.scroll": "Median scroll",
-  "experiments.results.errors": "With errors",
+  "experiments.results.scrollHint":
+    "How far down the page a typical visit scrolls.",
+  "experiments.results.jsErrors": "Visitors with JS errors",
+  "experiments.results.jsErrorsHint":
+    "Visitors of this version who had at least one JavaScript error on any page. Not specific to the cart.",
+  "experiments.results.minutes": "{m} min {s} s",
+  "experiments.results.seconds": "{s} s",
+  "experiments.results.goals": "Goals",
+  "experiments.results.goalsHint": "Visitors who reached each goal.",
+  "experiments.results.goalName.purchase": "Purchase",
+  "experiments.results.goalName.experience_impression": "Saw the change",
+  "experiments.results.goal": "Goal",
+  "experiments.results.sourceDeco": "Source: Deco Analytics",
   "experiments.v8.intro":
     "Your A/B tests are part of your site's content. Every change is saved in your draft and goes live when you publish.",
   "experiments.v8.new": "New A/B test",

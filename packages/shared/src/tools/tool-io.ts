@@ -6811,6 +6811,7 @@ export interface StudioToolIO {
           | {
               id: string;
               visitors: number;
+              converters: number;
               exposed: number | null;
               convertersAmongExposed: number | null;
               purchases: number;
@@ -6822,8 +6823,16 @@ export interface StudioToolIO {
                 medianScrollDepth: number;
                 errorPct: number;
               } | null;
+              daily: {
+                date: string;
+                visitors: number;
+                exposed: number | null;
+                converters: number;
+                convertersAmongExposed: number | null;
+              }[];
             }[]
           | undefined;
+        currency?: string | null | undefined;
       } | null;
       source?: "legacy" | "deco-analytics" | undefined;
     };

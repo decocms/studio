@@ -123,6 +123,8 @@ export const EXPERIMENT_RESULTS = defineTool({
             z.object({
               id: z.string(),
               visitors: z.number(),
+              /** Converters on `statsGoal` among every visitor. */
+              converters: z.number(),
               exposed: z.number().nullable(),
               convertersAmongExposed: z.number().nullable(),
               purchases: z.number(),
@@ -136,9 +138,21 @@ export const EXPERIMENT_RESULTS = defineTool({
                   errorPct: z.number(),
                 })
                 .nullable(),
+              /** Per UTC day, oldest first: the same counts as the arm. */
+              daily: z.array(
+                z.object({
+                  date: z.string(),
+                  visitors: z.number(),
+                  exposed: z.number().nullable(),
+                  converters: z.number(),
+                  convertersAmongExposed: z.number().nullable(),
+                }),
+              ),
             }),
           )
           .optional(),
+        /** Deco Analytics only: the currency revenue is in, when named. */
+        currency: z.string().nullable().optional(),
       })
       .nullable(),
   }),
