@@ -48,6 +48,7 @@ import {
   isValidDraftName,
 } from "@/hosted/cms-drafts";
 import {
+  NotPublishedError,
   ProductionMovedError,
   publishCmsDraft,
   RevisionNotFoundError,
@@ -153,6 +154,14 @@ function previewOrigin(site: CmsSite): string | null {
 function cmsError(c: Context<CmsEnv>, err: unknown) {
   if (err instanceof ProductionMovedError) {
     return fail(c, 409, "production_moved", "production moved, try again");
+  }
+  if (err instanceof NotPublishedError) {
+    return fail(
+      c,
+      409,
+      "not_published",
+      "The site has no published release yet; publish a draft first",
+    );
   }
   if (err instanceof RevisionNotFoundError) {
     return fail(c, 404, "revision_not_found", "Revision not found");

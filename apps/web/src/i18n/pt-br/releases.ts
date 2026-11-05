@@ -22,6 +22,8 @@ export const releases = {
   "releases.alreadyShown": "Seu site já tem o conteúdo desta release.",
   "releases.publishedMeanwhile":
     "Alguém publicou enquanto você tornava esta release atual, então nada mudou. Tente de novo.",
+  "releases.notPublished":
+    "Seu site ainda não foi publicado. Publique uma vez antes de trazer de volta uma release anterior.",
   "releases.reapplyOf": "Tornada atual: {title}",
   "releases.reapplyOfDate": "Tornada atual: release de {when}",
   "releases.sameContentAs": "Mesmo conteúdo da release de {when}",

@@ -242,6 +242,20 @@ describe("releases and rollback", () => {
     expect(rolled.body).toMatchObject({ result: "published", previous: r3 });
   });
 
+  it("409 not_published for a rollback before the site's first publish", async () => {
+    const t = cmsTestApp();
+    const r1 = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));
+    await seedRelease(t.delivery.store, "acme", r1, { a: {} });
+    t.delivery.objects.delete(deliveryKeys.latest("acme"));
+    const res = await t.call("POST", `acme/releases/${r1}/rollback`, {});
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      error: "The site has no published release yet; publish a draft first",
+      code: "not_published",
+    });
+    expect(t.delivery.objects.has(deliveryKeys.latest("acme"))).toBe(false);
+  });
+
   it("a meta.json GET failing (R2 5xx) is 503 unavailable, not a broken row", async () => {
     const t = cmsTestApp();
     const r1 = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));

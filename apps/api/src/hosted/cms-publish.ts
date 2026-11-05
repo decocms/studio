@@ -21,8 +21,10 @@
  *
  * A rollback is a publish with no draft (steps 1, 4, 5): a new revision
  * whose blocks are exactly the target's, with `reapplyOf`; a no-op when
- * they equal the live blocks as a whole. Only a revision that went live
- * (reached from latest.json through `previous`) can be reapplied.
+ * they equal the live blocks as a whole. Any revision with a readable
+ * meta.json and data.json can be reapplied; before the site's first publish
+ * (no latest.json) a rollback is refused (`NotPublishedError`, 409
+ * `not_published`), never applied over an empty site.
  *
  * No step reads git.
  */
@@ -88,6 +90,14 @@ export class RevisionNotFoundError extends Error {
   constructor(id: string) {
     super(`revision ${id} not found`);
     this.name = "RevisionNotFoundError";
+  }
+}
+
+/** A rollback before the site's first publish: no latest.json to roll back. */
+export class NotPublishedError extends Error {
+  constructor() {
+    super("the site has no published release yet; publish a draft first");
+    this.name = "NotPublishedError";
   }
 }
 
@@ -267,13 +277,13 @@ function reapplyTitle(original: { message: string; date: string }): string {
 }
 
 export type CmsRollbackResult =
-  | { result: "published"; revision: string; previous: string | null }
-  | { result: "up-to-date"; revision: string | null };
+  | { result: "published"; revision: string; previous: string }
+  | { result: "up-to-date"; revision: string };
 
 /**
  * Rollback / roll-forward to `target`, any revision with a readable
  * meta.json and data.json (whether latest.json ever named it or not):
- * steps 1, 4 and 5.
+ * steps 1, 4 and 5. Refused before the first publish (`NotPublishedError`).
  */
 export async function rollbackToRevision(
   deps: CmsPublishDeps,
@@ -285,17 +295,13 @@ export async function rollbackToRevision(
   if (!targetMeta) throw new RevisionNotFoundError(target);
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
     const latest = await readLatestPointer(store, site);
+    if (!latest) throw new NotPublishedError();
     const [wanted, live] = await Promise.all([
       readRevision(store, site, target),
-      latest
-        ? readRevision(store, site, latest.pointer.revision)
-        : { blocks: {} },
+      readRevision(store, site, latest.pointer.revision),
     ]);
     if (canonicalJson(wanted.blocks) === canonicalJson(live.blocks)) {
-      return {
-        result: "up-to-date",
-        revision: latest?.pointer.revision ?? null,
-      };
+      return { result: "up-to-date", revision: latest.pointer.revision };
     }
     const id = await writeAndPoint(
       deps,
@@ -316,7 +322,7 @@ export async function rollbackToRevision(
     return {
       result: "published",
       revision: id,
-      previous: latest?.pointer.revision ?? null,
+      previous: latest.pointer.revision,
     };
   }
   throw new ProductionMovedError();
