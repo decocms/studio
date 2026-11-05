@@ -1359,6 +1359,13 @@ export function SectionsEditor({
     setTimeout(refreshFormIfLeft, 0);
   };
 
+  /**
+   * Studio's hosted v8 draft: a form save's guard is the version of the copy
+   * it was built on (formSaveGuard), never the index's.
+   */
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+
   /** A block's content-protocol version in the cache (v8 saves' `ifMatch`). */
   const protocolVersionOf = (blockKey: string) =>
     protocolBlockVersion(
@@ -1856,6 +1863,10 @@ export function SectionsEditor({
             formBase,
             rebased: !!rebased,
             versionOf: protocolVersionOf,
+            // The saved block as the check above read it.
+            ...(hostedDraft
+              ? { copy: { value: latestDecofile[blockKey] } }
+              : {}),
           }),
         });
         return;
@@ -1947,6 +1958,10 @@ export function SectionsEditor({
           formBase: null,
           rebased: false,
           versionOf: protocolVersionOf,
+          // The page as it was rebuilt from.
+          ...(hostedDraft
+            ? { copy: { value: latestDecofile[latestPageKey] } }
+            : {}),
         }),
       });
     };

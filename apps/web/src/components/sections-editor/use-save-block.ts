@@ -110,7 +110,12 @@ interface UseSaveBlockOptions {
  * content-protocol backend sends it; the others have no versions.
  */
 export interface SaveGuard {
-  ifMatch: (blockKey: string) => Record<string, string | null> | undefined;
+  ifMatch: (
+    blockKey: string,
+  ) =>
+    | Record<string, string | null>
+    | undefined
+    | Promise<Record<string, string | null> | undefined>;
   /** `versions`: what `blocks.apply` answered, each written block's new version. */
   onApplied?: (versions: Record<string, string | null>) => void;
   /** A save the guard refused (or any failed guarded save): re-read the content. */
@@ -663,7 +668,7 @@ export function useSaveBlock(
         // guard of its own means the draft's version. Either way a refusal
         // opens the reconcile flow rather than failing.
         if (hosted && guard && !guard.reloadOnConflict) {
-          const own = guard.ifMatch(blockKey);
+          const own = await guard.ifMatch(blockKey);
           const creates = create || (!!own && own[blockKey] === null);
           try {
             const result = await saveHostedBlock(
@@ -682,7 +687,7 @@ export function useSaveBlock(
             throw error;
           }
         }
-        let ifMatch = guard?.ifMatch(blockKey);
+        let ifMatch = await guard?.ifMatch(blockKey);
         if (guard && !ifMatch && hosted) {
           // Every hosted save carries its precondition: an unknown version
           // is read first (the draft's changes come with the content).
@@ -694,7 +699,7 @@ export function useSaveBlock(
           ).catch(() => {
             throw new HostedDraftUnreadError();
           });
-          ifMatch = guard.ifMatch(blockKey);
+          ifMatch = await guard.ifMatch(blockKey);
           // Still unknown: fail rather than write unguarded.
           if (!ifMatch) throw new HostedDraftUnreadError();
         }

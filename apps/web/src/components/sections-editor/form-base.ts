@@ -9,6 +9,9 @@ import {
 } from "./section-variants";
 import { unwrapSection } from "./unwrap-section";
 import type { SaveGuard } from "./use-save-block";
+import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
+import { draftVersionOf } from "./draft-version";
+import { isIndexStub } from "./hosted-content";
 
 /**
  * The value an open section form starts from, in the same shape the form
@@ -207,24 +210,63 @@ export function formSaveExpects({
  * the block is still at the version the form's copy was checked against, and
  * a refusal comes back as a `BlockConflictError`, as a legacy 409 does.
  *
- * A saved block (`formBase` given) takes the form's version: read from the
- * cache (`versionOf`) when unset or when the form's edits were just rebased
- * on the stored copy, and moved to each landed save's version. A page
- * (`formBase: null`), rebuilt from the cache, takes its cached version. Both
- * are read when the save runs, after the branch's earlier saves landed, so a
- * save queued behind the form's own previous one expects that one's version.
- * An unknown version sends no guard.
+ * A saved block (`formBase` given) takes the form's version: read when unset
+ * or when the form's edits were just rebased on the stored copy, and moved
+ * to each landed save's version. A page (`formBase: null`), rebuilt from the
+ * cache, takes the version read each time. Both are read when the save runs,
+ * after the branch's earlier saves landed, so a save queued behind the
+ * form's own previous one expects that one's version. An unknown version
+ * sends no guard.
+ *
+ * On a hosted v8 draft (`copy` given) a version read is the one of the copy
+ * the save was built on, computed from it ({@link draftVersionOf}, the
+ * server's own content hash), never the draft's version as the index says
+ * it: a poll puts someone else's version in the index before their copy of
+ * the block is loaded (and never loads it over a block being saved), so the
+ * index's version would let a save built on the copy the form still shows
+ * write over a change it never showed. `versionOf` then only says whether
+ * the draft holds the block (`null`: main's copy; the tombstone's for one
+ * the draft deletes).
  */
 export function formSaveGuard({
   formBase,
   rebased,
   versionOf,
+  copy,
 }: {
   formBase: FormBase | null;
   rebased: boolean;
   versionOf: (blockKey: string) => string | null | undefined;
+  /**
+   * Hosted v8: the block (the saved block, or the page) as the cache held
+   * it when the save was built, the copy the form's check read.
+   */
+  copy?: { value: unknown };
 }): SaveGuard {
   let guarded: string | null = null;
+  const guardOf = (version: string | null | undefined) =>
+    version === undefined || guarded === null
+      ? undefined
+      : { [guarded]: version };
+  if (copy) {
+    return {
+      ifMatch: async (blockKey) => {
+        guarded = blockKey;
+        if (formBase && formBase.version !== undefined && !rebased) {
+          return guardOf(formBase.version);
+        }
+        const version = await copyVersion(versionOf(blockKey), copy.value);
+        if (formBase) formBase.version = version;
+        return guardOf(version);
+      },
+      onApplied: (versions) => {
+        if (formBase && guarded !== null && Object.hasOwn(versions, guarded)) {
+          formBase.version = versions[guarded];
+        }
+      },
+      reloadOnConflict: true,
+    };
+  }
   return {
     ifMatch: (blockKey) => {
       guarded = blockKey;
@@ -241,6 +283,22 @@ export function formSaveGuard({
     },
     reloadOnConflict: true,
   };
+}
+
+/**
+ * The hosted draft's version of `value`, a copy of a block whose version in
+ * the draft is `listed`: unknown and "not in the draft" (`null`, main's copy)
+ * as listed, the tombstone for a block the draft deletes or one the editor
+ * holds no copy of, otherwise the copy's own content hash.
+ */
+async function copyVersion(
+  listed: string | null | undefined,
+  value: unknown,
+): Promise<string | null | undefined> {
+  if (listed === undefined || listed === null) return listed;
+  if (listed === DRAFT_TOMBSTONE_VERSION) return listed;
+  if (value === undefined || isIndexStub(value)) return listed;
+  return draftVersionOf(value);
 }
 
 /**

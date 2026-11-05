@@ -21,6 +21,7 @@ import * as realSessionRuntime from "@/hooks/use-session-runtime";
 import * as realNamedRuleConflict from "./named-rule-conflict";
 import * as realLocalPreview from "@/hooks/use-local-preview-url";
 import type { SaveGuard } from "./use-save-block";
+import type { FormBase } from "./form-base";
 import { draftVersionOf } from "./draft-version";
 
 const ORG = "acme";
@@ -187,7 +188,10 @@ const { useSaveBlock, useDebouncedSaveBlock } = await import(
   "./use-save-block"
 );
 const { useCopyEpochs } = await import("./held-copy");
-const { protocolMetaQueryKey } = await import("./content-protocol-api");
+const { protocolMetaQueryKey, protocolBlockVersion } = await import(
+  "./content-protocol-api"
+);
+const { formSaveGuard } = await import("./form-base");
 const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
 const { useDeleteBlock } = await import("./use-delete-block");
 const { useMoveBlocks } = await import("./use-move-blocks");
@@ -1573,5 +1577,110 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
         ifMatch: { Banner: null, Hero: "h2" },
       },
     ]);
+  });
+});
+
+describe("a section form's save on the hosted draft is guarded by the copy it was built on", () => {
+  const LOADED = { title: "Probe B", body: "same" };
+  const THEIRS = { title: "A's headline", body: "same" };
+
+  /**
+   * The 30 s `cms.index` poll put A's version of Hero in the index; A's copy
+   * isn't loaded yet (or never is: a block being saved keeps the editor's),
+   * so the cache, and the form built from it, still hold B's copy.
+   */
+  async function indexAheadOfTheBlocks() {
+    const { queryClient, result } = setup();
+    server.hashed = true;
+    server.draftInRefusal = true;
+    server.blocks = { Hero: { ...THEIRS } };
+    server.versions = { Hero: await draftVersionOf(THEIRS) };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { ...LOADED },
+    });
+    const theirs = await draftVersionOf(THEIRS);
+    queryClient.setQueryData(KEYS.contentIndex(CACHE_KEY), {
+      revision: "r-a",
+      resolvedRef: "main",
+      sequence: 2,
+      entries: { Hero: { version: theirs } },
+      draft: { Hero: { operation: "set", version: theirs, editor: null } },
+    });
+    const versionOf = (blockKey: string) =>
+      protocolBlockVersion(queryClient, CACHE_KEY, blockKey, backend);
+    return { queryClient, result, versionOf, theirs };
+  }
+
+  it("refused and reconciled, never written over the change the form didn't show", async () => {
+    const { queryClient, result, versionOf, theirs } =
+      await indexAheadOfTheBlocks();
+    // The index's version is A's: guarding by it would land B's save.
+    expect(versionOf("Hero")).toBe(theirs);
+    const formBase: FormBase = {
+      sectionIndex: 0,
+      variantIndex: 0,
+      base: { ...LOADED },
+      emitted: { title: "Probe B more", body: "same" },
+      sectionCount: 1,
+      own: [],
+    };
+    const cached = queryClient.getQueryData<Record<string, unknown>>(
+      KEYS.decofile(CACHE_KEY),
+    );
+    let failure: unknown;
+    await act(async () => {
+      await result.current
+        .mutateAsync({
+          blockKey: "Hero",
+          data: { title: "Probe B more", body: "same" },
+          rebaseOnConflict: false,
+          guard: formSaveGuard({
+            formBase,
+            rebased: false,
+            versionOf,
+            copy: { value: cached?.Hero },
+          }),
+        })
+        .catch((error: unknown) => {
+          failure = error;
+        });
+    });
+    expect(server.applied[0]?.ifMatch).toEqual({
+      Hero: await draftVersionOf(LOADED),
+    });
+    expect(server.blocks.Hero).toEqual(THEIRS);
+    // As a legacy 409: the form re-reads A's copy and asks.
+    expect(failure).toBeInstanceOf(BlockConflictError);
+    expect(heroInCache(queryClient)).toEqual(THEIRS);
+  });
+
+  it("once A's copy is loaded, the form's save built on it lands", async () => {
+    const { queryClient, result, versionOf } = await indexAheadOfTheBlocks();
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { Hero: { ...THEIRS } });
+    const formBase: FormBase = {
+      sectionIndex: 0,
+      variantIndex: 0,
+      base: { ...THEIRS },
+      emitted: { title: "B over A", body: "same" },
+      sectionCount: 1,
+      own: [],
+    };
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "B over A", body: "same" },
+        rebaseOnConflict: false,
+        guard: formSaveGuard({
+          formBase,
+          rebased: false,
+          versionOf,
+          copy: { value: THEIRS },
+        }),
+      });
+    });
+    expect(server.blocks.Hero).toEqual({ title: "B over A", body: "same" });
+    expect(formBase.version).toBe(
+      await draftVersionOf({ title: "B over A", body: "same" }),
+    );
   });
 });
