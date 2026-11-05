@@ -33,20 +33,14 @@
       "meta": {
         "type": "website/pages/Page.tsx",
         "path": "/",
-        "refs": [
-          "footer",
-          "header"
-        ]
+        "refs": ["footer", "header"]
       },
       "entry": {
         "version": "D8NyAZf7d5YahxJT5yN79A",
         "meta": {
           "type": "website/pages/Page.tsx",
           "path": "/",
-          "refs": [
-            "footer",
-            "header"
-          ]
+          "refs": ["footer", "header"]
         }
       }
     },
@@ -69,17 +63,13 @@
       "version": "6-WZ8yiUs_rKrbuJOftvQA",
       "meta": {
         "type": "site/sections/Footer.tsx",
-        "refs": [
-          "footer-a"
-        ]
+        "refs": ["footer-a"]
       },
       "entry": {
         "version": "6-WZ8yiUs_rKrbuJOftvQA",
         "meta": {
           "type": "site/sections/Footer.tsx",
-          "refs": [
-            "footer-a"
-          ]
+          "refs": ["footer-a"]
         }
       }
     },
@@ -140,17 +130,13 @@
       "version": "NY3fN7vf-0QANkzlwdvuKg",
       "meta": {
         "type": "multivariate",
-        "refs": [
-          "header"
-        ]
+        "refs": ["header"]
       },
       "entry": {
         "version": "NY3fN7vf-0QANkzlwdvuKg",
         "meta": {
           "type": "multivariate",
-          "refs": [
-            "header"
-          ]
+          "refs": ["header"]
         }
       }
     },
@@ -165,18 +151,14 @@
       "meta": {
         "type": "header",
         "path": "/x",
-        "refs": [
-          "header"
-        ]
+        "refs": ["header"]
       },
       "entry": {
         "version": "zuj5u8YTRDdaEv_7wSwnjg",
         "meta": {
           "type": "header",
           "path": "/x",
-          "refs": [
-            "header"
-          ]
+          "refs": ["header"]
         }
       }
     },
