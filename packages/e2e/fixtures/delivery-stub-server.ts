@@ -3,7 +3,9 @@
  * port, for the hosted content-protocol specs:
  *
  *   /<bucket>/<key>             the S3 API Studio writes through (path style):
- *                               PUT, GET, HEAD, DELETE, and GET ?list-type=2;
+ *                               PUT (If-Match / If-None-Match: * answer 412),
+ *                               GET and HEAD (304 on a matching If-None-Match),
+ *                               DELETE, and GET ?list-type=2;
  *                               user metadata (`x-amz-meta-*`) is kept and
  *                               answered on GET/HEAD, as S3 and R2 do
  *   GET /sites/<...>            the public custom domain sites read: the
@@ -123,6 +125,23 @@ async function s3(
     ) {
       body = decodeAwsChunked(body);
     }
+    // Conditional writes, as S3 and R2 answer them: 412 when the object
+    // exists (`If-None-Match: *`) or has another ETag (`If-Match`).
+    const existing = objects.get(key);
+    const ifNoneMatch = req.headers["if-none-match"];
+    const ifMatch = req.headers["if-match"];
+    if (
+      (ifNoneMatch === "*" && existing) ||
+      (typeof ifMatch === "string" && ifMatch !== existing?.etag)
+    ) {
+      send(
+        res,
+        412,
+        { "content-type": "application/xml" },
+        `<?xml version="1.0" encoding="UTF-8"?><Error><Code>PreconditionFailed</Code><Message>precondition failed</Message></Error>`,
+      );
+      return;
+    }
     const etag = `"${createHash("md5").update(body).digest("hex")}"`;
     objects.set(key, {
       body,
@@ -156,6 +175,13 @@ async function s3(
       { "content-type": "application/xml" },
       `<?xml version="1.0" encoding="UTF-8"?><Error><Code>NoSuchKey</Code><Message>not found</Message></Error>`,
     );
+    return;
+  }
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    req.headers["if-none-match"] === object.etag
+  ) {
+    send(res, 304, { ETag: object.etag });
     return;
   }
   send(
