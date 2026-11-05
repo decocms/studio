@@ -58,10 +58,6 @@ export const projects = {
   "projects.settings.openSettings": "Settings",
   "projects.settings.noResults": "No projects match “{search}”",
 
-  // Project settings › identity
-  "projects.identity.storeUrlLabel": "Store URL",
-  "projects.identity.storeUrlDescription":
-    "The live storefront. Reports run against this address.",
   "projects.apps.reports": "Report",
   "projects.apps.siteEditor": "Site editor",
   "projects.apps.assets": "Assets",

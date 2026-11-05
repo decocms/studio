@@ -53,9 +53,6 @@ export const projects = {
   "projects.settings.openSettings": "Configurações",
   "projects.settings.noResults": "Nenhum projeto corresponde a “{search}”",
 
-  "projects.identity.storeUrlLabel": "URL da loja",
-  "projects.identity.storeUrlDescription":
-    "A loja no ar. Os relatórios rodam contra este endereço.",
   "projects.apps.reports": "Relatório",
   "projects.apps.siteEditor": "Editor de site",
   "projects.apps.assets": "Assets",
