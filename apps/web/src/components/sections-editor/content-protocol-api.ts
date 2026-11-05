@@ -717,6 +717,11 @@ async function readHostedContent(
         { method: "changes.list", params: changesListParams(read.seenChanges) },
       ]),
   );
+  // The index held now, for telling a change the editor already holds from
+  // a new one: a refused save that landed while this read was in flight has
+  // put its copy in it since (`adoptRefusedDraft`).
+  const heldIndex =
+    queryClient.getQueryData<ContentIndex>(indexKey) ?? currentIndex;
   const adopted =
     queryClient.getQueryData<ContentRevisions>(revisionsKey)?.revision;
   const raced = adopted !== undefined && adopted !== read.seen?.revision;
@@ -824,7 +829,7 @@ async function readHostedContent(
   // after it brings that same change. Refreshing then would re-read the
   // changes and the pointer and reload the preview ("Saving…") under the
   // conflict dialog the refusal opened, for nothing new.
-  if (currentIndex && elsewhere && indexDiffers(currentIndex, index)) {
+  if (heldIndex && elsewhere && indexDiffers(heldIndex, index)) {
     externalContentChange({
       queryClient,
       orgSlug: params.orgSlug,
