@@ -186,7 +186,7 @@ export function useReportsCompanions({
     linkedConnectionIdSet.has(connection.id),
   );
   const oauthStatusConnections = linkedConnections.filter(
-    (connection) => connection.oauth_config && !connection.connection_token,
+    (connection) => connection.oauth_config && !connection.has_connection_token,
   );
   const oauthStatusQueries = useSuspenseQueries({
     queries: oauthStatusConnections.map((connection) => ({
@@ -220,7 +220,7 @@ export function useReportsCompanions({
   for (const connection of linkedConnections) {
     connectionReadiness[connection.id] =
       !connection.oauth_config ||
-      !!connection.connection_token ||
+      !!connection.has_connection_token ||
       oauthStatusByConnectionId.get(connection.id) === true;
   }
 
