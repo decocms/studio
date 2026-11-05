@@ -392,6 +392,7 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name as name",
         "organization.slug as slug",
         "organization.createdAt as createdAt",
+        "organization.logo as logo",
         // Soft-delete lives in metadata.archived — surface it to badge the row.
         "organization.metadata as metadata",
       ])
@@ -413,6 +414,7 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name",
         "organization.slug",
         "organization.createdAt",
+        "organization.logo",
         "organization.metadata",
       ])
       .orderBy("organization.createdAt", "desc")
