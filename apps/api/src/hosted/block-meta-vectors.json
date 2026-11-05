@@ -1,8 +1,6 @@
 {
   "names": [
     "CMS",
-    "ab-test",
-    "experiments",
     "extends",
     "footer",
     "footer-a",
@@ -10,7 +8,6 @@
     "home",
     "plain",
     "redirects",
-    "summer-rule",
     "variants"
   ],
   "cases": [
@@ -210,125 +207,6 @@
           "telemetry": {
             "enabled": false
           }
-        }
-      }
-    },
-    {
-      "name": "ab-test",
-      "body": {
-        "__resolveType": "multivariate",
-        "variants": [
-          {
-            "rule": {
-              "__resolveType": "multi",
-              "op": "and",
-              "matchers": [
-                {
-                  "__resolveType": "experiment",
-                  "name": "buy-button"
-                },
-                {
-                  "__resolveType": "campaign",
-                  "name": "black-friday"
-                }
-              ]
-            },
-            "value": {
-              "__resolveType": "lazy",
-              "value": {
-                "__resolveType": "header"
-              }
-            }
-          },
-          {
-            "rule": {
-              "__resolveType": "campaign",
-              "name": "Natal"
-            },
-            "value": {
-              "__resolveType": "lazy",
-              "value": {
-                "__resolveType": "site/sections/Promo.tsx",
-                "body": {
-                  "__resolveType": "multivariate",
-                  "variants": [
-                    {
-                      "rule": {
-                        "__resolveType": "experiment",
-                        "name": "buy-button"
-                      },
-                      "value": "b"
-                    },
-                    {
-                      "rule": {
-                        "__resolveType": "experiment",
-                        "name": ""
-                      },
-                      "value": "unfinished"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          {
-            "rule": {
-              "__resolveType": "experiment",
-              "name": 3
-            },
-            "value": "no name"
-          },
-          {
-            "rule": {
-              "__resolveType": "date",
-              "start": "2026-11-27T00:00:00Z"
-            },
-            "value": "inline date"
-          },
-          {
-            "rule": {
-              "__resolveType": "never"
-            },
-            "value": {
-              "__resolveType": "site/sections/Tests.tsx",
-              "tests": {
-                "__resolveType": "experiments"
-              }
-            }
-          }
-        ]
-      },
-      "version": "ECbZx8QLhd_HqI9y7g5M9w",
-      "meta": {
-        "type": "multivariate",
-        "refs": ["experiments", "header"],
-        "rules": ["", "Natal", "black-friday", "buy-button"]
-      },
-      "entry": {
-        "version": "ECbZx8QLhd_HqI9y7g5M9w",
-        "meta": {
-          "type": "multivariate",
-          "refs": ["experiments", "header"],
-          "rules": ["", "Natal", "black-friday", "buy-button"]
-        }
-      }
-    },
-    {
-      "name": "summer-rule",
-      "body": {
-        "__resolveType": "campaign",
-        "name": "summer"
-      },
-      "version": "eMb_0H0Yruok0aO6sdxvYg",
-      "meta": {
-        "type": "campaign",
-        "rules": ["summer"]
-      },
-      "entry": {
-        "version": "eMb_0H0Yruok0aO6sdxvYg",
-        "meta": {
-          "type": "campaign",
-          "rules": ["summer"]
         }
       }
     }
