@@ -17,6 +17,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
+  type ListObjectsV2CommandOutput,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -263,20 +264,34 @@ export function createS3DeliveryStore(config: {
       }
     },
     async delete(key) {
-      await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
+      try {
+        await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
+      } catch (error) {
+        if (isNotFound(error)) return;
+        if (isUnavailable(error))
+          throw new DeliveryUnavailableError(key, error);
+        throw error;
+      }
     },
     async listPage(prefix, { delimiter, maxKeys, continuationToken }) {
-      const res = await client.send(
-        new ListObjectsV2Command({
-          Bucket,
-          Prefix: prefix,
-          Delimiter: delimiter,
-          MaxKeys: maxKeys,
-          ...(continuationToken
-            ? { ContinuationToken: continuationToken }
-            : {}),
-        }),
-      );
+      let res: ListObjectsV2CommandOutput;
+      try {
+        res = await client.send(
+          new ListObjectsV2Command({
+            Bucket,
+            Prefix: prefix,
+            Delimiter: delimiter,
+            MaxKeys: maxKeys,
+            ...(continuationToken
+              ? { ContinuationToken: continuationToken }
+              : {}),
+          }),
+        );
+      } catch (error) {
+        if (isUnavailable(error))
+          throw new DeliveryUnavailableError(prefix, error);
+        throw error;
+      }
       return {
         prefixes: (res.CommonPrefixes ?? [])
           .map((p) => p.Prefix)
