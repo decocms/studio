@@ -1,29 +1,38 @@
 /**
- * Publish and rollback on the hosted CMS (design steps 1–6; contract §4.9,
- * §4.11), against the in-memory delivery bucket.
+ * Publish and rollback on the hosted CMS (design "Publish" steps 1–8;
+ * contract §4.5–§4.6), against the in-memory delivery bucket.
  */
 
 import { beforeEach, describe, expect, it } from "bun:test";
-import { readDraftObject, writeDraftObject } from "./cms-drafts";
+import { indexEntry } from "./block-meta";
+import { blockVersion } from "./block-version";
+import { readDraftFile, readDraftIndex } from "./cms-drafts";
 import {
-  PUBLISH_ATTEMPTS,
+  type CmsPublishDeps,
+  composeIndex,
+  NotPublishedError,
   ProductionMovedError,
+  PUBLISH_ATTEMPTS,
   publishCmsDraft,
   RevisionNotFoundError,
-  NotPublishedError,
+  RevisionTooLargeError,
   rollbackToRevision,
-  type CmsPublishDeps,
 } from "./cms-publish";
 import {
   clearRevisionCache,
   MalformedObjectError,
-  readLatestPointer,
-  readRevision,
+  readLatest,
+  readRevisionIndex,
   readRevisionMeta,
-  serializeRevisionData,
 } from "./cms-release";
-import { seedRelease } from "./cms-test-helpers";
 import {
+  deleteFile,
+  seedDraftFile,
+  seedRelease,
+  setFile,
+} from "./cms-test-helpers";
+import {
+  CACHE_BLOCK,
   CACHE_LATEST,
   DeliveryUnavailableError,
   deliveryKeys,
@@ -57,23 +66,28 @@ function setup() {
     },
   };
   const draft = { name: "bf-banner", slug };
-  const saveDraft = (set: Record<string, unknown>, del: string[] = []) =>
-    readDraftObject(delivery.store, SITE, slug).then((read) =>
-      writeDraftObject(
-        delivery.store,
-        SITE,
-        slug,
-        { set, delete: del, editors: {} },
-        read.etag,
-      ),
-    );
-  return { delivery, deps, draft, saveDraft, ids };
+  const save = (name: string, data: Record<string, unknown>) =>
+    seedDraftFile(delivery.store, SITE, slug, name, setFile(data));
+  const remove = (name: string) =>
+    seedDraftFile(delivery.store, SITE, slug, name, deleteFile());
+  const seed = (blocks: Record<string, unknown>) => {
+    const id = newRevisionId(clock++);
+    return seedRelease(delivery.store, SITE, id, blocks).then(() => id);
+  };
+  /** The writes since the last call: puts, refusals and purges. */
+  const writes = () => {
+    const out = delivery.log.filter((l) => !l.startsWith("delete"));
+    delivery.log.length = 0;
+    return out;
+  };
+  return { delivery, deps, draft, save, remove, seed, ids, writes };
 }
 
 describe("publishCmsDraft", () => {
-  it("a site's first publish creates latest.json create-only, revision first", async () => {
-    const { delivery, deps, draft, saveDraft } = setup();
-    await saveDraft({ header: { t: "Olá 😀" } });
+  it("a site's first publish: blocks, then the revision, then latest.json (sequence 1), purge, markers, index", async () => {
+    const { delivery, deps, draft, save, writes } = setup();
+    await save("header", { t: "Olá 😀" });
+    writes();
     const result = await publishCmsDraft(deps, draft, "  Black Friday  ");
     expect(result).toMatchObject({
       result: "published",
@@ -81,29 +95,38 @@ describe("publishCmsDraft", () => {
       draftEmptied: true,
     });
     const id = (result as { revision: string }).revision;
-    const order = delivery.log.filter(
-      (l) => l.startsWith("put") || l.startsWith("purge"),
-    );
-    expect(order.slice(-5)).toEqual([
-      `put ${deliveryKeys.revisionData(SITE, id)}`,
+    const hash = blockVersion({ t: "Olá 😀" });
+    expect(writes()).toEqual([
+      `put ${deliveryKeys.block(SITE, hash)}`,
+      `put ${deliveryKeys.revisionIndex(SITE, id)}`,
       `put ${deliveryKeys.revisionMeta(SITE, id)}`,
       `put ${deliveryKeys.latest(SITE)}`,
       `purge ${deliveryKeys.latest(SITE)}`,
-      `put ${deliveryKeys.draft(SITE, draft.slug)}`,
+      `put ${deliveryKeys.draftFile(SITE, draft.slug, "header")}`,
+      `put ${deliveryKeys.draftIndex(SITE, draft.slug)}`,
     ]);
-    // latest.json: {revision, previewHosts} only, today's cache header.
-    const latest = delivery.objects.get(deliveryKeys.latest(SITE));
-    expect(JSON.parse(latest!.text)).toEqual({
+    const block = delivery.objects.get(deliveryKeys.block(SITE, hash))!;
+    expect(block.text).toBe('{"t":"Olá 😀"}');
+    expect(block.cacheControl).toBe(CACHE_BLOCK);
+    const latest = delivery.objects.get(deliveryKeys.latest(SITE))!;
+    expect(latest.cacheControl).toBe(CACHE_LATEST);
+    expect(JSON.parse(latest.text)).toEqual({
       revision: id,
+      sequence: 1,
       previewHosts: ["localhost", "www.acme.com"],
+      blocks: { header: { version: hash } },
     });
-    expect(latest!.cacheControl).toBe(CACHE_LATEST);
-    // data.json: {blocks} alone, escaped to ASCII.
-    const data = delivery.objects.get(
-      deliveryKeys.revisionData(SITE, id),
+    // latest.json's index is byte for byte the revision's.
+    const index = delivery.objects.get(
+      deliveryKeys.revisionIndex(SITE, id),
     )!.text;
-    expect(data).toBe('{"blocks":{"header":{"t":"Ol\\u00e1 \\ud83d\\ude00"}}}');
-    expect(JSON.parse(data)).toEqual({ blocks: { header: { t: "Olá 😀" } } });
+    expect(index).toBe(
+      JSON.stringify({
+        revision: id,
+        sequence: 1,
+        blocks: { header: { version: hash } },
+      }),
+    );
     expect(await readRevisionMeta(delivery.store, SITE, id)).toEqual({
       previous: null,
       draft: "bf-banner",
@@ -113,256 +136,255 @@ describe("publishCmsDraft", () => {
       publishedAt: "2026-11-04T10:00:00.000Z",
     });
     expect(
-      (await readDraftObject(delivery.store, SITE, draft.slug)).body,
+      (await readDraftFile(delivery.store, SITE, draft.slug, "header")).file,
     ).toEqual({
-      set: {},
-      delete: [],
-      editors: {},
+      operation: "published",
+      revision: id,
+      version: hash,
     });
+    expect(
+      (await readDraftIndex(delivery.store, SITE, draft.slug)).names,
+    ).toEqual([]);
   });
 
-  it("applies the draft over the latest release, recording it as previous", async () => {
-    const { delivery, deps, draft, saveDraft } = setup();
-    const r1 = newRevisionId(clock++);
-    await seedRelease(delivery.store, SITE, r1, {
-      header: { t: 1 },
-      footer: { t: 1 },
-      gone: {},
+  it("the median publish: one block PUT, index, meta, latest, one marker, one index write; no body read", async () => {
+    const { delivery, deps, draft, save, seed, writes } = setup();
+    const blocks: Record<string, unknown> = {};
+    for (let i = 0; i < 50; i++) blocks[`b${i}`] = { i };
+    blocks.home = {
+      __resolveType: "website/pages/Page.tsx",
+      path: "/",
+      s: [{ __resolveType: "b1" }],
+    };
+    const r1 = await seed(blocks);
+    await save("home", {
+      __resolveType: "website/pages/Page.tsx",
+      path: "/",
+      s: [{ __resolveType: "b2" }],
     });
-    await saveDraft({ header: { t: 2 } }, ["gone", "never-existed"]);
+    writes();
+    delivery.reads.length = 0;
     const result = await publishCmsDraft(deps, draft, "");
-    expect(result).toMatchObject({ result: "published", previous: r1 });
+    expect(result).toMatchObject({
+      result: "published",
+      previous: r1,
+      draftEmptied: true,
+    });
+    const ops = writes();
+    expect(ops.filter((l) => l.includes("/blocks/"))).toHaveLength(1);
+    expect(ops.filter((l) => l.startsWith("put"))).toHaveLength(6);
+    expect(delivery.reads.filter((r) => r.includes("/blocks/"))).toEqual([]);
     const id = (result as { revision: string }).revision;
-    expect((await readRevision(delivery.store, SITE, id)).blocks).toEqual({
-      footer: { t: 1 },
-      header: { t: 2 },
+    const index = await readRevisionIndex(delivery.store, SITE, id);
+    expect(index.sequence).toBe(2);
+    // Changed in place; every other entry kept as is.
+    expect(Object.keys(index.blocks)).toEqual(Object.keys(blocks));
+    expect(index.blocks.home).toEqual({
+      version: blockVersion({
+        __resolveType: "website/pages/Page.tsx",
+        path: "/",
+        s: [{ __resolveType: "b2" }],
+      }),
+      meta: { type: "website/pages/Page.tsx", path: "/", refs: ["b2"] },
     });
-    expect((await readRevisionMeta(delivery.store, SITE, id))?.previous).toBe(
-      r1,
-    );
+    expect(index.blocks.b3).toEqual({ version: blockVersion({ i: 3 }) });
   });
 
-  it("is a no-op that writes nothing when every draft block equals production's", async () => {
-    const { delivery, deps, draft, saveDraft } = setup();
-    const r1 = newRevisionId(clock++);
-    await seedRelease(delivery.store, SITE, r1, { header: { b: 1, a: 2 } });
-    await saveDraft({ header: { a: 2, b: 1 } }, ["absent"]);
-    const before = delivery.log.length;
+  it("applies sets and deletes over the live index; new names are appended in code-unit order", async () => {
+    const { deps, draft, save, remove, seed, delivery } = setup();
+    await seed({ a: { v: 1 }, b: { v: 1 }, c: { v: 1 } });
+    await save("z", { v: 1 });
+    await save("B", { v: 1 });
+    await save("b", { v: 2 });
+    await remove("a");
+    await remove("never-was");
     const result = await publishCmsDraft(deps, draft, "");
-    expect(result).toEqual({
+    const id = (result as { revision: string }).revision;
+    const index = await readRevisionIndex(delivery.store, SITE, id);
+    expect(Object.keys(index.blocks)).toEqual(["b", "c", "B", "z"]);
+    expect(index.blocks.b?.version).toBe(blockVersion({ v: 2 }));
+  });
+
+  it("skips the PUT of a hash the base already names", async () => {
+    const { deps, draft, save, seed, writes } = setup();
+    await seed({ a: { v: 1 }, b: { v: 2 } });
+    // b's new body equals a's: its object exists.
+    await save("b", { v: 1 });
+    writes();
+    await publishCmsDraft(deps, draft, "");
+    expect(writes().filter((l) => l.includes("/blocks/"))).toEqual([]);
+  });
+
+  it("inlines the CMS settings block's body", async () => {
+    const { deps, draft, save, delivery } = setup();
+    await save("CMS", { __resolveType: "cms-settings", a: 1 });
+    await publishCmsDraft(deps, draft, "");
+    const live = await readLatest(delivery.store, SITE);
+    expect(live?.latest.blocks.CMS).toEqual(
+      indexEntry("CMS", { __resolveType: "cms-settings", a: 1 }, ["CMS"]),
+    );
+    expect(live?.latest.blocks.CMS?.data).toEqual({
+      __resolveType: "cms-settings",
+      a: 1,
+    });
+  });
+
+  it("is up-to-date when every entry equals production's: no block, revision or latest write, but the draft is emptied", async () => {
+    const { deps, draft, save, seed, writes, delivery } = setup();
+    const r1 = await seed({ a: { v: 1 } });
+    await save("a", { v: 1 });
+    writes();
+    expect(await publishCmsDraft(deps, draft, "")).toEqual({
       result: "up-to-date",
       revision: r1,
       draftEmptied: true,
     });
-    // Only the draft is emptied (step 6).
-    expect(delivery.log.slice(before)).toEqual([
-      `put ${deliveryKeys.draft(SITE, draft.slug)}`,
+    expect(writes()).toEqual([
+      `put ${deliveryKeys.draftFile(SITE, draft.slug, "a")}`,
+      `put ${deliveryKeys.draftIndex(SITE, draft.slug)}`,
     ]);
+    expect(
+      (await readDraftFile(delivery.store, SITE, draft.slug, "a")).file,
+    ).toEqual({
+      operation: "published",
+      revision: r1,
+      version: blockVersion({ v: 1 }),
+    });
   });
 
-  it("an already-empty draft is not rewritten", async () => {
-    const { delivery, deps, draft, saveDraft } = setup();
-    await saveDraft({});
-    const before = delivery.log.length;
+  it("an empty draft is up-to-date and writes nothing", async () => {
+    const { deps, draft, seed, writes } = setup();
+    const r1 = await seed({ a: { v: 1 } });
+    writes();
     expect(await publishCmsDraft(deps, draft, "")).toEqual({
       result: "up-to-date",
-      revision: null,
+      revision: r1,
       draftEmptied: false,
     });
-    expect(delivery.log.length).toBe(before);
+    expect(writes()).toEqual([]);
   });
 
-  it("retries a lost latest.json race with the same draft read, 3 attempts in total", async () => {
-    const { delivery, deps, draft, saveDraft, ids } = setup();
-    const r1 = newRevisionId(clock++);
-    await seedRelease(delivery.store, SITE, r1, { header: { t: 1 } });
-    await saveDraft({ header: { t: 2 } });
-    let draftReads = 0;
-    const get = delivery.store.get;
-    delivery.store.get = async (key) => {
-      if (key === deliveryKeys.draft(SITE, draft.slug)) draftReads++;
-      return get(key);
-    };
-    let other: string | null = null;
+  it("a lost latest.json race restarts from step 1, rereading the draft", async () => {
+    const { deps, draft, save, seed, delivery } = setup();
+    await seed({ a: { v: 1 } });
+    await save("a", { v: 2 });
+    let races = 0;
     deps.beforeLatestWrite = async (attempt) => {
       if (attempt !== 1) return;
-      // Someone published first.
-      other = newRevisionId(clock++);
-      await seedRelease(delivery.store, SITE, other, {
-        header: { t: 1 },
-        theirs: { t: 9 },
-      });
+      races++;
+      // Another publish lands; meanwhile someone saves b into the draft.
+      await seed({ a: { v: 1 }, other: { v: 1 } });
+      await save("b", { v: 1 });
     };
     const result = await publishCmsDraft(deps, draft, "");
-    expect(result).toMatchObject({ result: "published", previous: other });
-    expect(ids.length).toBe(2);
-    expect(draftReads).toBe(1);
+    expect(races).toBe(1);
     const id = (result as { revision: string }).revision;
-    expect((await readRevision(delivery.store, SITE, id)).blocks).toEqual({
-      header: { t: 2 },
-      theirs: { t: 9 },
-    });
-    // The first attempt's revision stays: latest.json never names it.
+    const index = await readRevisionIndex(delivery.store, SITE, id);
+    expect(Object.keys(index.blocks).sort()).toEqual(["a", "b", "other"]);
+    expect(index.sequence).toBe(3);
     expect(
-      await readRevisionMeta(delivery.store, SITE, ids[0]!),
-    ).not.toBeNull();
-    expect(
-      (await readLatestPointer(delivery.store, SITE))?.pointer.revision,
-    ).toBe(id);
+      (await readDraftIndex(delivery.store, SITE, draft.slug)).names,
+    ).toEqual([]);
   });
 
   it("answers ProductionMovedError after the third lost race, keeping the draft", async () => {
-    const { delivery, deps, draft, saveDraft } = setup();
-    await seedRelease(delivery.store, SITE, newRevisionId(clock++), { a: {} });
-    await saveDraft({ a: { t: 1 } });
-    let races = 0;
+    const { deps, draft, save, seed, delivery } = setup();
+    await seed({ a: { v: 1 } });
+    await save("a", { v: 2 });
+    let attempts = 0;
     deps.beforeLatestWrite = async () => {
-      races++;
-      await seedRelease(delivery.store, SITE, newRevisionId(clock++), {
-        a: {},
-        n: races,
-      });
+      attempts++;
+      await seed({ a: { v: attempts + 10 } });
     };
     await expect(publishCmsDraft(deps, draft, "")).rejects.toBeInstanceOf(
       ProductionMovedError,
     );
-    expect(races).toBe(PUBLISH_ATTEMPTS);
+    expect(attempts).toBe(PUBLISH_ATTEMPTS);
     expect(
-      (await readDraftObject(delivery.store, SITE, draft.slug)).body.set,
-    ).toEqual({
-      a: { t: 1 },
-    });
+      (await readDraftFile(delivery.store, SITE, draft.slug, "a")).file
+        ?.operation,
+    ).toBe("set");
+    expect(
+      (await readDraftIndex(delivery.store, SITE, draft.slug)).names,
+    ).toEqual(["a"]);
   });
 
-  it("a purge failure is only logged: the publish succeeds and the draft is emptied", async () => {
-    const { delivery, deps, draft, saveDraft } = setup();
-    await saveDraft({ a: { t: 1 } });
-    delivery.failPurge(true);
-    const result = await publishCmsDraft(deps, draft, "");
-    expect(result).toMatchObject({ result: "published", draftEmptied: true });
-  });
-
-  it("a save made during the publish keeps the draft (empty with If-Match: D)", async () => {
-    const { delivery, deps, draft, saveDraft } = setup();
-    await saveDraft({ a: { t: 1 } });
+  it("an autosave during the publish survives: its marker is refused and it stays listed", async () => {
+    const { deps, draft, save, seed, delivery } = setup();
+    await seed({ a: { v: 1 } });
+    await save("a", { v: 2 });
+    await save("b", { v: 1 });
     deps.beforeLatestWrite = async () => {
-      await saveDraft({ a: { t: 1 }, b: { t: "meanwhile" } });
+      // After step 2: a is saved again, and c is new.
+      await save("a", { v: 3 });
+      await save("c", { v: 1 });
     };
     const result = await publishCmsDraft(deps, draft, "");
     expect(result).toMatchObject({ result: "published", draftEmptied: false });
+    const id = (result as { revision: string }).revision;
+    // The publish holds a's step-2 value.
     expect(
-      (await readDraftObject(delivery.store, SITE, draft.slug)).body.set,
-    ).toEqual({
-      a: { t: 1 },
-      b: { t: "meanwhile" },
+      (await readRevisionIndex(delivery.store, SITE, id)).blocks.a?.version,
+    ).toBe(blockVersion({ v: 2 }));
+    expect(
+      (await readDraftFile(delivery.store, SITE, draft.slug, "a")).file,
+    ).toEqual(setFile({ v: 3 }));
+    expect(
+      (await readDraftFile(delivery.store, SITE, draft.slug, "b")).file
+        ?.operation,
+    ).toBe("published");
+    expect(
+      (await readDraftIndex(delivery.store, SITE, draft.slug)).names,
+    ).toEqual(["a", "c"]);
+  });
+
+  it("a purge failure is only logged: the publish succeeds and the draft is emptied", async () => {
+    const { deps, draft, save, delivery } = setup();
+    await save("a", { v: 1 });
+    delivery.failPurge(true);
+    expect(await publishCmsDraft(deps, draft, "")).toMatchObject({
+      result: "published",
+      draftEmptied: true,
     });
   });
 
   it("an R2 429 on latest.json is Unavailable, not a lost race (no retry)", async () => {
-    const { delivery, deps, draft, saveDraft, ids } = setup();
-    await saveDraft({ a: { t: 1 } });
+    const { deps, draft, save, delivery } = setup();
+    await save("a", { v: 1 });
+    let latestPuts = 0;
     delivery.hooks.beforePut = (key) => {
-      if (key === deliveryKeys.latest(SITE)) {
-        throw new DeliveryUnavailableError(key, new Error("429"));
-      }
+      if (key !== deliveryKeys.latest(SITE)) return;
+      latestPuts++;
+      throw new DeliveryUnavailableError(key, new Error("429"));
     };
     await expect(publishCmsDraft(deps, draft, "")).rejects.toBeInstanceOf(
       DeliveryUnavailableError,
     );
-    expect(ids.length).toBe(1);
-    delivery.hooks.beforePut = undefined;
-    // A crash before latest.json leaves a revision that never went live.
-    expect(await readLatestPointer(delivery.store, SITE)).toBeNull();
+    expect(latestPuts).toBe(1);
     expect(
-      await readRevisionMeta(delivery.store, SITE, ids[0]!),
-    ).not.toBeNull();
+      (await readDraftIndex(delivery.store, SITE, draft.slug)).names,
+    ).toEqual(["a"]);
+  });
+
+  it("refuses a block over 16 MiB with nothing written", async () => {
+    const { deps, draft, save, writes } = setup();
+    await save("huge", { s: "x".repeat(16 * 1024 * 1024) });
+    writes();
+    await expect(publishCmsDraft(deps, draft, "")).rejects.toBeInstanceOf(
+      RevisionTooLargeError,
+    );
+    expect(writes()).toEqual([]);
   });
 });
 
-describe("rollbackToRevision: unreadable objects", () => {
-  it("the target's meta.json unparseable is malformed; one on its history doesn't matter", async () => {
-    const ctx = setup();
-    const r1 = newRevisionId(clock++);
-    const r2 = newRevisionId(clock++);
-    const r3 = newRevisionId(clock++);
-    await seedRelease(ctx.delivery.store, SITE, r1, { a: { v: 1 } });
-    await seedRelease(ctx.delivery.store, SITE, r2, { a: { v: 2 } });
-    await seedRelease(ctx.delivery.store, SITE, r3, { a: { v: 3 } });
-    const unparseable = { text: "{nope", etag: '"x"', cacheControl: "" };
-    ctx.delivery.objects.set(deliveryKeys.revisionMeta(SITE, r2), unparseable);
-    await expect(rollbackToRevision(ctx.deps, r2, "")).rejects.toBeInstanceOf(
-      MalformedObjectError,
-    );
-    // No walk of previous: r1 is reapplied past r2's broken meta.json.
-    expect(await rollbackToRevision(ctx.deps, r1, "")).toMatchObject({
-      result: "published",
-      previous: r3,
-    });
-  });
-
-  it("the target's data.json missing is malformed", async () => {
-    const ctx = setup();
-    const r1 = newRevisionId(clock++);
-    const r2 = newRevisionId(clock++);
-    await seedRelease(ctx.delivery.store, SITE, r1, { a: { v: 1 } });
-    await seedRelease(ctx.delivery.store, SITE, r2, { a: { v: 2 } });
-    ctx.delivery.objects.delete(deliveryKeys.revisionData(SITE, r1));
-    await expect(rollbackToRevision(ctx.deps, r1, "")).rejects.toBeInstanceOf(
-      MalformedObjectError,
-    );
-  });
-});
-
-describe("readRevisionMeta", () => {
-  it("caches a parsed meta.json by (site, id), never an absent one", async () => {
-    const { delivery } = setup();
-    const id = newRevisionId(clock++);
-    let gets = 0;
-    const get = delivery.store.get.bind(delivery.store);
-    delivery.store.get = (async (key: string, options?: unknown) => {
-      gets++;
-      return (get as (k: string, o?: unknown) => ReturnType<typeof get>)(
-        key,
-        options,
-      );
-    }) as typeof delivery.store.get;
-    expect(await readRevisionMeta(delivery.store, SITE, id)).toBeNull();
-    expect(await readRevisionMeta(delivery.store, SITE, id)).toBeNull();
-    expect(gets).toBe(2);
-    await seedRelease(delivery.store, SITE, id, { a: {} });
-    gets = 0;
-    const first = await readRevisionMeta(delivery.store, SITE, id);
-    const second = await readRevisionMeta(delivery.store, SITE, id);
-    expect(second).toEqual(first);
-    expect(first?.author).toBe("usr_seed");
-    expect(gets).toBe(1);
-  });
-
-  it("never caches a read or parse failure: a fixed meta.json is seen on the next read", async () => {
-    const { delivery } = setup();
-    const id = newRevisionId(clock++);
-    await seedRelease(delivery.store, SITE, id, { a: {} });
-    clearRevisionCache();
-    const key = deliveryKeys.revisionMeta(SITE, id);
-    const good = delivery.objects.get(key)!;
-    delivery.objects.set(key, { text: "{nope", etag: '"x"', cacheControl: "" });
-    await expect(
-      readRevisionMeta(delivery.store, SITE, id),
-    ).rejects.toBeInstanceOf(MalformedObjectError);
-    const get = delivery.store.get.bind(delivery.store);
-    let failing = true;
-    delivery.store.get = (async (k: string) => {
-      if (failing) throw new DeliveryUnavailableError(k, new Error("503"));
-      return get(k);
-    }) as typeof delivery.store.get;
-    await expect(
-      readRevisionMeta(delivery.store, SITE, id),
-    ).rejects.toBeInstanceOf(DeliveryUnavailableError);
-    failing = false;
-    delivery.objects.set(key, good);
-    expect((await readRevisionMeta(delivery.store, SITE, id))?.author).toBe(
-      "usr_seed",
-    );
+describe("composeIndex", () => {
+  it("keeps unchanged entries as they are, even refs to a name since deleted", () => {
+    const base = {
+      home: { version: "a".repeat(22), meta: { refs: ["gone"] } },
+      gone: { version: "b".repeat(22) },
+    };
+    const out = composeIndex(base, new Map(), new Set(["gone"]));
+    expect(out).toEqual({ home: base.home });
   });
 });
 
@@ -382,15 +404,23 @@ describe("rollbackToRevision", () => {
     return { ...ctx, r1, r2 };
   }
 
-  it("publishes a copy of the target with reapplyOf and no draft", async () => {
-    const { delivery, deps, r1, r2 } = await history();
+  it("copies the target's index with the next sequence, writing no block object", async () => {
+    const { delivery, deps, r1, r2, writes } = await history();
+    writes();
     const result = await rollbackToRevision(deps, r1, "");
     expect(result).toMatchObject({ result: "published", previous: r2 });
     const id = (result as { revision: string }).revision;
-    // Blocks added since are dropped.
-    expect((await readRevision(delivery.store, SITE, id)).blocks).toEqual({
-      a: { v: 1 },
-    });
+    const ops = writes();
+    expect(ops.filter((l) => l.includes("/blocks/"))).toEqual([]);
+    expect(ops).toEqual([
+      `put ${deliveryKeys.revisionIndex(SITE, id)}`,
+      `put ${deliveryKeys.revisionMeta(SITE, id)}`,
+      `put ${deliveryKeys.latest(SITE)}`,
+      `purge ${deliveryKeys.latest(SITE)}`,
+    ]);
+    const index = await readRevisionIndex(delivery.store, SITE, id);
+    expect(index.sequence).toBe(3);
+    expect(index.blocks).toEqual({ a: { version: blockVersion({ v: 1 }) } });
     const meta = await readRevisionMeta(delivery.store, SITE, id);
     expect(meta).toEqual({
       reapplyOf: r1,
@@ -400,72 +430,106 @@ describe("rollbackToRevision", () => {
       message: "Made current: Summer sale",
       publishedAt: "2026-11-04T10:00:00.000Z",
     });
-    expect(meta && "draft" in meta).toBe(false);
   });
 
-  it("is a no-op when the target equals the live blocks", async () => {
-    const { delivery, deps, r2 } = await history();
-    const before = delivery.log.length;
+  it("is a no-op when the target equals the live index", async () => {
+    const { deps, r2, writes } = await history();
+    writes();
     expect(await rollbackToRevision(deps, r2, "")).toEqual({
       result: "up-to-date",
       revision: r2,
     });
-    expect(delivery.log.length).toBe(before);
+    expect(writes()).toEqual([]);
   });
 
-  it("reapplies a revision latest.json never named (a lost race); refuses one with no meta", async () => {
-    const { delivery, deps, r2 } = await history();
-    const orphan = newRevisionId(clock++);
-    await delivery.store.putText(
-      deliveryKeys.revisionData(SITE, orphan),
-      serializeRevisionData({ x: {} }),
-      "",
-    );
-    await expect(rollbackToRevision(deps, orphan, "")).rejects.toBeInstanceOf(
-      RevisionNotFoundError,
-    );
+  it("refuses a target with no meta.json, and one whose index.json is missing", async () => {
+    const { delivery, deps, r1 } = await history();
     await expect(
       rollbackToRevision(deps, newRevisionId(clock++), ""),
     ).rejects.toBeInstanceOf(RevisionNotFoundError);
-    await delivery.store.putJson(
-      deliveryKeys.revisionMeta(SITE, orphan),
-      {
-        previous: r2,
-        author: "u",
-        via: "studio",
-        message: "Lost the race",
-        publishedAt: "2026-11-04T00:00:00.000Z",
-      },
-      "",
+    delivery.objects.delete(deliveryKeys.revisionIndex(SITE, r1));
+    await expect(rollbackToRevision(deps, r1, "")).rejects.toBeInstanceOf(
+      MalformedObjectError,
     );
-    const result = await rollbackToRevision(deps, orphan, "");
-    expect(result).toMatchObject({ result: "published", previous: r2 });
-    const id = (result as { revision: string }).revision;
-    expect((await readRevision(delivery.store, SITE, id)).blocks).toEqual({
-      x: {},
-    });
-    expect(await readRevisionMeta(delivery.store, SITE, id)).toMatchObject({
-      reapplyOf: orphan,
-      message: "Made current: Lost the race",
-    });
   });
 
   it("refuses a rollback before the first latest.json, writing nothing", async () => {
-    const { delivery, deps } = setup();
+    const { delivery, deps, writes } = setup();
     const crashed = newRevisionId(clock++);
     await seedRelease(delivery.store, SITE, crashed, { a: { v: 1 } });
     delivery.objects.delete(deliveryKeys.latest(SITE));
-    const before = delivery.log.length;
+    clearRevisionCache();
+    writes();
     await expect(rollbackToRevision(deps, crashed, "")).rejects.toBeInstanceOf(
       NotPublishedError,
     );
-    expect(delivery.log.slice(before).some((op) => op.startsWith("put"))).toBe(
-      false,
+    expect(writes()).toEqual([]);
+    expect(await readLatest(delivery.store, SITE)).toBeNull();
+  });
+
+  it("answers ProductionMovedError after 3 lost races", async () => {
+    const { deps, r1, delivery } = await history();
+    let n = 0;
+    deps.beforeLatestWrite = async () => {
+      n++;
+      await seedRelease(delivery.store, SITE, newRevisionId(clock++), {
+        a: { v: 100 + n },
+      });
+    };
+    await expect(rollbackToRevision(deps, r1, "")).rejects.toBeInstanceOf(
+      ProductionMovedError,
     );
-    expect(await readLatestPointer(delivery.store, SITE)).toBeNull();
-    // A missing target is still 404 first.
+    expect(n).toBe(3);
+  });
+});
+
+describe("readRevisionMeta", () => {
+  it("caches a parsed meta.json by (site, id), never an absent one", async () => {
+    const { delivery } = setup();
+    const id = newRevisionId(clock++);
+    const metaReads = () =>
+      delivery.reads.filter(
+        (r) => r === `get ${deliveryKeys.revisionMeta(SITE, id)}`,
+      ).length;
+    expect(await readRevisionMeta(delivery.store, SITE, id)).toBeNull();
+    expect(await readRevisionMeta(delivery.store, SITE, id)).toBeNull();
+    expect(metaReads()).toBe(2);
+    await seedRelease(delivery.store, SITE, id, { a: {} });
+    const first = await readRevisionMeta(delivery.store, SITE, id);
+    const second = await readRevisionMeta(delivery.store, SITE, id);
+    expect(second).toEqual(first);
+    expect(first?.author).toBe("usr_seed");
+    expect(metaReads()).toBe(3);
+  });
+
+  it("never caches a parse failure: a fixed meta.json is seen on the next read", async () => {
+    const { delivery } = setup();
+    const id = newRevisionId(clock++);
+    await seedRelease(delivery.store, SITE, id, { a: {} });
+    clearRevisionCache();
+    const key = deliveryKeys.revisionMeta(SITE, id);
+    const good = delivery.objects.get(key)!;
+    delivery.objects.set(key, { text: "{nope", etag: '"x"', cacheControl: "" });
     await expect(
-      rollbackToRevision(deps, newRevisionId(clock++), ""),
-    ).rejects.toBeInstanceOf(RevisionNotFoundError);
+      readRevisionMeta(delivery.store, SITE, id),
+    ).rejects.toBeInstanceOf(MalformedObjectError);
+    delivery.objects.set(key, good);
+    expect((await readRevisionMeta(delivery.store, SITE, id))?.author).toBe(
+      "usr_seed",
+    );
+  });
+});
+
+describe("readLatest", () => {
+  it("revalidates the cached copy with If-None-Match on every read", async () => {
+    const { delivery, seed } = setup();
+    const r1 = await seed({ a: { v: 1 } });
+    delivery.reads.length = 0;
+    expect((await readLatest(delivery.store, SITE))?.latest.revision).toBe(r1);
+    expect((await readLatest(delivery.store, SITE))?.latest.revision).toBe(r1);
+    expect(delivery.reads).toEqual([
+      `get ${deliveryKeys.latest(SITE)} if-none-match`,
+      `get ${deliveryKeys.latest(SITE)} if-none-match`,
+    ]);
   });
 });

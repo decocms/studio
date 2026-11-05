@@ -1,5 +1,5 @@
 /**
- * The Releases tab on the hosted CMS (contract §4.10): one delimiter LIST of
+ * The Releases tab on the hosted CMS (contract §4.7): one delimiter LIST of
  * `revisions/`, 50 revision folders a page, newest first (the ids' inverted
  * time prefix), then one `meta.json` GET per folder; a folder without
  * `meta.json` (a publish that crashed before it) is skipped, unless
@@ -16,7 +16,7 @@
 
 import {
   MalformedObjectError,
-  readLatestPointer,
+  readLatest,
   readRevisionMeta,
   type RevisionMeta,
 } from "./cms-release";
@@ -90,8 +90,8 @@ export async function listCmsReleases(
 ): Promise<ReleasesPage> {
   const from = cursor ? decodeCursor(cursor) : null;
   if (cursor && !from) throw new InvalidCursorError();
-  const latest = await readLatestPointer(store, site);
-  const live = latest?.pointer.revision ?? null;
+  const latest = await readLatest(store, site);
+  const live = latest?.latest.revision ?? null;
   const prefix = deliveryKeys.revisions(site);
   const page = await store.listPage(prefix, {
     delimiter: "/",

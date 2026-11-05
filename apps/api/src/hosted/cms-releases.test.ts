@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { clearRevisionCache, serializeRevisionData } from "./cms-release";
+import { clearRevisionCache, serializeIndex } from "./cms-release";
 import {
   decodeCursor,
   listCmsReleases,
@@ -24,8 +24,8 @@ describe("listCmsReleases", () => {
       const id = newRevisionId(clock++);
       if (i % 7 === 3) {
         await delivery.store.putText(
-          deliveryKeys.revisionData(SITE, id),
-          serializeRevisionData({}),
+          deliveryKeys.revisionIndex(SITE, id),
+          serializeIndex({ revision: id, sequence: 1, blocks: {} }),
           "",
         );
         await delivery.store.putJson(
@@ -47,7 +47,7 @@ describe("listCmsReleases", () => {
     // A crash before meta.json: skipped.
     const crashed = newRevisionId(clock++);
     await delivery.store.putText(
-      deliveryKeys.revisionData(SITE, crashed),
+      deliveryKeys.revisionIndex(SITE, crashed),
       "{}",
       "",
     );
@@ -137,7 +137,7 @@ describe("listCmsReleases", () => {
     await seedRelease(delivery.store, SITE, r1, { n: {} });
     const crashed = newRevisionId(clock++);
     await delivery.store.putText(
-      deliveryKeys.revisionData(SITE, crashed),
+      deliveryKeys.revisionIndex(SITE, crashed),
       "{}",
       "",
     );
