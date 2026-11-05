@@ -6806,7 +6806,26 @@ export interface StudioToolIO {
           probabilityVariantBest: number;
           probabilityDefaultBest: number;
         };
+        statsGoal?: string | undefined;
+        arms?:
+          | {
+              id: string;
+              visitors: number;
+              exposed: number | null;
+              convertersAmongExposed: number | null;
+              purchases: number;
+              revenue: number;
+              behaviour: {
+                pageviewsPerVisitor: number;
+                activeSecondsPerVisitor: number;
+                clicksPerVisitor: number;
+                medianScrollDepth: number;
+                errorPct: number;
+              } | null;
+            }[]
+          | undefined;
       } | null;
+      source?: "legacy" | "deco-analytics" | undefined;
     };
   };
   AUTOMATION_CREATE: {

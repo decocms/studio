@@ -93,3 +93,22 @@ export function sampleSize(a: Variant, b: Variant, mde = 0.03): number | null {
 
   return Math.ceil(size) * (1 + r);
 }
+
+/**
+ * The statistics block the results report: the target sample size (1000 until
+ * there is enough data for a control) and each arm's chance of being best.
+ */
+export function experimentStats(
+  control: Variant,
+  test: Variant,
+  totalParticipants: number,
+) {
+  const raw = sampleSize(control, test);
+  const probabilityVariantBest = pBetter(control, test);
+  return {
+    totalParticipants,
+    sampleSize: raw == null || Number.isNaN(raw) ? 1000 : raw,
+    probabilityVariantBest,
+    probabilityDefaultBest: 1 - probabilityVariantBest,
+  };
+}

@@ -232,6 +232,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 const num = (n: number) => new Intl.NumberFormat().format(n);
+const rate = (n: number, of: number) =>
+  of > 0 ? `${((100 * n) / of).toFixed(1)}%` : "—";
+const money = (n: number) =>
+  new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
 
 function Results({
   site,
@@ -271,9 +278,16 @@ function Results({
   }
 
   const conversionGoals = r.goals.filter((g) => g.goal !== "visitors");
+  const arms = r.arms ?? [];
+  const exposure = arms.some((a) => a.exposed !== null);
 
   return (
     <div className="flex flex-col gap-4">
+      {data.source === "deco-analytics" && (
+        <span className="text-xs text-muted-foreground">
+          {t("experiments.results.sourceDeco")}
+        </span>
+      )}
       <div className="grid grid-cols-2 gap-4 rounded-lg border border-border p-4 sm:grid-cols-4">
         <Stat
           label={t("experiments.results.participants")}
@@ -312,6 +326,120 @@ function Results({
           </span>
         </div>
       </div>
+
+      {arms.length > 0 && (
+        <div className="rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("experiments.results.variant")}</TableHead>
+                <TableHead className="text-right">
+                  {t("experiments.results.visitors")}
+                </TableHead>
+                {exposure && (
+                  <>
+                    <TableHead className="text-right">
+                      {t("experiments.results.exposed")}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {t("experiments.results.exposedConversion", {
+                        goal: r.statsGoal ?? "",
+                      })}
+                    </TableHead>
+                  </>
+                )}
+                <TableHead className="text-right">
+                  {t("experiments.results.revenue")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("experiments.results.revenuePerVisitor")}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {arms.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell className="font-mono text-xs">{a.id}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {num(a.visitors)}
+                  </TableCell>
+                  {exposure && (
+                    <>
+                      <TableCell className="text-right tabular-nums">
+                        {num(a.exposed ?? 0)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {rate(a.convertersAmongExposed ?? 0, a.exposed ?? 0)}
+                      </TableCell>
+                    </>
+                  )}
+                  <TableCell className="text-right tabular-nums">
+                    {money(a.revenue)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {a.visitors > 0 ? money(a.revenue / a.visitors) : "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {arms.some((a) => a.behaviour) && (
+        <div className="rounded-lg border border-border">
+          <div className="px-4 pt-3 text-xs text-muted-foreground">
+            {t("experiments.results.behaviour")}
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("experiments.results.variant")}</TableHead>
+                <TableHead className="text-right">
+                  {t("experiments.results.pageviews")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("experiments.results.activeSeconds")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("experiments.results.clicks")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("experiments.results.scroll")}
+                </TableHead>
+                <TableHead className="text-right">
+                  {t("experiments.results.errors")}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {arms.map(
+                ({ id, behaviour: b }) =>
+                  b && (
+                    <TableRow key={id}>
+                      <TableCell className="font-mono text-xs">{id}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {num(b.pageviewsPerVisitor)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {num(b.activeSecondsPerVisitor)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {num(b.clicksPerVisitor)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {b.medianScrollDepth}%
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {b.errorPct}%
+                      </TableCell>
+                    </TableRow>
+                  ),
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       {conversionGoals.length > 0 && (
         <div className="rounded-lg border border-border">
