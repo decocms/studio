@@ -203,6 +203,41 @@ describe("MCP OAuth consent gate", () => {
     expect(res.headers.get("location")).toStartWith(`${redirectUri}?code=`);
   });
 
+  it("refuses to authorize a client registered with a disallowed redirect", async () => {
+    const { auth, db } = createAuth();
+    const cookie = await signUp(auth);
+    const studioPage = `${STUDIO}/api/acme/fs/workspace/read?path=/x.html`;
+    // Registered before the registration rule existed.
+    for (const [clientId, uri] of [
+      ["legacy-script", "javascript:alert(1)"],
+      ["legacy-page", studioPage],
+    ] as const) {
+      db.oauthApplication.push({
+        id: clientId,
+        clientId,
+        name: "legacy",
+        type: "public",
+        redirectUrls: uri,
+        disabled: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      db.oauthConsent.push({
+        id: `consent-${clientId}`,
+        clientId,
+        userId: db.user[0]?.id,
+        scopes: "openid offline_access",
+        consentGiven: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const res = await authorize(auth, clientId, uri, cookie);
+      expect(res.status).toBe(400);
+      expect(res.headers.get("location")).toBeNull();
+    }
+  });
+
   it("sends a signed-out user to login without the auto-issue cookie", async () => {
     const { auth } = createAuth();
     const res = await authorize(auth, "any", redirectUri);

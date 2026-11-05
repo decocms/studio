@@ -11,7 +11,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { auth } from "../../auth";
-import { parseScopes } from "../../auth/mcp-consent";
+import {
+  isAllowedMcpRedirectUri,
+  parseScopes,
+  studioHostsOf,
+} from "../../auth/mcp-consent";
 
 interface ClientRow {
   clientId: string;
@@ -65,6 +69,14 @@ app.get("/", async (c) => {
   if (!client) return c.json({ error: "Unknown client" }, 404);
   if (!client.redirectUrls.split(",").includes(redirect_uri)) {
     return c.json({ error: "redirect_uri is not registered" }, 400);
+  }
+  // The page's Deny button navigates here, so a script URI registered before
+  // the registration rule existed must not get this far.
+  const { baseURL } = await auth.$context;
+  if (
+    !isAllowedMcpRedirectUri(redirect_uri, studioHostsOf(baseURL, c.req.raw))
+  ) {
+    return c.json({ error: "redirect_uri is not allowed" }, 400);
   }
 
   return c.json({

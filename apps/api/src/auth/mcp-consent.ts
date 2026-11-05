@@ -119,6 +119,23 @@ export const mcpOAuthBeforeHook = createAuthMiddleware(async (ctx) => {
 
   if (ctx.path !== "/mcp/authorize") return;
 
+  // Registration enforces this too, but clients registered before it did may
+  // still hold a script URI or a Studio page.
+  const query = ctx.query as Record<string, unknown> | undefined;
+  const redirectUri = query?.redirect_uri;
+  if (
+    typeof redirectUri === "string" &&
+    !isAllowedMcpRedirectUri(
+      redirectUri,
+      studioHostsOf(ctx.context.baseURL, ctx.request),
+    )
+  ) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description: "redirect_uri is not allowed",
+    });
+  }
+
   const search = ctx.request ? new URL(ctx.request.url).search : "";
   const session = await getSessionFromCtx(ctx);
   if (!session) {
@@ -126,7 +143,6 @@ export const mcpOAuthBeforeHook = createAuthMiddleware(async (ctx) => {
     throw ctx.redirect(`/login${search}`);
   }
 
-  const query = ctx.query as Record<string, unknown> | undefined;
   const clientId = query?.client_id;
   if (typeof clientId !== "string") return;
 
