@@ -396,8 +396,6 @@ export const sectionsEditor = {
     "Não foi possível adicionar variante.",
   "sectionsEditor.sectionsEditor.couldNotApplySavedRule":
     "Não foi possível aplicar a regra salva",
-  "sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock":
-    "Não foi possível excluir o bloco de correspondência",
   "sectionsEditor.sectionsEditor.couldNotLoadSiteData":
     "Não foi possível carregar os dados do site.",
   "sectionsEditor.sectionsEditor.couldNotReadVariantMatcherRule":

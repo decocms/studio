@@ -381,8 +381,6 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.couldNotAddVariant": "Could not add variant.",
   "sectionsEditor.sectionsEditor.couldNotApplySavedRule":
     "Could not apply saved rule",
-  "sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock":
-    "Could not delete matcher block",
   "sectionsEditor.sectionsEditor.couldNotLoadSiteData":
     "Could not load site data.",
   "sectionsEditor.sectionsEditor.couldNotReadVariantMatcherRule":

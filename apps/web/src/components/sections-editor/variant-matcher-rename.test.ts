@@ -74,7 +74,6 @@ describe("planVariantMatcherRename", () => {
     );
     expect(action).toEqual({
       kind: "inline",
-      blockKey: "MobilePromo",
       inlinedRule: {
         __resolveType: "website/matchers/device.ts",
         mobile: true,
