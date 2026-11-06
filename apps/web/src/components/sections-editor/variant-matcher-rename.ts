@@ -11,8 +11,8 @@ import { suggestBlockId, validateBlockId } from "./page-sections";
 
 /**
  * Block-store operations a multivariate FIELD wrapper delegates upward to the
- * sections editor, which owns block persistence (saveBlock/deleteBlock).
- * Both are awaited direct whole-block saves — the wrapper does
+ * sections editor, which owns block persistence (saveBlock/deleteBlock) and
+ * orphan cleanup. Both are awaited direct whole-block saves — the wrapper does
  * NOT route these through its debounced `onChange`, so there is never a
  * persisted dangling matcher reference. Only wired for the top-level
  * (global-block) surface where the wrapper value IS the whole block.
@@ -50,9 +50,9 @@ export interface VariantMatcherOps {
  */
 export type RenameAction =
   | { kind: "noop" }
-  /** Clear the name: replace the block reference with the inline matcher. The
-   *  saved rule block stays, used or not. */
-  | { kind: "inline"; inlinedRule: Record<string, unknown> }
+  /** Clear the name: replace the block reference with the inline matcher and
+   *  (v7 only) garbage-collect the now-possibly-orphaned block. */
+  | { kind: "inline"; blockKey: string; inlinedRule: Record<string, unknown> }
   /** The rule already references a saved block: rewrite that block's display
    *  name only; the variant rule is unchanged. */
   | {
@@ -91,8 +91,10 @@ export function planVariantMatcherRename(
     if (!isSavedMatcherBlockReference(targetRule, decofile, meta)) {
       return { kind: "noop" };
     }
+    const blockKey = (targetRule.__resolveType as string) ?? "";
     return {
       kind: "inline",
+      blockKey,
       inlinedRule: inlineMatcherRule(targetRule, decofile, meta),
     };
   }

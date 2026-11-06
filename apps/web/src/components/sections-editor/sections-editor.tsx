@@ -155,6 +155,7 @@ import {
   duplicatePageVariantEntry,
   isMultivariateArrayWrapper,
   type PageVariant,
+  shouldDeleteOrphanMatcherBlock,
 } from "./page-variants";
 import {
   buildPageDataWithSections,
@@ -170,6 +171,7 @@ import {
   appendSectionVariant,
   canAddSectionVariant,
   deleteMultivariateSectionVariant,
+  isDefaultVariantRule,
   pickVariantToKeepIndex,
   duplicateMultivariateSectionVariant,
   duplicateVariantIndex,
@@ -2683,6 +2685,37 @@ export function SectionsEditor({
     }
   };
 
+  /**
+   * v7: deletes the saved matcher block `blockKey` once nothing in the
+   * projected decofile references it. A v8 site keeps its saved rules, used
+   * or not.
+   */
+  const cleanupOrphanMatcherBlock = async (
+    blockKey: string,
+    projectedDecofile: Record<string, unknown>,
+  ) => {
+    if (
+      !shouldDeleteOrphanMatcherBlock(
+        projectedDecofile,
+        blockKey,
+        meta,
+        protocolProject,
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteBlock.mutateAsync({ blockKey });
+    } catch (err) {
+      toast.error(
+        t("sectionsEditor.sectionsEditor.couldNotDeleteMatcherBlock"),
+        {
+          description: errorDetailsDescription(t, errorDetail(err)),
+        },
+      );
+    }
+  };
+
   const scheduleRuleSave = (newRule: Record<string, unknown>) => {
     if (ruleDebounceRef.current) clearTimeout(ruleDebounceRef.current);
     ruleDebounceRef.current = setTimeout(() => {
@@ -2902,8 +2935,9 @@ export function SectionsEditor({
 
   /**
    * Point the active page variant at an existing saved matcher block (global
-   * rule). Writes the page with a reference (`{ __resolveType: blockKey }`);
-   * the saved rule it used before stays, used or not.
+   * rule). Writes the page with a reference (`{ __resolveType: blockKey }`).
+   * On v7 the previously-referenced block is deleted if it becomes orphaned;
+   * on v8 the saved rule it used before stays, used or not.
    */
   const handlePageVariantSelectGlobal = async (blockKey: string) => {
     cancelPendingRuleSaves();
@@ -2926,6 +2960,11 @@ export function SectionsEditor({
     const target = variants[variantIndex];
     if (!target) return;
 
+    const prevBlockKey = getSavedMatcherBlockKey(
+      target.rule as Record<string, unknown> | undefined,
+      latestDecofile,
+      meta,
+    );
     const rule = buildMatcherBlockReference(blockKey);
     variants[variantIndex] = { ...target, rule };
 
@@ -2947,6 +2986,9 @@ export function SectionsEditor({
         blockKey: pageKey,
         data: projectedDecofile[pageKey] as Record<string, unknown>,
       });
+      if (prevBlockKey && prevBlockKey !== blockKey) {
+        await cleanupOrphanMatcherBlock(prevBlockKey, projectedDecofile);
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
@@ -3122,8 +3164,9 @@ export function SectionsEditor({
 
   /**
    * Point the active section variant at an existing saved matcher block (global
-   * rule). Writes the page with a reference; the saved rule it used before
-   * stays, used or not.
+   * rule). Writes the page with a reference. On v7 the previously-referenced
+   * block is deleted if it becomes orphaned; on v8 the saved rule it used
+   * before stays, used or not.
    */
   const handleSectionVariantSelectGlobal = async (blockKey: string) => {
     cancelPendingRuleSaves();
@@ -3146,6 +3189,14 @@ export function SectionsEditor({
     const mvObj = getMultivariateSectionObject(rawSection, parsed);
     if (!mvObj) return;
 
+    const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
+    const prevBlockKey = getSavedMatcherBlockKey(
+      variants[targetSectionVariantIndex]?.rule as
+        | Record<string, unknown>
+        | undefined,
+      latestDecofile,
+      meta,
+    );
     const rule = buildMatcherBlockReference(blockKey);
     const updatedMvObj = updateMultivariateSectionVariantRule(
       mvObj,
@@ -3178,6 +3229,9 @@ export function SectionsEditor({
 
     try {
       await saveBlock.mutateAsync({ blockKey: pageKey, data: fullPageData });
+      if (prevBlockKey && prevBlockKey !== blockKey) {
+        await cleanupOrphanMatcherBlock(prevBlockKey, projectedDecofile);
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {
@@ -3441,6 +3495,7 @@ export function SectionsEditor({
       variants: Array<Record<string, unknown>>,
     ) => Array<Record<string, unknown>> | null,
     onSaved?: () => void,
+    orphanMatcherBlockKeys?: string | string[] | null,
   ) => {
     if (!activePageKey) return;
     // Cancel a pending rule-autosave timer — it writes into
@@ -3480,7 +3535,18 @@ export function SectionsEditor({
         data: projectedDecofile[activePageKey] as Record<string, unknown>,
       },
       {
-        onSuccess: () => onSaved?.(),
+        onSuccess: () => {
+          onSaved?.();
+          const orphans =
+            typeof orphanMatcherBlockKeys === "string"
+              ? [orphanMatcherBlockKeys]
+              : (orphanMatcherBlockKeys ?? []);
+          void (async () => {
+            for (const key of orphans) {
+              await cleanupOrphanMatcherBlock(key, projectedDecofile);
+            }
+          })();
+        },
         onError: saveBlock.reportError,
       },
     );
@@ -3511,6 +3577,13 @@ export function SectionsEditor({
   };
 
   const handleDeletePageVariant = (variantIndex: number) => {
+    const deletedRule = pageVariants[variantIndex]?.rule;
+    const orphanMatcherBlockKey = getSavedMatcherBlockKey(
+      deletedRule,
+      decofile ?? {},
+      meta ?? undefined,
+    );
+
     mutatePageVariants(
       (variants) => {
         if (variants.length <= 1) return null;
@@ -3534,6 +3607,7 @@ export function SectionsEditor({
         setRuleFormValue(null);
         setRuleResolveType(null);
       },
+      orphanMatcherBlockKey,
     );
   };
 
@@ -3544,6 +3618,18 @@ export function SectionsEditor({
    * back to the plain array it was before the first variant was added.
    */
   const handleRemoveAllPageVariants = () => {
+    const discarded = pageVariants
+      .map((variant, index) => ({ variant, index }))
+      .filter(({ variant }) => !isDefaultVariantRule(variant.rule))
+      .map(({ variant }) =>
+        getSavedMatcherBlockKey(
+          variant.rule,
+          decofile ?? {},
+          meta ?? undefined,
+        ),
+      )
+      .filter((key): key is string => !!key);
+
     mutatePageVariants(
       (variants) => {
         const keepIndex = pickVariantToKeepIndex({ variants });
@@ -3561,6 +3647,7 @@ export function SectionsEditor({
         setRuleResolveType(null);
         setManagingVariants(false);
       },
+      discarded,
     );
   };
 
@@ -3637,14 +3724,22 @@ export function SectionsEditor({
           return;
         }
 
+        const blockKey = (targetRule.__resolveType as string) ?? "";
         variants[variantIndex] = {
           ...target,
           rule: inlineMatcherRule(targetRule, latestDecofile, meta),
         };
+
+        const projectedDecofile = {
+          ...latestDecofile,
+          [pageKey]: { ...fullPageData, sections: { ...obj, variants } },
+        };
+
         await saveBlock.mutateAsync({
           blockKey: pageKey,
-          data: { ...fullPageData, sections: { ...obj, variants } },
+          data: projectedDecofile[pageKey] as Record<string, unknown>,
         });
+        await cleanupOrphanMatcherBlock(blockKey, projectedDecofile);
         setRenameVariantIndex(null);
         onSaved?.();
         return;
@@ -3788,7 +3883,7 @@ export function SectionsEditor({
 
     const persistSectionVariants = async (
       nextVariants: Array<Record<string, unknown>>,
-    ): Promise<void> => {
+    ): Promise<Record<string, unknown>> => {
       const updatedMvObj = { ...mvObj, variants: nextVariants };
       const updatedSections = [...latestRawSections];
       updatedSections[sectionIndex] = rebuildSectionWithMultivariate(
@@ -3804,6 +3899,7 @@ export function SectionsEditor({
         latestVariants,
       );
       await saveBlock.mutateAsync({ blockKey: pageKey, data: fullPageData });
+      return { ...latestDecofile, [pageKey]: fullPageData };
     };
 
     try {
@@ -3812,12 +3908,14 @@ export function SectionsEditor({
           setRenameSectionVariantIndex(null);
           return;
         }
+        const blockKey = (targetRule.__resolveType as string) ?? "";
         const nextVariants = [...variants];
         nextVariants[variantIndex] = {
           ...target,
           rule: inlineMatcherRule(targetRule, latestDecofile, meta),
         };
-        await persistSectionVariants(nextVariants);
+        const projectedDecofile = await persistSectionVariants(nextVariants);
+        await cleanupOrphanMatcherBlock(blockKey, projectedDecofile);
         setRenameSectionVariantIndex(null);
         onSaved?.();
         return;
@@ -3955,9 +4053,10 @@ export function SectionsEditor({
 
     const persistWrapper = async (
       nextVariants: Array<Record<string, unknown>>,
-    ): Promise<void> => {
+    ): Promise<Record<string, unknown>> => {
       const data = { ...wrapperValue, variants: nextVariants };
       await saveWholeGlobalBlock(blockKey, wrapperValue, data);
+      return { ...latestDecofile, [blockKey]: data };
     };
 
     const action = planVariantMatcherRename(
@@ -3985,7 +4084,8 @@ export function SectionsEditor({
       if (action.kind === "inline") {
         const nextVariants = [...variants];
         nextVariants[variantIndex] = { ...target, rule: action.inlinedRule };
-        await persistWrapper(nextVariants);
+        const projected = await persistWrapper(nextVariants);
+        await cleanupOrphanMatcherBlock(action.blockKey, projected);
         onSaved?.();
         return;
       }
@@ -4043,7 +4143,8 @@ export function SectionsEditor({
 
   /**
    * Point a directly-opened section-multivariate variant at an existing saved
-   * global matcher block. Whole-block analogue of
+   * global matcher block (on v7, deleting the previously-referenced block if
+   * it becomes orphaned). Whole-block analogue of
    * handleSectionVariantSelectGlobal.
    */
   const handleFieldVariantSelectGlobal = async (
@@ -4058,7 +4159,8 @@ export function SectionsEditor({
     }
     waitingFormSavesRef.current.clear();
 
-    const targetBlockKey = latestRef.current.activePageKey;
+    const { activePageKey: targetBlockKey, decofile: latestDecofile } =
+      latestRef.current;
     if (!targetBlockKey) return;
 
     const variants = Array.isArray(wrapperValue.variants)
@@ -4067,14 +4169,23 @@ export function SectionsEditor({
     const target = variants[variantIndex];
     if (!target) return;
 
+    const prevBlockKey = getSavedMatcherBlockKey(
+      target.rule as Record<string, unknown> | undefined,
+      latestDecofile,
+      meta,
+    );
     variants[variantIndex] = {
       ...target,
       rule: buildMatcherBlockReference(blockKey),
     };
     const data = { ...wrapperValue, variants };
+    const projected = { ...latestDecofile, [targetBlockKey]: data };
 
     try {
       await saveWholeGlobalBlock(targetBlockKey, wrapperValue, data);
+      if (prevBlockKey && prevBlockKey !== blockKey) {
+        await cleanupOrphanMatcherBlock(prevBlockKey, projected);
+      }
       onSaved?.();
     } catch (err) {
       toast.error(t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"), {

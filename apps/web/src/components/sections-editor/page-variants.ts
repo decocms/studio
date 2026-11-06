@@ -1,5 +1,6 @@
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import { resolveVariantRuleLabel } from "./matcher-rules";
+import { findSavedMatcherReferences } from "./rule-references";
 import {
   duplicateVariantIndex,
   isDefaultVariantRule,
@@ -362,4 +363,34 @@ export function buildPageSectionsFromVariants(
     }
   }
   return createMultivariatePageSections(variants, obj);
+}
+
+/**
+ * How many places still reference the saved matcher block `blockKey`. The
+ * caller deletes the block when this is 0, so a missed reference deletes live
+ * user data: the search (`findSavedMatcherReferences`) inspects every object
+ * in the decofile, not just page variant rules. Over-counting merely keeps an
+ * unused block around; under-counting destroys data.
+ */
+export function countSavedMatcherBlockReferences(
+  decofile: Record<string, unknown>,
+  blockKey: string,
+  meta?: LiveMeta | null,
+): number {
+  return findSavedMatcherReferences(decofile, blockKey, meta).length;
+}
+
+/**
+ * Whether the sections editor deletes the saved matcher block `blockKey`
+ * after a write left `decofile`: on a v7 site, once nothing references it.
+ * A v8 site (`protocolProject`) keeps its saved rules, used or not.
+ */
+export function shouldDeleteOrphanMatcherBlock(
+  decofile: Record<string, unknown>,
+  blockKey: string,
+  meta: LiveMeta | null | undefined,
+  protocolProject: boolean,
+): boolean {
+  if (protocolProject) return false;
+  return countSavedMatcherBlockReferences(decofile, blockKey, meta) === 0;
 }
