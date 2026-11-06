@@ -2,8 +2,9 @@ import { isV8Schema } from "@decocms/shared/blocks-major";
 import { type ReactNode, useEffect } from "react";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 import { resolveSchema } from "./resolve-schema";
-import { applySchemaDefaults } from "./schema-defaults";
+import { applySchemaDefaults, unseedSchemaDefaults } from "./schema-defaults";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
@@ -498,10 +499,17 @@ interface SchemaFormProps {
   /**
    * Outermost form only: whether missing `@default`s are written back through
    * `onChange` as soon as the form opens (the default). With `false` they are
-   * shown, and saved with the first real change, so opening a block that
-   * isn't saved yet never creates it.
+   * shown, and saved with the first real change, so opening a block that isn't
+   * saved yet never creates it. A project that writes defaults only into new
+   * blocks (`defaultsOnCreateOnly`) never saves them for an existing one.
    */
   persistDefaults?: boolean;
+  /**
+   * The form is creating its block (it isn't stored yet, or was only just
+   * added): its defaults are saved as for any project, even one that writes
+   * them only into new blocks.
+   */
+  newBlock?: boolean;
   basePath: string;
   breadcrumbPath?: Crumb[];
   onBreadcrumbChange?: (path: Crumb[]) => void;
@@ -528,7 +536,9 @@ interface SchemaFormProps {
  * `ObjectField` expansion store so manually-expanded groups survive breadcrumb
  * drill-in/out (which unmounts sibling fields); nested instances reuse it. See
  * `object-field-expansion.tsx`. It also writes missing `@default`s back through
- * `onChange`, so the form only shows values that are saved.
+ * `onChange`, so the form only shows values that are saved — except in a
+ * project that writes defaults only into new blocks, where they are shown and
+ * only what the user changes is saved.
  */
 export function SchemaForm(props: SchemaFormProps) {
   const hasExpansionProvider = useHasObjectFieldExpansion();
@@ -557,18 +567,38 @@ export function useSeededFormValue(
   return seeded;
 }
 
+/**
+ * Whether the project writes `@default`s only into new blocks (CMS settings;
+ * off unless turned on). Suspends until the project is read, so such a project
+ * never writes while its setting is loading.
+ */
+function useDefaultsOnCreateOnly(virtualMcpId?: string | null): boolean {
+  const virtualMcp = useVirtualMCP(virtualMcpId);
+  return virtualMcp?.metadata?.defaultsOnCreateOnly === true;
+}
+
 function RootSchemaForm(props: SchemaFormProps) {
-  const { schema, value, onChange, meta, persistDefaults } = props;
+  const { schema, value, onChange, meta, persistDefaults, sandbox, newBlock } =
+    props;
+  const createOnly =
+    useDefaultsOnCreateOnly(sandbox?.virtualMcpId) && !newBlock;
   const seeded = useSeededFormValue(
     schema,
     value,
     onChange,
     meta,
-    persistDefaults,
+    persistDefaults !== false && !createOnly,
   );
+  // The fields edit `seeded`; only the user's own changes reach the save.
+  const emit = createOnly
+    ? (next: unknown) => {
+        const out = unseedSchemaDefaults(schema, value, seeded, next, meta);
+        if (out !== value) onChange(out);
+      }
+    : onChange;
   return (
     <ObjectFieldExpansionProvider>
-      <SchemaFormBody {...props} value={seeded} />
+      <SchemaFormBody {...props} value={seeded} onChange={emit} />
     </ObjectFieldExpansionProvider>
   );
 }

@@ -44,6 +44,7 @@ import {
   withBranchDiscriminator,
 } from "../block-ref-field-utils";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
+import { withDefaultsForNew } from "../schema-defaults";
 import { labelFromResolveType } from "../section-types";
 import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
@@ -345,26 +346,45 @@ export function AnyOfField({
         ...filtered,
       };
 
+      // The picked branch is created here, so it starts with its defaults.
+      const branchSchema = resolvedTargetSchema ?? targetRef?.schema;
       if (discriminatorKey) {
         const discValue = targetRef?.discriminatorValue ?? rt;
-        onChange({ ...next, [discriminatorKey]: discValue });
+        onChange(
+          withDefaultsForNew(
+            branchSchema,
+            { ...next, [discriminatorKey]: discValue },
+            meta,
+          ),
+        );
         return;
       }
 
       // Embedded union variants (ImageBanner | VideoBanner in Carousel.tsx)
       // must not get a persisted __resolveType — deco only expects plain props.
       if (isEmbeddedUnionResolveType(rt)) {
-        onChange(next);
+        onChange(withDefaultsForNew(branchSchema, next, meta));
         return;
       }
-      onChange({ ...next, __resolveType: rt });
+      onChange(
+        withDefaultsForNew(undefined, { ...next, __resolveType: rt }, meta),
+      );
     };
 
     const persistUnionValue = (next: unknown) => {
+      const branchValue = discriminatorKey
+        ? withBranchDiscriminator(next, discriminatorKey, selectedRef)
+        : blockRefValueForBranch(next, activeRt);
+      // A value that wasn't stored yet is created by this first edit.
+      const created = value === undefined || value === null;
       onChange(
-        discriminatorKey
-          ? withBranchDiscriminator(next, discriminatorKey, selectedRef)
-          : blockRefValueForBranch(next, activeRt),
+        created
+          ? withDefaultsForNew(
+              discriminatorKey ? selectedRef?.schema : undefined,
+              branchValue,
+              meta,
+            )
+          : branchValue,
       );
     };
 

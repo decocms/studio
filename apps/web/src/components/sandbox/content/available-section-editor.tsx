@@ -183,6 +183,8 @@ export function AvailableSectionEditor({
                   decofile={decofile}
                   onSaveReferencedBlock={onSaveReferencedBlock}
                   sandbox={sandbox}
+                  // Not global yet: this form creates the section.
+                  newBlock
                 />
               ) : (
                 <div className="px-3 py-6 text-center text-xs text-muted-foreground">

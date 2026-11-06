@@ -376,6 +376,8 @@ export function RunnableBlockEditor({
                     decofile={decofile}
                     onSaveReferencedBlock={onSaveReferencedBlock}
                     sandbox={sandbox}
+                    // An available block isn't saved yet: this form creates it.
+                    newBlock={target.mode === "available"}
                   />
                 ) : (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">
