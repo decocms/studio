@@ -137,7 +137,11 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsPageSelector, showPreviewToolbarFor } from "./cms-controls";
+import {
+  cmsEditorActivation,
+  showCmsPageSelector,
+  showPreviewToolbarFor,
+} from "./cms-controls";
 import {
   PageSchemaNotReadyError,
   useCreatePage,
@@ -1485,14 +1489,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
-    if (!win || !origin) return;
-    // Daemon-proxied sandbox speaks `visual-editor::activate`; a Fast Preview production frame and a Local tunnel (a raw deco runtime) speak the framework's `editor::inject`.
-    win.postMessage(
-      display.mode === "production" || localPreviewUrl
-        ? { type: "editor::inject", args: { script: CMS_EDITOR_SCRIPT } }
-        : { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
-      origin,
-    );
+    // Daemon-proxied sandbox speaks `visual-editor::activate`; a Fast Preview production frame and a Local tunnel (a raw deco runtime) speak the framework's `editor::inject`; a v8 page takes neither.
+    const activation = cmsEditorActivation({
+      v8,
+      production: display.mode === "production",
+      localPreview: !!localPreviewUrl,
+      script: CMS_EDITOR_SCRIPT,
+    });
+    if (!win || !origin || !activation) return;
+    win.postMessage(activation, origin);
     // Ordered after activate, so the script's listener is registered by the
     // time this arrives. Re-sent on every (re)injection (mode switch, page
     // navigation, save-reload) so labels track the current page.

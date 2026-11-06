@@ -7,6 +7,11 @@
  * Only the frame's own window is heard (`event.source`), at the origin it
  * says `deco:ready` from; Studio answers to that origin alone. A new
  * `deco:ready` is a new document: what the old one had loaded is forgotten.
+ * The page says `deco:ready` only to a Studio origin its binding trusts
+ * (Studio's production and staging origins by default, `DEFAULT_STUDIO_ORIGINS`;
+ * a Studio elsewhere never hears it) and imports a module only on the origin
+ * of the `deco:load` naming it, so the modules are named on Studio's own
+ * origin (`studioOrigin`, `location.origin`).
  *
  * {@link StudioChannelHost.refresh} asks HTML swap to show a save, or a new
  * URL of the page (a save's moved draft pointer: the frame keeps its src and
