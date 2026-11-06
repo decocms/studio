@@ -254,7 +254,10 @@ export async function askHostedConflict(
   return askNamedRuleConflict(
     plan,
     relabel ? fields.map(relabel) : fields,
-    about,
+    // Who made it is read for their copy of the block, not the whole plan.
+    about?.author
+      ? { ...about, author: { ...about.author, keyed: true } }
+      : about,
   );
 }
 
