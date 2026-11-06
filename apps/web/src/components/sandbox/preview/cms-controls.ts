@@ -46,3 +46,16 @@ export function cmsEditorActivation(input: {
     ? { type: "editor::inject", args: { script: input.script } }
     : { type: "visual-editor::activate", script: input.script };
 }
+
+/**
+ * The message that activates the sandbox visual mode's `script` in the frame,
+ * or `null` for a Blocks v8 site: its page evaluates no script Studio sends,
+ * so it hears nothing of the visual mode (neither activate nor deactivate).
+ */
+export function visualEditorActivation(input: {
+  v8: boolean;
+  script: string;
+}): { type: "visual-editor::activate"; script: string } | null {
+  if (input.v8) return null;
+  return { type: "visual-editor::activate", script: input.script };
+}

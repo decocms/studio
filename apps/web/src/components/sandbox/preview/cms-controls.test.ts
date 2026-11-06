@@ -3,6 +3,7 @@ import {
   cmsEditorActivation,
   showCmsPageSelector,
   showPreviewToolbarFor,
+  visualEditorActivation,
 } from "./cms-controls";
 
 describe("showCmsPageSelector", () => {
@@ -111,5 +112,20 @@ describe("cmsEditorActivation", () => {
         script,
       }),
     ).toEqual({ type: "visual-editor::activate", script });
+  });
+});
+
+describe("visualEditorActivation", () => {
+  const script = "/* visual editor */";
+
+  it("sends a Blocks v8 frame nothing: neither activate nor the script", () => {
+    expect(visualEditorActivation({ v8: true, script })).toBe(null);
+  });
+
+  it("a v7 sandbox takes visual-editor::activate with the script", () => {
+    expect(visualEditorActivation({ v8: false, script })).toEqual({
+      type: "visual-editor::activate",
+      script,
+    });
   });
 });

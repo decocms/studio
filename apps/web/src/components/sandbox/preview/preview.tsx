@@ -141,6 +141,7 @@ import {
   cmsEditorActivation,
   showCmsPageSelector,
   showPreviewToolbarFor,
+  visualEditorActivation,
 } from "./cms-controls";
 import {
   PageSchemaNotReadyError,
@@ -1442,17 +1443,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Target origin is pinned to the preview site itself: with "*" the parent
   // would still hand the editor script and page-structure metadata to
   // whatever origin currently occupies the iframe if it cross-navigated away.
+  // A Blocks v8 page hears nothing of the visual mode: it evaluates no script
+  // Studio sends.
   const injectVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
     const origin = previewOrigin(previewUrl);
-    if (!win || !origin) return;
-    win.postMessage(
-      { type: "visual-editor::activate", script: VISUAL_EDITOR_SCRIPT },
-      origin,
-    );
+    const activation = visualEditorActivation({
+      v8,
+      script: VISUAL_EDITOR_SCRIPT,
+    });
+    if (!win || !origin || !activation) return;
+    win.postMessage(activation, origin);
   };
 
   const deactivateVisualEditor = () => {
+    if (v8) return;
     const win = previewIframeRef.current?.contentWindow;
     const origin = previewOrigin(previewUrl);
     if (!win || !origin) return;
@@ -1526,6 +1531,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
   const clearEditorHover = () => {
     channelRef.current?.wireframe({ type: "wireframe:clear-hover" });
+    // v8: the wireframe alone; the page has neither injected script.
+    if (v8) return;
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
     if (!win || !origin) return;
