@@ -16,9 +16,6 @@ export interface SiteDraftBarInput {
   /** The agent's repository supports the Publish actions. */
   showsRepositoryActions: boolean;
   runtime: string | null | undefined;
-  /** A Fast Preview session on production (`resolveProductionGate`): only
-   *  the draft select, to move to a draft. */
-  onProduction: boolean;
 }
 
 export interface SiteDraftBarParts {
@@ -41,7 +38,6 @@ export function siteDraftBarParts(input: SiteDraftBarInput): SiteDraftBarParts {
     !input.localPreview &&
     !input.tunnelUndecided &&
     !input.servingLocally &&
-    !input.onProduction &&
     input.showsRepositoryActions;
   return {
     hidden,

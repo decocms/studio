@@ -12,7 +12,6 @@ const base: SiteDraftBarInput = {
   tunnelUndecided: false,
   showsRepositoryActions: true,
   runtime: "cms",
-  onProduction: false,
 };
 
 describe("siteDraftBarParts", () => {
@@ -22,15 +21,6 @@ describe("siteDraftBarParts", () => {
       localFiles: false,
       draftSelect: true,
       publish: "cms",
-    });
-  });
-
-  test("production keeps only the draft select, to move to a draft", () => {
-    expect(siteDraftBarParts({ ...base, onProduction: true })).toEqual({
-      hidden: false,
-      localFiles: false,
-      draftSelect: true,
-      publish: null,
     });
   });
 
@@ -73,7 +63,7 @@ describe("siteDraftBarParts", () => {
     expect(siteDraftBarParts({ ...base, hasEntity: false }).hidden).toBe(true);
   });
 
-  test("every input off production gives main's site editor bar (v7 sites use this same bar)", () => {
+  test("every input gives main's site editor bar (v7 sites use this same bar)", () => {
     // Main's `SiteEditorActions`, written inline, as the reference.
     const main = (i: SiteDraftBarInput): SiteDraftBarParts => {
       const hidden = !i.hasEntity && !i.servingLocally;
@@ -108,7 +98,6 @@ describe("siteDraftBarParts", () => {
                   tunnelUndecided,
                   showsRepositoryActions,
                   runtime,
-                  onProduction: false,
                 };
                 expect(siteDraftBarParts(input)).toEqual(main(input));
               }

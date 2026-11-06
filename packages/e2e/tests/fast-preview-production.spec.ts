@@ -1,8 +1,8 @@
 /**
- * Production is read-only in a Blocks v7 Fast Preview project: a draft IS a
- * git branch there, so a session on the default branch would save straight to
- * the live site. The API refuses those writes, and the site editor on
- * production shows only a way to start a draft.
+ * Production is never edited from a Blocks v7 Fast Preview project: a draft IS
+ * a git branch there, so a session on the default branch would save straight
+ * to the live site. The API refuses those writes, and the version switcher
+ * keeps the last draft (deleting it used to fall back to production).
  *
  * The repo comes from the local Git Data stub and the site from
  * `startPreviewSite`.
@@ -19,7 +19,6 @@ import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { startPreviewSite } from "../fixtures/preview-site";
 import { expect, test } from "../fixtures/test";
 
-const NOTICE_TITLE = "Production can't be edited here";
 const HOME = {
   __resolveType: "website/pages/Page.tsx",
   name: "Home",
@@ -74,81 +73,82 @@ test.describe("Fast Preview production", () => {
   test("the API refuses a write to the default branch and still writes a draft", async ({
     authedPage: { page, orgSlug },
   }) => {
-    const site = await startPreviewSite();
-    try {
-      const api = page.request;
-      const { project, owner, repo } = await createProject(
-        api,
-        orgSlug,
-        site.url,
-      );
-      const before = await inspectStubRepo(api, owner, repo);
-      const edit = { set: { home: { ...HOME, name: "Edited" } } };
+    const api = page.request;
+    // The decofile routes need a preview server configured, not running.
+    const { project, owner, repo } = await createProject(
+      api,
+      orgSlug,
+      "http://127.0.0.1:1",
+    );
+    const before = await inspectStubRepo(api, owner, repo);
+    const edit = { set: { home: { ...HOME, name: "Edited" } } };
 
-      const refused = await api.patch(
-        `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
-        { data: edit },
-      );
-      expect(refused.status()).toBe(409);
-      expect(await refused.json()).toMatchObject({
-        code: "default_branch_read_only",
-      });
-      const after = await inspectStubRepo(api, owner, repo);
-      expect(after.refs["main"]).toBe(before.refs["main"]);
+    const refused = await api.patch(
+      `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
+      { data: edit },
+    );
+    expect(refused.status()).toBe(409);
+    expect(await refused.json()).toMatchObject({
+      code: "default_branch_read_only",
+    });
+    const after = await inspectStubRepo(api, owner, repo);
+    expect(after.refs["main"]).toBe(before.refs["main"]);
 
-      const draft = await api.patch(
-        `/api/${orgSlug}/decofile/${project.vmcpId}/draft`,
-        { data: edit },
-      );
-      expect(draft.status()).toBe(200);
-    } finally {
-      await site.close();
-    }
+    const draft = await api.patch(
+      `/api/${orgSlug}/decofile/${project.vmcpId}/draft`,
+      { data: edit },
+    );
+    expect(draft.status()).toBe(200);
   });
 
-  test("the site editor on production shows only a way to start a draft", async ({
+  test("the version switcher keeps the last draft", async ({
     authedPage: { page, orgSlug },
-  }, testInfo) => {
+  }) => {
     page.setDefaultTimeout(15_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     const site = await startPreviewSite();
     try {
-      const api = page.request;
-      const { project, owner, repo } = await createProject(
-        api,
-        orgSlug,
-        site.url,
-      );
-      const before = await inspectStubRepo(api, owner, repo);
+      const { project } = await createProject(page.request, orgSlug, site.url);
       const { item: thread } = await callSelfMcpTool<{ item: { id: string } }>(
-        api,
+        page.request,
         orgSlug,
         "COLLECTION_THREADS_CREATE",
-        { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
+        { data: { virtual_mcp_id: project.vmcpId, branch: "draft" } },
       );
       await page.goto(
         `/${orgSlug}/projects/${project.vmcpId}/site-editor?thread=${thread.id}&sidepanel=false`,
       );
 
-      await expect(page.getByText(NOTICE_TITLE)).toBeVisible({
-        timeout: 60_000,
-      });
-      await expect(page.getByTestId("preview-page-picker")).toHaveCount(0);
-      await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
-      await page.screenshot({
-        path: testInfo.outputPath("production-notice.png"),
-        animations: "disabled",
-      });
+      const switcher = page.locator('[data-tour="tour-layout-branch-picker"]');
+      const draftRow = (name: string) =>
+        page.locator("div.group", {
+          has: page.locator("button[aria-pressed]", { hasText: name }),
+        });
+      const deleteItem = page.getByRole("menuitem", { name: "Delete" });
 
-      await page.getByRole("button", { name: "New draft" }).click();
-      await expect(page.getByText(NOTICE_TITLE)).toHaveCount(0);
-      await expect(page.getByTestId("preview-page-picker")).toBeVisible({
-        timeout: 60_000,
-      });
+      // The session's branch is listed as its first draft.
+      await switcher.click({ timeout: 60_000 });
+      await expect(draftRow("Draft 1")).toBeVisible();
+      await draftRow("Draft 1")
+        .getByRole("button", { name: "More actions" })
+        .click();
+      await expect(deleteItem).toHaveAttribute("aria-disabled", "true");
+      await expect(page.getByText("Keep at least one draft")).toBeVisible();
+      // Escape closes the row's menu; the switcher stays open.
+      await page.keyboard.press("Escape");
+      await expect(deleteItem).toHaveCount(0);
 
-      // Opening production wrote nothing to it.
-      const after = await inspectStubRepo(api, owner, repo);
-      expect(after.refs["main"]).toBe(before.refs["main"]);
+      // With a second draft, either can go.
+      const newDraft = page.getByRole("button", { name: "New draft" });
+      await newDraft.click();
+      await expect(newDraft).toHaveCount(0);
+      await switcher.click();
+      await expect(draftRow("Draft 2")).toBeVisible();
+      await draftRow("Draft 1")
+        .getByRole("button", { name: "More actions" })
+        .click();
+      await expect(deleteItem).not.toHaveAttribute("aria-disabled", "true");
+      await expect(page.getByText("Keep at least one draft")).toHaveCount(0);
     } finally {
       await site.close();
     }

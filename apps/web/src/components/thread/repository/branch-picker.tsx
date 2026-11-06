@@ -54,6 +54,7 @@ import {
   Plus,
   Trash01,
 } from "@untitledui/icons";
+import { generateBranchName } from "@decocms/shared/branch-name";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
@@ -73,7 +74,6 @@ import {
   releaseDotClass,
   useReleases,
 } from "./use-releases";
-import { useStartDraft } from "./use-start-draft";
 
 interface Props {
   virtualMcpId: string;
@@ -157,7 +157,6 @@ export function BranchPicker({
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
-  const startDraft = useStartDraft({ virtualMcpId, userLabel, userId });
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
    * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
@@ -189,6 +188,9 @@ export function BranchPicker({
 
   // At RELEASES_MAX the server rejects another create, so gate it in the UI.
   const atReleaseCap = releases.length >= RELEASES_MAX;
+  // The last draft stays: without one, the session would fall back to
+  // production, where a Fast Preview save commits to the live site.
+  const canDeleteRelease = releases.length > 1;
   const capReachedMessage = t("thread.branchPicker.capReached", {
     max: RELEASES_MAX,
   });
@@ -269,9 +271,22 @@ export function BranchPicker({
   };
 
   const create = () => {
-    const branch = startDraft();
-    if (!branch) return;
+    if (atReleaseCap) {
+      toast.error(capReachedMessage);
+      return;
+    }
     clearLocal();
+    const branch = generateBranchName(userLabel);
+    createRelease({
+      branch,
+      name: nextDraftName(
+        releases,
+        t("thread.branchPicker.defaultVersionName"),
+      ),
+      color: nextReleaseColor(releases.length),
+      createdBy: userId,
+      createdAt: new Date().toISOString(),
+    }).catch(reportReleaseError);
     (onCreateBranch ?? onChange)(branch);
     setOpen(false);
   };
@@ -331,11 +346,11 @@ export function BranchPicker({
     const r = pendingDelete;
     setPendingDelete(null);
     if (!r) return;
-    // Deleting the active draft: switch to a sibling draft, else read-only production.
+    // Deleting the active draft: switch to a sibling draft — never to
+    // production, where a Fast Preview save commits to the live site.
     if (r.branch === value) {
       const sibling = releases.find((x) => x.branch !== r.branch);
       if (sibling) pick(sibling.branch);
-      else if (baseBranch) pick(baseBranch);
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
@@ -498,6 +513,7 @@ export function BranchPicker({
                     onSelect={() => pick(r.branch)}
                     onRename={() => startRename(r)}
                     onDelete={() => setPendingDelete(r)}
+                    deleteBlocked={!canDeleteRelease}
                   />
                 ),
               )}
@@ -631,6 +647,7 @@ function ReleaseRow({
   onSelect,
   onRename,
   onDelete,
+  deleteBlocked = false,
 }: {
   rowRef?: Ref<HTMLDivElement>;
   dot: string;
@@ -642,6 +659,8 @@ function ReleaseRow({
   onSelect: () => void;
   onRename: () => void;
   onDelete?: () => void;
+  /** It's the last draft: Delete shows, disabled, saying why. */
+  deleteBlocked?: boolean;
 }) {
   const t = useT();
   return (
@@ -694,11 +713,17 @@ function ReleaseRow({
           {onDelete && (
             <DropdownMenuItem
               onSelect={onDelete}
+              disabled={deleteBlocked}
               className="text-destructive focus:text-destructive"
             >
               <Trash01 className="h-4 w-4" />
               {t("thread.branchPicker.delete")}
             </DropdownMenuItem>
+          )}
+          {onDelete && deleteBlocked && (
+            <p className="max-w-48 px-2 pb-1.5 text-xs text-muted-foreground">
+              {t("thread.branchPicker.keepOneDraft")}
+            </p>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
