@@ -251,16 +251,10 @@ describe("one v8 detector", () => {
     // Each delegates to the shared predicate (or is UI, not a decision).
     // A new one must be added here, with a reason.
     const KNOWN: Record<string, string> = {
-      "apps/web/src/hooks/use-main-schema-v8.ts#useMainSchemaV8":
-        "projectMainSchemaAnswer: the marker",
-      "apps/web/src/hooks/use-main-schema-v8.ts#useProjectMainSchemaV8":
-        "projectMainSchemaAnswer, for a project already in hand",
-      "apps/web/src/hooks/use-main-schema-v8.ts#useProjectsMainSchemaV8":
-        "projectMainSchemaAnswer, for several projects in hand",
-      "apps/web/src/hooks/use-main-schema-v8.ts#useLastFoundV8":
-        "lastFoundV8 for a project id",
-      "apps/web/src/hooks/use-main-schema-v8.ts#lastFoundV8":
-        "isBlocksV8Project on the project's metadata",
+      "apps/web/src/hooks/use-blocks-v8-project.ts#blocksV8Project":
+        "isBlocksV8Project on a project in hand's metadata",
+      "apps/web/src/hooks/use-blocks-v8-project.ts#useBlocksV8Project":
+        "blocksV8Project for a project id",
       "apps/web/src/components/sections-editor/content-version-badge.tsx#showsV8Badge":
         "UI: reads the backend the probe chose",
       "apps/web/src/components/thread/repository/localhost-row.tsx#V8LocalhostRow":
@@ -291,10 +285,10 @@ describe("one v8 detector", () => {
     const functions = found.filter(isFunction);
     // The scan finds them (so a new one can't slip by unnoticed)...
     expect(functions).toContain(
-      "apps/web/src/hooks/use-main-schema-v8.ts#useMainSchemaV8",
+      "apps/web/src/hooks/use-blocks-v8-project.ts#useBlocksV8Project",
     );
     expect(functions).toContain(
-      "apps/web/src/hooks/use-main-schema-v8.ts#lastFoundV8",
+      "apps/web/src/hooks/use-blocks-v8-project.ts#blocksV8Project",
     );
     // ...and every one is known.
     expect(functions.filter((key) => !KNOWN[key])).toEqual([]);
@@ -329,7 +323,7 @@ describe("one v8 detector", () => {
       "apps/api/src/tools/virtual/blocks-v8-switch.ts",
       "apps/web/src/components/sections-editor/content-backend.ts",
       "apps/web/src/components/sections-editor/use-content-backend.ts",
-      "apps/web/src/hooks/use-main-schema-v8.ts",
+      "apps/web/src/hooks/use-blocks-v8-project.ts",
       "apps/web/src/hooks/use-deco-serve-connection.ts",
     ];
     const deciders = source.filter((f) => DECIDERS.includes(f.rel));
@@ -343,11 +337,26 @@ describe("one v8 detector", () => {
     ]).toEqual([]);
   });
 
+  test("no editor mode decides v8 from a schema", () => {
+    // GitHub, Sandbox and Localhost alike: the switch decides; the content
+    // backends never ask a schema (main's, a working tree's, a deco serve's).
+    const DECIDERS = [
+      "apps/web/src/components/sections-editor/content-backend.ts",
+      "apps/web/src/components/sections-editor/use-content-backend.ts",
+      "apps/web/src/hooks/use-blocks-v8-project.ts",
+      "apps/web/src/hooks/use-deco-serve-connection.ts",
+      "apps/web/src/hooks/use-local-preview-url.ts",
+    ];
+    const deciders = source.filter((f) => DECIDERS.includes(f.rel));
+    expect(deciders.map((f) => f.rel).sort()).toEqual([...DECIDERS].sort());
+    expect(offending(deciders, /\bisV8Schema\b/)).toEqual([]);
+  });
+
   test("the web app reads the switch in one place", () => {
     // The "Blocks v8 site" switch. The web app reads it in one place,
-    // `use-main-schema-v8.ts`, which every v8 screen asks.
+    // `use-blocks-v8-project.ts`, which every v8 screen asks.
     const allowed = (rel: string) =>
-      rel === "apps/web/src/hooks/use-main-schema-v8.ts";
+      rel === "apps/web/src/hooks/use-blocks-v8-project.ts";
     expect(
       offending(
         source.filter((f) => f.rel.startsWith("apps/web/")),

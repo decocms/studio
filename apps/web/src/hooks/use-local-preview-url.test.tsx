@@ -7,19 +7,16 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { ReactNode } from "react";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 
-const mainRef: { current: "v8" | "v7" | "loading" | "error" } = {
-  current: "v7",
-};
+/** The project's "Blocks v8 site" switch (`useBlocksV8Project`). */
+const v8Ref = { current: false };
 // The module's other exports stay real: the mock outlives this file.
-const realMainSchema = await import("@/hooks/use-main-schema-v8");
-mock.module("@/hooks/use-main-schema-v8", () => ({
-  ...realMainSchema,
-  useMainSchemaV8: () => mainRef.current,
+const realSwitch = await import("@/hooks/use-blocks-v8-project");
+mock.module("@/hooks/use-blocks-v8-project", () => ({
+  ...realSwitch,
+  useBlocksV8Project: () => v8Ref.current,
 }));
 
-const { localTunnelState, useLocalPreviewUrl } = await import(
-  "./use-local-preview-url"
-);
+const { useLocalPreviewUrl } = await import("./use-local-preview-url");
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -39,57 +36,30 @@ describe("useLocalPreviewUrl (the v7 Local tunnel)", () => {
     );
   });
 
-  it("v7: a saved tunnel is in use, as on main", () => {
-    mainRef.current = "v7";
+  it("the switch off (v7): a saved tunnel is in use, as on main", () => {
+    v8Ref.current = false;
     const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
       wrapper,
     });
-    expect(result.current).toMatchObject({ url: TUNNEL, undecided: false });
+    expect(result.current.url).toBe(TUNNEL);
   });
 
-  it("while main's answer loads or is retried: undecided, the tunnel not in use yet", () => {
-    for (const main of ["loading", "error"] as const) {
-      mainRef.current = main;
-      const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
-        wrapper,
-      });
-      expect(result.current).toMatchObject({ url: null, undecided: true });
-    }
-  });
-
-  it("Blocks v8 (main's schema): a tunnel saved earlier is ignored (preview and editor)", () => {
-    mainRef.current = "v8";
+  it("the switch on (v8): a tunnel saved earlier is ignored (preview and editor)", () => {
+    v8Ref.current = true;
     const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
       wrapper,
     });
-    expect(result.current).toMatchObject({ url: null, undecided: false });
+    expect(result.current.url).toBeNull();
   });
 
-  it("no saved tunnel: nothing to wait for", () => {
+  it("no saved tunnel, or no project: off", () => {
+    v8Ref.current = false;
+    const none = renderHook(() => useLocalPreviewUrl(null), { wrapper });
+    expect(none.result.current.url).toBeNull();
     localStorage.clear();
-    mainRef.current = "loading";
     const { result } = renderHook(() => useLocalPreviewUrl("vmcp"), {
       wrapper,
     });
-    expect(result.current).toMatchObject({ url: null, undecided: false });
-  });
-});
-
-describe("localTunnelState: the tunnel never shows first and switches", () => {
-  const states = (mains: Array<"v8" | "v7" | "loading" | "error">) =>
-    mains.map((main) => localTunnelState({ saved: TUNNEL, main }));
-
-  it("loading, then v8: never shows the tunnel", () => {
-    const seen = states(["loading", "error", "v8"]);
-    expect(seen.every((s) => s.url === null)).toBe(true);
-    expect(seen.at(-1)).toEqual({ url: null, undecided: false });
-  });
-
-  it("loading, then v7: waits (nothing else in its place), then shows it", () => {
-    const seen = states(["loading", "v7"]);
-    expect(seen).toEqual([
-      { url: null, undecided: true },
-      { url: TUNNEL, undecided: false },
-    ]);
+    expect(result.current.url).toBeNull();
   });
 });

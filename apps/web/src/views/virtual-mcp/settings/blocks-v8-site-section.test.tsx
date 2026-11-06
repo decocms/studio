@@ -20,7 +20,7 @@ afterAll(() => {
 });
 
 const state = {
-  isPrivileged: true,
+  role: "admin" as string | undefined,
   calls: [] as Array<{ name: string; args: unknown }>,
 };
 mock.module("@/hooks/use-capability", () => ({
@@ -29,8 +29,8 @@ mock.module("@/hooks/use-capability", () => ({
     capabilities: {},
     loading: false,
     error: false,
-    isPrivileged: state.isPrivileged,
-    roleSlug: state.isPrivileged ? "admin" : "user",
+    isPrivileged: state.role === "owner" || state.role === "admin",
+    roleSlug: state.role,
   }),
 }));
 mock.module("@/lib/studio-tools", () => ({
@@ -62,16 +62,40 @@ function renderSection(metadata: Record<string, unknown>) {
 
 afterEach(() => {
   cleanup();
-  state.isPrivileged = true;
+  state.role = "admin";
   state.calls = [];
 });
 
 describe("BlocksV8SiteSection", () => {
   it("is hidden from a member who isn't an org owner or admin", () => {
-    state.isPrivileged = false;
-    renderSection({ blocksV8: true });
-    expect(screen().queryByRole("switch")).toBeNull();
-    expect(screen().queryByText("Blocks v8 site")).toBeNull();
+    for (const role of [
+      "user",
+      "billing-manager",
+      "administrator",
+      undefined,
+    ]) {
+      state.role = role;
+      const { unmount } = renderSection({ blocksV8: true });
+      expect(screen().queryByRole("switch")).toBeNull();
+      expect(screen().queryByText("Blocks v8 site")).toBeNull();
+      unmount();
+    }
+  });
+
+  it("shows to every role the server accepts as an admin, multi-role ones included", () => {
+    for (const role of [
+      "owner",
+      "admin",
+      "admin,billing-manager",
+      "user,owner",
+    ]) {
+      state.role = role;
+      const { unmount } = renderSection({});
+      expect(
+        screen().getByRole("switch", { name: "Blocks v8 site" }),
+      ).toBeTruthy();
+      unmount();
+    }
   });
 
   it("shows an admin the switch off on a v7 site, and turns it on with blocksV8", async () => {

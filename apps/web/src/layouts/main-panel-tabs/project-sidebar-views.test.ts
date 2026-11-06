@@ -299,19 +299,16 @@ describe("project sidebar views", () => {
     ).toBe(false);
   });
 
-  test("keeps a Releases deep link while main's schema is being read", () => {
+  test("Releases and Calendar deep links follow the v8 switch at once", () => {
     const none = projectSidebarViewPresence(true, nativePresence([]));
-    const settled = { assets: false, siteAccess: false };
-
-    expect(
-      projectSidebarViewUnavailable("releases", none, {
-        ...settled,
-        releases: true,
-      }),
-    ).toBe(false);
-    expect(projectSidebarViewUnavailable("releases", none, settled)).toBe(true);
-    const v8 = projectSidebarViewPresence(true, nativePresence(["releases"]));
-    expect(projectSidebarViewUnavailable("releases", v8, settled)).toBe(false);
+    const pending = { assets: true, siteAccess: true };
+    for (const viewId of ["releases", "calendar"] as const) {
+      // The switch off (v7): unavailable, nothing to wait for.
+      expect(projectSidebarViewUnavailable(viewId, none, pending)).toBe(true);
+      // The switch on (v8): there.
+      const v8 = projectSidebarViewPresence(true, nativePresence([viewId]));
+      expect(projectSidebarViewUnavailable(viewId, v8, pending)).toBe(false);
+    }
   });
 
   test("rejects source-backed views immediately when source is absent", () => {
@@ -397,24 +394,6 @@ describe("Calendar on a Blocks (v8) site", () => {
     expect(selectedProjectSidebarViews(["site-editor"], v8, 1)).toEqual([
       "site-editor",
     ]);
-  });
-
-  test("a calendar deep link waits while main's schema is read", () => {
-    const presence = projectSidebarViewPresence(true, nativePresence([]));
-    expect(
-      projectSidebarViewUnavailable("calendar", presence, {
-        assets: false,
-        siteAccess: true,
-        calendar: true,
-      }),
-    ).toBe(false);
-    expect(
-      projectSidebarViewUnavailable("calendar", presence, {
-        assets: false,
-        siteAccess: true,
-        calendar: false,
-      }),
-    ).toBe(true);
   });
 });
 

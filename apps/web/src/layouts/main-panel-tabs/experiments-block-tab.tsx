@@ -59,8 +59,8 @@ import {
 } from "./site-draft-view";
 import { usePanelNavigate } from "./use-panel-navigate";
 
-/** While main's schema (or the site's content) is read: the tab's shape. */
-export function ExperimentsTabSkeleton() {
+/** While the site's content is read: the tab's shape. */
+function ExperimentsTabSkeleton() {
   return (
     <Page>
       <Page.Content>

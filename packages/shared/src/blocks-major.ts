@@ -1,20 +1,19 @@
 /**
- * Blocks v8 in Studio: what makes a schema v8, and what makes a project v8.
+ * Blocks v8 in Studio: what makes a project v8, and how a v8 schema reads.
  *
- * - A schema is v8 when its content says so ({@link isV8Schema}): `deco
- *   schema` writes a top-level `"blocksMajor": 8` into
- *   `.deco/schema.gen.json`, and only that strict value counts. A missing
- *   field, any other value (a future 9 is not v8), something that isn't a
- *   schema object, unparseable text or a missing file are all v7. The content
- *   backends of an open editor (sandbox working tree, `deco serve`) read
- *   their own schema with it.
+ * - A schema is a v8-shaped one when its content says so ({@link
+ *   isV8Schema}): `deco schema` writes a top-level `"blocksMajor": 8` into
+ *   `.deco/schema.gen.json`, and only that strict value counts. It only tells
+ *   the editor's forms how to read the schema they were given (v8 or v7
+ *   names); it never decides whether a project is v8, in any editor mode.
  * - A project is v8 when its "Blocks v8 site" switch is on
  *   ({@link isBlocksV8Project}): `metadata.blocksV8: true`, which only an
  *   org admin sets (project settings, or `blocksV8` on
  *   `COLLECTION_VIRTUAL_MCP_UPDATE`). It is the one source of truth for
  *   every project-level v8 gate, in the API and the web app: the hosted
  *   editor, the decofile 409, the sandbox-less git 404, a new thread's
- *   runtime, Experiments, Calendar, Releases, site tokens, Monitor. Nothing
+ *   runtime, Experiments, Calendar, Releases, site tokens, Monitor, and the
+ *   editor's GitHub, Sandbox and Localhost modes alike. Nothing
  *   derives it: not git, not `deco schema push` (which a project with the
  *   switch off is refused), not an older `metadata.blocksMajor` marker.
  *   Turned off, the project is v7 again, exactly as on main.
@@ -25,7 +24,7 @@
 /** The Blocks major this Studio edits over the content protocol. */
 export const BLOCKS_V8_MAJOR = 8;
 
-/** Whether a parsed schema is a Blocks v8 one (`"blocksMajor": 8`). */
+/** Whether a parsed schema is v8-shaped (`"blocksMajor": 8`): how its forms read, never whether the project is v8. */
 export function isV8Schema(schema: unknown): boolean {
   return (
     typeof schema === "object" &&

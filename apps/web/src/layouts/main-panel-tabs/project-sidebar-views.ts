@@ -15,7 +15,7 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
- * preferences yet. A Blocks (v8) site also gets Calendar, a peer of its
+ * preferences yet. A Blocks v8 project also gets Calendar, a peer of its
  * Site Editor, through {@link offeredProjectSidebarViews}. */
 export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
   "overview",
@@ -90,12 +90,6 @@ export type ProjectSidebarViewPresence = Record<ProjectSidebarViewId, boolean>;
 export interface ProjectNativeViewPending {
   assets: boolean;
   siteAccess: boolean;
-  /** Main's schema is not read yet (or can't be, on a site last found v8),
-   *  so whether the site has Releases is not known. */
-  releases?: boolean;
-  /** Main's schema is not read yet, so whether the site is v8 (and has a
-   *  Calendar) is not known. */
-  calendar?: boolean;
 }
 
 export interface ProjectSidebarViewsMetadata {
@@ -268,11 +262,9 @@ export function projectSidebarViewUnavailable(
 ): boolean {
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
-  // Releases follows main's schema (`useMainSchemaV8`): a deep link waits
-  // for that read instead of bouncing to Settings before it lands.
-  if (viewId === "releases") return !pending.releases;
-  // Calendar is a v8 site's: it waits for the same read.
-  if (viewId === "calendar") return !pending.calendar;
+  // Releases and Calendar are a v8 project's (its switch, known with the
+  // project): nothing to wait for.
+  if (viewId === "releases" || viewId === "calendar") return true;
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 

@@ -51,84 +51,78 @@ function githubServing(schema: unknown): ContentClient {
   } as unknown as ContentClient;
 }
 
-/**
- * What `useContentBackend` decides in GitHub mode when main's schema (read by
- * the server with the same `isV8Schema`) is `schema`, any org.
- */
-async function decideV8Session(schema: unknown) {
-  const probed = await probe(githubServing(schema));
-  const answer = probed.v8Schema ? "v8" : "v7";
-  return selectContentBackend({
-    hasProject: true,
-    hasServeConnection: false,
-    runtime: "cms",
-    mainSchema: answer,
-    githubSite: answer,
-  });
-}
+describe("the schema never decides v8: the switch does", () => {
+  const schemas = [
+    { major: 1, blocksMajor: 8, ...deco1 },
+    { major: 1, ...deco1 },
+    deco1,
+    { major: 1, blocksMajor: 7, ...deco1 },
+  ];
 
-describe("v7/v8 detection over the GitHub backend", () => {
-  test('a schema with "blocksMajor": 8 is a v8 site', async () => {
-    expect(await decideV8Session({ major: 1, blocksMajor: 8, ...deco1 })).toBe(
-      "protocol-github",
-    );
-  });
-
-  // Only the field makes a site v8 (`isV8Schema`), never the file.
-  test("a committed schema without the v8 field stays v7", async () => {
-    // A v7-shaped schema, and a `schema.gen.json` from an older `deco schema`.
-    expect(await decideV8Session(deco1)).toBe("legacy");
-    expect(await decideV8Session({ major: 1, ...deco1 })).toBe("legacy");
-  });
-
-  test("any other value of the v8 field stays v7", async () => {
-    for (const value of [7, "8", null, 9]) {
-      expect(
-        await decideV8Session({ major: 1, blocksMajor: value, ...deco1 }),
-      ).toBe("legacy");
+  test("GitHub mode: the hosted backend answers for any schema; the switch decides", async () => {
+    for (const schema of schemas) {
+      const probed = await probe(githubServing(schema));
+      expect(probed.hasSchema).toBe(true);
+      for (const v8 of [true, false]) {
+        expect(
+          selectContentBackend({
+            hasProject: true,
+            hasServeConnection: false,
+            runtime: "cms",
+            v8,
+            githubSite: "ready",
+          }),
+        ).toBe(v8 ? "protocol-github" : "legacy");
+      }
     }
   });
 
-  test("no committed schema stays v7", async () => {
-    expect(await decideV8Session(null)).toBe("legacy");
-  });
-});
-
-describe("v7/v8 detection over a sandbox's working tree", () => {
-  async function decide(schema: unknown) {
-    const probed = await probe(githubServing(schema));
-    return selectContentBackend({
-      hasProject: true,
-      hasServeConnection: false,
-      runtime: "sandbox",
-      // Main's answer plays no part in Sandbox mode, whatever it is.
-      mainSchema: "loading",
-      githubSite: "loading",
-      sandboxSite: probed.v8Schema ? "v8" : "v7",
-    });
-  }
-
-  test('a working tree whose schema says "blocksMajor": 8 is a v8 site', async () => {
-    expect(await decide({ major: 1, blocksMajor: 8, ...deco1 })).toBe(
-      "protocol-sandbox",
-    );
+  test("Sandbox mode: the working tree's schema plays no part", async () => {
+    for (const schema of [...schemas, null]) {
+      await probe(githubServing(schema));
+      for (const v8 of [true, false]) {
+        expect(
+          selectContentBackend({
+            hasProject: true,
+            hasServeConnection: false,
+            runtime: "sandbox",
+            v8,
+            githubSite: "loading",
+            sandboxSite: "ready",
+          }),
+        ).toBe(v8 ? "protocol-sandbox" : "legacy");
+      }
+    }
   });
 
-  test("a v7 working tree (or none) stays legacy", async () => {
-    expect(await decide({ major: 1, ...deco1 })).toBe("legacy");
-    expect(await decide(null)).toBe("legacy");
+  test("Localhost: a deco serve whose schema is v7-shaped still connects", async () => {
+    const probed = await probe(githubServing({ major: 1, ...deco1 }));
+    expect(
+      localServeBackend({
+        probed,
+        isError: false,
+        failureCount: 0,
+        failure: null,
+        describe: undefined,
+        endpoint: "http://localhost:4545/rpc",
+      }).kind,
+    ).toBe("protocol");
+  });
+
+  test("no schema yet is reported as such (the schemaless guide)", async () => {
+    expect((await probe(githubServing(null))).hasSchema).toBe(false);
   });
 });
 
 describe("sandbox probe", () => {
   const endpoint = "http://studio.test/rpc";
 
-  test("a session without a sandbox (404) is v7, not an error", async () => {
-    expect(
-      await probeSandbox(endpoint, async () =>
+  test("a session whose sandbox is gone (404) is an error the editor retries", async () => {
+    await expect(
+      probeSandbox(endpoint, async () =>
         Response.json({ error: "sandbox not found" }, { status: 404 }),
       ),
-    ).toBe(null);
+    ).rejects.toThrow();
   });
 
   test("any other failure is an error (retried)", async () => {
@@ -155,7 +149,7 @@ describe("GitHub probe", () => {
         hasProject: true,
         hasServeConnection: false,
         runtime: "cms",
-        mainSchema: "v8",
+        v8: true,
         githubSite: "not-owned",
       }),
     ).toBe("site-not-owned-github");
@@ -204,7 +198,7 @@ describe("the hosted backend (the CMS on R2)", () => {
 });
 
 describe("the sandbox's answer (sandboxSiteAnswer)", () => {
-  const v8Probe = { v8Schema: true } as unknown as Probe;
+  const answered = { hasSchema: true } as unknown as Probe;
 
   test("before its first answer it waits for the working tree", () => {
     expect(
@@ -230,32 +224,13 @@ describe("the sandbox's answer (sandboxSiteAnswer)", () => {
     ).toBe("error");
   });
 
-  test("decided v7, then a restart (cloning): stays legacy", () => {
-    const base = {
-      hasProject: true,
-      hasServeConnection: false,
-      runtime: "sandbox" as const,
-      mainSchema: "v8" as const,
-      githubSite: "loading" as const,
-    };
-    const steps = [
-      { data: null, workingTreeReady: true },
-      { data: null, workingTreeReady: false },
-      { data: null, workingTreeReady: true },
-    ].map((step) =>
-      selectContentBackend({
-        ...base,
-        sandboxSite: sandboxSiteAnswer({ ...step, isError: false }),
-      }),
-    );
-    expect(steps).toEqual(["legacy", "legacy", "legacy"]);
-  });
-
-  test("decided v8, then hibernate/wake: stays on the protocol", () => {
+  test("answered, then hibernate/wake: stays on the protocol", () => {
     for (const workingTreeReady of [true, false]) {
-      expect(
-        sandboxSiteAnswer({ data: v8Probe, isError: false, workingTreeReady }),
-      ).toBe("v8");
+      for (const isError of [true, false]) {
+        expect(
+          sandboxSiteAnswer({ data: answered, isError, workingTreeReady }),
+        ).toBe("ready");
+      }
     }
   });
 });
@@ -275,7 +250,6 @@ describe("Localhost (localServeBackend)", () => {
     client: {} as ContentClient,
     describe: { protocol: PROTOCOL_NAME, version: PROTOCOL_VERSION },
     hasSchema: true,
-    v8Schema: true,
   } as unknown as Probe;
   const base = {
     endpoint: "http://localhost:4545/rpc",
@@ -357,18 +331,10 @@ describe("Localhost (localServeBackend)", () => {
     ).toBe("unavailable:not-deco-serve");
   });
 
-  test("a schema that isn't v8 can't be edited; no schema yet is the schemaless guide", () => {
-    expect(
-      kind(
-        localServeBackend({
-          ...base,
-          probed: { ...probed, v8Schema: false } as Probe,
-        }),
-      ),
-    ).toBe("unavailable:not-v8");
+  test("no schema yet is the schemaless guide", () => {
     const schemaless = localServeBackend({
       ...base,
-      probed: { ...probed, hasSchema: false, v8Schema: false } as Probe,
+      probed: { ...probed, hasSchema: false } as Probe,
     });
     expect(schemaless).toMatchObject({ kind: "protocol", hasSchema: false });
   });
@@ -439,10 +405,9 @@ describe("the hosted probe on a draft that doesn't exist yet", () => {
     await expect(probeGithub(endpoint, rpc)).rejects.toThrow();
   });
 
-  test("the probe ensures the draft first, then answers v8, and a save lands", async () => {
+  test("the probe ensures the draft first, then answers, and a save lands", async () => {
     const { rpc, ensure, calls } = cms();
     const answer = await probeHosted(endpoint, ensure, rpc);
-    expect(answer).not.toBeNull();
     expect(answer).not.toBe(GITHUB_SITE_NOT_OWNED);
     expect(calls[0]).toBe("ensure");
     expect(calls.slice(1).every((c) => c === "rpc row")).toBe(true);

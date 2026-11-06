@@ -20,15 +20,13 @@ function SiteEditorDrawer() {
   const activeTask = session?.activeTask;
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
-  const { url: localPreviewUrl, undecided: tunnelUndecided } =
-    useLocalPreviewUrl(entity?.id);
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   const { connection: serveConnection } = useDecoServeConnection(
     entity?.id ?? session?.virtualMcpId,
   );
   const servingLocally = !!serveConnection;
   const showDrawer =
     !localPreviewUrl &&
-    !tunnelUndecided &&
     !servingLocally &&
     shouldShowTerminalDrawer({
       hasClonableSource:

@@ -25,18 +25,18 @@ import {
   type ContentBackend,
   contentMode,
   contentProbesEnabled,
+  type ProbeAnswer,
   type ProtocolBackend,
   readFailed,
   selectContentBackend,
 } from "./content-backend";
-import { useLastFoundV8, useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import {
   classifyServeProbeError,
   NotDecoServeError,
   probeRetryDelay,
 } from "./deco-serve-connection";
 import { isSchemaAbsent } from "./schemaless";
-import { isV8Schema } from "@decocms/shared/blocks-major";
 
 export interface Probe {
   client: ContentClient;
@@ -45,12 +45,7 @@ export interface Probe {
   describe: DescribeResult;
   /** Whether the endpoint has a schema (see `isSchemaAbsent`). */
   hasSchema: boolean;
-  /** Whether that schema declares `"blocksMajor": 8` (see `isV8Schema`). */
-  v8Schema: boolean;
 }
-
-/** Studio answered 404 on the sandbox's `/rpc`: the session has no sandbox. */
-class NoSandboxError extends Error {}
 
 /** Studio answered 409 `site_not_owned`: another project owns this site. */
 class SiteNotOwnedError extends Error {}
@@ -70,15 +65,14 @@ async function isSiteNotOwnedResponse(response: Response): Promise<boolean> {
 
 /**
  * Probes Studio's hosted backend (the latest release plus the CDN draft;
- * asked only once the project is marked v8): the probe when its schema is a
- * v8 one, null when it isn't (legacy), or {@link GITHUB_SITE_NOT_OWNED} when
- * the project doesn't own its site.
+ * asked only on a v8 project): the probe, or {@link GITHUB_SITE_NOT_OWNED}
+ * when the project doesn't own its site.
  */
 export async function probeGithub(
   endpoint: string,
   doFetch: (request: Request) => Promise<Response> = (request) =>
     fetch(request),
-): Promise<Probe | null | typeof GITHUB_SITE_NOT_OWNED> {
+): Promise<Probe | typeof GITHUB_SITE_NOT_OWNED> {
   const client = createContentClient({
     endpoint,
     fetch: async (request) => {
@@ -88,10 +82,7 @@ export async function probeGithub(
     },
   });
   try {
-    const result = await probe(client);
-    // Only a committed schema with `"blocksMajor": 8` is a v8 site; no
-    // schema, or one without the field (a v7 `meta.gen.json`), is legacy.
-    return result.v8Schema ? result : null;
+    return await probe(client);
   } catch (error) {
     if (error instanceof SiteNotOwnedError) return GITHUB_SITE_NOT_OWNED;
     throw error;
@@ -113,7 +104,7 @@ export async function probeHosted(
 ): ReturnType<typeof probeGithub> {
   await ensureDraft();
   const probed = await probeGithub(endpoint, doFetch);
-  if (!probed || probed === GITHUB_SITE_NOT_OWNED) return probed;
+  if (probed === GITHUB_SITE_NOT_OWNED) return probed;
   return { ...probed, hosted: createHostedRpc(endpoint, doFetch) };
 }
 
@@ -162,92 +153,55 @@ export async function probe(client: ContentClient): Promise<Probe> {
   const describe = assertSupportedEndpoint(described.result as DescribeResult);
   if (!schema) throw new Error("no schema.get");
   // `schema: null`, or NotFound from an older deco serve: no schema yet.
-  if (isSchemaAbsent(schema)) {
-    return { client, describe, hasSchema: false, v8Schema: false };
-  }
-  if (schema.ok) {
-    const result = schema.result as { schema?: unknown } | null;
-    return {
-      client,
-      describe,
-      hasSchema: true,
-      v8Schema: isV8Schema(result?.schema),
-    };
-  }
+  if (isSchemaAbsent(schema)) return { client, describe, hasSchema: false };
+  if (schema.ok) return { client, describe, hasSchema: true };
   throw schema.error;
 }
 
 /**
- * Probes a sandbox's content protocol: the probe when its working tree's
- * schema is a v8 one, else null. As on GitHub, only a `"blocksMajor": 8`
- * schema is a v8 site. A session without a sandbox answers 404: v7 (null),
- * not an error to poll.
+ * Probes Studio's content protocol over a sandbox's working tree (asked only
+ * on a v8 project). Any failure, a 404 from a session whose sandbox is gone
+ * included, is an error the editor retries.
  */
-export async function probeSandbox(
+export function probeSandbox(
   endpoint: string,
   doFetch: (request: Request) => Promise<Response> = (request) =>
     fetch(request),
-): Promise<Probe | null> {
-  const client = createContentClient({
-    endpoint,
-    fetch: async (request) => {
-      const response = await doFetch(request);
-      if (response.status === 404) throw new NoSandboxError();
-      return response;
-    },
-  });
-  try {
-    const result = await probe(client);
-    return result.v8Schema ? result : null;
-  } catch (error) {
-    if (error instanceof NoSandboxError) return null;
-    throw error;
-  }
+): Promise<Probe> {
+  return probe(createContentClient({ endpoint, fetch: doFetch }));
 }
 
 /**
  * The content backend of a project's editor (see `selectContentBackend`).
- * It is `pending` until the editor has a schema for its mode (Localhost: the
- * `deco serve`'s; Sandbox: its working tree's; GitHub: main's, from
- * the server) and, for a v8 site, its content backend: callers hold their
- * reads until then, so it never reads from the v7 backend and then switches.
- * In Sandbox mode the project's "Blocks v8 site" switch is no v8 answer: it
- * only tells a failing sandbox on a v8 site (waits) from any other one
- * (the v7 sandbox editor, as on main).
+ * The project's "Blocks v8 site" switch decides v7 (`legacy`, as on main)
+ * or v8 in every mode; a v8 project is `pending` until its mode's backend
+ * answers (Localhost: the `deco serve`; Sandbox: Studio over its working
+ * tree; GitHub: the hosted CMS), so callers hold their reads until then.
  */
 export function useContentBackend(
   virtualMcpId: string | null | undefined,
   branch: string | null | undefined,
 ): ContentBackend {
   const { org } = useProjectContext();
-  // Null on a v7 site: only Blocks v8 uses a `deco serve` (Localhost). On the
-  // account-less `/site-editor` it is the page's own connection.
-  const { connection, undecided: serveConnectionUndecided } =
-    useDecoServeConnection(virtualMcpId);
+  // Null on a v7 project: only Blocks v8 uses a `deco serve` (Localhost). On
+  // the account-less `/site-editor` it is the page's own connection.
+  const { connection } = useDecoServeConnection(virtualMcpId);
   const { runtime } = useSessionRuntime(virtualMcpId);
   const tabConnection = useContext(TabDecoServeConnectionContext);
-  // `isV8Schema` on main's schema, from the server (GitHub mode decides on it).
-  const mainSchema = useMainSchemaV8(tabConnection ? null : virtualMcpId);
-  // The server's last answer for main: only whether a sandbox that never
-  // answered is waited on (see `selectContentBackend`), never v8 itself.
-  const markedV8 = useLastFoundV8(virtualMcpId);
+  const v8 = useBlocksV8Project(virtualMcpId);
   // The hosted CMS keys its drafts on the project's site.
   const site = cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
   const mode = contentMode({ hasServeConnection: !!connection, runtime });
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The sandbox answers once its working tree is there. Before its first
   // answer the editor waits (pending); once it answered for this thread, a
-  // restart, hibernate or re-clone keeps that answer (see `sandboxSite`).
+  // restart, hibernate or re-clone keeps that answer (`sandboxSiteAnswer`).
   const workingTreeReady = isWorkingTreeReadyPhase(
     useSandboxEvents().lifecycle.phase,
   );
 
   const queryClient = useQueryClient();
-  const probes = contentProbesEnabled({
-    mode,
-    mainSchema,
-    workingTreeReady,
-  });
+  const probes = contentProbesEnabled({ mode, v8, workingTreeReady });
   const githubEnabled =
     probes.github && !!org.slug && !!virtualMcpId && !!branch;
   const github = useQuery({
@@ -281,23 +235,22 @@ export function useContentBackend(
       "sandbox",
       threadId ?? "",
     ),
-    queryFn: async (): Promise<Probe | null> => {
-      return probeSandbox(
+    queryFn: () =>
+      probeSandbox(
         sandboxContentEndpoint({
           orgSlug: org.slug,
           virtualMcpId: virtualMcpId!,
           branch: branch!,
           threadId,
         }),
-      );
-    },
+      ),
     enabled: sandboxEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     ...V8_PROBE_RETRY,
   });
 
-  // A connection exists only on a v8 site, once someone chose Localhost, or
-  // on `/site-editor`; its own schema decides (`localServeBackend`).
+  // A connection exists only on a v8 project, once someone chose Localhost,
+  // or on `/site-editor`.
   const localEnabled = !!connection;
   const local = useQuery({
     queryKey: KEYS.contentBackend(
@@ -318,10 +271,10 @@ export function useContentBackend(
       !(error instanceof ContentProtocolError) &&
       !(error instanceof NotDecoServeError),
     retryDelay: (failures) => probeRetryDelay(failures + 1),
-    // Also re-probed while there is no v8 schema, so `deco schema` is
-    // picked up on its own.
+    // Also re-probed while there is no schema, so `deco schema` is picked
+    // up on its own.
     refetchInterval: (query) =>
-      query.state.status === "error" || query.state.data?.v8Schema === false
+      query.state.status === "error" || query.state.data?.hasSchema === false
         ? PROBE_RETRY_MS
         : false,
   });
@@ -364,33 +317,26 @@ export function useContentBackend(
   const decision = selectContentBackend({
     hasProject: !!virtualMcpId,
     hasServeConnection: !!connection,
-    serveConnectionUndecided,
     runtime,
-    mainSchema,
+    v8,
     githubSite:
       github.data === GITHUB_SITE_NOT_OWNED
         ? "not-owned"
         : github.data
-          ? "v8"
-          : github.data === null
-            ? "v7"
-            : readFailed(github)
-              ? "error"
-              : "loading",
+          ? "ready"
+          : readFailed(github)
+            ? "error"
+            : "loading",
     sandboxSite: sandboxSiteAnswer({
       data: sandbox.data,
       // The failure holds through a re-poll until a probe succeeds.
       isError: readFailed(sandbox),
       workingTreeReady,
     }),
-    markedV8,
   });
 
   if (decision === "pending") return { kind: "pending" };
-  // The schema that decides couldn't be read yet: undecided, retried.
-  if (decision === "retrying-github") {
-    return { kind: "pending", retrying: "github" };
-  }
+  // The sandbox failed before its first answer: still waiting, retried.
   if (decision === "retrying-sandbox") {
     return { kind: "pending", retrying: "sandbox" };
   }
@@ -405,8 +351,8 @@ export function useContentBackend(
   if (decision === "protocol-sandbox") {
     return toBackend("sandbox", sandbox.data!, ":sandbox");
   }
-  // Main is v8 and Studio's backend for it failed (a GitHub hiccup):
-  // retried every PROBE_RETRY_MS, never the v7 editor in the meantime.
+  // Studio's hosted backend failed (a GitHub or storage hiccup): retried
+  // every PROBE_RETRY_MS, never the v7 editor in the meantime.
   if (decision === "unavailable-github") {
     return { kind: "unavailable", source: "github" };
   }
@@ -424,16 +370,15 @@ export function useContentBackend(
  * The sandbox's answer for `selectContentBackend`. Once the sandbox
  * answered for this thread (the probe's key is per thread and branch), that
  * answer holds while the working tree isn't ready: a restart, hibernate or
- * re-clone keeps a v7 site on the legacy editor and a v8 one on the protocol,
- * as on main. Before the first answer, a working tree that isn't there yet is
- * `unavailable` (the editor waits).
+ * re-clone keeps the protocol. Before the first answer, a working tree that
+ * isn't there yet is `unavailable` (the editor waits).
  */
 export function sandboxSiteAnswer(input: {
-  data: Probe | null | undefined;
+  data: Probe | undefined;
   isError: boolean;
   workingTreeReady: boolean;
-}): "v8" | "v7" | "loading" | "error" | "unavailable" {
-  if (input.data !== undefined) return input.data ? "v8" : "v7";
+}): ProbeAnswer | "unavailable" {
+  if (input.data !== undefined) return "ready";
   if (!input.workingTreeReady) return "unavailable";
   return input.isError ? "error" : "loading";
 }
@@ -447,10 +392,9 @@ export const LOCAL_RECONNECT_GRACE_FAILURES = 3;
 /**
  * The backend of a `deco serve` (Localhost) from its probe, whichever site
  * it serves (by the PO's decision, Studio doesn't check which). Its schema
- * must be a Blocks v8 one (`isV8Schema`): another schema is a problem the
- * editor explains (`not-v8`), and no schema yet is the schemaless guide. The
- * latest probe wins: once it fails, the editor and the Localhost row say it isn't
- * answering, and connect again once it answers.
+ * doesn't decide v8 (the project's switch did); no schema yet is the
+ * schemaless guide. The latest probe wins: once it fails, the editor and the
+ * Localhost row say it isn't answering, and connect again once it answers.
  * Only a connected site rides out a short outage
  * (`LOCAL_RECONNECT_GRACE_FAILURES`).
  */
@@ -462,13 +406,6 @@ export function localServeBackend(input: {
   describe: DescribeResult | undefined;
   endpoint: string;
 }): ContentBackend {
-  if (input.probed?.hasSchema && !input.probed.v8Schema) {
-    return {
-      kind: "unavailable",
-      source: "local",
-      problem: { reason: "not-v8" },
-    };
-  }
   const settled = input.probed
     ? toBackend(
         "local",
@@ -495,7 +432,7 @@ export function localServeBackend(input: {
 
 /**
  * How the GitHub and sandbox probes retry. The editor waits on the answer,
- * so a failure is re-polled until it recovers; a site already known to be v8
+ * so a failure is re-polled until it recovers; a backend that answered
  * keeps its data through a failed refetch.
  */
 export const V8_PROBE_RETRY = {

@@ -12,7 +12,7 @@ import { CampaignsView } from "@/components/sandbox/content/campaigns/campaigns-
 import { useT } from "@/i18n/use-t.ts";
 import { SiteDraftView } from "./site-draft-view";
 
-export function CalendarTabSkeleton() {
+function CalendarTabSkeleton() {
   return (
     <div
       className="flex flex-col gap-3 p-4"
