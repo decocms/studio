@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
-
-/** At least 1 s per block (see the editor's `AUTOSAVE_DELAY`). */
-const AUTOSAVE_DELAY = 1000;
+import { autosaveDelay } from "@/components/sections-editor/autosave-delay";
+import { useBlocksSiteEditor } from "@/components/sections-editor/blocks-site-editor";
 
 /**
  * Local draft state that persists via `save` after a debounce. Each edit
@@ -41,7 +40,9 @@ export function useAutosave<T, E = never>(
     onEdit?: () => E | undefined;
   },
 ): readonly [T, (next: T) => void, (next: T) => void, boolean] {
-  const delay = opts?.delay ?? AUTOSAVE_DELAY;
+  // The content browser's v7/v8 answer (BlocksSiteEditorProvider).
+  const v8 = useBlocksSiteEditor();
+  const delay = opts?.delay ?? autosaveDelay(v8);
   const isSaving = opts?.isSaving ?? false;
   const [draft, setDraft] = useState<T>(() => {
     opts?.onSeed?.();
