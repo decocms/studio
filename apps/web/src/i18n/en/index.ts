@@ -1,3 +1,4 @@
+import { voiceInbox } from "./voice-inbox";
 import { page } from "./page";
 import { projects } from "./projects.ts";
 import { virtualMcp } from "./virtual-mcp.ts";
@@ -107,6 +108,7 @@ export const en = {
   ...assets,
   ...projects,
   ...page,
+  ...voiceInbox,
 } as const;
 
 export type TranslationKey = keyof typeof en;

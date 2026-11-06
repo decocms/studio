@@ -2005,7 +2005,7 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
  * row (Edit / preview / ship), and an expandable checks footer that opens each
  * CI check with its output markdown (fetched for failing runs).
  */
-function PrCard({
+export function PrCard({
   pr,
   routes,
   revalidating,

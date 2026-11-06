@@ -1,0 +1,77 @@
+import type { voiceInbox as en } from "../en/voice-inbox";
+export const voiceInbox = {
+  "voiceInbox.testTask": "Testar a alteração",
+  "voiceInbox.test": "Testar",
+  "voiceInbox.expectedResult": "Esperado:",
+  "voiceInbox.howToTest": "Como testar",
+  "voiceInbox.previewNotReported":
+    "Não foi confirmada uma URL de preview para este PR.",
+  "voiceInbox.prSnapshot":
+    "Pull request · estado neste ponto da reconstituição",
+  "voiceInbox.history": "Histórico da tarefa",
+  "voiceInbox.chooseScope": "Escolher escopo do inbox",
+  "voiceInbox.allOrganizations": "Todas as organizações",
+  "voiceInbox.yourInboxIn": "Seu inbox em",
+  "voiceInbox.myInbox": "Meu inbox",
+  "voiceInbox.allPrioritized": "Suas tarefas, em ordem de prioridade",
+  "voiceInbox.onlyOrganization": "Todos os projetos desta organização",
+  "voiceInbox.singleOrganizationMock":
+    "Este mock contém dados de uma organização.",
+  "voiceInbox.reconstruction": "Mock · reconstituído de relatos",
+  "voiceInbox.importError": "Cenário inválido. Escolha um JSON de até 500 KB.",
+  "voiceInbox.import": "Carregar cenário local",
+  "voiceInbox.localOnly":
+    "Simulação local. Decisões ficam neste navegador; nenhuma mensagem ou alteração é enviada.",
+  "voiceInbox.controls": "Controles do mock",
+  "voiceInbox.back": "Sair do modo de voz",
+  "voiceInbox.inbox": "Seu inbox",
+  "voiceInbox.greeting": "Olá, {name}.",
+  "voiceInbox.intro":
+    "{count} tarefas precisam de você. Vamos olhar uma de cada vez.",
+  "voiceInbox.start": "Abrir inbox",
+  "voiceInbox.other": "Quero falar de outra coisa",
+  "voiceInbox.attention": "Precisa de você",
+  "voiceInbox.oneRemaining": "1 restante",
+  "voiceInbox.remaining": "{count} restantes",
+  "voiceInbox.assigned": "Atribuído a você",
+  "voiceInbox.mentioned": "Você foi mencionado",
+  "voiceInbox.approve": "Aprovar versão",
+  "voiceInbox.confirm": "Sim, continuar",
+  "voiceInbox.later": "Próxima tarefa",
+  "voiceInbox.hint":
+    "Deslize à direita para confirmar, à esquerda para a próxima tarefa. Ou responda com suas palavras.",
+  "voiceInbox.listening": "Estou ouvindo. Você também pode pedir um ajuste.",
+  "voiceInbox.placeholder": "Simule sua fala: ‘ajusta o título antes’…",
+  "voiceInbox.send": "Enviar orientação",
+  "voiceInbox.mute": "Silenciar microfone simulado",
+  "voiceInbox.unmute": "Ativar microfone simulado",
+  "voiceInbox.simulated": "Voz simulada",
+  "voiceInbox.muted": "Microfone silenciado",
+  "voiceInbox.recorded": "Decisão registrada no card. O agente pode continuar.",
+  "voiceInbox.steered":
+    "Orientação registrada como comentário. A tarefa voltou para o agente.",
+  "voiceInbox.skipped": "A tarefa continua pendente. Mostrando a próxima.",
+  "voiceInbox.empty": "Nada esperando por você.",
+  "voiceInbox.continues":
+    "Suas decisões ficaram registradas. O trabalho continua no board.",
+  "voiceInbox.conversation": "O que vamos fazer agora?",
+  "voiceInbox.conversationHint":
+    "Pode mudar a direção, começar algo ou retomar o que ficou para depois.",
+  "voiceInbox.showPending": "Ver {count} tarefas pendentes",
+  "voiceInbox.board": "Board",
+  "voiceInbox.home": "Início do dia",
+  "voiceInbox.pending": "Inbox",
+  "voiceInbox.talk": "Conversa",
+  "voiceInbox.reset": "Restaurar protótipo",
+  "voiceInbox.prototype": "Protótipo · dados fictícios",
+  "voiceInbox.outside": "De volta às Tasks",
+  "voiceInbox.enter": "Entrar no modo de voz",
+  "voiceInbox.boardHint":
+    "Os mesmos cards, responsáveis e comentários usados pelo inbox.",
+  "voiceInbox.openTask": "Abrir tarefa",
+  "voiceInbox.details": "Detalhes da tarefa",
+  "voiceInbox.close": "Fechar",
+  "voiceInbox.noFocus":
+    "Abra uma tarefa antes de enviar uma orientação neste protótipo.",
+  "voiceInbox.theme": "Trocar tema",
+} satisfies Record<keyof typeof en, string>;

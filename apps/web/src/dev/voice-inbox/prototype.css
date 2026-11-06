@@ -1,0 +1,43 @@
+.voice-inbox-prototype {
+  --voice-inbox-orb-size: 160px;
+}
+.voice-inbox-prototype .voice-inbox-orb {
+  width: var(--voice-inbox-orb-size);
+  height: var(--voice-inbox-orb-size);
+  margin: 0 0 48px;
+  background: radial-gradient(
+    circle at 30% 25%,
+    var(--background),
+    var(--special) 50%,
+    var(--foreground)
+  );
+  box-shadow: 0 0 45px color-mix(in srgb, var(--special) 15%, transparent);
+}
+.voice-inbox-prototype .voice-inbox-orb-small {
+  --voice-inbox-orb-size: 44px;
+  flex-shrink: 0;
+  margin: 0;
+}
+.voice-inbox-decision {
+  animation: voice-inbox-appear 240ms ease-out;
+}
+@keyframes voice-inbox-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-inbox-decision {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .voice-inbox-prototype {
+    --voice-inbox-orb-size: 120px;
+  }
+}

@@ -26,6 +26,8 @@
     },
     "apps/web": {
       "entry": [
+        // Standalone Vite development page, outside the production router.
+        "src/dev/voice-inbox/entry.tsx",
         // Browser asset served verbatim from the Vite public dir; deck HTML
         // files reference it via <script src="/deck-runtime/v1/...">.
         "public/deck-runtime/**/*.js",
