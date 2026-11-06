@@ -4239,6 +4239,9 @@ export function SectionsEditor({
 
   const exitSectionEditing = () => {
     clearSectionEditing();
+    // Leaving a section drops the variant it pinned in the preview (a v8
+    // site's `__variant`), keeping only the page's; v7 keeps main's override.
+    if (protocolProject) syncVariantPreviewOverride(null, -1, 0);
   };
 
   const handleSeoInnerChange = (nextRecord: Record<string, unknown>) => {
