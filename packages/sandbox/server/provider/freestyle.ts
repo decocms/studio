@@ -62,6 +62,9 @@ const DEFAULT_SIDECAR_IMAGE = "ghcr.io/decocms/studio/orgfs-sidecar:0.2.0";
 const HOST_ORG_DIR = "/srv/sandbox/org";
 const HOST_CTL_DIR = "/srv/sandbox/orgfs-ctl";
 const CTL_DIR = "/run/orgfs";
+/** Host file standing in for the pod's `git-signing-key` volume, at the pod's path inside. */
+const HOST_SIGNING_KEY = "/srv/sandbox/git-signing-key";
+const SIGNING_KEY_FILE = "/run/git-signing/key";
 /**
  * fstab, so both come back before Docker restarts the containers after a
  * reboot. The org dir is shared so the sidecar's FUSE mounts reach the
@@ -125,6 +128,12 @@ export interface FreestyleSandboxProviderOptions {
   image?: string;
   /** The org-fs sidecar image. Default: the chart's `orgFs.image`. */
   orgFsSidecarImage?: string;
+  /**
+   * What the daemon signs the bot's commits with, as the sandbox-env chart's
+   * `commitSigning` does for pods. Unset leaves commits unsigned. The key goes
+   * into the base snapshot, so code in any of these sandboxes can read it.
+   */
+  commitSigning?: { email: string; privateKey: string };
   /** Pause a VM after this long without network activity. Default 5 min. */
   idleTimeoutSeconds?: number;
   /**
@@ -161,6 +170,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly image: string;
   private readonly sidecarImage: string;
   private readonly allowUserNamespaces: boolean;
+  private readonly commitSigning: FreestyleSandboxProviderOptions["commitSigning"];
   private readonly idleTimeoutSeconds: number;
   private readonly idlePauseMs: number;
   private readonly autoDeleteSeconds: number;
@@ -219,6 +229,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.allowUserNamespaces = opts.allowUserNamespaces ?? false;
+    this.commitSigning = opts.commitSigning;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
     this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
@@ -302,7 +313,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private baseSnapshot(): Promise<string> {
     const { image, sidecarImage } = this;
     const namespaceMode = this.allowUserNamespaces ? "\nuser-namespaces" : "";
-    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}\nrunning${namespaceMode}`).digest("hex").slice(0, 16)}`;
+    // In the slug so that setting or rotating the key builds a new snapshot.
+    const signing = this.commitSigning
+      ? `\nsigning\n${this.commitSigning.email}\n${this.commitSigning.privateKey}`
+      : "";
+    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}\nrunning${namespaceMode}${signing}`).digest("hex").slice(0, 16)}`;
     if (this.knownSnapshots.has(slug)) return Promise.resolve(slug);
     return this.snapshotInflight.run(slug, async () => {
       if (await this.snapshotExists(slug)) {
@@ -361,11 +376,26 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       PROXY_PORT: String(DAEMON_PORT),
       ORGFS_SIDECAR_CONFIG_PATH: `${CTL_DIR}/config.json`,
       ORGFS_SIDECAR_STATUS_PATH: `${CTL_DIR}/status.json`,
+      ...(this.commitSigning && {
+        GIT_SIGNING_KEY_FILE: SIGNING_KEY_FILE,
+        GIT_SIGNING_KEY_EMAIL: this.commitSigning.email,
+      }),
     };
     // Bare `-e NAME` copies each value from the exec's env, keeping values out of the shell line.
     const envFlags = Object.keys(env)
       .map((k) => `-e ${shellQuote(k)}`)
       .join(" ");
+    if (this.commitSigning) {
+      // Owned by the image's `sandbox` user, which the daemon runs as.
+      await this.run(
+        vm,
+        `printf '%s' "$GIT_SIGNING_KEY" | sudo sh -c 'umask 377 && cat > ${HOST_SIGNING_KEY} && chown 1000:1000 ${HOST_SIGNING_KEY}'`,
+        { env: { GIT_SIGNING_KEY: this.commitSigning.privateKey } },
+      );
+    }
+    const signingKeyMount = this.commitSigning
+      ? ` -v ${HOST_SIGNING_KEY}:${SIGNING_KEY_FILE}:ro`
+      : "";
     // The sidecar first: it only polls for the config the daemon relays.
     // Its change-feed poll is network activity, which keeps a VM from
     // pausing, so it stops once the daemon has been idle for a minute.
@@ -377,7 +407,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     await this.run(
       vm,
       // Codex's read-only sandbox uses bubblewrap inside this per-user VM.
-      `docker run -d --name ${CONTAINER} --restart=always${this.allowUserNamespaces ? " --security-opt seccomp=unconfined --security-opt apparmor=unconfined" : ""} -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR} ${envFlags} ${shellQuote(this.image)}`,
+      `docker run -d --name ${CONTAINER} --restart=always${this.allowUserNamespaces ? " --security-opt seccomp=unconfined --security-opt apparmor=unconfined" : ""} -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR}${signingKeyMount} ${envFlags} ${shellQuote(this.image)}`,
       { env, timeoutMs: IMAGE_PULL_TIMEOUT_MS },
     );
   }
