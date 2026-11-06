@@ -57,7 +57,7 @@ import {
   showMergeInForm,
   trackFormChange,
   type FormBase,
-  waitingChoiceBase,
+  formSaveChoice,
 } from "./form-base";
 import {
   type ConflictChoices,
@@ -1616,17 +1616,18 @@ export function SectionsEditor({
     const target: FormSaveTarget = given ?? openFormTarget(sectionIndex);
     const targetSectionVariantIndex = target.sectionVariantIndex;
     const formBase = target.formBase;
-    // A choice waits for this section: nothing is saved until it is made,
-    // and what the user types meanwhile is their version in the dialog at
-    // once ("You (not saved yet)"), with no typing pause.
+    // v8: a choice waits for this section: nothing is saved until it is
+    // made, and what the user types meanwhile is their version in the
+    // dialog at once ("You (not saved yet)"), with no typing pause.
     const runNow =
       immediate ||
-      waitingChoiceBase(
+      formSaveChoice(
         formConflictsRef.current,
         formBase,
         target,
         sectionIndex,
-      ) !== null;
+        protocolProject,
+      ).runNow;
     const pending = pendingSectionSaveRef.current;
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -1654,15 +1655,16 @@ export function SectionsEditor({
       // The form waits for the user's choice between their version and
       // someone else's: nothing of it is saved until then, and what they
       // change meanwhile is part of their version.
-      // A save of a section whose choice waits, built from another record
-      // of the form (queued before the re-read, or started again since),
-      // waits for it too.
-      const waitingBase = waitingChoiceBase(
+      // v8: a save of a section whose choice waits, built from another
+      // record of the form (queued before the re-read, or started again
+      // since), waits for it too. v7: the form's own record only.
+      const waitingBase = formSaveChoice(
         formConflictsRef.current,
         formBase,
         target,
         sectionIndex,
-      );
+        protocolProject,
+      ).base;
       if (waitingBase && waitsForChoice(waitingBase, nextValue)) return;
       const latestDecofile = latestRef.current.decofile;
       const {

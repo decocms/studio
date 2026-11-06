@@ -374,3 +374,23 @@ export function waitingChoiceBase(
   );
   return same?.formBase ?? null;
 }
+
+/**
+ * The form a save checks for a waiting choice (`base`, then
+ * `waitsForChoice`), and whether the save skips the typing pause (`runNow`).
+ * v8 (`protocolProject`): {@link waitingChoiceBase}, and a save whose
+ * section has a choice waiting runs at once, so "You (not saved yet)"
+ * follows the typing. v7, as before: only the form's own record, and the
+ * save keeps its pause.
+ */
+export function formSaveChoice(
+  waiting: ReadonlyArray<{ formBase: FormBase; target: WaitingChoiceTarget }>,
+  formBase: FormBase | null,
+  target: WaitingChoiceTarget,
+  sectionIndex: number,
+  protocolProject: boolean,
+): { base: FormBase | null; runNow: boolean } {
+  if (!protocolProject) return { base: formBase, runNow: false };
+  const base = waitingChoiceBase(waiting, formBase, target, sectionIndex);
+  return { base, runNow: base !== null };
+}

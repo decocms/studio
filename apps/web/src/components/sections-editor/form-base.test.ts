@@ -14,6 +14,7 @@ import {
   sectionFormSource,
   showMergeInForm,
   trackFormChange,
+  formSaveChoice,
   waitingChoiceBase,
 } from "./form-base";
 import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
@@ -570,5 +571,51 @@ describe("waitingChoiceBase (a save while the user's choice waits)", () => {
       waitingChoiceBase(waiting, null, { ...at, pageKey: "pages-about" }, 1),
     ).toBeNull();
     expect(waitingChoiceBase([], record(1), at, 1)).toBeNull();
+  });
+});
+
+describe("formSaveChoice: v8 waits for the section's choice, v7 as before", () => {
+  const record = (sectionIndex: number): FormBase => ({
+    sectionIndex,
+    variantIndex: 0,
+    base: { title: "stored" },
+    emitted: { title: "mine" },
+    sectionCount: 3,
+    own: [],
+  });
+  const at = {
+    pageKey: "pages-home",
+    global: false,
+    pageVariantIndex: 0,
+    sectionVariantIndex: 0,
+  };
+  const asked = record(1);
+  const waiting = [{ formBase: asked, target: at }];
+
+  it("v7: checks the form's own record only and keeps the typing pause", () => {
+    const other = record(1);
+    expect(formSaveChoice(waiting, other, at, 1, false)).toEqual({
+      base: other,
+      runNow: false,
+    });
+    expect(formSaveChoice(waiting, asked, at, 1, false)).toEqual({
+      base: asked,
+      runNow: false,
+    });
+    expect(formSaveChoice(waiting, null, at, 1, false)).toEqual({
+      base: null,
+      runNow: false,
+    });
+  });
+
+  it("v8: the section's waiting choice, saved at once", () => {
+    expect(formSaveChoice(waiting, record(1), at, 1, true)).toEqual({
+      base: asked,
+      runNow: true,
+    });
+    expect(formSaveChoice(waiting, record(2), at, 2, true)).toEqual({
+      base: null,
+      runNow: false,
+    });
   });
 });
