@@ -5,30 +5,47 @@
  * (`StudioChannel` in `@decocms/blocks/preview`, which every binding mounts on
  * every page) and Studio, which hosts the modules.
  *
+ * The page trusts a list of Studio origins (the binding's: Studio's production
+ * and staging origins by default, {@link DEFAULT_STUDIO_ORIGINS}), each
+ * compared exactly, no wildcard. It is the only way Studio runs code in the
+ * page: no message makes the page evaluate a script.
+ *
  * 1. A framed page (`window.parent !== window`) posts `{ type: "deco:ready" }`
- *    to its parent, addressed to Studio's configured origin (so a parent of any
- *    other origin never receives it).
+ *    to its parent once per trusted origin, each as the `targetOrigin` (the
+ *    browser delivers it only if the parent is at that origin, so a parent of
+ *    any other origin never receives it). Where the browser names the parent's
+ *    origin (`location.ancestorOrigins`), the page posts to that origin alone,
+ *    and only when it is trusted.
  * 2. Studio answers `{ type: "deco:load", url }`: an absolute URL of an ES
  *    module on Studio's own origin (versioned, served with CORS).
- * 3. The page accepts the message only when `event.origin` is Studio's
- *    configured origin, the sender is the parent window, and the module URL's
- *    origin is that same origin; then it `import()`s the URL, once per URL,
- *    and calls the module's default export with a {@link StudioChannelContext}.
- *    It answers `{ type: "deco:loaded", url }`, or
- *    `{ type: "deco:load-error", url, message }` (a failed URL may be sent
- *    again).
- * 4. Every later message from Studio whose `type` doesn't start with `deco:`
- *    (reserved for the channel) is handed to each loaded module's listeners;
- *    a module talks back with `send`.
+ * 3. The page accepts the message only when `event.origin` is one of the
+ *    trusted origins, the sender is the parent window, and the module URL's
+ *    origin is the origin of that message; then it `import()`s the URL, once
+ *    per URL, and calls the module's default export with a
+ *    {@link StudioChannelContext} bound to that origin. It answers
+ *    `{ type: "deco:loaded", url }`, or `{ type: "deco:load-error", url,
+ *    message }` (a failed URL may be sent again), to that origin.
+ * 4. Every later message from that origin whose `type` doesn't start with
+ *    `deco:` (reserved for the channel) is handed to the listeners of each
+ *    module it loaded; a module talks back with `send`, to that origin only.
  *
  * Not framed, framed by another origin, or a message that fails a check: the
- * bootstrap does nothing. A site with a Content Security Policy must allow
- * Studio's origin in `script-src` (the module) and the bootstrap's inline
- * script (its `nonce`).
+ * bootstrap does nothing. The binding adds the same origins to the page's
+ * Content Security Policy (`script-src`, for the modules, and
+ * `frame-ancestors`); the bootstrap's inline script takes the site's `nonce`.
  */
 
-/** Studio's production origin: where the bootstrap expects Studio unless a binding option or `DECO_STUDIO_ORIGIN` says otherwise. */
+/** Studio's production origin. */
 export const DEFAULT_STUDIO_ORIGIN = "https://studio.decocms.com";
+
+/**
+ * The origins a page trusts unless the binding option or `DECO_STUDIO_ORIGIN`
+ * (comma-separated) says otherwise: Studio's production and staging origins.
+ */
+export const DEFAULT_STUDIO_ORIGINS: readonly string[] = Object.freeze([
+  DEFAULT_STUDIO_ORIGIN,
+  "https://studio-stg.decocms.com",
+]);
 
 /** The channel's own message types; a module's message types never start with `deco:`. */
 export const CHANNEL_MESSAGE = Object.freeze({
@@ -85,13 +102,13 @@ export interface StudioChannelContext<
   In extends ModuleMessage = ModuleMessage,
   Out extends ModuleMessage = ModuleMessage,
 > {
-  /** Studio's origin, as the page checked it. */
+  /** The Studio origin this module was loaded from (the `deco:load` message's, checked exactly). */
   readonly studioOrigin: string;
   /** The URL this module was loaded from. */
   readonly url: string;
-  /** Posts a message to Studio (addressed to `studioOrigin`). */
+  /** Posts a message to Studio (addressed to `studioOrigin` only). */
   send(message: Out): void;
-  /** Listens to Studio's module messages; returns the unsubscribe. */
+  /** Listens to Studio's module messages from `studioOrigin`; returns the unsubscribe. */
   on(listener: (message: In) => void): () => void;
 }
 

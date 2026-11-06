@@ -83,6 +83,22 @@ describe("the Studio channel's host", () => {
     );
   });
 
+  it("names modules on its own origin, the one the page requires, at each trusted Studio", () => {
+    // The page imports a deco:load URL only on the origin of that message:
+    // Studio's own window, production or staging alike.
+    for (const studioOrigin of [
+      "https://studio.decocms.com",
+      "https://studio-stg.decocms.com",
+    ]) {
+      const { frame, fromPage } = setup({ studioOrigin });
+      fromPage({ type: "deco:ready" });
+      expect(frame.posted.map((p) => p.origin)).toEqual([SITE, SITE]);
+      for (const { message } of frame.posted) {
+        expect(new URL(String(message.url)).origin).toBe(studioOrigin);
+      }
+    }
+  });
+
   it("hears only the frame's own window", () => {
     const { frame, fromPage } = setup();
     expect(fromPage({ type: "deco:ready" }, { source: {} })).toBe(false);
