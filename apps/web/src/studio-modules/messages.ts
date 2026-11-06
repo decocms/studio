@@ -80,8 +80,13 @@ export type WireframeOut =
 
 /** Studio → HTML swap. */
 export type HtmlSwapIn =
-  /** Show the page's current content: fetch its HTML again and swap it in. */
-  { type: "html-swap:refresh"; id: number };
+  /**
+   * Show the page's current content: fetch its HTML again and swap it in.
+   * With `url` (a new URL of the page: a save moved the draft pointer in it),
+   * that URL's HTML, on the page's own origin only; a later refresh without
+   * one reads it again. The page's address stays as it loaded.
+   */
+  { type: "html-swap:refresh"; id: number; url?: string };
 
 /** HTML swap → Studio, for the refresh `id`. A refresh superseded by a later one reports nothing. */
 export type HtmlSwapOut =

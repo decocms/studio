@@ -202,10 +202,12 @@ import {
   readNamedRuleValues,
 } from "@/components/sections-editor/named-rules";
 import {
+  type FrameSwap,
   frameNavigationLoaded,
   HELD_NAVIGATION_RELEASE_MS,
   type HeldFrameNavigation,
   nextFrameNavigation,
+  nextFrameSwap,
 } from "./frame-navigation";
 import { useFrameworkRoutes } from "./use-framework-routes";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
@@ -1184,9 +1186,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     src: iframeSrc ?? undefined,
     loading: false,
   });
+  /**
+   * A Blocks v8 page shows a new URL of itself (a save's moved draft pointer,
+   * a Preview as option) by swapping its HTML in place, not by loading it
+   * (`nextFrameSwap`; the swap effect below asks the page's HTML swap): the
+   * frame keeps the src it loaded. Another page, a page without HTML swap,
+   * or a frame still loading loads as before.
+   */
+  const [htmlSwapReady, setHtmlSwapReady] = useState(false);
+  const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | undefined>();
+  const [frameSwap, setFrameSwap] = useState<FrameSwap | null>(null);
+  const swap = nextFrameSwap(frameSwap, {
+    base: display.iframeBase ?? "",
+    frameSrc: frameNavigation.src,
+    loadedSrc: loadedFrameSrc,
+    wanted: iframeSrc ?? undefined,
+    canSwap: v8 && htmlSwapReady && !frameNavigation.loading,
+  });
+  if (swap !== frameSwap) setFrameSwap(swap);
   const nextNavigation = nextFrameNavigation(
     frameNavigation,
-    iframeSrc ?? undefined,
+    swap ? swap.src : (iframeSrc ?? undefined),
     holdFrameNavigation,
   );
   if (nextNavigation !== frameNavigation) setFrameNavigation(nextNavigation);
@@ -1592,9 +1612,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** The swap is in the page: what a reload's load would have ended. */
   const swapEnded = useEffectEvent(() => {
     endNavigation();
+    // The page shows the swapped URL as a load of it would.
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read by the content reload effect
+    if (swap) loadedSrcRef.current = swap.shown;
     if (confirmsContentReloads) confirmPreviewReloaded(contentScope);
   });
-  const swapFailed = useEffectEvent(() => reloadPreviewPreservingScroll());
+  /**
+   * HTML swap failed, or never started: the frame loads the URL to show (a
+   * new src), or reloads the one it keeps. It swaps again in its next document.
+   */
+  const swapFailed = useEffectEvent(() => {
+    setHtmlSwapReady(false);
+    if (swap) setFrameSwap(null);
+    if (swap && swap.src !== iframeSrcRef.current) {
+      beginNavigation();
+      return;
+    }
+    reloadPreviewPreservingScroll();
+  });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- listens to the frame's Studio channel for the frame's lifetime
   useEffect(() => {
     if (!v8) return;
@@ -1608,6 +1643,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           selectFromWireframe(message.sectionIndex, message.clickSeq);
         }
       },
+      onModulesChange: () => setHtmlSwapReady(host.has("html-swap")),
       onSwapEnd: () => swapEnded(),
       onSwapFailed: () => swapFailed(),
     });
@@ -1619,6 +1655,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     return () => {
       window.removeEventListener("message", onMessage);
       host.dispose();
+      setHtmlSwapReady(false);
       if (channelRef.current === host) channelRef.current = null;
     };
   }, [v8, display.iframeBase]);
@@ -1635,6 +1672,30 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   useEffect(() => {
     if (wireframeState) syncWireframeLatest();
   }, [wireframeState]);
+
+  /** Asks the page's HTML swap for a new URL of the page (`swap` above). */
+  const lastSwapRef = useRef<FrameSwap | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- posts the swap to the frame's HTML swap module when the URL to show moves
+  useEffect(() => {
+    const previous = lastSwapRef.current;
+    lastSwapRef.current = swap;
+    if (swap && swap !== previous) {
+      if (channelRef.current?.refresh(swap.shown)) beginNavigation();
+      else swapFailed();
+      return;
+    }
+    // Dropped while the page shows another URL than the src it keeps, and
+    // that src is the one to show again: nothing loads it, so reload.
+    if (
+      !swap &&
+      previous &&
+      previous.shown !== previous.src &&
+      previous.src === iframeSrcRef.current
+    ) {
+      reloadPreviewPreservingScroll();
+    }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- runs when the swap moves; the rest is read from refs and effect events
+  }, [swap]);
 
   /**
    * Shows a save in the frame: a Blocks v8 page swaps its HTML in place (the
@@ -2512,6 +2573,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           onLoad={() => {
                             // A held Fast Preview pointer may go in now.
                             setFrameNavigation(frameNavigationLoaded);
+                            // A Blocks v8 page may now swap a new URL of itself in.
+                            setLoadedFrameSrc(frameSrc);
                             // A load reached the frame — cancel the recovery watchdog
                             // and reset its backoff before anything else.
                             iframeRecovery.handleLoad();

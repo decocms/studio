@@ -8,7 +8,9 @@
  * says `deco:ready` from; Studio answers to that origin alone. A new
  * `deco:ready` is a new document: what the old one had loaded is forgotten.
  *
- * {@link StudioChannelHost.refresh} asks HTML swap to show a save. It is
+ * {@link StudioChannelHost.refresh} asks HTML swap to show a save, or a new
+ * URL of the page (a save's moved draft pointer: the frame keeps its src and
+ * doesn't navigate; preview.tsx `nextFrameSwap`). It is
  * false when the page has no HTML swap (the preview reloads the frame then);
  * a swap that fails, or doesn't start in {@link SWAP_START_TIMEOUT_MS},
  * reports `onSwapFailed` so the preview reloads after all.
@@ -39,6 +41,8 @@ export interface StudioChannelHostOptions {
   frame: () => Window | null;
   /** A wireframe module loaded in a new document: send it the page's state. */
   onWireframeReady?: () => void;
+  /** The modules loaded in the frame's document changed (read them with `has`). */
+  onModulesChange?: () => void;
   onWireframe?: (message: WireframeOut) => void;
   /** The swap asked for last is in the page. */
   onSwapEnd?: () => void;
@@ -87,12 +91,15 @@ export class StudioChannelHost {
         const name = this.nameOf(message.url);
         if (!name) return true;
         this.loaded.add(name);
+        this.options.onModulesChange?.();
         if (name === "wireframe") this.options.onWireframeReady?.();
         return true;
       }
       case CHANNEL_MESSAGE.loadError: {
         const name = this.nameOf(message.url);
-        if (name) this.loaded.delete(name);
+        if (name && this.loaded.delete(name)) {
+          this.options.onModulesChange?.();
+        }
         if (name === "html-swap") this.failSwap();
         return true;
       }
@@ -126,14 +133,16 @@ export class StudioChannelHost {
   }
 
   /**
-   * Asks HTML swap to show the page's current content. False when the page
-   * has none: the caller reloads the frame.
+   * Asks HTML swap to show the page's current content, or `url`'s (a new URL
+   * of the page: a save moved its draft pointer). False when the page has
+   * none: the caller loads the frame.
    */
-  refresh(): boolean {
+  refresh(url?: string): boolean {
     const id = ++this.swapId;
-    if (!this.post("html-swap", { type: "html-swap:refresh", id })) {
-      return false;
-    }
+    const message: HtmlSwapIn = url
+      ? { type: "html-swap:refresh", id, url }
+      : { type: "html-swap:refresh", id };
+    if (!this.post("html-swap", message)) return false;
     this.pendingSwap = { id, started: false };
     this.clearStartTimer();
     this.startTimer = setTimeout(() => {
@@ -157,7 +166,10 @@ export class StudioChannelHost {
     // A new document: the old one's modules are gone with it. One loaded
     // while a swap was pending was fetched since, so it shows the save.
     this.origin = origin;
-    this.loaded.clear();
+    if (this.loaded.size) {
+      this.loaded.clear();
+      this.options.onModulesChange?.();
+    }
     if (this.pendingSwap) {
       this.pendingSwap = null;
       this.clearStartTimer();

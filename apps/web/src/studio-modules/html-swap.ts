@@ -1,7 +1,8 @@
 /**
  * HTML swap: shows a save in a Blocks v8 site's page without reloading it.
  * On `html-swap:refresh` it fetches the page's URL again (the frame's draft
- * pointer and options are in it), waits for the new stylesheets, and swaps the
+ * pointer and options are in it), or the new URL Studio names (a save moved
+ * the draft pointer; later refreshes read it), waits for the new stylesheets, and swaps the
  * document's content inside a View Transition, or at once where the browser
  * has none. It reports `html-swap:start` and `html-swap:end` (or
  * `html-swap:error`, where Studio reloads the frame instead), so the preview's
@@ -84,8 +85,15 @@ function replaceDocument(doc: Document, html: string) {
 
 export default defineStudioModule<HtmlSwapIn, HtmlSwapOut>((channel) => {
   let current: AbortController | null = null;
+  /**
+   * The URL whose HTML the page shows. A swapped URL stays out of the address
+   * bar: `history.replaceState` would wake the page's router, which then
+   * renders into the elements the swap replaced (React's "removeChild"
+   * errors).
+   */
+  let shown = location.href;
 
-  const refresh = async (id: number) => {
+  const refresh = async (id: number, url: string | undefined) => {
     current?.abort();
     const ctrl = new AbortController();
     current = ctrl;
@@ -93,7 +101,12 @@ export default defineStudioModule<HtmlSwapIn, HtmlSwapOut>((channel) => {
     channel.send({ type: "html-swap:start", id });
     announce("start");
     try {
-      const res = await fetch(location.href, {
+      // A new URL of the page (a moved draft pointer), never another origin's.
+      const target = new URL(url ?? shown, location.href);
+      if (target.origin !== location.origin) {
+        throw new Error(`Not this page's origin: ${target.origin}`);
+      }
+      const res = await fetch(target.href, {
         headers: { accept: "text/html" },
         credentials: "same-origin",
         cache: "no-store",
@@ -114,6 +127,7 @@ export default defineStudioModule<HtmlSwapIn, HtmlSwapOut>((channel) => {
       );
       if (!live()) return;
       await withViewTransition(document, () => replaceDocument(document, html));
+      shown = target.href;
       document.getElementById(NO_TRANSITIONS_ID)?.remove();
       if (!live()) return;
       current = null;
@@ -136,7 +150,10 @@ export default defineStudioModule<HtmlSwapIn, HtmlSwapOut>((channel) => {
       message.type === "html-swap:refresh" &&
       typeof message.id === "number"
     ) {
-      void refresh(message.id);
+      void refresh(
+        message.id,
+        typeof message.url === "string" ? message.url : undefined,
+      );
     }
   });
 });

@@ -195,6 +195,39 @@ describe("refresh: HTML swap after a save", () => {
     expect(calls.swapEnd).toBe(1);
   });
 
+  it("names the page's new URL when the draft pointer moved", () => {
+    const { host, frame, fromPage, loadBoth } = setup();
+    loadBoth();
+    expect(host.refresh(`${SITE}/?__draft=moved`)).toBe(true);
+    expect(frame.posted.at(-1)).toEqual({
+      message: {
+        type: "html-swap:refresh",
+        id: 1,
+        url: `${SITE}/?__draft=moved`,
+      },
+      origin: SITE,
+    });
+    fromPage({ type: "html-swap:start", id: 1 });
+  });
+
+  it("tells the preview when the frame's modules change", () => {
+    let changes = 0;
+    const { host, fromPage, loadBoth } = setup({
+      onModulesChange: () => changes++,
+    });
+    loadBoth();
+    expect(changes).toBe(2);
+    expect(host.has("html-swap")).toBe(true);
+    // A new document: nothing is loaded in it yet.
+    fromPage({ type: "deco:ready" });
+    expect(changes).toBe(3);
+    expect(host.has("html-swap")).toBe(false);
+    fromPage({ type: "deco:loaded", url: HTML_SWAP });
+    fromPage({ type: "deco:load-error", url: HTML_SWAP, message: "CSP" });
+    expect(changes).toBe(5);
+    expect(host.has("html-swap")).toBe(false);
+  });
+
   it("a superseded refresh's messages end nothing; the latest one's do", () => {
     const { host, calls, fromPage, loadBoth } = setup();
     loadBoth();
