@@ -7,6 +7,8 @@
  * tell v7 from v8; the switch decides that now.) A project an admin turned
  * v8 and back off is that same v7 site, and so is one with a stale v8 marker
  * an earlier Studio wrote (`blocksMajor: 8`), which is not the switch.
+ * The session edits a draft branch: a v7 site's production (the default
+ * branch) is read-only.
  */
 import type { Page } from "@playwright/test";
 import {
@@ -98,6 +100,7 @@ async function openV7Editor(
           }),
         },
       },
+      draft: null,
     },
   });
   if (history === "turned-off") {
@@ -111,7 +114,7 @@ async function openV7Editor(
     page.request,
     orgSlug,
     "COLLECTION_THREADS_CREATE",
-    { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
+    { data: { virtual_mcp_id: project.vmcpId, branch: "draft" } },
   );
   // Every request the editor makes to a v8-only surface.
   const v8Requests: string[] = [];
@@ -161,7 +164,7 @@ for (const newBlocksEditor of [false, true]) {
           const saved = page.waitForResponse(
             (response) =>
               response.request().method() === "PATCH" &&
-              /\/api\/[^/]+\/decofile\/[^/]+\/main$/.test(
+              /\/api\/[^/]+\/decofile\/[^/]+\/draft$/.test(
                 new URL(response.url()).pathname,
               ),
             { timeout: 30_000 },
@@ -171,8 +174,8 @@ for (const newBlocksEditor of [false, true]) {
           await expect
             .poll(
               async () =>
-                (await inspectStubRepo(page.request, owner, repo)).branches.main
-                  ?.files[".deco/blocks/home.json"] ?? "",
+                (await inspectStubRepo(page.request, owner, repo)).branches
+                  .draft?.files[".deco/blocks/home.json"] ?? "",
               { timeout: 30_000 },
             )
             .toContain("Saved through git");
