@@ -3,6 +3,7 @@ import {
   CONFLICT_RETRY_BASE_MS,
   conflictRetry,
   type FormBase,
+  formSaveExpects,
   formSaveGuard,
   formSourceMovedOn,
   sectionTypeChanged,
@@ -278,6 +279,51 @@ describe("formSaveGuard (v8 section saves)", () => {
       versionOf: () => undefined,
     });
     expect(guard.ifMatch("Hero")).toBeUndefined();
+  });
+});
+
+describe("formSaveExpects", () => {
+  const startedFrom = { title: "saved last" };
+  const stored = { title: "read back" };
+
+  it("names what the form last knew to be stored on a first try", () => {
+    expect(
+      formSaveExpects({ startedFrom, stored, rebased: false, refused: false }),
+    ).toBe(startedFrom);
+  });
+
+  it("names the stored copy the form's edits were merged onto", () => {
+    expect(
+      formSaveExpects({ startedFrom, stored, rebased: true, refused: false }),
+    ).toBe(stored);
+  });
+
+  it("names the stored copy after a refusal, when it differs", () => {
+    expect(
+      formSaveExpects({ startedFrom, stored, rebased: false, refused: true }),
+    ).toBe(stored);
+  });
+
+  it("keeps the form's base after a refusal when the read caught up", () => {
+    expect(
+      formSaveExpects({
+        startedFrom,
+        stored: { ...startedFrom },
+        rebased: false,
+        refused: true,
+      }),
+    ).toBe(startedFrom);
+  });
+
+  it("keeps the form's base when nothing is stored at the position", () => {
+    expect(
+      formSaveExpects({
+        startedFrom,
+        stored: null,
+        rebased: false,
+        refused: true,
+      }),
+    ).toBe(startedFrom);
   });
 });
 

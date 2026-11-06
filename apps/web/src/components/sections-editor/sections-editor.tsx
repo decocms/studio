@@ -43,6 +43,7 @@ import {
   findSectionMovedTo,
   focusInside,
   conflictRetry,
+  formSaveExpects,
   formSaveGuard,
   formSourceMovedOn,
   isOwnVersion,
@@ -1834,7 +1835,16 @@ export function SectionsEditor({
           data: value,
           // The version this write builds on, for the server's stale check.
           ...(startedFrom
-            ? { base: { value: rebased ? stored : startedFrom } }
+            ? {
+                base: {
+                  value: formSaveExpects({
+                    startedFrom,
+                    stored,
+                    rebased: !!rebased,
+                    refused: conflicts > 0,
+                  }),
+                },
+              }
             : {}),
           // A refused save comes back here and goes through the checks above.
           rebaseOnConflict: false,

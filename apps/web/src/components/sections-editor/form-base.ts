@@ -173,6 +173,35 @@ export function findSectionMovedTo(
 }
 
 /**
+ * The version of a saved block a form's save names for the server's stale
+ * check (`base`). A form builds on what it last knew to be stored, unless its
+ * edits were just merged onto the stored copy.
+ *
+ * After a refusal, a stored copy that differs from that base and wasn't merged
+ * is one of the form's own versions (see `isOwnVersion`). It is either a read
+ * lagging behind the branch or the real head, as when a save landed but its
+ * answer was lost. Naming it settles which: the form's edits already descend
+ * from it, and the server refuses it if the branch holds anything else.
+ */
+export function formSaveExpects({
+  startedFrom,
+  stored,
+  rebased,
+  refused,
+}: {
+  startedFrom: Record<string, unknown>;
+  stored: Record<string, unknown> | null;
+  rebased: boolean;
+  /** An earlier try of this save was refused as stale. */
+  refused: boolean;
+}): Record<string, unknown> {
+  if (!stored) return startedFrom;
+  return rebased || (refused && formSourceMovedOn(startedFrom, stored))
+    ? stored
+    : startedFrom;
+}
+
+/**
  * The content protocol's guard for a section form save (v8; the other
  * backends send the form's `base` instead): `blocks.apply` writes only while
  * the block is still at the version the form's copy was checked against, and
