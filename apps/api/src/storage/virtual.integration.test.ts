@@ -6,6 +6,7 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
+import { createAutomationsStorage } from "./automations";
 import { VirtualMCPStorage } from "./virtual";
 import { getDecopilotId } from "@decocms/shared/sdk";
 
@@ -155,5 +156,97 @@ describe("VirtualMCPStorage.searchAcrossMemberships", () => {
       limit: 20,
     });
     expect(hits.map((hit) => hit.id)).toEqual(["conn_search_twice"]);
+  });
+});
+
+describe("VirtualMCPStorage.delete", () => {
+  let database: StudioDatabase;
+  let storage: VirtualMCPStorage;
+  const orgId = "org_agent_delete";
+  const userId = "user_agent_delete";
+
+  async function insertAgent(id: string) {
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("connections")
+      .values({
+        id,
+        organization_id: orgId,
+        created_by: userId,
+        updated_by: null,
+        title: id,
+        description: null,
+        icon: null,
+        app_name: null,
+        app_id: null,
+        slug: null,
+        connection_type: "VIRTUAL",
+        connection_url: `virtual://${id}`,
+        connection_token: null,
+        connection_headers: null,
+        oauth_config: null,
+        configuration_state: null,
+        configuration_scopes: null,
+        metadata: null,
+        bindings: null,
+        status: "active",
+        pinned: false,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+  }
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES (${orgId}, ${orgId}, ${orgId}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+    await sql`
+      INSERT INTO "user" (id, email, "emailVerified", name, "createdAt", "updatedAt")
+      VALUES (${userId}, ${`${userId}@test.com`}, false, 'Test User', ${now}, ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+
+    storage = new VirtualMCPStorage(database.db);
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  test("deactivates the deleted agent's automations and leaves other agents' alone", async () => {
+    await insertAgent("vir_deleted");
+    await insertAgent("vir_kept");
+    const automations = createAutomationsStorage(database.db);
+    const base = {
+      organization_id: orgId,
+      created_by: userId,
+      messages: "[]",
+      models: "{}",
+    };
+    const onDeleted = await automations.create({
+      ...base,
+      name: "on deleted agent",
+      virtual_mcp_id: "vir_deleted",
+    });
+    const onKept = await automations.create({
+      ...base,
+      name: "on kept agent",
+      virtual_mcp_id: "vir_kept",
+    });
+
+    await storage.delete("vir_deleted");
+
+    expect(await storage.findById("vir_deleted")).toBeNull();
+    expect((await automations.findById(onDeleted.id, orgId))?.active).toBe(
+      false,
+    );
+    expect((await automations.findById(onKept.id, orgId))?.active).toBe(true);
   });
 });
