@@ -13,6 +13,8 @@ interface BlocksPreviewWorkspaceContextValue {
   editSeo: (target: Extract<BlocksTarget, { kind: "page" }>) => void;
   consumeEditSeo: () => void;
   setVariantOverride: (params: string[] | null) => void;
+  /** "Preview as" changed: drops the pinned variant (see the reducer). */
+  previewAsChanged: () => void;
   setFocusedBlock: (key: string | null) => void;
 }
 
@@ -54,6 +56,7 @@ export function BlocksPreviewWorkspaceProvider({
         consumeEditSeo: () => dispatch({ type: "consume-edit-seo" }),
         setVariantOverride: (params) =>
           dispatch({ type: "variant-override", params }),
+        previewAsChanged: () => dispatch({ type: "preview-as" }),
         setFocusedBlock: (key) => dispatch({ type: "focus-block", key }),
       }}
     >

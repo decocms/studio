@@ -60,6 +60,7 @@ import { Panel } from "@/components/panel";
 import {
   useDecofile,
   useDecofileCacheKey,
+  useEnsureDecofileBlocks,
 } from "@/components/sections-editor/use-decofile";
 import {
   inlinePageOverrideParams,
@@ -196,6 +197,7 @@ import {
 import {
   NAMED_RULE_KINDS,
   namedRuleSupport,
+  NAMED_RULE_BLOCKS,
   readNamedRuleValues,
 } from "@/components/sections-editor/named-rules";
 import {
@@ -899,6 +901,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     previewAsAvailable && decofile
       ? Object.keys(readNamedRuleValues(decofile).experiments)
       : [];
+  // A hosted draft holds only the index's stubs of the tests and campaigns
+  // blocks until a view loads them: "Preview as" loads them when it first
+  // opens (as the rule picker does), so it lists the tests that exist.
+  const [previewAsOpened, setPreviewAsOpened] = useState(false);
+  const previewAsBlocks = useEnsureDecofileBlocks(
+    createPageParams,
+    previewAsAvailable && previewAsOpened ? NAMED_RULE_BLOCKS : [],
+  );
+  const previewAsLoad = {
+    ...previewAsBlocks,
+    ready:
+      !(contentBackend.kind === "protocol" && contentBackend.hosted) ||
+      (previewAsOpened && previewAsBlocks.ready),
+  };
   // A hosted draft's `__draft`: its pointer with the forced variants and the
   // "Preview as" options. The frame and every link (new tab, publish dialog,
   // compare) send exactly this value (preview-draft-link.ts).
@@ -2062,8 +2078,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           {previewAsAvailable && (
             <PreviewAsControl
               tests={previewTests}
+              load={previewAsLoad}
+              onOpen={() => setPreviewAsOpened(true)}
               options={previewOptions}
-              onChange={setPreviewOptions}
+              onChange={(next) => {
+                setPreviewOptions(next);
+                // A pinned variant would hide what "Preview as" asks for.
+                workspace.previewAsChanged();
+              }}
               available={
                 !!servePointerBase || !showsPublished || !previewOptionsActive
               }

@@ -1466,6 +1466,8 @@ export const sandbox = {
   "sandbox.previewAs.testsHint":
     "Sem escolha: você vê o lado que a sua própria visita recebeu.",
   "sandbox.previewAs.noTests": "Nenhum teste A/B ainda.",
+  "sandbox.previewAs.testsLoadFailed": "Não foi possível carregar seus testes.",
+  "sandbox.previewAs.tryAgain": "Tentar de novo",
   "sandbox.previewAs.off": "Desligado",
   "sandbox.previewAs.on": "Ligado",
   "sandbox.previewAs.reset": "Mostrar como está agora",

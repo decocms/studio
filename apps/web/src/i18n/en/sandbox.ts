@@ -1430,6 +1430,8 @@ export const sandbox = {
   "sandbox.previewAs.testsHint":
     "Not set: you see the side your own visit got.",
   "sandbox.previewAs.noTests": "No A/B tests yet.",
+  "sandbox.previewAs.testsLoadFailed": "Couldn't load your tests.",
+  "sandbox.previewAs.tryAgain": "Try again",
   "sandbox.previewAs.off": "Off",
   "sandbox.previewAs.on": "On",
   "sandbox.previewAs.reset": "Show as it is now",
