@@ -1,4 +1,7 @@
-import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
+import {
+  BLOCKS_MAJOR_METADATA_KEY,
+  CMS_SCHEMA_PUSH_METADATA_KEY,
+} from "@decocms/shared/blocks-major";
 import { DECO_ANALYTICS_METADATA_KEY } from "@decocms/shared/deco-analytics";
 
 /**
@@ -6,12 +9,14 @@ import { DECO_ANALYTICS_METADATA_KEY } from "@decocms/shared/deco-analytics";
  * an agent's tool call) can neither set nor clobber them.
  * - `sandboxMap`: the per-user sandbox handles.
  * - `blocksMajor`: the Blocks v8 marker (hosted/blocks-major.ts).
+ * - `cmsSchemaPush`: the CMS schema push that marker counts only with.
  * - `decoAnalytics`: a site deco doesn't host's analytics registration; a
  *   client that could rewrite its id could read another site's traffic.
  */
 const SERVER_MANAGED_KEYS = [
   "sandboxMap",
   BLOCKS_MAJOR_METADATA_KEY,
+  CMS_SCHEMA_PUSH_METADATA_KEY,
   DECO_ANALYTICS_METADATA_KEY,
 ] as const;
 

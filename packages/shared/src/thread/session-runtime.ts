@@ -47,6 +47,8 @@ export interface VmcpRuntimeMetadata {
    *  `isBlocksV8Project` in `@decocms/shared/blocks-major`). Absent on every
    *  v7 site. */
   blocksMajor?: number | null;
+  /** Server-managed: the CMS schema push the marker counts only with. */
+  cmsSchemaPush?: unknown;
 }
 
 /**
