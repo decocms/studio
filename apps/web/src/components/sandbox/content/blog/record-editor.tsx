@@ -132,7 +132,11 @@ function RecordEditorForm({
     (next) => {
       save.mutate({ blockKey, data: buildBlogBlock(blockKey, kind, next) });
     },
-    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
+    {
+      isSaving: save.isPending,
+      onSeed: () => save.hold(blockKey),
+      content: { orgSlug, virtualMcpId },
+    },
   );
 
   const setField = (key: string, value: unknown) =>

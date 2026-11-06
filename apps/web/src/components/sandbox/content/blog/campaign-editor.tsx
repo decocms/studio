@@ -210,6 +210,7 @@ export function CampaignEditor({
   onEdit,
   sandboxRef,
   storeUrl,
+  content,
 }: {
   blockKey: string;
   block: Record<string, unknown> | undefined;
@@ -230,6 +231,8 @@ export function CampaignEditor({
   sandboxRef?: PreviewProxyRef;
   /** The brand's storefront domain, so picked links are the public ones. */
   storeUrl: string;
+  /** The project the campaign belongs to (see `useAutosave`'s `content`). */
+  content: { orgSlug: string; virtualMcpId: string };
 }) {
   const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -238,7 +241,7 @@ export function CampaignEditor({
   const [draft, setDraft, syncDraft] = useAutosave(
     block ?? EMPTY_BLOCK,
     (next, edit) => onSave(next, edit),
-    { isSaving, onSeed, onEdit },
+    { isSaving, onSeed, onEdit, content },
   );
 
   const campaign = readCampaign(blockKey, draft);

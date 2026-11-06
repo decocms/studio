@@ -44,6 +44,7 @@ import { useContentChanges } from "../../sections-editor/content-changes.ts";
 import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
 import {
   contentSyncScope,
+  settleContentEdits,
   useContentSyncBusy,
 } from "../../sections-editor/content-sync.ts";
 import {
@@ -459,13 +460,23 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    */
   if (!branch) return null;
 
+  /** Opens once the edits made so far are in the draft it shows. */
+  const openWithEdits = (mode: CmsPublishMode) => {
+    void settleContentEdits({
+      queryClient,
+      orgSlug: org.slug,
+      virtualMcpId,
+      branch,
+    }).then(() => openSurface(mode));
+  };
+
   const dispatch = (action: CmsAction) => {
     switch (action) {
       case "publish":
-        openSurface("publish");
+        openWithEdits("publish");
         return;
       case "request-approval":
-        openSurface("review");
+        openWithEdits("review");
         return;
       case "get-latest":
         if (!headBranch || getLatest.isPending) return;

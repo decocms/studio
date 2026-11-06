@@ -13,7 +13,7 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { en } from "@/i18n/en/index.ts";
 import type { ProtocolBackend } from "./content-backend";
-import { resetContentSync } from "./content-sync";
+import { resetContentSync, settleContentEdits } from "./content-sync";
 import { BlockConflictError } from "./decofile-api";
 import * as realBackend from "./use-content-backend";
 import * as realDecofile from "./use-decofile";
@@ -1004,6 +1004,42 @@ describe("a debounced editor keeping its own copy (hosted v8)", () => {
       );
     });
   }
+});
+
+describe("Review & Publish and the preview links settle a debounced edit", () => {
+  it("an edit still in its typing pause is sent at once and has landed when the edits settle", async () => {
+    const { queryClient } = setup();
+    const loaded = await draftVersionOf({ title: "loaded" });
+    server.hashed = true;
+    server.blocks = { Hero: { title: "loaded" } };
+    server.versions = { Hero: loaded };
+    draftHolds(queryClient, { Hero: loaded });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () =>
+        useDebouncedSaveBlock(
+          { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
+          { holdsCopy: true },
+        ),
+      { wrapper },
+    );
+    act(() => result.current.save("Hero", { title: "last edit" }));
+    expect(server.applied).toEqual([]);
+    await act(() =>
+      settleContentEdits({
+        queryClient,
+        orgSlug: ORG,
+        virtualMcpId: VM,
+        branch: BRANCH,
+      }),
+    );
+    expect(server.applied).toHaveLength(1);
+    expect(server.blocks.Hero).toEqual({ title: "last edit" });
+    // The save's own cache updates render after it landed.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  });
 });
 
 describe("the reconcile question of a block save names it as the editor does", () => {

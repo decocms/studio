@@ -81,7 +81,10 @@ import {
   keptTheirVersion,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
-import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
+import {
+  useOpenPreviewLink,
+  usePreviewLinkDraftPointer,
+} from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -167,6 +170,7 @@ function PostEditorForm({
     virtualMcpId,
     branch,
   });
+  const openPreview = useOpenPreviewLink({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
   /** The form's own copy of `key` (hosted v8), for a write built from it. */
   const shownCopy = (key: string): Record<string, HeldCopy> => {
@@ -182,7 +186,11 @@ function PostEditorForm({
         data: buildPostBlock(blockKey, stampPostModified(next)),
       });
     },
-    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
+    {
+      isSaving: save.isPending,
+      onSeed: () => save.hold(blockKey),
+      content: { orgSlug, virtualMcpId },
+    },
   );
 
   // A move renamed the block, so drop a pending write aimed at the retired key.
@@ -409,9 +417,16 @@ function PostEditorForm({
                       : t("sandbox.postEditor.previewRequiresSlugAndCategory")
                   }
                   onClick={() => {
-                    if (previewUrl) {
-                      window.open(previewUrl, "_blank", "noopener,noreferrer");
-                    }
+                    if (!previewUrl) return;
+                    openPreview((pointer) =>
+                      buildBlogPostPreviewUrl({
+                        decofile,
+                        post,
+                        previewBaseUrl,
+                        draftPointer: pointer,
+                        meta,
+                      }),
+                    );
                   }}
                 >
                   <LinkExternal01 size={14} />

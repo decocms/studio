@@ -1,9 +1,18 @@
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
-import { useDecofileDraft } from "./decofile-api";
-import { useProtocolDraft } from "./content-protocol-api";
+import { readDecofileDraft, useDecofileDraft } from "./decofile-api";
+import {
+  readProtocolDraftPointer,
+  useProtocolDraft,
+} from "./content-protocol-api";
 import { useContentBackend } from "./use-content-backend";
 import { contentSyncScope } from "./content-sync";
-import { usePreviewDraftValue } from "./preview-draft-link";
+import {
+  getPreviewDraft,
+  openDraftTab,
+  previewDraftValue,
+  usePreviewDraftValue,
+} from "./preview-draft-link";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 
 interface DraftParams {
@@ -39,6 +48,21 @@ export function useDraftPointer(params: DraftParams | null): string | null {
 }
 
 /**
+ * {@link useDraftPointer}'s pointer as the cache holds it now (`hosted`: a
+ * hosted v8 draft's), for a link built once a save landed (`openDraftTab`).
+ * Callers keep the Fast Preview gate: they only ask from a Fast Preview link.
+ */
+export function readDraftPointer(
+  queryClient: QueryClient,
+  params: DraftParams,
+  hosted: boolean,
+): string | null {
+  if (hosted) return readProtocolDraftPointer(queryClient, params);
+  const draft = readDecofileDraft(queryClient, params);
+  return draft ? buildDraftPointer({ ...params, ...draft }) : null;
+}
+
+/**
  * The `?__draft=` a page's "Preview" link sends (a blog post's, a category's):
  * a hosted v8 draft's is exactly the preview frame's (its pointer with the
  * frame's forced variants and "Preview as" options, preview-draft-link.ts);
@@ -53,6 +77,31 @@ export function usePreviewLinkDraftPointer(params: DraftParams): string | null {
     hosted ? pointer : null,
   );
   return hosted ? value : pointer;
+}
+
+/**
+ * Opens a page's "Preview" link once the edits made so far are saved
+ * (`openDraftTab`): `build` gets {@link usePreviewLinkDraftPointer}'s value
+ * for the draft's version after them.
+ */
+export function useOpenPreviewLink(
+  params: DraftParams,
+): (build: (draftPointer: string | null) => string | null) => void {
+  const queryClient = useQueryClient();
+  const shown = usePreviewLinkDraftPointer(params);
+  const backend = useContentBackend(params.virtualMcpId, params.branch);
+  const hosted = backend.kind === "protocol" && backend.source === "github";
+  const scope = contentSyncScope(params.orgSlug, params.virtualMcpId);
+  return (build) =>
+    openDraftTab({ queryClient, ...params }, () => {
+      // No pointer (Fast Preview off, none read yet): nothing to refresh.
+      if (!shown) return build(null);
+      const pointer = readDraftPointer(queryClient, params, hosted);
+      const fresh = hosted
+        ? previewDraftValue({ pointer, ...getPreviewDraft(scope) })
+        : pointer;
+      return build(fresh ?? shown);
+    });
 }
 
 export interface FastPreviewDraftUrl {

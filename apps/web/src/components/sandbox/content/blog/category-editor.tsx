@@ -67,7 +67,10 @@ import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
 import { HostedKeptTheirsError } from "@/components/sections-editor/hosted-reconcile";
-import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
+import {
+  useOpenPreviewLink,
+  usePreviewLinkDraftPointer,
+} from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -139,6 +142,7 @@ function CategoryEditorForm({
     virtualMcpId,
     branch,
   });
+  const openPreview = useOpenPreviewLink({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
   /** The form's own copy of `key` (hosted v8), for a write built from it. */
   const shownCopy = (key: string): Record<string, HeldCopy> => {
@@ -157,6 +161,7 @@ function CategoryEditorForm({
     {
       isSaving: save.isPending || move.isPending,
       onSeed: () => save.hold(blockKey),
+      content: { orgSlug, virtualMcpId },
     },
   );
 
@@ -467,7 +472,15 @@ function CategoryEditorForm({
                 size="sm"
                 title={t("sandbox.categoryEditor.previewTooltip")}
                 onClick={() =>
-                  window.open(previewUrl, "_blank", "noopener,noreferrer")
+                  openPreview((pointer) =>
+                    buildBlogCategoryPreviewUrl({
+                      decofile,
+                      category,
+                      previewBaseUrl,
+                      draftPointer: pointer,
+                      meta,
+                    }),
+                  )
                 }
               >
                 <LinkExternal01 size={14} />

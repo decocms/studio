@@ -4,8 +4,11 @@ import {
   useProjectContext,
   useVirtualMCP,
 } from "@/sdk";
-import { useQuery } from "@tanstack/react-query";
-import { useContentSyncBusy } from "@/components/sections-editor/content-sync";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  settleContentEdits,
+  useContentSyncBusy,
+} from "@/components/sections-editor/content-sync";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef } from "react";
 import { toast } from "sonner";
@@ -87,6 +90,7 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
 export function HeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
   const { deleteRelease } = useReleases(virtualMcpId);
@@ -344,10 +348,18 @@ export function HeaderActions({ virtualMcpId }: Props) {
     }
   };
 
+  /** Opens once the editor's edits made so far are in the draft it shows. */
   const openSurface = (
     mode: CmsPublishMode,
     policyOverride: PublishPolicy | null,
-  ) => setSurface({ open: true, mode, policyOverride });
+  ) => {
+    void settleContentEdits({
+      queryClient,
+      orgSlug: org.slug,
+      virtualMcpId,
+      branch: branch ?? null,
+    }).then(() => setSurface({ open: true, mode, policyOverride }));
+  };
 
   const dispatch = (action: HeaderAction) => {
     if (!headBranch) return;
