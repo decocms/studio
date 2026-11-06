@@ -12,9 +12,15 @@ const now = () => clock.now;
  * dialog does: `opener.open()` notes the field (onOpenAutoFocus), then
  * focuses the dialog.
  */
-function Harness({ opener }: { opener: { open: () => void } }) {
-  // The conflict dialog's: enabled while it is open.
-  const noteTyping = useKeepTyping(true, now);
+function Harness({
+  opener,
+  enabled = true,
+}: {
+  opener: { open: () => void };
+  enabled?: boolean;
+}) {
+  // The conflict dialog's: enabled while it is open (v8 sites only).
+  const noteTyping = useKeepTyping(enabled, now);
   opener.open = () => {
     noteTyping();
     document.getElementById("dialog")?.focus();
@@ -29,10 +35,10 @@ function Harness({ opener }: { opener: { open: () => void } }) {
   );
 }
 
-function setup(values: string[] = []) {
+function setup(values: string[] = [], enabled = true) {
   clock.now = 0;
   const opener = { open: () => {} };
-  const view = render(<Harness opener={opener} />);
+  const view = render(<Harness opener={opener} enabled={enabled} />);
   const field = view.getByRole("textbox", {
     name: "Headline",
   }) as HTMLInputElement;
@@ -122,5 +128,17 @@ describe("keystrokes typed as the conflict dialog opens", () => {
     openOn(view.getByRole("radio", { name: "You" }));
     typeOn(dialog, ["r"]);
     expect(field.value).toBe("Probe B mo");
+  });
+});
+
+describe("a v7 site's conflict dialog (keepTyping off)", () => {
+  it("keeps the keystrokes on the dialog, as before: the field is untouched", () => {
+    const values: string[] = [];
+    const { field, dialog, openOn } = setup(values, false);
+    openOn();
+    expect(document.activeElement).toBe(dialog);
+    typeOn(dialog, ["r", "e"]);
+    expect(field.value).toBe("Probe B mo");
+    expect(values).toEqual([]);
   });
 });

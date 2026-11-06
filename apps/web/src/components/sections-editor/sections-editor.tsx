@@ -4970,7 +4970,9 @@ export function SectionsEditor({
               // windows name a field; elsewhere as before.
               fieldsAsLabeled={hostedConflictDraft !== null}
               fresh={waitingChoice.fresh}
-              keepTyping
+              // v8: the burst typed as it opens goes on into the field. v7:
+              // as before, the dialog takes the keystrokes.
+              keepTyping={protocolProject}
               onChoose={(pointer, choice) =>
                 setConflictChoices({
                   ...waitingChoice.choices,
