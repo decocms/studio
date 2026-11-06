@@ -106,6 +106,31 @@ describe("the Studio channel's host", () => {
     expect(frame.posted).toEqual([]);
   });
 
+  it("ignores a deco:ready from a sandboxed frame or an unparsable origin, without throwing", () => {
+    const { host, frame, fromPage, loadBoth } = setup();
+    // Like a browser: an invalid target origin throws.
+    const post = frame.win.postMessage.bind(frame.win);
+    frame.win.postMessage = ((message: unknown, origin: string) => {
+      if (origin !== "*" && origin !== "/") new URL(origin);
+      post(message as { type: string }, origin);
+    }) as Window["postMessage"];
+    loadBoth();
+    const before = frame.posted.length;
+    for (const origin of [
+      "null",
+      "",
+      "not a url",
+      "https://site.example/path",
+    ]) {
+      expect(() => fromPage({ type: "deco:ready" }, { origin })).not.toThrow();
+      expect(fromPage({ type: "deco:ready" }, { origin })).toBe(false);
+    }
+    expect(frame.posted.length).toBe(before);
+    // The document it had is untouched.
+    expect(host.has("wireframe")).toBe(true);
+    expect(host.has("html-swap")).toBe(true);
+  });
+
   it("after deco:ready, ignores the frame at any other origin", () => {
     const { host, calls, fromPage } = setup();
     fromPage({ type: "deco:ready" });

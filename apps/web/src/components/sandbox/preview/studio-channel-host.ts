@@ -88,6 +88,9 @@ export class StudioChannelHost {
     const data = event.data as { type?: unknown } | null;
     if (!data || typeof data.type !== "string") return false;
     if (data.type === CHANNEL_MESSAGE.ready) {
+      // A sandboxed frame (origin `null`) or an origin that isn't one can't
+      // be answered: posting to it would throw. Ignored; nothing changes.
+      if (!isAnswerableOrigin(event.origin)) return false;
       this.ready(event.origin);
       return true;
     }
@@ -223,5 +226,16 @@ export class StudioChannelHost {
   private clearStartTimer() {
     if (this.startTimer) clearTimeout(this.startTimer);
     this.startTimer = null;
+  }
+}
+
+/** Whether `origin` is a real origin a `postMessage` can target (not `null`). */
+function isAnswerableOrigin(origin: unknown): origin is string {
+  if (typeof origin !== "string" || origin === "null") return false;
+  try {
+    const parsed = new URL(origin).origin;
+    return parsed !== "null" && parsed === origin;
+  } catch {
+    return false;
   }
 }
