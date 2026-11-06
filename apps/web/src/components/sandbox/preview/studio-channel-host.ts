@@ -11,7 +11,9 @@
  * {@link StudioChannelHost.refresh} asks HTML swap to show a save, or a new
  * URL of the page (a save's moved draft pointer: the frame keeps its src and
  * doesn't navigate; preview.tsx `nextFrameSwap`). It is
- * false when the page has no HTML swap (the preview reloads the frame then);
+ * false when the page has no HTML swap, or when `url` isn't on the origin the
+ * frame's document spoke from (a frame that navigated away never learns a
+ * draft pointer): the preview loads the frame then;
  * a swap that fails, or doesn't start in {@link SWAP_START_TIMEOUT_MS},
  * reports `onSwapFailed` so the preview reloads after all.
  */
@@ -138,6 +140,9 @@ export class StudioChannelHost {
    * none: the caller loads the frame.
    */
   refresh(url?: string): boolean {
+    // The URL (its draft pointer) goes only to a document of its own origin:
+    // a frame that navigated elsewhere never learns it, and loads it instead.
+    if (url !== undefined && !this.isFrameOrigin(url)) return false;
     const id = ++this.swapId;
     const message: HtmlSwapIn = url
       ? { type: "html-swap:refresh", id, url }
@@ -189,6 +194,14 @@ export class StudioChannelHost {
     if (!frame || !this.origin || !this.loaded.has(name)) return false;
     frame.postMessage(message, this.origin);
     return true;
+  }
+
+  private isFrameOrigin(url: string): boolean {
+    try {
+      return new URL(url).origin === this.origin;
+    } catch {
+      return false;
+    }
   }
 
   private nameOf(url: unknown): StudioModuleName | null {
