@@ -2,8 +2,9 @@
  * Send ONE more user turn onto an existing task run's thread, preserving its
  * context.
  *
- * Shared by the two callers that need it: the board-open stall recovery (finish
- * what you started) and the reviewer comment enforcement (record your pass).
+ * Shared by the callers that need it: the board-open stall recovery (finish
+ * what you started), the reviewer comment enforcement (record your pass), and
+ * a person's comment to a run (`mention-runs.ts`).
  * Everything is keyed off (caller-chosen) ids rather than fresh ones — the
  * message id makes the part write idempotent and the `workflowID` makes the
  * enqueue collapse — so a caller that re-runs every minute forever still
@@ -42,6 +43,8 @@ export async function nudgeThreadTurn(
     /** Per-run agent overrides, read only by the sandbox harness — a reviewer
      *  follow-up keeps the reviewer's tool denylist. */
     agent?: { instructions?: string; disallowedTools?: string[] };
+    /** Who the turn runs as; defaults to whoever handed the card over. */
+    userId?: string;
   },
 ): Promise<void> {
   const organizationId = item.organizationId;
@@ -66,7 +69,7 @@ export async function nudgeThreadTurn(
   }
   await assertAiBudget(ctx, organizationId, "continuing a task agent");
 
-  const userId = item.assignedBy ?? item.createdBy;
+  const userId = opts.userId ?? item.assignedBy ?? item.createdBy;
   const model =
     thread.harness_id === "claude-code"
       ? await resolveTaskRunModel(ctx, organizationId, userId, "claude-code")
