@@ -128,6 +128,38 @@ describe("the HTML swap module", () => {
     expect(document.querySelector("h1")?.textContent).toBe("Old title");
   });
 
+  it("shows a new URL of the page (a moved draft pointer), which later refreshes read", async () => {
+    document.body.innerHTML = "<h1>Old title</h1>";
+    const fetched = serve(NEXT);
+    const before = location.href;
+    const next = new URL("?__draft=moved", location.href).href;
+    const { sent, receive } = await startModule(htmlSwap);
+    receive({ type: "html-swap:refresh", id: 4, url: next });
+    await until(sent, "html-swap:end", 4);
+    expect(fetched[0]).toBe(next);
+    expect(document.querySelector("h1")?.textContent).toBe("Saved title");
+    // The address stays: the page's router never hears of the swap.
+    expect(location.href).toBe(before);
+    fetched.length = 0;
+    receive({ type: "html-swap:refresh", id: 5 });
+    await until(sent, "html-swap:end", 5);
+    expect(fetched[0]).toBe(next);
+  });
+
+  it("never fetches a URL on another origin", async () => {
+    document.body.innerHTML = "<h1>Old title</h1>";
+    const fetched = serve(NEXT);
+    const { sent, receive } = await startModule(htmlSwap);
+    receive({
+      type: "html-swap:refresh",
+      id: 5,
+      url: "https://elsewhere.example/?__draft=x",
+    });
+    await until(sent, "html-swap:error", 5);
+    expect(fetched).toEqual([]);
+    expect(document.querySelector("h1")?.textContent).toBe("Old title");
+  });
+
   it("a later refresh supersedes one under way: only the latest reports its end", async () => {
     serve(NEXT);
     const { sent, receive } = await startModule(htmlSwap);
