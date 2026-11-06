@@ -1201,14 +1201,9 @@ async function openEditor(
   orgSlug: string,
   previewServerUrl: string,
   files: Record<string, string>,
-  /**
-   * `siteSlug: null`: the project isn't linked to a site (doesn't own it).
-   * `branch`: the session's (default `main`, where a v8 site edits its
-   * draft). A v7 site edits a draft branch: its production is read-only.
-   */
-  options: { siteSlug?: null; branch?: string } = {},
+  /** `siteSlug: null`: the project isn't linked to a site (doesn't own it). */
+  options: { siteSlug?: null } = {},
 ): Promise<{ url: string; project: FastPreviewProject }> {
-  const branch = options.branch ?? "main";
   const owner = uniqueOwner();
   const project = await createFastPreviewProject(api, orgSlug, {
     owner,
@@ -1222,16 +1217,13 @@ async function openEditor(
     owner,
     repo: "site",
     defaultBranch: "main",
-    branches: {
-      main: { files },
-      ...(branch === "main" ? {} : { [branch]: null }),
-    },
+    branches: { main: { files } },
   });
   const { item: thread } = await callSelfMcpTool<{ item: { id: string } }>(
     api,
     orgSlug,
     "COLLECTION_THREADS_CREATE",
-    { data: { virtual_mcp_id: project.vmcpId, branch } },
+    { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
   );
   return {
     project,
@@ -1255,16 +1247,10 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
     }) => {
       const preview = await startPreviewSite();
       try {
-        const { url } = await openEditor(
-          page.request,
-          orgSlug,
-          preview.url,
-          {
-            [file]: JSON.stringify(meta),
-            ".deco/blocks/home.json": homePage,
-          },
-          { branch: "draft" },
-        );
+        const { url } = await openEditor(page.request, orgSlug, preview.url, {
+          [file]: JSON.stringify(meta),
+          ".deco/blocks/home.json": homePage,
+        });
         // The editor decides from main's schema (its one `schema.get`),
         // never from the project's marker; a v7 main gets no v8 schema and
         // never reaches the rest of the protocol.
@@ -1303,16 +1289,10 @@ test.describe("v7/v8 detection from the schema, in any org", () => {
   }) => {
     const preview = await startPreviewSite();
     try {
-      const { url } = await openEditor(
-        page.request,
-        orgSlug,
-        preview.url,
-        {
-          ".deco/meta.gen.json": JSON.stringify(v7Meta),
-          ".deco/blocks/home.json": homePage,
-        },
-        { branch: "draft" },
-      );
+      const { url } = await openEditor(page.request, orgSlug, preview.url, {
+        ".deco/meta.gen.json": JSON.stringify(v7Meta),
+        ".deco/blocks/home.json": homePage,
+      });
       // Main's schema can't be read (a GitHub outage, a revoked token): a
       // site never found v8 behaves as on main, never an indefinite wait.
       let mainReads = 0;

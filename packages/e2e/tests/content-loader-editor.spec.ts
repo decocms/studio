@@ -38,8 +38,6 @@ async function createProject(
     repo,
     defaultBranch: "main",
     branches: {
-      // The session's draft, at main's head: production is read-only.
-      draft: null,
       main: {
         files: {
           ".deco/meta.gen.json": JSON.stringify({
@@ -78,7 +76,7 @@ async function createProject(
     api,
     orgSlug,
     "COLLECTION_THREADS_CREATE",
-    { data: { virtual_mcp_id: project.vmcpId, branch: "draft" } },
+    { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
   );
   return {
     url: `/${orgSlug}/projects/${project.vmcpId}/site-editor/content?thread=${thread.id}&sidepanel=false`,
