@@ -25,13 +25,12 @@ export const taskBoard = {
   "taskBoard.agentThread.stopping": "Stopping…",
   "taskBoard.agentThread.stopFailed": "Couldn't stop the run",
   "taskBoard.agentThread.openRun": "Open the run",
-  "taskBoard.agentThread.routeStart": "Starts a Super Agent run on this card.",
+  "taskBoard.agentThread.routeStart": "Starts a new Super Agent run.",
   "taskBoard.agentThread.routeSteer":
-    "Goes to the Super Agent's run in progress. It reads it after its current step.",
-  "taskBoard.agentThread.routeRevive":
-    "Picks this run up again, with everything it already did.",
+    "The Super Agent reads this after its current step.",
+  "taskBoard.agentThread.routeRevive": "Picks this run up where it stopped.",
   "taskBoard.agentThread.routeBusy":
-    "Another run is working on this card. Reply in its thread, or wait for it to finish.",
+    "Another run is already working on this card.",
   "taskBoard.conversation.openChat": "Open chat",
   "taskBoard.conversation.reviewer": "Reviewer",
   "taskBoard.conversation.details": "Details",

@@ -33,7 +33,7 @@ test("mentioning the Super Agent with no run in progress starts one", async ({
   await page.getByTestId("mention-menu").getByText("Super Agent").click();
 
   await expect(component.getByTestId("agent-route-note")).toHaveText(
-    "Starts a Super Agent run on this card.",
+    "Starts a new Super Agent run.",
   );
 });
 
@@ -50,7 +50,7 @@ test("mentioning the Super Agent while a run works the card goes to that run", a
   await page.getByTestId("mention-menu").getByText("Super Agent").click();
 
   await expect(component.getByTestId("agent-route-note")).toContainText(
-    "run in progress",
+    "after its current step",
   );
 });
 
@@ -58,9 +58,9 @@ test("replying to a finished run picks it up again, unless another run is workin
   mount,
 }) => {
   const idle = await mount(<AgentThreadsHarness running={false} />);
-  await idle.getByRole("button", { name: "Continue this run" }).first().click();
+  await idle.getByTitle("Continue this run").first().click();
   await expect(idle.getByTestId("agent-route-note")).toHaveText(
-    "Picks this run up again, with everything it already did.",
+    "Picks this run up where it stopped.",
   );
   await idle.unmount();
 
@@ -75,7 +75,7 @@ test("replying to a finished run picks it up again, unless another run is workin
   await expect(reply).toBeFocused();
   await reply.fill("also check the listing");
   await expect(busy.getByTestId("agent-route-note")).toContainText(
-    "Another run is working on this card",
+    "Another run is already working on this card",
   );
   await expect(
     busy.locator('[data-agent-route="busy"]').getByLabel("Send"),
@@ -109,7 +109,5 @@ test("Stop stops the run in progress, and the card is free for the next", async 
   await expect(running.getByText("Stopping…")).toBeVisible();
   await expect(running.getByText("Stopped", { exact: true })).toBeVisible();
   await expect(running.getByRole("button", { name: "Stop" })).toHaveCount(0);
-  await expect(
-    running.getByRole("button", { name: "Continue this run" }),
-  ).toBeVisible();
+  await expect(running.getByTitle("Continue this run")).toBeVisible();
 });

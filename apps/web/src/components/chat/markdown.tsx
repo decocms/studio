@@ -1,7 +1,7 @@
 /* eslint-disable ban-memoization/ban-memoization */
 import { marked, type Token } from "marked";
 import React, { memo, useCallback, useContext, useMemo, useRef } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -14,7 +14,11 @@ import { groupImageRuns } from "./markdown-image-runs.ts";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
 import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { mentionIdFromHref } from "@decocms/shared/mentions";
+import {
+  MENTION_HREF_PREFIX,
+  mentionIdFromHref,
+} from "@decocms/shared/mentions";
+import { mentionChipClassName } from "@/components/markdown-editor/mention-chip";
 import { AttachmentChip } from "@/components/markdown-editor/attachment-chip";
 import { isEditorFileUrl } from "@/components/markdown-editor/uploads";
 // @ts-ignore - correct
@@ -255,12 +259,9 @@ function MarkdownAnchor({
   const label = animate ? animateText(children) : children;
   // A mention is a link only so the body stays plain markdown — it doesn't
   // navigate anywhere, so it must not render as something you can click.
-  if (href && mentionIdFromHref(href)) {
-    return (
-      <span className="rounded bg-primary/10 px-1 font-medium text-primary">
-        {label}
-      </span>
-    );
+  const mentionId = href ? mentionIdFromHref(href) : null;
+  if (mentionId) {
+    return <span className={cn(mentionChipClassName(mentionId))}>{label}</span>;
   }
   // An editor upload reads as the chip it was when attached, not a bare link.
   if (href && isEditorFileUrl(href)) {
@@ -341,11 +342,17 @@ const animatedComponents = {
   a: (props: MdProps) => <MarkdownAnchor {...props} animate />,
 } as typeof markdownComponents;
 
+/** The default drops unknown schemes, which blanked every `mention:` href. */
+function urlTransform(url: string): string {
+  return url.startsWith(MENTION_HREF_PREFIX) ? url : defaultUrlTransform(url);
+}
+
 const MemoizedMarkdownBlock = memo(
   ({ content, animate }: { content: string; animate?: boolean }) => {
     return (
       <ReactMarkdown
         remarkPlugins={remarkPluginsMemo}
+        urlTransform={urlTransform}
         components={animate ? animatedComponents : markdownComponents}
       >
         {content}

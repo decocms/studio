@@ -28,14 +28,12 @@ export const taskBoard = {
   "taskBoard.agentThread.stopping": "Parando…",
   "taskBoard.agentThread.stopFailed": "Não deu para parar o run",
   "taskBoard.agentThread.openRun": "Abrir o run",
-  "taskBoard.agentThread.routeStart":
-    "Começa um run do Super Agent neste card.",
+  "taskBoard.agentThread.routeStart": "Inicia um novo run do Super Agent.",
   "taskBoard.agentThread.routeSteer":
-    "Vai para o run do Super Agent em andamento. Ele lê depois do passo atual.",
-  "taskBoard.agentThread.routeRevive":
-    "Retoma este run, com tudo o que ele já fez.",
+    "O Super Agent lê isto depois do passo atual.",
+  "taskBoard.agentThread.routeRevive": "Retoma este run de onde parou.",
   "taskBoard.agentThread.routeBusy":
-    "Outro run está trabalhando neste card. Responda na thread dele ou espere ele terminar.",
+    "Outro run já está trabalhando neste card.",
   "taskBoard.conversation.openChat": "Abrir chat",
   "taskBoard.conversation.reviewer": "Revisor",
   "taskBoard.conversation.details": "Detalhes",

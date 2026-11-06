@@ -160,7 +160,11 @@ import { extractDescriptionLinks } from "./description-links";
 import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
-import { CommentThreadCard, type CommentRun } from "./task-comments";
+import {
+  CommentThreadCard,
+  isContinuation,
+  type CommentRun,
+} from "./task-comments";
 import {
   humanFacing,
   type TaskBoardCommentThread,
@@ -1883,47 +1887,46 @@ function ThreadActivityItem({
   const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
 
   return (
-    <div className="border-b border-border/50 pb-4">
-      <TaskMessage
-        id={`run-${thread.threadId}`}
-        author={t(
-          isReviewerThread
-            ? "taskBoard.conversation.reviewer"
-            : "taskBoard.taskDialog.superAgentLabel",
-        )}
-        avatar={
-          isReviewerThread ? (
-            <ReviewerIcon size={24} />
-          ) : (
-            <SuperAgentIcon size={24} />
-          )
-        }
-        createdAt={thread.createdAt}
-        body={message || thread.title || ""}
-        // Only a run waiting on a person shows outside behind the scenes.
-        muted={thread.status !== "requires_action"}
-        onOpenThread={onOpen ? () => onOpen(thread) : undefined}
-        metadata={
-          state && (
-            <span
-              className={cn(
-                "flex shrink-0 items-center gap-1.5",
-                state.className,
-              )}
-            >
-              {/* A spinning status glyph is a loading indicator, so it is the
+    <TaskMessage
+      id={`run-${thread.threadId}`}
+      author={t(
+        isReviewerThread
+          ? "taskBoard.conversation.reviewer"
+          : "taskBoard.taskDialog.superAgentLabel",
+      )}
+      avatar={
+        isReviewerThread ? (
+          <ReviewerIcon size={32} />
+        ) : (
+          <SuperAgentIcon size={32} />
+        )
+      }
+      createdAt={thread.createdAt}
+      body={message || thread.title || ""}
+      // Only a run waiting on a person shows outside behind the scenes.
+      muted={thread.status !== "requires_action"}
+      onOpenThread={onOpen ? () => onOpen(thread) : undefined}
+      onOpen={onOpen ? () => onOpen(thread) : undefined}
+      metadata={
+        state && (
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1.5",
+              state.className,
+            )}
+          >
+            {/* A spinning status glyph is a loading indicator, so it is the
                 shared Spinner; the settled states keep their own icon. */}
-              {state.spin ? (
-                <Spinner className="size-[15px]" label={state.label} />
-              ) : (
-                <state.icon size={15} />
-              )}
-              <span className="text-xs">{state.label}</span>
-            </span>
-          )
-        }
-      />
-    </div>
+            {state.spin ? (
+              <Spinner className="size-[15px]" label={state.label} />
+            ) : (
+              <state.icon size={15} />
+            )}
+            <span className="text-xs">{state.label}</span>
+          </span>
+        )
+      }
+    />
   );
 }
 
@@ -2469,6 +2472,7 @@ function ActivitySection({
   };
   const comments = useTaskBoardComments(item.id);
   const [behindTheScenes, setBehindTheScenes] = useBehindTheScenes();
+  const [replyingThreadId, setReplyingThreadId] = useState<string | null>(null);
   const humanThreads = humanFacing(comments.threads);
   const liveRuns = item.threads.filter(isLiveAttempt);
   // A run waiting on a person is talking to them; any other run is the agents'
@@ -2678,7 +2682,7 @@ function ActivitySection({
           <SubscribeToggle itemId={item.id} members={members} />
         </div>
       </div>
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
         {blocks.map((block, i) => {
           const date = blockDate(block);
           const previous = blocks[i - 1];
@@ -2689,6 +2693,7 @@ function ActivitySection({
             if (block.type === "timeline") {
               return (
                 <TimelineBlock
+                  className="py-2"
                   items={block.items}
                   memberByUserId={memberByUserId}
                 />
@@ -2730,6 +2735,21 @@ function ActivitySection({
                       return false;
                     }
                   }}
+                  continuation={
+                    !showDate &&
+                    previous?.type === "comment" &&
+                    isContinuation(previous.comment, block.comment)
+                  }
+                  replying={replyingThreadId === block.comment.id}
+                  onReplyingChange={(open) =>
+                    setReplyingThreadId((current) =>
+                      open
+                        ? block.comment.id
+                        : current === block.comment.id
+                          ? null
+                          : current,
+                    )
+                  }
                   liveRunElsewhere={
                     !!runningRun &&
                     block.comment.run?.status !== "running" &&
@@ -2756,7 +2776,7 @@ function ActivitySection({
           return (
             <Fragment key={`${block.type}-${blockKey}`}>
               {showDate && (
-                <div className="flex items-center gap-3 py-2 text-xs font-medium text-muted-foreground">
+                <div className="text-meta flex items-center gap-3 pt-4 pb-1">
                   <span className="h-px flex-1 bg-border" />
                   <time dateTime={date.toISOString()}>
                     {date.toLocaleDateString(undefined, {
@@ -3141,9 +3161,11 @@ function isDecoScoreEntry(a: TaskBoardActivity): boolean {
 function TimelineBlock({
   items,
   memberByUserId,
+  className,
 }: {
   items: TaskBoardActivity[];
   memberByUserId: Map<string, Member>;
+  className?: string;
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
@@ -3194,11 +3216,11 @@ function TimelineBlock({
   const visible = folded ? items.slice(0, TIMELINE_FOLD_TO) : items;
 
   return (
-    <div className="relative flex flex-col gap-4">
+    <div className={cn("relative flex flex-col gap-4", className)}>
       {visible.length > 1 && (
         <span
           aria-hidden
-          className="absolute bottom-3 left-2 top-3 w-px bg-border"
+          className="absolute bottom-5 left-2 top-5 w-px bg-border"
         />
       )}
       {visible.map((a) => (
