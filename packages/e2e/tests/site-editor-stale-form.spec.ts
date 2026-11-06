@@ -489,7 +489,10 @@ test.describe("Site Editor stale section form", () => {
       );
       // Modal: typing goes nowhere near the form behind it. The form is
       // aria-hidden while the dialog is open, so it is found with
-      // includeHidden.
+      // includeHidden. Only once the typing that was going on as it opened
+      // has paused: until then the keystrokes still reach the field
+      // (keep-typing.ts, a pause of KEEP_TYPING_GAP_MS = 700 ms ends it).
+      await page.waitForTimeout(1_000);
       await page.keyboard.type("xyz");
       await expect(
         page.getByTestId("blocks-panel").getByRole("textbox", {
