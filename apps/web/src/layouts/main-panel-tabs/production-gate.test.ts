@@ -8,9 +8,8 @@ import {
 const onProduction: ProductionGateInput = {
   runtime: "cms",
   runtimeResolved: true,
-  siteMajor: "v7",
+  blocksV8: false,
   localPreview: false,
-  tunnelUndecided: false,
   servingLocally: false,
   branch: "main",
   listedDraft: false,
@@ -59,9 +58,8 @@ describe("resolveProductionGate", () => {
     ["a coding (sandbox) session", { runtime: "sandbox" }],
     [
       "a Blocks v8 site, whose base branch holds a CDN draft",
-      { siteMajor: "v8" },
+      { blocksV8: true },
     ],
-    ["a site whose schema couldn't be read", { siteMajor: "error" }],
     ["Local mode, which never saves", { localPreview: true }],
     ["a connected deco serve", { servingLocally: true }],
     [
@@ -87,9 +85,7 @@ describe("resolveProductionGate", () => {
   test.each([
     ["the runtime is unresolved", { runtimeResolved: false }],
     ["a CMS session's branch hasn't landed", { branch: null }],
-    ["the site's major is loading", { siteMajor: "loading" }],
     ["the default branch is unknown", { defaultBranch: undefined }],
-    ["a saved tunnel is undecided", { tunnelUndecided: true }],
   ] as const)("waits while %s", (_, overrides) => {
     expect(resolveProductionGate({ ...onProduction, ...overrides })).toBe(
       "pending",

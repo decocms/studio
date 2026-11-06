@@ -7,7 +7,7 @@ import {
 } from "@/components/thread/repository/sandbox-git-api";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { type ProductionGate, resolveProductionGate } from "./production-gate";
@@ -25,9 +25,8 @@ export function useProductionGate(): ProductionGate {
   const virtualMcpId = entity?.id ?? session?.virtualMcpId ?? "";
   const branch = session?.currentBranch ?? null;
   const { runtime, resolved } = useSessionRuntime(entity?.id);
-  const siteMajor = useMainSchemaV8(entity?.id);
-  const { url: localPreviewUrl, undecided: tunnelUndecided } =
-    useLocalPreviewUrl(entity?.id);
+  const blocksV8 = useBlocksV8Project(entity?.id);
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   const { connection: serveConnection } = useDecoServeConnection(
     virtualMcpId || null,
   );
@@ -36,7 +35,7 @@ export function useProductionGate(): ProductionGate {
     !!branch &&
     resolved &&
     runtime === "cms" &&
-    siteMajor === "v7" &&
+    !blocksV8 &&
     !localPreviewUrl;
   const statusRef = {
     orgSlug: org.slug,
@@ -59,9 +58,8 @@ export function useProductionGate(): ProductionGate {
   const gate = resolveProductionGate({
     runtime,
     runtimeResolved: resolved,
-    siteMajor,
+    blocksV8,
     localPreview: !!localPreviewUrl,
-    tunnelUndecided: !!tunnelUndecided,
     servingLocally: !!serveConnection,
     branch,
     listedDraft: (entity?.metadata?.releases ?? []).some(
@@ -76,8 +74,8 @@ export function useProductionGate(): ProductionGate {
         : undefined,
   });
 
-  // Once decided for a branch, a later "pending" (main's schema read again, a
-  // tunnel being saved) keeps the decision instead of unmounting the editor.
+  // Once decided for a branch, a later "pending" (the runtime or the
+  // default branch read again) keeps the decision instead of unmounting the editor.
   const sessionKey = `${virtualMcpId}:${branch ?? ""}`;
   const [settled, setSettled] = useState<{
     key: string;
