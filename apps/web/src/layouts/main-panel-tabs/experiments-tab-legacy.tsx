@@ -6,11 +6,14 @@
  * what main shipped. Delete this file, its `experiments.legacy.*` /
  * `experiments.col.*` / `experiments.results.*` strings, and the flag together.
  */
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Line,
   LineChart,
+  ReferenceLine,
   Tooltip as ChartTooltip,
   XAxis,
   YAxis,
@@ -70,12 +73,17 @@ import {
 } from "@/hooks/use-experiments";
 import {
   type ArmCounts,
+  type Comparison,
   compareArms,
-  DETECTABLE_LIFT,
-  daysLeft,
+  cumulativeLift,
+  DEFF,
   daysRunning,
+  daysToMargin,
+  liftAxis,
   MIN_SUCCESSES,
   MIN_TOTAL,
+  NON_INFERIORITY,
+  TARGET_LIFT,
   type Verdict,
 } from "./experiment-results-model";
 
@@ -294,9 +302,10 @@ const STATUS_LABELS: Record<ExperimentStatus, TranslationKey> = {
 
 const VERDICT_TONE: Record<Verdict, string> = {
   few: "text-muted-foreground",
-  tie: "text-foreground",
-  ahead: "text-success",
-  behind: "text-destructive",
+  unclear: "text-foreground",
+  notWorse: "text-foreground",
+  better: "text-success",
+  worse: "text-destructive",
 };
 
 const fmt = (n: number, options: Intl.NumberFormatOptions) =>
@@ -466,6 +475,315 @@ function ArmName({ arm }: { arm: ArmView }) {
   );
 }
 
+/** Marks a spot in a translated string for a node, so a glossary term can sit
+ *  anywhere the translation puts it. */
+const SLOT = "\u0001";
+const slot = (name: string) => `${SLOT}${name}${SLOT}`;
+function rich(text: string, nodes: Record<string, ReactNode>): ReactNode[] {
+  return text
+    .split(SLOT)
+    .map((part, i) =>
+      i % 2 === 1 ? <Fragment key={part}>{nodes[part]}</Fragment> : part,
+    );
+}
+
+/** A word the glossary explains on hover or focus. */
+function Term({ label, hint }: { label: string; hint: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: focus opens the definition for keyboard readers */}
+        <span
+          tabIndex={0}
+          className="cursor-help underline decoration-muted-foreground/60 decoration-dotted underline-offset-4"
+        >
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72">{hint}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function useTerms() {
+  const t = useT();
+  return {
+    significant: (
+      <Term
+        label={t("experiments.results.glossary.significant")}
+        hint={t("experiments.results.glossary.significantHint")}
+      />
+    ),
+    exposed: (
+      <Term
+        label={t("experiments.results.glossary.exposed")}
+        hint={t("experiments.results.glossary.exposedHint")}
+      />
+    ),
+    margin: (
+      <Term
+        label={t("experiments.results.glossary.margin")}
+        hint={t("experiments.results.glossary.marginHint")}
+      />
+    ),
+  };
+}
+
+/** A chance as a whole percent, never a flat 0% or 100%. */
+function chance(x: number, t: TFunction): string {
+  if (x >= 0.995) return t("experiments.results.chanceAbove");
+  if (x < 0.005) return t("experiments.results.chanceBelow");
+  return pct(x, 0);
+}
+
+/** A lift's size in words: 0.34 below zero reads "34%" with "pior" after it. */
+const size = (x: number) => pct(Math.abs(x), 0);
+
+/** A 1px vertical dashed rule, drawn so it reads on both themes. */
+const DASHED =
+  "repeating-linear-gradient(to bottom, var(--muted-foreground) 0 4px, transparent 4px 7px)";
+
+/** The margins the forecast walks down to, widest first. */
+const MARGIN_TARGETS = [0.1, 0.05, 0.02];
+
+const BAR_TONE: Record<Verdict, string> = {
+  few: "bg-muted-foreground",
+  unclear: "bg-foreground",
+  notWorse: "bg-foreground",
+  better: "bg-success",
+  worse: "bg-destructive",
+};
+
+/**
+ * Where the real difference probably is: the measured lift on a line from
+ * worse to better, its 95% range, zero and the −2% line the test must clear to
+ * grow. The page's single most important picture.
+ */
+function LiftRange({
+  c,
+  test,
+  control,
+}: {
+  c: Comparison;
+  test: string;
+  control: string;
+}) {
+  const t = useT();
+  if (c.lift === null || c.low === null || c.high === null) return null;
+  const { lift, low, high } = c;
+  const axis = liftAxis([low, high]);
+  const at = (v: number) => ((v - axis.min) / (axis.max - axis.min)) * 100;
+  const narrow = at(high) - at(low) < 22;
+  const zeroTick = axis.ticks.indexOf(0);
+  const range = t("experiments.results.range", {
+    low: signedPct(low, 0),
+    high: signedPct(high, 0),
+  });
+  return (
+    <figure
+      className="flex flex-col gap-1.5"
+      aria-label={t("experiments.results.chart.aria", {
+        test,
+        control,
+        lift: signedPct(lift),
+        range,
+      })}
+    >
+      <div className="relative h-24 select-none">
+        <div
+          className="absolute inset-y-0 left-0 rounded-l-md"
+          style={{
+            width: `${at(0)}%`,
+            background:
+              "color-mix(in oklch, var(--destructive) 7%, transparent)",
+          }}
+        />
+        <div
+          className="absolute inset-y-0 right-0 rounded-r-md"
+          style={{
+            left: `${at(0)}%`,
+            background: "color-mix(in oklch, var(--success) 7%, transparent)",
+          }}
+        />
+        <span className="absolute top-2 left-2.5 text-xs text-muted-foreground">
+          {t("experiments.results.chart.worse")}
+        </span>
+        <span className="absolute top-2 right-2.5 text-xs text-muted-foreground">
+          {t("experiments.results.chart.better")}
+        </span>
+        <div
+          className="absolute inset-y-0 w-px -translate-x-1/2"
+          style={{ left: `${at(NON_INFERIORITY)}%`, background: DASHED }}
+        />
+        <span
+          className="absolute bottom-1.5 -translate-x-full pr-1.5 text-xs tabular-nums text-muted-foreground"
+          style={{ left: `${at(NON_INFERIORITY)}%` }}
+        >
+          {signedPct(NON_INFERIORITY, 0)}
+        </span>
+        <div
+          className="absolute inset-y-0 w-px -translate-x-1/2"
+          style={{
+            left: `${at(0)}%`,
+            background: "var(--foreground)",
+            opacity: 0.5,
+          }}
+        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={range}
+              className="absolute top-1/2 h-6 -translate-y-1/2 cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              style={{ left: `${at(low)}%`, width: `${at(high) - at(low)}%` }}
+            >
+              <span
+                className={cn(
+                  "absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full",
+                  BAR_TONE[c.verdict],
+                )}
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">
+            {t("experiments.results.chart.tooltip", {
+              lift: signedPct(lift),
+              range,
+            })}
+          </TooltipContent>
+        </Tooltip>
+        <span
+          className={cn(
+            "pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-card",
+            BAR_TONE[c.verdict],
+          )}
+          style={{ left: `${at(lift)}%` }}
+        />
+        <span
+          className="absolute top-[calc(50%-1.75rem)] -translate-x-1/2 text-sm font-semibold tabular-nums text-foreground"
+          style={{ left: `${at(lift)}%` }}
+        >
+          {signedPct(lift)}
+        </span>
+        {narrow ? (
+          <span
+            className="absolute top-[calc(50%+0.75rem)] -translate-x-1/2 whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+            style={{ left: `${at(lift)}%` }}
+          >
+            {range}
+          </span>
+        ) : (
+          <>
+            <span
+              className="absolute top-[calc(50%+0.75rem)] text-xs tabular-nums text-muted-foreground"
+              style={{ left: `${at(low)}%` }}
+            >
+              {signedPct(low, 0)}
+            </span>
+            <span
+              className="absolute top-[calc(50%+0.75rem)] -translate-x-full text-xs tabular-nums text-muted-foreground"
+              style={{ left: `${at(high)}%` }}
+            >
+              {signedPct(high, 0)}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="relative h-4 text-xs tabular-nums text-muted-foreground">
+        {axis.ticks.map((tick, i) => (
+          <span
+            key={tick}
+            className={cn(
+              "absolute",
+              // On a phone every other tick, counted from zero, so zero stays.
+              (i - zeroTick) % 2 !== 0 && "max-sm:hidden",
+              i === 0
+                ? ""
+                : i === axis.ticks.length - 1
+                  ? "-translate-x-full"
+                  : "-translate-x-1/2",
+            )}
+            style={{ left: `${at(tick)}%` }}
+          >
+            {signedPct(tick, 0)}
+          </span>
+        ))}
+      </div>
+      <figcaption className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className={cn("size-2.5 rounded-full", BAR_TONE[c.verdict])} />
+          {t("experiments.results.chart.measured")}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className={cn("h-1.5 w-4 rounded-full", BAR_TONE[c.verdict])} />
+          {t("experiments.results.chart.range")}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-px" style={{ background: DASHED }} />
+          {t("experiments.results.chart.bar", {
+            bar: signedPct(NON_INFERIORITY, 0),
+          })}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
+/** One fact under the verdict: a question on the left, its answer on the right. */
+function Fact({
+  label,
+  value,
+  note,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  note?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 border-t border-border py-3">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-base font-semibold tabular-nums text-foreground">
+        {value}
+      </dd>
+      {note && <dd className="text-xs text-muted-foreground">{note}</dd>}
+    </div>
+  );
+}
+
+/** Why early numbers swing and why one day never decides. */
+function HowToRead() {
+  const t = useT();
+  return (
+    <details className="group rounded-md border border-border px-4 py-3 text-sm">
+      <summary className="cursor-pointer select-none font-medium text-foreground outline-none focus-visible:underline">
+        {t("experiments.results.howTo.title")}
+      </summary>
+      <div className="flex max-w-3xl flex-col gap-2 pt-3 text-muted-foreground">
+        <p>{t("experiments.results.howTo.range")}</p>
+        <p>{t("experiments.results.howTo.early")}</p>
+        <p>{t("experiments.results.howTo.looks")}</p>
+        <p>{t("experiments.results.howTo.calendar")}</p>
+        <dl className="grid gap-x-4 gap-y-1.5 pt-1 sm:grid-cols-[max-content_1fr]">
+          {(["margin", "significant", "exposed"] as const).map((term) => (
+            <Fragment key={term}>
+              <dt className="font-medium text-foreground">
+                {t(`experiments.results.glossary.${term}Title`)}
+              </dt>
+              <dd>{t(`experiments.results.glossary.${term}Hint`)}</dd>
+            </Fragment>
+          ))}
+        </dl>
+        <p className="text-xs">
+          {t("experiments.results.howTo.method", {
+            deff: dec(DEFF),
+            bar: signedPct(NON_INFERIORITY, 0),
+          })}
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function VerdictCard({
   control,
   test,
@@ -478,41 +796,94 @@ function VerdictCard({
   days: number;
 }) {
   const t = useT();
+  const terms = useTerms();
   const c = compareArms(control.counts, test.counts);
-  const left = daysLeft(control.counts, test.counts, days);
+  const names = { arm: test.name, test: test.name, control: control.name };
   const title =
-    c.verdict === "ahead"
-      ? t("experiments.results.verdict.ahead", { arm: test.name })
-      : c.verdict === "behind"
-        ? t("experiments.results.verdict.behind", { arm: test.name })
-        : t(`experiments.results.verdict.${c.verdict}`);
-  const compare =
-    c.lift === null || c.low === null || c.high === null
-      ? t("experiments.results.verdict.noBase")
-      : t(
+    c.verdict === "few" || c.verdict === "unclear"
+      ? t(`experiments.results.verdict.${c.verdict}`)
+      : t(`experiments.results.verdict.${c.verdict}`, names);
+
+  const lines: ReactNode[] = [];
+  if (c.lift === null) {
+    lines.push(t("experiments.results.verdict.noBase"));
+  } else {
+    lines.push(
+      rich(
+        t(
           exposure
             ? "experiments.results.verdict.compareExposed"
             : "experiments.results.verdict.compareVisitors",
           {
-            test: test.name,
-            control: control.name,
+            ...names,
             testRate: pct(c.treatmentRate),
             controlRate: pct(c.controlRate),
-            lift: signedPct(c.lift),
-            low: signedPct(c.low, 0),
-            high: signedPct(c.high, 0),
+            exposed: slot("exposed"),
           },
-        );
-  const why =
-    c.verdict === "few"
-      ? t("experiments.results.verdict.fewHint", {
+        ),
+        terms,
+      ),
+    );
+    if (c.verdict === "few") {
+      lines.push(
+        t("experiments.results.verdict.fewHint", {
           total: MIN_TOTAL,
           successes: MIN_SUCCESSES,
-        })
-      : c.verdict === "tie"
-        ? t("experiments.results.verdict.tieHint")
-        : t("experiments.results.verdict.sureHint");
-  const mde = pct(DETECTABLE_LIFT, 0);
+        }),
+      );
+    } else {
+      const claim =
+        c.verdict === "better"
+          ? "experiments.results.claim.better"
+          : c.verdict === "worse"
+            ? "experiments.results.claim.worse"
+            : c.verdict === "notWorse"
+              ? "experiments.results.claim.notWorse"
+              : c.lift < 0
+                ? "experiments.results.claim.lower"
+                : c.lift > 0
+                  ? "experiments.results.claim.higher"
+                  : "experiments.results.claim.even";
+      lines.push(
+        rich(
+          t(claim, {
+            ...names,
+            significant: slot("significant"),
+            bar: size(NON_INFERIORITY),
+          }),
+          terms,
+        ),
+      );
+    }
+    if (c.low !== null && c.high !== null) {
+      lines.push(
+        c.low < 0 && c.high > 0
+          ? t("experiments.results.range.cross", {
+              low: size(c.low),
+              high: size(c.high),
+            })
+          : c.low >= 0
+            ? t("experiments.results.range.above", {
+                near: size(c.low),
+                far: size(c.high),
+              })
+            : t("experiments.results.range.below", {
+                near: size(c.high),
+                far: size(c.low),
+              }),
+      );
+    }
+  }
+
+  const margin = c.margin;
+  const target =
+    margin === null ? undefined : MARGIN_TARGETS.find((m) => m < margin);
+  const forecast =
+    target === undefined
+      ? null
+      : daysToMargin(control.counts, test.counts, days, target);
+  const decided = c.verdict !== "few" && c.pBetter !== null;
+
   const progress = [
     days > 0 &&
       t(
@@ -521,27 +892,241 @@ function VerdictCard({
           : "experiments.results.progress.running",
         { days },
       ),
-    left === null
-      ? t("experiments.results.progress.unknown")
-      : left === 0
-        ? t("experiments.results.progress.enough", { mde })
-        : t(
-            left === 1
-              ? "experiments.results.progress.leftOne"
-              : "experiments.results.progress.left",
-            { days: num(left), mde },
-          ),
+    forecast &&
+      target !== undefined &&
+      forecast.evenSplitDays < forecast.days &&
+      t(
+        forecast.evenSplitDays === 1
+          ? "experiments.results.progress.evenSplitOne"
+          : "experiments.results.progress.evenSplit",
+        { days: num(forecast.evenSplitDays), margin: pct(target, 0) },
+      ),
   ].filter(Boolean);
+
   return (
-    <section className="surface flex flex-col gap-2 p-5">
-      <h3 className={cn("text-xl font-semibold", VERDICT_TONE[c.verdict])}>
-        {title}
-      </h3>
-      <p className="max-w-3xl text-sm text-foreground">
-        {compare} {why}
-      </p>
-      <p className="text-xs text-muted-foreground">{progress.join(" ")}</p>
+    <section className="surface flex flex-col gap-5 p-5 md:p-6">
+      <div className="flex flex-col gap-2">
+        <h3
+          className={cn(
+            "text-2xl font-semibold text-balance",
+            VERDICT_TONE[c.verdict],
+          )}
+        >
+          {title}
+        </h3>
+        <p className="max-w-3xl text-sm leading-relaxed text-foreground">
+          {lines.map((line, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed order of sentences
+            <Fragment key={i}>
+              {i > 0 && " "}
+              {line}
+            </Fragment>
+          ))}
+        </p>
+      </div>
+      <LiftRange c={c} test={test.name} control={control.name} />
+      <dl className="grid gap-x-8 sm:grid-cols-2">
+        {decided && c.pBetter !== null && c.pBetterTarget !== null && (
+          <>
+            <Fact
+              label={t("experiments.results.fact.better", names)}
+              value={chance(c.pBetter, t)}
+            />
+            <Fact
+              label={t("experiments.results.fact.target", {
+                target: pct(TARGET_LIFT, 0),
+              })}
+              value={chance(c.pBetterTarget, t)}
+            />
+          </>
+        )}
+        {decided && c.safety && c.notWorseAt !== null && (
+          <Fact
+            label={t("experiments.results.fact.safety", {
+              bar: signedPct(NON_INFERIORITY, 0),
+            })}
+            value={t(`experiments.results.safety.${c.safety}`)}
+            note={
+              c.safety === "open"
+                ? t("experiments.results.safety.openNote", {
+                    bar: signedPct(c.notWorseAt),
+                  })
+                : undefined
+            }
+          />
+        )}
+        {margin !== null && (
+          <Fact
+            label={terms.margin}
+            value={`±${pct(margin, 0)}`}
+            note={
+              target === undefined
+                ? undefined
+                : forecast === null
+                  ? t("experiments.results.forecast.unknown")
+                  : forecast.days === 0
+                    ? t("experiments.results.forecast.reached", {
+                        margin: pct(target, 0),
+                      })
+                    : t(
+                        forecast.days === 1
+                          ? "experiments.results.forecast.leftOne"
+                          : "experiments.results.forecast.left",
+                        {
+                          margin: pct(target, 0),
+                          days: num(forecast.days),
+                          exposed: num(forecast.exposed),
+                        },
+                      )
+            }
+          />
+        )}
+      </dl>
+      {progress.length > 0 && (
+        <p className="text-xs text-muted-foreground">{progress.join(" ")}</p>
+      )}
+      <HowToRead />
     </section>
+  );
+}
+
+const dayLabel = (date: string) =>
+  new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "UTC",
+  });
+
+/** The lift with every day so far added up: early swings and a range that
+ *  narrows as days come in, so one day is never read as the answer. */
+function LiftTrend({ control, test }: { control: ArmView; test: ArmView }) {
+  const t = useT();
+  const points = cumulativeLift(control.daily, test.daily).filter(
+    (p) => p.lift !== null && p.low !== null && p.high !== null,
+  );
+  if (points.length < 2) return null;
+  const axis = liftAxis(points.flatMap((p) => [p.low ?? 0, p.high ?? 0]));
+  const data = points.map((p) => ({
+    label: dayLabel(p.date),
+    lift: p.lift,
+    band: [p.low, p.high],
+  }));
+  const config = {
+    lift: {
+      label: t("experiments.results.chart.measured"),
+      color: "var(--chart-1)",
+    },
+    band: {
+      label: t("experiments.results.chart.range"),
+      color: "var(--chart-1)",
+    },
+  };
+  return (
+    <Section title={t("experiments.results.liftTrend")}>
+      <div className="flex flex-col gap-3 p-4">
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          {t("experiments.results.liftTrendHint")}
+        </p>
+        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-0.5 w-4 rounded-full"
+              style={{ background: "var(--chart-1)" }}
+            />
+            {t("experiments.results.chart.measuredTotal")}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-3 w-4 rounded-sm"
+              style={{
+                background:
+                  "color-mix(in oklch, var(--chart-1) 25%, transparent)",
+              }}
+            />
+            {t("experiments.results.chart.range")}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-px" style={{ background: DASHED }} />
+            {t("experiments.results.chart.bar", {
+              bar: signedPct(NON_INFERIORITY, 0),
+            })}
+          </span>
+        </div>
+        <ChartContainer config={config} className="aspect-auto h-60 w-full">
+          <ComposedChart
+            data={data}
+            margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+          >
+            <CartesianGrid vertical={false} strokeDasharray="4 4" />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={10}
+              padding={{ left: 16, right: 16 }}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={52}
+              ticks={axis.ticks}
+              domain={[axis.min, axis.max]}
+              tickFormatter={(v: number) => signedPct(v, 0)}
+            />
+            <ReferenceLine
+              y={0}
+              stroke="var(--foreground)"
+              strokeOpacity={0.45}
+            />
+            <ReferenceLine
+              y={NON_INFERIORITY}
+              stroke="var(--muted-foreground)"
+              strokeDasharray="4 4"
+            />
+            <ChartTooltip
+              content={({ active, payload, label }) => {
+                const p = payload?.[0]?.payload as
+                  | (typeof data)[number]
+                  | undefined;
+                if (!active || !p || p.lift === null) return null;
+                return (
+                  <div className="surface flex flex-col gap-0.5 px-3 py-2 text-xs shadow-md">
+                    <span className="font-medium text-foreground">{label}</span>
+                    <span className="tabular-nums text-foreground">
+                      {t("experiments.results.chart.tooltipDay", {
+                        lift: signedPct(p.lift),
+                      })}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {t("experiments.results.range", {
+                        low: signedPct(p.band[0] ?? 0, 0),
+                        high: signedPct(p.band[1] ?? 0, 0),
+                      })}
+                    </span>
+                  </div>
+                );
+              }}
+            />
+            <Area
+              dataKey="band"
+              type="monotone"
+              stroke="none"
+              fill="var(--chart-1)"
+              fillOpacity={0.18}
+              isAnimationActive={false}
+            />
+            <Line
+              dataKey="lift"
+              type="monotone"
+              stroke="var(--chart-1)"
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ChartContainer>
+      </div>
+    </Section>
   );
 }
 
@@ -754,7 +1339,9 @@ function Trend({ arms }: { arms: ArmView[] }) {
             <ChartTooltip
               content={
                 <ChartTooltipContent
-                  formatter={(v, name) => `${name} ${pct(Number(v))}`}
+                  formatter={(v, name) =>
+                    `${config[String(name)]?.label ?? name} ${pct(Number(v))}`
+                  }
                 />
               }
             />
@@ -812,9 +1399,9 @@ function BehaviourTable({ arms }: { arms: ArmView[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map(({ id, behaviour: b }) => (
+          {rows.map(({ id, name, behaviour: b }) => (
             <TableRow key={id}>
-              <TableCell className="font-medium">{id}</TableCell>
+              <TableCell className="font-medium">{name}</TableCell>
               <TableCell className="text-right tabular-nums">
                 {dec(b.pageviewsPerVisitor)}
               </TableCell>
@@ -936,12 +1523,13 @@ function ResultsView({
         goal={goal}
         currency={r.currency ?? "BRL"}
       />
+      {control && test && <LiftTrend control={control} test={test} />}
       <Trend arms={arms} />
       <BehaviourTable arms={arms} />
       <GoalsTable
         goals={r.goals}
-        control={control?.id ?? t("experiments.results.control")}
-        test={test?.id ?? t("experiments.results.variant")}
+        control={control?.name ?? t("experiments.results.control")}
+        test={test?.name ?? t("experiments.results.variant")}
       />
       {data.source === "deco-analytics" && (
         <span className="text-xs text-muted-foreground">

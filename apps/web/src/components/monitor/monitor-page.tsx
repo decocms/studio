@@ -40,6 +40,7 @@ import { DeploysView } from "./deploys-view";
 import { ExperimentsView } from "./experiments-view";
 import { LogsView } from "./logs-view";
 import { MonitoredRepos } from "./monitored-repos";
+import { MonitorFrame } from "./monitor-frame";
 import { monitorScope, ProjectFilter } from "./project-filter";
 import { connectLink, localDay } from "./parts";
 import { ConnectMore, Locked } from "./locked";
@@ -201,12 +202,11 @@ export function MonitorPage({
       )}
     </>
   );
-  // Every tab but the Overview is its own screen, with its frame.
+  // Every tab but the Overview is its own screen, inside the one frame.
   if (view === "deploys") {
     const deploysState = stateOf("deploys");
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-auto">
-        {tabs}
+      <MonitorFrame tabs={tabs}>
         {!loading && board.deploys && (
           <Page.Actions>
             <Popover>
@@ -250,52 +250,47 @@ export function MonitorPage({
             </Locked>
           )}
         </div>
-      </div>
+      </MonitorFrame>
     );
   }
   if (view === "experiments") {
     return (
-      <>
-        {tabs}
+      <MonitorFrame tabs={tabs}>
         <ExperimentsView scopeId={scopeId} />
-      </>
+      </MonitorFrame>
     );
   }
   if (view === "logs") {
     return (
-      <>
-        {tabs}
+      <MonitorFrame tabs={tabs}>
         <LogsView scopeId={scopeId} onProject={onProject} />
-      </>
+      </MonitorFrame>
     );
   }
   if (view === "audience") {
     return (
-      <>
-        {tabs}
+      <MonitorFrame tabs={tabs}>
         <AudienceView
           scopeId={scopeId}
           onOpen={(next) =>
             onSelect({ view: selection.view, project: next.project })
           }
         />
-      </>
+      </MonitorFrame>
     );
   }
   if (view === "heatmap") {
     return (
-      <>
-        {tabs}
+      <MonitorFrame tabs={tabs}>
         <MonitorHeatmap scopeId={scopeId} onProject={onProject} />
-      </>
+      </MonitorFrame>
     );
   }
   if (view === "performance") {
     return (
-      <>
-        {tabs}
+      <MonitorFrame tabs={tabs}>
         <PerformanceView scopeId={scopeId} onProject={onProject} />
-      </>
+      </MonitorFrame>
     );
   }
   // Nothing to draw, whatever is connected: a site alone has no numbers yet.
