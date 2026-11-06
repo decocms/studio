@@ -23,6 +23,7 @@ import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   blogDraftBranchName,
   branchUserLabel,
@@ -78,7 +79,6 @@ import {
   draftNameKey,
   isEntryCandidate,
   viewAcceptsThread,
-  viewThreadRuntime,
 } from "@/lib/draft-kind";
 import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
 import type { Task } from "@/components/chat/task/types";
@@ -511,9 +511,9 @@ function ThreadSessionProvider() {
       session?.user?.name || session?.user?.email?.split("@")[0],
     ),
   );
-  /** Blog mints its own entry: a sandbox on a Blog draft. A separate id, so a
-   *  thread the shell minted for another view (and carried here) is never
-   *  the one Blog is sent to. */
+  /** Blog mints its own entry, on a Blog draft. A separate id, so a thread
+   *  the shell minted for another view (and carried here) is never the one
+   *  Blog is sent to. */
   const [blogMintId] = useState(() => crypto.randomUUID());
   const [blogMintBranch] = useState(() =>
     blogDraftBranchName(branchUserLabel(session?.user)),
@@ -549,14 +549,13 @@ function ThreadSessionProvider() {
   // "Creating task…" state until the row is persisted. Without this the
   // chat renders with branch=null because the thread never existed.
   const ensureState = useEnsureTask(routeThreadId, virtualMcpId, (id) =>
-    id === blogMintId
-      ? { branch: blogMintBranch, runtime: "sandbox" }
-      : // A freshly minted thread lands on an editable draft, never production.
-        { branch: generatedDraftBranch },
+    // A freshly minted thread lands on an editable draft, never production.
+    id === blogMintId ? blogMintBranch : generatedDraftBranch,
   );
   const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
-  /** The thread in the URL is one this view can't show: Blog on Fast Preview,
-   *  or a site view on a Blog draft. It goes to the view's own entry. */
+  /** The thread in the URL is one this view can't show: Blog on a site draft
+   *  in Fast Preview, or a site view on a Blog draft. It goes to the view's
+   *  own entry. */
   const refusedThread =
     !!ensuredTask &&
     !!routeAgentId &&
@@ -574,7 +573,7 @@ function ThreadSessionProvider() {
       ),
       virtualMcpId,
       session?.user?.id,
-      viewThreadRuntime(draftKind, entity?.metadata),
+      defaultThreadRuntime(entity?.metadata),
       hasActiveRepository,
       { baseBranch },
     );
@@ -620,7 +619,7 @@ function ThreadSessionProvider() {
       await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
-        // A chat opened from Blog is a Blog draft in a sandbox.
+        // A chat opened from Blog is a Blog draft.
         ...(draftKind === "blog"
           ? blogThreadDefaults(branch, branchUserLabel(session?.user))
           : branch
@@ -698,16 +697,12 @@ function ThreadSessionProvider() {
       (scopedEntryThreads.status === "ready"
         ? findEntry(scopedEntryThreads.threads)
         : undefined);
-    // Blog mints its own sandboxed Blog draft wherever there is source to
-    // clone; every other view mints on an attached repository, as before.
-    const mint =
-      draftKind === "blog"
-        ? agentHasClonableSource(entity?.metadata)
-          ? blogMintId
-          : null
-        : hasActiveRepository
-          ? generatedThreadId
-          : null;
+    // A repo editor mints a draft of the view's kind.
+    const mint = hasActiveRepository
+      ? draftKind === "blog"
+        ? blogMintId
+        : generatedThreadId
+      : null;
     const threadId = entry?.id ?? mint;
     // Sending the URL to the thread it already names would render nothing.
     if (threadId && threadId === routeThreadId) {

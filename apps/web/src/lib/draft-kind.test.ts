@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   blogThreadDefaults,
   draftAfterPublish,
@@ -10,7 +11,6 @@ import {
   viewAcceptsThread,
   viewDraftKind,
   viewForThreadSwitch,
-  viewThreadRuntime,
 } from "./draft-kind";
 
 /** A project whose new threads default to Fast Preview, and one that doesn't. */
@@ -68,14 +68,19 @@ describe("draftNameKey", () => {
 });
 
 describe("viewAcceptsThread", () => {
+  test("Blog takes its own drafts in either runtime", () => {
+    for (const runtime of ["cms", "sandbox", undefined] as const) {
+      expect(
+        viewAcceptsThread(
+          "blog",
+          thread("blog-draft-a", runtime),
+          fastPreviewProject,
+        ),
+      ).toBe(true);
+    }
+  });
+
   test("Blog takes any sandbox, including a branch adopted from Advanced", () => {
-    expect(
-      viewAcceptsThread(
-        "blog",
-        thread("blog-draft-a", "sandbox"),
-        fastPreviewProject,
-      ),
-    ).toBe(true);
     expect(
       viewAcceptsThread(
         "blog",
@@ -85,13 +90,13 @@ describe("viewAcceptsThread", () => {
     ).toBe(true);
   });
 
-  test("Blog refuses Fast Preview, stamped or by the project's default", () => {
+  test("Blog refuses a site draft in Fast Preview, stamped or by the project's default", () => {
     expect(
       viewAcceptsThread("blog", thread("sacci-a", "cms"), sandboxProject),
     ).toBe(false);
     // Unstamped: the project's default, which is Fast Preview here.
     expect(
-      viewAcceptsThread("blog", thread("blog-draft-a"), fastPreviewProject),
+      viewAcceptsThread("blog", thread("sacci-a"), fastPreviewProject),
     ).toBe(false);
   });
 
@@ -139,20 +144,34 @@ describe("isEntryCandidate", () => {
     }
   });
 
-  test("Blog resumes only its own drafts, and only in a sandbox", () => {
+  test("Blog resumes only its own drafts, in the project's runtime", () => {
+    expect(
+      isEntryCandidate(
+        "blog",
+        thread("blog-draft-a", "cms"),
+        fastPreviewProject,
+      ),
+    ).toBe(true);
+    // Unstamped reads as the project's default.
+    expect(
+      isEntryCandidate("blog", thread("blog-draft-a"), fastPreviewProject),
+    ).toBe(true);
     expect(
       isEntryCandidate(
         "blog",
         thread("blog-draft-a", "sandbox"),
         fastPreviewProject,
       ),
+    ).toBe(false);
+    expect(
+      isEntryCandidate(
+        "blog",
+        thread("blog-draft-a", "sandbox"),
+        sandboxProject,
+      ),
     ).toBe(true);
     expect(
       isEntryCandidate("blog", thread("sacci-a", "sandbox"), sandboxProject),
-    ).toBe(false);
-    // Unstamped reads as the project's default: Fast Preview here.
-    expect(
-      isEntryCandidate("blog", thread("blog-draft-a"), fastPreviewProject),
     ).toBe(false);
   });
 
@@ -190,21 +209,37 @@ describe("isEntryCandidate", () => {
   });
 });
 
-describe("new threads", () => {
-  test("a thread opened from Blog is a sandbox", () => {
-    expect(viewThreadRuntime("blog", fastPreviewProject)).toBe("sandbox");
-    expect(viewThreadRuntime("site", fastPreviewProject)).toBe("cms");
-    expect(viewThreadRuntime(null, sandboxProject)).toBe("sandbox");
+describe("threads created from Blog", () => {
+  test("keep the branch they were given, else mint a Blog draft", () => {
+    expect(blogThreadDefaults("blog-draft-sacci-a", "Sacci")).toEqual({
+      branch: "blog-draft-sacci-a",
+    });
+    expect(blogThreadDefaults(null, "Sacci").branch).toMatch(
+      /^blog-draft-sacci-[0-9a-z]+$/,
+    );
   });
 
-  test("keeps the branch it was given, else mints a Blog draft", () => {
+  test("a Blog draft takes the project's runtime; another branch is a sandbox", () => {
+    expect(blogThreadDefaults(null, "Sacci").runtime).toBeUndefined();
     expect(blogThreadDefaults("feature/x", "Sacci")).toEqual({
-      runtime: "sandbox",
       branch: "feature/x",
+      runtime: "sandbox",
     });
-    const minted = blogThreadDefaults(null, "Sacci");
-    expect(minted.runtime).toBe("sandbox");
-    expect(minted.branch).toMatch(/^blog-draft-sacci-[0-9a-z]+$/);
+  });
+
+  /** A thread Blog created and then refused would send the user to another
+   *  draft right after they asked for this one. */
+  test("every thread Blog creates is one Blog accepts", () => {
+    for (const project of [fastPreviewProject, sandboxProject]) {
+      for (const branch of [null, "blog-draft-sacci-a", "feature/x"]) {
+        const created = blogThreadDefaults(branch, "Sacci");
+        // The server stamps the project's default when none is asked for.
+        const runtime = created.runtime ?? defaultThreadRuntime(project);
+        expect(
+          viewAcceptsThread("blog", thread(created.branch, runtime), project),
+        ).toBe(true);
+      }
+    }
   });
 });
 
@@ -218,24 +253,33 @@ describe("viewForThreadSwitch", () => {
       ),
     ).toBeNull();
     expect(
+      viewForThreadSwitch(
+        "blog",
+        thread("blog-draft-a", "cms"),
+        fastPreviewProject,
+      ),
+    ).toBeNull();
+    expect(
       viewForThreadSwitch("site", thread("sacci-a", "cms"), fastPreviewProject),
     ).toBeNull();
   });
 
-  test("Blog sends a Fast Preview thread to the Site Editor", () => {
+  test("Blog sends a site draft in Fast Preview to the Site Editor", () => {
     expect(
       viewForThreadSwitch("blog", thread("sacci-a", "cms"), fastPreviewProject),
     ).toBe("site-editor");
   });
 
   test("a site view sends a Blog draft to Blog", () => {
-    expect(
-      viewForThreadSwitch(
-        "site",
-        thread("blog-draft-a", "sandbox"),
-        sandboxProject,
-      ),
-    ).toBe("blog");
+    for (const runtime of ["cms", "sandbox"] as const) {
+      expect(
+        viewForThreadSwitch(
+          "site",
+          thread("blog-draft-a", runtime),
+          fastPreviewProject,
+        ),
+      ).toBe("blog");
+    }
   });
 });
 
@@ -273,11 +317,22 @@ describe("the draft select's list", () => {
 });
 
 describe("after publishing", () => {
-  test("Blog moves its sandbox to a fresh Blog draft, even on a CMS project", () => {
+  test("Blog on a CMS project opens a new Fast Preview thread on a fresh Blog draft", () => {
     const next = draftAfterPublish({
       viewKind: "blog",
       branch: "blog-draft-sacci-a",
       projectDefault: "cms",
+      userLabel: "Sacci",
+    });
+    expect(next).toMatchObject({ kind: "new-thread", runtime: "cms" });
+    expect(next.branch).toMatch(/^blog-draft-sacci-/);
+  });
+
+  test("Blog on a sandbox project moves its sandbox to a fresh Blog draft", () => {
+    const next = draftAfterPublish({
+      viewKind: "blog",
+      branch: "blog-draft-sacci-a",
+      projectDefault: "sandbox",
       userLabel: "Sacci",
     });
     expect(next.kind).toBe("repoint");

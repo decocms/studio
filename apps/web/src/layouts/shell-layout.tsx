@@ -208,8 +208,8 @@ export function usePanelActions() {
   ) => {
     const newId = crypto.randomUUID();
     const targetVmcp = virtualMcpId ?? routeVirtualMcpId;
-    // A chat opened from Blog, on Blog's own agent, is a Blog draft in a
-    // sandbox. Another agent's "+" or a pinned landing view is not Blog work.
+    // A chat opened from Blog, on Blog's own agent, is a Blog draft. Another
+    // agent's "+" or a pinned landing view is not Blog work.
     const blog =
       draftKind === "blog" && targetVmcp === routeVirtualMcpId && !opts?.panel
         ? blogThreadDefaults(branch, branchUserLabel(session?.user))

@@ -1,10 +1,11 @@
 /**
  * Which drafts a view works on, and the threads it may run on.
  *
- * Blog always runs in a sandbox, on its own drafts (`blog-draft-` branches,
- * `@decocms/shared/branch-name`). The views under the site's draft bar (the
- * Site Editor, Experiments and Calendar) never run on a Blog draft. Any other
- * view takes whatever thread it is given.
+ * Blog works on its own drafts (`blog-draft-` branches,
+ * `@decocms/shared/branch-name`), in the project's runtime like the site's
+ * drafts. The views under the site's draft bar (the Site Editor, Experiments
+ * and Calendar) never run on a Blog draft, and Blog never runs on a site draft
+ * in Fast Preview. Any other view takes whatever thread it is given.
  */
 
 import {
@@ -82,9 +83,10 @@ export function draftNameKey(
 export type DraftThread = Pick<Task, "branch" | "metadata" | "partial">;
 
 /**
- * Whether a view of `kind` can show `thread`. Blog asks for a sandbox only, so
- * a branch adopted from Advanced → Branches stays; the site views refuse a Blog
- * draft.
+ * Whether a view of `kind` can show `thread`. Blog takes its own drafts in
+ * either runtime, and any sandbox: a branch adopted from Advanced opens one,
+ * and it stays. What Blog refuses is a site draft in Fast Preview. The site
+ * views refuse a Blog draft.
  */
 export function viewAcceptsThread(
   kind: DraftKind | null,
@@ -92,61 +94,53 @@ export function viewAcceptsThread(
   project: VmcpRuntimeMetadata | null | undefined,
 ): boolean {
   if (kind === "blog") {
-    return readThreadRuntime(thread.metadata, project) === "sandbox";
+    return (
+      isBlogDraftBranch(thread.branch) ||
+      readThreadRuntime(thread.metadata, project) === "sandbox"
+    );
   }
   if (kind === "site") return !isBlogDraftBranch(thread.branch);
   return true;
 }
 
 /**
- * Whether `thread` may be resumed as a view's entry (no thread in the URL).
- * Always a subset of {@link viewAcceptsThread}, so an entry is never refused
- * and sent to look for an entry again.
+ * Whether `thread` may be resumed as a view's entry (no thread in the URL): a
+ * draft of the view's kind, in the project's runtime. Always a subset of
+ * {@link viewAcceptsThread}, so an entry is never refused and sent to look for
+ * an entry again.
  */
 export function isEntryCandidate(
   kind: DraftKind | null,
   thread: DraftThread,
   project: VmcpRuntimeMetadata | null | undefined,
 ): boolean {
-  if (thread.partial) return false;
-  if (kind === "blog") {
-    return (
-      isBlogDraftBranch(thread.branch) &&
-      readThreadRuntime(thread.metadata, project) === "sandbox"
-    );
-  }
   return (
-    !isBlogDraftBranch(thread.branch) &&
+    !thread.partial &&
+    (kind === "blog") === isBlogDraftBranch(thread.branch) &&
     threadRuntimeMatches(thread, defaultThreadRuntime(project))
   );
 }
 
-/** The runtime a new thread opened from a view of `kind` is stamped with. */
-export function viewThreadRuntime(
-  kind: DraftKind | null,
-  project: VmcpRuntimeMetadata | null | undefined,
-): ThreadRuntime {
-  return kind === "blog" ? "sandbox" : defaultThreadRuntime(project);
-}
-
 /**
- * What a thread created from Blog is: a sandbox, on the branch it was asked
- * for (or carried from the current one), else a fresh Blog draft.
+ * What a thread created from Blog is: on the branch it was asked for (or
+ * carried from the current one), else a fresh Blog draft. A Blog draft takes
+ * the project's runtime; any other branch opens a sandbox, the only way Blog
+ * shows one ({@link viewAcceptsThread}).
  */
 export function blogThreadDefaults(
   branch: string | null | undefined,
   userLabel: string | null | undefined,
-): { runtime: "sandbox"; branch: string } {
-  return {
-    runtime: "sandbox",
-    branch: branch || blogDraftBranchName(userLabel),
-  };
+): { branch: string; runtime?: "sandbox" } {
+  const next = branch || blogDraftBranchName(userLabel);
+  return isBlogDraftBranch(next)
+    ? { branch: next }
+    : { branch: next, runtime: "sandbox" };
 }
 
 /**
  * The view to land on when switching to `thread` from a view of `kind`, or
- * `null` to stay: Blog can't show a Fast Preview thread, and the site views
- * can't show a Blog draft.
+ * `null` to stay: Blog can't show a site draft in Fast Preview, and the site
+ * views can't show a Blog draft.
  */
 export function viewForThreadSwitch(
   kind: DraftKind | null,
@@ -173,10 +167,11 @@ export type DraftAfterPublish =
   | { kind: "new-thread"; runtime: ThreadRuntime; branch: string };
 
 /**
- * A published draft is never edited again: the session moves to a fresh one.
- * Blog stays in its sandbox on a fresh Blog draft. Elsewhere a CMS-default
- * project goes back to a new Fast Preview thread, and any other one moves this
- * thread to a fresh branch (a new sandbox, since pods are keyed by branch).
+ * A published draft is never edited again: the session moves to a fresh one,
+ * a Blog draft from Blog (or from a Blog draft), else a site draft. A
+ * CMS-default project goes back to a new Fast Preview thread; any other one
+ * moves this thread to the fresh branch (a new sandbox, since pods are keyed
+ * by branch).
  */
 export function draftAfterPublish(input: {
   viewKind: DraftKind | null;
@@ -184,10 +179,10 @@ export function draftAfterPublish(input: {
   projectDefault: ThreadRuntime;
   userLabel: string | null | undefined;
 }): DraftAfterPublish {
-  if (input.viewKind === "blog" || isBlogDraftBranch(input.branch)) {
-    return { kind: "repoint", branch: blogDraftBranchName(input.userLabel) };
-  }
-  const branch = generateBranchName(input.userLabel);
+  const branch =
+    input.viewKind === "blog" || isBlogDraftBranch(input.branch)
+      ? blogDraftBranchName(input.userLabel)
+      : generateBranchName(input.userLabel);
   return input.projectDefault === "cms"
     ? { kind: "new-thread", runtime: "cms", branch }
     : { kind: "repoint", branch };

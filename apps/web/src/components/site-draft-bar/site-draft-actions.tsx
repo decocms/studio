@@ -3,7 +3,7 @@
  * and Publish. One component for every view that edits the site's draft —
  * the site editor, Experiments and Calendar — so a test or a campaign is
  * changed in the same draft as the pages and published the same way. Blog
- * wears it too, over its own sandboxed Blog drafts (`lib/draft-kind.ts`).
+ * wears it too, over its own Blog drafts (`lib/draft-kind.ts`).
  * Mounted as a `ChatLayout.Content` route's `actions`.
  */
 

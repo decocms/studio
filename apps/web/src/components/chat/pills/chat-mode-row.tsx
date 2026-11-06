@@ -55,15 +55,12 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
   const createTask = taskCtx?.createTask;
-  /** The view's drafts: Blog's own sandboxed Blog drafts, else the site's. */
-  const viewKind = useViewDraftKind();
-  const draftKind: DraftKind = viewKind === "blog" ? "blog" : "site";
+  /** The view's drafts: Blog's own Blog drafts, else the site's. */
+  const draftKind: DraftKind = useViewDraftKind() === "blog" ? "blog" : "site";
   /** A new branch only lands in CMS through a NEW (unstamped) thread: the
    *  runtime is per-thread and immutable, so a coding session on a CMS-default
-   *  project has to start one rather than switch in place. Blog never does:
-   *  its drafts are sandboxes, so a new one re-points this sandbox. */
+   *  project has to start one rather than switch in place. */
   const createBranchAsCms =
-    viewKind !== "blog" &&
     defaultThreadRuntime(virtualMcp?.metadata) === "cms" &&
     readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
       "sandbox";

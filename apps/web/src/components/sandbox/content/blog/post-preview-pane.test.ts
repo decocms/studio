@@ -6,6 +6,8 @@ const ready = {
   hasPostRoute: true,
   url: "https://site.example/blog/news/hello",
   isPlanning: false,
+  awaitingDraft: false,
+  planningRenders: false,
 };
 
 /**
@@ -29,6 +31,12 @@ describe("resolvePostPreviewBlock", () => {
     ).toBe("no-origin");
   });
 
+  test("Fast Preview waits for its draft pointer instead of showing the published page", () => {
+    expect(resolvePostPreviewBlock({ ...ready, awaitingDraft: true })).toBe(
+      "no-origin",
+    );
+  });
+
   test("a site with no post route cannot render any post", () => {
     expect(
       resolvePostPreviewBlock({ ...ready, hasPostRoute: false, url: null }),
@@ -36,11 +44,21 @@ describe("resolvePostPreviewBlock", () => {
   });
 
   test("a post still in planning is coming soon, even with a complete URL", () => {
-    // No `__resolveType`, so a correct slug changes nothing: the sandbox's
-    // dev server renders the post once it is scheduled.
+    // No `__resolveType`, so a correct slug changes nothing: a sandbox's dev
+    // server (or a hosted v8 draft) renders the post once it is scheduled.
     expect(resolvePostPreviewBlock({ ...ready, isPlanning: true })).toBe(
       "planning-soon",
     );
+  });
+
+  test("a post still in planning renders in a v7 site's Fast Preview draft", () => {
+    expect(
+      resolvePostPreviewBlock({
+        ...ready,
+        isPlanning: true,
+        planningRenders: true,
+      }),
+    ).toBeNull();
   });
 
   test("a missing slug is reported as such, not as a missing route", () => {

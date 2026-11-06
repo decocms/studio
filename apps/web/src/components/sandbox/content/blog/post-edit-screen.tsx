@@ -7,6 +7,7 @@ import { Page } from "@/components/page";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { getBlogPayload } from "./blog-data";
 import { postIdOfKey } from "./blog-post-id";
 import type { BlogPostView } from "./blog-search-params";
@@ -38,6 +39,8 @@ export function PostEditScreen({
   decofile,
   meta,
   previewBaseUrl,
+  fastPreviewActive,
+  planningPostsRender,
   view,
   onViewChange,
   onOpenBlog,
@@ -49,6 +52,9 @@ export function PostEditScreen({
   decofile: Record<string, unknown>;
   meta: LiveMeta;
   previewBaseUrl: string | null | undefined;
+  /** The preview renders Fast Preview's draft (`BlogWorkspaceContext`). */
+  fastPreviewActive: boolean;
+  planningPostsRender: boolean;
   view: BlogPostView | undefined;
   onViewChange: (next: BlogPostView | undefined) => void;
   /** Returning to the browser — the Blog crumb's action. */
@@ -62,6 +68,12 @@ export function PostEditScreen({
    * the key on the next render and stays on the post.
    */
   const move = usePostStatusMove({ orgSlug, virtualMcpId, branch, decofile });
+  // The same `?__draft=` a category's "Preview" link sends.
+  const draftPointer = usePreviewLinkDraftPointer({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
 
   const block = decofile[blockKey] as Record<string, unknown> | undefined;
   const post = getBlogPayload(block, "posts");
@@ -136,6 +148,9 @@ export function PostEditScreen({
             blockKey={blockKey}
             previewBaseUrl={previewBaseUrl}
             meta={meta}
+            fastPreviewActive={fastPreviewActive}
+            draftPointer={draftPointer}
+            planningPostsRender={planningPostsRender}
             visible={showsPreview}
           />
         </div>

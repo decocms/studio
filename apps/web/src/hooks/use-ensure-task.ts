@@ -37,13 +37,6 @@ import type { Task } from "../components/chat/task/types";
 import { useThreadManager } from "../components/chat/store/hooks";
 import { useProjectContext } from "@/sdk";
 import { claimThreadIntent } from "@/lib/thread-intent";
-import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
-
-/** What a row this hook has to CREATE is stamped with. */
-export interface EnsureTaskDefaults {
-  branch?: string;
-  runtime?: ThreadRuntime;
-}
 
 type State =
   | { status: "loading" }
@@ -54,12 +47,12 @@ type State =
 export function useEnsureTask(
   id: string | null,
   virtualMcpId: string,
-  /** What to stamp when this hook has to CREATE the row `id` (drafts mode
+  /** Branch to stamp when this hook has to CREATE the row `id` (drafts mode
    *  lands a fresh entry thread on a draft, never on production). Asked per
    *  id, at the create: the caller's view may have changed since it minted
    *  that id. Ignored for existing rows and overridden by an explicit parked
    *  intent. */
-  defaultsFor?: (id: string) => EnsureTaskDefaults,
+  defaultBranchFor?: (id: string) => string | undefined,
 ): State {
   const manager = useThreadManager();
   const { locator } = useProjectContext();
@@ -125,13 +118,12 @@ export function useEnsureTask(
 
   const ensureCreate = useMutation<Task, Error, string>({
     mutationFn: async (taskId) => {
-      const defaults = defaultsFor?.(taskId);
+      const branch = defaultBranchFor?.(taskId);
       return manager.create({
         id: taskId,
         virtual_mcp_id: virtualMcpId,
-        // Defaults first so an explicit parked intent still wins below.
-        ...(defaults?.branch ? { branch: defaults.branch } : {}),
-        ...(defaults?.runtime ? { runtime: defaults.runtime } : {}),
+        // Default branch first so an explicit parked intent still wins below.
+        ...(branch ? { branch } : {}),
         // What the failed create asked for; the runtime it stamps is permanent.
         ...claimThreadIntent(sessionStorage, locator, taskId),
       });

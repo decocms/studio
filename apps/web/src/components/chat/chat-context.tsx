@@ -689,7 +689,7 @@ export function ChatContextProvider({
   // Sandbox-only chats get one sandbox each, so a new chat never inherits one.
   const sandboxOnlyChats = useSandboxOnlyChats();
   const carryOverBranch = sandboxOnlyChats ? null : currentBranch;
-  /** A chat opened from Blog is a Blog draft in a sandbox (`blogThreadDefaults`). */
+  /** A chat opened from Blog is a Blog draft (`blogThreadDefaults`). */
   const draftKind = useViewDraftKind();
 
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
@@ -755,7 +755,7 @@ export function ChatContextProvider({
     const branch = blog?.branch ?? carryBranch;
     writeStoredAutosend(sessionStorage, locator, newId, params.message);
     writeThreadIntent(sessionStorage, locator, newId, {
-      ...(blog ? { runtime: blog.runtime } : {}),
+      ...(blog?.runtime ? { runtime: blog.runtime } : {}),
       ...(branch ? { branch } : {}),
     });
     void threadActions
@@ -763,7 +763,7 @@ export function ChatContextProvider({
         id: newId,
         virtual_mcp_id: targetVmcp,
         ...(branch ? { branch } : {}),
-        ...(blog ? { runtime: blog.runtime } : {}),
+        ...(blog?.runtime ? { runtime: blog.runtime } : {}),
       })
       .then(() => {
         clearThreadIntent(sessionStorage, locator, newId);

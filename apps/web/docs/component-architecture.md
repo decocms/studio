@@ -224,12 +224,14 @@ across the breakpoint, never reload the preview. `post-split-layout.ts` owns
 the rule; `?blogView=` carries it, so a link reads as a split on a wide panel
 and as one pane on a narrow one.
 
-Blog always runs in a sandbox, on drafts of its own: `blog-draft-` branches,
-named "Blog Draft N", under the same draft bar as the Site Editor
-(`SiteDraftActions`). The shell enforces it (`lib/draft-kind.ts`): with no
-`?thread=` a view resumes or mints a draft of its kind, and a thread the view
-can't show (Blog on Fast Preview, a site view on a Blog draft) is sent to the
-view's own. Threads created from Blog are Blog drafts too.
+Blog works on drafts of its own: `blog-draft-` branches, named "Blog Draft N",
+in the project's runtime (a sandbox or Fast Preview, like the site's drafts),
+under the same draft bar as the Site Editor (`SiteDraftActions`). The shell
+enforces it (`lib/draft-kind.ts`): with no `?thread=` a view resumes or mints a
+draft of its kind, and a thread the view can't show (Blog on a site draft in
+Fast Preview, a site view on a Blog draft) is sent to the view's own. Threads
+created from Blog are Blog drafts too; Blog shows another branch only in a
+sandbox, which is what Advanced → Branches opens.
 
 The drawer stays outside the body's error boundary. `aside` is a second surface
 beside the content on desktop, such as the Library's file preview; the route

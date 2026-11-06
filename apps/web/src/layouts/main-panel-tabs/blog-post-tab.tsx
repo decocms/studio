@@ -77,6 +77,8 @@ export function BlogPostTab({ virtualMcpId }: { virtualMcpId: string }) {
               decofile={context.decofile}
               meta={context.meta}
               previewBaseUrl={context.sitePreviewUrl}
+              fastPreviewActive={context.fastPreviewActive}
+              planningPostsRender={context.planningPostsRender}
               view={search.blogView}
               onViewChange={(next) => {
                 void navigate({

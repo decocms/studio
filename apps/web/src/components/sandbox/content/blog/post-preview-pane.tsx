@@ -28,7 +28,8 @@ type PreviewDevice = Extract<PreviewDeviceSize, "desktop" | "mobile">;
  * the wrong one tells the writer to fix something that is already fine.
  */
 export type PostPreviewBlock =
-  /** No sandbox origin yet — transient, resolves when the pod is up. */
+  /** No site to render yet — transient: the pod is booting, or Fast Preview's
+   *  draft pointer is on its way. */
   | "no-origin"
   /** The site has no blog post route, so nothing can render a post. */
   | "no-route"
@@ -36,10 +37,10 @@ export type PostPreviewBlock =
   | "missing-params"
   /**
    * A planning post is a block with no `__resolveType`, so the site cannot
-   * resolve it. Blog runs in a sandbox, whose dev server reads the repo's
-   * blocks as they are: the post renders once it is scheduled. (Fast Preview's
-   * draft pull projects one — `apps/api/src/decofile/blog-draft-projection.ts`
-   * — but Blog never runs there.)
+   * resolve it. Only a v7 site's Fast Preview draft pull projects one into a
+   * renderable post (`apps/api/src/decofile/blog-draft-projection.ts`); a
+   * sandbox's dev server and a hosted v8 draft read the blocks as they are,
+   * so there the post renders once it is scheduled.
    */
   | "planning-soon";
 
@@ -48,11 +49,16 @@ export function resolvePostPreviewBlock(input: {
   hasPostRoute: boolean;
   url: string | null;
   isPlanning: boolean;
+  /** Fast Preview's draft render, whose `?__draft=` pointer hasn't arrived:
+   *  without it the frame would load the published page. */
+  awaitingDraft: boolean;
+  /** This preview renders a planning post. */
+  planningRenders: boolean;
 }): PostPreviewBlock | null {
-  if (!input.previewBaseUrl) return "no-origin";
+  if (!input.previewBaseUrl || input.awaitingDraft) return "no-origin";
   if (!input.hasPostRoute) return "no-route";
   // Before the URL: a complete slug still cannot make a planning post render.
-  if (input.isPlanning) return "planning-soon";
+  if (input.isPlanning && !input.planningRenders) return "planning-soon";
   if (!input.url) return "missing-params";
   return null;
 }
@@ -75,8 +81,9 @@ const BLOCK_HINT: Record<PostPreviewBlock, TranslationKey> = {
 /**
  * The post as the site renders it, beside the editor.
  *
- * Reload policy lives in {@link SitePreviewFrame}: Blog runs in a sandbox,
- * whose saves the dev server's own HMR reloads. This pane never forces a
+ * Reload policy lives in {@link SitePreviewFrame}: a sandbox session's saves
+ * are reloaded by the dev server's own HMR, and Fast Preview moves the
+ * `?__draft=` version so the URL changes on its own. This pane never forces a
  * reload — doing so was what killed the dev server.
  */
 export function PostPreviewPane({
@@ -85,6 +92,9 @@ export function PostPreviewPane({
   blockKey,
   previewBaseUrl,
   meta,
+  fastPreviewActive,
+  draftPointer,
+  planningPostsRender,
   visible,
 }: {
   decofile: Record<string, unknown>;
@@ -93,6 +103,11 @@ export function PostPreviewPane({
   previewBaseUrl: string | null | undefined;
   /** The site's schema, for a next-major site's page types. */
   meta: LiveMeta;
+  /** The frame renders Fast Preview's draft, through `draftPointer`. */
+  fastPreviewActive: boolean;
+  draftPointer: string | null;
+  /** A planning post renders here (a v7 site's Fast Preview draft). */
+  planningPostsRender: boolean;
   /** Showing on screen. The pane stays mounted when it is not, so toggling
    *  back is instant — but it must not start loading the site before anyone
    *  has asked to see it. */
@@ -115,6 +130,7 @@ export function PostPreviewPane({
     decofile,
     post,
     previewBaseUrl,
+    draftPointer: fastPreviewActive ? draftPointer : null,
     meta,
   });
   const blocked = resolvePostPreviewBlock({
@@ -122,6 +138,8 @@ export function PostPreviewPane({
     hasPostRoute: !!findBlogPageSlug(decofile, meta),
     url,
     isPlanning: isPlanningPostKey(blockKey),
+    awaitingDraft: fastPreviewActive && !draftPointer,
+    planningRenders: planningPostsRender,
   });
 
   return (
@@ -197,8 +215,12 @@ export function PostPreviewPane({
             device={device}
             canvas={canvas}
             title={t("sandbox.postPreview.frameTitle")}
-            /** The sandbox dev server can come back after a stall. */
-            recoveryActive
+            /** The sandbox dev server can come back after a stall; Fast
+             *  Preview's frame navigates cross-origin instead. Unblocked, a
+             *  Fast Preview frame always has its draft pointer. */
+            recoveryActive={!fastPreviewActive}
+            draftUrl={fastPreviewActive ? url : null}
+            holdNavigation={fastPreviewActive}
           />
         )}
       </div>

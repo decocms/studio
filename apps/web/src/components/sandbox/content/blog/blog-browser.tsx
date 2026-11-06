@@ -27,6 +27,9 @@ import {
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import { useNeverPublished } from "@/components/sections-editor/use-never-published";
+import { useShownWhileClosing } from "../closing-dialog";
+import { deleteConfirmKey } from "../delete-copy";
 import { ItemActions } from "../item-actions";
 import { ItemRow } from "../item-row";
 import { ListEmpty } from "../list-empty";
@@ -110,12 +113,21 @@ export function BlogBrowser({
   onOpenPost: (blockKey: string) => void;
 }) {
   const t = useT();
-  const { orgSlug, virtualMcpId, branch, decofile, meta, sitePreviewUrl } =
-    context;
+  const {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    decofile,
+    meta,
+    sitePreviewUrl,
+    hostedDraft,
+  } = context;
   const blogAi = useBlogAi();
   const collection = visibleBlogCollection(requestedCollection, blogAi);
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  // A block the draft created: deleting it is no change Publish lists.
+  const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
 
   const [searchQuery, setSearchQuery] = useState("");
   const [postsView, setPostsView] = useState<PostsView>("list");
@@ -123,6 +135,22 @@ export function BlogBrowser({
   const deleteTitle = t("sandbox.contentBrowser.deleteDialog.title", {
     noun: deleteTarget ? BLOG_SINGULAR[deleteTarget.kind] : "item",
   });
+  const deleteDescription = deleteTarget
+    ? t(
+        deleteConfirmKey("block", hostedDraft, {
+          neverPublished: neverPublished(deleteTarget.key),
+        }),
+        { label: deleteTarget.label },
+      )
+    : null;
+  // Hosted v8: the dialog keeps its words through its fade (never "Delete
+  // item?"); elsewhere exactly as before.
+  const deleteWords = useShownWhileClosing(
+    deleteDescription === null
+      ? null
+      : { title: deleteTitle, description: deleteDescription },
+    hostedDraft,
+  );
 
   // Reset search when switching collections (derived-state sync pattern).
   const [prevCollection, setPrevCollection] = useState(collection);
@@ -351,6 +379,7 @@ export function BlogBrowser({
               onManagePosts={() => onOpenCollection("posts")}
               onOpenPost={onOpenPost}
               previewBaseUrl={sitePreviewUrl}
+              fastPreviewActive={context.fastPreviewActive}
             />
           ) : (
             <RecordEditor
@@ -376,14 +405,11 @@ export function BlogBrowser({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {deleteWords?.title ?? deleteTitle}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget
-                ? t(
-                    "sandbox.contentBrowser.deleteDialog.descriptionPermanent",
-                    { label: deleteTarget.label },
-                  )
-                : null}
+              {deleteWords?.description ?? null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

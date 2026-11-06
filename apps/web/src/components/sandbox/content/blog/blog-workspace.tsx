@@ -19,9 +19,11 @@ import {
   isSiteNotOwned,
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
+import { useConflictMembers } from "@/components/sections-editor/conflict-author";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useT } from "@/i18n/use-t.ts";
 import { SandboxStateRenderer } from "../sandbox-state-renderer";
 import { resolveContentSandboxGate } from "../content-sandbox-gate";
@@ -41,16 +43,23 @@ export interface BlogWorkspaceContext {
    */
   previewUrl: string | null;
   /** Origin for LINKS to the site's own pages and for the post preview: a
-   *  connected `deco serve` or a Local tunnel when one is on, else the
-   *  sandbox's dev server. */
+   *  connected `deco serve` or a Local tunnel when one is on, else Fast
+   *  Preview's preview server, else the sandbox's dev server. */
   sitePreviewUrl: string | null;
+  /** The post preview renders this session's Fast Preview draft
+   *  (`?__draft=`): Fast Preview with no Localhost or Local tunnel in front. */
+  fastPreviewActive: boolean;
+  /** A post still in planning renders in that preview: only a v7 site's draft
+   *  pull projects one (`apps/api/src/decofile/blog-draft-projection.ts`). */
+  planningPostsRender: boolean;
+  /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
+  hostedDraft: boolean;
 }
 
 /**
- * Everything both Blog routes need before they can show anything: the sandbox
- * is up, the decofile and schema have landed, and this site actually has a
- * blog. Blog always runs in a sandbox (the shell never opens it on a Fast
- * Preview thread), so nothing here reads a preview server or a hosted draft.
+ * Everything both Blog routes need before they can show anything: the session
+ * is ready (a sandbox is up; Fast Preview has none to wait for), the decofile
+ * and schema have landed, and this site actually has a blog.
  *
  * A render prop rather than a hook because the sandbox card has to replace the
  * whole body, and the data reads below it must not run until the gate opens —
@@ -66,15 +75,24 @@ export function BlogWorkspace({
   const { org } = useProjectContext();
   const vmEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
+  const { runtime, previewServerUrl } = useSessionRuntime(virtualMcpId);
   const { url: tunnelUrl } = useLocalPreviewUrl(virtualMcpId);
-  // A content-protocol backend has nothing to boot, like the Content tab.
   const contentBackend = useContentBackend(virtualMcpId, branch);
   const protocolActive = isProtocolProject(contentBackend);
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+  // The reconcile window names who made the other change (hosted v8).
+  useConflictMembers(hostedDraft);
   const gate = resolveContentSandboxGate({
-    fastPreviewActive: protocolActive,
+    // Neither a content-protocol backend nor Fast Preview has a pod to boot.
+    fastPreviewActive: protocolActive || runtime === "cms",
     previewState: lifecycle.previewState,
     lifecyclePhase: vmEvents.lifecycle.phase,
   });
+  // As the Site Editor's preview: Localhost, else the Local tunnel, else Fast
+  // Preview's draft on the preview server, else the sandbox.
+  const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
+  const fastPreviewActive = runtime === "cms" && !localPreviewUrl;
 
   if (gate.kind === "sandbox-card") {
     return (
@@ -107,11 +125,15 @@ export function BlogWorkspace({
         branch={branch}
         // The protocol never runs site code: nothing executes against a pod.
         previewUrl={protocolActive ? null : lifecycle.previewUrl}
-        // As the Site Editor's preview: Localhost, else the Local tunnel,
-        // else the sandbox.
         sitePreviewUrl={
-          servePreviewUrl(contentBackend) ?? tunnelUrl ?? lifecycle.previewUrl
+          localPreviewUrl ??
+          (fastPreviewActive ? previewServerUrl : lifecycle.previewUrl)
         }
+        fastPreviewActive={fastPreviewActive}
+        planningPostsRender={
+          fastPreviewActive && contentBackend.kind === "legacy"
+        }
+        hostedDraft={hostedDraft}
         devServerReady={gate.devServerReady}
         sandboxWarming={gate.sandboxWarming}
       >
@@ -127,6 +149,9 @@ function BlogWorkspaceData({
   branch,
   previewUrl,
   sitePreviewUrl,
+  fastPreviewActive,
+  planningPostsRender,
+  hostedDraft,
   devServerReady,
   sandboxWarming,
   children,
@@ -136,6 +161,9 @@ function BlogWorkspaceData({
   branch: string;
   previewUrl: string | null;
   sitePreviewUrl: string | null;
+  fastPreviewActive: boolean;
+  planningPostsRender: boolean;
+  hostedDraft: boolean;
   devServerReady: boolean;
   sandboxWarming: boolean;
   children: (context: BlogWorkspaceContext) => ReactNode;
@@ -192,5 +220,8 @@ function BlogWorkspaceData({
     meta,
     previewUrl,
     sitePreviewUrl,
+    fastPreviewActive,
+    planningPostsRender,
+    hostedDraft,
   });
 }

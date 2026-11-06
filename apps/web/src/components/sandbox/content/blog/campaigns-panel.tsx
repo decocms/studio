@@ -143,8 +143,8 @@ export function CampaignsPanel({
 
   /** The store pickers address the site by these coordinates. The session's
    *  thread rides along when there is one: it is how the proxy knows the
-   *  session runs in a sandbox (Blog's always does), instead of probing while
-   *  the pod boots. */
+   *  session's runtime (a sandbox or Fast Preview), instead of probing while
+   *  a pod boots. */
   const sandboxRef: PreviewProxyRef = {
     orgSlug,
     virtualMcpId,

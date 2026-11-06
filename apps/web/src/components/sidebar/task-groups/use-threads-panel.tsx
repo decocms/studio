@@ -226,13 +226,12 @@ export function useThreadsPanel({
     const currentAgentId = activeAgentId ?? decopilotId;
     track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
     closeAfterNavigation();
-    const blog = draftKind === "blog";
     const existing = findReusableNewChat(
       allThreads,
       currentAgentId,
       currentUserId,
-      blog ? "sandbox" : projectDefaultRuntime(currentAgentId),
-      { blogDrafts: blog },
+      projectDefaultRuntime(currentAgentId),
+      { blogDrafts: draftKind === "blog" },
     );
     if (existing) {
       setTaskId(existing.id, existing.virtual_mcp_id, { newThread: true });

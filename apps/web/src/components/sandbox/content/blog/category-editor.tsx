@@ -108,6 +108,7 @@ function CategoryEditorForm({
   onManagePosts,
   onOpenPost,
   previewBaseUrl,
+  fastPreviewActive,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -123,6 +124,9 @@ function CategoryEditorForm({
   onManagePosts: (slug: string) => void;
   onOpenPost: (key: string) => void;
   previewBaseUrl?: string | null;
+  /** `previewBaseUrl` is Fast Preview's preview server, which takes the
+   *  `?__draft=` pointer; Localhost or a Local tunnel renders local code. */
+  fastPreviewActive: boolean;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
@@ -181,7 +185,7 @@ function CategoryEditorForm({
     decofile,
     category,
     previewBaseUrl,
-    draftPointer,
+    draftPointer: fastPreviewActive ? draftPointer : null,
     meta,
   });
 
