@@ -14,7 +14,8 @@
  *
  *   { "__resolveType": "redirect", from, to, permanent, status?, discardQueryParameters? }
  *
- * where `status` (301/302/307/308) wins over `permanent` (301, else 302). An
+ * where `status` (301/302/307/308) wins over `permanent` (301, else 307, as
+ * the Blocks SDK answers a temporary redirect). An
  * entry keeps the shape it was read in; new redirects use the nested shape,
  * which every site understands.
  */
@@ -60,10 +61,13 @@ export interface RedirectEntry extends RedirectPayload {
   key: string;
 }
 
-/** The status code a redirect answers with. A flat temporary one is a 302. */
+/**
+ * The status code a redirect answers with: an explicit `status` (flat shape
+ * only), else 301 for a permanent one and 307 for a temporary one, in both
+ * shapes, as the Blocks SDK serves them.
+ */
 export function redirectStatus(payload: RedirectPayload): number {
-  if (!payload.flat) return REDIRECT_STATUS[payload.type];
-  return payload.status ?? (payload.type === "permanent" ? 301 : 302);
+  return (payload.flat && payload.status) || REDIRECT_STATUS[payload.type];
 }
 
 const asStr = (v: unknown): string => (typeof v === "string" ? v : "");
