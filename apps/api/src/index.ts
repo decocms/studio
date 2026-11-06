@@ -118,6 +118,9 @@ const { isServerPath } = await import("./api/utils/paths");
 const { createAssetHandler, resolveClientDir } = await import(
   "@decocms/runtime/asset-server"
 );
+const { withStudioModulesCors } = await import(
+  "./api/utils/studio-modules-cors"
+);
 
 const port = settings.port;
 
@@ -276,7 +279,9 @@ const server = Bun.serve({
     // Try assets first (static files or dev proxy), then API
     // Pass server as env so Hono's getConnInfo can access requestIP
     const assetRes = await handleAssets(request);
-    if (assetRes) return withSecurityHeaders(assetRes);
+    if (assetRes) {
+      return withStudioModulesCors(request, withSecurityHeaders(assetRes));
+    }
     return app.fetch(request, { server });
   },
   // WebSocket handler — sandbox preview connections only.
