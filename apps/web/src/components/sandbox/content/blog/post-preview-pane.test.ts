@@ -5,9 +5,7 @@ const ready = {
   previewBaseUrl: "https://site.example",
   hasPostRoute: true,
   url: "https://site.example/blog/news/hello",
-  isPlanning: false,
   awaitingDraft: false,
-  planningRenders: false,
 };
 
 /**
@@ -41,24 +39,6 @@ describe("resolvePostPreviewBlock", () => {
     expect(
       resolvePostPreviewBlock({ ...ready, hasPostRoute: false, url: null }),
     ).toBe("no-route");
-  });
-
-  test("a post still in planning is coming soon, even with a complete URL", () => {
-    // No `__resolveType`, so a correct slug changes nothing: a sandbox's dev
-    // server (or a hosted v8 draft) renders the post once it is scheduled.
-    expect(resolvePostPreviewBlock({ ...ready, isPlanning: true })).toBe(
-      "planning-soon",
-    );
-  });
-
-  test("a post still in planning renders in a v7 site's Fast Preview draft", () => {
-    expect(
-      resolvePostPreviewBlock({
-        ...ready,
-        isPlanning: true,
-        planningRenders: true,
-      }),
-    ).toBeNull();
   });
 
   test("a missing slug is reported as such, not as a missing route", () => {

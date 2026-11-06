@@ -1002,9 +1002,6 @@ export const sandbox = {
   "sandbox.postPreview.noRouteHint":
     "Crie uma página com a seção de post do blog, ou defina o pageSlug do app de blog, e a visualização passa a renderizar.",
   "sandbox.postPreview.openInNewTab": "Abrir em nova aba",
-  "sandbox.postPreview.planningSoon": "Prévia de rascunho em breve",
-  "sandbox.postPreview.planningSoonHint":
-    "Por enquanto, o post aparece aqui depois de agendado.",
   "sandbox.postPreview.refresh": "Atualizar",
   "sandbox.postEditor.postTitlePlaceholder": "Título do post",
   "sandbox.postEditor.readTimeLabel": "Tempo de leitura (minutos)",

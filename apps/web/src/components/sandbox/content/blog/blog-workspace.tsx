@@ -49,9 +49,6 @@ export interface BlogWorkspaceContext {
   /** The post preview renders this session's Fast Preview draft
    *  (`?__draft=`): Fast Preview with no Localhost or Local tunnel in front. */
   fastPreviewActive: boolean;
-  /** A post still in planning renders in that preview: only a v7 site's draft
-   *  pull projects one (`apps/api/src/decofile/blog-draft-projection.ts`). */
-  planningPostsRender: boolean;
   /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
   hostedDraft: boolean;
 }
@@ -130,9 +127,6 @@ export function BlogWorkspace({
           (fastPreviewActive ? previewServerUrl : lifecycle.previewUrl)
         }
         fastPreviewActive={fastPreviewActive}
-        planningPostsRender={
-          fastPreviewActive && contentBackend.kind === "legacy"
-        }
         hostedDraft={hostedDraft}
         devServerReady={gate.devServerReady}
         sandboxWarming={gate.sandboxWarming}
@@ -150,7 +144,6 @@ function BlogWorkspaceData({
   previewUrl,
   sitePreviewUrl,
   fastPreviewActive,
-  planningPostsRender,
   hostedDraft,
   devServerReady,
   sandboxWarming,
@@ -162,7 +155,6 @@ function BlogWorkspaceData({
   previewUrl: string | null;
   sitePreviewUrl: string | null;
   fastPreviewActive: boolean;
-  planningPostsRender: boolean;
   hostedDraft: boolean;
   devServerReady: boolean;
   sandboxWarming: boolean;
@@ -221,7 +213,6 @@ function BlogWorkspaceData({
     previewUrl,
     sitePreviewUrl,
     fastPreviewActive,
-    planningPostsRender,
     hostedDraft,
   });
 }

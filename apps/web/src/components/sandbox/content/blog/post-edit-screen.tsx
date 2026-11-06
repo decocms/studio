@@ -40,7 +40,6 @@ export function PostEditScreen({
   meta,
   previewBaseUrl,
   fastPreviewActive,
-  planningPostsRender,
   view,
   onViewChange,
   onOpenBlog,
@@ -54,7 +53,6 @@ export function PostEditScreen({
   previewBaseUrl: string | null | undefined;
   /** The preview renders Fast Preview's draft (`BlogWorkspaceContext`). */
   fastPreviewActive: boolean;
-  planningPostsRender: boolean;
   view: BlogPostView | undefined;
   onViewChange: (next: BlogPostView | undefined) => void;
   /** Returning to the browser — the Blog crumb's action. */
@@ -150,7 +148,6 @@ export function PostEditScreen({
             meta={meta}
             fastPreviewActive={fastPreviewActive}
             draftPointer={draftPointer}
-            planningPostsRender={planningPostsRender}
             visible={showsPreview}
           />
         </div>

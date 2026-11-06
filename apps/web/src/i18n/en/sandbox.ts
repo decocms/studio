@@ -983,9 +983,6 @@ export const sandbox = {
   "sandbox.postPreview.noRouteHint":
     "Add a page with the blog post section, or set the blog app's pageSlug, and the preview can render.",
   "sandbox.postPreview.openInNewTab": "Open in new tab",
-  "sandbox.postPreview.planningSoon": "Draft preview coming soon",
-  "sandbox.postPreview.planningSoonHint":
-    "For now, a post shows here once it is scheduled.",
   "sandbox.postPreview.refresh": "Refresh",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
   "sandbox.postEditor.readTimeLabel": "Read time (minutes)",

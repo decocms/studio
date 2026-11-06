@@ -34,31 +34,18 @@ export type PostPreviewBlock =
   /** The site has no blog post route, so nothing can render a post. */
   | "no-route"
   /** The route needs a slug (and sometimes a category) this post lacks. */
-  | "missing-params"
-  /**
-   * A planning post is a block with no `__resolveType`, so the site cannot
-   * resolve it. Only a v7 site's Fast Preview draft pull projects one into a
-   * renderable post (`apps/api/src/decofile/blog-draft-projection.ts`); a
-   * sandbox's dev server and a hosted v8 draft read the blocks as they are,
-   * so there the post renders once it is scheduled.
-   */
-  | "planning-soon";
+  | "missing-params";
 
 export function resolvePostPreviewBlock(input: {
   previewBaseUrl: string | null | undefined;
   hasPostRoute: boolean;
   url: string | null;
-  isPlanning: boolean;
   /** Fast Preview's draft render, whose `?__draft=` pointer hasn't arrived:
    *  without it the frame would load the published page. */
   awaitingDraft: boolean;
-  /** This preview renders a planning post. */
-  planningRenders: boolean;
 }): PostPreviewBlock | null {
   if (!input.previewBaseUrl || input.awaitingDraft) return "no-origin";
   if (!input.hasPostRoute) return "no-route";
-  // Before the URL: a complete slug still cannot make a planning post render.
-  if (input.isPlanning && !input.planningRenders) return "planning-soon";
   if (!input.url) return "missing-params";
   return null;
 }
@@ -68,18 +55,18 @@ const BLOCK_TITLE: Record<PostPreviewBlock, TranslationKey> = {
   "no-origin": "sandbox.postPreview.noOrigin",
   "no-route": "sandbox.postPreview.noRoute",
   "missing-params": "sandbox.postPreview.missingParams",
-  "planning-soon": "sandbox.postPreview.planningSoon",
 };
 
 const BLOCK_HINT: Record<PostPreviewBlock, TranslationKey> = {
   "no-origin": "sandbox.postPreview.noOriginHint",
   "no-route": "sandbox.postPreview.noRouteHint",
   "missing-params": "sandbox.postPreview.missingParamsHint",
-  "planning-soon": "sandbox.postPreview.planningSoonHint",
 };
 
 /**
- * The post as the site renders it, beside the editor.
+ * The post as the site renders it, beside the editor. A post still in
+ * planning (a block with no `__resolveType`) is asked for with the blog app's
+ * `?draft=true` ({@link buildBlogPostPreviewUrl}).
  *
  * Reload policy lives in {@link SitePreviewFrame}: a sandbox session's saves
  * are reloaded by the dev server's own HMR, and Fast Preview moves the
@@ -94,7 +81,6 @@ export function PostPreviewPane({
   meta,
   fastPreviewActive,
   draftPointer,
-  planningPostsRender,
   visible,
 }: {
   decofile: Record<string, unknown>;
@@ -106,8 +92,6 @@ export function PostPreviewPane({
   /** The frame renders Fast Preview's draft, through `draftPointer`. */
   fastPreviewActive: boolean;
   draftPointer: string | null;
-  /** A planning post renders here (a v7 site's Fast Preview draft). */
-  planningPostsRender: boolean;
   /** Showing on screen. The pane stays mounted when it is not, so toggling
    *  back is instant — but it must not start loading the site before anyone
    *  has asked to see it. */
@@ -132,14 +116,13 @@ export function PostPreviewPane({
     previewBaseUrl,
     draftPointer: fastPreviewActive ? draftPointer : null,
     meta,
+    planning: isPlanningPostKey(blockKey),
   });
   const blocked = resolvePostPreviewBlock({
     previewBaseUrl,
     hasPostRoute: !!findBlogPageSlug(decofile, meta),
     url,
-    isPlanning: isPlanningPostKey(blockKey),
     awaitingDraft: fastPreviewActive && !draftPointer,
-    planningRenders: planningPostsRender,
   });
 
   return (
@@ -180,8 +163,8 @@ export function PostPreviewPane({
             type="button"
             variant="ghost"
             size="icon"
-            // A blocked preview has nothing to open: a planning post's URL
-            // answers 404 until it is scheduled.
+            // A blocked preview has nothing to open: until its draft pointer
+            // arrives, Fast Preview's URL shows the published page.
             disabled={!url || !!blocked}
             aria-label={t("sandbox.postPreview.openInNewTab")}
             title={t("sandbox.postPreview.openInNewTab")}
