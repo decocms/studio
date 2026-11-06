@@ -22,6 +22,7 @@ import {
   persistProjectFolderName,
 } from "./project-folder-ensure";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
+import { refuseBlocksV8MetadataWrite } from "./blocks-v8-switch";
 import { ensureManagedSiteFileConfig } from "../../file-storage/managed-site-config";
 import {
   claimProjectSite,
@@ -129,6 +130,8 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
 
     // `prompts` is seeded to org-fs after creation, not stored on the agent row.
     const { prompts, metadata: rawMetadata, ...createData } = input.data;
+    // A new project starts v7: only an org admin turns "Blocks v8 site" on.
+    refuseBlocksV8MetadataWrite(null, rawMetadata);
     const metadata = stripServerManagedMetadata(rawMetadata);
 
     if (createData.connections.length > 0) {

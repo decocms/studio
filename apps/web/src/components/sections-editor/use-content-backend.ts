@@ -211,8 +211,8 @@ export async function probeSandbox(
  * `deco serve`'s; Sandbox: its working tree's; GitHub: main's, from
  * the server) and, for a v8 site, its content backend: callers hold their
  * reads until then, so it never reads from the v7 backend and then switches.
- * The project's `blocksMajor` marker is never a v8 answer here: it only
- * tells a failing sandbox on a site last found v8 (waits) from any other one
+ * In Sandbox mode the project's "Blocks v8 site" switch is no v8 answer: it
+ * only tells a failing sandbox on a v8 site (waits) from any other one
  * (the v7 sandbox editor, as on main).
  */
 export function useContentBackend(

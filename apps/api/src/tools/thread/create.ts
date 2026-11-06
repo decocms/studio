@@ -130,8 +130,8 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       organization.id,
     );
 
-    // The runtime stamp reads the stored metadata, the Blocks v8 marker
-    // included (set by `deco schema push`): no repository read.
+    // The runtime stamp reads the stored metadata, the "Blocks v8 site"
+    // switch included (an org admin's): no repository read.
     const metadata = (vmcp.metadata ?? null) as
       | (RepositoryMetadata & SandboxMapMeta & VmcpRuntimeMetadata)
       | null

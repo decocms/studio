@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
+import { BLOCKS_V8_METADATA_KEY } from "@decocms/shared/blocks-major";
 import { Hono, type Context } from "hono";
 import { hostedV8GitGone } from "./sandbox-proxy";
 
@@ -33,7 +33,7 @@ function app(
   return { hono, reached };
 }
 
-const V8 = { [BLOCKS_MAJOR_METADATA_KEY]: 8 };
+const V8 = { [BLOCKS_V8_METADATA_KEY]: true };
 
 describe("sandbox-less git routes of a Blocks v8 site", () => {
   it("answer 404 without reaching the GitHub-backed handlers", async () => {
@@ -51,6 +51,9 @@ describe("sandbox-less git routes of a Blocks v8 site", () => {
   it("leave a v7 session and a v8 sandbox's own git alone", async () => {
     const v7 = app("cms", null);
     expect((await v7.hono.request("/vm1/main/git/status")).status).toBe(200);
+    // A stale `blocksMajor` marker is not the switch: v7, as on main.
+    const stale = app("cms", { blocksMajor: 8 });
+    expect((await stale.hono.request("/vm1/main/git/status")).status).toBe(200);
     const sandbox = app("sandbox", V8);
     expect((await sandbox.hono.request("/vm1/main/git/status")).status).toBe(
       200,

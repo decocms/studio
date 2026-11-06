@@ -19,6 +19,7 @@ import {
 } from "../fixtures/deco-serve-stub";
 import {
   createFastPreviewProject,
+  setBlocksV8Site,
   uniqueOwner,
 } from "../fixtures/fast-preview";
 import { expect, test } from "../fixtures/test";
@@ -177,10 +178,11 @@ const HERO = "home-hero";
 const heroFile = (value: object) => `${JSON.stringify(value, null, 2)}\n`;
 
 /**
- * A Blocks v8 site project: what `deco schema push` does, a `"blocksMajor": 8`
- * schema pushed to the hosted CMS (`PUT /api/cms/:site/schema`), which stores
- * it and sets the project's v8 marker. No git: a v8 project's editor never
- * reads its repository's main.
+ * A Blocks v8 site project: an org admin turns its "Blocks v8 site" switch on
+ * (project settings), then `deco schema push` sends its `"blocksMajor": 8`
+ * schema to the hosted CMS (`PUT /api/cms/:site/schema`), which stores it.
+ * The push is refused until the switch is on, and never turns it on. No git:
+ * a v8 project's editor never reads its repository's main.
  */
 async function createV8Project(api: APIRequestContext, orgSlug: string) {
   const owner = uniqueOwner();
@@ -191,10 +193,16 @@ async function createV8Project(api: APIRequestContext, orgSlug: string) {
     connectionUrl: "http://127.0.0.1:1/unused",
     siteSlug: owner,
   });
-  const pushed = await api.put(`/api/cms/${owner}/schema`, {
-    data: JSON.stringify(schema),
-    headers: { "Content-Type": "application/json" },
-  });
+  const push = () =>
+    api.put(`/api/cms/${owner}/schema`, {
+      data: JSON.stringify(schema),
+      headers: { "Content-Type": "application/json" },
+    });
+  const refused = await push();
+  expect(refused.status()).toBe(409);
+  expect(await refused.json()).toMatchObject({ code: "not_blocks_v8_site" });
+  await setBlocksV8Site(api, orgSlug, project.vmcpId, true);
+  const pushed = await push();
   expect(pushed.status()).toBe(200);
   expect(await pushed.json()).toMatchObject({ blocksMajor: 8 });
   return { id: project.vmcpId };

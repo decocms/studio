@@ -204,4 +204,74 @@ test.describe("project settings tabs", () => {
       path: testInfo.outputPath("project-settings-site.png"),
     });
   });
+  test("an org owner turns a project into a Blocks v8 site and back from the CMS tab", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const request = page.context().request;
+    const owner = uniqueOwner();
+    const repo = "forma-v8";
+    await seedStubRepo(request, {
+      owner,
+      repo,
+      branches: { main: { files: {} } },
+    });
+    const project = await createFastPreviewProject(request, orgSlug, {
+      owner,
+      repo,
+      connectionUrl: "http://127.0.0.1:1/unused",
+      previewServerUrl: "https://forma.example.com/",
+      siteSlug: owner,
+    });
+    const isV8 = async () => {
+      const { item } = await callSelfMcpTool<{
+        item: { metadata: Record<string, unknown> | null };
+      }>(request, orgSlug, "COLLECTION_VIRTUAL_MCP_GET", {
+        id: project.vmcpId,
+      });
+      return item.metadata?.blocksV8 === true;
+    };
+    const pushSchema = () =>
+      request.put(`/api/cms/${owner}/schema`, {
+        data: JSON.stringify({ blocksMajor: 8, definitions: {}, root: {} }),
+        headers: { "Content-Type": "application/json" },
+      });
+    await page.goto(
+      `/${orgSlug}/projects/${project.vmcpId}/settings?section=site`,
+    );
+    const toggle = page.getByRole("switch", { name: "Blocks v8 site" });
+    // A v7 site: the switch is off, and the v7 Fast Preview switch is there.
+    await expect(toggle).toHaveAttribute("aria-checked", "false", {
+      timeout: 60_000,
+    });
+    await expect(
+      page.getByRole("switch", { name: "Fast Preview" }),
+    ).toBeVisible();
+    expect((await pushSchema()).status()).toBe(409);
+    expect(await isV8()).toBe(false);
+
+    await toggle.click();
+    await expect.poll(isV8).toBe(true);
+    // The v8 gates follow: no Fast Preview switch (always on), site tokens.
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(
+      page.getByRole("switch", { name: "Fast Preview" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Site tokens" }),
+    ).toBeVisible();
+    expect((await pushSchema()).status()).toBe(200);
+    // A schema push never turns it off either.
+    expect(await isV8()).toBe(true);
+
+    await toggle.click();
+    await expect.poll(isV8).toBe(false);
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(
+      page.getByRole("switch", { name: "Fast Preview" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Site tokens" }),
+    ).toHaveCount(0);
+  });
 });

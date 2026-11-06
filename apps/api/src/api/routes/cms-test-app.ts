@@ -38,6 +38,8 @@ export function cmsTestApp(
     blocked?: string[];
     /** The project `org_sites` links each site to (default: acme to p1). */
     siteProjects?: Record<string, string>;
+    /** Whether p1's "Blocks v8 site" switch is on (default: on). */
+    blocksV8?: boolean;
   } = {},
 ) {
   const delivery = memoryDeliveryStore();
@@ -47,10 +49,10 @@ export function cmsTestApp(
   const project = {
     id: "p1",
     organization_id: ORG,
-    metadata: { previewServerUrl: "https://Preview.Acme.com/x" } as Record<
-      string,
-      unknown
-    >,
+    metadata: {
+      previewServerUrl: "https://Preview.Acme.com/x",
+      ...(options.blocksV8 === false ? {} : { blocksV8: true }),
+    } as Record<string, unknown>,
   };
   const sites = options.sites ?? { acme: ORG };
   const siteProjects = options.siteProjects ?? { acme: "p1" };

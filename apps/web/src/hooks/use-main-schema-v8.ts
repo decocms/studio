@@ -1,12 +1,13 @@
 /**
  * Whether a project is a Blocks v8 site, for Studio's editor and hosted
- * screens: the project's `metadata.blocksMajor` marker alone, which
- * `deco schema push` sets (`PUT /api/cms/:site/schema`; design table,
- * row 23). Nothing reads main's schema or git for it.
+ * screens: the project's "Blocks v8 site" switch alone (`isBlocksV8Project`),
+ * which only an org admin turns on, in project settings. Every web v8 gate
+ * (the editor, Experiments, Calendar, Releases, site tokens, Monitor) asks
+ * here. Nothing reads main's schema, git or `deco schema push` for it.
  *
- * - `"v8"` / `"v7"`: the marker says (not) v8.
+ * - `"v8"` / `"v7"`: the switch is on / off.
  * - `"loading"` / `"error"`: kept for the callers that still tell them
- *   apart; the marker never answers them.
+ *   apart; the switch never answers them.
  */
 
 import { isBlocksV8Project } from "@decocms/shared/blocks-major";
@@ -45,8 +46,8 @@ export function useProjectsMainSchemaV8(
 }
 
 /**
- * Whether the project carries the v8 marker. Tells a failing sandbox on a
- * site marked v8 (waits) from any other one (the v7 sandbox editor).
+ * Whether the project's "Blocks v8 site" switch is on. Tells a failing
+ * sandbox on a v8 site (waits) from any other one (the v7 sandbox editor).
  */
 export function useLastFoundV8(
   virtualMcpId: string | null | undefined,

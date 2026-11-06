@@ -1,17 +1,18 @@
-import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
+import { BLOCKS_V8_METADATA_KEY } from "@decocms/shared/blocks-major";
 import { DECO_ANALYTICS_METADATA_KEY } from "@decocms/shared/deco-analytics";
 
 /**
  * Metadata keys only the server writes. A client write (the settings form,
  * an agent's tool call) can neither set nor clobber them.
  * - `sandboxMap`: the per-user sandbox handles.
- * - `blocksMajor`: the Blocks v8 marker (hosted/blocks-major.ts).
+ * - `blocksV8`: the "Blocks v8 site" switch, which an org admin flips with
+ *   the update tool's `blocksV8` field (tools/virtual/blocks-v8-switch.ts).
  * - `decoAnalytics`: a site deco doesn't host's analytics registration; a
  *   client that could rewrite its id could read another site's traffic.
  */
 const SERVER_MANAGED_KEYS = [
   "sandboxMap",
-  BLOCKS_MAJOR_METADATA_KEY,
+  BLOCKS_V8_METADATA_KEY,
   DECO_ANALYTICS_METADATA_KEY,
 ] as const;
 

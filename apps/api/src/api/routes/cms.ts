@@ -23,13 +23,19 @@
  * project (403 `project_not_allowed`, `isProjectAllowed`); the `cms` plan
  * gate on that organization (403, failing open); a blocked organization's
  * writes (403 `org_blocked`); then a configured delivery bucket (503). No
- * repository binding, no `blocksMajor` check. A draft name travels
+ * repository binding. Only the schema push reads the project's "Blocks v8
+ * site" switch (409 `not_blocks_v8_site` while it is off), and nothing here
+ * writes it. A draft name travels
  * `encodeURIComponent`-encoded (`/` as `%2F`).
  */
 
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { StorageUnavailableError } from "@decocms/blocks/protocol";
-import { isV8Schema, BLOCKS_V8_MAJOR } from "@decocms/shared/blocks-major";
+import {
+  BLOCKS_V8_MAJOR,
+  isBlocksV8Project,
+  isV8Schema,
+} from "@decocms/shared/blocks-major";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { type Context, Hono } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -43,7 +49,6 @@ import {
   memberRole,
   scopedToAnotherOrganization,
 } from "../middleware/resolve-org-from-path";
-import { syncBlocksMajorMarker } from "@/hosted/blocks-major-marker";
 import {
   type CmsDrafts,
   createCmsDrafts,
@@ -134,6 +139,12 @@ function defaultBuckets(): Buckets | null {
     ? { store, purge: deliveryPurge(), records: recordStore() }
     : null;
 }
+
+/**
+ * The schema push refusal for a project whose "Blocks v8 site" switch is off
+ * (or a site with no project).
+ */
+const NOT_BLOCKS_V8_SITE = "not_blocks_v8_site";
 
 function fail(
   c: Context<CmsEnv>,
@@ -551,6 +562,16 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
 
   app.put("/:site/schema", async (c) => {
     const site = c.get("cmsSite");
+    // Only a project an org admin made a Blocks v8 site takes a schema push,
+    // and the push never makes one (`isBlocksV8Project`).
+    if (!isBlocksV8Project(site.project?.metadata)) {
+      return fail(
+        c,
+        409,
+        NOT_BLOCKS_V8_SITE,
+        `${site.site} is not a Blocks v8 site, so deco schema push is refused. An organization admin turns on "Blocks v8 site" in the project's settings (CMS); then push again.`,
+      );
+    }
     const { records } = c.get("buckets");
     if (!records) {
       return fail(
@@ -590,18 +611,6 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     try {
       const { etag } = await records.putSchema(site.site, text);
       const isV8 = isV8Schema(schema);
-      if (site.project) {
-        await syncBlocksMajorMarker(
-          c.var.studioContext.storage.virtualMcps,
-          {
-            id: site.project.id,
-            organizationId: site.organizationId,
-            metadata: site.project.metadata,
-          },
-          isV8,
-          site.userId,
-        );
-      }
       return c.json({
         etag: bareEtag(etag),
         blocksMajor: isV8 ? BLOCKS_V8_MAJOR : null,

@@ -226,10 +226,10 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
   }
   const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
 
-  // A Blocks v8 site (its marker, which `deco schema push` sets) keeps its
-  // content on the hosted CMS (R2, `/api/cms/:site`): a write or a
-  // publish here would commit content to git or merge a branch into main,
-  // which deploys. Refused before any repository lookup, whatever the client.
+  // A Blocks v8 site (its "Blocks v8 site" switch, which an org admin turns
+  // on) keeps its content on the hosted CMS (R2, `/api/cms/:site`): a write
+  // or a publish here would commit content to git or merge a branch into
+  // main, which deploys. Refused before any repository lookup, whatever the client.
   if (c.req.method !== "GET" && isBlocksV8Project(metadata)) {
     return c.json(
       {
