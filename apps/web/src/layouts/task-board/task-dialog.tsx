@@ -1889,6 +1889,7 @@ function ThreadActivityItem({
   return (
     <TaskMessage
       id={`run-${thread.threadId}`}
+      threadId={thread.threadId}
       author={t(
         isReviewerThread
           ? "taskBoard.conversation.reviewer"
@@ -2569,6 +2570,7 @@ function ActivitySection({
   };
   const threads: TaskComment[] = shownThreads.map((thread) => ({
     id: thread.id,
+    threadId: thread.threadId,
     author: authorOf(thread.authorId, thread.threadId),
     run: commentRun(thread.threadId),
     // The run's status opens it; no second button for the same thing.
@@ -2581,6 +2583,7 @@ function ActivitySection({
     resolved: thread.resolved,
     replies: thread.replies.map((reply) => ({
       id: reply.id,
+      threadId: reply.threadId,
       author: authorOf(reply.authorId, reply.threadId),
       onOpenThread: openSourceRun(reply.threadId),
       internal: reply.audience === "internal",

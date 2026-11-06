@@ -1,6 +1,11 @@
-import type { MouseEvent, ReactNode } from "react";
+import { useContext, type MouseEvent, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys";
+import { fetchOrgFsList } from "@/hooks/use-org-fs";
+import { hasFileName } from "@/components/chat/remark-file-references";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { OrgFileOpenContext } from "@/components/chat/org-file-open-context";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import { formatTimeAgo } from "@/lib/format-time";
 import { useT } from "@/i18n/use-t";
@@ -39,6 +44,7 @@ export function TaskMessage({
   avatar,
   createdAt,
   body,
+  threadId,
   metadata,
   actions,
   onOpenThread,
@@ -53,6 +59,7 @@ export function TaskMessage({
   avatar: ReactNode;
   createdAt: string;
   body: string;
+  threadId?: string | null;
   metadata?: ReactNode;
   /** Floating toolbar content, shown while the row is hovered or focused. */
   actions?: ReactNode;
@@ -70,6 +77,26 @@ export function TaskMessage({
   continuation?: boolean;
 }) {
   const t = useT();
+  const fileContext = useContext(OrgFileOpenContext);
+  const orgSlug = fileContext?.orgSlug;
+  const { data: outputEntries } = useQuery({
+    queryKey: KEYS.orgFsList(
+      fileContext?.orgId ?? orgSlug ?? "",
+      "outputs",
+      threadId ?? "",
+    ),
+    enabled: !!orgSlug && !!threadId && hasFileName(body),
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    retry: false,
+    queryFn: () =>
+      orgSlug && threadId ? fetchOrgFsList(orgSlug, "outputs", threadId) : [],
+  });
+  const outputFiles = new Set(
+    outputEntries
+      ?.filter((entry) => entry.kind === "file")
+      .map((entry) => entry.path.slice(entry.path.lastIndexOf("/") + 1)),
+  );
   const date = new Date(createdAt);
   const fullDate = FULL_DATE_FMT.format(date);
   return (
@@ -141,7 +168,21 @@ export function TaskMessage({
               "[&_img]:max-h-80",
             )}
           >
-            {editor ?? <MemoizedMarkdown id={id} text={body} imageGallery />}
+            {editor ?? (
+              <OrgFileOpenContext.Provider
+                value={
+                  fileContext
+                    ? {
+                        ...fileContext,
+                        threadId: threadId ?? undefined,
+                        outputFiles,
+                      }
+                    : null
+                }
+              >
+                <MemoizedMarkdown id={id} text={body} imageGallery />
+              </OrgFileOpenContext.Provider>
+            )}
           </div>
         )}
       </div>
