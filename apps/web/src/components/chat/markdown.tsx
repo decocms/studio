@@ -3,12 +3,13 @@ import { marked, type Token } from "marked";
 import React, { memo, useCallback, useContext, useMemo, useRef } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { remarkFileReferences } from "./remark-file-references";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@decocms/ui/components/markdown.tsx";
-import { Check, Copy01 } from "@untitledui/icons";
+import { Check, Copy01, File06 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
 import { groupImageRuns } from "./markdown-image-runs.ts";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
@@ -277,8 +278,12 @@ function MarkdownAnchor({
       <button
         type="button"
         onClick={() => ctx.open(browsePath)}
-        className="text-primary-dark hover:underline break-all font-medium cursor-pointer"
+        className={cn(
+          INLINE_CODE_CLASS,
+          "inline-flex items-center gap-1 text-primary-dark hover:underline cursor-pointer align-baseline",
+        )}
       >
+        <File06 size={14} aria-hidden="true" className="shrink-0" />
         {label}
       </button>
     );
@@ -349,9 +354,17 @@ function urlTransform(url: string): string {
 
 const MemoizedMarkdownBlock = memo(
   ({ content, animate }: { content: string; animate?: boolean }) => {
+    const fileContext = useContext(OrgFileOpenContext);
     return (
       <ReactMarkdown
-        remarkPlugins={remarkPluginsMemo}
+        remarkPlugins={
+          fileContext?.outputFiles
+            ? [
+                ...remarkPluginsMemo,
+                [remarkFileReferences, fileContext.outputFiles],
+              ]
+            : remarkPluginsMemo
+        }
         urlTransform={urlTransform}
         components={animate ? animatedComponents : markdownComponents}
       >

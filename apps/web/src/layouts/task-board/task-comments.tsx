@@ -68,6 +68,7 @@ export type CommentAuthor = {
  *  like Linear. */
 export type TaskComment = {
   id: string;
+  threadId?: string | null;
   author: CommentAuthor;
   body: string;
   createdAt: string;
@@ -545,6 +546,7 @@ function CommentEntry({
       }
       createdAt={comment.createdAt}
       body={comment.body}
+      threadId={comment.threadId}
       continuation={continuation && !metadata}
       metadata={metadata}
       muted={comment.internal}
