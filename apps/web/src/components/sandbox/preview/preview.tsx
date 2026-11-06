@@ -201,6 +201,8 @@ import {
   type HeldFrameNavigation,
   nextFrameNavigation,
 } from "./frame-navigation";
+import { useFrameworkRoutes } from "./use-framework-routes";
+import { usePackagePath } from "@/components/sections-editor/use-package-path";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
@@ -1342,6 +1344,23 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
+  // A site with no deco pages (a Next.js storefront, say) still has routes:
+  // list its file-system router's static ones so the picker can navigate.
+  const showsFrameworkRoutes =
+    pages.length === 0 && !isProtocolProject(contentBackend);
+  const packagePath = usePackagePath(virtualMcpId ?? undefined);
+  const frameworkRoutes = useFrameworkRoutes(
+    pickerSandboxRef,
+    packagePath,
+    showsFrameworkRoutes && daemonReady && !decofileQuery.isFetching,
+  );
+  const visibleFrameworkRoutes = showsFrameworkRoutes ? frameworkRoutes : [];
+  const filteredFrameworkRoutes = !pagesSearch
+    ? visibleFrameworkRoutes
+    : visibleFrameworkRoutes.filter((route) =>
+        route.toLowerCase().includes(pagesSearch.toLowerCase()),
+      );
+
   // Visual mode requires the live sandbox iframe — the production fallback is a
   // different origin we can't inject into. Blocks can stay open while the
   // sandbox restarts (or wakes) so its loading/error state remains actionable
@@ -1795,7 +1814,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       ? `loader:${activeLoaderKey}`
       : currentPageKey
         ? `page:${currentPageKey}`
-        : undefined;
+        : visibleFrameworkRoutes.includes(normPath(currentPath))
+          ? `route:${normPath(currentPath)}`
+          : undefined;
   const urlControls = showPreviewToolbar ? (
     pageSelectorVisible ? (
       <Popover
@@ -1873,6 +1894,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <CommandList ref={pagesListRef} className="max-h-80">
               <CommandEmpty>
                 {pages.length === 0 &&
+                visibleFrameworkRoutes.length === 0 &&
                 globalSections.length === 0 &&
                 visibleGlobalLoaders.length === 0
                   ? t("sandbox.preview.noPagesFound")
@@ -1899,6 +1921,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </span>
                       <span className="min-w-0 max-w-1/2 truncate text-right font-mono text-xs text-muted-foreground">
                         {page.path}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {filteredFrameworkRoutes.length > 0 && (
+                <CommandGroup heading={t("sandbox.preview.siteRoutes")}>
+                  {filteredFrameworkRoutes.map((route) => (
+                    <CommandItem
+                      key={route}
+                      value={`route:${route}`}
+                      aria-current={
+                        currentPickerValue === `route:${route}` || undefined
+                      }
+                      title={route}
+                      onSelect={() => {
+                        closePagePicker();
+                        navigatePreviewToAgentPath(route);
+                      }}
+                      className="px-3 py-2.5 aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                        {route}
                       </span>
                     </CommandItem>
                   ))}

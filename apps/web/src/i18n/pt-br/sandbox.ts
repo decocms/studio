@@ -1068,6 +1068,7 @@ export const sandbox = {
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",
   "sandbox.preview.noSearchResults":
     "Nenhum resultado corresponde à sua pesquisa.",
+  "sandbox.preview.siteRoutes": "Rotas do site",
   "sandbox.preview.noServerRunning": "Nenhum servidor em execução",
   "sandbox.preview.openInNewTab": "Abrir em nova aba",
   "sandbox.preview.pageAlreadyExists":
