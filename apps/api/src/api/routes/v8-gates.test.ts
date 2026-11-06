@@ -104,14 +104,24 @@ function project(
   return { id, organization_id: organization, metadata, connections: [] };
 }
 
-/** A fake repo whose every client call is recorded (method + args). */
-function recordedRepo(files: Record<string, string>) {
+/**
+ * A fake repo whose every client call is recorded (method + args).
+ * `defaultBranch` renames the repo's default so its one branch, `main`,
+ * can stand for a draft.
+ */
+function recordedRepo(
+  files: Record<string, string>,
+  options: { defaultBranch?: string } = {},
+) {
   const git = fakeRepo(files);
   const calls: string[] = [];
   let opened = 0;
   const client = new Proxy(git.client, {
     get(target, key, receiver) {
-      const value = Reflect.get(target, key, receiver);
+      const value =
+        key === "getDefaultBranch" && options.defaultBranch
+          ? async () => options.defaultBranch
+          : Reflect.get(target, key, receiver);
       if (typeof value !== "function") return value;
       return (...args: unknown[]) => {
         calls.push(`${String(key)} ${JSON.stringify(args)}`);
@@ -450,6 +460,7 @@ describe("decofile routes", () => {
     metadata: Record<string, unknown>,
     files: Record<string, string>,
     sites: Record<string, string> = {},
+    repoOptions: { defaultBranch?: string } = {},
   ) {
     const w = world({
       projects: [
@@ -461,7 +472,7 @@ describe("decofile routes", () => {
       ],
       sites,
     });
-    const repo = recordedRepo(files);
+    const repo = recordedRepo(files, repoOptions);
     const delivery = memoryDeliveryStore();
     const app = mount(w.ctx, (a) =>
       a.route(
@@ -548,6 +559,51 @@ describe("decofile routes", () => {
     expect(await rpc.json()).toMatchObject({ code: "main_schema_changed" });
     expect(repo.schemaReads().length).toBe(1);
     expect(patches).toEqual([]);
+  });
+
+  describe("v7 writes to the default branch", () => {
+    const v7Files = { ...v8Files, ".deco/schema.gen.json": V7_SCHEMA };
+    const patchHome = (app: Hono<Env>) =>
+      app.request("/decofile/p1/main", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          set: { "pages-home": { __resolveType: "page", name: "Home" } },
+        }),
+      });
+
+    it("refuses a PATCH on the default branch and commits nothing", async () => {
+      const { app, repo } = setup({}, v7Files, { p1: ORG });
+      const res = await patchHome(app);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({
+        code: "default_branch_read_only",
+      });
+      expect(repo.calls.some((c) => c.startsWith("commitFiles"))).toBe(false);
+    });
+
+    it("commits the same PATCH when the branch is a draft", async () => {
+      const { app, repo } = setup(
+        {},
+        v7Files,
+        { p1: ORG },
+        { defaultBranch: "production" },
+      );
+      const res = await patchHome(app);
+      expect(res.status).toBe(200);
+      expect(repo.calls.some((c) => c.startsWith("commitFiles"))).toBe(true);
+    });
+
+    it("still reads the default branch: the editor's GET and main's rpc", async () => {
+      const { app } = setup({}, v7Files, { p1: ORG });
+      expect((await app.request("/decofile/p1/main")).status).toBe(200);
+      const rpc = await app.request("/decofile/p1/main/rpc", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "schema.get" }),
+      });
+      expect(rpc.status).toBe(200);
+    });
   });
 
   it("an unmarked project whose main is v8 has the protocol (main decides)", async () => {

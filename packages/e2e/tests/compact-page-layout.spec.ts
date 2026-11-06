@@ -187,6 +187,8 @@ test.describe("compact page layout", () => {
         repo,
         defaultBranch: "main",
         branches: {
+          // The session's draft, at main's head: production is read-only.
+          draft: null,
           main: {
             files: {
               ".deco/meta.gen.json": JSON.stringify({
@@ -243,7 +245,7 @@ test.describe("compact page layout", () => {
         api,
         orgSlug,
         "COLLECTION_THREADS_CREATE",
-        { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
+        { data: { virtual_mcp_id: project.vmcpId, branch: "draft" } },
       );
       const path = `/${orgSlug}/projects/${project.vmcpId}/site-editor`;
       await page.goto(`${path}?thread=${thread.item.id}&sidepanel=false`);

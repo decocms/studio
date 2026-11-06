@@ -66,7 +66,12 @@ import {
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
-import { repoGitRebase } from "@/decofile/git-compat";
+import {
+  assertNotDefaultBranch,
+  DEFAULT_BRANCH_READ_ONLY,
+  DefaultBranchWriteError,
+  repoGitRebase,
+} from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
 import {
   bareEtag,
@@ -570,6 +575,9 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
       409,
     );
   }
+  if (err instanceof DefaultBranchWriteError) {
+    return c.json({ error: message, code: DEFAULT_BRANCH_READ_ONLY }, 409);
+  }
   if (err instanceof RepoWriteConflict) return c.json({ error: message }, 409);
   const providerStatus = repoErrorStatus(err);
   if (providerStatus !== null) {
@@ -770,6 +778,7 @@ export function createDecofileRoutes(
 
     try {
       const client = await contentClientForScope(c);
+      await assertNotDefaultBranch(client, scope.branch);
       const sha = await enqueueDecofilePatch(
         `${scope.organizationId}/${scope.virtualMcpId}/${scope.branch}`,
         {

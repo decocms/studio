@@ -89,4 +89,7 @@ export const siteEditor = {
   "siteEditor.siteNotOwned.body":
     "Another project in Studio was set up with this site first, so its content is edited and published there. Open that project to change the site's content. Here you can still chat and work on the site's code.",
   "siteEditor.siteNotOwned.openProjects": "See projects",
+  "siteEditor.productionLocked.title": "Production can't be edited here",
+  "siteEditor.productionLocked.body":
+    "Changes are made in a draft and reach your site when you publish it. Start a new draft to keep editing.",
 };

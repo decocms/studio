@@ -25,6 +25,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { signUpViaApi } from "../fixtures/auth-api";
 import {
+  commitStubFiles,
   createFastPreviewProject,
   type FastPreviewProject,
   inspectStubRepo,
@@ -54,6 +55,18 @@ async function writeBlock(
     headers: { "Content-Type": "application/json" },
   });
   expect(res.ok()).toBe(true);
+}
+
+/** Another draft's publish (or a developer's push) moving `main`. */
+async function landOnMain(
+  ctx: APIRequestContext,
+  project: FastPreviewProject,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  await commitStubFiles(ctx, project.owner, project.repo, "main", {
+    [`.deco/blocks/${key}.json`]: `${JSON.stringify(value, null, 2)}\n`,
+  });
 }
 
 function commitOf(
@@ -91,7 +104,7 @@ test.describe("fast preview git sync", () => {
       // Several commits on the branch, and one on base it does not have.
       await writeBlock(ctx, project, "draft", "Hero", { n: 2 });
       await writeBlock(ctx, project, "draft", "Hero", { n: 3 });
-      await writeBlock(ctx, project, "main", "Footer", { f: 1 });
+      await landOnMain(ctx, project, "Footer", { f: 1 });
 
       const before = await inspectStubRepo(ctx, owner, repo);
       const baseHead = before.refs["main"] as string;
@@ -146,7 +159,7 @@ test.describe("fast preview git sync", () => {
       });
 
       // Another draft already published a label change and a title change...
-      await writeBlock(ctx, project, "main", "Header", {
+      await landOnMain(ctx, project, "Header", {
         ...header,
         label: "SS Rio",
         title: "published",
@@ -157,7 +170,7 @@ test.describe("fast preview git sync", () => {
         collection: "667",
         title: "draft",
       });
-      await writeBlock(ctx, project, "main", "Footer", { f: 1 });
+      await landOnMain(ctx, project, "Footer", { f: 1 });
       await setStubMergeMode(ctx, owner, repo, "conflict");
 
       const before = await inspectStubRepo(ctx, owner, repo);
@@ -214,7 +227,7 @@ test.describe("fast preview git sync", () => {
       // Drift on both sides, so the FIRST call really squashes something.
       await writeBlock(ctx, project, "draft", "Hero", { n: 2 });
       await writeBlock(ctx, project, "draft", "Hero", { n: 3 });
-      await writeBlock(ctx, project, "main", "Footer", { f: 1 });
+      await landOnMain(ctx, project, "Footer", { f: 1 });
 
       const before = await inspectStubRepo(ctx, owner, repo);
       const draftHeadBefore = before.refs["draft"] as string;
