@@ -18,6 +18,15 @@ export interface CmsTestCaller {
   onBehalfOf?: boolean;
   /** The organizations the caller is admitted to (default: `ORG`). */
   orgs?: string[];
+  /** The caller's role in the admitted organization (default: none). */
+  role?: string;
+  /**
+   * The permission map resolved at auth time for `ORG` (a custom role's,
+   * read for its `projects` scope), if any.
+   */
+  permissions?: Record<string, string[]>;
+  /** An API key credential (its permissions are `permissions`). */
+  apiKey?: boolean;
 }
 
 export function cmsTestApp(
@@ -27,6 +36,8 @@ export function cmsTestApp(
     sites?: Record<string, string>;
     /** Organizations whose writes are blocked. */
     blocked?: string[];
+    /** The project `org_sites` links each site to (default: acme to p1). */
+    siteProjects?: Record<string, string>;
   } = {},
 ) {
   const delivery = memoryDeliveryStore();
@@ -42,7 +53,10 @@ export function cmsTestApp(
     >,
   };
   const sites = options.sites ?? { acme: ORG };
+  const siteProjects = options.siteProjects ?? { acme: "p1" };
   let caller: CmsTestCaller = { userId: "usr_ana", method: "session" };
+  /** The role `admit` bound (as `bindOrganization` sets it on access). */
+  let role: string | undefined;
   const context = (): StudioContext =>
     ({
       // /api/cms/:site names no organization: the gates resolve it.
@@ -50,7 +64,14 @@ export function cmsTestApp(
         ...(caller.userId ? { user: { id: caller.userId } } : {}),
         ...(caller.method ? { method: caller.method } : {}),
         ...(caller.onBehalfOf ? { onBehalfOf: true } : {}),
+        ...(caller.permissions
+          ? { permissions: caller.permissions, permissionsOrganizationId: ORG }
+          : {}),
+        ...(caller.apiKey && caller.userId
+          ? { apiKey: { id: "key_1", name: "key", userId: caller.userId } }
+          : {}),
       },
+      access: { getRole: () => role },
       storage: {
         kv: memoryKv(),
         virtualMcps: {
@@ -69,7 +90,7 @@ export function cmsTestApp(
               ? {
                   slug,
                   organizationId: sites[slug],
-                  projectId: slug === "acme" ? "p1" : null,
+                  projectId: siteProjects[slug] ?? null,
                 }
               : null,
         },
@@ -97,7 +118,9 @@ export function cmsTestApp(
           id: organizationId,
           slug: `${organizationId}-slug`,
           name: organizationId,
+          role: caller.role,
         };
+        role = caller.role;
         return true;
       },
       isBlocked: async (_c, organizationId) =>

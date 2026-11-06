@@ -75,6 +75,97 @@ describe("gates, in today's order", () => {
     expect(res.body.code).toBe("org_blocked");
   });
 
+  describe("403 project_not_allowed for a caller scoped to other projects", () => {
+    const sites = { acme: "org_1", beta: "org_1" };
+    const siteProjects = { acme: "p1", beta: "p2" };
+
+    it("a credential scoped to its own project reaches that project's site only", async () => {
+      const t = cmsTestApp({ sites, siteProjects });
+      t.as({
+        userId: "usr_ana",
+        method: "studioJwt",
+        role: "editor",
+        permissions: { projects: ["p1"] },
+      });
+      expect((await t.call("GET", "acme/drafts")).status).toBe(200);
+      const other = await t.call("GET", "beta/drafts");
+      expect(other.status).toBe(403);
+      expect(other.body).toEqual({
+        error: "This site's project is outside your access",
+        code: "project_not_allowed",
+      });
+      // Writes are refused the same way, before anything is stored.
+      const write = await t.call("PUT", "beta/schema", undefined, SCHEMA_TEXT);
+      expect(write.status).toBe(403);
+      expect(t.records.objects.has("beta")).toBe(false);
+    });
+
+    it("a member of a role scoped to other projects is refused (session)", async () => {
+      const t = cmsTestApp({ sites, siteProjects });
+      t.as({
+        userId: "usr_ana",
+        method: "session",
+        role: "editor",
+        permissions: { projects: ["*", "!p2"] },
+      });
+      expect((await t.call("GET", "acme/drafts")).status).toBe(200);
+      expect((await t.call("GET", "beta/drafts")).status).toBe(403);
+    });
+
+    it("an org-wide credential reaches every project's site", async () => {
+      const t = cmsTestApp({ sites, siteProjects });
+      t.as({
+        userId: "usr_ana",
+        method: "studioJwt",
+        role: "editor",
+        permissions: { "*": ["*"] },
+      });
+      expect((await t.call("GET", "acme/drafts")).status).toBe(200);
+      expect((await t.call("GET", "beta/drafts")).status).toBe(200);
+    });
+
+    it("an API key is authorized by its own allowlist, not a project scope", async () => {
+      const t = cmsTestApp({ sites, siteProjects });
+      t.as({
+        userId: "usr_ana",
+        method: "apiKey",
+        apiKey: true,
+        role: "editor",
+        permissions: { "*": ["*"] },
+      });
+      expect((await t.call("GET", "acme/drafts")).status).toBe(200);
+      expect((await t.call("GET", "beta/drafts")).status).toBe(200);
+    });
+
+    it("a Studio session of an unscoped member or an admin is unaffected", async () => {
+      const t = cmsTestApp({ sites, siteProjects });
+      t.as({ userId: "usr_ana", method: "session", role: "user" });
+      expect((await t.call("GET", "beta/drafts")).status).toBe(200);
+      t.as({
+        userId: "usr_ana",
+        method: "session",
+        role: "admin",
+        permissions: { projects: ["p1"] },
+      });
+      expect((await t.call("GET", "beta/drafts")).status).toBe(200);
+    });
+
+    it("the scope check comes after the site check (no existence leak)", async () => {
+      const t = cmsTestApp({
+        sites: { ...sites, other: "org_2" },
+        siteProjects: { ...siteProjects, other: "p9" },
+      });
+      t.as({
+        userId: "usr_ana",
+        method: "session",
+        role: "editor",
+        permissions: { projects: ["p1"] },
+      });
+      expect((await t.call("GET", "other/drafts")).status).toBe(404);
+      expect((await t.call("GET", "nope/drafts")).status).toBe(404);
+    });
+  });
+
   it("503 when the delivery bucket isn't configured, after the site check", async () => {
     const t = cmsTestApp({ configured: false });
     expect((await t.call("GET", "nope/drafts")).status).toBe(404);
