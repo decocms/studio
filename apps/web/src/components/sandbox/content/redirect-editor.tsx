@@ -16,7 +16,9 @@ import type { TranslationKey } from "@/i18n/use-t.ts";
 import {
   buildRedirectBlock,
   getRedirectPayload,
+  getRedirectRulePayload,
   REDIRECT_STATUS_CODES,
+  setRedirectRule,
   type RedirectPayload,
   type RedirectStatusCode,
   type RedirectType,
@@ -43,12 +45,17 @@ function RedirectEditorForm({
   branch,
   blockKey,
   block,
+  rule = null,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  /** The per-rule block's name, or the name of the redirects block holding the rule. */
   blockKey: string;
+  /** The per-rule block, or the redirects block holding the rule. */
   block: Record<string, unknown> | undefined;
+  /** The rule's position in the redirects block `blockKey`; null for a per-rule block. */
+  rule?: number | null;
 }) {
   const t = useT();
   // The form keeps its own copy: hosted saves are guarded by it.
@@ -56,12 +63,22 @@ function RedirectEditorForm({
     { orgSlug, virtualMcpId, branch },
     { holdsCopy: true },
   );
-  const initial = getRedirectPayload(block);
+  const initial =
+    rule === null
+      ? getRedirectPayload(block)
+      : getRedirectRulePayload(block, rule);
 
   const [payload, setPayload] = useAutosave(
     initial,
+    // A rule of the redirects block saves the whole block, that rule replaced.
     (next) => {
-      save.mutate({ blockKey, data: buildRedirectBlock(next, block) });
+      save.mutate({
+        blockKey,
+        data:
+          rule === null
+            ? buildRedirectBlock(next, block)
+            : setRedirectRule(block, rule, next),
+      });
     },
     { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
   );

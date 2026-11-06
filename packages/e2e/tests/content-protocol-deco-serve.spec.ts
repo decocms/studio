@@ -13,14 +13,13 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { APIRequestContext, Page } from "@playwright/test";
-import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   type DecoServeStub,
   startDecoServeStub,
 } from "../fixtures/deco-serve-stub";
 import {
   createFastPreviewProject,
-  seedStubRepo,
+  setBlocksV8Site,
   uniqueOwner,
 } from "../fixtures/fast-preview";
 import { expect, test } from "../fixtures/test";
@@ -179,11 +178,11 @@ const HERO = "home-hero";
 const heroFile = (value: object) => `${JSON.stringify(value, null, 2)}\n`;
 
 /**
- * A Blocks v8 site project: its repository's main has a `"blocksMajor": 8`
- * schema (any org; there is no flag). The page decides from main's schema,
- * which it asks the server for on open; reading it here first also writes
- * the server's cached answer (the marker), so new threads default to the
- * hosted CMS runtime.
+ * A Blocks v8 site project: an org admin turns its "Blocks v8 site" switch on
+ * (project settings), then `deco schema push` sends its `"blocksMajor": 8`
+ * schema to the hosted CMS (`PUT /api/cms/:site/schema`), which stores it.
+ * The push is refused until the switch is on, and never turns it on. No git:
+ * a v8 project's editor never reads its repository's main.
  */
 async function createV8Project(api: APIRequestContext, orgSlug: string) {
   const owner = uniqueOwner();
@@ -194,27 +193,18 @@ async function createV8Project(api: APIRequestContext, orgSlug: string) {
     connectionUrl: "http://127.0.0.1:1/unused",
     siteSlug: owner,
   });
-  await seedStubRepo(api, {
-    owner,
-    repo: "site",
-    defaultBranch: "main",
-    branches: {
-      main: {
-        files: {
-          ".deco/schema.gen.json": JSON.stringify(schema),
-        },
-      },
-    },
-  });
-  // What opening it does: main's schema over the content protocol, which
-  // the server's read turns into the project's v8 marker on the way.
-  const opened = await api.post(
-    `/api/${orgSlug}/decofile/${project.vmcpId}/main/rpc`,
-    { data: { jsonrpc: "2.0", id: 1, method: "schema.get" } },
-  );
-  expect(opened.status()).toBe(200);
-  const body = (await opened.json()) as { result: { schema: unknown } };
-  expect(isV8Schema(body.result.schema)).toBe(true);
+  const push = () =>
+    api.put(`/api/cms/${owner}/schema`, {
+      data: JSON.stringify(schema),
+      headers: { "Content-Type": "application/json" },
+    });
+  const refused = await push();
+  expect(refused.status()).toBe(409);
+  expect(await refused.json()).toMatchObject({ code: "not_blocks_v8_site" });
+  await setBlocksV8Site(api, orgSlug, project.vmcpId, true);
+  const pushed = await push();
+  expect(pushed.status()).toBe(200);
+  expect(await pushed.json()).toMatchObject({ blocksMajor: 8 });
   return { id: project.vmcpId };
 }
 

@@ -3,7 +3,8 @@
  * `createCMS({ site, token })` to send telemetry, next to the site id (the
  * only place settings show it; hover the row to copy it). A token is shown
  * once, in a dialog with its copy button; issuing always works, and the list
- * shows every token issued (their key ids, never the tokens).
+ * shows every token issued (their key ids, never the tokens). Keyed by the
+ * site on the hosted CMS (`/api/cms/:site/site-tokens`).
  */
 
 import { useId, useState } from "react";
@@ -29,6 +30,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
 import { KEYS } from "@/lib/query-keys";
+import { cmsUrl } from "@/components/sections-editor/cms-api";
 import { CopyableField, CopyValueButton } from "./copy-value-button";
 
 interface SiteTokenRecord {
@@ -45,13 +47,16 @@ async function readJson<T>(res: Response): Promise<T> {
 export function SiteTokenSection({
   orgSlug,
   virtualMcpId,
+  site: projectSite,
 }: {
   orgSlug: string;
   virtualMcpId: string;
+  /** The project's site id (`metadata.siteSlug`). */
+  site: string;
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const base = `/api/${orgSlug}/hosted/${encodeURIComponent(virtualMcpId)}/site-tokens`;
+  const base = cmsUrl(projectSite, "site-tokens");
   const key = KEYS.hostedSiteTokens(orgSlug, virtualMcpId);
   const [created, setCreated] = useState<string | null>(null);
   const siteIdField = useId();

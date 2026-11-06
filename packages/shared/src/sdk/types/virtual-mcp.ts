@@ -1043,6 +1043,12 @@ export const VirtualMCPUpdateDataSchema = z.object({
   icon: z.string().nullish().describe("New icon URL"),
   status: z.enum(["active", "inactive"]).optional().describe("New status"),
   pinned: z.boolean().optional().describe("Pin/unpin from sidebar"),
+  blocksV8: z
+    .boolean()
+    .optional()
+    .describe(
+      'Org owners and admins only: turn the project\'s "Blocks v8 site" switch on or off (`metadata.blocksV8`). On, Studio edits the site with the Blocks v8 editor and the hosted CMS, and `deco schema push` is accepted; off, it is a v7 site. Never set through `metadata`.',
+    ),
   metadata: z
     .object(VirtualMcpMetadataFields)
     .loose()

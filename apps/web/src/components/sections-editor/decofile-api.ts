@@ -14,18 +14,17 @@
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
-import {
-  isMainSchemaChangedResponse,
-  MainSchemaChangedError,
-  mainSchemaHeaders,
-  resetMainSchemaAnswer,
-} from "@/hooks/main-schema-changed";
+import type {
+  DecofilePatchBody,
+  DecofileScopeParams,
+} from "./content-write-keys";
 
-export interface DecofileScopeParams {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-}
+export {
+  type DecofilePatchBody,
+  type DecofileScopeParams,
+  decofileWriteMutationKey,
+  decofileWriteScope,
+} from "./content-write-keys";
 
 export interface DecofileDraft {
   /** Branch head commit sha. */
@@ -38,13 +37,6 @@ export interface DecofileDraft {
    * not guaranteed to be an origin a deployed site can reach.
    */
   apiHost: string;
-}
-
-export interface DecofilePatchBody {
-  set?: Record<string, unknown>;
-  delete?: string[];
-  /** Per block: fingerprint of the version the edit was made against, `null` for none. */
-  expect?: Record<string, string | null>;
 }
 
 /** The branch's copy of `blocks` changed after the edit was made; nothing was written. */
@@ -67,36 +59,6 @@ export class BlockConflictError extends Error {
 
 function decofileCacheKey(params: DecofileScopeParams): string {
   return `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`;
-}
-
-/**
- * Mutation key for block save/delete writes. Lets observers (the preview's
- * autosave indicator via useIsMutating) see an in-flight write without any
- * bespoke wiring — same pattern as SANDBOX_START_MUTATION_KEY.
- */
-export function decofileWriteMutationKey(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-) {
-  return ["decofile-write", orgSlug, virtualMcpId, branch] as const;
-}
-
-/**
- * Serialization scope for those writes. TanStack runs mutations sharing a
- * `scope.id` one at a time; `mutationKey` alone only identifies them. Every
- * hook that WRITES the decofile must pass this, or it races the others — an
- * autosave landing after a delete resurrects the block that was just removed.
- * Observers (`useIsMutating`) need the key only.
- */
-export function decofileWriteScope(
-  orgSlug: string,
-  virtualMcpId: string,
-  branch: string,
-) {
-  return {
-    id: decofileWriteMutationKey(orgSlug, virtualMcpId, branch).join(":"),
-  };
 }
 
 function decofileApiUrl(params: DecofileScopeParams): string {
@@ -147,11 +109,9 @@ export async function decofileHeadMoved(
 ): Promise<boolean> {
   const res = await fetch(decofileApiUrl(params), {
     cache: "no-store",
-    headers: { ...mainSchemaHeaders("v7"), "if-none-match": `"${version}"` },
+    headers: { "if-none-match": `"${version}"` },
   }).catch(() => null);
-  // 409: main turned v8, or the site isn't this project's; the full read
-  // (fetchDecofile) is what tells the editor.
-  return res?.status === 200 || res?.status === 409;
+  return res?.status === 200;
 }
 
 /**
@@ -180,16 +140,7 @@ export async function fetchDecofile(
   queryClient: QueryClient,
   params: DecofileScopeParams,
 ): Promise<Record<string, unknown>> {
-  // Only the v7 (legacy) editor reads this shape: a main that turned v8
-  // since answers `main_schema_changed`, and the editor decides again.
-  const res = await fetch(decofileApiUrl(params), {
-    cache: "no-store",
-    headers: mainSchemaHeaders("v7"),
-  });
-  if (await isMainSchemaChangedResponse(res)) {
-    resetMainSchemaAnswer(queryClient, params.orgSlug, params.virtualMcpId);
-    throw new MainSchemaChangedError();
-  }
+  const res = await fetch(decofileApiUrl(params), { cache: "no-store" });
   if (!res.ok) {
     const err = new Error(`Failed to fetch decofile: ${res.status}`);
     (err as { status?: number }).status = res.status;

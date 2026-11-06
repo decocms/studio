@@ -3,11 +3,8 @@ import { Link, useSearch } from "@tanstack/react-router";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { LegacyExperimentsTab } from "./experiments-tab-legacy";
 import { pickExperimentsTab } from "./experiments-tab-choice";
-import {
-  ExperimentsTabSkeleton,
-  ExperimentsBlockTab,
-} from "./experiments-block-tab";
-import { useLastFoundV8, useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { ExperimentsBlockTab } from "./experiments-block-tab";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 
 import {
   armColors,
@@ -1882,13 +1879,10 @@ function ExperimentsTabV2({ virtualMcpId }: { virtualMcpId: string }) {
 export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { ui } = useSearch({ strict: false }) as { ui?: string };
   const flagEnabled = useOrgFlag("experiments_v2_enabled");
-  const siteMajor = useMainSchemaV8(virtualMcpId);
-  const lastFoundV8 = useLastFoundV8(virtualMcpId);
-  switch (pickExperimentsTab({ flagEnabled, siteMajor, ui, lastFoundV8 })) {
+  const v8 = useBlocksV8Project(virtualMcpId);
+  switch (pickExperimentsTab({ flagEnabled, v8, ui })) {
     case "v8":
       return <ExperimentsBlockTab virtualMcpId={virtualMcpId} />;
-    case "loading":
-      return <ExperimentsTabSkeleton />;
     case "v2":
       return <ExperimentsTabV2 virtualMcpId={virtualMcpId} />;
     case "legacy":

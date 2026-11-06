@@ -152,6 +152,9 @@ export const virtualMcp = {
   "virtualMcp.settings.general.title": "Geral",
   "virtualMcp.settings.site.title": "CMS",
   "virtualMcp.settings.site.classicTitle": "Site e sandbox",
+  "virtualMcp.settings.blocksV8Site.label": "Site Blocks v8",
+  "virtualMcp.settings.blocksV8Site.description":
+    "Edite este site com o editor do Blocks v8 e o CMS hospedado. Desligado: v7, ligado ao git.",
   "virtualMcp.settings.groups.advanced": "Avançado",
   "virtualMcp.settings.groups.details": "Detalhes",
   "virtualMcp.settings.connections.title": "Conexões",

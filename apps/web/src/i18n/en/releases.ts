@@ -24,22 +24,20 @@ export const releases = {
   "releases.reapplyTitle": "Make this release current?",
   "releases.reapplyBody":
     "Making it current publishes a new release with the same content as “{title}”. Changes made since will be replaced on your site.",
-  "releases.reapplyUndoHint":
-    "The release marked Latest stays in the list: to go back afterwards, make it current again.",
   "releases.reapplyConfirm": "Make current",
   "releases.reapplying": "Making current…",
   "releases.reapplied": "Made current. Your site will show it shortly.",
-  "releases.reappliedUndoHint":
-    "If something doesn't look right, make the previous release current again to go back.",
   "releases.reapplyFailed": "Couldn't make this release current.",
   "releases.alreadyShown": "Your site already has this release's content.",
   "releases.publishedMeanwhile":
     "Someone published while you were making this release current, so nothing changed. Try again.",
+  "releases.notPublished":
+    "Your site hasn't been published yet. Publish it once before bringing back an earlier release.",
   "releases.reapplyOf": "Made current: {title}",
   "releases.reapplyOfDate": "Made current: release from {when}",
   "releases.sameContentAs": "Same content as the release from {when}",
   "releases.untitled": "Published changes",
-  "releases.siteUpdate": "Site update",
+  "releases.unreadable": "This release's details couldn't be read",
   "releases.loadMore": "Load more",
   "releases.cancel": "Cancel",
 };

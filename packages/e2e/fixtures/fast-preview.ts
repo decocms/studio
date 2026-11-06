@@ -42,30 +42,6 @@ export async function seedStubRepo(
   expect(res.ok()).toBe(true);
 }
 
-/**
- * Moves a seeded repo's `main` to `files` (a new head), as a merge from
- * elsewhere would: the repo is re-seeded with its own id.
- */
-export async function moveStubMain(
-  ctx: APIRequestContext,
-  owner: string,
-  repo: string,
-  files: Record<string, string>,
-): Promise<void> {
-  const res = await ctx.get(`${GITHUB_STUB_ORIGIN}/repos/${owner}/${repo}`, {
-    headers: { authorization: "token e2e-admin" },
-  });
-  expect(res.ok()).toBe(true);
-  const { id } = (await res.json()) as { id: number };
-  await seedStubRepo(ctx, {
-    owner,
-    repo,
-    id,
-    defaultBranch: "main",
-    branches: { main: { files } },
-  });
-}
-
 export async function inspectStubRepo(
   ctx: APIRequestContext,
   owner: string,
@@ -265,4 +241,24 @@ export async function createFastPreviewProject(
 }
 
 /** Unique owner per test run keeps the stub's repo namespace parallel-safe. */
+/**
+ * Turns the project's "Blocks v8 site" switch on or off, as an org admin does
+ * in project settings (`blocksV8` on the update tool). The only way a project
+ * becomes v8: `deco schema push` is refused until it is on.
+ */
+export async function setBlocksV8Site(
+  ctx: APIRequestContext,
+  org: string,
+  vmcpId: string,
+  on: boolean,
+): Promise<void> {
+  const { item } = await callSelfMcpTool<{
+    item: { metadata?: Record<string, unknown> | null };
+  }>(ctx, org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
+    id: vmcpId,
+    data: { blocksV8: on },
+  });
+  expect(item.metadata?.blocksV8 === true).toBe(on);
+}
+
 export const uniqueOwner = (): string => `e2e-${randomUUID().slice(0, 12)}`;

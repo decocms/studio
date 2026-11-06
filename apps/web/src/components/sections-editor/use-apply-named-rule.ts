@@ -25,6 +25,7 @@ import {
   decofileWriteScope,
 } from "./decofile-api";
 import { conflictAuthorDraft } from "./conflict-author";
+import { copyDraftVersion } from "./draft-version";
 import { formatCampaignDate, formatCampaignWindow } from "./format-matcher";
 import { bumpCopyEpoch, copyScope } from "./held-copy";
 import { type ConflictField, resolveFormConflict } from "./form-conflict";
@@ -37,7 +38,16 @@ import {
   planHostedConflict,
   pointerBlockKey,
 } from "./hosted-reconcile";
-import { type CampaignWindow, namedRuleKindOfBlock } from "./named-rules";
+import {
+  type ContentIndex,
+  ensureHostedBlocks,
+  listingOf,
+} from "./hosted-content";
+import {
+  type CampaignWindow,
+  NAMED_RULE_BLOCKS,
+  namedRuleKindOfBlock,
+} from "./named-rules";
 import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
 import { isSaveConflict } from "./serve-save-error";
@@ -48,8 +58,8 @@ import { applyMoveToDecofile } from "./use-move-blocks";
 
 /**
  * One change to the site's A/B tests or campaigns (named-rules.ts): the
- * `experiments` or `campaigns` block, and the blocks whose rules use its
- * names (a page or section given a new rule, every rule a rename rewrites).
+ * `experiments` or `campaigns` block, and the page or section given a new
+ * rule that names one.
  */
 export interface NamedRuleChange {
   /** Blocks written whole. */
@@ -64,6 +74,15 @@ export interface NamedRuleChange {
    * what the editor didn't show. Other backends: ignored.
    */
   basis?: Record<string, unknown>;
+}
+
+/**
+ * What a read of the draft made now loads on a hosted draft, besides the
+ * `experiments` and `campaigns` blocks: `blocks` by name (the blocks a
+ * reconcile touches). Other backends read every block anyway.
+ */
+export interface NamedRuleReread {
+  blocks?: readonly string[];
 }
 
 export type NamedRuleApplyPlan =
@@ -193,6 +212,12 @@ interface NamedRuleWrite {
    * editor still on its way: it takes the version that save answers.
    */
   pinned: Record<string, string | null>;
+  /**
+   * The copies the change was built on (the cache when it was made), by
+   * block. On a hosted draft each block the draft holds is guarded by its
+   * copy's content hash, never by the version the index lists.
+   */
+  copies: Record<string, unknown>;
 }
 
 /** A version unknown when the write runs: as refused, so nothing is guessed. */
@@ -213,11 +238,12 @@ function unreadConflict(blockKeys: string[]): ContentProtocolError {
  * named-rule-conflict.tsx); the user's picks are saved, guarded again.
  * Nothing is written over someone else's change without that choice.
  *
- * The guard is the version of the copy the change was built on. The cache
- * already holds the editor's earlier saves still on their way, so a block
- * one of them holds is guarded by the version that save answers, read when
- * this write runs (after it landed, as a section form's is); every other
- * block by the version known when the change was made. The change's blocks
+ * The guard is the version of the copy the change was built on (on a hosted
+ * draft, that copy's own content hash, never the version the index lists).
+ * The cache already holds the editor's earlier saves still on their way, so
+ * a block one of them holds is guarded when this write runs (after that
+ * save landed, as a section form's is); every other block when the change
+ * was made. The change's blocks
  * count as being saved while it waits, so a poll meanwhile keeps their
  * copies and versions, and someone else's save of them is still refused.
  */
@@ -243,11 +269,18 @@ export function useApplyNamedRule({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async (write: NamedRuleWrite) => {
-      const plan = planNamedRuleApply(write, (blockKey) =>
-        Object.hasOwn(write.pinned, blockKey)
-          ? write.pinned[blockKey]
-          : protocolBlockVersion(queryClient, cacheKey, blockKey, protocol),
-      );
+      const touched = [
+        ...Object.keys(write.writes),
+        ...write.deletes.filter((key) => !Object.hasOwn(write.writes, key)),
+      ];
+      const versions: Record<string, string | null | undefined> = {};
+      for (const key of touched) {
+        const listed = Object.hasOwn(write.pinned, key)
+          ? write.pinned[key]
+          : protocolBlockVersion(queryClient, cacheKey, key, protocol);
+        versions[key] = await copyGuard(listed, key, write.copies);
+      }
+      const plan = planNamedRuleApply(write, (blockKey) => versions[blockKey]);
       if (plan.kind === "unread") throw unreadConflict(plan.blockKeys);
       return applyProtocolPatch(
         queryClient,
@@ -318,7 +351,7 @@ export function useApplyNamedRule({
     const stored =
       protocol && adoptRefusedDraft(queryClient, protocol, cacheKey, refusal)
         ? (queryClient.getQueryData<Record<string, unknown>>(queryKey) ?? {})
-        : await reread();
+        : await reread({ blocks: touched });
     if (!stored) {
       toast.info(t("sectionsEditor.namedRules.unavailable"), {
         ...SAVE_TOAST,
@@ -405,7 +438,13 @@ export function useApplyNamedRule({
     );
     void queryClient.cancelQueries({ queryKey });
     try {
-      await mutation.mutateAsync({ writes, deletes, pinned });
+      const copies: Record<string, unknown> = {};
+      for (const key of touched) {
+        if (previous && Object.hasOwn(previous, key)) {
+          copies[key] = previous[key];
+        }
+      }
+      await mutation.mutateAsync({ writes, deletes, pinned, copies });
       return { ok: true };
     } catch (error) {
       queryClient.setQueryData(
@@ -456,13 +495,33 @@ export function useApplyNamedRule({
   };
 
   /**
-   * The versions of the copies a change was built on (`copies`, the cache
-   * when it was made), for every block no earlier save still on its way
-   * holds (those take that save's answer when the write runs). A block with
-   * no known version (the editor's bookkeeping was lost) is read now: when
-   * it is stored exactly as the change found it, the version just read is
-   * its copy's; when it isn't, someone else changed it: `null`, nothing is
-   * written.
+   * The guard of `blockKey` in a write built on `copies`, the draft listing
+   * it at `listed`. On a hosted draft a block the draft holds is guarded by
+   * its copy's own content hash ({@link copyDraftVersion}), never by the
+   * listed version: a poll lists someone else's version before it loads
+   * their copy (and never reloads a block being saved), so a write built on
+   * the older copy, guarded by the listed version, would go over their
+   * change unasked. Guarded by its copy, it is refused and reconciled.
+   * Other backends: the version listed.
+   */
+  const copyGuard = async (
+    listed: string | null | undefined,
+    blockKey: string,
+    copies: Record<string, unknown>,
+  ): Promise<string | null | undefined> => {
+    if (!hosted || !Object.hasOwn(copies, blockKey)) return listed;
+    return copyDraftVersion(listed, copies[blockKey]);
+  };
+
+  /**
+   * The versions the draft lists for the copies a change was built on
+   * (`copies`, the cache when it was made), for every block no earlier save
+   * still on its way holds (those are read when the write runs, after that
+   * save landed). A block with no known version (the editor's bookkeeping
+   * was lost) is read now: when it is stored exactly as the change found
+   * it, the version just read is its copy's; when it isn't, someone else
+   * changed it: `null`, nothing is written. On a hosted draft the write
+   * guards each by its copy ({@link copyGuard}).
    */
   const pinVersions = async (
     touched: string[],
@@ -483,7 +542,7 @@ export function useApplyNamedRule({
       else pinned[key] = version;
     }
     if (unread.length === 0) return pinned;
-    const fresh = await reread();
+    const fresh = await reread({ blocks: unread });
     if (!fresh) return null;
     for (const key of unread) {
       const had = !!copies && Object.hasOwn(copies, key);
@@ -508,11 +567,13 @@ export function useApplyNamedRule({
 
   /**
    * The draft as stored right now (content-protocol-api.ts
-   * `rereadProtocolContent`): what a delete, an Undo or a rename plans from,
-   * so a use or a name another tab added meanwhile counts. `null` when it can't be
+   * `rereadProtocolContent`): what a delete or an Undo plans from, so a name
+   * another tab added or changed meanwhile counts. `null` when it can't be
    * read; the caller then changes nothing.
    */
-  const reread = async (): Promise<Record<string, unknown> | null> => {
+  const reread = async (
+    options: NamedRuleReread = {},
+  ): Promise<Record<string, unknown> | null> => {
     if (!protocol) return null;
     try {
       const content = await rereadProtocolContent(
@@ -521,44 +582,34 @@ export function useApplyNamedRule({
         params,
         cacheKey,
       );
-      return content.blocks;
+      if (!protocol.hosted) return content.blocks;
+      // Hosted: the read answers the index and only the bodies loaded so
+      // far. The tests and campaigns blocks (and the blocks a reconcile
+      // touches) are loaded at the index just read; every other block stays
+      // its index stub.
+      const index = queryClient.getQueryData<ContentIndex>(
+        KEYS.contentIndex(cacheKey),
+      );
+      await ensureHostedBlocks(
+        queryClient,
+        protocol.hosted,
+        cacheKey,
+        [...NAMED_RULE_BLOCKS, ...(options.blocks ?? [])],
+        savingBlockKeys(queryClient, params),
+      );
+      return listingOf(
+        index,
+        queryClient.getQueryData<Record<string, unknown>>(queryKey) ??
+          content.blocks,
+      );
     } catch {
       return null;
     }
   };
 
-  /**
-   * A change planned from the draft as stored right now, for one that takes a
-   * name away (a rename): a use another tab added meanwhile is rewritten
-   * with the others, never left naming a test or campaign that is gone.
-   * `null`, with one calm toast, when the draft can't be read or the change
-   * no longer fits what is stored (it now shows that).
-   */
-  const planStored = async (
-    plan: (decofile: Record<string, unknown>) => NamedRuleChange | null,
-  ): Promise<NamedRuleChange | null> => {
-    const fresh = await reread();
-    if (!fresh) {
-      toast.info(t("sectionsEditor.namedRules.unavailable"), {
-        ...SAVE_TOAST,
-        description: t("sectionsEditor.namedRules.unavailableHint"),
-      });
-      return null;
-    }
-    const change = plan(fresh);
-    if (!change) {
-      toast.info(t("sectionsEditor.namedRules.changedMeanwhile"), {
-        ...SAVE_TOAST,
-        description: t("sectionsEditor.namedRules.changedMeanwhileHint"),
-      });
-    }
-    return change;
-  };
-
   return {
     apply,
     reread,
-    planStored,
     isPending: mutation.isPending,
     /**
      * A change's `basis` guards it (hosted v8): an editor keeps the copy it

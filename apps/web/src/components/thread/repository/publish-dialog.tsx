@@ -35,9 +35,7 @@ import {
   RefreshCw01,
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ReactNode } from "react";
-import { QueryErrorResetBoundary, useQuery } from "@tanstack/react-query";
-import { KEYS } from "@/lib/query-keys";
-import { readHostedPublishReview } from "./hosted-publish-api";
+import { QueryErrorResetBoundary } from "@tanstack/react-query";
 import { publishBodyShown, usePublishHold } from "./publish-hold";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
@@ -131,12 +129,6 @@ export interface PublishDialogProps {
   openPullRequest?: PrSummary | null;
   onPullRequestChanged?: () => void | Promise<void>;
   onPublished?: () => void | Promise<void>;
-  /**
-   * A hosted v8 site whose visitors see an older release than main's (a
-   * Publish whose release failed): with nothing listed, Publish still makes
-   * the saved changes live.
-   */
-  notLive?: boolean;
 }
 
 export function PublishDialog(props: PublishDialogProps) {
@@ -433,11 +425,6 @@ interface PublishSource {
   expectedDiffSignature?: string;
   /** A hosted v8 draft: no pull request, Publish goes through the CDN draft. */
   hosted: boolean;
-  /**
-   * Hosted v8: the draft's blocks a developer also changed on main since the
-   * live release. Publish keeps the draft's version; the cards say so.
-   */
-  alsoChanged?: ReadonlySet<string>;
   /** v8: discards go through `changes.discard` on this backend. */
   protocol?: {
     backend: ProtocolBackend;
@@ -581,21 +568,6 @@ function ContentPublish({
     },
   });
   const hosted = backend.source === "github";
-  const review = useQuery({
-    queryKey: KEYS.hostedPublishReview(
-      props.orgSlug,
-      props.virtualMcpId,
-      props.branch,
-    ),
-    queryFn: () =>
-      readHostedPublishReview({
-        orgSlug: props.orgSlug,
-        virtualMcpId: props.virtualMcpId,
-        branch: props.branch,
-      }),
-    enabled: hosted,
-    staleTime: 0,
-  });
   return (
     <CmsPublishView
       {...props}
@@ -604,7 +576,6 @@ function ContentPublish({
         gate: { allowed: true, reason: null },
         headBranch: props.branch,
         hosted,
-        alsoChanged: new Set(review.data?.alsoChanged ?? []),
         otherWork: false,
       }}
     />
@@ -703,7 +674,6 @@ function CmsPublishView({
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
-  notLive: releaseBehind = false,
 }: CmsPublishContentProps & { source: PublishSource }) {
   const t = useT();
   const [{ language }] = usePreferences();
@@ -858,11 +828,8 @@ function CmsPublishView({
   const isDiscarding =
     useContentSyncState(orgSlug, virtualMcpId).phase === "saving";
 
-  /** Saved, nothing listed, but not live yet: Publish makes main live. */
-  const notLive = hosted && releaseBehind && summary.count === 0;
-  /** Changes to publish: the listed ones, a v8 sandbox's other work, or a
-   *  hosted site's saved changes that aren't live yet. */
-  const hasWork = summary.count > 0 || otherWork || notLive;
+  /** Changes to publish: the listed ones, or a v8 sandbox's other work. */
+  const hasWork = summary.count > 0 || otherWork;
   const canSubmit = !isPublishing && hasWork && (isReview || gate.allowed);
 
   const headerTitle = isReview
@@ -873,9 +840,7 @@ function CmsPublishView({
         : t("thread.publishPopover.submitCountForReview", {
             count: summary.count,
           })
-    : notLive
-      ? t("thread.publishPopover.notLive")
-      : publishTitle(summary.count, baseBranch, !!source.v8, t);
+    : publishTitle(summary.count, baseBranch, !!source.v8, t);
 
   /** Review mode names the PR it will update; publish mode, the last release. */
   const subLine = (() => {
@@ -929,12 +894,6 @@ function CmsPublishView({
               isPublishing={isPublishing}
               isDiscarding={isDiscarding}
               v8={!!source.v8}
-              alsoChangedOnMain={
-                !!source.alsoChanged &&
-                source.alsoChanged.has(
-                  change.entry?.name ?? change.blockKey ?? "",
-                )
-              }
             />
           );
         })}
@@ -1016,16 +975,6 @@ function CmsPublishView({
     <p className="px-4 py-6 text-xs text-muted-foreground">
       {t("thread.publishPopover.onlyOtherWork")}
     </p>
-  ) : notLive ? (
-    <div className="flex flex-col items-center gap-1 py-10 text-center">
-      <Globe01 className="mb-1 size-5 text-muted-foreground" />
-      <p className="text-sm font-medium">
-        {t("thread.publishPopover.notLiveBody")}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {t("thread.publishPopover.notLiveHint")}
-      </p>
-    </div>
   ) : summary.count === 0 ? (
     <div className="flex flex-col items-center gap-1 py-10 text-center">
       <CheckCircle className="mb-1 size-5 text-success" />

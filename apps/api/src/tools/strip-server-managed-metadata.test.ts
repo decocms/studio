@@ -22,9 +22,9 @@ describe("stripServerManagedMetadata", () => {
     expect(stripServerManagedMetadata(undefined)).toBeUndefined();
   });
 
-  test("removes the Blocks v8 marker, so only the server writes it", () => {
+  test("removes the Blocks v8 site switch, so only its admin field writes it", () => {
     expect(
-      stripServerManagedMetadata({ fastPreview: true, blocksMajor: 8 }),
+      stripServerManagedMetadata({ fastPreview: true, blocksV8: true }),
     ).toEqual({ fastPreview: true });
   });
 
@@ -45,9 +45,9 @@ describe("metadataKeptOnClear", () => {
         instructions: "dropped",
         sandboxMap: { u: {} },
         siteSlug: "acme",
-        blocksMajor: 8,
+        blocksV8: true,
       }),
-    ).toEqual({ sandboxMap: { u: {} }, siteSlug: "acme", blocksMajor: 8 });
+    ).toEqual({ sandboxMap: { u: {} }, siteSlug: "acme", blocksV8: true });
   });
 
   test("is null when there is nothing to keep", () => {

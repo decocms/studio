@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { namedRuleUses } from "@/components/sections-editor/named-rule-uses";
+import { publishedDecofile } from "@/components/sections-editor/use-published-content";
 import {
   campaignRows,
   campaignStatus,
@@ -86,39 +86,35 @@ describe("campaignRows", () => {
   };
 
   it("orders running, upcoming (soonest first), always, unreadable, then ended", () => {
-    const uses = namedRuleUses({
-      decofile: draft,
-      changeCount: 2,
-      sides: {
-        campaigns: {
-          kind: "set",
-          before: published.campaigns,
-          after: draft.campaigns,
-          version: "v2",
-          baseVersion: "v1",
-        },
-        "pages-home-1": {
-          kind: "set",
-          before: null,
-          after: draft["pages-home-1"],
-          version: "p1",
-          baseVersion: null,
-        },
+    const live = publishedDecofile(draft, {
+      campaigns: {
+        kind: "set",
+        before: published.campaigns,
+        after: draft.campaigns,
+        version: "v2",
+        baseVersion: "v1",
+      },
+      "pages-home-1": {
+        kind: "set",
+        before: null,
+        after: draft["pages-home-1"],
+        version: "p1",
+        baseVersion: null,
       },
     });
-    const rows = campaignRows(draft, uses, now);
-    expect(rows.map((r) => [r.name, r.status, r.entryState, r.uses])).toEqual([
-      ["black-friday", "running", "changed", 0],
-      ["christmas", "upcoming", "new", 1],
-      ["newyear", "upcoming", "new", 0],
-      ["always", "always", "new", 0],
-      ["broken", "unreadable", "new", 0],
-      ["summer", "ended", "new", 0],
+    const rows = campaignRows(draft, live, now);
+    expect(rows.map((r) => [r.name, r.status, r.entryState])).toEqual([
+      ["black-friday", "running", "changed"],
+      ["christmas", "upcoming", "new"],
+      ["newyear", "upcoming", "new"],
+      ["always", "always", "new"],
+      ["broken", "unreadable", "new"],
+      ["summer", "ended", "new"],
     ]);
     expect(rows[0]!.publishedWindow).toEqual(
       published.campaigns["black-friday"],
     );
-    expect(removedCampaigns(draft, uses)).toEqual(["gone"]);
+    expect(removedCampaigns(draft, live)).toEqual(["gone"]);
   });
 });
 

@@ -41,7 +41,7 @@ mock.module("@/components/repository-import-picker", () => ({
 }));
 mock.module("./use-task-metadata", () => ({ useTaskMetadata: () => null }));
 mock.module("@/sdk", () => ({
-  useVirtualMCP: () => ({ id: "vmcp", metadata: { blocksMajor: 8 } }),
+  useVirtualMCP: () => ({ id: "vmcp", metadata: { blocksV8: true } }),
 }));
 mock.module("@/lib/agent-capabilities", () => ({
   agentHasClonableSource: () => true,
