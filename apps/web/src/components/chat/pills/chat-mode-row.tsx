@@ -12,8 +12,9 @@ import {
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
-  readThreadRuntime,
+  type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
@@ -30,6 +31,25 @@ interface PureProps {
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;
   return <>{branchPill}</>;
+}
+
+export type BranchPickAction =
+  | { kind: "switch" }
+  | { kind: "new-chat"; runtime?: "sandbox" };
+
+/** Never downgrades to CMS: a `cms` stamp doesn't mean the branch has no code. */
+export function branchPickAction(input: {
+  locked: boolean;
+  /** `null` while unresolved: may still be a CMS chat. */
+  sessionRuntime: ThreadRuntime | null;
+  draftRuntime?: ThreadRuntime;
+}): BranchPickAction {
+  const { locked, sessionRuntime, draftRuntime } = input;
+  const escalate = draftRuntime === "sandbox" && sessionRuntime !== "sandbox";
+  if (!locked && !escalate) return { kind: "switch" };
+  return draftRuntime === "sandbox" || sessionRuntime === "sandbox"
+    ? { kind: "new-chat", runtime: "sandbox" }
+    : { kind: "new-chat" };
 }
 
 interface SmartProps {
@@ -53,13 +73,14 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
   const createTask = taskCtx?.createTask;
+  const sessionState = useSessionRuntime(virtualMcp?.id);
+  const sessionRuntime = sessionState.runtime;
   /** A new branch only lands in CMS through a NEW (unstamped) thread: the
    *  runtime is per-thread and immutable, so a coding session on a CMS-default
    *  project has to start one rather than switch in place. */
   const createBranchAsCms =
     defaultThreadRuntime(virtualMcp?.metadata) === "cms" &&
-    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
-      "sandbox";
+    sessionRuntime === "sandbox";
 
   const repository = getActiveRepository(virtualMcp);
   const repoTarget = repoToolTarget(repository);
@@ -77,15 +98,22 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   // A CMS session on a Blocks v8 main edits a hosted draft even on the base
   // branch: the switcher shows it as that draft, not as "Production". v7 (and
   // a coding session) keeps main's labels.
-  const baseIsDraft =
-    mainSchema === "v8" &&
-    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
-      "cms";
+  const baseIsDraft = mainSchema === "v8" && sessionRuntime === "cms";
 
-  // Locked chat's branch is fixed: open a new chat on the picked branch.
-  const onChange = (next: string) => {
-    if (locked && createTask) createTask({ branch: next });
-    else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+  const onChange = (next: string, draftRuntime?: ThreadRuntime) => {
+    const action = branchPickAction({
+      locked,
+      sessionRuntime: sessionState.resolved ? sessionRuntime : null,
+      draftRuntime,
+    });
+    if (action.kind === "new-chat" && createTask) {
+      createTask({
+        branch: next,
+        ...(action.runtime ? { runtime: action.runtime } : {}),
+      });
+    } else if (setCurrentTaskBranch) {
+      void setCurrentTaskBranch(next);
+    }
   };
   // Locked or CMS→sandbox: branch off into a fresh thread, don't re-point.
   const onCreateBranch = (next: string) => {

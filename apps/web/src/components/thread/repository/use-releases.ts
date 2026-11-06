@@ -2,7 +2,12 @@ import { useProjectContext, useVirtualMCP, useVirtualMCPActions } from "@/sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { runSerializedTask } from "@/lib/serial-task-queue";
-import { addRelease, removeRelease, renameReleaseIn } from "./release-edits";
+import {
+  addRelease,
+  markReleaseSandbox,
+  removeRelease,
+  renameReleaseIn,
+} from "./release-edits";
 
 /**
  * Dot colors a named release can take, in assignment order. `success` (green) is
@@ -126,5 +131,8 @@ export function useReleases(virtualMcpId: string) {
   const deleteRelease = (branch: string) =>
     write((current) => removeRelease(current, branch));
 
-  return { releases, createRelease, renameRelease, deleteRelease };
+  const markSandbox = (branch: string) =>
+    write((current) => markReleaseSandbox(current, branch));
+
+  return { releases, createRelease, renameRelease, deleteRelease, markSandbox };
 }
