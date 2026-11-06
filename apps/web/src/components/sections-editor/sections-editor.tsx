@@ -3269,7 +3269,7 @@ export function SectionsEditor({
       ? getMultivariateSectionObject(selectedRawSection, selectedParsed)
       : null;
   const sectionFlagVariants = sectionMvObj
-    ? parseSectionFlagVariants(sectionMvObj, formatMatcher)
+    ? parseSectionFlagVariants(sectionMvObj, formatMatcher, protocolProject)
     : [];
   const safeSectionVariantIndex = Math.min(
     activeSectionVariantIndex,
