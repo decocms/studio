@@ -3,6 +3,7 @@ import * as migration257taskboarditemhierarchy from "./257-task-board-item-hiera
 import * as migration259repositorymonitordeploys from "./259-repository-monitor-deploys";
 import * as migration260demoboardsnapshots from "./260-demo-board-snapshots";
 import * as migration261removeuserregisteredssoproviders from "./261-remove-user-registered-sso-providers";
+import * as migration262deactivateorphanedagentautomations from "./262-deactivate-orphaned-agent-automations";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -561,6 +562,8 @@ const migrations: Record<string, Migration> = {
   "260-demo-board-snapshots": migration260demoboardsnapshots,
   "261-remove-user-registered-sso-providers":
     migration261removeuserregisteredssoproviders,
+  "262-deactivate-orphaned-agent-automations":
+    migration262deactivateorphanedagentautomations,
 };
 
 export default migrations;
