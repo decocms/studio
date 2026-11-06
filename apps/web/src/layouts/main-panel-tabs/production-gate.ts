@@ -1,5 +1,3 @@
-import type { MainSchemaAnswer } from "@/hooks/use-main-schema-v8";
-
 /**
  * Whether the site editor may show a session's content. A Blocks v7 Fast
  * Preview draft IS a git branch, so a session on the repository's default
@@ -14,11 +12,10 @@ export interface ProductionGateInput {
   runtime: string | null | undefined;
   /** The runtime answer is authoritative (`useSessionRuntime().resolved`). */
   runtimeResolved: boolean;
-  siteMajor: MainSchemaAnswer;
+  /** The project's "Blocks v8 site" switch (`useBlocksV8Project`). */
+  blocksV8: boolean;
   /** The preview runs from a local tunnel: edits are ephemeral there. */
   localPreview: boolean;
-  /** A saved tunnel is still waiting for main's answer. */
-  tunnelUndecided: boolean;
   /** A connected `deco serve` edits the working tree on this computer. */
   servingLocally: boolean;
   branch: string | null | undefined;
@@ -32,12 +29,11 @@ export function resolveProductionGate(
   input: ProductionGateInput,
 ): ProductionGate {
   if (input.servingLocally || input.localPreview) return "open";
-  if (input.tunnelUndecided || !input.runtimeResolved) return "pending";
+  if (!input.runtimeResolved) return "pending";
   if (input.runtime !== "cms") return "open";
   // A CMS session always gets a branch; until it lands there's nothing to edit.
   if (!input.branch) return "pending";
-  if (input.siteMajor === "loading") return "pending";
-  if (input.siteMajor !== "v7") return "open";
+  if (input.blocksV8) return "open";
   if (input.defaultBranch) {
     return input.defaultBranch === input.branch ? "blocked" : "open";
   }
