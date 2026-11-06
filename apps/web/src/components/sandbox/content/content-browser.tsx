@@ -115,9 +115,9 @@ import {
   extractRedirects,
   generateRedirectBlockKey,
   REDIRECT_LOADER_RESOLVE_TYPES,
-  REDIRECTS_BLOCK,
   REDIRECTS_RESOLVE_TYPE,
-  redirectRuleIndex,
+  redirectRuleOf,
+  redirectsBlockName,
   removeRedirectRule,
   type RedirectEntry,
   type RedirectPayload,
@@ -564,11 +564,7 @@ function ContentBrowserReady({
   const openBlockNames =
     openBlockKey === null
       ? []
-      : [
-          redirectRuleIndex(openBlockKey) === null
-            ? openBlockKey
-            : REDIRECTS_BLOCK,
-        ];
+      : [redirectRuleOf(openBlockKey, decofile ?? {})?.block ?? openBlockKey];
   const openBlockLoad = useEnsureDecofileBlocks(
     hostedDraft ? scope : null,
     openBlockNames,
@@ -1383,22 +1379,24 @@ function ContentBrowserReady({
   const submitRedirectDialog = async (values: RedirectPayload) => {
     // Hosted v8 routes only the redirects block: a new rule is appended to
     // it (created when absent).
-    const rules = hostedDraft ? extractRedirectRules(decofile).length : null;
+    const holder = hostedDraft ? redirectsBlockName(decofile) : null;
+    const rules =
+      holder === null ? null : extractRedirectRules(decofile, holder).length;
     const key =
-      rules === null
+      holder === null
         ? generateRedirectBlockKey(decofile, values.from)
-        : REDIRECTS_BLOCK;
+        : holder;
     const data =
-      rules === null
+      holder === null
         ? buildRedirectBlock(values)
-        : appendRedirectRule(decofile[REDIRECTS_BLOCK], values);
+        : appendRedirectRule(decofile[holder], values);
     try {
       const created = await saveBlock.mutateAsync({ blockKey: key, data });
       if (!keptTheirVersion(created)) toast.success("Created redirect");
       setRedirectDialogOpen(false);
       setSelection({
         collection: "redirects",
-        key: rules === null ? key : `${REDIRECTS_BLOCK}#${rules}`,
+        key: rules === null ? key : `${key}#${rules}`,
       });
     } catch (err) {
       setRedirectDialogError(
@@ -1544,14 +1542,12 @@ function ContentBrowserReady({
           }
         }
         deleted = await deleteBlock.mutateAsync({ blockKey: key });
-      } else if (redirectRuleIndex(key) !== null) {
+      } else if (redirectRuleOf(key, decofile)) {
         // A rule of the redirects block: the block, without it.
+        const rule = redirectRuleOf(key, decofile)!;
         deleted = await saveBlock.mutateAsync({
-          blockKey: REDIRECTS_BLOCK,
-          data: removeRedirectRule(
-            decofile[REDIRECTS_BLOCK],
-            redirectRuleIndex(key)!,
-          ),
+          blockKey: rule.block,
+          data: removeRedirectRule(decofile[rule.block], rule.index),
         });
       } else {
         deleted = await deleteBlock.mutateAsync({ blockKey: key });
@@ -1569,6 +1565,9 @@ function ContentBrowserReady({
     }
   };
 
+  // The open rule of a redirects block, when a redirect entry is one.
+  const openRedirect =
+    selectedKey === null ? null : redirectRuleOf(selectedKey, decofile);
   // The editor side, as every collection shows it (hosted v8: once the open
   // block is loaded; a load that failed says so and is tried again).
   const editorPane = openBlockLoad.failed ? (
@@ -1822,13 +1821,12 @@ function ContentBrowserReady({
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
-                blockKey={selection.key}
+                blockKey={openRedirect?.block ?? selection.key}
+                rule={openRedirect?.index ?? null}
                 block={
-                  decofile[
-                    redirectRuleIndex(selection.key) === null
-                      ? selection.key
-                      : REDIRECTS_BLOCK
-                  ] as Record<string, unknown>
+                  decofile[openRedirect?.block ?? selection.key] as
+                    | Record<string, unknown>
+                    | undefined
                 }
               />
             ) : (

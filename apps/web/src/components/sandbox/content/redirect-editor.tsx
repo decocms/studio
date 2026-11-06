@@ -18,8 +18,6 @@ import {
   getRedirectPayload,
   getRedirectRulePayload,
   REDIRECT_STATUS_CODES,
-  REDIRECTS_BLOCK,
-  redirectRuleIndex,
   setRedirectRule,
   type RedirectPayload,
   type RedirectStatusCode,
@@ -47,14 +45,17 @@ function RedirectEditorForm({
   branch,
   blockKey,
   block,
+  rule = null,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
-  /** A per-rule block's name, or `Redirects#<position>` for a rule of the redirects block. */
+  /** The per-rule block's name, or the name of the redirects block holding the rule. */
   blockKey: string;
   /** The per-rule block, or the redirects block holding the rule. */
   block: Record<string, unknown> | undefined;
+  /** The rule's position in the redirects block `blockKey`; null for a per-rule block. */
+  rule?: number | null;
 }) {
   const t = useT();
   // The form keeps its own copy: hosted saves are guarded by it.
@@ -62,9 +63,6 @@ function RedirectEditorForm({
     { orgSlug, virtualMcpId, branch },
     { holdsCopy: true },
   );
-  // A rule of the redirects block saves the whole block, that rule replaced.
-  const rule = redirectRuleIndex(blockKey);
-  const savedKey = rule === null ? blockKey : REDIRECTS_BLOCK;
   const initial =
     rule === null
       ? getRedirectPayload(block)
@@ -72,16 +70,17 @@ function RedirectEditorForm({
 
   const [payload, setPayload] = useAutosave(
     initial,
+    // A rule of the redirects block saves the whole block, that rule replaced.
     (next) => {
       save.mutate({
-        blockKey: savedKey,
+        blockKey,
         data:
           rule === null
             ? buildRedirectBlock(next, block)
             : setRedirectRule(block, rule, next),
       });
     },
-    { isSaving: save.isPending, onSeed: () => save.hold(savedKey) },
+    { isSaving: save.isPending, onSeed: () => save.hold(blockKey) },
   );
 
   const setField = (patch: Partial<RedirectPayload>) =>
@@ -232,11 +231,7 @@ export function RedirectEditor(
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}
-      blockKey={
-        redirectRuleIndex(props.blockKey) === null
-          ? props.blockKey
-          : REDIRECTS_BLOCK
-      }
+      blockKey={props.blockKey}
       present={props.block !== undefined}
     >
       <RedirectEditorForm {...props} />

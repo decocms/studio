@@ -5,7 +5,8 @@ import {
   getRedirectRulePayload,
   REDIRECTS_BLOCK,
   redirectRuleBlocks,
-  redirectRuleIndex,
+  redirectRuleOf,
+  redirectsBlockName,
   removeRedirectRule,
   setRedirectRule,
 } from "./redirect-data";
@@ -24,9 +25,39 @@ describe("the redirects block (hosted v8)", () => {
       type: "permanent",
     });
     expect(entries[1]).toMatchObject({ from: "/old", flat: true, status: 308 });
-    expect(redirectRuleIndex("Redirects#1")).toBe(1);
-    expect(redirectRuleIndex("redirects-x")).toBeNull();
-    expect(redirectRuleIndex("Redirects#-1")).toBeNull();
+    const blocks = { [REDIRECTS_BLOCK]: block };
+    expect(redirectRuleOf("Redirects#1", blocks)).toEqual({
+      block: "Redirects",
+      index: 1,
+    });
+    expect(redirectRuleOf("redirects-x", blocks)).toBeNull();
+    expect(redirectRuleOf("Redirects#-1", blocks)).toBeNull();
+    expect(redirectRuleOf("Redirects#", blocks)).toBeNull();
+    expect(redirectRuleOf("Redirects#1.5", blocks)).toBeNull();
+  });
+
+  it("names a rule by the block that holds it, whatever that block is called", () => {
+    // The SDK routes the first redirects block by name, called anything.
+    const blocks = {
+      "site-redirects": block,
+      "promo#2": { __resolveType: "website/loaders/redirect.ts" },
+    };
+    expect(redirectsBlockName(blocks)).toBe("site-redirects");
+    expect(extractRedirectRules(blocks).map((e) => e.key)).toEqual([
+      "site-redirects#0",
+      "site-redirects#1",
+    ]);
+    expect(redirectRuleOf("site-redirects#1", blocks)).toEqual({
+      block: "site-redirects",
+      index: 1,
+    });
+    // A per-rule block whose name has a "#" is a block, not a rule.
+    expect(redirectRuleOf("promo#2", blocks)).toBeNull();
+    // Nothing to hold them yet: a new rule creates `Redirects`.
+    expect(redirectsBlockName({ "promo#2": blocks["promo#2"] })).toBe(
+      REDIRECTS_BLOCK,
+    );
+    expect(redirectsBlockName({ b: block, a: block })).toBe("a");
   });
 
   it("is created on the first rule", () => {
