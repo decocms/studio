@@ -3484,7 +3484,7 @@ function TaskContextMenu({
   );
 }
 
-function TaskCard({
+export function TaskCard({
   item,
   assignee,
   assignedBy,

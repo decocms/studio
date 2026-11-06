@@ -1,3 +1,4 @@
+import { voiceInbox } from "./voice-inbox";
 import { page } from "./page";
 import { projects } from "./projects.ts";
 import { virtualMcp } from "./virtual-mcp.ts";
@@ -105,4 +106,5 @@ export const ptBR = {
   ...assets,
   ...projects,
   ...page,
+  ...voiceInbox,
 } satisfies Record<TranslationKey, string>;

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { defineConfig, type Plugin } from "vite";
+import { z } from "zod";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -366,6 +367,143 @@ const optimizeDepsInclude = [
   "@decocms/ui > remark-gfm",
 ];
 
+const voiceInboxFixture: Plugin = {
+  name: "voice-inbox-local-fixture",
+  apply: "serve",
+  configureServer(server) {
+    const file = process.env.STUDIO_VOICE_INBOX_FIXTURE;
+    if (!file) return;
+    server.middlewares.use(async (req, res, next) => {
+      // Only the standalone mock gets this read-only transport. The app keeps
+      // using its authenticated API; imported files cannot add probe targets.
+      const referer = req.headers.referer;
+      if (
+        req.method !== "POST" ||
+        !req.url?.endsWith("/tools/TASK_BOARD_PREVIEW_PROBE") ||
+        !referer ||
+        !URL.canParse(referer) ||
+        new URL(referer).pathname !== "/voice-inbox.html"
+      )
+        return next();
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "no-store");
+      try {
+        const fixture = z
+          .object({
+            organization: z.string(),
+            scenarios: z.array(
+              z.object({
+                tasks: z.array(
+                  z.object({
+                    review: z
+                      .object({
+                        testPlan: z
+                          .object({
+                            route: z
+                              .string()
+                              .refine(
+                                (route) =>
+                                  route.startsWith("/") &&
+                                  !route.startsWith("//") &&
+                                  !route.includes("\\"),
+                              ),
+                          })
+                          .optional(),
+                      })
+                      .optional(),
+                    pullRequest: z
+                      .object({ previewUrl: z.string().url().optional() })
+                      .optional(),
+                  }),
+                ),
+              }),
+            ),
+          })
+          .parse(JSON.parse(readFileSync(file, "utf8")));
+        const slug = fixture.organization
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-");
+        if (req.url !== `/api/${slug}/tools/TASK_BOARD_PREVIEW_PROBE`) {
+          res.statusCode = 404;
+          res.end("{}");
+          return;
+        }
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk.toString();
+          if (body.length > 2048) {
+            res.statusCode = 413;
+            res.end("{}");
+            return;
+          }
+        }
+        const { url } = z
+          .object({ url: z.string().url() })
+          .parse(JSON.parse(body));
+        const allowed = fixture.scenarios.some((scenario) =>
+          scenario.tasks.some((task) => {
+            const base = task.pullRequest?.previewUrl;
+            if (!base) return false;
+            if (base === url) return true;
+            const route = task.review?.testPlan?.route;
+            if (!route) return false;
+            const target = new URL(route, base);
+            return (
+              target.origin === new URL(base).origin && target.href === url
+            );
+          }),
+        );
+        const parsed = new URL(url);
+        if (
+          !allowed ||
+          parsed.protocol !== "https:" ||
+          parsed.username ||
+          parsed.password
+        ) {
+          res.statusCode = 403;
+          res.end("{}");
+          return;
+        }
+        try {
+          const response = await fetch(url, {
+            method: "GET",
+            redirect: "manual",
+            signal: AbortSignal.timeout(8000),
+          });
+          await response.body?.cancel();
+          res.end(
+            JSON.stringify({
+              available: response.status < 400,
+              status: response.status,
+            }),
+          );
+        } catch {
+          res.end(JSON.stringify({ available: false, status: null }));
+        }
+      } catch {
+        res.statusCode = 400;
+        res.end("{}");
+      }
+    });
+  },
+  transformIndexHtml(html, context) {
+    const file = process.env.STUDIO_VOICE_INBOX_FIXTURE;
+    if (!file || context.path !== "/voice-inbox.html") return html;
+    // Escape HTML delimiters so fixture text cannot close the data script.
+    const data = JSON.stringify(
+      JSON.parse(readFileSync(file, "utf8")),
+    ).replaceAll("<", "\\u003c");
+    return [
+      {
+        tag: "script",
+        attrs: { id: "voice-inbox-fixture", type: "application/json" },
+        children: data,
+        injectTo: "head",
+      },
+    ];
+  },
+};
+
 export default defineConfig({
   optimizeDeps: {
     include: optimizeDepsInclude,
@@ -415,5 +553,6 @@ export default defineConfig({
     tailwindcss(),
     tsconfigPaths({ root: "." }),
     serveSelfHostedMonaco,
+    voiceInboxFixture,
   ],
 });
