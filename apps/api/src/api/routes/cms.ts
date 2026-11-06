@@ -26,6 +26,7 @@
  * `encodeURIComponent`-encoded (`/` as `%2F`).
  */
 
+import { createHash } from "node:crypto";
 import { createContentHandler } from "@decocms/blocks/protocol/server";
 import { StorageUnavailableError } from "@decocms/blocks/protocol";
 import { isV8Schema, BLOCKS_V8_MAJOR } from "@decocms/shared/blocks-major";
@@ -573,6 +574,7 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
       const { etag } = await records.putSchema(site.site, text);
       const isV8 = isV8Schema(schema);
       if (site.project) {
+        // The marker, and the record of this push that it counts only with.
         await syncBlocksMajorMarker(
           c.var.studioContext.storage.virtualMcps,
           {
@@ -580,7 +582,11 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
             organizationId: site.organizationId,
             metadata: site.project.metadata,
           },
-          isV8,
+          {
+            isV8,
+            site: site.site,
+            sha256: createHash("sha256").update(text).digest("hex"),
+          },
           site.userId,
         );
       }

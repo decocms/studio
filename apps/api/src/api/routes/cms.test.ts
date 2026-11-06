@@ -4,7 +4,13 @@
  * blocksMajor marker. Buckets and the drafts table are in memory.
  */
 
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it } from "bun:test";
+import {
+  BLOCKS_MAJOR_METADATA_KEY,
+  CMS_SCHEMA_PUSH_METADATA_KEY,
+  isBlocksV8Project,
+} from "@decocms/shared/blocks-major";
 import { clearRevisionCache } from "@/hosted/cms-release";
 import { clearSchemaCache } from "@/hosted/cms-storage";
 import { seedRelease } from "@/hosted/cms-test-helpers";
@@ -212,11 +218,48 @@ describe("schema push", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ etag: "schema1", blocksMajor: 8 });
     expect(t.records.objects.get("acme")?.text).toBe(SCHEMA_TEXT);
-    expect(t.patches).toEqual([{ set: { blocksMajor: 8 }, unset: [] }]);
+    // What the push writes is what every v8 gate and the web app trust.
+    expect(
+      isBlocksV8Project({ ...t.project.metadata, ...t.patches[0]?.set }),
+    ).toBe(true);
+    expect(t.patches).toEqual([
+      {
+        set: {
+          blocksMajor: 8,
+          cmsSchemaPush: {
+            site: "acme",
+            sha256: createHash("sha256").update(SCHEMA_TEXT).digest("hex"),
+          },
+        },
+        unset: [],
+      },
+    ]);
     // The editor's forms read it back through the protocol.
     await t.call("POST", "acme/drafts", { name: "d" });
     const schema = await t.rpc("acme", "d", "schema.get");
     expect(schema.body.result.schema).toEqual(JSON.parse(SCHEMA_TEXT));
+  });
+
+  it("clears a stale marker (no push record) when the pushed schema isn't v8", async () => {
+    const t = cmsTestApp();
+    Object.assign(t.project.metadata, { blocksMajor: 8 });
+    const res = await t.call("PUT", "acme/schema", undefined, "{}");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ blocksMajor: null });
+    expect(t.patches).toEqual([
+      {
+        set: {},
+        unset: [BLOCKS_MAJOR_METADATA_KEY, CMS_SCHEMA_PUSH_METADATA_KEY],
+      },
+    ]);
+  });
+
+  it("writes nothing for a v7 schema on a project with neither key", async () => {
+    const t = cmsTestApp();
+    expect((await t.call("PUT", "acme/schema", undefined, "{}")).status).toBe(
+      200,
+    );
+    expect(t.patches).toEqual([]);
   });
 
   it("refuses a body that isn't a JSON object", async () => {
