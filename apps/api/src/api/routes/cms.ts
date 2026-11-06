@@ -19,10 +19,11 @@
  * the site's. Every route runs, in order (§4.1): an authenticated caller
  * (401); the site and the caller's admission to its organization (404,
  * the same answer for an unknown site and for one the caller can't reach,
- * so existence doesn't leak); the `cms` plan gate on that organization
- * (403, failing open); a blocked organization's writes (403 `org_blocked`);
- * then a configured delivery bucket (503). No repository binding, no
- * `isProjectAllowed`, no `blocksMajor` check. A draft name travels
+ * so existence doesn't leak); the caller's project scope over the site's
+ * project (403 `project_not_allowed`, `isProjectAllowed`); the `cms` plan
+ * gate on that organization (403, failing open); a blocked organization's
+ * writes (403 `org_blocked`); then a configured delivery bucket (503). No
+ * repository binding, no `blocksMajor` check. A draft name travels
  * `encodeURIComponent`-encoded (`/` as `%2F`).
  */
 
@@ -35,6 +36,8 @@ import { type Context, Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { isOrgBlocked } from "@/core/org-notice-gate";
+import { resolveCallerProjectScope } from "@/core/project-scope";
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import {
   bindOrganization,
@@ -225,7 +228,8 @@ async function admitToOrganization(
 
 /**
  * §4.1, in order: 401; 404 `site_not_found` (unknown, or not the caller's to
- * reach); 403 `feature_not_in_plan`; 403 `org_blocked` (writes); 503.
+ * reach); 403 `project_not_allowed` (outside the caller's project scope);
+ * 403 `feature_not_in_plan`; 403 `org_blocked` (writes); 503.
  */
 function gates(options: CmsRoutesOptions) {
   return createMiddleware<CmsEnv>(async (c, next) => {
@@ -241,6 +245,20 @@ function gates(options: CmsRoutesOptions) {
       (await (options.admit ?? admitToOrganization)(c, organizationId));
     if (!row || organizationId === null || !admitted) {
       return fail(c, 404, "site_not_found", "Site not found");
+    }
+    // A caller scoped to some of the org's projects (a custom role's
+    // `projects` list) reaches only those projects' sites, as the org's
+    // project tools enforce (`isProjectAllowed`).
+    if (row.projectId) {
+      const scope = await resolveCallerProjectScope(ctx);
+      if (!isProjectAllowed(scope, row.projectId)) {
+        return fail(
+          c,
+          403,
+          "project_not_allowed",
+          "This site's project is outside your access",
+        );
+      }
     }
     const hasCms = options.hasCms
       ? await options.hasCms(c, organizationId)
