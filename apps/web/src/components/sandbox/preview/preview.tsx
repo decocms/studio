@@ -1344,17 +1344,20 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     !appPaused &&
     (claimPhase?.kind === "ready" || lifecyclePhase !== "idle");
 
-  // A site with no deco pages (a Next.js storefront, say) still has routes:
-  // list its file-system router's static ones so the picker can navigate.
-  const showsFrameworkRoutes =
-    pages.length === 0 && !isProtocolProject(contentBackend);
+  // Routes the site's own router declares (Next.js, TanStack Router): a site
+  // with no deco pages can still navigate, and a deco site reaches its
+  // code-only routes. A path already listed as a page shows only as the page.
+  const showsFrameworkRoutes = !isProtocolProject(contentBackend);
   const packagePath = usePackagePath(virtualMcpId ?? undefined);
   const frameworkRoutes = useFrameworkRoutes(
     pickerSandboxRef,
     packagePath,
-    showsFrameworkRoutes && daemonReady && !decofileQuery.isFetching,
+    showsFrameworkRoutes && daemonReady,
   );
-  const visibleFrameworkRoutes = showsFrameworkRoutes ? frameworkRoutes : [];
+  const pagePaths = new Set(pages.map((page) => normPath(page.path)));
+  const visibleFrameworkRoutes = showsFrameworkRoutes
+    ? frameworkRoutes.filter((route) => !pagePaths.has(normPath(route)))
+    : [];
   const filteredFrameworkRoutes = !pagesSearch
     ? visibleFrameworkRoutes
     : visibleFrameworkRoutes.filter((route) =>

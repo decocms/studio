@@ -1,9 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { readCommittedJson } from "@/components/sections-editor/read-committed-file";
 import { KEYS } from "@/lib/query-keys";
 import { buildSandboxUrl, type SandboxProxyRef } from "@/sdk/sandbox-url";
 import {
+  detectRouterFramework,
   frameworkRouteRoots,
   frameworkRoutesFromFiles,
+  packageRepoPath,
   type FrameworkRouteRoot,
 } from "./framework-routes";
 
@@ -31,9 +34,33 @@ async function listRouterFiles(
     : [];
 }
 
+async function readFrameworkRoutes(
+  ref: SandboxProxyRef,
+  packagePath: string | null,
+): Promise<string[]> {
+  const pkg = await readCommittedJson<unknown>(
+    ref,
+    packageRepoPath(packagePath, "package.json"),
+  );
+  if (pkg.kind === "unavailable") {
+    throw new Error("package.json unavailable: sandbox not ready");
+  }
+  const framework =
+    pkg.kind === "data" ? detectRouterFramework(pkg.data) : null;
+  if (!framework) return [];
+  const roots = frameworkRouteRoots(framework, packagePath);
+  const listings = await Promise.all(
+    roots.map(async (root) => ({
+      root,
+      files: await listRouterFiles(ref, root),
+    })),
+  );
+  return frameworkRoutesFromFiles(listings);
+}
+
 /**
- * The static routes of the site's file-system router, read from the sandbox
- * working tree. Used by the page picker when the site has no deco pages.
+ * The static routes of the site's file-system router (Next.js or TanStack
+ * Router, per its `package.json`), read from the sandbox working tree.
  */
 export function useFrameworkRoutes(
   ref: SandboxProxyRef | null,
@@ -50,17 +77,7 @@ export function useFrameworkRoutes(
           packagePath,
         )
       : ["framework-routes", "none"],
-    queryFn: async () => {
-      if (!ref) return [];
-      const roots = frameworkRouteRoots(packagePath);
-      const listings = await Promise.all(
-        roots.map(async (root) => ({
-          root,
-          files: await listRouterFiles(ref, root),
-        })),
-      );
-      return frameworkRoutesFromFiles(listings);
-    },
+    queryFn: () => (ref ? readFrameworkRoutes(ref, packagePath) : []),
     enabled: enabled && !!ref,
     staleTime: ROUTES_STALE_MS,
   });
