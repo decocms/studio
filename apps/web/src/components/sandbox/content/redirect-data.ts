@@ -199,18 +199,50 @@ export function generateRedirectBlockKey(
  * §3.8): `{ "__resolveType": "redirects", "redirects": [...] }`, named
  * `Redirects` (`redirects` is a reserved type name). Each item keeps either
  * shape a per-rule block has, without its `__resolveType`; the editor lists
- * its items as entries keyed `Redirects#<position>`.
+ * its items as entries keyed `<block name>#<position>` (`Redirects#0`, …).
  */
 export const REDIRECTS_BLOCK = "Redirects";
 export const REDIRECTS_RESOLVE_TYPE = "redirects";
 
-const RULE_KEY_PREFIX = `${REDIRECTS_BLOCK}#`;
+/** Whether `value` is a redirects block (`__resolveType: "redirects"`). */
+function isRedirectsBlock(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { __resolveType?: unknown }).__resolveType ===
+      REDIRECTS_RESOLVE_TYPE
+  );
+}
 
-/** The position of a rule of the redirects block, from its entry key; null for any other key. */
-export function redirectRuleIndex(key: string): number | null {
-  if (!key.startsWith(RULE_KEY_PREFIX)) return null;
-  const index = Number(key.slice(RULE_KEY_PREFIX.length));
-  return Number.isInteger(index) && index >= 0 ? index : null;
+/**
+ * The name of the block a new rule goes into: the first redirects block in
+ * code-unit name order (the one the SDK routes), else `Redirects`.
+ */
+export function redirectsBlockName(blocks: Record<string, unknown>): string {
+  const names = Object.keys(blocks)
+    .filter((name) => isRedirectsBlock(blocks[name]))
+    .sort();
+  return names[0] ?? REDIRECTS_BLOCK;
+}
+
+/**
+ * The rule a list entry's key names (`<block>#<position>`, where `<block>`
+ * is a redirects block of `blocks`); null for any other key.
+ */
+export function redirectRuleOf(
+  key: string,
+  blocks: Record<string, unknown>,
+): { block: string; index: number } | null {
+  const at = key.lastIndexOf("#");
+  if (at <= 0) return null;
+  const block = key.slice(0, at);
+  const position = key.slice(at + 1);
+  if (!/^\d+$/.test(position)) return null;
+  if (!Object.hasOwn(blocks, block) || !isRedirectsBlock(blocks[block])) {
+    return null;
+  }
+  return { block, index: Number(position) };
 }
 
 function rulesOf(block: unknown): Record<string, unknown>[] {
@@ -244,7 +276,7 @@ function buildRule(
 
 /**
  * The redirects block's rules as per-rule blocks (what `getRedirectPayload`
- * reads), keyed `Redirects#<position>`, for lists built over blocks.
+ * reads), keyed `<name>#<position>`, for lists built over blocks.
  */
 export function redirectRuleBlocks(
   name: string,
@@ -258,12 +290,13 @@ export function redirectRuleBlocks(
   ]);
 }
 
-/** The redirects block's rules as entries (`Redirects#<position>`). */
+/** The rules of the redirects block `name` as entries (`<name>#<position>`). */
 export function extractRedirectRules(
   decofile: Record<string, unknown>,
+  name: string = redirectsBlockName(decofile),
 ): RedirectEntry[] {
-  return rulesOf(decofile[REDIRECTS_BLOCK]).map((rule, i) => ({
-    key: `${RULE_KEY_PREFIX}${i}`,
+  return rulesOf(decofile[name]).map((rule, i) => ({
+    key: `${name}#${i}`,
     ...readRule(rule),
   }));
 }

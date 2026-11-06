@@ -302,7 +302,7 @@ export function buildContentTypes(input: {
     seen.add(spelling);
     const status = entryStatus(bySpelling.get(spelling)?.change);
     // The redirects block (hosted v8): one entry per rule, keyed
-    // `Redirects#<position>`, each with the block's status.
+    // `<name>#<position>` (`Redirects#0`, …), each with the block's status.
     if (value.__resolveType === REDIRECTS_RESOLVE_TYPE) {
       for (const [ruleKey, rule] of redirectRuleBlocks(key, value)) {
         add(type, { key: ruleKey, block: rule, status });
