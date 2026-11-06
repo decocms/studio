@@ -874,6 +874,22 @@ export const KEYS = {
 
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
+  // Static routes from a non-deco site's file-system router (page picker).
+  frameworkRoutes: (
+    org: string,
+    virtualMcpId: string,
+    branch: string,
+    threadId: string | null,
+    packagePath: string | null,
+  ) =>
+    [
+      "framework-routes",
+      org,
+      virtualMcpId,
+      branch,
+      threadId,
+      packagePath,
+    ] as const,
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current
   // branch head, populated by decofile API reads/writes (never fetched itself).
   decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
