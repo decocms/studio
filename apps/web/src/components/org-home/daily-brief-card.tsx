@@ -1,13 +1,14 @@
 /** The day's brief at the top of the home: an HTML file an automation writes
- *  to the org filesystem. Renders nothing until one exists. */
+ *  to the org filesystem. Until one exists, an invitation to set one up. */
 
 import { useState } from "react";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@decocms/ui/components/toggle-group.tsx";
-import { Maximize01 } from "@untitledui/icons";
+import { Maximize01, Plus } from "@untitledui/icons";
 import {
   briefDay,
   DAILY_BRIEF_VOLUME,
@@ -21,6 +22,7 @@ import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { LibraryPreviewDialog } from "@/layouts/library/preview-dialog";
 import { authClient } from "@/lib/auth-client";
 import { type BriefScope, briefsToShow, type ShownBrief } from "./daily-brief";
+import { DailyBriefSetupDialog } from "./daily-brief-setup-dialog";
 
 function ageLabel(t: TFunction, ageDays: number): string {
   if (ageDays === 0) return t("home.dailyBrief.today");
@@ -52,6 +54,7 @@ export function DailyBriefCard() {
   const readUrl = useOrgFsDownloadUrl(DAILY_BRIEF_VOLUME);
   const [scope, setScope] = useState<BriefScope | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
 
   const briefs = briefsToShow({
     userId,
@@ -61,7 +64,30 @@ export function DailyBriefCard() {
   });
   const brief: ShownBrief | undefined =
     briefs.find((b) => b.scope === scope) ?? briefs[0];
-  if (!brief) return null;
+  const setupDialog = (
+    <DailyBriefSetupDialog open={settingUp} onOpenChange={setSettingUp} />
+  );
+  if (!brief) {
+    // Wait for both listings, or the invitation flashes before a brief loads.
+    const listed = org.isSuccess && (!userId || personal.isSuccess);
+    if (!listed) return null;
+    return (
+      <section className="flex items-center justify-between gap-4 surface px-5 py-4">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 className="text-[0.9rem] font-medium tracking-tight text-foreground">
+            {t("home.dailyBrief.title")}
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {t("home.dailyBrief.empty")}
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setSettingUp(true)}>
+          {t("home.dailyBrief.setup.open")}
+        </Button>
+        {setupDialog}
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col overflow-hidden surface">
@@ -93,6 +119,12 @@ export function DailyBriefCard() {
             </ToggleGroup>
           )}
           <IconButton
+            label={t("home.dailyBrief.setup.open")}
+            onClick={() => setSettingUp(true)}
+          >
+            <Plus size={14} />
+          </IconButton>
+          <IconButton
             label={t("home.dailyBrief.fullscreen")}
             onClick={() => setFullscreen(true)}
           >
@@ -117,6 +149,7 @@ export function DailyBriefCard() {
           showSeeInLibrary
         />
       )}
+      {setupDialog}
     </section>
   );
 }
