@@ -28,7 +28,11 @@ import {
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { useT } from "@/i18n/use-t.ts";
-import { useConflictAuthorFromCache, versionTag } from "./conflict-author";
+import {
+  heldBlockTag,
+  useConflictAuthorFromCache,
+  versionTag,
+} from "./conflict-author";
 import type { DecofileScopeParams } from "./decofile-api";
 import { FormConflictDialog } from "./form-conflict-dialog";
 import {
@@ -57,7 +61,16 @@ export interface DeletedConflict {
  */
 export interface ConflictAbout {
   block?: string;
-  author?: { draft: DecofileScopeParams; blockKey: string } | null;
+  author?: {
+    draft: DecofileScopeParams;
+    blockKey: string;
+    /**
+     * The plan is one record keyed by block name (hosted-reconcile.ts): their
+     * version is `blockKey`'s copy in it, as the refusal recorded who made
+     * it. Otherwise the plan is that block, whole.
+     */
+    keyed?: boolean;
+  } | null;
 }
 
 type Question =
@@ -231,10 +244,13 @@ function Choice({
   const [choices, setChoices] = useState(() =>
     defaultConflictChoices(question.plan),
   );
+  const about = question.about?.author ?? null;
   const author = useConflictAuthorFromCache(
-    question.about?.author?.draft ?? null,
-    question.about?.author?.blockKey ?? null,
-    versionTag(canonicalBlockJson(question.plan.theirs)),
+    about?.draft ?? null,
+    about?.blockKey ?? null,
+    about?.keyed
+      ? heldBlockTag(question.plan.theirs, about.blockKey)
+      : versionTag(canonicalBlockJson(question.plan.theirs)),
   );
   return (
     <FormConflictDialog
