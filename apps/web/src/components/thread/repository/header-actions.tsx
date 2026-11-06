@@ -443,6 +443,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         owner={repository.owner}
         repo={repository.name}
         publishPolicy={surface.policyOverride ?? publishPolicy}
+        contentCheck={vm?.metadata?.contentCheck}
         draftPreviewUrl={previewUrl}
         destinationHost={null}
         previewServerUrl={previewServerUrl}

@@ -228,6 +228,14 @@ export const thread = {
   "thread.publishPopover.discardAll": "Discard all",
   "thread.publishPopover.discardAllConfirm": "This can't be undone.",
   "thread.publishPopover.discardAllTitle": "Discard all changes?",
+  "thread.publishPopover.requiredFieldsChecking": "Checking required fields…",
+  "thread.publishPopover.requiredFieldsEmpty":
+    "Some required fields are empty. You can publish, but check them first:",
+  "thread.publishPopover.requiredFieldsMissing":
+    "Some required fields are missing. Fill them in, or discard those changes, to publish:",
+  "thread.publishPopover.requiredFieldsMissingReview":
+    "Some required fields are missing. They need to be filled in before these changes can be published:",
+  "thread.publishPopover.requiredFieldsMore": "and {count} more",
   "thread.publishPopover.reviewNote": "Note for reviewers",
   "thread.publishPopover.reviewNotePlaceholder": "What changed and why…",
   "thread.publishPopover.reviewing": "Reviewing content…",
