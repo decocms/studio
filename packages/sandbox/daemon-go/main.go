@@ -492,6 +492,19 @@ func (d *daemon) noteBootDuration(ms int64) {
 // restartablePhase reports the phases where a dev server is meant to be up, so
 // the watchdog respawns a dead one there but never interrupts a legitimate
 // build (installing/cloning/checking-out) or loops on a terminal *-failed.
+// probeResetsOn reports the transitions after which the probe must forget what
+// it saw. The probe only notifies on a change, and only `starting` is promoted
+// to `running`. Without a reset on entering `starting`, a probe that saw the
+// previous dev server and never counted it offline (install restarts dev inside
+// the 30s slow poll) stays `online` silently, and the sandbox sits in
+// `starting` while serving.
+func probeResetsOn(prev, next string) bool {
+	if prev == events.PhaseRunning && next != events.PhaseRunning {
+		return true
+	}
+	return next == events.PhaseStarting && prev != events.PhaseStarting
+}
+
 func restartablePhase(phase string) bool {
 	switch phase {
 	case events.PhaseRunning, events.PhaseStarting, events.PhaseCrashed:
@@ -1030,9 +1043,9 @@ func main() {
 	d.lifecycle.OnTransition = func(prev, next events.LifecycleState) {
 		if prev.Phase == events.PhaseRunning && next.Phase != events.PhaseRunning {
 			d.sniffer.Reset()
-			if d.prober != nil {
-				d.prober.Reset()
-			}
+		}
+		if d.prober != nil && probeResetsOn(prev.Phase, next.Phase) {
+			d.prober.Reset()
 		}
 		if prev.Phase != next.Phase {
 			slog.Info("lifecycle transition", "from", prev.Phase, "to", next.Phase)
