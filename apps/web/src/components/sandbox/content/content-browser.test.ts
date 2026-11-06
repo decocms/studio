@@ -1,55 +1,42 @@
 import { describe, expect, test } from "bun:test";
 import { deepLinkCollection, visibleCollection } from "./content-browser";
 
-/**
- * The context tab is the one collection an org can turn off, and it is reached
- * by clicking rather than by link — so the case that matters is an admin
- * flipping the flag while someone is standing on it.
- */
-describe("visibleCollection", () => {
-  test("sends someone standing on the context tab back to posts", () => {
-    expect(visibleCollection("context", false)).toBe("posts");
+describe("visibleCollection on a Blocks (v8) site", () => {
+  test("no Calendar here: its campaigns are the Calendar view", () => {
+    expect(visibleCollection("calendar", true)).toBe("pages");
   });
 
-  test("leaves the context tab alone when the org turned it on", () => {
-    expect(visibleCollection("context", true)).toBe("context");
+  test("a v7 site keeps its Calendar", () => {
+    expect(visibleCollection("calendar")).toBe("calendar");
   });
 
-  test("never touches a collection the flag has nothing to do with", () => {
-    for (const blogAi of [true, false]) {
-      expect(visibleCollection("pages", blogAi)).toBe("pages");
-      expect(visibleCollection("posts", blogAi)).toBe("posts");
-      expect(visibleCollection("sections", blogAi)).toBe("sections");
+  test("never touches another collection", () => {
+    for (const v8 of [true, false]) {
+      expect(visibleCollection("pages", v8)).toBe("pages");
+      expect(visibleCollection("sections", v8)).toBe("sections");
     }
   });
 });
 
-describe("visibleCollection on a Blocks (v8) site", () => {
-  test("no Calendar here: its campaigns are the Calendar view", () => {
-    expect(visibleCollection("calendar", false, true)).toBe("pages");
-  });
-
-  test("a v7 site keeps its Calendar", () => {
-    expect(visibleCollection("calendar", false)).toBe("calendar");
-  });
-});
-
+/**
+ * Blog collections left the Site Editor for their own view; the router sends
+ * the Blog Manager's `?contentCollection=posts` there before this reads it.
+ */
 describe("deepLinkCollection", () => {
-  test("v8: opens a blog collection or Sections", () => {
-    expect(deepLinkCollection("posts", true)).toBe("posts");
+  test("v8: opens Sections", () => {
     expect(deepLinkCollection("sections", true)).toBe("sections");
     expect(deepLinkCollection("campaigns", true)).toBeNull();
   });
 
-  test("v7: only a blog collection, as before; anything else opens Pages", () => {
-    expect(deepLinkCollection("posts", false)).toBe("posts");
+  test("v7: nothing; the link opens Pages", () => {
     expect(deepLinkCollection("sections", false)).toBeNull();
     expect(deepLinkCollection("campaigns", false)).toBeNull();
   });
 
-  test("anything else opens the default", () => {
+  test("a blog collection or anything else opens the default", () => {
     for (const v8 of [true, false]) {
       expect(deepLinkCollection(undefined, v8)).toBeNull();
+      expect(deepLinkCollection("posts", v8)).toBeNull();
       expect(deepLinkCollection("settings", v8)).toBeNull();
       expect(deepLinkCollection("nope", v8)).toBeNull();
     }

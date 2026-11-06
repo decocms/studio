@@ -1,6 +1,7 @@
 import type { SandboxMap } from "@/sdk";
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { BranchPicker } from "../../thread/repository/branch-picker";
+import type { DraftKind } from "@/lib/draft-kind";
 
 interface Props {
   virtualMcpId: string;
@@ -26,6 +27,8 @@ interface Props {
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
+  /** Which drafts the view works on (see BranchPicker). */
+  draftKind?: DraftKind;
 }
 
 /** The releases switcher. A `locked` chat has a fixed branch, so any pick/create
@@ -49,6 +52,7 @@ export function BranchPill({
   owner,
   repo,
   sandboxMap,
+  draftKind,
 }: Props) {
   return (
     <BranchPicker
@@ -70,6 +74,7 @@ export function BranchPill({
       onAdoptBranch={onAdoptBranch}
       spawnsNewChat={locked}
       placement={placement}
+      draftKind={draftKind}
     />
   );
 }

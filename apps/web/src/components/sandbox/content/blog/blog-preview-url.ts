@@ -253,6 +253,14 @@ export function buildBlogCategoryPreviewUrl({
 }
 
 /**
+ * The blog app's own switch for rendering a post still in planning: with it,
+ * the post page resolves the planning block too. Honoured from `apps` 0.166.2
+ * (Deno) and `@decocms/apps-blog` 7.85.0 (TanStack); an older site ignores it
+ * and answers its not-found page.
+ */
+const BLOG_DRAFT_PARAM = "draft";
+
+/**
  * Builds the absolute preview URL for a post, or `null` when it can't be
  * built (no blog app block, no preview origin, or a missing route param).
  */
@@ -262,6 +270,7 @@ export function buildBlogPostPreviewUrl({
   previewBaseUrl,
   draftPointer,
   meta,
+  planning = false,
 }: {
   decofile: Record<string, unknown>;
   post: Record<string, unknown>;
@@ -270,6 +279,8 @@ export function buildBlogPostPreviewUrl({
   draftPointer?: string | null;
   /** The site's schema, for its page types. */
   meta?: LiveMeta | null;
+  /** The post is still in planning: ask for it with `?draft=true`. */
+  planning?: boolean;
 }): string | null {
   if (!previewBaseUrl) return null;
   const template = findBlogPageSlug(decofile, meta);
@@ -285,7 +296,9 @@ export function buildBlogPostPreviewUrl({
   if (!path) return null;
 
   try {
-    return withDraftPointer(new URL(path, previewBaseUrl).href, draftPointer);
+    const url = new URL(path, previewBaseUrl);
+    if (planning) url.searchParams.set(BLOG_DRAFT_PARAM, "true");
+    return withDraftPointer(url.href, draftPointer);
   } catch {
     return null;
   }

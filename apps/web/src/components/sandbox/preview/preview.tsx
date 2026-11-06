@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { PageEntry } from "@/components/sections-editor/page-list";
 import type { LastPreviewPage } from "./last-preview-page";
@@ -26,7 +25,7 @@ import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
-import { useIframeLoadRecovery } from "./preview-iframe-recovery";
+import { reloadIframeOrFallback, SitePreviewFrame } from "./site-preview-frame";
 import { watchServeContentReload } from "./serve-content-reload";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -195,37 +194,12 @@ import {
   namedRuleSupport,
   readNamedRuleValues,
 } from "@/components/sections-editor/named-rules";
-import {
-  frameNavigationLoaded,
-  HELD_NAVIGATION_RELEASE_MS,
-  type HeldFrameNavigation,
-  nextFrameNavigation,
-} from "./frame-navigation";
+import { resolvePreviewFrameGeometry } from "./preview-frame-geometry";
 import { useFrameworkRoutes } from "./use-framework-routes";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
-
-/**
- * Logical viewport dimensions per device, matching the legacy admin. The iframe
- * always renders the page at this fixed logical size and is then scaled down
- * with a CSS transform to fit the available canvas width — so widening the
- * blocks panel shrinks a faithful proportional miniature of the full layout
- * instead of reflowing the responsive breakpoints (desktop) or clipping the
- * frame (mobile/tablet).
- */
-const PREVIEW_VIEWPORTS: Record<
-  PreviewDeviceSize,
-  { width: number; height: number }
-> = {
-  mobile: { width: 412, height: 823 }, // Moto G Power
-  tablet: { width: 1024, height: 1366 }, // iPad Pro
-  desktop: { width: 1280, height: 800 }, // MacBook Pro 14
-};
-
-/** Px inset so the scaled frame's border doesn't sit flush against the canvas edge. */
-const PREVIEW_OFFSET = 1;
 
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
 const EDITING_MODES: PreviewEditingMode[] = ["preview", "visual", "blocks"];
@@ -371,27 +345,6 @@ function pageMatchScore(name: string, path: string, q: string): number {
     score = Math.max(score, 95); // query is the path's leaf segment
   else if (segments.includes(q)) score = Math.max(score, 90); // whole segment
   return score;
-}
-
-/**
- * Reload the iframe in place; falls back to reassigning `src` when the
- * iframe's live location is cross-origin (sandbox preview domain) and
- * `.reload()` throws.
-
-/**
- * Reload the iframe in place; falls back to reassigning `src` when the
- * iframe's live location is cross-origin (sandbox preview domain) and
- * `.reload()` throws.
- */
-function reloadIframeOrFallback(
-  iframe: HTMLIFrameElement,
-  fallbackSrc: string | null,
-) {
-  try {
-    iframe.contentWindow?.location.reload();
-  } catch {
-    if (fallbackSrc) iframe.src = fallbackSrc;
-  }
 }
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
@@ -1178,61 +1131,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // site with page-to-page view transitions log "Transition was skipped".
   const holdFrameNavigation =
     display.mode === "production" && !!draftPreviewUrl && !localPreviewUrl;
-  const [frameNavigation, setFrameNavigation] = useState<HeldFrameNavigation>({
-    src: iframeSrc ?? undefined,
-    loading: false,
-  });
-  const nextNavigation = nextFrameNavigation(
-    frameNavigation,
-    iframeSrc ?? undefined,
-    holdFrameNavigation,
-  );
-  if (nextNavigation !== frameNavigation) setFrameNavigation(nextNavigation);
-  const frameSrc = nextNavigation.src;
-  const frameLoading = nextNavigation.loading;
-
-  // Self-heal a stuck iframe: when the dev server is/was unreachable the frame
-  // lands on the browser's connection-refused page and fires no load/error
-  // event, so nothing reloads it once the server is back. This watchdog retries
-  // (backoff) until a load fires. Sandbox surface only — never thrash the
-  // best-effort production fallback frame, nor the Fast Preview daemon frame,
-  // which has its own cross-origin navigation path below.
-  const iframeRecovery = useIframeLoadRecovery({
-    iframeRef: previewIframeRef,
-    src: display.mode === "sandbox" ? iframeSrc : null,
-    active: display.mode === "sandbox",
-  });
-
-  // Fast Preview refresh backstop: the daemon frame is cross-origin (the daemon
-  // host), so the shared reload path can't `.reload()` it. When the draft URL
-  // changes — a page switch, or a new version after a save — force-navigate the
-  // frame. The version makes the URL distinct, and the ref guard makes the
-  // first paint (React already set `src`) and unrelated re-renders no-ops.
-  const lastDraftUrlRef = useRef<string | null>(null);
-  // It navigates to the src the frame was given (`frameSrc`, held while a
-  // load is on its way), and releases a held navigation whose load never
-  // fires, so the next pointer still reaches the frame.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative cross-origin iframe navigation on draft change; .reload() throws cross-origin
-  useEffect(() => {
-    const release = frameLoading
-      ? setTimeout(
-          () => setFrameNavigation(frameNavigationLoaded),
-          HELD_NAVIGATION_RELEASE_MS,
-        )
-      : null;
-    const clear = () => {
-      if (release) clearTimeout(release);
-    };
-    if (!draftPreviewUrl || !frameSrc) return clear;
-    if (lastDraftUrlRef.current === draftPreviewUrl) return clear;
-    lastDraftUrlRef.current = draftPreviewUrl;
-    const iframe = previewIframeRef.current;
-    if (iframe && iframe.getAttribute("src") !== frameSrc) {
-      beginNavigation();
-      iframe.src = frameSrc;
-    }
-    return clear;
-  }, [draftPreviewUrl, frameSrc, frameLoading]);
 
   // Post the current page's merged decofile to the frame for an in-place render.
   const renderPreviewInPlace = () => {
@@ -2102,31 +2000,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // (none in the account-less `/site-editor`).
   const canVisualEdit = (runsSiteCode || hasChat) && display.mode === "sandbox";
 
-  // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
-  const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
-  const previewFluid =
-    previewDeviceSize === "desktop" &&
-    (canvasSize.width === 0 ||
-      canvasSize.width >= previewViewport.width + 2 * PREVIEW_OFFSET);
-  const previewScale = previewFluid
-    ? 1
-    : Math.min(
-        canvasSize.width > 0
-          ? canvasSize.width / (previewViewport.width + 2 * PREVIEW_OFFSET)
-          : 1,
-        1,
-      );
-  const previewFrameStyle: CSSProperties = previewFluid
-    ? { width: "100%", height: "100%" }
-    : {
-        width: `${previewViewport.width}px`,
-        height:
-          canvasSize.height > 0
-            ? `${canvasSize.height / previewScale}px`
-            : `${previewViewport.height}px`,
-        transform: `scale(${previewScale})`,
-        transformOrigin: "top center",
-      };
+  /** Only the canvas backdrop needs this; the frame resolves its own geometry. */
+  const { fluid: previewFluid } = resolvePreviewFrameGeometry({
+    device: previewDeviceSize,
+    canvas: canvasSize,
+  });
 
   const previewTools = (
     <>
@@ -2379,111 +2257,94 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
 
                     {previewSurfaceActive && iframeSrc && (
-                      <div
-                        className={cn(
-                          "shrink-0",
-                          !previewFluid && "bg-background shadow-edge",
-                        )}
-                        style={previewFrameStyle}
+                      <SitePreviewFrame
+                        iframeRef={previewIframeRef}
+                        iframeBase={display.iframeBase}
+                        src={iframeSrc}
+                        device={previewDeviceSize}
+                        canvas={canvasSize}
+                        title={t("sandbox.preview.devServerPreviewTitle")}
+                        // Sandbox surface only — never thrash the best-effort
+                        // production fallback frame, nor the Fast Preview
+                        // daemon frame, which navigates cross-origin instead.
+                        recoveryActive={display.mode === "sandbox"}
+                        draftUrl={draftPreviewUrl}
+                        holdNavigation={holdFrameNavigation}
+                        onNavigate={beginNavigation}
                         onMouseLeave={clearEditorHover}
-                      >
-                        {/* TODO(security): this frame has no sandbox. It loads the
-                            user's own dev server cross-origin and the editor drives it
-                            (navigation, hover, postMessage), so picking the token set is
-                            a change that needs the real sandbox running to verify — a
-                            missing token silently breaks a customer's site preview.
-                            Deliberately not bolted on during a lint sweep. */}
-                        {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
-                        <iframe
-                          // Key on the iframe base: remount when the base URL changes
-                          // (branch switch, or the production→sandbox swap once the dev
-                          // server is up). Path navigation is driven by `iframeSrc`.
-                          key={display.iframeBase}
-                          ref={previewIframeRef}
-                          src={frameSrc}
-                          className="w-full h-full border-0"
-                          title={t("sandbox.preview.devServerPreviewTitle")}
-                          onError={iframeRecovery.handleError}
-                          onLoad={() => {
-                            // A held Fast Preview pointer may go in now.
-                            setFrameNavigation(frameNavigationLoaded);
-                            // A load reached the frame — cancel the recovery watchdog
-                            // and reset its backoff before anything else.
-                            iframeRecovery.handleLoad();
-                            // The page finished loading — always clear the navigation
-                            // indicator first, before any of the early returns below.
-                            endNavigation();
-                            loadedSrcRef.current = iframeSrcRef.current;
-                            if (confirmsContentReloads) {
-                              confirmPreviewReloaded(contentScope);
+                        onLoad={() => {
+                          // The page finished loading — always clear the navigation
+                          // indicator first, before any of the early returns below.
+                          endNavigation();
+                          loadedSrcRef.current = iframeSrcRef.current;
+                          if (confirmsContentReloads) {
+                            confirmPreviewReloaded(contentScope);
+                          }
+                          // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                          if (display.mode !== "sandbox" || localPreviewUrl) {
+                            if (
+                              ((display.mode === "production" &&
+                                !display.showWakingPill) ||
+                                localPreviewUrl) &&
+                              effectiveEditingMode === "blocks"
+                            ) {
+                              injectCmsEditor();
                             }
-                            // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
-                            if (display.mode !== "sandbox" || localPreviewUrl) {
-                              if (
-                                ((display.mode === "production" &&
-                                  !display.showWakingPill) ||
-                                  localPreviewUrl) &&
-                                effectiveEditingMode === "blocks"
-                              ) {
-                                injectCmsEditor();
-                              }
-                              return;
-                            }
-                            // This is the VM dev-server preview (sandboxed running app),
-                            // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
-                            track("vm_preview_loaded", {
-                              view_mode: effectiveEditingMode,
-                              vm_id: vmEntry?.sandboxHandle ?? null,
-                              // Intentionally excluding the full previewUrl — it can contain
-                              // ephemeral tokens / user data in the query string.
-                            });
-                            // Sync currentPath when the user navigates inside the iframe.
-                            // Skip while a programmatic navigation is pending — stale
-                            // onLoad events from the previous URL would reset us to "/".
-                            if (!activeGlobalSection) {
-                              try {
-                                const iframePath =
-                                  previewIframeRef.current?.contentWindow
-                                    ?.location?.pathname;
-                                if (!iframePath) return;
-                                const intended = intendedPathRef.current;
-                                if (intended !== null) {
-                                  intendedPathRef.current = null;
-                                  // Stale onLoad from the previous URL — ignore.
-                                  if (
-                                    normPath(iframePath) !== normPath(intended)
-                                  ) {
-                                    return;
-                                  }
-                                }
-                                // Keep the template as currentPath when the loaded
-                                // path is just the template with params filled in —
-                                // otherwise the page match and param inputs are lost.
+                            return;
+                          }
+                          // This is the VM dev-server preview (sandboxed running app),
+                          // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
+                          track("vm_preview_loaded", {
+                            view_mode: effectiveEditingMode,
+                            vm_id: vmEntry?.sandboxHandle ?? null,
+                            // Intentionally excluding the full previewUrl — it can contain
+                            // ephemeral tokens / user data in the query string.
+                          });
+                          // Sync currentPath when the user navigates inside the iframe.
+                          // Skip while a programmatic navigation is pending — stale
+                          // onLoad events from the previous URL would reset us to "/".
+                          if (!activeGlobalSection) {
+                            try {
+                              const iframePath =
+                                previewIframeRef.current?.contentWindow
+                                  ?.location?.pathname;
+                              if (!iframePath) return;
+                              const intended = intendedPathRef.current;
+                              if (intended !== null) {
+                                intendedPathRef.current = null;
+                                // Stale onLoad from the previous URL — ignore.
                                 if (
-                                  normPath(iframePath) ===
-                                  normPath(resolvedPath)
+                                  normPath(iframePath) !== normPath(intended)
                                 ) {
                                   return;
                                 }
-                                setCurrentPath(iframePath);
-                                persistLastPage({
-                                  path: iframePath,
-                                  pageKey: pinnedPageKey,
-                                  params: pathParamValues,
-                                });
-                              } catch {
-                                // Cross-origin — can't read, keep current value
                               }
+                              // Keep the template as currentPath when the loaded
+                              // path is just the template with params filled in —
+                              // otherwise the page match and param inputs are lost.
+                              if (
+                                normPath(iframePath) === normPath(resolvedPath)
+                              ) {
+                                return;
+                              }
+                              setCurrentPath(iframePath);
+                              persistLastPage({
+                                path: iframePath,
+                                pageKey: pinnedPageKey,
+                                params: pathParamValues,
+                              });
+                            } catch {
+                              // Cross-origin — can't read, keep current value
                             }
-                            if (effectiveEditingMode === "visual") {
-                              injectVisualEditor();
-                            }
-                            if (effectiveEditingMode === "blocks") {
-                              injectCmsEditor();
-                            }
-                          }}
-                        />
-                      </div>
+                          }
+                          if (effectiveEditingMode === "visual") {
+                            injectVisualEditor();
+                          }
+                          if (effectiveEditingMode === "blocks") {
+                            injectCmsEditor();
+                          }
+                        }}
+                      />
                     )}
                   </div>
                 </ResizablePanel>

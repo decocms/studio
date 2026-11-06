@@ -18,7 +18,7 @@ import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
  * runtimes on a race with the feed.
  */
 export function threadRuntimeMatches(
-  thread: Task,
+  thread: Pick<Task, "partial" | "metadata">,
   expected: ThreadRuntime | undefined,
 ) {
   if (!expected) return true;

@@ -2,6 +2,7 @@
 
 import {
   ClockRewind,
+  BookOpen01,
   Calendar,
   CheckDone01,
   FileSearch02,
@@ -43,6 +44,12 @@ const APPS: Record<
     Icon: LayoutAlt01,
     to: PROJECT_ROUTE.siteEditor,
     tone: "bg-app-site-editor/15 text-app-site-editor",
+  },
+  blog: {
+    labelKey: "projects.apps.blog",
+    Icon: BookOpen01,
+    to: PROJECT_ROUTE.blog,
+    tone: "bg-app-blog/15 text-app-blog",
   },
   assets: {
     labelKey: "projects.apps.assets",

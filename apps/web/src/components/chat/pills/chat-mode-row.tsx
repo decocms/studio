@@ -17,6 +17,8 @@ import {
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
+import type { DraftKind } from "@/lib/draft-kind";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
 
 interface PureProps {
   branchPill: ReactNode;
@@ -53,6 +55,8 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     (stream?.messages ?? []).length > 0 || (taskCtx?.isThreadLocked ?? false);
   const setCurrentTaskBranch = taskCtx?.setCurrentTaskBranch;
   const createTask = taskCtx?.createTask;
+  /** The view's drafts: Blog's own Blog drafts, else the site's. */
+  const draftKind: DraftKind = useViewDraftKind() === "blog" ? "blog" : "site";
   /** A new branch only lands in CMS through a NEW (unstamped) thread: the
    *  runtime is per-thread and immutable, so a coding session on a CMS-default
    *  project has to start one rather than switch in place. */
@@ -121,6 +125,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         onAdoptBranch={onAdoptBranch}
         locked={locked}
         placement="chat"
+        draftKind={draftKind}
       />
     ) : null;
 

@@ -13,6 +13,13 @@
  */
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
 import {
+  isPlanningPostKey,
+  livePostKey,
+  PLANNING_POST_KEY_PREFIX,
+  planningPostKey,
+  postIdOfKey,
+} from "./blog-post-id";
+import {
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
@@ -58,10 +65,6 @@ export const BLOG_SINGULAR: Record<BlogKind, string> = {
   authors: "author",
   categories: "category",
 };
-
-export function isBlogKind(id: string): id is BlogKind {
-  return (BLOG_KINDS as readonly string[]).includes(id);
-}
 
 /** Wrapper field that holds the editable payload for each loader block. */
 export const WRAPPER_KEY: Record<BlogKind, "post" | "author" | "category"> = {
@@ -638,32 +641,10 @@ export function listPostsWithMeta(
 
 // ------------------ Lifecycle posts (idea → published) -----------------------
 
-/**
- * Planning posts (draft / generating / awaiting_review / archived) live one
- * block each under this
- * prefix, carrying NO `__resolveType` — exactly like themes, so the site's blog
- * app never resolves an unfinished draft. Only when a post is scheduled is it
- * promoted to a real `collections/blog/posts/<id>` block the site renders.
- */
-export const PLANNING_POST_KEY_PREFIX = "blog-manager/posts/";
-
-/** True when a key points at a planning post — anything but scheduled/published. */
-function isPlanningPostKey(key: string): boolean {
-  return key.startsWith(PLANNING_POST_KEY_PREFIX);
-}
-
-/** The `<id>` shared by a post's planning and live forms — the last path segment. */
-export function postIdOfKey(key: string): string {
-  return key.split("/").pop() ?? key;
-}
-
-export function planningPostKey(id: string): string {
-  return `${PLANNING_POST_KEY_PREFIX}${id}`;
-}
-
-export function livePostKey(id: string): string {
-  return `collections/blog/posts/${id}`;
-}
+/** Re-exported so `blog-data` stays the one import site for the data layer.
+ *  `isPlanningPostKey` stays private here: its callers outside this module are
+ *  about ROUTING, and take it from `blog-post-id` directly. */
+export { livePostKey, PLANNING_POST_KEY_PREFIX, planningPostKey, postIdOfKey };
 
 /** A fresh id for a new lifecycle post, unique enough for a per-site decofile. */
 export function newPostId(): string {

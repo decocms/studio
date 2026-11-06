@@ -491,6 +491,9 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.offDescription":
     "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
+  "sandbox.blogWorkspace.noBlogApp": "This site has no blog",
+  "sandbox.blogWorkspace.noBlogAppHint":
+    "Install the blog app, or add a page with the blog post section, and your posts, authors and categories show up here.",
   "sandbox.collectionsSidebar.actions": "Actions",
   "sandbox.collectionsSidebar.advanced": "Advanced",
   "sandbox.collectionsSidebar.apps": "Apps",
@@ -867,16 +870,13 @@ export const sandbox = {
   "sandbox.plainBlocks.listItemPlaceholder": "List item",
   "sandbox.plainBlocks.numberedLabel": "Numbered",
   "sandbox.plainBlocks.quotePlaceholder": "Quote",
-  "sandbox.postBoard.close": "Close",
   "sandbox.postBoard.archived": "Moved to Archived",
-  "sandbox.postBoard.collapse": "Collapse to panel",
   "sandbox.postBoard.collapseLane": "Collapse {lane}",
   "sandbox.postBoard.delete": "Delete",
   "sandbox.postBoard.emptyDescription":
     "Generate a few ideas and shape them into published posts.",
   "sandbox.postBoard.emptyTitle": "No posts yet",
   "sandbox.postBoard.duplicateTitle": "Duplicate title",
-  "sandbox.postBoard.expand": "Expand to full page",
   "sandbox.postBoard.expandLane": "Expand {lane}",
   "sandbox.postBoard.laneEmpty": "Nothing here yet",
   "sandbox.postBoard.laneArchived": "Archived",
@@ -909,7 +909,6 @@ export const sandbox = {
   "sandbox.postBoard.importEmpty": "Nothing to import — the content was empty.",
   "sandbox.postBoard.imported": "Imported — review and publish.",
   "sandbox.postBoard.readyToSchedule": "Ready to schedule",
-  "sandbox.postBoard.selectPrompt": "Select a post to view it here.",
   "sandbox.postBoard.untitled": "Untitled post",
   "sandbox.postBoard.generatingLabel": "Generating…",
   "sandbox.postBoard.usesCredits": "Uses AI credits",
@@ -966,16 +965,31 @@ export const sandbox = {
     "No categories yet — create some in the categories collection.",
   "sandbox.postEditor.noContentYet":
     "This post has no content yet. Use ⊕ to add your first block.",
+  "sandbox.postEditScreen.notFound": "This post no longer exists",
+  "sandbox.postEditScreen.notFoundHint":
+    "It may have been deleted, or the link points at an id this site does not have.",
+  "sandbox.postEditScreen.edit": "Edit",
+  "sandbox.postEditScreen.preview": "Preview",
+  "sandbox.postPreview.desktop": "Desktop",
+  "sandbox.postPreview.frameTitle": "Post preview",
+  "sandbox.postPreview.missingParams": "Not enough to build the URL",
+  "sandbox.postPreview.missingParamsHint":
+    "Set the post's slug, and its category when the blog route uses one.",
+  "sandbox.postPreview.mobile": "Mobile",
+  "sandbox.postPreview.noOrigin": "Waiting for the site",
+  "sandbox.postPreview.noOriginHint":
+    "The preview appears once this project's site is serving.",
+  "sandbox.postPreview.noRoute": "This site has no blog post page",
+  "sandbox.postPreview.noRouteHint":
+    "Add a page with the blog post section, or set the blog app's pageSlug, and the preview can render.",
+  "sandbox.postPreview.openInNewTab": "Open in new tab",
+  "sandbox.postPreview.refresh": "Refresh",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
   "sandbox.postEditor.readTimeLabel": "Read time (minutes)",
-  "sandbox.postEditor.previewRequiresSlugAndCategory":
-    "Set the post slug (and its category) plus the blog app's pageSlug to preview",
-  "sandbox.postEditor.previewTooltip": "Open the post preview in a new tab",
   "sandbox.postEditor.scheduledDatetimeDescription":
     "When this post goes live. The site publishes it on its own once this moment passes.",
   "sandbox.postEditor.scheduledDatetimeLabel": "Goes live at",
   "sandbox.postEditor.removePropLabel": "Remove prop",
-  "sandbox.postEditor.seePreview": "See preview",
   "sandbox.postEditor.selectAuthorsPlaceholder": "Select authors",
   "sandbox.postEditor.selectCategoriesPlaceholder": "Select categories",
   "sandbox.postEditor.seoCanonicalLabel": "Canonical URL",

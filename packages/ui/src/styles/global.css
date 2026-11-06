@@ -288,6 +288,7 @@
   --app-site-editor: oklch(0.64 0.16 289);
   --app-calendar: oklch(0.64 0.16 325);
   --app-experiments: oklch(0.64 0.16 15);
+  --app-blog: oklch(0.64 0.16 222);
   --app-analytics: oklch(0.64 0.16 245);
   --app-cdn: oklch(0.64 0.16 200);
   --app-assets: oklch(0.64 0.16 55);
@@ -475,6 +476,7 @@
   --color-app-site-editor: var(--app-site-editor);
   --color-app-calendar: var(--app-calendar);
   --color-app-experiments: var(--app-experiments);
+  --color-app-blog: var(--app-blog);
   --color-app-analytics: var(--app-analytics);
   --color-app-cdn: var(--app-cdn);
   --color-app-assets: var(--app-assets);
