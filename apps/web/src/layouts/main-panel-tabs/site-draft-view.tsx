@@ -24,6 +24,7 @@ import { preloadSiteEditorContentOnShow } from "./preload-site-editor-content";
 export interface SiteDraftGuideAction {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 /** One calm step: what's missing and the one thing to do about it. */
@@ -48,7 +49,11 @@ export function SiteDraftGuide({
             description={description}
             buttonProps={
               action
-                ? { children: action.label, onClick: action.onClick }
+                ? {
+                    children: action.label,
+                    onClick: action.onClick,
+                    disabled: action.disabled,
+                  }
                 : undefined
             }
           />

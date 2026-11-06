@@ -79,10 +79,10 @@ export async function inspectStubRepo(
 }
 
 /**
- * Commits `files` (path → content) onto `branch` in the stub, as a push from
- * outside Studio would land. Studio itself never writes the default branch,
- * so this is how a spec moves `main` while keeping its history and other
- * branches (unlike {@link moveStubMain}).
+ * Commits `files` (path → content) onto `branch` in the stub, as another
+ * draft's publish or a developer's push would land. The decofile API refuses
+ * writes to the default branch, so this is how a spec moves `main` while
+ * keeping its history and other branches (unlike {@link moveStubMain}).
  */
 export async function commitStubFiles(
   ctx: APIRequestContext,

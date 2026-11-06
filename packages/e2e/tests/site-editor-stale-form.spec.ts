@@ -84,14 +84,14 @@ const meta = {
   },
 };
 
-/** Seed a project whose Home page holds `homeSection`, and open the Site Editor on `branch` (a draft: production is read-only). */
+/** Seed a project whose Home page holds `homeSection`, and open the Site Editor on a draft (production is read-only). */
 async function loadEditor(
   page: Page,
   orgSlug: string,
   previewServerUrl: string,
   homeSection: unknown,
-  branch = "draft",
 ) {
+  const branch = "draft";
   const api = page.request;
   const owner = uniqueOwner();
   const repo = "stale-form";
@@ -119,7 +119,7 @@ async function loadEditor(
         },
       },
       // No files: the draft starts at main's head, with nothing of its own.
-      ...(branch === "main" ? {} : { [branch]: null }),
+      [branch]: null,
     },
   });
   const { item: thread } = await callSelfMcpTool<{ item: { id: string } }>(
@@ -142,14 +142,12 @@ async function openEditor(
   orgSlug: string,
   previewServerUrl: string,
   homeSection: unknown,
-  branch = "draft",
 ) {
   const { blocks, url, vmcpId, owner, repo } = await loadEditor(
     page,
     orgSlug,
     previewServerUrl,
     homeSection,
-    branch,
   );
   await blocks
     .getByRole("button", { name: /HeroSlideShow|SharedHero/ })
@@ -391,7 +389,6 @@ test.describe("Site Editor stale section form", () => {
         orgSlug,
         previewSite.url,
         { __resolveType: "SharedHero" },
-        "draft",
       );
       const published = {
         ...hero,

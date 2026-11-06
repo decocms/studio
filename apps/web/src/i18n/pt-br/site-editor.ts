@@ -89,4 +89,7 @@ export const siteEditor = {
   "siteEditor.siteNotOwned.body":
     "Outro projeto no Studio foi configurado com este site primeiro, então o conteúdo dele é editado e publicado lá. Abra esse projeto para mudar o conteúdo do site. Aqui você ainda pode conversar e trabalhar no código do site.",
   "siteEditor.siteNotOwned.openProjects": "Ver projetos",
+  "siteEditor.productionLocked.title": "Produção não pode ser editada aqui",
+  "siteEditor.productionLocked.body":
+    "As alterações são feitas em um draft e chegam ao site quando você o publica. Crie um novo draft para continuar editando.",
 } satisfies Record<keyof typeof siteEditorEn, string>;

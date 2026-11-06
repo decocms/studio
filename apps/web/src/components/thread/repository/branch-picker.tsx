@@ -54,7 +54,6 @@ import {
   Plus,
   Trash01,
 } from "@untitledui/icons";
-import { generateBranchName } from "@decocms/shared/branch-name";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
@@ -74,6 +73,7 @@ import {
   releaseDotClass,
   useReleases,
 } from "./use-releases";
+import { useStartDraft } from "./use-start-draft";
 
 interface Props {
   virtualMcpId: string;
@@ -85,7 +85,7 @@ interface Props {
   /** The current branch (a release's branch, or the base). */
   value: string | null | undefined;
   /** The project's production branch. Not listed (read-only); used only for the
-   *  current-version label and as the fallback when the active draft is deleted. */
+   *  current-version label. */
   baseBranch?: string | null;
   /** The base branch holds an editor draft (a hosted Blocks v8 CMS session):
    *  shown as that draft, not as "Production". v7 never sets it. */
@@ -157,6 +157,7 @@ export function BranchPicker({
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
+  const startDraft = useStartDraft({ virtualMcpId, userLabel, userId });
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
    * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
@@ -271,22 +272,9 @@ export function BranchPicker({
   };
 
   const create = () => {
-    if (atReleaseCap) {
-      toast.error(capReachedMessage);
-      return;
-    }
+    const branch = startDraft();
+    if (!branch) return;
     clearLocal();
-    const branch = generateBranchName(userLabel);
-    createRelease({
-      branch,
-      name: nextDraftName(
-        releases,
-        t("thread.branchPicker.defaultVersionName"),
-      ),
-      color: nextReleaseColor(releases.length),
-      createdBy: userId,
-      createdAt: new Date().toISOString(),
-    }).catch(reportReleaseError);
     (onCreateBranch ?? onChange)(branch);
     setOpen(false);
   };
@@ -345,7 +333,8 @@ export function BranchPicker({
   const confirmDelete = () => {
     const r = pendingDelete;
     setPendingDelete(null);
-    if (!r) return;
+    // Checked again: the other draft may have gone while the dialog was open.
+    if (!r || !canDeleteRelease) return;
     // Deleting the active draft: switch to a sibling draft — never to
     // production, where a Fast Preview save commits to the live site.
     if (r.branch === value) {
