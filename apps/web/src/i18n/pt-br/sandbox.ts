@@ -1218,6 +1218,10 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
+  "sandbox.defaultsOnCreateOnlyField.label":
+    "Preencher valores padrão só em blocos novos",
+  "sandbox.defaultsOnCreateOnlyField.description":
+    "Editar um bloco nunca grava padrões em campos que você não mudou. Seções, itens e opções novas continuam começando com seus padrões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",

@@ -44,6 +44,7 @@ import {
 } from "../array-item-hidden";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import { withBranchDiscriminator } from "../block-ref-field-utils";
+import { withDefaultsForNew } from "../schema-defaults";
 import {
   type Crumb,
   buildArrayDrillDownBreadcrumb,
@@ -343,7 +344,8 @@ export function ArrayField({
                 : t === "array"
                   ? []
                   : "";
-    const next = [...items, defaultVal];
+    const created = withDefaultsForNew(itemSchema, defaultVal, meta);
+    const next = [...items, created];
     onChange(next);
     if (inline) {
       const grown = resizeArrayEntries(entries, next.length);
@@ -356,7 +358,7 @@ export function ArrayField({
     }
     const nextIndex = next.length - 1;
     setOpenIndex(nextIndex);
-    const labelText = itemLabel(defaultVal, nextIndex);
+    const labelText = itemLabel(created, nextIndex);
     onBreadcrumbChange?.(
       buildArrayDrillDownBreadcrumb(
         breadcrumbPath,

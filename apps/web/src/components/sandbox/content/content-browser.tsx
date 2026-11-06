@@ -695,6 +695,8 @@ function ContentBrowserReady({
         )
       : [];
   const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
+  /** The app this tab just installed: its editor creates the block's defaults. */
+  const [installedAppKey, setInstalledAppKey] = useState<string | null>(null);
   /**
    * Why this session cannot install, when it cannot. A Fast Preview session
    * never writes code, so offering the button there buys a toast and nothing
@@ -737,8 +739,10 @@ function ContentBrowserReady({
       { blockKey: entry.id },
       {
         // Most apps carry credentials they cannot work without.
-        onSuccess: (block) =>
-          selectItem({ collection: "apps", key: block.key }),
+        onSuccess: (block) => {
+          setInstalledAppKey(block.key);
+          selectItem({ collection: "apps", key: block.key });
+        },
         onError: (err) => toast.error(err.message),
       },
     );
@@ -1719,6 +1723,9 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 previewBaseUrl={previewUrl}
+                // Its schema arrives only after the install, so the form
+                // that first opens it is what creates its defaults.
+                newBlock={selection.key === installedAppKey}
                 // Hosted v8: opening an entry never changes the draft, and
                 // a type with several entries says which one is open.
                 {...(typesMode

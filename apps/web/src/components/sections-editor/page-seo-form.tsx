@@ -4,6 +4,7 @@ import { SeoFormFields } from "./seo-form-fields";
 import { SeoTypeSelect } from "./seo-type-select";
 import { useT } from "@/i18n/use-t.ts";
 import { useBlocksSiteEditor } from "./blocks-site-editor";
+import type { SandboxConfig } from "./fields/field-props";
 import type { SchemaProperty } from "./resolve-schema";
 import type { Crumb } from "./schema-form-breadcrumb";
 import type { SeoTypeOption } from "./seo-schema";
@@ -34,6 +35,8 @@ interface PageSeoFormProps {
   asyncRenderAvailable?: boolean;
   /** The site's schema is still loading: SEO can't be turned on yet. */
   seoTypesLoading?: boolean;
+  /** The project's session: the form follows its CMS settings (`defaultsOnCreateOnly`). */
+  sandbox?: SandboxConfig;
 }
 
 /** Page SEO: Enable + type + fields + Async render (admin EditSEO layout). */
@@ -54,6 +57,7 @@ export function PageSeoForm({
   beforeFields,
   asyncRenderAvailable = true,
   seoTypesLoading = false,
+  sandbox,
 }: PageSeoFormProps) {
   const t = useT();
   // v8: no SEO type to start from (a page schema that lists none, or the
@@ -122,6 +126,7 @@ export function PageSeoForm({
           onChange={(next) => onInnerChange(next as Record<string, unknown>)}
           onBreadcrumbChange={onBreadcrumbChange}
           siteDefaultSeo={siteDefaultSeo}
+          sandbox={sandbox}
         />
       )}
     </SeoFormChrome>

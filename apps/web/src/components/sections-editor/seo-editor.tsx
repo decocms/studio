@@ -6,6 +6,7 @@ import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { SeoFormFields } from "./seo-form-fields";
 import { resolveSchema } from "./resolve-schema";
+import type { SandboxConfig } from "./fields/field-props";
 import type { LiveMeta } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import type { SeoTarget } from "./seo-block";
@@ -140,6 +141,14 @@ export function SeoEditor({
   };
 
   const path = target.kind === "page" ? target.path : "/";
+  // Only the project matters here: its CMS settings decide whether the form
+  // may write defaults into this existing block.
+  const seoSandbox: SandboxConfig = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    threadId: null,
+  };
   const previewUrl =
     target.kind === "page" && previewBaseUrl
       ? safeUrl(path, previewBaseUrl)
@@ -215,6 +224,7 @@ export function SeoEditor({
                     {t("sectionsEditor.seoEditor.emptyFieldsHint")}
                   </p>
                   <PageSeoForm
+                    sandbox={seoSandbox}
                     rawSeo={displayRawSeo}
                     innerSeo={effectiveSeo}
                     defaultResolveType={defaultResolveType}
@@ -240,6 +250,7 @@ export function SeoEditor({
                 seoSchema &&
                 activeResolveType && (
                   <SeoFormFields
+                    sandbox={seoSandbox}
                     schema={seoSchema}
                     resolveType={activeResolveType}
                     value={effectiveSeo}

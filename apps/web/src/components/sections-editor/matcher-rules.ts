@@ -7,6 +7,7 @@ import { type NamedRuleValues, readNamedRuleValues } from "./named-rules";
 import { globalSectionLabel } from "./page-list";
 import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
+import { withDefaultsForNew } from "./schema-defaults";
 
 export interface UnwrappedMatcherRule {
   resolveType: string;
@@ -214,5 +215,10 @@ export function seedMatcherRule(
     schema?.type === "inline-union"
       ? schema.inlineUnionBranches?.[0]?.discriminators
       : undefined;
-  return discriminators ? { ...base, ...discriminators } : base;
+  // The rule is being created: it starts with its defaults too.
+  return withDefaultsForNew(
+    undefined,
+    discriminators ? { ...base, ...discriminators } : base,
+    meta,
+  ) as Record<string, unknown>;
 }

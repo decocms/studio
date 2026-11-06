@@ -73,6 +73,7 @@ function AppEditorForm({
   notice,
   saveGuard,
   persistDefaults,
+  newBlock,
   schemaWaiting = true,
 }: {
   orgSlug: string;
@@ -92,6 +93,12 @@ function AppEditorForm({
   saveGuard?: SaveGuard;
   /** `false`: the form's `@default`s are saved with the first change, not when it opens. */
   persistDefaults?: boolean;
+  /**
+   * The block was only just created (an app installed now, settings not saved
+   * yet): its `@default`s are saved as in any project, including one that
+   * writes defaults only into new blocks.
+   */
+  newBlock?: boolean;
   /**
    * Whether the owner is still re-reading `/live/_meta` for this block. It
    * owns the budget that ends the wait (see `schema-poll`), and without it
@@ -201,6 +208,7 @@ function AppEditorForm({
       const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
         entry,
         decofile,
+        meta,
       );
       const created = await saveBlock.mutateAsync({ blockKey: newKey, data });
       // Kept the version someone else created first (hosted v8): the hook's
@@ -304,6 +312,7 @@ function AppEditorForm({
                 value={effectiveValue}
                 onChange={handleChange}
                 persistDefaults={persistDefaults}
+                newBlock={newBlock}
                 basePath=""
                 breadcrumbPath={breadcrumbs}
                 onBreadcrumbChange={handleBreadcrumbChange}

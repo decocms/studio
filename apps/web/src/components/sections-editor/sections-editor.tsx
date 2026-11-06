@@ -208,6 +208,7 @@ import { withVariantValue } from "./variant-shape";
 import { isLazyWrapper } from "./lazy-value";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
 import { BlocksSiteEditorProvider } from "./blocks-site-editor";
+import { withDefaultsForNew } from "./schema-defaults";
 
 /** One toast for a section form's save outcome, however many saves it took. */
 const STALE_FORM_TOAST = "section-form-stale-save";
@@ -2184,7 +2185,11 @@ export function SectionsEditor({
 
     const updatedSections = [
       ...rawSections,
-      { __resolveType: entry.resolveType } as RawSection,
+      withDefaultsForNew(
+        undefined,
+        { __resolveType: entry.resolveType },
+        meta ?? undefined,
+      ) as RawSection,
     ];
     const newIndex = updatedSections.length - 1;
 
@@ -2254,7 +2259,13 @@ export function SectionsEditor({
       handleAddSection(entry);
       return;
     }
-    append({ __resolveType: entry.resolveType });
+    append(
+      withDefaultsForNew(
+        undefined,
+        { __resolveType: entry.resolveType },
+        meta ?? undefined,
+      ),
+    );
     setAddSectionOpen(false);
     pendingAppendRef.current = null;
   };
@@ -4612,6 +4623,7 @@ export function SectionsEditor({
       )}
       {pageData && activePageKey ? (
         <PageSeoForm
+          sandbox={sandbox}
           rawSeo={displayRawSeo}
           innerSeo={effectiveInner}
           defaultResolveType={defaultResolveType}
@@ -4647,6 +4659,7 @@ export function SectionsEditor({
         <div className="mx-auto max-w-2xl">
           {pageData && activePageKey ? (
             <PageSeoForm
+              sandbox={sandbox}
               rawSeo={displayRawSeo}
               innerSeo={effectiveInner}
               defaultResolveType={defaultResolveType}

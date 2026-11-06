@@ -21,14 +21,18 @@ export function SchemaFormHarness({
   resolveType,
   initialValue = {},
   decofile = {},
+  virtualMcpId,
 }: {
   meta: LiveMeta;
   resolveType: string;
   initialValue?: Record<string, unknown>;
   decofile?: Record<string, unknown>;
+  /** Renders the form inside this project (see the `use-virtual-mcp` stub). */
+  virtualMcpId?: string;
 }) {
   const resolved = resolveSchema(resolveType, meta);
   const [value, setValue] = useState<unknown>(initialValue);
+  const [writes, setWrites] = useState(0);
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
 
   return (
@@ -37,17 +41,26 @@ export function SchemaFormHarness({
         <SchemaForm
           schema={resolved}
           value={value}
-          onChange={setValue}
+          onChange={(next) => {
+            setValue(next);
+            setWrites((n) => n + 1);
+          }}
           basePath=""
           breadcrumbPath={breadcrumb}
           onBreadcrumbChange={setBreadcrumb}
           meta={meta}
           decofile={decofile}
+          sandbox={
+            virtualMcpId
+              ? { orgSlug: "ct", virtualMcpId, branch: "draft", threadId: null }
+              : undefined
+          }
         />
       ) : (
         <div data-testid="resolve-null">resolveSchema returned null</div>
       )}
       <pre data-testid="form-value">{JSON.stringify(value)}</pre>
+      <pre data-testid="write-count">{writes}</pre>
       <pre data-testid="breadcrumb">{JSON.stringify(breadcrumb)}</pre>
     </div>
   );

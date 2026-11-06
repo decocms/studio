@@ -897,6 +897,13 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
     ),
+  defaultsOnCreateOnly: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Blocks form: write schema `@default`s only into what is being created (a section, item or option). An existing block keeps the fields nobody edited as stored. Absent, null or false: the form writes a block's missing defaults when it opens.",
+    ),
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,
   fastPreviewInPlace: fastPreviewInPlaceMetadataField,

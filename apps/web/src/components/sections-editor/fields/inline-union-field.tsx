@@ -11,6 +11,7 @@ import { stripMustacheTokens } from "../array-item-display";
 import { blockRefOptionLabel } from "../block-ref-field-utils";
 import type { SchemaProperty } from "../resolve-schema";
 import { renderField, SchemaForm } from "../schema-form";
+import { withDefaultsForNew } from "../schema-defaults";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import {
@@ -78,16 +79,28 @@ export function InlineUnionField(props: FieldProps) {
     if (next.startsWith(LOADER_OPTION_PREFIX)) {
       const ref =
         loaderOptions[Number(next.slice(LOADER_OPTION_PREFIX.length))];
-      if (ref) onChange({ __resolveType: ref.resolveType });
+      if (ref) {
+        onChange(
+          withDefaultsForNew(
+            undefined,
+            { __resolveType: ref.resolveType },
+            props.meta,
+          ),
+        );
+      }
       return;
     }
     const index = Number(next);
     setSelected(index);
-    // Fresh value for the chosen branch: [] for an array branch, else an object seeded with its const discriminators (e.g. { name: "max-age" }).
+    // Fresh value for the chosen branch: [] for an array branch, else an object with its const discriminators (e.g. { name: "max-age" }) and its defaults.
     onChange(
       branches[index]?.schema?.type === "array"
         ? []
-        : { ...(branches[index]?.discriminators ?? {}) },
+        : withDefaultsForNew(
+            branches[index]?.schema,
+            { ...(branches[index]?.discriminators ?? {}) },
+            props.meta,
+          ),
     );
   };
 

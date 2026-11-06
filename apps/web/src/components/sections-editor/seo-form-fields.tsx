@@ -1,3 +1,4 @@
+import type { SandboxConfig } from "./fields/field-props";
 import type { SchemaProperty } from "./resolve-schema";
 import { SchemaForm } from "./schema-form";
 import type { Crumb } from "./schema-form-breadcrumb";
@@ -14,6 +15,8 @@ interface SeoFormFieldsProps {
   onBreadcrumbChange?: (path: Crumb[]) => void;
   /** Page SEO only — enables General "Use default" toggles. */
   siteDefaultSeo?: Record<string, unknown>;
+  /** The project's session: the form follows its CMS settings (`defaultsOnCreateOnly`). */
+  sandbox?: SandboxConfig;
 }
 
 /**
@@ -28,6 +31,7 @@ export function SeoFormFields({
   onChange,
   onBreadcrumbChange,
   siteDefaultSeo,
+  sandbox,
 }: SeoFormFieldsProps) {
   const v8 = useBlocksSiteEditor();
   const mode = getSeoFormMode(resolveType, schema, v8);
@@ -40,6 +44,7 @@ export function SeoFormFields({
         onChange={(next) => onChange(next)}
         siteDefaultSeo={siteDefaultSeo}
         formResetKey={formResetKey}
+        sandbox={sandbox}
       />
     );
   }
@@ -55,6 +60,7 @@ export function SeoFormFields({
       basePath=""
       breadcrumbPath={[]}
       onBreadcrumbChange={onBreadcrumbChange ?? (() => {})}
+      sandbox={sandbox}
     />
   );
 }
