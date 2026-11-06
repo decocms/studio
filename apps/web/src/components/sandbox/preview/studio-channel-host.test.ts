@@ -210,6 +210,22 @@ describe("refresh: HTML swap after a save", () => {
     fromPage({ type: "html-swap:start", id: 1 });
   });
 
+  it("never names a URL to a document of another origin: the preview loads it", () => {
+    const { host, frame, fromPage } = setup();
+    // The frame navigated to another site, which speaks the channel.
+    fromPage({ type: "deco:ready" }, { origin: "https://evil.example" });
+    fromPage(
+      { type: "deco:loaded", url: HTML_SWAP },
+      { origin: "https://evil.example" },
+    );
+    const before = frame.posted.length;
+    expect(host.refresh(`${SITE}/?__draft=secret`)).toBe(false);
+    expect(host.refresh("not a url")).toBe(false);
+    expect(frame.posted.length).toBe(before);
+    // A URL of the document's own origin still swaps.
+    expect(host.refresh("https://evil.example/?x=1")).toBe(true);
+  });
+
   it("tells the preview when the frame's modules change", () => {
     let changes = 0;
     const { host, fromPage, loadBoth } = setup({
