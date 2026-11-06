@@ -32,8 +32,8 @@ import {
 } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
+import { autosaveDelay } from "./autosave-delay";
 import {
-  AUTOSAVE_DELAY,
   keptTheirVersion,
   useDebouncedSaveBlock,
   useSaveBlock,
@@ -1833,7 +1833,7 @@ export function SectionsEditor({
                 // Saves of this form made meanwhile are in the retry; the
                 // others run behind it (or now, when it sends nothing).
                 waitingFormSavesRef.current.delete(waitingKey);
-                runWaitingFormSaves(AUTOSAVE_DELAY);
+                runWaitingFormSaves(autosaveDelay(protocolProject));
               }, retry.delay);
             } else {
               reloadStaleForm();
@@ -1863,7 +1863,7 @@ export function SectionsEditor({
             formSaveInFlightRef.current = false;
             // After a refusal the stored copy is re-read first; give the
             // editor a render to show it before building on it.
-            runWaitingFormSaves(refused ? AUTOSAVE_DELAY : 0);
+            runWaitingFormSaves(refused ? autosaveDelay(protocolProject) : 0);
             refreshFormIfLeft();
           });
       };
@@ -2009,7 +2009,7 @@ export function SectionsEditor({
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       write();
-    }, AUTOSAVE_DELAY);
+    }, autosaveDelay(protocolProject));
   };
 
   const handleSelectSection = (index: number) => {
@@ -2784,7 +2784,7 @@ export function SectionsEditor({
           onError: saveBlock.reportError,
         },
       );
-    }, AUTOSAVE_DELAY);
+    }, autosaveDelay(protocolProject));
   };
 
   const handleMatcherTypeChange = (newRt: string) => {
@@ -3091,7 +3091,7 @@ export function SectionsEditor({
           onError: saveBlock.reportError,
         },
       );
-    }, AUTOSAVE_DELAY);
+    }, autosaveDelay(protocolProject));
   };
 
   const handleSectionMatcherTypeChange = (newRt: string) => {

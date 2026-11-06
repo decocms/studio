@@ -75,13 +75,7 @@ import {
   type HeldEdit,
   heldCopyVersion,
 } from "./held-copy";
-
-/**
- * Debounce window for form-driven block autosaves (ms): at least 1 s per
- * block, so a hosted draft file takes about one write a second while typing
- * (the design's rate for the CDN's object store).
- */
-export const AUTOSAVE_DELAY = 1000;
+import { autosaveDelay } from "./autosave-delay";
 
 interface UseSaveBlockParams {
   orgSlug: string;
@@ -876,6 +870,8 @@ export function useSaveBlock(
     hold: (blockKey: string) => heldCopies?.hold(blockKey),
     /** True while saves are guarded by the editor's own copy (hosted v8). */
     holdsCopy: held !== null,
+    /** This backend's debounce window for autosaves ({@link autosaveDelay}). */
+    autosaveDelay: autosaveDelay(protocol !== null),
     /**
      * An edit of `blockKey` is made now (holdsCopy): the copy it is built
      * on, for its save's `edit`. Undefined when saves aren't guarded by the
@@ -907,7 +903,7 @@ type SaveData =
  * Wraps {@link useSaveBlock} with the standard debounced-autosave loop shared by
  * every form-driven block editor (section forms, the SEO editor, the SEO
  * sheets). Call `save(blockKey, data)` on each change; the latest payload is
- * persisted once edits settle for {@link AUTOSAVE_DELAY}ms, with a toast on
+ * persisted once edits settle for {@link autosaveDelay}ms, with a toast on
  * failure. `data` may be a builder (see {@link SaveData}) that returns null to
  * abort the save.
  */
@@ -1018,7 +1014,7 @@ export function useDebouncedSaveBlock(
       setTimeout(() => {
         timersRef.current.delete(blockKey);
         runPendingSave(blockKey);
-      }, AUTOSAVE_DELAY),
+      }, saveBlock.autosaveDelay),
     );
   };
 
