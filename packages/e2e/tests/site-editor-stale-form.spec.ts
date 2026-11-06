@@ -961,6 +961,53 @@ test.describe("Site Editor stale section form", () => {
       await previewSite.close();
     }
   });
+
+  test("a save that landed but whose answer was lost does not refuse the form's next saves", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const staleToasts = await countToasts(
+        page,
+        "This block changed while you were editing",
+      );
+
+      // The write reaches the branch; the editor only hears a gateway error.
+      let loseAnswer = true;
+      await page.route("**/decofile/**", async (route) => {
+        if (route.request().method() !== "PATCH" || !loseAnswer) {
+          await route.continue();
+          return;
+        }
+        loseAnswer = false;
+        await route.fetch();
+        await route.fulfill({ status: 502, body: "Bad Gateway" });
+      });
+      await headline.fill("First edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual({ ...hero, headline: "First edit" });
+
+      await headline.fill("Second edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...hero, headline: "Second edit" });
+      await expect(headline).toHaveValue("Second edit");
+      await expect(conflictDialog(page)).toHaveCount(0);
+      expect(await staleToasts()).toBe(0);
+    } finally {
+      await previewSite.close();
+    }
+  });
 });
 
 test.describe("Site Editor stale page fields", () => {
