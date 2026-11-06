@@ -17,6 +17,7 @@
 
 import type { APIRequestContext, Page } from "@playwright/test";
 import {
+  commitStubFiles,
   createFastPreviewProject,
   seedStubRepo,
   uniqueOwner,
@@ -83,13 +84,13 @@ const meta = {
   },
 };
 
-/** Seed a project whose Home page holds `homeSection`, and open the Site Editor on `branch`. */
+/** Seed a project whose Home page holds `homeSection`, and open the Site Editor on `branch` (a draft: production is read-only). */
 async function loadEditor(
   page: Page,
   orgSlug: string,
   previewServerUrl: string,
   homeSection: unknown,
-  branch = "main",
+  branch = "draft",
 ) {
   const api = page.request;
   const owner = uniqueOwner();
@@ -132,7 +133,7 @@ async function loadEditor(
   );
   const blocks = page.getByTestId("blocks-panel");
   const url = `/api/${orgSlug}/decofile/${project.vmcpId}/${branch}`;
-  return { blocks, url, vmcpId: project.vmcpId };
+  return { blocks, url, vmcpId: project.vmcpId, owner, repo };
 }
 
 /** {@link loadEditor}, then open the Home page's hero section form. */
@@ -141,9 +142,9 @@ async function openEditor(
   orgSlug: string,
   previewServerUrl: string,
   homeSection: unknown,
-  branch = "main",
+  branch = "draft",
 ) {
-  const { blocks, url, vmcpId } = await loadEditor(
+  const { blocks, url, vmcpId, owner, repo } = await loadEditor(
     page,
     orgSlug,
     previewServerUrl,
@@ -164,6 +165,8 @@ async function openEditor(
     headline,
     vmcpId,
     url,
+    owner,
+    repo,
   };
 }
 
@@ -383,7 +386,7 @@ test.describe("Site Editor stale section form", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const previewSite = await startPreviewSite();
     try {
-      const { headline, url, vmcpId } = await openEditor(
+      const { headline, url, vmcpId, owner, repo } = await openEditor(
         page,
         orgSlug,
         previewSite.url,
@@ -395,12 +398,9 @@ test.describe("Site Editor stale section form", () => {
         slides: [{ title: "First slide", description: "Published elsewhere" }],
       };
       // Another draft publishes a change to the same block...
-      await writeElsewhere(
-        page.request,
-        `/api/${orgSlug}/decofile/${vmcpId}/main`,
-        "SharedHero",
-        published,
-      );
+      await commitStubFiles(page.request, owner, repo, "main", {
+        ".deco/blocks/SharedHero.json": JSON.stringify(published),
+      });
       // ...and "get latest" fast-forwards this draft, which has nothing of
       // its own yet, onto that publish.
       const sync = await page.request.post(
@@ -936,7 +936,7 @@ test.describe("Site Editor stale section form", () => {
         if (
           method === "GET" &&
           serveOld &&
-          /\/main$/.test(new URL(route.request().url()).pathname)
+          /\/draft$/.test(new URL(route.request().url()).pathname)
         ) {
           serveOld = false;
           await route.fulfill({

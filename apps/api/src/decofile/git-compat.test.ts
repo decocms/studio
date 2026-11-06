@@ -1,10 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import type { TreeEntry } from "@/git-providers";
+import { fakeRepo } from "@/hosted/hosted-test-helpers";
 import {
   buildDiscardPlan,
   buildMergeReplayPlan,
   buildPublishStatus,
+  DefaultBranchWriteError,
   normalizeCompareStatus,
+  repoGitDiscard,
+  repoGitRebase,
 } from "./git-compat";
 
 describe("buildMergeReplayPlan", () => {
@@ -206,5 +210,21 @@ describe("buildPublishStatus", () => {
     expect(status.staged).toEqual([]);
     expect(status.files).toEqual([]);
     expect(status.unpushed).toBe(0);
+  });
+});
+
+describe("writes to the default branch", () => {
+  it("repoGitRebase refuses the default branch, even onto another base", async () => {
+    const { client } = fakeRepo({ "a.json": "{}" });
+    await expect(repoGitRebase(client, "main", "staging")).rejects.toThrow(
+      DefaultBranchWriteError,
+    );
+  });
+
+  it("repoGitDiscard refuses the default branch", async () => {
+    const { client } = fakeRepo({ "a.json": "{}" });
+    await expect(repoGitDiscard(client, "main", ["a.json"])).rejects.toThrow(
+      DefaultBranchWriteError,
+    );
   });
 });

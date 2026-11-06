@@ -60,6 +60,8 @@ import {
 } from "@/git-providers";
 import { GitProviderError } from "../../git-providers/types";
 import {
+  DEFAULT_BRANCH_READ_ONLY,
+  DefaultBranchWriteError,
   repoGitDiff,
   repoGitDiscard,
   repoGitRebase,
@@ -416,6 +418,13 @@ function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
         ? {}
         : { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) }),
     });
+  }
+  if (err instanceof DefaultBranchWriteError) {
+    return c.json(
+      { error: message, code: DEFAULT_BRANCH_READ_ONLY },
+      409,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
   }
   if (err instanceof RepoWriteConflict) {
     return c.json({ error: message }, 409, SANDBOX_PROXY_CACHE_HEADERS);
@@ -1135,6 +1144,9 @@ export const createSandboxRoutes = () => {
           await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
+          if (err instanceof DefaultBranchWriteError) {
+            return fastPreviewGitError(c, err);
+          }
           const status =
             repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
               ? 409
