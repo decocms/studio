@@ -1017,8 +1017,8 @@ export function createAdminRoutes(): Hono<Env> {
   });
 
   /**
-   * Links every existing Blocks v8 project (its `metadata.blocksMajor`
-   * marker, set by `deco schema push`) to the site it names
+   * Links every existing Blocks v8 project (its "Blocks v8 site" switch
+   * on, `isBlocksV8Project`) to the site it names
    * (`metadata.siteSlug`) in `org_sites`, as project creation now does,
    * claiming a free slug for its org first. Safe to re-run; never takes a
    * slug another org, project or deco.cx has, nor a deleted org's (reported

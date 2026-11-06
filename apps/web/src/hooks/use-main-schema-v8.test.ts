@@ -1,23 +1,28 @@
 import { describe, expect, test } from "bun:test";
-import { BLOCKS_MAJOR_METADATA_KEY } from "@decocms/shared/blocks-major";
+import { BLOCKS_V8_METADATA_KEY } from "@decocms/shared/blocks-major";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { projectMainSchemaAnswer } from "./use-main-schema-v8";
+import { lastFoundV8, projectMainSchemaAnswer } from "./use-main-schema-v8";
 
 const project = (metadata: Record<string, unknown> | null) =>
   ({ id: "p", metadata }) as unknown as VirtualMCPEntity;
 
-describe("projectMainSchemaAnswer (the v8 marker alone)", () => {
-  test("a project marked v8 by `deco schema push` is v8", () => {
-    expect(
-      projectMainSchemaAnswer(project({ [BLOCKS_MAJOR_METADATA_KEY]: 8 })),
-    ).toBe("v8");
+describe("projectMainSchemaAnswer (the Blocks v8 site switch alone)", () => {
+  test("a project an org admin made a Blocks v8 site is v8", () => {
+    const on = project({ [BLOCKS_V8_METADATA_KEY]: true });
+    expect(projectMainSchemaAnswer(on)).toBe("v8");
+    expect(lastFoundV8(on)).toBe(true);
   });
 
-  test("no marker, another major or no project is v7", () => {
-    expect(projectMainSchemaAnswer(project(null))).toBe("v7");
-    expect(
-      projectMainSchemaAnswer(project({ [BLOCKS_MAJOR_METADATA_KEY]: 9 })),
-    ).toBe("v7");
-    expect(projectMainSchemaAnswer(null)).toBe("v7");
+  test("the switch off, a stale v8 marker or no project is v7", () => {
+    for (const p of [
+      project(null),
+      project({}),
+      project({ [BLOCKS_V8_METADATA_KEY]: "true" }),
+      project({ blocksMajor: 8 }),
+      null,
+    ]) {
+      expect(projectMainSchemaAnswer(p)).toBe("v7");
+      expect(lastFoundV8(p)).toBe(false);
+    }
   });
 });

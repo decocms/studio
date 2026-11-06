@@ -149,6 +149,9 @@ export const virtualMcp = {
   "virtualMcp.settings.general.title": "General",
   "virtualMcp.settings.site.title": "CMS",
   "virtualMcp.settings.site.classicTitle": "Site and sandbox",
+  "virtualMcp.settings.blocksV8Site.label": "Blocks v8 site",
+  "virtualMcp.settings.blocksV8Site.description":
+    "Studio edits this site with the Blocks v8 editor and the hosted CMS, and accepts deco schema push. Off, it is a v7 site with the git-backed editor. Only organization owners and admins see this switch.",
   "virtualMcp.settings.groups.advanced": "Advanced",
   "virtualMcp.settings.groups.details": "Details",
   "virtualMcp.settings.connections.title": "Connections",

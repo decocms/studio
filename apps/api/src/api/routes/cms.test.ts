@@ -1,7 +1,8 @@
 /**
  * Route tests of the hosted CMS API (`cms.ts`): today's gates in order,
- * `via` from the auth method, draft names with `/`, schema push and the
- * blocksMajor marker. Buckets and the drafts table are in memory.
+ * `via` from the auth method, draft names with `/`, and schema push, which
+ * only a project with the "Blocks v8 site" switch on takes and which never
+ * writes the switch. Buckets and the drafts table are in memory.
  */
 
 import { beforeEach, describe, expect, it } from "bun:test";
@@ -297,17 +298,44 @@ describe("rpc: cms.index and cms.blocks", () => {
 });
 
 describe("schema push", () => {
-  it("writes schema.json and sets the v8 marker from it", async () => {
+  it("writes schema.json on a Blocks v8 site, and never the switch", async () => {
     const t = cmsTestApp();
     const res = await t.call("PUT", "acme/schema", undefined, SCHEMA_TEXT);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ etag: "schema1", blocksMajor: 8 });
     expect(t.records.objects.get("acme")?.text).toBe(SCHEMA_TEXT);
-    expect(t.patches).toEqual([{ set: { blocksMajor: 8 }, unset: [] }]);
+    expect(t.patches).toEqual([]);
     // The editor's forms read it back through the protocol.
     await t.call("POST", "acme/drafts", { name: "d" });
     const schema = await t.rpc("acme", "d", "schema.get");
     expect(schema.body.result.schema).toEqual(JSON.parse(SCHEMA_TEXT));
+  });
+
+  it("a v7 schema on a Blocks v8 site is stored, and the switch stays on", async () => {
+    const t = cmsTestApp();
+    const v7 = JSON.stringify({ definitions: {}, root: {} });
+    const res = await t.call("PUT", "acme/schema", undefined, v7);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ blocksMajor: null });
+    expect(t.patches).toEqual([]);
+  });
+
+  it("is refused while the project's Blocks v8 site switch is off", async () => {
+    const t = cmsTestApp({ blocksV8: false });
+    const res = await t.call("PUT", "acme/schema", undefined, SCHEMA_TEXT);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("not_blocks_v8_site");
+    expect(res.body.error).toContain('"Blocks v8 site"');
+    // Nothing is stored, and the switch is not turned on.
+    expect(t.records.objects.has("acme")).toBe(false);
+    expect(t.patches).toEqual([]);
+  });
+
+  it("is refused for a site no project is linked to", async () => {
+    const t = cmsTestApp({ siteProjects: {} });
+    const res = await t.call("PUT", "acme/schema", undefined, SCHEMA_TEXT);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("not_blocks_v8_site");
   });
 
   it("refuses a body that isn't a JSON object", async () => {

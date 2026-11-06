@@ -233,8 +233,8 @@ export function contentMode(input: {
  *   project owns is `site-not-owned-github` (guided, not retried).
  *
  * A failed read of the schema that decides (main's, or the working tree's
- * before it ever answered) is `retrying-*` only on a project the server last found
- * v8 (its marker): still undecided, the editor waits and retries, and shows
+ * before it ever answered) is `retrying-*` only on a Blocks v8 site (its
+ * "Blocks v8 site" switch): still undecided, the editor waits and retries, and shows
  * neither editor. On any other project it is v7 (main's answer reads `v7`,
  * `useMainSchemaV8`; a failing working-tree read is `legacy`), so a site whose schema
  * can't be confirmed v8 gets the v7 editor as on main. Only
@@ -265,8 +265,8 @@ export function selectContentBackend(input: {
    */
   sandboxSite?: SchemaAnswer | "unavailable";
   /**
-   * The project's `blocksMajor` marker (`isBlocksV8Project`): the server
-   * last found main v8. A hint only, never a v8 answer: it decides just
+   * The project's "Blocks v8 site" switch (`isBlocksV8Project`). In Sandbox
+   * mode a hint only, never a v8 answer (the working tree's schema is): it decides just
    * whether a sandbox that failed before it ever answered is waited on
    * (marked) or treated as v7 (anything else, as on main).
    */
@@ -281,8 +281,8 @@ export function selectContentBackend(input: {
     if (site === "v8") return "protocol-sandbox";
     if (site === "v7") return "legacy";
     // The sandbox never answered (a v8 answer is kept through a failed
-    // refetch, so this is a site not known yet). Only a project the server
-    // last found v8 (its marker) waits, undecided; any other one gets the v7
+    // refetch, so this is a site not known yet). Only a Blocks v8 site (its
+    // switch on) waits, undecided; any other one gets the v7
     // sandbox editor, as on main (which never waited on the sandbox), and a
     // v8 answer that arrives later takes over.
     if (site === "error") {

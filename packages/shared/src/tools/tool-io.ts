@@ -4946,6 +4946,7 @@ export interface StudioToolIO {
         icon?: string | null | undefined;
         status?: "active" | "inactive" | undefined;
         pinned?: boolean | undefined;
+        blocksV8?: boolean | undefined;
         metadata?:
           | {
               [x: string]: unknown;

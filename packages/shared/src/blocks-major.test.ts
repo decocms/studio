@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { isBlocksV8Project, isV8Schema } from "./blocks-major.ts";
+import {
+  BLOCKS_V8_METADATA_KEY,
+  isBlocksV8Project,
+  isV8Schema,
+} from "./blocks-major.ts";
 
 describe("isV8Schema", () => {
   test('only a top-level "blocksMajor": 8 is v8', () => {
@@ -30,14 +34,30 @@ describe("isV8Schema", () => {
   });
 });
 
-describe("isBlocksV8Project (the marker deco schema push writes)", () => {
-  test("only the server's marker 8 counts", () => {
-    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(true);
-    expect(isBlocksV8Project({ blocksMajor: "8" })).toBe(false);
-    expect(isBlocksV8Project({ blocksMajor: 7 })).toBe(false);
-    expect(isBlocksV8Project({})).toBe(false);
-    expect(isBlocksV8Project(null)).toBe(false);
-    expect(isBlocksV8Project(undefined)).toBe(false);
+describe("isBlocksV8Project (the Blocks v8 site switch)", () => {
+  test("the switch is metadata.blocksV8", () => {
+    expect(BLOCKS_V8_METADATA_KEY).toBe("blocksV8");
+  });
+
+  test("only the switch on (a strict true) is v8", () => {
+    expect(isBlocksV8Project({ blocksV8: true })).toBe(true);
+    for (const metadata of [
+      { blocksV8: false },
+      { blocksV8: "true" },
+      { blocksV8: 1 },
+      {},
+      null,
+      undefined,
+    ]) {
+      expect(isBlocksV8Project(metadata)).toBe(false);
+    }
+  });
+
+  test("a blocksMajor marker an earlier Studio wrote is not the switch", () => {
+    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(false);
+    expect(
+      isBlocksV8Project({ blocksMajor: 8, cmsSchemaPush: { site: "a" } }),
+    ).toBe(false);
   });
 });
 
@@ -121,7 +141,7 @@ describe("one v8 detector", () => {
   const isTestFile = (rel: string) =>
     /\.(test|spec|e2e)\.[cm]?[jt]sx?$/.test(rel) ||
     /(^|\/)(e2e|daemon-e2e|ct|fixtures|__tests__)\//.test(rel) ||
-    /test-helpers?\.[jt]sx?$/.test(rel);
+    /(test-helpers?|-test-app)\.[jt]sx?$/.test(rel);
 
   const files = ["apps", "packages"]
     .flatMap((top) => sources(join(root, top)))
@@ -152,7 +172,9 @@ describe("one v8 detector", () => {
 
   test("the scan sees the code it guards", () => {
     const rels = new Set(files.map((f) => f.rel));
-    expect(rels.has("apps/api/src/hosted/blocks-major-marker.ts")).toBe(true);
+    expect(rels.has("apps/api/src/tools/virtual/blocks-v8-switch.ts")).toBe(
+      true,
+    );
     expect(
       rels.has("apps/web/src/components/sections-editor/content-backend.ts"),
     ).toBe(true);
@@ -173,9 +195,6 @@ describe("one v8 detector", () => {
     // `?.["blocksMajor"]`, `"blocksMajor" in s`, `Reflect.get(s,
     // "blocksMajor")`), a destructuring, a write. Only these may name it:
     const allowed = (rel: string, line: string) =>
-      // The marker's type on the project metadata the runtime reads.
-      (rel === "packages/shared/src/thread/session-runtime.ts" &&
-        /^\s*blocksMajor\?: number \| null;\s*$/.test(line)) ||
       // The schema push answer's field (contract §4.12).
       (rel === "apps/api/src/api/routes/cms.ts" &&
         /^\s*blocksMajor: isV8 \? BLOCKS_V8_MAJOR : null,\s*$/.test(line)) ||
@@ -224,7 +243,7 @@ describe("one v8 detector", () => {
 
   test("no other v8 predicate is defined", () => {
     const own =
-      /(?:function|const|let|var|class)\s+(isV8Schema|isBlocksV8Project|BLOCKS_V8_MAJOR|BLOCKS_MAJOR_METADATA_KEY)\b/;
+      /(?:function|const|let|var|class)\s+(isV8Schema|isBlocksV8Project|BLOCKS_V8_MAJOR|BLOCKS_V8_METADATA_KEY)\b/;
     expect(offending(files, own)).toEqual([]);
   });
 
@@ -246,6 +265,14 @@ describe("one v8 detector", () => {
         "UI: reads the backend the probe chose",
       "apps/web/src/components/thread/repository/localhost-row.tsx#V8LocalhostRow":
         "UI component",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts#requireOrgAdminForBlocksV8Switch":
+        "the switch's writer: an org admin check, not a decision",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts#refuseBlocksV8MetadataWrite":
+        "the switch's writer: refuses a client metadata write of it",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts#blocksV8SwitchPatch":
+        "the switch's writer: isBlocksV8Project on the stored metadata",
+      "apps/web/src/views/virtual-mcp/settings/blocks-v8-site-section.tsx#BlocksV8SiteSection":
+        "UI component: the admin's switch",
     };
     const definition =
       /(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*[vV]8[\w$]*)\s*(?:[=(<]|:\s*\(|:\s*[A-Z][\w$<>, |]*\s*=\s*(?:async\s*)?\()/g;
@@ -299,7 +326,7 @@ describe("one v8 detector", () => {
     // `meta.gen.json` is v7's schema. The files that decide v8 never consult
     // it; elsewhere (v7 code still reads it) no line ties it to v8.
     const DECIDERS = [
-      "apps/api/src/hosted/blocks-major-marker.ts",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts",
       "apps/web/src/components/sections-editor/content-backend.ts",
       "apps/web/src/components/sections-editor/use-content-backend.ts",
       "apps/web/src/hooks/use-main-schema-v8.ts",
@@ -316,16 +343,37 @@ describe("one v8 detector", () => {
     ]).toEqual([]);
   });
 
-  test("the web app reads the marker in one place", () => {
-    // The marker `deco schema push` writes. The web app reads it in one
-    // place, `use-main-schema-v8.ts`, which every v8 screen asks.
+  test("the web app reads the switch in one place", () => {
+    // The "Blocks v8 site" switch. The web app reads it in one place,
+    // `use-main-schema-v8.ts`, which every v8 screen asks.
     const allowed = (rel: string) =>
       rel === "apps/web/src/hooks/use-main-schema-v8.ts";
     expect(
       offending(
         source.filter((f) => f.rel.startsWith("apps/web/")),
-        /\b(isBlocksV8Project|BLOCKS_MAJOR_METADATA_KEY)\b/,
+        /\b(isBlocksV8Project|BLOCKS_V8_METADATA_KEY)\b/,
         (rel) => allowed(rel),
+      ),
+    ).toEqual([]);
+  });
+
+  test("only the admin's switch writes the v8 flag", () => {
+    // The key is named by its definition (this module's), its one writer
+    // (an org admin's `blocksV8`), and the strip that keeps clients off it.
+    const WRITERS = new Set([
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts",
+      "apps/api/src/tools/strip-server-managed-metadata.ts",
+    ]);
+    expect(
+      offending(source, /\bBLOCKS_V8_METADATA_KEY\b/, (rel) =>
+        WRITERS.has(rel),
+      ),
+    ).toEqual([]);
+    // Nothing sets the flag to a literal true outside that writer (a schema
+    // push, a backfill or a create deriving it).
+    expect(
+      offending(source, /["']?\bblocksV8\b["']?\s*:\s*true\b/, (rel) =>
+        WRITERS.has(rel),
       ),
     ).toEqual([]);
   });

@@ -77,7 +77,7 @@ import { useStartDraft } from "./use-start-draft";
 
 interface Props {
   virtualMcpId: string;
-  /** A Blocks v8 site (the server's `blocksMajor` marker). v7 keeps main's
+  /** A Blocks v8 site (its "Blocks v8 site" switch). v7 keeps main's
    *  Local tunnel exactly; only v8 connects a `deco serve`. */
   isV8?: boolean;
   /** Human-readable creator label used to seed the generated branch name. */
@@ -808,7 +808,7 @@ function AdvancedPicker({
   onBack,
   onAdopt,
 }: {
-  /** A Blocks v8 site (the server's marker): no Local tab, Localhost is in
+  /** A Blocks v8 site (its "Blocks v8 site" switch): no Local tab, Localhost is in
    *  the drafts list instead. v7 gets main's Local tab. */
   isV8: boolean;
   orgId: string;
