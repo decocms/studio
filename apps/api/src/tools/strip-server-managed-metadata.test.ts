@@ -22,13 +22,9 @@ describe("stripServerManagedMetadata", () => {
     expect(stripServerManagedMetadata(undefined)).toBeUndefined();
   });
 
-  test("removes the Blocks v8 marker and its schema push record, so only the server writes them", () => {
+  test("removes the Blocks v8 marker, so only the server writes it", () => {
     expect(
-      stripServerManagedMetadata({
-        fastPreview: true,
-        blocksMajor: 8,
-        cmsSchemaPush: { site: "acme", sha256: "e1" },
-      }),
+      stripServerManagedMetadata({ fastPreview: true, blocksMajor: 8 }),
     ).toEqual({ fastPreview: true });
   });
 
@@ -50,14 +46,8 @@ describe("metadataKeptOnClear", () => {
         sandboxMap: { u: {} },
         siteSlug: "acme",
         blocksMajor: 8,
-        cmsSchemaPush: { site: "acme", sha256: "e1" },
       }),
-    ).toEqual({
-      sandboxMap: { u: {} },
-      siteSlug: "acme",
-      blocksMajor: 8,
-      cmsSchemaPush: { site: "acme", sha256: "e1" },
-    });
+    ).toEqual({ sandboxMap: { u: {} }, siteSlug: "acme", blocksMajor: 8 });
   });
 
   test("is null when there is nothing to keep", () => {

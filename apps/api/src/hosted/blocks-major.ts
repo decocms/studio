@@ -2,11 +2,9 @@
  * The project's Blocks v8 marker, `metadata.blocksMajor: 8`, is set only by
  * `deco schema push` (`PUT /api/cms/:site/schema`, through
  * `syncBlocksMajorMarker` in `blocks-major-marker.ts`) from the schema it
- * pushed, together with the record of that push (`metadata.cmsSchemaPush`)
- * it counts only alongside (`isBlocksV8Project`): a marker without one is
- * stale and the project is v7. No code reads git to compute it: a new
- * thread's default runtime (`defaultThreadRuntime`) and Studio's editor and
- * hosted screens read the stored marker as it is.
+ * pushed. No code reads git to compute it: a new thread's default runtime
+ * (`defaultThreadRuntime`) and Studio's editor and hosted screens read the
+ * stored marker as it is.
  */
 
 /** The site's folder inside the repo (`metadata.runtime.path`), or null. */

@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import {
-  blocksV8Metadata,
-  cmsSchemaPushOf,
-  isBlocksV8Project,
-  isV8Schema,
-} from "./blocks-major.ts";
+import { isBlocksV8Project, isV8Schema } from "./blocks-major.ts";
 
 describe("isV8Schema", () => {
   test('only a top-level "blocksMajor": 8 is v8', () => {
@@ -36,47 +31,13 @@ describe("isV8Schema", () => {
 });
 
 describe("isBlocksV8Project (the marker deco schema push writes)", () => {
-  const push = { site: "acme", sha256: "e1" };
-
-  test("only the server's marker 8, alongside its schema push, counts", () => {
-    expect(isBlocksV8Project(blocksV8Metadata(push))).toBe(true);
-    expect(isBlocksV8Project({ blocksMajor: 8, cmsSchemaPush: push })).toBe(
-      true,
-    );
-    expect(isBlocksV8Project({ blocksMajor: "8", cmsSchemaPush: push })).toBe(
-      false,
-    );
-    expect(isBlocksV8Project({ blocksMajor: 7, cmsSchemaPush: push })).toBe(
-      false,
-    );
-    expect(isBlocksV8Project({ cmsSchemaPush: push })).toBe(false);
+  test("only the server's marker 8 counts", () => {
+    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(true);
+    expect(isBlocksV8Project({ blocksMajor: "8" })).toBe(false);
+    expect(isBlocksV8Project({ blocksMajor: 7 })).toBe(false);
     expect(isBlocksV8Project({})).toBe(false);
     expect(isBlocksV8Project(null)).toBe(false);
     expect(isBlocksV8Project(undefined)).toBe(false);
-  });
-
-  test("a stale marker with no CMS schema push is v7", () => {
-    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(false);
-    for (const cmsSchemaPush of [
-      null,
-      true,
-      "acme",
-      [],
-      {},
-      { site: "acme" },
-      { sha256: "e1" },
-      { site: "", sha256: "e1" },
-      { site: "acme", sha256: "" },
-      { site: 1, sha256: "e1" },
-    ]) {
-      expect(isBlocksV8Project({ blocksMajor: 8, cmsSchemaPush })).toBe(false);
-    }
-  });
-
-  test("cmsSchemaPushOf reads only a well-formed record", () => {
-    expect(cmsSchemaPushOf({ cmsSchemaPush: { ...push, x: 1 } })).toEqual(push);
-    expect(cmsSchemaPushOf({ cmsSchemaPush: { site: "acme" } })).toBeNull();
-    expect(cmsSchemaPushOf(null)).toBeNull();
   });
 });
 
