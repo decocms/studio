@@ -1,5 +1,7 @@
 /**
- * The project's "Blocks v8 site" switch, for org owners and admins only:
+ * The project's "Blocks v8 site" switch, for org owners and admins only (any
+ * role `hasAdminRole` accepts, a multi-role "admin,billing" included, as the
+ * server's check does):
  * the one lever that makes a project v8 (`isBlocksV8Project`). On, every v8
  * gate opens (the hosted editor, Experiments, Calendar, Releases, site
  * tokens, Monitor) and `deco schema push` is accepted; off, the project is a
@@ -18,8 +20,9 @@ import {
   SettingsCardRow,
   SettingsSection,
 } from "@/components/settings/settings-section";
+import { hasAdminRole } from "@decocms/shared/auth/roles";
 import { useCapabilities } from "@/hooks/use-capability";
-import { useProjectMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useT } from "@/i18n/use-t.ts";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -32,8 +35,8 @@ export function BlocksV8SiteSection({
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  const { isPrivileged } = useCapabilities();
-  const isV8 = useProjectMainSchemaV8(virtualMcp) === "v8";
+  const { roleSlug } = useCapabilities();
+  const isV8 = blocksV8Project(virtualMcp);
   const studio = useStudioTools();
   const queryClient = useQueryClient();
   const toggle = useMutation({
@@ -46,7 +49,7 @@ export function BlocksV8SiteSection({
     // Every v8 gate reads the project row: refetch it.
     onSettled: () => invalidateVirtualMcpQueries(queryClient, org.id),
   });
-  if (!isPrivileged) return null;
+  if (!hasAdminRole(roleSlug)) return null;
   const checked = toggle.isPending ? toggle.variables : isV8;
   return (
     <SettingsSection>

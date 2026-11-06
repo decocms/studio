@@ -6,17 +6,11 @@ import {
 } from "@/components/sections-editor/deco-serve-connection";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { authClient } from "@/lib/auth-client";
-import { type MainSchemaAnswer, useMainSchemaV8 } from "./use-main-schema-v8";
+import { useBlocksV8Project } from "./use-blocks-v8-project";
 
 export interface DecoServeConnectionState {
   /** The project's connected `deco serve`, or `null`. */
   connection: DecoServeConnection | null;
-  /**
-   * A connection is stored but main's schema answer isn't known yet, so it
-   * can't be told whether it applies: the editor waits instead of picking
-   * another backend first.
-   */
-  undecided?: boolean;
   /**
    * The endpoint this user last connected the project to, kept after
    * Localhost is turned off: where choosing Localhost again goes. `null`
@@ -40,15 +34,15 @@ export const TabDecoServeConnectionContext =
  * a server only this machine can reach, so it never belongs on shared project
  * metadata.
  *
- * Only a Blocks v8 site (main's schema, `useMainSchemaV8`) uses one: on a v7
- * site a stored connection reads as none, so v7 behaves as on main. Once
- * connected, the `deco serve`'s own schema decides what the editor can do.
+ * Only a Blocks v8 project (its "Blocks v8 site" switch, `useBlocksV8Project`)
+ * uses one: with the switch off a stored connection reads as none, so v7
+ * behaves as on main (its Advanced → Local is its local mode).
  */
 export function useDecoServeConnection(
   virtualMcpId: string | null | undefined,
 ): DecoServeConnectionState {
   const tab = useContext(TabDecoServeConnectionContext);
-  const main = useMainSchemaV8(tab ? null : virtualMcpId);
+  const v8 = useBlocksV8Project(tab ? null : virtualMcpId);
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
   // Nothing to read or write until both the user and the project are known:
@@ -61,15 +55,11 @@ export function useDecoServeConnection(
     usable ? LOCALSTORAGE_KEYS.decoServeEndpoint(userId, virtualMcpId) : null,
   );
   if (tab) return tab;
-  const parsed = usable ? parseStoredConnection(stored) : null;
-  const { applies, undecided } = storedConnectionApplies(main, !!parsed);
+  const parsed = usable && v8 ? parseStoredConnection(stored) : null;
   return {
-    connection: applies ? parsed : null,
-    undecided,
+    connection: parsed,
     lastEndpoint:
-      usable && main === "v8" && typeof lastEndpoint === "string"
-        ? lastEndpoint
-        : null,
+      usable && v8 && typeof lastEndpoint === "string" ? lastEndpoint : null,
     set: (next) => {
       if (!usable) return;
       setStored(next);
@@ -79,24 +69,6 @@ export function useDecoServeConnection(
       if (usable) setStored(null);
     },
   };
-}
-
-/**
- * Whether a stored `deco serve` connection is used, from main's schema
- * answer. A v8 site uses it; a v7 one never does (main's Advanced → Local is
- * its local mode). While main's answer loads it is `undecided`. When main
- * can't be read on a site last found v8 (`error`) the stored connection
- * still applies: it only exists because the site was v8, and the `deco
- * serve`'s own schema decides from there. (Any other unreadable main reads
- * as `v7`.)
- */
-export function storedConnectionApplies(
-  main: MainSchemaAnswer,
-  stored: boolean,
-): { applies: boolean; undecided: boolean } {
-  if (!stored) return { applies: false, undecided: false };
-  if (main === "loading") return { applies: false, undecided: true };
-  return { applies: main === "v8" || main === "error", undecided: false };
 }
 
 function readStored(key: string): unknown {

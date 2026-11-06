@@ -35,7 +35,6 @@ export const siteEditor = {
     "Not saved: some fields aren't filled in correctly. Fix them and try again.",
   "siteEditor.save.tooLarge":
     "Not saved: this content is too large. Make it smaller and try again.",
-  "siteEditor.retrying.github": "Can't reach GitHub right now. Trying again…",
   "siteEditor.retrying.sandbox":
     "Can't reach the sandbox right now. Trying again…",
   "siteEditor.contentTypes.changesInDraft": "Changes in draft",

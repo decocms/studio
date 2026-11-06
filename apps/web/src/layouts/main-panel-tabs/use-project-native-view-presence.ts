@@ -5,20 +5,15 @@ import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
-import { useProjectMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useProjectContext } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
-import { editsBlocksDraft } from "./experiments-tab-choice";
 import type { ProjectNativeViewPresence } from "./project-sidebar-views";
 
 export interface ProjectNativeViewPresenceResult {
   presence: ProjectNativeViewPresence;
   assetsPending: boolean;
   siteAccessPending: boolean;
-  /** Main's schema is still being read: Releases may yet be there. */
-  releasesPending: boolean;
-  /** Main's schema is still being read: the site may be v8 (Calendar). */
-  calendarPending: boolean;
 }
 
 /**
@@ -34,10 +29,9 @@ export function useProjectNativeViewPresence(
   const config = usePublicConfig();
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
-  // The hosted Deco CMS: Blocks v8 sites (main's schema, `isV8Schema`). A v7
-  // site never gets Releases.
-  const mainSchema = useProjectMainSchemaV8(project);
-  const hostedCms = mainSchema === "v8";
+  // The hosted Deco CMS: Blocks v8 projects (their switch). A v7 project
+  // never gets Releases nor Calendar.
+  const v8 = blocksV8Project(project);
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
   const siteAccessProbeEnabled = hostingEnabled && !!siteSlug;
@@ -47,19 +41,13 @@ export function useProjectNativeViewPresence(
   return {
     presence: {
       assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
-      releases: hostedCms && !!project?.metadata?.siteSlug,
+      releases: v8 && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
       // Every v8 site: its campaigns are content its editors own.
-      calendar: editsBlocksDraft(mainSchema),
+      calendar: v8,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
-    // "error" is a site last found v8 whose main can't be read yet: the
-    // editor waits for it, and so does a Releases deep link.
-    releasesPending:
-      !!project?.metadata?.siteSlug &&
-      (mainSchema === "loading" || mainSchema === "error"),
-    calendarPending: !!project && mainSchema === "loading",
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending: siteAccessProbeEnabled && siteAccess.isPending,

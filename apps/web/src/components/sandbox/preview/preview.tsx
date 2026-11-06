@@ -174,7 +174,7 @@ import {
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import {
   useContentRevision,
   useProtocolDraftRead,
@@ -537,8 +537,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * iframe, and the editor bridge all target it — and the boot gating is
    * bypassed (the tunnel is already up), so no pod ever boots.
    */
-  const { url: tunnelUrl, undecided: tunnelUndecided } =
-    useLocalPreviewUrl(virtualMcpId);
+  const { url: tunnelUrl } = useLocalPreviewUrl(virtualMcpId);
   /**
    * A connected `deco serve` (content protocol) stands in the same way: its
    * app preview is the dev server on this machine. The protocol never runs
@@ -546,27 +545,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    */
   const contentBackend = useContentBackend(virtualMcpId, branch);
   const { connection: serveConnection } = useDecoServeConnection(virtualMcpId);
-  const mainSchema = useMainSchemaV8(virtualMcpId);
+  const v8 = useBlocksV8Project(virtualMcpId);
   const previewMode = contentMode({
     hasServeConnection: !!serveConnection,
     runtime: session.runtime,
   });
-  /**
-   * v7 or v8 isn't known yet: GitHub mode while main's answer loads (or is
-   * retried), or a saved Local tunnel waiting for it. The canvas holds a
-   * neutral loader and no site-code path runs, so neither generation's
-   * surface shows first and then switches.
-   */
-  const deciding =
-    tunnelUndecided ||
-    (previewMode === "github" &&
-      (mainSchema === "loading" || mainSchema === "error"));
-  // The protocol never runs site code; nor does anything before the GitHub
-  // mode decision (a v8 site must never arm the v7 render paths first).
+  // The protocol never runs site code; nor does a v8 project whose backend
+  // hasn't answered yet (only a v8 project is ever `pending`).
   const runsSiteCode =
-    !isProtocolProject(contentBackend) &&
-    !deciding &&
-    !(previewMode === "github" && contentBackend.kind === "pending");
+    !isProtocolProject(contentBackend) && contentBackend.kind !== "pending";
   const localPreviewUrl = servePreviewUrl(contentBackend) ?? tunnelUrl;
   const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
   const devServerReady = !!localPreviewUrl || lifecyclePhase === "running";
@@ -580,10 +567,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewServerUrl =
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
   const fastPreviewEnabled =
-    !localPreviewUrl &&
-    !tunnelUndecided &&
-    agent?.id === virtualMcpId &&
-    session.runtime === "cms";
+    !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
   const projectDefaultsToCms = session.projectDefault === "cms";
 
@@ -814,11 +798,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const codingSession = projectDefaultsToCms && session.runtime === "sandbox";
   // A v8 site's hosted draft: nothing boots, and a draft always exists while
   // the editor is open (created empty on open; Publish empties it in place).
-  const hostedDraft = hostedDraftSession(
-    contentBackend,
-    previewMode,
-    mainSchema,
-  );
+  const hostedDraft = hostedDraftSession(contentBackend, previewMode, v8);
   // Its pointer, from the same read `useFastPreviewDraftUrl` makes.
   const hostedPointerRead = useProtocolDraftRead(
     hostedDraft &&
@@ -842,7 +822,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     hostedPointerPending:
       hostedDraft &&
       (contentBackend.kind === "pending" || hostedPointerRead.pending),
-    deciding,
   });
   /**
    * The frame shows the published site: nothing to draft-render yet. A
@@ -2333,29 +2312,25 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
 
                     {/* Local mode stands in for the managed sandbox, so its lifecycle cards never own the canvas. */}
-                    {!localPreviewUrl &&
-                      !deciding &&
-                      previewState.kind === "suspended" && (
-                        <div className="absolute inset-0 z-30">
-                          <SandboxStateCard
-                            kind="suspended"
-                            onResume={lifecycle.resume}
-                          />
-                        </div>
-                      )}
+                    {!localPreviewUrl && previewState.kind === "suspended" && (
+                      <div className="absolute inset-0 z-30">
+                        <SandboxStateCard
+                          kind="suspended"
+                          onResume={lifecycle.resume}
+                        />
+                      </div>
+                    )}
 
-                    {!localPreviewUrl &&
-                      !deciding &&
-                      previewState.kind === "errored" && (
-                        <div className="absolute inset-0 z-30">
-                          <SandboxStateCard
-                            kind="errored"
-                            error={previewState.error}
-                            onRetry={lifecycle.retry}
-                            connectionsHref={`/${org.slug}/settings/connections`}
-                          />
-                        </div>
-                      )}
+                    {!localPreviewUrl && previewState.kind === "errored" && (
+                      <div className="absolute inset-0 z-30">
+                        <SandboxStateCard
+                          kind="errored"
+                          error={previewState.error}
+                          onRetry={lifecycle.retry}
+                          connectionsHref={`/${org.slug}/settings/connections`}
+                        />
+                      </div>
+                    )}
 
                     {display.showWakingPill && (
                       <div className="absolute top-4 left-1/2 z-20 flex max-w-md -translate-x-1/2 items-start gap-3 rounded-xl bg-muted px-4 py-3 shadow-soft pointer-events-none select-none">
