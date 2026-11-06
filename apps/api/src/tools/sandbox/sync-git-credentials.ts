@@ -25,6 +25,14 @@ export class GitPushAuthError extends Error {
   }
 }
 
+/** The daemon no longer accepts Studio's token: it rebooted onto its snapshot's. */
+export class SandboxTokenRejectedError extends Error {
+  constructor(handle: string) {
+    super(`sandbox ${handle} rejected its daemon token`);
+    this.name = "SandboxTokenRejectedError";
+  }
+}
+
 export function parseRepositoryBinding(
   metadata: Record<string, unknown> | null,
   connectionIds: readonly string[],
@@ -168,6 +176,10 @@ async function putSandboxConfig(
     body: JSON.stringify(patch),
   });
 
+  if (res.status === 401) {
+    await res.body?.cancel().catch(() => {});
+    throw new SandboxTokenRejectedError(handle);
+  }
   if (!res.ok) {
     const body = await readBoundedText(res, CONFIG_RESPONSE_MAX_BYTES).catch(
       () => res.statusText,

@@ -272,7 +272,7 @@ describe("a carried view that can't show the target thread", () => {
       target,
     }).tabId;
 
-  test("Blog gives way to the Site Editor for a Fast Preview thread", () => {
+  test("Blog gives way to the Site Editor for a site draft in Fast Preview", () => {
     expect(
       switchFrom("blog", { branch: "sacci-a", metadata: { runtime: "cms" } }),
     ).toBe("site-editor");
@@ -296,12 +296,14 @@ describe("a carried view that can't show the target thread", () => {
   });
 
   test("a view that can show the thread stays", () => {
-    expect(
-      switchFrom("blog", {
-        branch: "blog-draft-sacci-a",
-        metadata: { runtime: "sandbox" },
-      }),
-    ).toBe("blog");
+    for (const runtime of ["sandbox", "cms"] as const) {
+      expect(
+        switchFrom("blog", {
+          branch: "blog-draft-sacci-a",
+          metadata: { runtime },
+        }),
+      ).toBe("blog");
+    }
     expect(
       switchFrom("site-editor", {
         branch: "sacci-a",

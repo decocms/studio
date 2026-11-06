@@ -199,6 +199,13 @@ AppArmor profiles unconfined; the per-user Freestyle VM remains its isolation
 boundary. The org-fs sidecar is unchanged. The setting gets a separate base
 snapshot, and existing VMs must be replaced to change their container policy.
 
+Set `STUDIO_SANDBOX_COMMIT_SIGNING_EMAIL` and `STUDIO_SANDBOX_COMMIT_SIGNING_KEY`
+to sign the bot's commits on Freestyle, the same values the `sandbox-env` chart
+takes as `commitSigning` for pods. Repositories that require verified signatures
+reject unsigned commits. The key is part of the base snapshot, so code running
+in a sandbox can read it. Setting or rotating it builds a new base snapshot, and
+existing VMs keep what they were created with until they are replaced.
+
 `SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
 input picks where a new sandbox runs, when that provider is configured and
 serves the requested image. Without it, `STUDIO_SANDBOX_FREESTYLE_SHARE`

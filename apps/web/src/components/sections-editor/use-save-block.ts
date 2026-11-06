@@ -907,8 +907,15 @@ export function useDebouncedSaveBlock(
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
+  // A save writes the whole block, so edits made during one wait as one: the newest.
+  const sendingRef = useRef<Set<string>>(new Set());
+  const waitingRef = useRef<Set<string>>(new Set());
 
   const runPendingSave = (blockKey: string) => {
+    if (sendingRef.current.has(blockKey)) {
+      waitingRef.current.add(blockKey);
+      return;
+    }
     const pending = pendingRef.current.get(blockKey);
     if (!pending) return;
     const resolved = typeof pending === "function" ? pending() : pending;
@@ -916,13 +923,15 @@ export function useDebouncedSaveBlock(
     const edit = editsRef.current.get(blockKey);
     editsRef.current.delete(blockKey);
     if (!resolved) return;
-    saveBlock.mutate(
-      { blockKey, data: resolved, guard: opts?.guard, edit },
-      {
-        onSuccess: () => opts?.onSaved?.(),
-        onError: saveBlock.reportError,
-      },
-    );
+    sendingRef.current.add(blockKey);
+    // mutate's callbacks skip all but the latest call; the waiting edit needs this one's end.
+    void saveBlock
+      .mutateAsync({ blockKey, data: resolved, guard: opts?.guard, edit })
+      .then(() => opts?.onSaved?.(), saveBlock.reportError)
+      .finally(() => {
+        sendingRef.current.delete(blockKey);
+        if (waitingRef.current.delete(blockKey)) runPendingSave(blockKey);
+      });
   };
 
   const flush = () => {
@@ -944,8 +953,20 @@ export function useDebouncedSaveBlock(
       timersRef.current.delete(blockKey);
       pendingRef.current.delete(blockKey);
       editsRef.current.delete(blockKey);
+      waitingRef.current.delete(blockKey);
     }
   });
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — warns before unload drops unsent edits
+  useEffect(() => {
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (pendingRef.current.size > 0 || sendingRef.current.size > 0) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, []);
 
   // Cancel pending debounced saves on unmount so they can't fire against a torn
   // -down editor after navigation. Call `flush()` explicitly when closing a sheet

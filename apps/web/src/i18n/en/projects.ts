@@ -69,9 +69,6 @@ export const projects = {
   "projects.apps.releases": "Releases",
   "projects.apps.hosting": "Hosting",
   "projects.apps.e2e": "End-to-end tests",
-  "projects.apps.analytics": "Analytics",
-  "projects.apps.cdn": "Monitor",
   "projects.apps.automations": "Automations",
-  "projects.apps.experiments": "Experiments",
   "projects.apps.calendar": "Calendar",
 } as const;

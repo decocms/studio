@@ -3,9 +3,10 @@
  *
  * Blog works on its own drafts (`blog-draft-` branches,
  * `@decocms/shared/branch-name`), in the project's runtime like the site's
- * drafts. The views under the site's draft bar (the Site Editor, Experiments
- * and Calendar) never run on a Blog draft, and Blog never runs on a site draft
- * in Fast Preview. Any other view takes whatever thread it is given.
+ * drafts. The views under the site's draft bar (the Site Editor, Monitor's
+ * Experiments and Calendar) never run on a Blog draft, and Blog never runs on
+ * a site draft in Fast Preview. Any other view takes whatever thread it is
+ * given.
  */
 
 import {
@@ -29,13 +30,22 @@ const SITE_VIEWS: ReadonlySet<string> = new Set([
   "site-editor",
   "content",
   "code",
-  "experiments",
   "calendar",
 ]);
 
-/** The draft kind of a route's `mainView`, or `null` for a view that has none. */
-export function viewDraftKind(mainView: string | undefined): DraftKind | null {
+/**
+ * The draft kind of a route's `mainView`, or `null` for a view that has none.
+ * Monitor is one route: only its Experiments view (`?view=experiments`) edits
+ * the site's draft, under the site's draft bar.
+ */
+export function viewDraftKind(
+  mainView: string | undefined,
+  monitorView?: string,
+): DraftKind | null {
   if (mainView === "blog" || mainView === "blog-post") return "blog";
+  if (mainView === "monitoring") {
+    return monitorView === "experiments" ? "site" : null;
+  }
   return mainView && SITE_VIEWS.has(mainView) ? "site" : null;
 }
 

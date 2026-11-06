@@ -11,9 +11,13 @@ function tabDraftKind(tabId: string | undefined): DraftKind | null {
   const location = tabRouteLocation(tabId);
   if (location.kind === "blog") return "blog";
   if (location.kind === "site-editor") return "site";
+  if (location.kind === "agent-section" && location.section === "calendar") {
+    return "site";
+  }
+  // The Experiments tab opens Monitor's Experiments view.
   if (
-    location.kind === "agent-section" &&
-    (location.section === "experiments" || location.section === "calendar")
+    location.kind === "project-destination" &&
+    location.monitorView === "experiments"
   ) {
     return "site";
   }
@@ -22,9 +26,9 @@ function tabDraftKind(tabId: string | undefined): DraftKind | null {
 
 /**
  * The tab a switch to `thread` lands on: `tabId`, unless its view can't show
- * that thread (Blog and a Fast Preview thread, a site view and a Blog draft).
- * Read without the project, so an unstamped thread is let through; the shell's
- * own check still sends it to the view's entry.
+ * that thread (Blog and a site draft in Fast Preview, a site view and a Blog
+ * draft). Read without the project, so an unstamped thread is let through; the
+ * shell's own check still sends it to the view's entry.
  */
 export function tabForThread(
   tabId: string | undefined,

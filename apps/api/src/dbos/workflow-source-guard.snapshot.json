@@ -1,7 +1,7 @@
 {
   "auth/install-studio-pack-workflow.ts": "2d29e13a9ada45c4dca448391957c75323e1a9d5e5b76d9b79c60a31171dbe29",
   "automations/board-column-transition-workflows.ts": "58aa3b56b8acb3b89823df7784ed8967a17179377d2437f49b97f1d104e21df6",
-  "automations/dbos-workflow.ts": "1422b336a55baf2f7711bbd0347e8226ec54ee5b74e53ee598e2a83e925f851a",
+  "automations/dbos-workflow.ts": "a6ba47916f35947257dd56ece7c2b8f7cd71f363a3415076b4a52798593f0adc",
   "billing/dbos-subscription-sweep.ts": "d5d90cb91f31146226c0b583e6e6af7a68504d28c256b05d9e564e985a37f4ca",
   "dispatch-queue/hosted-harness-workflow.ts": "5cabf3f03759e55c1264eb78e50fa1047b6e67b5a62eb582f60dc6848dd54f01",
   "dispatch-queue/thread-gate-workflow.ts": "2d778d4f178f8fc0517c6f7fb3bf145f765de3d1c8bae66e63d533fbfd840698",

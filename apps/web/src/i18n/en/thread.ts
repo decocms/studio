@@ -13,6 +13,7 @@ export const thread = {
   "thread.branchPicker.defaultVersionName": "Draft",
   "thread.branchPicker.blogDraftName": "Blog Draft",
   "thread.branchPicker.delete": "Delete",
+  "thread.branchPicker.keepOneDraft": "Keep at least one draft",
   "thread.branchPicker.deleteConfirm":
     'Delete "{name}"? This can\'t be undone.',
   "thread.branchPicker.deleteTitle": "Discard draft?",

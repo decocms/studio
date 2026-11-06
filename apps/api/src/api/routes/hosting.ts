@@ -323,9 +323,10 @@ type SiteIdResolution =
   | { status: "unregistered" }
   | { status: "error" };
 
-/** The read-surface payload keys the Analytics tab reads (analytics-tab.tsx,
- *  analytics-heatmap-model.ts). The proxy forwards only these: a key the
- *  upstream adds later stays server-side until the tab is taught to read it.
+/** The read-surface payload keys Monitor's analytics sections read
+ *  (web `components/monitor/analytics`, analytics-heatmap-model.ts). The proxy
+ *  forwards only these: a key the upstream adds later stays server-side until
+ *  Monitor is taught to read it.
  *  `pipeline`/`install`-only keys, `worker`, `panelErrors` and `meterCheck` are
  *  left out on purpose. */
 export const ANALYTICS_PAYLOAD_KEYS: ReadonlySet<string> = new Set([

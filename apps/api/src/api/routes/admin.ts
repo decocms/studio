@@ -26,6 +26,8 @@ import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
 import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
+import { getObjectStorageS3Service } from "@/object-storage/factory";
+import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import {
@@ -435,6 +437,64 @@ export function createAdminRoutes(): Hono<Env> {
         archived: isOrgArchived({ metadata }),
       })),
     });
+  });
+
+  // An org's logo as image bytes, for server-to-server callers holding the
+  // admin token (deco Atlas shows a client's org logo as its account's). The
+  // `logo` column usually points at the members-only /api/:org/files route
+  // (see auth/hoist-org-logo.ts), which such a caller can't open.
+  app.get("/orgs/:orgId/logo", async (c) => {
+    const orgId = c.req.param("orgId");
+    const org = await getDb()
+      .db.selectFrom("organization")
+      .select("logo")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    const logo = org?.logo;
+    if (!logo) return c.json({ error: "No logo" }, 404);
+
+    const image = (body: BodyInit | null, type: string) => {
+      if (!type.startsWith("image/"))
+        return c.json({ error: "The logo is not an image" }, 404);
+      const headers = new Headers({
+        "Content-Type": type,
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+      });
+      // An SVG logo must not run script wherever it is served from.
+      if (type.startsWith("image/svg"))
+        headers.set(
+          "Content-Security-Policy",
+          "default-src 'none'; style-src 'unsafe-inline'",
+        );
+      return new Response(body, { headers });
+    };
+
+    // Inline (an SVG the hoister keeps as data:).
+    const inline = /^data:([^;,]+);base64,(.+)$/s.exec(logo);
+    if (inline) return image(Buffer.from(inline[2]!, "base64"), inline[1]!);
+
+    // Hoisted to object storage: /api/<org>/files/<key> → that org's object.
+    const key = /\/api\/[^/]+\/files\/(.+)$/.exec(
+      logo.startsWith("http") ? new URL(logo).pathname : logo,
+    )?.[1];
+    const url = key
+      ? await (async () => {
+          const s3 = getObjectStorageS3Service();
+          return s3
+            ? createBoundObjectStorage(s3, orgId).presignedGetUrl(
+                decodeURIComponent(key),
+                300,
+              )
+            : null;
+        })()
+      : logo.startsWith("https://")
+        ? logo
+        : null;
+    if (!url) return c.json({ error: "Logo not reachable" }, 404);
+    const upstream = await fetch(url);
+    if (!upstream.ok) return c.json({ error: "Logo not found" }, 404);
+    return image(upstream.body, upstream.headers.get("content-type") ?? "");
   });
 
   app.post("/orgs/:orgId/members", async (c) => {

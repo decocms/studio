@@ -145,40 +145,104 @@ export const experiments = {
   "experiments.results.conversionHintVisitors":
     "De todos os visitantes, a parte que chegou à meta “{goal}”.",
   "experiments.results.difference": "Diferença",
-  "experiments.results.differenceHint":
-    "Quanto o teste converte acima ou abaixo do controle, e a faixa onde a diferença real fica 95 vezes em 100.",
   "experiments.results.reference": "Referência",
   "experiments.results.range": "{low} a {high}",
   "experiments.results.orders": "Pedidos",
   "experiments.results.revenue": "Receita",
   "experiments.results.revenuePerVisitor": "Receita por visitante",
   "experiments.results.averageOrder": "Ticket médio",
+  "experiments.results.differenceHint":
+    "Quanto o teste converte acima ou abaixo do controle, e a faixa onde a diferença real fica com 95% de confiança.",
   "experiments.results.verdict.few": "Poucos dados até agora",
-  "experiments.results.verdict.tie": "Empate até agora",
-  "experiments.results.verdict.ahead": "“{arm}” está à frente",
-  "experiments.results.verdict.behind": "“{arm}” está pior",
+  "experiments.results.verdict.unclear": "Ainda sem diferença clara",
+  "experiments.results.verdict.better": "“{arm}” converte mais",
+  "experiments.results.verdict.worse": "“{arm}” converte menos",
+  "experiments.results.verdict.notWorse": "“{arm}” não é pior que “{control}”",
   "experiments.results.verdict.compareExposed":
-    "“{test}” converte {testRate} dos visitantes expostos, contra {controlRate} de “{control}”, uma diferença de {lift} (margem de {low} a {high}).",
+    "“{test}” converte {testRate} dos {exposed}, contra {controlRate} de “{control}”.",
   "experiments.results.verdict.compareVisitors":
-    "“{test}” converte {testRate} dos visitantes, contra {controlRate} de “{control}”, uma diferença de {lift} (margem de {low} a {high}).",
+    "“{test}” converte {testRate} dos visitantes, contra {controlRate} de “{control}”.",
   "experiments.results.verdict.noBase":
     "O controle ainda não teve conversões, então não há base para comparar.",
-  "experiments.results.verdict.tieHint":
-    "A margem inclui o zero, então ainda não dá para dizer qual versão é melhor.",
-  "experiments.results.verdict.sureHint":
-    "Uma diferença desse tamanho dificilmente é acaso (95% de confiança).",
   "experiments.results.verdict.fewHint":
     "Cada versão precisa de pelo menos {total} visitantes e {successes} conversões para a comparação valer.",
+  "experiments.results.claim.lower":
+    "A diferença ainda não é {significant}, então o número menor não quer dizer que “{test}” está perdendo.",
+  "experiments.results.claim.higher":
+    "A diferença ainda não é {significant}, então o número maior não quer dizer que “{test}” está ganhando.",
+  "experiments.results.claim.even": "A diferença ainda não é {significant}.",
+  "experiments.results.claim.notWorse":
+    "A diferença ainda não é {significant}, mas uma queda maior que {bar} já está descartada.",
+  "experiments.results.claim.better":
+    "A diferença já é {significant}, então o aumento medido vale.",
+  "experiments.results.claim.worse":
+    "A queda já é {significant}, grande demais para ser acaso.",
+  "experiments.results.range.cross":
+    "O resultado real pode ir de {low} pior a {high} melhor.",
+  "experiments.results.range.above":
+    "O resultado real fica entre {near} e {far} melhor.",
+  "experiments.results.range.below":
+    "O resultado real fica entre {near} e {far} pior.",
+  "experiments.results.fact.better": "Chance de “{test}” ser melhor",
+  "experiments.results.fact.target": "Chance de ser pelo menos {target} melhor",
+  "experiments.results.fact.safety": "Não é pior que {bar}",
+  "experiments.results.safety.open": "Ainda não dá para afirmar",
+  "experiments.results.safety.openNote":
+    "Para afirmar, a diferença medida precisa chegar a {bar}.",
+  "experiments.results.safety.notWorse": "Sim, dá para aumentar o tráfego",
+  "experiments.results.safety.worse": "Não, a queda é significativa",
+  "experiments.results.chanceAbove": "Mais de 99%",
+  "experiments.results.chanceBelow": "Menos de 1%",
+  "experiments.results.forecast.left":
+    "No ritmo atual, chega a ±{margin} em mais {days} dias, com mais {exposed} expostos.",
+  "experiments.results.forecast.leftOne":
+    "No ritmo atual, chega a ±{margin} em mais 1 dia, com mais {exposed} expostos.",
+  "experiments.results.forecast.reached": "Já está abaixo de ±{margin}.",
+  "experiments.results.forecast.unknown":
+    "Ainda sem dados para estimar quando ela diminui.",
   "experiments.results.progress.running": "No ar há {days} dias.",
   "experiments.results.progress.runningOne": "No ar há 1 dia.",
-  "experiments.results.progress.left":
-    "No ritmo atual, faltam cerca de {days} dias para detectar uma diferença de {mde}.",
-  "experiments.results.progress.leftOne":
-    "No ritmo atual, falta cerca de 1 dia para detectar uma diferença de {mde}.",
-  "experiments.results.progress.enough":
-    "Já há dados suficientes para detectar uma diferença de {mde}.",
-  "experiments.results.progress.unknown":
-    "Ainda sem dados suficientes para estimar o prazo.",
+  "experiments.results.progress.evenSplit":
+    "Com metade do tráfego em cada versão, a margem chegaria a ±{margin} em {days} dias.",
+  "experiments.results.progress.evenSplitOne":
+    "Com metade do tráfego em cada versão, a margem chegaria a ±{margin} em 1 dia.",
+  "experiments.results.liftTrend": "Diferença acumulada",
+  "experiments.results.liftTrendHint":
+    "Cada ponto soma todos os dias até ali. A faixa larga no começo é normal, porque com poucos pedidos um dia bom ou ruim mexe muito no resultado.",
+  "experiments.results.chart.aria":
+    "Diferença de conversão de “{test}” contra “{control}”, {lift}, com faixa de 95% de {range}.",
+  "experiments.results.chart.worse": "Pior",
+  "experiments.results.chart.better": "Melhor",
+  "experiments.results.chart.measured": "Diferença medida",
+  "experiments.results.chart.measuredTotal": "Diferença somando os dias",
+  "experiments.results.chart.range": "Faixa de 95%",
+  "experiments.results.chart.bar": "Limite de {bar}",
+  "experiments.results.chart.tooltip":
+    "Medido {lift}, com faixa de 95% de {range}.",
+  "experiments.results.chart.tooltipDay": "Diferença até aqui {lift}",
+  "experiments.results.glossary.significant": "significativa",
+  "experiments.results.glossary.significantTitle": "Significativo",
+  "experiments.results.glossary.significantHint":
+    "Grande demais para ser acaso. Aqui, quando há pelo menos 95% de confiança de que a diferença real vai na direção medida.",
+  "experiments.results.glossary.exposed": "expostos",
+  "experiments.results.glossary.exposedTitle": "Exposto",
+  "experiments.results.glossary.exposedHint":
+    "Visitante que chegou à parte do site que muda entre as versões. A conversão é medida entre eles, e cada um conta uma vez por dia de visita.",
+  "experiments.results.glossary.margin": "Margem",
+  "experiments.results.glossary.marginTitle": "Margem",
+  "experiments.results.glossary.marginHint":
+    "Quanto o resultado ainda pode variar só por acaso, para mais ou para menos, com 95% de confiança. Ela diminui conforme o teste junta mais dias.",
+  "experiments.results.howTo.title": "Como ler este resultado",
+  "experiments.results.howTo.range":
+    "A barra mostra onde a diferença real provavelmente está. Enquanto ela cruzar o zero, ganhar e perder ainda são possíveis, mesmo que o ponto medido esteja de um lado.",
+  "experiments.results.howTo.early":
+    "No começo, poucos pedidos mexem muito na diferença. Um dia bom ou ruim em uma das versões muda o resultado inteiro, por isso a faixa começa larga e vai estreitando.",
+  "experiments.results.howTo.looks":
+    "A decisão sai do acumulado, nunca de um dia só. Cada olhada no resultado é mais uma chance de ver uma diferença que é só acaso, e quem decide no melhor dia acaba decidindo errado.",
+  "experiments.results.howTo.calendar":
+    "Dia da semana e efeito novidade também mexem nos primeiros dias, e a faixa não inclui esse efeito.",
+  "experiments.results.howTo.method":
+    "O cálculo segue o plano de rollout A/B da deco. A confiança é unilateral de 95% sobre a razão das conversões, sem preferência prévia por nenhum resultado, com fator de correção de {deff} porque o sorteio é por visitante e cada visitante conta uma vez por dia. O teste pode crescer quando não é pior que {bar}, e um aumento só vale quando é significativo.",
   "experiments.results.trend": "Conversão por dia",
   "experiments.results.behaviour": "Comportamento por visitante",
   "experiments.results.pageviews": "Páginas vistas",

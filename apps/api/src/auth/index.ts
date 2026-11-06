@@ -26,6 +26,7 @@ import {
 } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { APIError } from "better-auth/api";
+import { mcpOAuthBeforeHook } from "./mcp-consent";
 import {
   adminAc as systemAdminAc,
   defaultRoles as systemDefaultRoles,
@@ -403,7 +404,11 @@ const plugins = [
     },
   }),
 
-  sso(authConfig.ssoConfig ? createSSOConfig(authConfig.ssoConfig) : undefined),
+  sso({
+    ...(authConfig.ssoConfig ? createSSOConfig(authConfig.ssoConfig) : {}),
+    // Self-service `/sso/register` would let any user add a global IdP; org SSO uses its own routes.
+    providersLimit: 0,
+  }),
 
   ...(authConfig.magicLinkConfig?.enabled &&
   authConfig.emailProviders &&
@@ -545,6 +550,8 @@ export const auth = betterAuth({
   },
 
   plugins,
+
+  hooks: { before: mcpOAuthBeforeHook },
 
   // Database hooks for automatic organization creation on signup
   databaseHooks: {

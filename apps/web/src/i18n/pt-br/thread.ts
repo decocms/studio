@@ -15,6 +15,7 @@ export const thread = {
   "thread.branchPicker.defaultVersionName": "Draft",
   "thread.branchPicker.blogDraftName": "Blog Draft",
   "thread.branchPicker.delete": "Descartar",
+  "thread.branchPicker.keepOneDraft": "Mantenha pelo menos um draft",
   "thread.branchPicker.deleteConfirm":
     'Descartar "{name}"? Isso não pode ser desfeito.',
   "thread.branchPicker.deleteTitle": "Descartar draft?",

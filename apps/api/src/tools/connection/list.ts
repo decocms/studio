@@ -30,7 +30,7 @@ import {
   fetchWithCache,
   REVALIDATE_MIN_INTERVAL_MS,
 } from "../../mcp-clients/mcp-list-cache";
-import { listToolsWithTimeout } from "../../mcp-clients";
+import { listStoredConnectionTools } from "../../mcp-clients";
 import { MCP_LIST_TOOLS_TIMEOUT_MS } from "../../core/constants";
 import {
   createDevAssetsConnectionEntity,
@@ -41,7 +41,11 @@ import {
   resolveDevAssetsSqlWindow,
   shouldConsiderDevAssetsForPage,
 } from "./dev-assets-page";
-import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
+import {
+  type PublicConnectionEntity,
+  toPublicConnection,
+} from "./public-connection";
+import { ConnectionEntitySchema } from "./schema";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { connectionMatchesWhere } from "./where-match";
 import { mapWithConcurrency } from "./map-with-concurrency";
@@ -180,7 +184,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     );
 
     const { items: connections, totalCount: sqlTotalCount } =
-      await ctx.storage.connections.list(organization.id, {
+      await ctx.storage.connections.listPublic(organization.id, {
         includeVirtual: input.include_virtual ?? false,
         slug: input.slug,
         where: input.where,
@@ -209,8 +213,8 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
                   return listManagementTools() as Promise<unknown[]>;
                 }
               : () =>
-                  listToolsWithTimeout(
-                    connection,
+                  listStoredConnectionTools(
+                    connection.id,
                     ctx,
                     MCP_LIST_TOOLS_TIMEOUT_MS,
                   );
@@ -242,7 +246,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
       devAssetsMatchesFilters &&
       !connections.some((c) => c.id === devAssetsId)
     ) {
-      connections.unshift(devAssetsCandidate);
+      connections.unshift(toPublicConnection(devAssetsCandidate));
     }
 
     // Binding filter: SQL already handled where/orderBy, we just need to
@@ -268,7 +272,7 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
             return isValid ? connection : null;
           }),
         )
-      ).filter((c): c is ConnectionEntity => c !== null);
+      ).filter((c): c is PublicConnectionEntity => c !== null);
 
       const totalCount = filteredConnections.length;
       const paginatedConnections = filteredConnections.slice(

@@ -55,10 +55,6 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import {
-  blogDraftBranchName,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
-import {
   branchDraftKind,
   type DraftKind,
   draftNameKey,
@@ -84,6 +80,7 @@ import {
   releaseDotClass,
   useReleases,
 } from "./use-releases";
+import { useStartDraft } from "./use-start-draft";
 
 interface Props {
   virtualMcpId: string;
@@ -95,7 +92,7 @@ interface Props {
   /** The current branch (a release's branch, or the base). */
   value: string | null | undefined;
   /** The project's production branch. Not listed (read-only); used only for the
-   *  current-version label and as the fallback when the active draft is deleted. */
+   *  current-version label. */
   baseBranch?: string | null;
   /** The base branch holds an editor draft (a hosted Blocks v8 CMS session):
    *  shown as that draft, not as "Production". v7 never sets it. */
@@ -171,6 +168,12 @@ export function BranchPicker({
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
+  const startDraft = useStartDraft({
+    virtualMcpId,
+    userLabel,
+    userId,
+    kind: draftKind,
+  });
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
    * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
@@ -202,6 +205,11 @@ export function BranchPicker({
 
   // At RELEASES_MAX the server rejects another create, so gate it in the UI.
   const atReleaseCap = releases.length >= RELEASES_MAX;
+  // The view's last draft stays: a draft goes only while another of the
+  // view's kind remains to move to. Without one, the session would fall back
+  // to production, where a Fast Preview save commits to the live site.
+  const canDeleteRelease = (r: Release) =>
+    !!siblingDraft(releases, r.branch, draftKind);
   const capReachedMessage = t("thread.branchPicker.capReached", {
     max: RELEASES_MAX,
   });
@@ -286,22 +294,9 @@ export function BranchPicker({
   };
 
   const create = () => {
-    if (atReleaseCap) {
-      toast.error(capReachedMessage);
-      return;
-    }
+    const branch = startDraft();
+    if (!branch) return;
     clearLocal();
-    const branch =
-      draftKind === "blog"
-        ? blogDraftBranchName(userLabel)
-        : generateBranchName(userLabel);
-    createRelease({
-      branch,
-      name: nextDraftName(releases, t(draftNameKey(branch))),
-      color: nextReleaseColor(releases.length),
-      createdBy: userId,
-      createdAt: new Date().toISOString(),
-    }).catch(reportReleaseError);
     (onCreateBranch ?? onChange)(branch);
     setOpen(false);
   };
@@ -360,15 +355,14 @@ export function BranchPicker({
   const confirmDelete = () => {
     const r = pendingDelete;
     setPendingDelete(null);
-    if (!r) return;
-    // Deleting the active draft: switch to a sibling draft of the same kind,
-    // else read-only production. Blog never lands on production: it starts a
-    // fresh Blog draft instead.
+    // Checked again: the other draft may have gone while the dialog was open.
+    if (!r || !canDeleteRelease(r)) return;
+    // Deleting the active draft: switch to a sibling draft of the view's kind
+    // — never to production, where a Fast Preview save commits to the live
+    // site.
     if (r.branch === value) {
       const sibling = siblingDraft(releases, r.branch, draftKind);
       if (sibling) pick(sibling.branch);
-      else if (draftKind === "blog") create();
-      else if (baseBranch) pick(baseBranch);
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
@@ -529,6 +523,7 @@ export function BranchPicker({
                     onSelect={() => pick(r.branch)}
                     onRename={() => startRename(r)}
                     onDelete={() => setPendingDelete(r)}
+                    deleteBlocked={!canDeleteRelease(r)}
                   />
                 ),
               )}
@@ -662,6 +657,7 @@ function ReleaseRow({
   onSelect,
   onRename,
   onDelete,
+  deleteBlocked = false,
 }: {
   rowRef?: Ref<HTMLDivElement>;
   dot: string;
@@ -673,6 +669,8 @@ function ReleaseRow({
   onSelect: () => void;
   onRename: () => void;
   onDelete?: () => void;
+  /** It's the last draft: Delete shows, disabled, saying why. */
+  deleteBlocked?: boolean;
 }) {
   const t = useT();
   return (
@@ -725,11 +723,17 @@ function ReleaseRow({
           {onDelete && (
             <DropdownMenuItem
               onSelect={onDelete}
+              disabled={deleteBlocked}
               className="text-destructive focus:text-destructive"
             >
               <Trash01 className="h-4 w-4" />
               {t("thread.branchPicker.delete")}
             </DropdownMenuItem>
+          )}
+          {onDelete && deleteBlocked && (
+            <p className="max-w-48 px-2 pb-1.5 text-xs text-muted-foreground">
+              {t("thread.branchPicker.keepOneDraft")}
+            </p>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

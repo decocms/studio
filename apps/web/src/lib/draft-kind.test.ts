@@ -37,20 +37,18 @@ describe("viewDraftKind", () => {
   });
 
   test("the views under the site's draft bar are the site's", () => {
-    for (const view of [
-      "site-editor",
-      "content",
-      "code",
-      "experiments",
-      "calendar",
-    ]) {
+    for (const view of ["site-editor", "content", "code", "calendar"]) {
       expect(viewDraftKind(view)).toBe("site");
     }
+    // Monitor's Experiments view, the only one of its views with the bar.
+    expect(viewDraftKind("monitoring", "experiments")).toBe("site");
   });
 
   test("any other view has no draft kind", () => {
     expect(viewDraftKind("settings")).toBeNull();
     expect(viewDraftKind("overview")).toBeNull();
+    expect(viewDraftKind("monitoring")).toBeNull();
+    expect(viewDraftKind("monitoring", "audience")).toBeNull();
     expect(viewDraftKind(undefined)).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { type Freestyle, FreestyleApiError } from "freestyle";
 import { sleep } from "@decocms/shared/std";
 import { FreestyleSandboxProvider } from "./freestyle";
@@ -96,6 +97,85 @@ describe("FreestyleSandboxProvider", () => {
     await provider.ensure(ID, { orgFsConfigJson: "{}" });
     expect(relays).toBe(1);
     provider.close();
+  });
+
+  describe("commit signing", () => {
+    const KEY = "synthetic-signing-key";
+    const EMAIL = "bot@example.com";
+    const baseSlug = (material: string) =>
+      `studio-sandbox-${createHash("sha256").update(material).digest("hex").slice(0, 16)}`;
+    const IMAGES = "example/sandbox:1\nexample/orgfs:1\nrunning";
+
+    async function warm(commitSigning?: { email: string; privateKey: string }) {
+      const execs: { command: string; env?: Record<string, string> }[] = [];
+      const snapshots: string[] = [];
+      const vm = {
+        exec: async (call: {
+          command: string;
+          env?: Record<string, string>;
+        }) => {
+          execs.push(call);
+          return { statusCode: 0, stdout: "" };
+        },
+        snapshot: async ({ slug }: { slug: string }) => {
+          snapshots.push(slug);
+        },
+        delete: async () => {},
+      };
+      const client = {
+        vms: {
+          snapshots: {
+            get: async () => {
+              throw new FreestyleApiError(404, { code: "NOT_FOUND" });
+            },
+          },
+          create: async () => ({ vm }),
+        },
+      } as unknown as Freestyle;
+      const provider = new FreestyleSandboxProvider({
+        apiKey: "k",
+        client,
+        image: "example/sandbox:1",
+        orgFsSidecarImage: "example/orgfs:1",
+        commitSigning,
+      });
+      await provider.warm();
+      provider.close();
+      const run = execs.find((e) =>
+        e.command.startsWith("docker run -d --name sandbox"),
+      );
+      return { execs, run, slug: snapshots[0] };
+    }
+
+    test("hands the daemon the key without it reaching a shell line", async () => {
+      const { execs, run } = await warm({ email: EMAIL, privateKey: KEY });
+      expect(execs.some((e) => e.command.includes(KEY))).toBe(false);
+      const install = execs.findIndex((e) => e.env?.GIT_SIGNING_KEY === KEY);
+      expect(install).toBeGreaterThanOrEqual(0);
+      expect(install).toBeLessThan(execs.indexOf(run!));
+      expect(run!.command).toContain(
+        "-v /srv/sandbox/git-signing-key:/run/git-signing/key:ro",
+      );
+      expect(run!.env?.GIT_SIGNING_KEY_FILE).toBe("/run/git-signing/key");
+      expect(run!.env?.GIT_SIGNING_KEY_EMAIL).toBe(EMAIL);
+      expect(run!.env?.GIT_SIGNING_KEY).toBeUndefined();
+    });
+
+    test("a rotated key builds its own base snapshot", async () => {
+      const first = await warm({ email: EMAIL, privateKey: KEY });
+      const rotated = await warm({ email: EMAIL, privateKey: `${KEY}-2` });
+      expect(first.slug).toBe(baseSlug(`${IMAGES}\nsigning\n${EMAIL}\n${KEY}`));
+      expect(rotated.slug).not.toBe(first.slug);
+    });
+
+    test("unset keeps today's snapshot and leaves the VM keyless", async () => {
+      const { execs, run, slug } = await warm();
+      expect(slug).toBe(baseSlug(IMAGES));
+      expect(execs.some((e) => e.command.includes("git-signing"))).toBe(false);
+      expect(execs.some((e) => e.env?.GIT_SIGNING_KEY)).toBe(false);
+      expect(run!.env?.GIT_SIGNING_KEY_FILE).toBeUndefined();
+      expect(run!.env?.GIT_SIGNING_KEY_EMAIL).toBeUndefined();
+    });
   });
 
   test("warm caches each namespace mode in a separate base snapshot", async () => {

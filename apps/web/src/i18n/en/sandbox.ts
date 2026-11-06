@@ -1060,6 +1060,7 @@ export const sandbox = {
   "sandbox.preview.loaderNoLongerExists": "This loader no longer exists.",
   "sandbox.preview.noPagesFound": "No pages found in this site.",
   "sandbox.preview.noSearchResults": "No results match your search.",
+  "sandbox.preview.siteRoutes": "Site routes",
   "sandbox.preview.noServerRunning": "No server running",
   "sandbox.preview.openInNewTab": "Open in new tab",
   "sandbox.preview.pageAlreadyExists":

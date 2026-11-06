@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { afterAll, afterEach, describe, expect, it, mock } from "bun:test";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
@@ -1004,6 +1004,138 @@ describe("a debounced editor keeping its own copy (hosted v8)", () => {
       );
     });
   }
+});
+
+describe("debounced saves while one of the block's saves is running", () => {
+  const realApply = client.blocksApply;
+  afterEach(() => {
+    client.blocksApply = realApply;
+    server.hashed = false;
+  });
+
+  /** A server that answers each write only when the test lets it. */
+  function setupGated(options?: { failFirst?: boolean }) {
+    server.blocks = { Hero: { title: "loaded" } };
+    server.versions = { Hero: "h1" };
+    server.applied = [];
+    server.draftInRefusal = false;
+    server.hashed = true;
+    const sent: unknown[] = [];
+    const release: Array<() => void> = [];
+    client.blocksApply = (async (patch: Parameters<typeof realApply>[0]) => {
+      sent.push(Object.values(patch.set ?? {})[0]);
+      const turn = sent.length;
+      await new Promise<void>((resolve) => release.push(resolve));
+      if (options?.failFirst && turn === 1) throw new Error("gateway");
+      return realApply({ ...patch, ifMatch: undefined });
+    }) as typeof client.blocksApply;
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { title: "loaded" },
+    });
+    draftHolds(queryClient, { Hero: "h1" });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const onSaved = mock(() => {});
+    const hook = renderHook(
+      () =>
+        useDebouncedSaveBlock(
+          { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
+          { onSaved },
+        ),
+      { wrapper },
+    );
+    /** The `count`th write reached the server. */
+    const sentCount = (count: number) =>
+      waitFor(() => expect(sent).toHaveLength(count));
+    /** Answers the write on the wire, once it is there. */
+    const answer = async () => {
+      await waitFor(() => expect(release.length).toBeGreaterThan(0));
+      await act(async () => release.shift()?.());
+    };
+    const idle = () =>
+      waitFor(() => expect(hook.result.current.isPending).toBe(false));
+    return { ...hook, sent, sentCount, answer, idle, onSaved };
+  }
+
+  const edit = (
+    result: { current: ReturnType<typeof useDebouncedSaveBlock> },
+    title: string,
+    blockKey = "Hero",
+  ) =>
+    act(() => {
+      result.current.save(blockKey, { title });
+      result.current.flush();
+    });
+
+  it("sends only the newest of the edits made meanwhile, and nothing is lost", async () => {
+    const { result, sent, sentCount, answer, idle, onSaved } = setupGated();
+    edit(result, "one");
+    await sentCount(1);
+    for (const title of ["two", "three", "four", "five"]) {
+      edit(result, title);
+    }
+    // Still one on the wire: the others wait as one.
+    expect(sent).toEqual([{ title: "one" }]);
+    await answer();
+    await sentCount(2);
+    expect(sent[1]).toEqual({ title: "five" });
+    await answer();
+    await idle();
+    expect(sent).toHaveLength(2);
+    expect(server.blocks.Hero).toEqual({ title: "five" });
+    expect(onSaved).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed save doesn't strand the edit waiting behind it", async () => {
+    const { result, sent, sentCount, answer, idle } = setupGated({
+      failFirst: true,
+    });
+    edit(result, "one");
+    await sentCount(1);
+    edit(result, "two");
+    await answer();
+    await sentCount(2);
+    expect(sent[1]).toEqual({ title: "two" });
+    await answer();
+    await idle();
+    expect(server.blocks.Hero).toEqual({ title: "two" });
+  });
+
+  it("another block's edit isn't held back by this one's", async () => {
+    const { result, sent, sentCount, answer, idle } = setupGated();
+    edit(result, "one");
+    await sentCount(1);
+    edit(result, "other", "Other");
+    await answer();
+    // The write queue runs it next, with no newer edit of Hero to trigger it.
+    await sentCount(2);
+    expect(sent[1]).toEqual({ title: "other" });
+    await answer();
+    await idle();
+    expect(server.blocks.Other).toEqual({ title: "other" });
+  });
+
+  it("asks before leaving only while an edit hasn't been saved", async () => {
+    const { result, sentCount, answer, idle } = setupGated();
+    const leave = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(leave()).toBe(false);
+    // Armed: the debounce hasn't fired yet.
+    act(() => result.current.save("Hero", { title: "armed" }));
+    expect(leave()).toBe(true);
+    // On the wire.
+    act(() => result.current.flush());
+    await sentCount(1);
+    expect(leave()).toBe(true);
+    await answer();
+    await idle();
+    await waitFor(() => expect(leave()).toBe(false));
+  });
 });
 
 describe("the reconcile question of a block save names it as the editor does", () => {

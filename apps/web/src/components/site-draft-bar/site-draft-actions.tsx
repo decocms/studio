@@ -24,12 +24,13 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
 import { editsBlocksDraft } from "@/layouts/main-panel-tabs/experiments-tab-choice";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
+import { useProductionGate } from "@/layouts/main-panel-tabs/use-production-gate";
 import { siteDraftBarParts } from "./site-draft-bar-parts";
 
 /**
  * `blocksOnly`: Experiments and Calendar show the bar only on a Blocks (v8)
  * site, where a test or a campaign is an edit to its draft; a v7 site's
- * Experiments keeps its own page, with no bar. Their publish panel has no
+ * Experiments has no bar. Their publish panel has no
  * Code tab (PO decision); the site editor's keeps it. The bar itself is the
  * same on all three views: a view's own actions sit in the view's header.
  */
@@ -60,6 +61,8 @@ function SiteDraftBar() {
     entity?.id ?? session?.virtualMcpId,
   );
   const virtualMcpId = entity?.id ?? session?.virtualMcpId;
+  // Not known to be a draft yet counts too: Publish never flashes on production.
+  const onProduction = useProductionGate() !== "open";
   const parts = siteDraftBarParts({
     hasEntity: !!entity,
     servingLocally: !!serveConnection,
@@ -68,6 +71,7 @@ function SiteDraftBar() {
     showsRepositoryActions:
       !!entity && agentShowsRepositoryHeaderActions(entity),
     runtime,
+    onProduction,
   });
   if (!virtualMcpId || parts.hidden) return null;
   return (
