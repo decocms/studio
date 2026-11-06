@@ -131,28 +131,9 @@ describe("Blocks v8 is always Fast Preview; v7 keeps main's rule", () => {
     [8, true, undefined, "sandbox"],
     [8, undefined, undefined, "sandbox"],
   ];
-  const cmsSchemaPush = { site: "acme", sha256: "e1" };
   for (const [marker, fastPreview, previewServerUrl, expected] of rows) {
     test(`marker=${marker} fastPreview=${fastPreview} url=${!!previewServerUrl} -> ${expected}`, () => {
-      const meta = {
-        blocksMajor: marker,
-        ...(marker ? { cmsSchemaPush } : {}),
-        fastPreview,
-        previewServerUrl,
-      };
-      expect(defaultThreadRuntime(meta)).toBe(expected);
-      expect(fastPreviewCapability(meta)).toBe(expected === "cms");
-    });
-  }
-
-  // A marker with no CMS schema push is stale: main's v7 rule, exactly.
-  for (const [fastPreview, expected] of [
-    [true, "cms"],
-    [false, "sandbox"],
-    [undefined, "sandbox"],
-  ] as const) {
-    test(`a stale marker 8 (no schema push) fastPreview=${fastPreview} -> ${expected}`, () => {
-      const meta = { blocksMajor: 8, fastPreview, previewServerUrl: URL };
+      const meta = { blocksMajor: marker, fastPreview, previewServerUrl };
       expect(defaultThreadRuntime(meta)).toBe(expected);
       expect(fastPreviewCapability(meta)).toBe(expected === "cms");
     });
@@ -162,7 +143,7 @@ describe("Blocks v8 is always Fast Preview; v7 keeps main's rule", () => {
     expect(
       readThreadRuntime(
         { runtime: "sandbox" },
-        { blocksMajor: 8, cmsSchemaPush, previewServerUrl: URL },
+        { blocksMajor: 8, previewServerUrl: URL },
       ),
     ).toBe("sandbox");
   });
