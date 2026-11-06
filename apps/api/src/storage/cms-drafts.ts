@@ -13,7 +13,7 @@ function toRow(row: Selectable<CmsDraftTable>): CmsDraftRow {
   };
 }
 
-/** The hosted CMS's named drafts (migration 261). */
+/** The hosted CMS's named drafts (migration 262). */
 export class DraftStorage implements DraftStoragePort {
   constructor(private readonly db: Kysely<Database>) {}
 

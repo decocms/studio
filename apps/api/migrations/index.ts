@@ -2,7 +2,8 @@ import * as migration256taskboardharness from "./256-task-board-harness";
 import * as migration257taskboarditemhierarchy from "./257-task-board-item-hierarchy";
 import * as migration259repositorymonitordeploys from "./259-repository-monitor-deploys";
 import * as migration260demoboardsnapshots from "./260-demo-board-snapshots";
-import * as migration261cmsdrafts from "./261-cms-drafts";
+import * as migration261removeuserregisteredssoproviders from "./261-remove-user-registered-sso-providers";
+import * as migration262cmsdrafts from "./262-cms-drafts";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -559,7 +560,9 @@ const migrations: Record<string, Migration> = {
   "257-task-board-item-hierarchy": migration257taskboarditemhierarchy,
   "259-repository-monitor-deploys": migration259repositorymonitordeploys,
   "260-demo-board-snapshots": migration260demoboardsnapshots,
-  "261-cms-drafts": migration261cmsdrafts,
+  "261-remove-user-registered-sso-providers":
+    migration261removeuserregisteredssoproviders,
+  "262-cms-drafts": migration262cmsdrafts,
 };
 
 export default migrations;

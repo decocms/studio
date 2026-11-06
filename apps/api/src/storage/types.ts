@@ -1628,7 +1628,7 @@ export interface OrgSite {
 }
 
 // ============================================================================
-// Hosted CMS named drafts (migration 261)
+// Hosted CMS named drafts (migration 262)
 // ============================================================================
 
 /** How a draft or revision was made, set by the server from the auth method. */

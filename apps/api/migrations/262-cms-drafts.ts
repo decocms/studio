@@ -1,7 +1,7 @@
 import { type Kysely, sql } from "kysely";
 
 /**
- * Migration 261 — the hosted CMS's named drafts.
+ * Migration 262 — the hosted CMS's named drafts.
  *
  * A site has many named drafts; each is one public object on the delivery
  * bucket at `sites/<site>/drafts/<slug>.json`, with a random slug (holding

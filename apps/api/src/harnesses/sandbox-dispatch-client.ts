@@ -355,6 +355,10 @@ export class SandboxDispatchClient {
    * its Studio endpoint. Mounted, Claude Code announces every tool by name on
    * the first turn — ~90 connections came to ~200k prompt tokens a request.
    *
+   * The run reaches Studio with the `decocms` CLI (`studioCli`) on the same
+   * key, and the agent's own aggregations are called through it when the key
+   * carries `CONNECTION_TOOL_CALL` (see {@link runStudioSurface}).
+   *
    * The connections are resolved BEFORE the key is minted, because they are
    * part of its scope: every proxied tool call is authorized as
    * `{ <connectionId>: [<toolName>] }` (see the outbound transport's
@@ -370,7 +374,7 @@ export class SandboxDispatchClient {
     threadId: string,
     dispatcherUserId: string,
     agent: Promise<VirtualMCPEntity | null>,
-  ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
+  ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps" | "studioCli">> {
     const settingsRead = this.ctx.storage.organizationSettings.get(
       organization.id,
     );
@@ -389,6 +393,14 @@ export class SandboxDispatchClient {
     const connections = candidates.filter(
       (connection) => connection.id in grants,
     );
+    const selfTools = selfToolGrantsFor({
+      ...authority,
+      toolNames: [
+        ...resolveThreadToolNames(thread),
+        ...(this.harnessId === "codex" ? ["CODEX_SUBSCRIPTION_SYNC"] : []),
+      ],
+      runScoped: resolveRunScopedToolNames(thread),
+    });
     const mcp = await mintMcpEndpoint(
       this.ctx,
       this.virtualMcpId,
@@ -403,17 +415,7 @@ export class SandboxDispatchClient {
        * a Jira run once served `JIRA_COMMENT_ADD` its key did not authorize —
        * then narrowed to what the dispatcher may call themselves.
        */
-      runKeyPermissions({
-        toolNames: selfToolGrantsFor({
-          ...authority,
-          toolNames: [
-            ...resolveThreadToolNames(thread),
-            ...(this.harnessId === "codex" ? ["CODEX_SUBSCRIPTION_SYNC"] : []),
-          ],
-          runScoped: resolveRunScopedToolNames(thread),
-        }),
-        grants,
-      }),
+      runKeyPermissions({ toolNames: selfTools, grants }),
       orgFlagEnabled(settings?.flags, "sandbox_run_metadata")
         ? this.ctx.metadata?.runMetadata
         : undefined,
@@ -423,14 +425,14 @@ export class SandboxDispatchClient {
         (aggregation) => aggregation.connection_id,
       ),
     );
-    // A sandbox sign-in server can't be reached through the proxy, so it is
-    // always mounted.
-    const mounted = connections.filter(
-      (connection) =>
-        ownIds.has(connection.id) ||
-        signsInFromSandbox(connection.connection_url),
-    );
-    if (mounted.length === 0 || !organization.slug) return { mcp };
+    const { mounted, studioCli } = runStudioSurface({
+      organizationSlug: organization.slug,
+      selfTools,
+      connections,
+      ownIds,
+    });
+    const cli = studioCli ? { studioCli } : {};
+    if (mounted.length === 0 || !organization.slug) return { mcp, ...cli };
     const servers = orgMcpServers({
       publicUrl: getPublicUrl(),
       organizationSlug: organization.slug,
@@ -452,7 +454,7 @@ export class SandboxDispatchClient {
             `dispatching user has no grant for them)`
       }`,
     );
-    return { mcp, orgMcps };
+    return { mcp, orgMcps, ...cli };
   }
 
   /**
@@ -1547,6 +1549,35 @@ export function selectRunConnections<
       connection.status === "active" &&
       !isStudioOwnedConnection(args.organizationId, connection.id),
   );
+}
+
+/**
+ * How a run reaches Studio and which of its granted connections it mounts as
+ * MCP servers of their own. A sandbox sign-in server always is: the proxy
+ * can't reach it. The agent's own aggregations are too, unless the run uses
+ * the `decocms` CLI (every run in an org with a slug) and its key may call
+ * them through Studio (`CONNECTION_TOOL_CALL`).
+ */
+export function runStudioSurface<
+  T extends { id: string; connection_url?: string | null },
+>(args: {
+  organizationSlug: string | undefined;
+  /** The `self` tools the run's key carries. */
+  selfTools: readonly string[];
+  connections: readonly T[];
+  ownIds: ReadonlySet<string>;
+}): { mounted: T[]; studioCli?: { org: string } } {
+  const studioCli = args.organizationSlug
+    ? { org: args.organizationSlug }
+    : undefined;
+  const ownViaStudio =
+    studioCli !== undefined && args.selfTools.includes("CONNECTION_TOOL_CALL");
+  const mounted = args.connections.filter(
+    (connection) =>
+      (!ownViaStudio && args.ownIds.has(connection.id)) ||
+      signsInFromSandbox(connection.connection_url),
+  );
+  return studioCli ? { mounted, studioCli } : { mounted };
 }
 
 export function isStudioOwnedConnection(

@@ -2994,7 +2994,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3106,7 +3107,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3202,7 +3204,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3398,7 +3401,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3492,7 +3496,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -3617,7 +3622,8 @@ export interface StudioToolIO {
         app_id: string | null;
         connection_type: "HTTP" | "SSE" | "Websocket" | "STDIO" | "VIRTUAL";
         connection_url: string | null;
-        connection_token: string | null;
+        connection_token?: string | null | undefined;
+        has_connection_token?: boolean | undefined;
         connection_headers:
           | {
               command: string;
@@ -6803,10 +6809,38 @@ export interface StudioToolIO {
         stats: {
           totalParticipants: number;
           sampleSize: number;
-          probabilityVariantBest: number;
-          probabilityDefaultBest: number;
+          probabilityVariantBest: number | null;
+          probabilityDefaultBest: number | null;
         };
+        statsGoal?: string | undefined;
+        arms?:
+          | {
+              id: string;
+              visitors: number;
+              converters: number;
+              exposed: number | null;
+              convertersAmongExposed: number | null;
+              purchases: number;
+              revenue: number;
+              behaviour: {
+                pageviewsPerVisitor: number;
+                activeSecondsPerVisitor: number;
+                clicksPerVisitor: number;
+                medianScrollDepth: number;
+                errorPct: number;
+              } | null;
+              daily: {
+                date: string;
+                visitors: number;
+                exposed: number | null;
+                converters: number;
+                convertersAmongExposed: number | null;
+              }[];
+            }[]
+          | undefined;
+        currency?: string | null | undefined;
       } | null;
+      source?: "legacy" | "deco-analytics" | undefined;
     };
   };
   AUTOMATION_CREATE: {

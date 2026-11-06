@@ -151,6 +151,7 @@ describe("Connection Tools", () => {
         check: async () => {},
         grant: () => {},
         setToolName: () => {},
+        getRole: () => "owner",
       } as never,
       db: database.db,
       tracer: {

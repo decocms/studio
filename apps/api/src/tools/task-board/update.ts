@@ -5,6 +5,7 @@ import {
   TaskBoardHarnessSchema,
 } from "@decocms/shared/task-board";
 import { z } from "zod";
+import { ConflictError } from "@/core/conflict-error";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { TaskBoardActivityAction, TaskBoardItem } from "@/storage/types";
@@ -175,7 +176,8 @@ export function closesOwnReview(
 export const TASK_BOARD_ITEM_UPDATE = defineTool({
   name: "TASK_BOARD_ITEM_UPDATE",
   description:
-    "Update a task board item's fields (title, description, status, priority, assignee), and/or link a chat thread to it.",
+    "Update a task board item's fields (title, description, status, priority, assignee), and/or link a chat thread to it. " +
+    `Setting assigneeId to "${SUPER_AGENT_ASSIGNEE_ID}" starts a Super Agent run.`,
   annotations: {
     title: "Update Task Board Item",
     readOnlyHint: false,
@@ -197,7 +199,16 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     harnessId: TaskBoardHarnessSchema.optional().describe(
       "Runtime for future implementation runs and retries. Defaults to claude-code. Codex requires the task_board_codex organization flag and a linked ChatGPT plan or compatible Responses API provider. Does not change reviewer runs or an active run.",
     ),
-    assigneeId: z.string().nullable().optional(),
+    assigneeId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        `A member's user id, "${SUPER_AGENT_ASSIGNEE_ID}" to hand the card to ` +
+          "the Super Agent, which puts it In Progress and starts a run, or " +
+          "null to unassign. On a card the Super Agent already has, use " +
+          "TASK_BOARD_ITEM_RERUN to run it again.",
+      ),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     virtualMcpId: z
       .string()
@@ -347,7 +358,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       closesOwnReview(input.status, previous ?? undefined, true) &&
       isBoardRunThread(await ctx.storage.threads.get(runThreadId));
     if (closesOwnReview(input.status, previous ?? undefined, isBoardRun)) {
-      throw new Error(
+      throw new ConflictError(
         "This task is under review — the run working on it can't move it " +
           "past In Review. Leave it for the reviewer; only a person, or " +
           "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, moves on a " +
@@ -374,7 +385,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         input.description !== undefined ||
         input.priority !== undefined
       ) {
-        throw new Error(
+        throw new ConflictError(
           "This task was generated from your report and can't be edited — create your own task instead.",
         );
       }

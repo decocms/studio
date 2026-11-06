@@ -28,7 +28,7 @@ import { siteDraftBarParts } from "./site-draft-bar-parts";
 /**
  * `blocksOnly`: Experiments and Calendar show the bar only on a Blocks (v8)
  * site, where a test or a campaign is an edit to its draft; a v7 site's
- * Experiments keeps its own page, with no bar. Their publish panel has no
+ * Experiments has no bar. Their publish panel has no
  * Code tab (PO decision); the site editor's keeps it. The bar itself is the
  * same on all three views: a view's own actions sit in the view's header.
  */
