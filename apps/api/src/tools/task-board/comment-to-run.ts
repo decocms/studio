@@ -62,7 +62,6 @@ export async function sendCommentToRun(
     // One turn per comment, however many times the request is retried.
     messageId: `comment-${comment.commentId}`,
     workflowID: `comment:${comment.commentId}`,
-    userId: comment.authorId,
     prompt:
       `${comment.authorName} wrote in this run's comment thread on the card:\n\n` +
       `${quoted(comment.body)}\n\n${replyHow(item, comment.rootId)}`,

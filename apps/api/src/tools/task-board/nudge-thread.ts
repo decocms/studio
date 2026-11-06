@@ -43,8 +43,6 @@ export async function nudgeThreadTurn(
     /** Per-run agent overrides, read only by the sandbox harness — a reviewer
      *  follow-up keeps the reviewer's tool denylist. */
     agent?: { instructions?: string; disallowedTools?: string[] };
-    /** Who the turn runs as; defaults to whoever handed the card over. */
-    userId?: string;
   },
 ): Promise<void> {
   const organizationId = item.organizationId;
@@ -69,7 +67,9 @@ export async function nudgeThreadTurn(
   }
   await assertAiBudget(ctx, organizationId, "continuing a task agent");
 
-  const userId = opts.userId ?? item.assignedBy ?? item.createdBy;
+  // The dispatch refuses anyone but the thread's owner, who stays the same when
+  // the card is handed to someone else or a teammate writes to the run.
+  const userId = thread.created_by;
   const model =
     thread.harness_id === "claude-code"
       ? await resolveTaskRunModel(ctx, organizationId, userId, "claude-code")
