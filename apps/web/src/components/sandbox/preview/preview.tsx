@@ -19,7 +19,7 @@ import {
   CommandEmpty,
 } from "@decocms/ui/components/command.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useEffectEvent } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useChatTask, useOptionalChatStream } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
@@ -108,6 +108,7 @@ import {
   type VisualEditorPayload,
 } from "./visual-editor-script";
 import { CMS_EDITOR_SCRIPT, CmsEditorPayloadSchema } from "./cms-editor-script";
+import { StudioChannelHost } from "./studio-channel-host";
 import { parseSections } from "@/components/sections-editor/parse-sections";
 import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
@@ -1434,7 +1435,34 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     win.postMessage({ type: "visual-editor::deactivate" }, origin);
   };
 
+  /**
+   * A Blocks v8 site's page outlines its sections with Studio's wireframe
+   * module (studio-channel-host.ts): the page's sections and whether the
+   * Blocks panel edits it, sent once it's loaded and on every change.
+   */
+  const syncWireframe = () => {
+    const host = channelRef.current;
+    if (!host?.has("wireframe")) return;
+    host.wireframe({
+      type: "wireframe:sections",
+      labels: cmsSectionLabels,
+      kinds: cmsSectionKinds,
+      keys: cmsSectionKeys,
+    });
+    host.wireframe({
+      type:
+        effectiveEditingMode === "blocks"
+          ? "wireframe:activate"
+          : "wireframe:deactivate",
+    });
+  };
+
   const injectCmsEditor = () => {
+    // v8: the wireframe module, never the injected script.
+    if (v8) {
+      syncWireframe();
+      return;
+    }
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
     if (!win || !origin) return;
@@ -1460,6 +1488,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const deactivateCmsEditor = () => {
+    if (v8) {
+      channelRef.current?.wireframe({ type: "wireframe:deactivate" });
+      return;
+    }
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
     if (!win || !origin) return;
@@ -1468,6 +1500,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
   const clearEditorHover = () => {
+    channelRef.current?.wireframe({ type: "wireframe:clear-hover" });
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
     if (!win || !origin) return;
@@ -1545,6 +1578,75 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   useSandboxReloadHandler(reloadPreviewPreservingScroll);
 
   /**
+   * A Blocks v8 site's page carries the Studio channel's bootstrap: Studio
+   * loads its wireframe and HTML swap modules into it (studio-channel-host.ts).
+   * One host per frame document base; v7 keeps the injected script.
+   */
+  const channelRef = useRef<StudioChannelHost | null>(null);
+  const syncWireframeLatest = useEffectEvent(syncWireframe);
+  const selectFromWireframe = useEffectEvent(
+    (sectionIndex: number, clickSeq: number) => {
+      setCmsSelectedSection({ index: sectionIndex, seq: clickSeq });
+    },
+  );
+  /** The swap is in the page: what a reload's load would have ended. */
+  const swapEnded = useEffectEvent(() => {
+    endNavigation();
+    if (confirmsContentReloads) confirmPreviewReloaded(contentScope);
+  });
+  const swapFailed = useEffectEvent(() => reloadPreviewPreservingScroll());
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- listens to the frame's Studio channel for the frame's lifetime
+  useEffect(() => {
+    if (!v8) return;
+    const host = new StudioChannelHost({
+      studioOrigin: window.location.origin,
+      build: __STUDIO_VERSION__,
+      frame: () => previewIframeRef.current?.contentWindow ?? null,
+      onWireframeReady: () => syncWireframeLatest(),
+      onWireframe: (message) => {
+        if (message.type === "wireframe:select") {
+          selectFromWireframe(message.sectionIndex, message.clickSeq);
+        }
+      },
+      onSwapEnd: () => swapEnded(),
+      onSwapFailed: () => swapFailed(),
+    });
+    channelRef.current = host;
+    const onMessage = (event: MessageEvent) => {
+      host.handle(event);
+    };
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      host.dispose();
+      if (channelRef.current === host) channelRef.current = null;
+    };
+  }, [v8, display.iframeBase]);
+  // The page's sections and the panel's mode reach the wireframe as they change.
+  const wireframeState = v8
+    ? JSON.stringify([
+        cmsSectionLabels,
+        cmsSectionKinds,
+        cmsSectionKeys,
+        effectiveEditingMode,
+      ])
+    : "";
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- posts the editor's state to the frame's wireframe module when it changes
+  useEffect(() => {
+    if (wireframeState) syncWireframeLatest();
+  }, [wireframeState]);
+
+  /**
+   * Shows a save in the frame: a Blocks v8 page swaps its HTML in place (the
+   * swap's end ends the progress bar); any other page, or a swap that fails,
+   * reloads.
+   */
+  const refreshPreviewContent = () => {
+    if (channelRef.current?.refresh()) return;
+    reloadPreviewPreservingScroll();
+  };
+
+  /**
    * A hosted v8 frame shows every content change (content-sync.ts): when a
    * change's refresh is done it loads the new content, by navigating to a
    * moved draft pointer or by reloading the page it shows, and its load ends
@@ -1577,7 +1679,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       confirmPreviewReloaded(contentScope);
       return;
     }
-    reloadPreviewPreservingScroll();
+    refreshPreviewContent();
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- runs once per reload request; the reload reads refs
   }, [contentReload.seq]);
 
@@ -1603,7 +1705,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     if (!iframe) return;
     return watchServeContentReload({
       iframe,
-      reload: reloadPreviewPreservingScroll,
+      reload: refreshPreviewContent,
     });
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- reload on a revision change only; the reload reads refs
   }, [contentRevision]);
