@@ -20,9 +20,10 @@ export function draftVersionOf(block: unknown): Promise<string> {
 /**
  * The `ifMatch` of a hosted save built on `copy`, a copy of a block whose
  * version the draft lists as `listed` (the index, or the draft's changes):
- * unknown and "not in the draft" (`null`, main's copy) as listed, the
- * tombstone for a block the draft deletes or one there is no copy of,
- * otherwise the copy's own content hash.
+ * the copy's own content hash when the draft holds the block and there is a
+ * loaded copy; otherwise `listed` as it is (unknown, `null` for "not in the
+ * draft", the tombstone for a block the draft deletes, or the listed
+ * version when there is no copy or only an index stub).
  *
  * Never the listed version for a copy: a poll puts someone else's version
  * in the index before their copy of the block is loaded (and never reloads a
