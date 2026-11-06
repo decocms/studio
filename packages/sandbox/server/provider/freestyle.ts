@@ -10,6 +10,7 @@
  */
 
 import { createHash, createHmac, randomBytes } from "node:crypto";
+import { dirname } from "node:path";
 import type { Meter } from "@opentelemetry/api";
 import {
   type CreateVmOptions,
@@ -389,7 +390,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       // Owned by the image's `sandbox` user, which the daemon runs as.
       await this.run(
         vm,
-        `printf '%s' "$GIT_SIGNING_KEY" | sudo sh -c 'umask 377 && cat > ${HOST_SIGNING_KEY} && chown 1000:1000 ${HOST_SIGNING_KEY}'`,
+        `printf '%s' "$GIT_SIGNING_KEY" | sudo sh -c 'mkdir -p ${dirname(HOST_SIGNING_KEY)} && umask 377 && cat > ${HOST_SIGNING_KEY} && chown 1000:1000 ${HOST_SIGNING_KEY}'`,
         { env: { GIT_SIGNING_KEY: this.commitSigning.privateKey } },
       );
     }
