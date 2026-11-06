@@ -3,15 +3,15 @@ import { type Kysely, sql } from "kysely";
 /**
  * Migration 263 — the hosted CMS's named drafts.
  *
- * A site has many named drafts; each is one public object on the delivery
- * bucket at `sites/<site>/drafts/<slug>.json`, with a random slug (holding
- * its URL is the permission to read it). This table maps a draft's name to
+ * A site has many named drafts; each is a public folder on the delivery
+ * bucket at `sites/<site>/drafts/<slug>/` (an index plus one file per block),
+ * with a random slug (holding its URL is the permission to read it). This table maps a draft's name to
  * that slug and records who made it and how (`via`, set by the server from
  * the auth method). It replaces the KV entry `v8-draft:<project>:<branch>`.
  * Unique on (site, name): creating a draft inserts the row when it is
  * absent, and the loser of a race reads the winner's row. Listing a site's
  * drafts is a query here, for `deco drafts list` and Studio alike.
- * Discarding deletes the object and the row. Releasing a site (deleting
+ * Discarding deletes the folder's files and the row. Releasing a site (deleting
  * its `org_sites` row) deletes its draft rows with it (ON DELETE CASCADE).
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
