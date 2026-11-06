@@ -2,10 +2,22 @@ import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { describe, expect, it } from "bun:test";
 import { act, fireEvent, render } from "@testing-library/react";
-import { KEEP_TYPING_GAP_MS, useKeepTyping } from "./keep-typing";
+import {
+  KEEP_TYPING_GAP_MS,
+  type KeepTypingClock,
+  useKeepTyping,
+} from "./keep-typing";
 
 const clock = { now: 0 };
-const now = () => clock.now;
+/**
+ * When each keystroke was typed, as its event's `timeStamp` says; a
+ * keystroke with none was typed as it is handled.
+ */
+const typedAt = new WeakMap<Event, number>();
+const testClock: KeepTypingClock = {
+  now: () => clock.now,
+  typedAt: (event) => typedAt.get(event) ?? clock.now,
+};
 
 /**
  * A form's field and a dialog that takes focus as it opens, as the conflict
@@ -20,7 +32,7 @@ function Harness({
   enabled?: boolean;
 }) {
   // The conflict dialog's: enabled while it is open (v8 sites only).
-  const noteTyping = useKeepTyping(enabled, now);
+  const noteTyping = useKeepTyping(enabled, testClock);
   opener.open = () => {
     noteTyping();
     document.getElementById("dialog")?.focus();
@@ -127,6 +139,74 @@ describe("keystrokes typed as the conflict dialog opens", () => {
     const { view, field, dialog, openOn } = setup();
     openOn(view.getByRole("radio", { name: "You" }));
     typeOn(dialog, ["r"]);
+    expect(field.value).toBe("Probe B mo");
+  });
+});
+
+describe("a fast burst while the main thread is busy opening the dialog", () => {
+  /**
+   * 14 keys typed 45 ms apart, the dialog opening after the 4th: the
+   * browser hands the rest over only once the busy main thread is free
+   * again (the editor re-rendering, the dialog mounting and painting), all
+   * at once, `stall` ms after they were typed.
+   */
+  function burst(stall: number) {
+    const values: string[] = [];
+    const { view, field, dialog, openOn } = setup(values);
+    field.value = "";
+    const keys = [..."Probe B more!!"];
+    expect(keys).toHaveLength(14);
+    let typed = 0;
+    for (const key of keys.slice(0, 4)) {
+      typed += 45;
+      clock.now = typed;
+      act(() => {
+        fireEvent.keyDown(field, { key });
+      });
+      // The field takes them as usual (focus is there).
+      field.value += key;
+    }
+    openOn();
+    const queued = keys.slice(4).map((key) => {
+      typed += 45;
+      const event = new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+      });
+      typedAt.set(event, typed);
+      return event;
+    });
+    clock.now = typed + stall;
+    for (const event of queued) {
+      act(() => {
+        dialog.dispatchEvent(event);
+      });
+      clock.now += 5;
+    }
+    return { view, field, values };
+  }
+
+  it("no keystroke is lost, however long the stall", () => {
+    for (const stall of [0, 300, KEEP_TYPING_GAP_MS + 200, 2_000]) {
+      const { view, field } = burst(stall);
+      expect(field.value).toBe("Probe B more!!");
+      view.unmount();
+    }
+  });
+
+  it("a real pause in the typing still ends it", () => {
+    const { field, dialog, openOn } = setup();
+    openOn();
+    const late = new KeyboardEvent("keydown", {
+      key: "x",
+      bubbles: true,
+      cancelable: true,
+    });
+    typedAt.set(late, clock.now + KEEP_TYPING_GAP_MS + 1);
+    act(() => {
+      dialog.dispatchEvent(late);
+    });
     expect(field.value).toBe("Probe B mo");
   });
 });
