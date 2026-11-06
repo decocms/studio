@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type Freestyle, FreestyleApiError } from "freestyle";
 import { sleep } from "@decocms/shared/std";
 import { FreestyleSandboxProvider } from "./freestyle";
@@ -159,6 +169,39 @@ describe("FreestyleSandboxProvider", () => {
       expect(run!.env?.GIT_SIGNING_KEY_FILE).toBe("/run/git-signing/key");
       expect(run!.env?.GIT_SIGNING_KEY_EMAIL).toBe(EMAIL);
       expect(run!.env?.GIT_SIGNING_KEY).toBeUndefined();
+    });
+
+    // Run for real: a fresh VM has no /srv/sandbox until the sidecar step, which comes later.
+    test("the install command writes an owner-only key on a fresh VM", async () => {
+      const { execs } = await warm({ email: EMAIL, privateKey: KEY });
+      const install = execs.find((e) => e.env?.GIT_SIGNING_KEY === KEY)!;
+      const root = mkdtempSync(join(tmpdir(), "freestyle-signing-"));
+      try {
+        const bin = join(root, "bin");
+        mkdirSync(bin);
+        writeFileSync(join(bin, "sudo"), '#!/bin/sh\nexec "$@"\n', {
+          mode: 0o755,
+        });
+        writeFileSync(join(bin, "chown"), "#!/bin/sh\nexit 0\n", {
+          mode: 0o755,
+        });
+        const proc = Bun.spawnSync(
+          ["sh", "-c", install.command.replaceAll("/srv/", `${root}/srv/`)],
+          {
+            env: {
+              PATH: `${bin}:${process.env.PATH}`,
+              GIT_SIGNING_KEY: KEY,
+            },
+          },
+        );
+        expect(proc.stderr.toString()).toBe("");
+        expect(proc.exitCode).toBe(0);
+        const file = join(root, "srv/sandbox/git-signing-key");
+        expect(readFileSync(file, "utf8")).toBe(KEY);
+        expect(statSync(file).mode & 0o777).toBe(0o400);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     });
 
     test("a rotated key builds its own base snapshot", async () => {
