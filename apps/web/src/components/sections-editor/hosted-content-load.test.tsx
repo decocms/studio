@@ -2,7 +2,11 @@ import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { describe, expect, it } from "bun:test";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
@@ -116,5 +120,47 @@ describe("useEnsureHostedBlocks: a body dropped from the cache", () => {
     });
     await waitFor(() => expect(calls).toEqual([["home"], ["home"]]));
     await waitFor(() => expect(result.current.ready).toBe(true));
+  });
+});
+
+describe("useEnsureHostedBlocks next to the decofile's own query", () => {
+  it("leaves the decofile's queryFn in place: a refetch still reads the content", async () => {
+    // Off hosted (no rpc) the hook only watches the decofile query that
+    // useDecofile fetches. Mounted after it, it must not replace its queryFn.
+    const queryClient = new QueryClient();
+    let reads = 0;
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => {
+        const decofile = useQuery<Record<string, unknown>>({
+          queryKey: KEYS.decofile(CACHE_KEY),
+          queryFn: async () => {
+            reads++;
+            return { home: { __resolveType: "page", read: reads } };
+          },
+        });
+        useEnsureHostedBlocks(undefined, CACHE_KEY, ["home"]);
+        return decofile.data;
+      },
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(result.current).toEqual({
+        home: { __resolveType: "page", read: 1 },
+      }),
+    );
+    await act(() =>
+      queryClient.refetchQueries({
+        queryKey: KEYS.decofile(CACHE_KEY),
+        exact: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current).toEqual({
+        home: { __resolveType: "page", read: 2 },
+      }),
+    );
   });
 });

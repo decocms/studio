@@ -18,8 +18,8 @@
  */
 
 import type { QueryClient } from "@tanstack/react-query";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   type BatchCall,
   type BatchOutcome,
@@ -447,6 +447,28 @@ export function useContentIndex(cacheKey: string): ContentIndex | undefined {
   return data;
 }
 
+/**
+ * The bodies `KEYS.decofile` holds now, watched in the query cache. Not a
+ * `useQuery` observer: an observer's options become the query's, so one
+ * here would replace the decofile's own queryFn (useDecofile's, which reads
+ * the content), and the next refetch (a sync, a refused save's re-read)
+ * would answer with this one's instead.
+ */
+function useHeldBodies(
+  queryClient: QueryClient,
+  cacheKey: string,
+): Record<string, unknown> | undefined {
+  const queryKey = KEYS.decofile(cacheKey);
+  const queryHash = hashKey(queryKey);
+  return useSyncExternalStore(
+    (onChange) =>
+      queryClient.getQueryCache().subscribe((event) => {
+        if (event.query.queryHash === queryHash) onChange();
+      }),
+    () => queryClient.getQueryData<Record<string, unknown>>(queryKey),
+  );
+}
+
 /** Where a view's {@link useEnsureHostedBlocks} load stands. */
 export interface HostedBlocksLoad {
   /** Every name wanted that the index has is loaded (always, off hosted). */
@@ -482,12 +504,7 @@ export function useEnsureHostedBlocks(
 ): HostedBlocksLoad {
   const queryClient = useQueryClient();
   const index = useContentIndex(cacheKey);
-  const { data: loaded } = useQuery<Record<string, unknown>>({
-    queryKey: KEYS.decofile(cacheKey),
-    enabled: false,
-    queryFn: async () => ({}),
-    staleTime: Number.POSITIVE_INFINITY,
-  });
+  const loaded = useHeldBodies(queryClient, cacheKey);
   const withRefs = options?.withRefs ?? false;
   const wantedSet = new Set(names);
   if (withRefs) {
