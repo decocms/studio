@@ -4,7 +4,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "bun:test";
-import { indexEntry } from "./block-meta";
+import { indexEntry, META_VERSION } from "./block-meta";
 import { blockVersion } from "./block-version";
 import { readDraftFile, readDraftIndex } from "./cms-drafts";
 import {
@@ -113,6 +113,7 @@ describe("publishCmsDraft", () => {
     expect(JSON.parse(latest.text)).toEqual({
       revision: id,
       sequence: 1,
+      metaVersion: META_VERSION,
       previewHosts: ["localhost", "www.acme.com"],
       blocks: { header: { version: hash } },
     });
@@ -124,6 +125,7 @@ describe("publishCmsDraft", () => {
       JSON.stringify({
         revision: id,
         sequence: 1,
+        metaVersion: META_VERSION,
         blocks: { header: { version: hash } },
       }),
     );
@@ -383,8 +385,228 @@ describe("composeIndex", () => {
       home: { version: "a".repeat(22), meta: { refs: ["gone"] } },
       gone: { version: "b".repeat(22) },
     };
-    const out = await composeIndex(base, new Map(), new Set(["gone"]));
+    const out = await composeIndex(base, new Map(), new Set(["gone"]), {
+      readBody: () => Promise.reject(new Error("no body read")),
+      baseMetaVersion: META_VERSION,
+    });
     expect(out).toEqual({ home: base.home });
+  });
+});
+
+describe("noIndex and metaVersion", () => {
+  const PAGE = "website/pages/Page.tsx";
+  const SEO = "website/sections/Seo/SeoV2.tsx";
+  const page = (path: string, seo: unknown, sections: unknown[] = []) => ({
+    __resolveType: PAGE,
+    path,
+    seo,
+    sections,
+  });
+  const site = {
+    DefaultSeo: { __resolveType: SEO, title: "Acme", noIndexing: false },
+    Header: { __resolveType: "site/sections/Header.tsx", logo: "a" },
+    home: page("/", { __resolveType: "DefaultSeo" }, [
+      { __resolveType: "Header" },
+    ]),
+    about: page("/about", { __resolveType: SEO, noIndexing: false }, [
+      { __resolveType: "Header" },
+    ]),
+  };
+  const bodyReads = (delivery: { reads: string[] }) =>
+    delivery.reads.filter((r) => r.includes("/blocks/"));
+  const publish = async (ctx: ReturnType<typeof setup>) => {
+    const result = await publishCmsDraft(ctx.deps, ctx.draft, "");
+    expect(result.result).toBe("published");
+    const id = (result as { revision: string }).revision;
+    return readRevisionIndex(ctx.delivery.store, SITE, id);
+  };
+
+  it("a page's inline seo: noIndex at publish, and metaVersion on index.json and latest.json", async () => {
+    const ctx = setup();
+    await ctx.save(
+      "staging",
+      page("/staging", { __resolveType: SEO, noIndexing: true }),
+    );
+    const index = await publish(ctx);
+    expect(index.metaVersion).toBe(META_VERSION);
+    expect(index.blocks.staging?.meta).toEqual({
+      type: PAGE,
+      path: "/staging",
+      noIndex: true,
+    });
+    const latest = JSON.parse(
+      ctx.delivery.objects.get(deliveryKeys.latest(SITE))!.text,
+    );
+    expect(latest.metaVersion).toBe(META_VERSION);
+    expect(latest.blocks.staging.meta.noIndex).toBe(true);
+  });
+
+  it("a new page whose seo is the saved DefaultSeo: that block is read and followed", async () => {
+    const ctx = setup();
+    await ctx.seed({
+      ...site,
+      DefaultSeo: { ...site.DefaultSeo, noIndexing: true },
+    });
+    await ctx.save(
+      "landing",
+      page("/landing", { __resolveType: "DefaultSeo" }),
+    );
+    ctx.delivery.reads.length = 0;
+    const index = await publish(ctx);
+    expect(index.blocks.landing?.meta).toEqual({
+      type: PAGE,
+      path: "/landing",
+      refs: ["DefaultSeo"],
+      noIndex: true,
+    });
+    expect(bodyReads(ctx.delivery)).toHaveLength(1);
+  });
+
+  it("DefaultSeo turned noIndexing: every page whose seo it is is recomputed, the others kept", async () => {
+    const ctx = setup();
+    const seeded = await seedRelease(
+      ctx.delivery.store,
+      SITE,
+      newRevisionId(clock++),
+      site,
+    );
+    expect(seeded.home?.meta?.noIndex).toBeUndefined();
+    await ctx.save("DefaultSeo", { ...site.DefaultSeo, noIndexing: true });
+    const index = await publish(ctx);
+    expect(index.blocks.home).toEqual({
+      version: seeded.home!.version,
+      meta: {
+        type: PAGE,
+        path: "/",
+        refs: ["DefaultSeo", "Header"],
+        noIndex: true,
+      },
+    });
+    expect(index.blocks.about).toEqual(seeded.about!);
+    expect(index.blocks.Header).toEqual(seeded.Header!);
+
+    // And back: deleting it clears home's noIndex.
+    await ctx.remove("DefaultSeo");
+    const after = await publish(ctx);
+    expect(after.blocks.home?.meta?.noIndex).toBeUndefined();
+    expect(after.blocks.home?.version).toBe(seeded.home!.version);
+    expect(after.blocks.DefaultSeo).toBeUndefined();
+  });
+
+  it("an edit whose seo answer doesn't change (Header) reads no page body", async () => {
+    const ctx = setup();
+    const seeded = await seedRelease(
+      ctx.delivery.store,
+      SITE,
+      newRevisionId(clock++),
+      site,
+    );
+    await ctx.save("Header", { ...site.Header, logo: "b" });
+    await ctx.save("DefaultSeo", { ...site.DefaultSeo, title: "Acme!" });
+    ctx.delivery.reads.length = 0;
+    const index = await publish(ctx);
+    // Only the old DefaultSeo and Header, to compare their answers.
+    expect(bodyReads(ctx.delivery).sort()).toEqual(
+      [
+        `get ${deliveryKeys.block(SITE, seeded.DefaultSeo!.version)}`,
+        `get ${deliveryKeys.block(SITE, seeded.Header!.version)}`,
+      ].sort(),
+    );
+    expect(index.blocks.home).toEqual(seeded.home!);
+  });
+
+  it("the backfill: a publish onto an index without metaVersion recomputes every entry", async () => {
+    const ctx = setup();
+    const legacy = await seedRelease(
+      ctx.delivery.store,
+      SITE,
+      newRevisionId(clock++),
+      {
+        ...site,
+        DefaultSeo: { ...site.DefaultSeo, noIndexing: true },
+        staging: page("/staging", { __resolveType: SEO, noIndexing: true }),
+        CMS: { __resolveType: "cms-settings", a: 1 },
+      },
+      {},
+      { legacy: true },
+    );
+    const live = await readLatest(ctx.delivery.store, SITE);
+    expect(live?.latest.metaVersion).toBeUndefined();
+    expect(legacy.home?.meta?.noIndex).toBeUndefined();
+    expect(legacy.staging?.meta?.noIndex).toBeUndefined();
+    // A draft that touches neither page.
+    await ctx.save("Header", { ...site.Header, logo: "b" });
+    const index = await publish(ctx);
+    expect(index.metaVersion).toBe(META_VERSION);
+    expect(index.blocks.home?.meta?.noIndex).toBe(true);
+    expect(index.blocks.staging?.meta?.noIndex).toBe(true);
+    expect(index.blocks.about?.meta).toEqual(legacy.about!.meta!);
+    expect(index.blocks.home?.version).toBe(legacy.home!.version);
+    expect(index.blocks.CMS).toEqual(legacy.CMS!);
+  });
+
+  it("a draft equal to a legacy index still publishes, to write metaVersion", async () => {
+    const ctx = setup();
+    await seedRelease(
+      ctx.delivery.store,
+      SITE,
+      newRevisionId(clock++),
+      { a: { v: 1 } },
+      {},
+      { legacy: true },
+    );
+    await ctx.save("a", { v: 1 });
+    const index = await publish(ctx);
+    expect(index.metaVersion).toBe(META_VERSION);
+    expect(index.blocks).toEqual({ a: { version: blockVersion({ v: 1 }) } });
+  });
+
+  it("a rollback to a legacy revision recomputes its entries and writes metaVersion", async () => {
+    const ctx = setup();
+    const r1 = newRevisionId(clock++);
+    await seedRelease(
+      ctx.delivery.store,
+      SITE,
+      r1,
+      {
+        ...site,
+        DefaultSeo: { ...site.DefaultSeo, noIndexing: true },
+      },
+      {},
+      { legacy: true },
+    );
+    await ctx.seed({ a: { v: 2 } });
+    const result = await rollbackToRevision(ctx.deps, r1, "");
+    expect(result.result).toBe("published");
+    const id = (result as { revision: string }).revision;
+    const index = await readRevisionIndex(ctx.delivery.store, SITE, id);
+    expect(index.metaVersion).toBe(META_VERSION);
+    expect(index.blocks.home?.meta?.noIndex).toBe(true);
+  });
+
+  it("reading an index keeps noIndex and metaVersion; a legacy one has neither", async () => {
+    const ctx = setup();
+    const id = newRevisionId(clock++);
+    await seedRelease(ctx.delivery.store, SITE, id, {
+      staging: page("/s", { noIndexing: true }),
+    });
+    clearRevisionCache();
+    const index = await readRevisionIndex(ctx.delivery.store, SITE, id);
+    expect(index.metaVersion).toBe(META_VERSION);
+    expect(index.blocks.staging?.meta?.noIndex).toBe(true);
+    const old = newRevisionId(clock++);
+    await seedRelease(
+      ctx.delivery.store,
+      SITE,
+      old,
+      { staging: page("/s", { noIndexing: true }) },
+      {},
+      { legacy: true },
+    );
+    clearRevisionCache();
+    const legacy = await readRevisionIndex(ctx.delivery.store, SITE, old);
+    expect(legacy).not.toHaveProperty("metaVersion");
+    expect(legacy.blocks.staging?.meta).not.toHaveProperty("noIndex");
   });
 });
 

@@ -5,7 +5,7 @@
 
 import type { DraftStoragePort } from "@/storage/ports";
 import type { CmsDraftRow } from "@/storage/types";
-import { type BlockIndex, indexEntry } from "./block-meta";
+import { type BlockIndex, indexEntry, META_VERSION } from "./block-meta";
 import {
   readLatest,
   type RevisionMeta,
@@ -86,6 +86,8 @@ export function memoryRecordStore(): RecordStore & {
  * Writes a live revision of `blocks` for tests, as publish would: each
  * body at `blocks/<hash>.json`, the revision's index and meta, then
  * latest.json (the next `sequence`). Returns the index's entries.
+ * `legacy`: as a Studio before `noIndex` wrote it (no `metaVersion`, no
+ * `noIndex`).
  */
 export async function seedRelease(
   store: DeliveryStore,
@@ -93,15 +95,24 @@ export async function seedRelease(
   id: string,
   blocks: Record<string, unknown>,
   meta: Partial<RevisionMeta> = {},
+  options: { legacy?: boolean } = {},
 ): Promise<BlockIndex> {
   const live = await readLatest(store, site);
   const names = Object.keys(blocks);
+  const bodyOf = (name: string) =>
+    Object.hasOwn(blocks, name) ? blocks[name] : undefined;
   const entries: BlockIndex = Object.fromEntries(
     await Promise.all(
-      Object.entries(blocks).map(
-        async ([name, body]) =>
-          [name, await indexEntry(name, body, names)] as const,
-      ),
+      Object.entries(blocks).map(async ([name, body]) => {
+        const entry = await indexEntry(
+          name,
+          body,
+          names,
+          options.legacy ? undefined : bodyOf,
+        );
+        if (options.legacy) delete entry.meta?.noIndex;
+        return [name, entry] as const;
+      }),
     ),
   );
   for (const [name, body] of Object.entries(blocks)) {
@@ -115,6 +126,7 @@ export async function seedRelease(
   const index = {
     revision: id,
     sequence: (live?.latest.sequence ?? 0) + 1,
+    ...(options.legacy ? {} : { metaVersion: META_VERSION }),
     blocks: entries,
   };
   await writeRevision(store, site, serializeIndex(index), id, {

@@ -2,8 +2,10 @@
  * Publish, rollback and roll-forward on the hosted CMS (design "Publish";
  * contract §4.5–§4.6). A publish commits at exactly one point, the
  * conditional PUT of `latest.json`, which always comes after every object
- * the new index points at is written. It never reads an unchanged block's
- * body.
+ * the new index points at is written. It reads an unchanged block's body
+ * only to compute `meta.noIndex` (see `composeIndex`): a page's saved SEO
+ * block, a page whose saved SEO block's answer changed, and every entry once
+ * on an index written before `META_VERSION` (the backfill).
  *
  * Publish a draft:
  *   1. read latest.json (ETag L), the base index; none = first publish;
@@ -12,7 +14,9 @@
  *   3. for each set block, PUT `blocks/<hash>.json` create-only (a 412 is
  *      "already there"), unless the base already names that hash;
  *   4. copy the index, replacing the changed entries and dropping the
- *      deleted names, with `sequence` one higher; equal entries → skip to 8
+ *      deleted names, with `sequence` one higher and `metaVersion`
+ *      `META_VERSION` (every entry's meta recomputed when the base's is
+ *      older); equal entries on a base at `META_VERSION` → skip to 8
  *      (`up-to-date`);
  *   5. PUT `revisions/<id>/index.json`, then `meta.json`, create-only;
  *   6. PUT latest.json with `If-Match: L` (create-only on a first publish):
@@ -25,7 +29,8 @@
  *      the names whose marker landed.
  *
  * A rollback is a publish with no draft (1, 4–7): a copy of the target's
- * index under a new id and the next `sequence`, with `reapplyOf`; no block
+ * index under a new id and the next `sequence`, with `reapplyOf` (its
+ * entries' meta recomputed when it predates `META_VERSION`); no block
  * object is written, since every hash exists. A no-op when it equals the
  * live index; refused before the site's first publish (`NotPublishedError`,
  * 409 `not_published`).
@@ -40,7 +45,16 @@ import {
   UNKNOWN_RELEASE_NOTE,
 } from "@decocms/shared/release-notes";
 import type { CmsVia } from "@/storage/types";
-import { type BlockIndex, type IndexEntry, indexEntry } from "./block-meta";
+import {
+  type BlockIndex,
+  type BodyOf,
+  blockMeta,
+  INLINE_BLOCK,
+  type IndexEntry,
+  indexEntry,
+  META_VERSION,
+  seoNoIndex,
+} from "./block-meta";
 import {
   type DraftFileRead,
   type DraftState,
@@ -53,6 +67,8 @@ import {
   type Latest,
   MAX_BLOCK_BYTES,
   MAX_INDEX_BYTES,
+  metaVersionOf,
+  readBlockBody,
   readLatest,
   readRevisionIndex,
   readRevisionMeta,
@@ -154,6 +170,7 @@ async function writeAndPoint(
   const index = {
     revision: id,
     sequence: (base?.latest.sequence ?? 0) + 1,
+    metaVersion: META_VERSION,
     blocks,
   };
   const text = serializeIndex(index);
@@ -184,30 +201,186 @@ async function writeAndPoint(
   return id;
 }
 
+/** What `composeIndex` needs besides the base and the draft. */
+export interface ComposeOptions {
+  /** A published body by its hash (a base entry's `version`). */
+  readBody: (version: string) => Promise<unknown>;
+  /** The base index's meta version (`metaVersionOf`). */
+  baseMetaVersion: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * The saved blocks `seoNoIndex(seo, bodyOf)` follows from `seo`, loaded:
+ * the same walk (a boolean `noIndexing` ends it; otherwise its
+ * `__resolveType`, when a name of the index, is the next body), so the
+ * synchronous `bodyOf` over the result answers every lookup it makes.
+ */
+async function loadSeoChain(
+  seo: unknown,
+  names: ReadonlySet<string>,
+  load: (name: string) => Promise<unknown>,
+): Promise<BodyOf> {
+  const loaded = new Map<string, unknown>();
+  let node = seo;
+  while (isRecord(node) && typeof node.noIndexing !== "boolean") {
+    const ref = node.__resolveType;
+    if (typeof ref !== "string" || !names.has(ref) || loaded.has(ref)) break;
+    node = await load(ref);
+    loaded.set(ref, node);
+  }
+  return (name) => loaded.get(name);
+}
+
+/**
+ * Whether a page's `seo` that is the saved block `name` says `noIndexing`,
+ * in an index of `names` whose bodies `load` gives.
+ */
+async function savedSeoNoIndex(
+  name: string,
+  names: ReadonlySet<string>,
+  load: (name: string) => Promise<unknown>,
+): Promise<boolean> {
+  const seo = { __resolveType: name };
+  return seoNoIndex(seo, await loadSeoChain(seo, names, load));
+}
+
 /**
  * Step 4: the base index with the draft's set names replaced in place (or
  * appended, code-unit order) and its deleted names removed. `meta` of a set
- * name is computed over the new index's names.
+ * name is computed over the new index's names, a page's saved SEO block
+ * (`noIndex`) looked up in the new index.
+ *
+ * An unchanged entry keeps its `meta`, except:
+ * - on a base whose meta version is not `META_VERSION` (an index written
+ *   before `noIndex`), every entry's `meta` is recomputed (each body read
+ *   once): the one-time backfill after which readers trust a missing
+ *   `noIndex` as `false`;
+ * - a page whose `seo` may reach a changed or deleted saved block whose
+ *   answer as a `seo` (`seoNoIndex`) changed: a page whose `refs` reach that
+ *   block (through other blocks' `refs`) is recomputed. A block whose answer
+ *   didn't change (a `Header` edit, say) recomputes nothing.
+ *
+ * Refs of an unchanged page are the names it referenced when it was
+ * computed, so a page whose `seo` named a block that didn't exist yet is
+ * not found when that block is added (it resolved to nothing until then).
  */
 export async function composeIndex(
   base: BlockIndex,
   sets: ReadonlyMap<string, Record<string, unknown>>,
   deletes: ReadonlySet<string>,
+  options: ComposeOptions,
 ): Promise<BlockIndex> {
   const names = new Set(
     [...Object.keys(base), ...sets.keys()].filter(
       (n) => sets.has(n) || !deletes.has(n),
     ),
   );
+  const baseNames = new Set(Object.keys(base));
+  // The bodies a page's `seo` reaches (saved SEO blocks), read once.
+  const reads = new Map<string, Promise<unknown>>();
+  const readVersion = (version: string) => {
+    let read = reads.get(version);
+    if (!read) {
+      read = options.readBody(version);
+      reads.set(version, read);
+    }
+    return read;
+  };
+  const oldBody = (name: string) => {
+    const entry = Object.hasOwn(base, name) ? base[name] : undefined;
+    return entry ? readVersion(entry.version) : Promise.resolve(undefined);
+  };
+  const newBody = (name: string) => {
+    if (sets.has(name)) return Promise.resolve(sets.get(name));
+    return names.has(name) ? oldBody(name) : Promise.resolve(undefined);
+  };
+  /** A body's entry in the new index, its saved SEO block looked up. */
+  const entryOf = async (name: string, body: unknown, version?: string) => {
+    const bodyOf =
+      isRecord(body) && typeof body.path === "string"
+        ? await loadSeoChain(body.seo, names, newBody)
+        : undefined;
+    if (version === undefined) return indexEntry(name, body, names, bodyOf);
+    const entry: IndexEntry = { version };
+    const meta = blockMeta(body, names, bodyOf);
+    if (Object.keys(meta).length > 0) entry.meta = meta;
+    if (name === INLINE_BLOCK) entry.data = body;
+    return entry;
+  };
+
+  const recompute = new Set<string>();
+  if (options.baseMetaVersion !== META_VERSION) {
+    for (const name of names) if (!sets.has(name)) recompute.add(name);
+  } else {
+    // Who references whom, over the new index's entries (stale refs of
+    // unchanged entries included: they may name a deleted block).
+    const referrers = new Map<string, string[]>();
+    const refer = (from: string, refs: readonly string[] | undefined) => {
+      for (const ref of refs ?? []) {
+        const list = referrers.get(ref) ?? [];
+        list.push(from);
+        referrers.set(ref, list);
+      }
+    };
+    for (const name of names) {
+      if (sets.has(name)) {
+        refer(name, blockMeta(sets.get(name), names).refs);
+      } else {
+        refer(name, base[name]?.meta?.refs);
+      }
+    }
+    /** The unchanged pages whose refs reach `name`, through any blocks. */
+    const pagesReaching = (name: string) => {
+      const pages: string[] = [];
+      const reached = new Set([name]);
+      const queue = [name];
+      while (queue.length > 0) {
+        for (const from of referrers.get(queue.pop()!) ?? []) {
+          if (reached.has(from)) continue;
+          reached.add(from);
+          queue.push(from);
+          if (!sets.has(from) && typeof base[from]?.meta?.path === "string")
+            pages.push(from);
+        }
+      }
+      return pages;
+    };
+    const changed = new Set(
+      [...sets.keys(), ...deletes].filter(
+        (n) => sets.has(n) || baseNames.has(n),
+      ),
+    );
+    for (const name of changed) {
+      const pages = pagesReaching(name);
+      if (pages.length === 0) continue;
+      const before = await savedSeoNoIndex(name, baseNames, oldBody);
+      const after = await savedSeoNoIndex(name, names, newBody);
+      if (before !== after) for (const p of pages) recompute.add(p);
+    }
+  }
+
   const out: Array<[string, IndexEntry]> = [];
   for (const [name, entry] of Object.entries(base)) {
-    if (sets.has(name))
-      out.push([name, await indexEntry(name, sets.get(name), names)]);
+    if (sets.has(name)) out.push([name, await entryOf(name, sets.get(name))]);
+    else if (recompute.has(name))
+      out.push([
+        name,
+        // Not memoized: a backfill holds one body at a time.
+        await entryOf(
+          name,
+          await options.readBody(entry.version),
+          entry.version,
+        ),
+      ]);
     else if (!deletes.has(name)) out.push([name, entry]);
   }
   const added = [...sets.keys()].filter((n) => !Object.hasOwn(base, n)).sort();
   for (const name of added) {
-    out.push([name, await indexEntry(name, sets.get(name), names)]);
+    out.push([name, await entryOf(name, sets.get(name))]);
   }
   // fromEntries: an entry named "__proto__" stays an entry.
   return Object.fromEntries(out);
@@ -311,8 +484,14 @@ export async function publishCmsDraft(
       if (read.file?.operation === "set") sets.set(name, read.file.data);
       else deletes.add(name);
     }
-    const blocks = await composeIndex(baseBlocks, sets, deletes);
-    if (canonicalJson(blocks) === canonicalJson(baseBlocks)) {
+    const blocks = await composeIndex(baseBlocks, sets, deletes, {
+      readBody: (version) => readBlockBody(store, site, version),
+      baseMetaVersion: base ? metaVersionOf(base.latest) : META_VERSION,
+    });
+    if (
+      canonicalJson(blocks) === canonicalJson(baseBlocks) &&
+      (!base || metaVersionOf(base.latest) === META_VERSION)
+    ) {
       return {
         result: "up-to-date",
         revision: base?.latest.revision ?? null,
@@ -420,17 +599,25 @@ export async function rollbackToRevision(
   const { store, site } = deps;
   const targetMeta = await readRevisionMeta(store, site, target);
   if (!targetMeta) throw new RevisionNotFoundError(target);
-  const wanted = await readRevisionIndex(store, site, target);
+  const targetIndex = await readRevisionIndex(store, site, target);
+  // A target written before this meta version: its entries recomputed.
+  const wanted = await composeIndex(targetIndex.blocks, new Map(), new Set(), {
+    readBody: (version) => readBlockBody(store, site, version),
+    baseMetaVersion: metaVersionOf(targetIndex),
+  });
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
     const live = await readLatest(store, site);
     if (!live) throw new NotPublishedError();
-    if (canonicalJson(wanted.blocks) === canonicalJson(live.latest.blocks)) {
+    if (
+      canonicalJson(wanted) === canonicalJson(live.latest.blocks) &&
+      metaVersionOf(live.latest) === META_VERSION
+    ) {
       return { result: "up-to-date", revision: live.latest.revision };
     }
     const id = await writeAndPoint(
       deps,
       live,
-      wanted.blocks,
+      wanted,
       {
         reapplyOf: target,
         message:

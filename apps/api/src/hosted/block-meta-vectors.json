@@ -5,7 +5,10 @@
     "footer",
     "footer-a",
     "header",
+    "hidden-seo",
     "home",
+    "noindex-inline",
+    "noindex-saved",
     "plain",
     "redirects",
     "variants"
@@ -207,6 +210,83 @@
           "telemetry": {
             "enabled": false
           }
+        }
+      }
+    },
+    {
+      "name": "hidden-seo",
+      "body": {
+        "__resolveType": "website/sections/Seo/SeoV2.tsx",
+        "title": "Staging",
+        "noIndexing": true
+      },
+      "version": "TweCqXol6NaqfznIdZHWGA",
+      "meta": {
+        "type": "website/sections/Seo/SeoV2.tsx"
+      },
+      "entry": {
+        "version": "TweCqXol6NaqfznIdZHWGA",
+        "meta": {
+          "type": "website/sections/Seo/SeoV2.tsx"
+        }
+      }
+    },
+    {
+      "name": "noindex-inline",
+      "body": {
+        "__resolveType": "website/pages/Page.tsx",
+        "path": "/staging",
+        "seo": {
+          "__resolveType": "website/sections/Seo/SeoV2.tsx",
+          "noIndexing": true
+        },
+        "sections": [
+          {
+            "__resolveType": "header"
+          }
+        ]
+      },
+      "version": "9dPY85a3_dAGqgn9HyBymg",
+      "meta": {
+        "type": "website/pages/Page.tsx",
+        "path": "/staging",
+        "refs": ["header"],
+        "noIndex": true
+      },
+      "entry": {
+        "version": "9dPY85a3_dAGqgn9HyBymg",
+        "meta": {
+          "type": "website/pages/Page.tsx",
+          "path": "/staging",
+          "refs": ["header"],
+          "noIndex": true
+        }
+      }
+    },
+    {
+      "name": "noindex-saved",
+      "body": {
+        "__resolveType": "page",
+        "path": "/landing",
+        "seo": {
+          "__resolveType": "hidden-seo"
+        },
+        "sections": []
+      },
+      "version": "sOB07_jkmJqe7Mr5Raj6rg",
+      "meta": {
+        "type": "page",
+        "path": "/landing",
+        "refs": ["hidden-seo"],
+        "noIndex": true
+      },
+      "entry": {
+        "version": "sOB07_jkmJqe7Mr5Raj6rg",
+        "meta": {
+          "type": "page",
+          "path": "/landing",
+          "refs": ["hidden-seo"],
+          "noIndex": true
         }
       }
     }

@@ -3,8 +3,12 @@
  *
  *   blocks/<hash>.json            one block body, immutable, keyed by its
  *                                 `blockVersion`
- *   revisions/<id>/index.json     { revision, sequence, blocks }: name →
- *                                 { version, meta?, data? }, immutable
+ *   revisions/<id>/index.json     { revision, sequence, metaVersion?,
+ *                                 blocks }: name → { version, meta?,
+ *                                 data? }, immutable. `metaVersion` is the
+ *                                 `META_VERSION` that computed every
+ *                                 entry's `meta` (absent: 1, before
+ *                                 `noIndex`)
  *   revisions/<id>/meta.json      who published it, how, why, when, and the
  *                                 revision before it (`previous`)
  *   latest.json                   a copy of the live index + `previewHosts`:
@@ -34,7 +38,18 @@ import { isRevisionId } from "./revision-id";
 export interface RevisionIndex {
   revision: string;
   sequence: number;
+  /**
+   * The meta version every entry's `meta` was computed at (`META_VERSION`
+   * of the Studio that wrote it); absent is 1, an index written before
+   * `noIndex`. Written only when set.
+   */
+  metaVersion?: number;
   blocks: BlockIndex;
+}
+
+/** An index's meta version: its `metaVersion`, 1 when it has none. */
+export function metaVersionOf(index: { metaVersion?: number }): number {
+  return index.metaVersion ?? 1;
 }
 
 /** `latest.json`: the live revision's index plus the preview hosts (§2.3). */
@@ -90,6 +105,7 @@ function parseEntry(value: unknown): IndexEntry | null {
         (r): r is string => typeof r === "string",
       );
     }
+    if (value.meta.noIndex === true) meta.noIndex = true;
     entry.meta = meta;
   }
   if (value.data !== undefined) entry.data = value.data;
@@ -120,10 +136,18 @@ function parseIndex(key: string, text: string): RevisionIndex {
     if (!entry) throw new MalformedObjectError(key);
     blocks.push([name, entry]);
   }
+  // Absent or unreadable: version 1 (as the SDK reads it).
+  const metaVersion =
+    typeof value.metaVersion === "number" &&
+    Number.isSafeInteger(value.metaVersion) &&
+    value.metaVersion >= 1
+      ? value.metaVersion
+      : undefined;
   // fromEntries: an entry named "__proto__" stays an entry.
   return {
     revision: value.revision,
     sequence: value.sequence,
+    ...(metaVersion !== undefined ? { metaVersion } : {}),
     blocks: Object.fromEntries(blocks),
   };
 }
@@ -189,6 +213,7 @@ export function serializeIndex(index: RevisionIndex): string {
   return JSON.stringify({
     revision: index.revision,
     sequence: index.sequence,
+    metaVersion: index.metaVersion,
     blocks: index.blocks,
   });
 }
@@ -198,6 +223,7 @@ function serializeLatest(latest: Latest): string {
   return JSON.stringify({
     revision: latest.revision,
     sequence: latest.sequence,
+    metaVersion: latest.metaVersion,
     previewHosts: [...latest.previewHosts],
     blocks: latest.blocks,
   });

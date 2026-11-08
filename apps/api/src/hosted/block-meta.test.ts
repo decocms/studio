@@ -1,12 +1,22 @@
 import { describe, expect, it } from "bun:test";
-import { blockMeta, INLINE_BLOCK, indexEntry } from "./block-meta";
+import {
+  blockMeta,
+  INLINE_BLOCK,
+  indexEntry,
+  META_VERSION,
+  pageNoIndex,
+  seoNoIndex,
+} from "./block-meta";
 import vectors from "./block-meta-vectors.json";
 
 describe("blockMeta (the shared vectors)", () => {
+  // A page's saved SEO block is looked up among the cases.
+  const bodyOf = (name: string) =>
+    vectors.cases.find((c) => c.name === name)?.body;
   for (const c of vectors.cases) {
     it(`${c.name}: meta, version and entry`, async () => {
-      expect(blockMeta(c.body, vectors.names)).toEqual(c.meta);
-      const entry = await indexEntry(c.name, c.body, vectors.names);
+      expect(blockMeta(c.body, vectors.names, bodyOf)).toEqual(c.meta);
+      const entry = await indexEntry(c.name, c.body, vectors.names, bodyOf);
       expect(entry).toEqual(c.entry as never);
       expect(entry.version).toBe(c.version);
     });
@@ -35,5 +45,36 @@ describe("blockMeta (the shared vectors)", () => {
       a: 1,
     });
     expect(await indexEntry("cms", { a: 1 }, [])).not.toHaveProperty("data");
+  });
+});
+
+describe("noIndex (meta version 2)", () => {
+  it("is meta version 2", () => {
+    expect(META_VERSION).toBe(2);
+  });
+
+  it("a saved SEO block counts only when bodyOf knows it", () => {
+    const page = {
+      __resolveType: "page",
+      path: "/p",
+      seo: { __resolveType: "DefaultSeo" },
+    };
+    const bodyOf = (n: string) =>
+      n === "DefaultSeo" ? { noIndexing: true } : undefined;
+    expect(blockMeta(page, ["DefaultSeo"]).noIndex).toBeUndefined();
+    expect(blockMeta(page, ["DefaultSeo"], bodyOf).noIndex).toBe(true);
+    expect(blockMeta({ ...page, path: undefined }, [], bodyOf)).toEqual({
+      type: "page",
+    });
+  });
+
+  it("only a page (a top-level string path) is noIndex", () => {
+    expect(pageNoIndex({ path: "/p", seo: { noIndexing: true } })).toBe(true);
+    expect(pageNoIndex({ seo: { noIndexing: true } })).toBe(false);
+  });
+
+  it("stops at a cycle", () => {
+    const bodyOf = (n: string) => ({ __resolveType: n === "a" ? "b" : "a" });
+    expect(seoNoIndex({ __resolveType: "a" }, bodyOf)).toBe(false);
   });
 });
