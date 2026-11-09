@@ -1222,7 +1222,8 @@ func main() {
 				return d.dispatchReg.HasActiveRuns() ||
 					activity.Idle().IdleMs < (2*gitx.AutosaveInterval).Milliseconds()
 			},
-			Dirty: func() bool { return gitx.IsDirty(repoDir) },
+			Dirty:    func() bool { return gitx.IsDirty(repoDir) },
+			OnResult: d.branchStatus.RecordPush,
 		})
 		d.autosave.Start()
 	}

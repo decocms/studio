@@ -56,6 +56,7 @@ import type {
   LifecycleState,
 } from "@/components/sandbox/hooks/sandbox-events-context";
 import { useT, type TFunction } from "@/i18n/use-t";
+import { AlertTriangle } from "@untitledui/icons";
 
 interface Props {
   virtualMcpId: string;
@@ -416,10 +417,38 @@ export function HeaderActions({ virtualMcpId }: Props) {
     />
   );
 
-  if (!sandboxRouteBranch) return headerButton;
+  const pushWarningLabel =
+    effectiveBranchMeta.kind === "ready" &&
+    effectiveBranchMeta.pushError &&
+    effectiveBranchMeta.pushFailingSince
+      ? t("thread.headerActions.pushFailing", {
+          since: new Date(
+            effectiveBranchMeta.pushFailingSince,
+          ).toLocaleString(),
+          error: effectiveBranchMeta.pushError,
+        })
+      : null;
+  const pushWarning = pushWarningLabel ? (
+    <WithTooltip label={pushWarningLabel}>
+      <AlertTriangle
+        role="img"
+        aria-label={pushWarningLabel}
+        className="size-4 text-warning"
+      />
+    </WithTooltip>
+  ) : null;
+
+  if (!sandboxRouteBranch)
+    return (
+      <>
+        {pushWarning}
+        {headerButton}
+      </>
+    );
 
   return (
     <>
+      {pushWarning}
       {headerButton}
       <PublishDialog
         open={surface.open}
