@@ -1,8 +1,22 @@
-import { useRef, useState } from "react";
 import {
-  ArrowLeft,
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/resizable";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { TaskPreview } from "@/layouts/task-board/task-preview";
+import { MockProjectPicker } from "./project-picker";
+import { MockTaskDetail } from "./task-detail";
+import { setMockTasks } from "./mock-api";
+import { useRef, useState, type ReactNode } from "react";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@decocms/ui/components/popover.tsx";
+import {
   ArrowRight,
-  ArrowUp,
+  DotsHorizontal,
   Check,
   ChevronLeft,
   Headphones01,
@@ -14,7 +28,8 @@ import {
   X,
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
+import { NewCommentComposer } from "@/layouts/task-board/task-comments";
+import { parseMentions } from "@decocms/shared/mentions";
 import {
   Dialog,
   DialogContent,
@@ -28,28 +43,11 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
   type TaskBoardItemStatus,
 } from "@/layouts/task-board/config";
-import { TaskMessage } from "@/layouts/task-board/task-message";
-import { TaskAssigneeAvatar } from "@/components/task-assignee-avatar";
-import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { useT, type TranslationKey } from "@/i18n/use-t";
-import {
-  CREATED_AT,
-  initialTasks,
-  needsPerson,
-  PERSON,
-  type MockTask,
-} from "./data";
+import { initialTasks, needsPerson, PERSON, type MockTask } from "./data";
 import "@/components/chat/voice/voice.css";
 import "./prototype.css";
-import { TaskTestContent } from "./task-test-content";
-import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-} from "@decocms/ui/components/drawer.tsx";
+
 import { InboxScope, OrganizationMark } from "./inbox-scope";
 import {
   scenarioTasks,
@@ -95,19 +93,50 @@ export function VoiceInboxPrototype({
   personName,
   organization,
   branding,
+  mockControls,
 }: {
+  mockControls?: ReactNode;
   scenario?: Scenario;
   personName?: string;
   organization?: string;
   branding?: Branding;
 }) {
   const t = useT();
+  const isMobile = useIsMobile();
   const [scope, setScope] = useState<"user" | "organization">("organization");
   const orgName = organization ?? "Demo";
   const [tasks, updateTasks] = useState(() =>
     scenario ? scenarioTasks(scenario) : initialTasks(),
   );
   const person = { ...PERSON, user: { name: personName ?? PERSON.user.name } };
+  setMockTasks(tasks, person.user.name, setTasks);
+  const projectLabels = [
+    ...new Set([
+      ...(scenario?.tasks.flatMap((task) =>
+        task.projectLabel ? [task.projectLabel] : [],
+      ) ?? []),
+      ...tasks.flatMap((task) =>
+        task.projectLabel ? [task.projectLabel] : [],
+      ),
+    ]),
+  ];
+  function projectPicker(task: MockTask) {
+    return (
+      <MockProjectPicker
+        label={task.projectLabel}
+        labels={projectLabels}
+        onChange={(projectLabel) =>
+          setTasks(
+            tasks.map((entry) =>
+              entry.item.id === task.item.id
+                ? { ...entry, projectLabel }
+                : entry,
+            ),
+          )
+        }
+      />
+    );
+  }
   function setTasks(next: MockTask[] | ((current: MockTask[]) => MockTask[])) {
     const updated = typeof next === "function" ? next(tasks) : next;
     if (scenario) saveScenario(scenario, updated);
@@ -117,13 +146,7 @@ export function VoiceInboxPrototype({
     tasks.some(needsPerson) ? "inbox" : "welcome",
   );
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const isMobile = useIsMobile();
-  const [testingId, setTestingId] = useState<string | null | undefined>(
-    undefined,
-  );
-  const testButton = useRef<HTMLButtonElement>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [reply, setReply] = useState("");
   const [notice, setNotice] = useState<TranslationKey | null>(null);
   const [muted, setMuted] = useState(false);
   const [dark, setDark] = useState(false);
@@ -140,31 +163,17 @@ export function VoiceInboxPrototype({
     pending.find((task) => task.item.id === focusedId) ?? pending[0];
   const detail = tasks.find((task) => task.item.id === detailId);
   const isFocused = view === "inbox" && !!focused;
-  const hasTestingContent =
-    !!focused &&
-    !!(focused.pullRequest || focused.review?.testPlan || focused.review?.link);
-  const testingOpen =
-    isFocused &&
-    hasTestingContent &&
-    (testingId === focused.item.id || (testingId === undefined && !isMobile));
-  function closeTesting() {
-    setTestingId(null);
-    testButton.current?.focus();
-  }
   const showCompanion = view !== "welcome" && view !== "outside";
   function navigate(next: View) {
-    setTestingId(undefined);
     document.getElementById("voice-inbox-main")?.scrollTo({ top: 0 });
     setView(next);
     setNotice(null);
   }
   function reset() {
-    setTestingId(undefined);
     const restored = scenario ? scenarioTasks(scenario, false) : initialTasks();
     setTasks(restored);
     setFocusedId(null);
     setDetailId(null);
-    setReply("");
     setNotice(null);
     setView(restored.some(needsPerson) ? "inbox" : "welcome");
   }
@@ -173,7 +182,6 @@ export function VoiceInboxPrototype({
       setNotice("voiceInbox.noFocus");
       return;
     }
-    setTestingId(undefined);
     const targetId = focused.item.id;
     const body =
       text ??
@@ -214,11 +222,9 @@ export function VoiceInboxPrototype({
     setNotice(
       kind === "confirm" ? "voiceInbox.recorded" : "voiceInbox.steered",
     );
-    setReply("");
     setFocusedId(null);
   }
   function nextTask() {
-    setTestingId(undefined);
     if (!focused) return;
     const nextOrder = Math.max(...tasks.map((task) => task.item.sortOrder)) + 1;
     setTasks((current) =>
@@ -231,51 +237,23 @@ export function VoiceInboxPrototype({
     setFocusedId(null);
     setNotice("voiceInbox.skipped");
   }
-  function submit() {
-    const text = reply.trim();
-    if (!text) return;
-    if (view !== "inbox") {
+  function submit(body: string) {
+    const text = body.trim();
+    if (!text) return false;
+    if (!isFocused) {
       setNotice("voiceInbox.noFocus");
-      return;
+      return false;
+    }
+    if (parseMentions(text).includes(SUPER_AGENT_ASSIGNEE_ID)) {
+      decide("steer", text);
+      return true;
     }
     if (/^(sim|aprova|aprovar|pode|segue)[.! ]*$/i.test(text))
       decide("confirm", text);
     else if (/^(depois|próxima|proxima)[.! ]*$/i.test(text)) {
       nextTask();
-      setReply("");
     } else decide("steer", text);
-  }
-  function renderComments(task: MockTask) {
-    return task.comments.map((comment) => (
-      <TaskMessage
-        key={comment.id}
-        id={comment.id}
-        author={
-          comment.authorLabel ??
-          (comment.author === "agent" ? "Super Agent" : person.user.name)
-        }
-        metadata={
-          comment.eventLabel && (
-            <span className="text-xs text-muted-foreground">
-              {comment.eventLabel}
-            </span>
-          )
-        }
-        avatar={
-          comment.authorLabel ? (
-            <span className="flex size-5 items-center justify-center rounded-full bg-muted text-xs">
-              {comment.authorLabel.slice(0, 1)}
-            </span>
-          ) : comment.author === "agent" ? (
-            <SuperAgentIcon size={20} />
-          ) : (
-            <TaskAssigneeAvatar assigneeId={PERSON.userId} assignee={person} />
-          )
-        }
-        createdAt={CREATED_AT}
-        body={comment.body}
-      />
-    ));
+    return true;
   }
   function renderBoard() {
     return (
@@ -333,7 +311,7 @@ export function VoiceInboxPrototype({
   }
   return (
     <div className="voice-inbox-prototype flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <header className="relative flex h-20 shrink-0 items-center px-4 sm:px-7">
+      <header className="flex h-14 shrink-0 items-center gap-2 pl-3 pr-14 sm:pl-6 sm:pr-16">
         <Button
           variant="ghost"
           size="icon"
@@ -350,14 +328,37 @@ export function VoiceInboxPrototype({
         >
           <ChevronLeft />
         </Button>
-        <div className="absolute left-1/2 -translate-x-1/2">
-          <InboxScope
-            organization={orgName}
-            branding={branding}
-            scope={scope}
-            onScopeChange={setScope}
-          />
-        </div>
+        <InboxScope
+          organization={orgName}
+          branding={branding}
+          scope={scope}
+          onScopeChange={setScope}
+        />
+        {isFocused && (
+          <>
+            {scope === "user" && (
+              <span className="truncate text-sm text-muted-foreground">
+                {orgName}
+              </span>
+            )}
+            {focused.projectLabel && (
+              <div className="flex min-w-0 items-center gap-1">
+                <span aria-hidden="true" className="text-muted-foreground">
+                  /
+                </span>
+                {projectPicker(focused)}
+              </div>
+            )}
+            <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+              {t(
+                pending.length === 1
+                  ? "voiceInbox.oneRemaining"
+                  : "voiceInbox.remaining",
+                { count: pending.length },
+              )}
+            </span>
+          </>
+        )}
       </header>
       <main
         id="voice-inbox-main"
@@ -433,172 +434,118 @@ export function VoiceInboxPrototype({
           </section>
         )}
         {isFocused && (
-          <section
-            className={cn(
-              "flex h-full min-h-0 w-full flex-col px-4 sm:px-6",
-              testingOpen && !isMobile ? "max-w-7xl" : "max-w-4xl",
-            )}
-          >
-            <div className="mb-3 flex shrink-0 items-center gap-3">
-              <OrganizationMark name={orgName} branding={branding} />
-              <div>
-                <p className="text-sm font-medium">{orgName}</p>
-                {focused.projectLabel && (
-                  <p className="text-xs text-muted-foreground">
-                    {focused.projectLabel}
-                  </p>
-                )}
-              </div>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {t(
-                  pending.length === 1
-                    ? "voiceInbox.oneRemaining"
-                    : "voiceInbox.remaining",
-                  { count: pending.length },
-                )}
-              </span>
-            </div>
-            <div className="flex min-h-0 flex-1 gap-4">
-              <div
-                className="voice-inbox-decision surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-                style={{ touchAction: "pan-y" }}
-                onPointerDown={(event) => {
-                  swipeStart.current = null;
-                  if (
-                    event.pointerType === "touch" &&
-                    event.isPrimary &&
-                    event.target instanceof Element &&
-                    !event.target.closest("button, input, a")
-                  ) {
-                    swipeStart.current = {
-                      pointerId: event.pointerId,
-                      x: event.clientX,
-                      y: event.clientY,
-                      taskId: focused.item.id,
-                    };
-                  }
-                }}
-                onPointerUp={(event) => {
-                  const start = swipeStart.current;
-                  swipeStart.current = null;
-                  if (
-                    !start ||
-                    event.pointerType !== "touch" ||
-                    event.pointerId !== start.pointerId ||
-                    start.taskId !== focused.item.id ||
-                    !window.getSelection()?.isCollapsed
-                  )
-                    return;
-                  const dx = event.clientX - start.x;
-                  const dy = event.clientY - start.y;
-                  if (Math.abs(dx) <= 90 || Math.abs(dx) <= Math.abs(dy) * 1.5)
-                    return;
-                  if (dx > 0) decide("confirm");
-                  else nextTask();
-                }}
-                onPointerCancel={() => {
-                  swipeStart.current = null;
-                }}
-                onPointerLeave={() => {
-                  swipeStart.current = null;
-                }}
-              >
-                <div
-                  className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5"
-                  tabIndex={0}
-                  role="region"
-                  aria-label={t("voiceInbox.details")}
-                >
-                  <div className="mb-4">
-                    <p className="mb-2 text-xs text-muted-foreground">
-                      {laneHeader(focused.item.status, t).label}
-                    </p>
-                    <div className="flex items-start justify-between gap-4">
-                      <h1 className="text-xl font-medium tracking-tight">
-                        {focused.item.title}
-                      </h1>
-                      {hasTestingContent && (
-                        <Button
-                          ref={testButton}
-                          variant="default"
-                          className="shrink-0 px-5"
-                          aria-expanded={testingOpen}
-                          aria-controls={
-                            testingOpen && !isMobile
-                              ? "voice-task-testing"
-                              : undefined
-                          }
-                          onClick={() =>
-                            setTestingId(testingOpen ? null : focused.item.id)
-                          }
-                        >
-                          {t("voiceInbox.test")}
-                        </Button>
-                      )}
-                    </div>
-                    {focused.item.description && (
-                      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                        {focused.item.description}
-                      </p>
-                    )}
-                  </div>
-                  <section className="mt-5 border-t pt-4 [&_time]:hidden">
-                    <h2 className="mb-2 text-sm font-medium">
-                      {t("voiceInbox.history")}
-                    </h2>
-                    <div className="divide-y">{renderComments(focused)}</div>
-                  </section>
-                </div>
-                <div className="shrink-0 border-t bg-muted/30 p-4 sm:px-5">
-                  <p className="mb-3 text-base font-medium">
-                    {focused.question}
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button variant="outline" onClick={nextTask}>
-                      <ArrowLeft />
-                      {t("voiceInbox.later")}
-                    </Button>
-                    <Button onClick={() => decide("confirm")}>
-                      <Check />
-                      {focused.confirmLabel ??
-                        t(
-                          focused.item.status === "customer_approval"
-                            ? "voiceInbox.approve"
-                            : "voiceInbox.confirm",
-                        )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              {testingOpen && !isMobile && (
-                <aside
-                  id="voice-task-testing"
-                  aria-label={t("voiceInbox.testTask")}
-                  className="surface flex min-h-0 w-[38%] min-w-72 flex-col overflow-hidden"
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      event.stopPropagation();
-                      closeTesting();
-                    }
-                  }}
-                >
-                  <div className="flex shrink-0 items-center justify-between border-b p-4">
-                    <h2 className="font-medium">{t("voiceInbox.testTask")}</h2>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("voiceInbox.close")}
-                      onClick={closeTesting}
-                    >
-                      <X />
-                    </Button>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                    <TaskTestContent task={focused} />
-                  </div>
-                </aside>
+          <section className="h-full min-h-0 w-full px-3">
+            <ResizablePanelGroup
+              orientation="horizontal"
+              id="voice-inbox-split"
+            >
+              {!isMobile && (
+                <>
+                  <ResizablePanel
+                    id="voice-inbox-preview"
+                    defaultSize="55%"
+                    minSize="20%"
+                    className="min-h-0 min-w-0 p-0.5"
+                  >
+                    <TaskPreview item={focused.item} />
+                  </ResizablePanel>
+                  <ResizableHandle
+                    className="w-1 shrink-0 bg-transparent"
+                    aria-label={t("voiceInbox.resizePanels")}
+                  />
+                </>
               )}
-            </div>
+              <ResizablePanel
+                id="voice-inbox-task"
+                defaultSize={isMobile ? "100%" : "45%"}
+                minSize="30%"
+                className="flex min-h-0 min-w-0 p-0.5"
+              >
+                <div className="flex min-h-0 flex-1 gap-4">
+                  <div
+                    className="voice-inbox-decision surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                    style={{ touchAction: "pan-y" }}
+                    onPointerDown={(event) => {
+                      swipeStart.current = null;
+                      if (
+                        event.pointerType === "touch" &&
+                        event.isPrimary &&
+                        event.target instanceof Element &&
+                        !event.target.closest("button, input, a")
+                      ) {
+                        swipeStart.current = {
+                          pointerId: event.pointerId,
+                          x: event.clientX,
+                          y: event.clientY,
+                          taskId: focused.item.id,
+                        };
+                      }
+                    }}
+                    onPointerUp={(event) => {
+                      const start = swipeStart.current;
+                      swipeStart.current = null;
+                      if (
+                        !start ||
+                        event.pointerType !== "touch" ||
+                        event.pointerId !== start.pointerId ||
+                        start.taskId !== focused.item.id ||
+                        !window.getSelection()?.isCollapsed
+                      )
+                        return;
+                      const dx = event.clientX - start.x;
+                      const dy = event.clientY - start.y;
+                      if (
+                        Math.abs(dx) <= 90 ||
+                        Math.abs(dx) <= Math.abs(dy) * 1.5
+                      )
+                        return;
+                      if (dx > 0) decide("confirm");
+                      else nextTask();
+                    }}
+                    onPointerCancel={() => {
+                      swipeStart.current = null;
+                    }}
+                    onPointerLeave={() => {
+                      swipeStart.current = null;
+                    }}
+                  >
+                    <MockTaskDetail
+                      personName={person.user.name}
+                      task={focused}
+                      projectControl={projectPicker(focused)}
+                      headerActions={
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-muted-foreground"
+                            onClick={nextTask}
+                          >
+                            {t("voiceInbox.dismiss")}
+                          </Button>
+                          <Button
+                            variant="success"
+                            size="sm"
+                            onClick={() => decide("confirm")}
+                            title={focused.question}
+                          >
+                            {t("voiceInbox.approveAction")}
+                          </Button>
+                        </>
+                      }
+                      onClose={nextTask}
+                      onChange={(item) =>
+                        setTasks(
+                          tasks.map((task) =>
+                            task.item.id === item.id ? { ...task, item } : task,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
             <p className="sr-only">{t("voiceInbox.hint")}</p>
           </section>
         )}
@@ -621,129 +568,99 @@ export function VoiceInboxPrototype({
         {(view === "board" || view === "outside") && renderBoard()}
       </main>
       {showCompanion && (
-        <footer className="mx-auto my-3 w-full max-w-4xl shrink-0 px-4 sm:px-6">
-          <div className="flex items-center gap-4">
-            <Orb small muted={muted} />
-            <div className="min-w-0 flex-1" aria-live="polite">
-              <p className="text-sm leading-relaxed">
-                {t(notice ?? "voiceInbox.listening")}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t(muted ? "voiceInbox.muted" : "voiceInbox.simulated")}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t(muted ? "voiceInbox.unmute" : "voiceInbox.mute")}
-              onClick={() => setMuted(!muted)}
-            >
-              {muted ? <MicrophoneOff01 /> : <Microphone01 />}
-            </Button>
-          </div>
-          <form
-            className="mt-2 flex gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submit();
-            }}
-          >
-            <Input
-              value={reply}
-              onChange={(event) => setReply(event.target.value)}
+        <footer className="mx-auto my-2 flex w-full max-w-4xl shrink-0 items-center gap-3 px-4 sm:px-6">
+          <Orb small muted={muted} />
+          <span className="sr-only" aria-live="polite">
+            {notice ? t(notice) : ""}
+          </span>
+          <div className="min-w-0 flex-1">
+            <NewCommentComposer
+              compact
+              agentRoute={isFocused ? "steer" : undefined}
               placeholder={t("voiceInbox.placeholder")}
-              aria-label={t("voiceInbox.placeholder")}
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!reply.trim()}
-              aria-label={t("voiceInbox.send")}
-            >
-              <ArrowUp />
-            </Button>
-          </form>
-        </footer>
-      )}
-      {scenario && (
-        <p className="shrink-0 px-5 pb-2 text-center text-xs text-muted-foreground">
-          {scenario.context}
-        </p>
-      )}
-      <nav
-        aria-label={t(
-          scenario ? "voiceInbox.reconstruction" : "voiceInbox.prototype",
-        )}
-        className="flex shrink-0 flex-wrap items-center justify-center gap-1 border-t px-3 py-1"
-      >
-        <span className="mr-4 text-xs text-muted-foreground">
-          {t(scenario ? "voiceInbox.reconstruction" : "voiceInbox.prototype")}
-        </span>
-        {VIEWS.map((tab) => (
-          <Button
-            key={tab.view}
-            variant="tab"
-            size="sm"
-            aria-pressed={view === tab.view}
-            onClick={() => navigate(tab.view)}
-          >
-            {t(tab.label)}
-          </Button>
-        ))}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t("voiceInbox.reset")}
-          onClick={reset}
-        >
-          <RefreshCw01 />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t("voiceInbox.theme")}
-          onClick={() => {
-            document.documentElement.classList.toggle("dark", !dark);
-            setDark(!dark);
-          }}
-        >
-          {dark ? <Sun /> : <Moon01 />}
-        </Button>
-      </nav>
-      {isMobile && focused && (
-        <Drawer
-          open={testingOpen}
-          onOpenChange={(open) => {
-            if (!open) setTestingId(null);
-          }}
-        >
-          <DrawerContent
-            className="h-[85dvh]"
-            onCloseAutoFocus={(event) => {
-              event.preventDefault();
-              testButton.current?.focus();
-            }}
-          >
-            <DrawerHeader className="shrink-0 border-b py-3">
-              <div className="flex items-center justify-between">
-                <DrawerTitle>{t("voiceInbox.testTask")}</DrawerTitle>
+              onSubmit={submit}
+              trailingActions={
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={t("voiceInbox.close")}
-                  onClick={closeTesting}
+                  aria-label={t(
+                    muted ? "voiceInbox.unmute" : "voiceInbox.mute",
+                  )}
+                  aria-pressed={!muted}
+                  onClick={() => setMuted(!muted)}
                 >
-                  <X />
+                  {muted ? <MicrophoneOff01 /> : <Microphone01 />}
                 </Button>
-              </div>
-              <DrawerDescription>{focused.item.title}</DrawerDescription>
-            </DrawerHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-8">
-              <TaskTestContent task={focused} />
-            </div>
-          </DrawerContent>
-        </Drawer>
+              }
+            />
+          </div>
+        </footer>
       )}
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="fixed right-3 top-3 z-40 text-muted-foreground"
+            aria-label={t("voiceInbox.controls")}
+          >
+            <DotsHorizontal size={16} />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          className="max-h-[80dvh] w-80 max-w-[calc(100vw-24px)] overflow-y-auto"
+        >
+          <nav
+            aria-label={t(
+              scenario ? "voiceInbox.reconstruction" : "voiceInbox.prototype",
+            )}
+            className="flex flex-wrap items-center gap-1"
+          >
+            <span className="mb-2 w-full text-xs text-muted-foreground">
+              {t(
+                scenario ? "voiceInbox.reconstruction" : "voiceInbox.prototype",
+              )}
+            </span>
+            {VIEWS.map((tab) => (
+              <Button
+                key={tab.view}
+                variant="tab"
+                size="sm"
+                aria-pressed={view === tab.view}
+                onClick={() => navigate(tab.view)}
+              >
+                {t(tab.label)}
+              </Button>
+            ))}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("voiceInbox.reset")}
+              onClick={reset}
+            >
+              <RefreshCw01 />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("voiceInbox.theme")}
+              onClick={() => {
+                document.documentElement.classList.toggle("dark", !dark);
+                setDark(!dark);
+              }}
+            >
+              {dark ? <Sun /> : <Moon01 />}
+            </Button>
+          </nav>
+          {mockControls}
+          {scenario && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              {scenario.context}
+            </p>
+          )}
+        </PopoverContent>
+      </Popover>
       <Dialog
         open={!!detail}
         onOpenChange={(open) => {
@@ -751,7 +668,7 @@ export function VoiceInboxPrototype({
         }}
       >
         <DialogContent
-          className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
+          className="flex h-[85dvh] flex-col overflow-hidden sm:max-w-6xl"
           closeButtonClassName="hidden"
           aria-describedby={undefined}
         >
@@ -772,22 +689,19 @@ export function VoiceInboxPrototype({
             </Button>
           </DialogHeader>
           {detail && (
-            <>
-              <TaskCard
-                item={detail.item}
-                assignee={person}
-                assignedBy={person}
-                onOpen={() => {
-                  setDetailId(null);
-                  setFocusedId(detail.item.id);
-                  navigate(needsPerson(detail) ? "inbox" : "board");
-                }}
-              />
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {detail.item.description}
-              </p>
-              <div className="[&_time]:hidden">{renderComments(detail)}</div>
-            </>
+            <MockTaskDetail
+              personName={person.user.name}
+              task={detail}
+              projectControl={projectPicker(detail)}
+              onClose={() => setDetailId(null)}
+              onChange={(item) =>
+                setTasks(
+                  tasks.map((task) =>
+                    task.item.id === item.id ? { ...task, item } : task,
+                  ),
+                )
+              }
+            />
           )}
         </DialogContent>
       </Dialog>

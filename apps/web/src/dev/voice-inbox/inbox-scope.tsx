@@ -51,7 +51,7 @@ export function InboxScope({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="h-auto min-w-52 gap-3 rounded-2xl border bg-background px-3 py-2 shadow-sm"
+          className="h-10 min-w-0 shrink-0 gap-2 px-2"
           aria-label={t("voiceInbox.chooseScope")}
         >
           {scope === "organization" ? (
@@ -61,22 +61,13 @@ export function InboxScope({
               <User01 />
             </span>
           )}
-          <span className="flex flex-1 flex-col items-start gap-0.5">
-            <span className="text-[10px] font-normal text-muted-foreground">
-              {t(
-                scope === "user"
-                  ? "voiceInbox.allOrganizations"
-                  : "voiceInbox.yourInboxIn",
-              )}
-            </span>
-            <span className="text-sm font-medium">
-              {scope === "user" ? t("voiceInbox.myInbox") : organization}
-            </span>
+          <span className="max-w-32 truncate text-sm font-medium">
+            {scope === "user" ? t("voiceInbox.myInbox") : organization}
           </span>
           <ChevronDown className="size-4 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="center" className="w-72">
+      <DropdownMenuContent align="start" className="w-72">
         <DropdownMenuLabel>{t("voiceInbox.chooseScope")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={scope}

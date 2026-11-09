@@ -1,3 +1,4 @@
+import { structuredMarkdown } from "./structured-markdown";
 import { voiceInbox } from "./voice-inbox";
 import { page } from "./page";
 import { projects } from "./projects.ts";
@@ -109,6 +110,7 @@ export const en = {
   ...projects,
   ...page,
   ...voiceInbox,
+  ...structuredMarkdown,
 } as const;
 
 export type TranslationKey = keyof typeof en;

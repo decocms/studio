@@ -19,6 +19,8 @@ export const PROJECT = {
 export const CREATED_AT = new Date().toISOString();
 
 export interface MockComment {
+  audience?: "human" | "internal";
+  parentId?: string;
   id: string;
   body: string;
   author: "person" | "agent";

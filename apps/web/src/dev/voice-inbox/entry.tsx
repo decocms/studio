@@ -1,3 +1,10 @@
+import {
+  createRootRoute,
+  createRouter,
+  createMemoryHistory,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { installMockApi } from "./mock-api";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,6 +16,13 @@ import { ScenarioLoader } from "./scenario";
 import { ORG, PROJECT } from "./data";
 import { readFixture } from "./scenario-data";
 import "../../../index.css";
+
+installMockApi();
+const route = createRootRoute({ component: ScenarioLoader });
+const router = createRouter({
+  routeTree: route,
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+});
 
 const client = new QueryClient({
   defaultOptions: {
@@ -51,7 +65,7 @@ if (root)
       <QueryClientProvider client={client}>
         <TooltipProvider>
           <ProjectContextProvider org={previewOrg} project={PROJECT}>
-            <ScenarioLoader />
+            <RouterProvider router={router} />
           </ProjectContextProvider>
         </TooltipProvider>
       </QueryClientProvider>

@@ -16,18 +16,13 @@ export function ScenarioLoader() {
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState(false);
   return (
-    <>
-      <VoiceInboxPrototype
-        key={`${revision}-${selected}`}
-        scenario={fixture?.scenarios[selected]}
-        personName={fixture?.name}
-        organization={fixture?.organization}
-        branding={fixture?.branding}
-      />
-      <details className="fixed right-3 bottom-16 z-50 max-w-[min(90vw,360px)] rounded-lg border bg-background p-2 text-xs shadow-sm">
-        <summary className="cursor-pointer text-muted-foreground">
-          {t("voiceInbox.controls")}
-        </summary>
+    <VoiceInboxPrototype
+      key={`${revision}-${selected}`}
+      scenario={fixture?.scenarios[selected]}
+      personName={fixture?.name}
+      organization={fixture?.organization}
+      branding={fixture?.branding}
+      mockControls={
         <div className="flex flex-col gap-3 p-2">
           <p className="text-muted-foreground">{t("voiceInbox.localOnly")}</p>
           <label className="flex flex-col gap-2">
@@ -68,7 +63,7 @@ export function ScenarioLoader() {
             </Button>
           ))}
         </div>
-      </details>
-    </>
+      }
+    />
   );
 }

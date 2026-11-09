@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { parseStructuredBlock } from "@/components/structured-markdown/schema";
+import { previewRouteUrl } from "@/layouts/task-board/preview-routes";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@/layouts/task-board/config";
 import { item, PERSON, type MockTask } from "./data";
 const commentSchema = z.object({
+  audience: z.enum(["human", "internal"]).optional(),
+  parentId: z.string().optional(),
   id: z.string().max(200),
   body: z.string().max(12000),
   author: z.enum(["person", "agent"]),
@@ -14,6 +18,8 @@ const seedsSchema = z
   .array(
     z.object({
       key: z.number().int().positive(),
+      structuredMarkdownVersion: z.literal(1).optional(),
+      testingPreviewOverride: z.string().url().optional(),
       projectLabel: z.string().max(100).optional(),
       pullRequest: z
         .object({
@@ -157,17 +163,73 @@ export function scenarioTasks(scenario: Scenario, restore = true): MockTask[] {
   }
   return seeds.map((seed) => {
     const source = scenario.tasks.find((task) => task.key === seed.key);
+    let description = seed.description;
+    const fence = (kind: string, data: unknown) =>
+      "```" + kind + "\n" + JSON.stringify(data, null, 2) + "\n```";
+    const report = seed.comments.find((comment) =>
+      comment.eventLabel?.startsWith("Google Chat"),
+    );
+    if (
+      !seed.structuredMarkdownVersion &&
+      report &&
+      !description.includes("```gchat")
+    )
+      description +=
+        "\n\n" +
+        fence("gchat", {
+          version: 1,
+          author: { name: report.authorLabel ?? "Google Chat" },
+          body: report.body,
+        });
+    if (
+      !seed.structuredMarkdownVersion &&
+      source?.review?.testPlan &&
+      !description.includes("```testing")
+    ) {
+      const plan = source.review.testPlan;
+      description =
+        fence("testing", {
+          version: 1,
+          previewUrl: source.pullRequest?.previewUrl
+            ? previewRouteUrl(source.pullRequest.previewUrl, plan.route)
+            : undefined,
+          pullRequest: source.pullRequest
+            ? { url: source.pullRequest.url, title: source.pullRequest.title }
+            : undefined,
+          note:
+            source.review.sections
+              .filter((section) => section.warning)
+              .map((section) => section.body)
+              .join("\n") || undefined,
+          steps: plan.steps,
+        }) +
+        "\n\n" +
+        description;
+    }
+    if (source?.testingPreviewOverride) {
+      description = description.replace(
+        /^```testing\r?\n([\s\S]*?)^```/gm,
+        (original, content: string) => {
+          const block = parseStructuredBlock("testing", content);
+          return block?.kind === "testing"
+            ? fence("testing", {
+                ...block.data,
+                previewUrl: source.testingPreviewOverride,
+              })
+            : original;
+        },
+      );
+    }
     return {
       item: item(seed.key, {
         title: seed.title,
-        description: seed.description,
+        description,
         status: seed.status,
         sortOrder: seed.sortOrder ?? seed.key,
         assigneeId:
           seed.owner === "person" ? PERSON.userId : SUPER_AGENT_ASSIGNEE_ID,
       }),
-      projectLabel: scenario.tasks.find((task) => task.key === seed.key)
-        ?.projectLabel,
+      projectLabel: seed.projectLabel,
       review: source?.review,
       pullRequest: source?.pullRequest
         ? {
@@ -185,7 +247,14 @@ export function scenarioTasks(scenario: Scenario, restore = true): MockTask[] {
       confirmLabel: scenario.tasks.find((task) => task.key === seed.key)
         ?.confirmLabel,
       question: seed.question,
-      comments: seed.comments,
+      comments: seed.comments.map((comment) => ({
+        ...comment,
+        audience:
+          source?.comments.find((original) => original.id === comment.id)
+            ?.audience ??
+          comment.audience ??
+          "human",
+      })),
     };
   });
 }
@@ -195,6 +264,7 @@ export function saveScenario(scenario: Scenario, tasks: MockTask[]) {
     JSON.stringify(
       tasks.map((task) => ({
         key: task.item.keySeq,
+        structuredMarkdownVersion: 1,
         projectLabel: task.projectLabel,
         sortOrder: task.item.sortOrder,
         title: task.item.title,

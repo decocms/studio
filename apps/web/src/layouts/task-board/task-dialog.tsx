@@ -17,7 +17,7 @@ import type { CommentAuthor } from "./task-comments";
 import type { TaskComment } from "./task-comments";
 import { useParams } from "@tanstack/react-router";
 import { taskSharePath } from "./task-route";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useId, useRef, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
@@ -28,6 +28,7 @@ import { Page } from "@/components/page";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -64,6 +65,7 @@ import {
   ChevronDown,
   ChevronRight,
   Coins01,
+  Columns03,
   Copy01,
   Copy06,
   DotsHorizontal,
@@ -151,7 +153,7 @@ import {
   stampableEntries,
   stampFor,
 } from "@/lib/project-index";
-import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
+import { TaskProjectPicker } from "./task-project-picker";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -423,6 +425,11 @@ function RecordSection({
 }
 
 interface TaskEditorProps {
+  /** Render the header locally when the detail is embedded outside Page. */
+  embedded?: boolean;
+  hideComposer?: boolean;
+  projectControl?: ReactNode;
+  headerActions?: ReactNode;
   /** Which shell wraps the body. See {@link TaskBoardItemEditor}. */
   chrome: "dialog" | "page";
   /** Dialog chrome only — a page is open by virtue of being mounted. */
@@ -486,6 +493,10 @@ interface TaskEditorProps {
  * Everything between the header row and the footer is chrome-independent.
  */
 function TaskBoardItemEditor({
+  embedded = false,
+  hideComposer = false,
+  projectControl,
+  headerActions,
   chrome,
   open = true,
   onClose,
@@ -570,7 +581,9 @@ function TaskBoardItemEditor({
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [editingPost, setEditingPost] = useState(!item);
+  const [behindTheScenes, setBehindTheScenes] = useBehindTheScenes();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const inspectorId = useId();
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const collapseDescription = descriptionOverflows && !descriptionExpanded;
   /** Measured against the collapsed cap, not the rendered box, so expanding
@@ -766,17 +779,29 @@ function TaskBoardItemEditor({
    *  its trail; a dialog has no header to give them to. */
   const actions = (
     <div className="flex items-center gap-2">
-      {item && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="lg:hidden"
-          onClick={() => setDetailsOpen((value) => !value)}
-          aria-expanded={detailsOpen}
-        >
-          {t("taskBoard.conversation.details")}
-        </Button>
-      )}
+      {item &&
+        (embedded ? (
+          <IconButton
+            label={t("taskBoard.conversation.details")}
+            variant={detailsOpen ? "secondary" : "ghost"}
+            onClick={() => setDetailsOpen((value) => !value)}
+            aria-expanded={detailsOpen}
+            aria-controls={inspectorId}
+          >
+            <Columns03 size={16} />
+          </IconButton>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="lg:hidden"
+            onClick={() => setDetailsOpen((value) => !value)}
+            aria-expanded={detailsOpen}
+            aria-controls={inspectorId}
+          >
+            {t("taskBoard.conversation.details")}
+          </Button>
+        ))}
       {/* Autosave has no button, so this is the only sign of a write. */}
       {item && isSaving && (
         <span className="mr-1 text-sm text-muted-foreground">
@@ -829,6 +854,30 @@ function TaskBoardItemEditor({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              {embedded && (
+                <DropdownMenuCheckboxItem
+                  checked={behindTheScenes}
+                  onCheckedChange={setBehindTheScenes}
+                >
+                  {t("taskBoard.conversation.behindTheScenes")}
+                </DropdownMenuCheckboxItem>
+              )}
+              {embedded && !contentLocked && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    flush();
+                    setEditingPost((value) => !value);
+                  }}
+                >
+                  <Edit05 size={16} />
+                  {t(
+                    editingPost
+                      ? "taskBoard.conversation.doneEditing"
+                      : "taskBoard.conversation.edit",
+                  )}
+                </DropdownMenuItem>
+              )}
+
               {onNewChat && (
                 <DropdownMenuItem onSelect={onNewChat}>
                   <Edit05 size={16} />
@@ -891,6 +940,7 @@ function TaskBoardItemEditor({
           </DropdownMenu>
         </>
       )}
+      {headerActions}
       {chrome === "dialog" && (
         <IconButton
           variant="secondary"
@@ -911,7 +961,7 @@ function TaskBoardItemEditor({
    *  a page shows no id chip. */
   const hierarchyCrumb = useHierarchyCrumb(item);
   const header =
-    chrome === "page" ? (
+    chrome === "page" && !embedded ? (
       <>
         <Page.Breadcrumbs
           after="page"
@@ -930,7 +980,12 @@ function TaskBoardItemEditor({
         <Page.Actions>{actions}</Page.Actions>
       </>
     ) : (
-      <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-2",
+          embedded ? "h-12 border-b px-4" : "px-6 pb-4 pt-6 sm:px-8",
+        )}
+      >
         {/* Null only for a card written before the key backfill, which has
             no key to show. */}
         {key ? (
@@ -991,9 +1046,18 @@ function TaskBoardItemEditor({
           )}
         >
           {/* The original post and conversation share one reading column. */}
-          <TaskConversationFrame item={item} hidden={!!item && detailsOpen}>
-            <div className="flex min-w-0 flex-col gap-2 px-5 py-6 sm:px-8">
-              {item && (
+          <TaskConversationFrame
+            item={item}
+            hidden={!!item && detailsOpen}
+            hideComposer={hideComposer}
+          >
+            <div
+              className={cn(
+                "flex min-w-0 flex-col gap-2",
+                embedded ? "px-5 py-4" : "px-5 py-6 sm:px-8",
+              )}
+            >
+              {item && !embedded && (
                 <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Avatar
                     url={creator?.user?.image ?? undefined}
@@ -1085,7 +1149,9 @@ function TaskBoardItemEditor({
               )}
 
               <div className="flex flex-col">
-                <div className="flex flex-col py-6">
+                <div
+                  className={cn("flex flex-col", embedded ? "py-2" : "py-6")}
+                >
                   <div
                     // Clip only while folded: the image node's remove button is
                     // absolute and reaches outside a 1px image's box, so a
@@ -1165,7 +1231,7 @@ function TaskBoardItemEditor({
                 {/* Separates the task itself from the record of it (links,
                   activity). Edit mode only — a new task has neither. */}
                 {item && (
-                  <div className="py-4">
+                  <div className={cn(embedded ? "py-2" : "py-4")}>
                     <hr className="border-border" />
                   </div>
                 )}
@@ -1173,6 +1239,7 @@ function TaskBoardItemEditor({
                 {item && (
                   <div className="flex flex-col gap-8">
                     <ActivitySection
+                      compact={embedded}
                       item={item}
                       members={members}
                       onOpenThread={(thread) =>
@@ -1187,10 +1254,12 @@ function TaskBoardItemEditor({
 
           {/* On mobile, Details switches panes without unmounting the draft. */}
           <div
+            id={inspectorId}
             data-testid="task-inspector"
             className={cn(
               "w-full flex-col gap-6 border-t border-border p-6",
-              "min-h-0 flex-1 overflow-y-auto lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0",
+              "min-h-0 flex-1 overflow-y-auto lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0",
+              !embedded && "lg:flex",
               item ? (detailsOpen ? "flex" : "hidden") : "flex",
             )}
           >
@@ -1576,7 +1645,9 @@ function TaskBoardItemEditor({
                             type="button"
                             aria-label={t(
                               "taskBoard.taskDialog.removeTagAriaLabel",
-                              { name: tag.name },
+                              {
+                                name: tag.name,
+                              },
                             )}
                             className="-mr-0.5 flex size-3.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
                             onClick={() => {
@@ -1628,43 +1699,19 @@ function TaskBoardItemEditor({
             )}
 
             <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which project this task pertains to: the project itself and
-                  the repository its run checks out. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    /* Hugs its label like every other property; the cap is
-                       what keeps a long project name inside the column. */
-                    className={cn(
-                      PROPERTY_BUTTON,
-                      "max-w-full",
-                      !repo && !virtualMcpId && EMPTY_PROPERTY,
-                    )}
-                  >
-                    <ProjectEntryIcon entry={selectedEntry} />
-                    <span className="min-w-0 truncate text-left">
-                      {selectedEntry?.title ??
-                        repo ??
-                        t("taskBoard.taskDialog.projectButton")}
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem onSelect={() => patch(stampFor(null))}>
-                    {t("taskBoard.taskDialog.noProject")}
-                  </DropdownMenuItem>
-                  {projectEntries.map((entry) => (
-                    <DropdownMenuItem
-                      key={entry.id}
-                      className="gap-2"
-                      onSelect={() => patch(stampFor(entry))}
-                    >
-                      <ProjectEntryRow entry={entry} />
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {projectControl ?? (
+                <TaskProjectPicker
+                  entries={projectEntries}
+                  selectedEntry={selectedEntry}
+                  fallbackLabel={repo ?? undefined}
+                  className={cn(
+                    PROPERTY_BUTTON,
+                    "max-w-full",
+                    !repo && !virtualMcpId && EMPTY_PROPERTY,
+                  )}
+                  onSelect={(entry) => patch(stampFor(entry))}
+                />
+              )}
             </PropertyGroup>
             {item && (
               <LinksSection
@@ -2005,7 +2052,7 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
  * row (Edit / preview / ship), and an expandable checks footer that opens each
  * CI check with its output markdown (fetched for failing runs).
  */
-export function PrCard({
+function PrCard({
   pr,
   routes,
   revalidating,
@@ -2420,10 +2467,12 @@ function RunReviewerButton({ item }: { item: TaskBoardItem }) {
  * comment renders as a post. The conversation frame owns the composer.
  */
 function ActivitySection({
+  compact = false,
   item,
   members,
   onOpenThread,
 }: {
+  compact?: boolean;
   item: TaskBoardItem;
   members: Member[];
   onOpenThread?: (thread: TaskBoardItemThread) => void;
@@ -2629,31 +2678,39 @@ function ActivitySection({
   }
 
   return (
-    <section className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {t("taskBoard.conversation.replies")}
-        </h2>
-        <div className="flex items-center gap-1">
-          {(behindTheScenes || behindTheScenesCount > 0) && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setBehindTheScenes(!behindTheScenes)}
-              className="px-2 font-normal text-muted-foreground"
-            >
-              {behindTheScenes
-                ? t("taskBoard.conversation.hideBehindTheScenes")
-                : t("taskBoard.conversation.showBehindTheScenes", {
-                    count: behindTheScenesCount,
-                  })}
-            </Button>
+    <section className={cn("flex flex-col", compact ? "gap-2" : "gap-5")}>
+      {!compact && (
+        <div className="flex items-center justify-between gap-2">
+          {!compact && (
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {t("taskBoard.conversation.replies")}
+            </h2>
           )}
-          <RunReviewerButton item={item} />
-          <SubscribeToggle itemId={item.id} members={members} />
+          <div className="flex items-center gap-1">
+            {(behindTheScenes || behindTheScenesCount > 0) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setBehindTheScenes(!behindTheScenes)}
+                className="px-2 font-normal text-muted-foreground"
+              >
+                {behindTheScenes
+                  ? t("taskBoard.conversation.hideBehindTheScenes")
+                  : t("taskBoard.conversation.showBehindTheScenes", {
+                      count: behindTheScenesCount,
+                    })}
+              </Button>
+            )}
+            {!compact && (
+              <>
+                <RunReviewerButton item={item} />
+                <SubscribeToggle itemId={item.id} members={members} />
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex flex-col gap-1">
         {blocks.map((block, i) => {
           const date = blockDate(block);
@@ -2747,7 +2804,7 @@ function ActivitySection({
                 : block.comment.id;
           return (
             <Fragment key={`${block.type}-${blockKey}`}>
-              {showDate && (
+              {!compact && showDate && (
                 <div className="text-meta flex items-center gap-3 pt-4 pb-1">
                   <span className="h-px flex-1 bg-border" />
                   <time dateTime={date.toISOString()}>
@@ -3026,7 +3083,9 @@ function describeActivity(
       if (d.to == null)
         return interleaveChips(
           t("taskBoard.sprints.activityToBacklog", { from }),
-          { from: sprintChip(d.from) },
+          {
+            from: sprintChip(d.from),
+          },
         );
       return interleaveChips(
         d.from == null

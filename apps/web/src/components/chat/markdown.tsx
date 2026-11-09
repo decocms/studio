@@ -1,5 +1,7 @@
 /* eslint-disable ban-memoization/ban-memoization */
 import { marked, type Token } from "marked";
+import { parseStructuredBlock } from "@/components/structured-markdown/schema";
+import { StructuredMarkdownBlock } from "@/components/structured-markdown/block";
 import React, { memo, useCallback, useContext, useMemo, useRef } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -430,6 +432,14 @@ export const MemoizedMarkdown = ({
 
   const renderBlock = (block: Token, index: number) => {
     if (block.type === "code") {
+      const structured = parseStructuredBlock(block.lang ?? "", block.text);
+      if (structured)
+        return (
+          <StructuredMarkdownBlock
+            key={`${id}-block_${index}`}
+            block={structured}
+          />
+        );
       return (
         <CodeBlock
           language={block.lang}

@@ -730,12 +730,26 @@ type SubmitComment = (body: string) => void | boolean | Promise<void | boolean>;
 export function NewCommentComposer({
   onSubmit,
   agentRoute,
+  placeholder,
+  compact = false,
+  trailingActions,
 }: {
   onSubmit: SubmitComment;
   /** Where an `@Super Agent` written here goes. */
-  agentRoute: "start" | "steer";
+  agentRoute?: "start" | "steer";
+  placeholder?: string;
+  compact?: boolean;
+  trailingActions?: ReactNode;
 }) {
-  return <CommentComposer onSubmit={onSubmit} mentionRoute={agentRoute} />;
+  return (
+    <CommentComposer
+      onSubmit={onSubmit}
+      mentionRoute={agentRoute}
+      placeholder={placeholder}
+      compact={compact}
+      trailingActions={trailingActions}
+    />
+  );
 }
 
 /** Above the text: who a reply answers, and where a message for the Super Agent goes. */
@@ -794,6 +808,8 @@ function CommentComposer({
   route,
   mentionRoute,
   placeholder,
+  compact = false,
+  trailingActions,
   autoFocus,
   onCancel,
 }: {
@@ -803,6 +819,8 @@ function CommentComposer({
   /** Where a message that mentions the Super Agent goes. */
   mentionRoute?: AgentRoute;
   placeholder?: string;
+  compact?: boolean;
+  trailingActions?: ReactNode;
   /** Who a reply answers, shown above the text. */
   replyTo?: CommentAuthor;
   autoFocus?: boolean;
@@ -839,7 +857,9 @@ function CommentComposer({
       // A full-height screenshot would push the conversation out of the way; the posted comment shows it whole.
       className={cn(
         "w-full [&_.tiptap]:outline-none",
-        "min-h-10",
+        compact
+          ? "min-w-0 max-h-28 overflow-y-auto [&_.tiptap]:min-h-6"
+          : "min-h-10",
         "[&_img]:max-h-40",
       )}
     />
@@ -924,22 +944,28 @@ function CommentComposer({
         }}
         data-agent-route={agentRoute}
         className={cn(
-          "surface relative flex cursor-text flex-col gap-1 transition-shadow",
-          "p-3",
+          "surface relative cursor-text gap-1 transition-shadow",
+          compact
+            ? "grid grid-cols-[minmax(0,1fr)_auto] items-center px-3 py-2"
+            : "flex flex-col p-3",
           // An outline, not a ring: `surface` owns the box-shadow a ring draws with.
           agentRoute === "busy" && "outline-1 outline-border",
         )}
       >
         {(replyTo || agentRoute) && (
-          <ComposerHeader replyTo={replyTo} route={agentRoute} />
+          <div className={cn(compact && "col-span-2 pt-1")}>
+            <ComposerHeader replyTo={replyTo} route={agentRoute} />
+          </div>
         )}
         {textarea}
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <AttachFileButton
-              onFiles={(files) => ref.current?.attach(files)}
-              disabled={sending}
-            />
+            {!compact && (
+              <AttachFileButton
+                onFiles={(files) => ref.current?.attach(files)}
+                disabled={sending}
+              />
+            )}
             <UploadStatus pending={uploads.pending} />
           </div>
           <div className="flex items-center gap-1">
@@ -956,6 +982,7 @@ function CommentComposer({
                 {t("taskBoard.taskDialog.commentEditCancel")}
               </Button>
             )}
+            {trailingActions}
             {actions}
           </div>
         </div>

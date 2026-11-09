@@ -40,6 +40,7 @@ export const taskBoard = {
   "taskBoard.conversation.newReplies": "New replies ({count}) · Jump to latest",
   "taskBoard.conversation.replies": "Conversation",
   "taskBoard.conversation.showBehindTheScenes": "Behind the scenes ({count})",
+  "taskBoard.conversation.behindTheScenes": "Behind the scenes",
   "taskBoard.conversation.hideBehindTheScenes": "Hide behind the scenes",
   "taskBoard.conversation.behindTheScenesLabel": "Behind the scenes",
   "taskBoard.conversation.sendFailed":

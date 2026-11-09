@@ -16,10 +16,12 @@ import { NewCommentComposer } from "./task-comments";
 export function TaskConversationFrame({
   item,
   hidden,
+  hideComposer = false,
   children,
 }: {
   item?: TaskBoardItem;
   hidden: boolean;
+  hideComposer?: boolean;
   children: ReactNode;
 }) {
   const t = useT();
@@ -66,7 +68,13 @@ export function TaskConversationFrame({
         <div ref={stick.contentRef}>{children}</div>
       </div>
       {item && (
-        <div className="relative shrink-0 border-t border-border bg-background px-5 pb-4 pt-3 sm:px-8">
+        <div
+          className={cn(
+            "relative shrink-0",
+            !hideComposer &&
+              "border-t border-border bg-background px-5 pb-4 pt-3 sm:px-8",
+          )}
+        >
           {!stick.isAtBottom && (
             <div className="absolute inset-x-0 bottom-full flex justify-center pb-3 pointer-events-none">
               <Button
@@ -83,32 +91,34 @@ export function TaskConversationFrame({
               </Button>
             </div>
           )}
-          <NewCommentComposer
-            agentRoute={
-              item.threads.some(
-                (run) =>
-                  isLiveAttempt(run) &&
-                  (run.status === "in_progress" ||
-                    run.status === "requires_action"),
-              )
-                ? "steer"
-                : "start"
-            }
-            onSubmit={async (body) => {
-              try {
-                await comments.post.mutateAsync({ body });
-                void stick.scrollToBottom();
-                return true;
-              } catch (error) {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : t("taskBoard.conversation.sendFailed"),
-                );
-                return false;
+          {!hideComposer && (
+            <NewCommentComposer
+              agentRoute={
+                item.threads.some(
+                  (run) =>
+                    isLiveAttempt(run) &&
+                    (run.status === "in_progress" ||
+                      run.status === "requires_action"),
+                )
+                  ? "steer"
+                  : "start"
               }
-            }}
-          />
+              onSubmit={async (body) => {
+                try {
+                  await comments.post.mutateAsync({ body });
+                  void stick.scrollToBottom();
+                  return true;
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : t("taskBoard.conversation.sendFailed"),
+                  );
+                  return false;
+                }
+              }}
+            />
+          )}
         </div>
       )}
     </div>

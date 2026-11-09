@@ -1,5 +1,8 @@
 import type { voiceInbox as en } from "../en/voice-inbox";
 export const voiceInbox = {
+  "voiceInbox.approveAction": "Aprovar",
+  "voiceInbox.dismiss": "Dismiss",
+  "voiceInbox.resizePanels": "Redimensionar preview e tarefa",
   "voiceInbox.testTask": "Testar a alteração",
   "voiceInbox.test": "Testar",
   "voiceInbox.expectedResult": "Esperado:",
@@ -41,7 +44,8 @@ export const voiceInbox = {
   "voiceInbox.hint":
     "Deslize à direita para confirmar, à esquerda para a próxima tarefa. Ou responda com suas palavras.",
   "voiceInbox.listening": "Estou ouvindo. Você também pode pedir um ajuste.",
-  "voiceInbox.placeholder": "Simule sua fala: ‘ajusta o título antes’…",
+  "voiceInbox.placeholder":
+    "Peça algo ou use @Super Agent para orientar esta tarefa diretamente…",
   "voiceInbox.send": "Enviar orientação",
   "voiceInbox.mute": "Silenciar microfone simulado",
   "voiceInbox.unmute": "Ativar microfone simulado",

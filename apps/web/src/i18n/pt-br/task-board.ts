@@ -44,6 +44,7 @@ export const taskBoard = {
     "Novas respostas ({count}) · Ir para o mais recente",
   "taskBoard.conversation.replies": "Conversa",
   "taskBoard.conversation.showBehindTheScenes": "Bastidores ({count})",
+  "taskBoard.conversation.behindTheScenes": "Bastidores",
   "taskBoard.conversation.hideBehindTheScenes": "Ocultar bastidores",
   "taskBoard.conversation.behindTheScenesLabel": "Bastidores",
   "taskBoard.conversation.sendFailed":

@@ -1,4 +1,7 @@
 export const voiceInbox = {
+  "voiceInbox.approveAction": "Approve",
+  "voiceInbox.dismiss": "Dismiss",
+  "voiceInbox.resizePanels": "Resize preview and task",
   "voiceInbox.testTask": "Test the change",
   "voiceInbox.test": "Test",
   "voiceInbox.expectedResult": "Expected:",
@@ -39,7 +42,8 @@ export const voiceInbox = {
   "voiceInbox.hint":
     "Swipe right to confirm, left for the next task. Or respond in your own words.",
   "voiceInbox.listening": "I'm listening. You can also ask for a change.",
-  "voiceInbox.placeholder": "Simulate your voice: ‘adjust the title first’…",
+  "voiceInbox.placeholder":
+    "Ask anything, or @Super Agent to steer this task directly…",
   "voiceInbox.send": "Send guidance",
   "voiceInbox.mute": "Mute simulated microphone",
   "voiceInbox.unmute": "Unmute simulated microphone",

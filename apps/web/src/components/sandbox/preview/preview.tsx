@@ -1,3 +1,4 @@
+import { PreviewFrame } from "./preview-frame";
 import type { CSSProperties } from "react";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { PageEntry } from "@/components/sections-editor/page-list";
@@ -2583,8 +2584,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             a change that needs the real sandbox running to verify — a
                             missing token silently breaks a customer's site preview.
                             Deliberately not bolted on during a lint sweep. */}
-                        {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
-                        <iframe
+                        <PreviewFrame
                           // Key on the iframe base: remount when the base URL changes
                           // (branch switch, or the production→sandbox swap once the dev
                           // server is up). Path navigation is driven by `iframeSrc`.

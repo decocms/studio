@@ -82,3 +82,25 @@ describe("markdown editor schema", () => {
     expect(markdown).toContain("2. outro item.");
   });
 });
+
+test("structured fences retain their language and JSON through description editing", () => {
+  for (const language of ["gchat", "whatsapp", "slack", "email", "testing"]) {
+    const data =
+      language === "testing"
+        ? {
+            version: 1,
+            previewUrl: "https://preview.example.com",
+            steps: [{ action: "Click", expected: "Opens" }],
+          }
+        : {
+            version: 1,
+            author: { name: "Alex Example" },
+            body: "First line\nSecond line with **formatting**",
+          };
+    const source =
+      "```" + language + "\n" + JSON.stringify(data, null, 2) + "\n```";
+    const { markdown, editor } = roundTrip(source);
+    expect(markdown.trim()).toBe(source);
+    editor.destroy();
+  }
+});
