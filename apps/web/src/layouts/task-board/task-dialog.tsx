@@ -58,7 +58,6 @@ import {
   AlertCircle,
   AlertSquare,
   Archive,
-  Bookmark,
   Calendar,
   Check,
   CheckCircle,
@@ -994,15 +993,14 @@ function TaskBoardItemEditor({
             size="sm"
             title={key}
             aria-label={t("taskBoard.taskDialog.copyIdAriaLabel")}
-            /* -ml-2 cancels the button's own padding so the glyph starts on
-                 the pane's 32px gutter, as drawn. */
+            /* Align the ID with the pane content despite the button padding. */
             className="-ml-2 gap-2 px-2 text-base text-muted-foreground hover:text-foreground"
             onClick={() => {
               copyId(key);
               toast.success(t("taskBoard.taskDialog.idCopied"));
             }}
           >
-            {idCopied ? <Check size={16} /> : <Bookmark size={16} />}
+            {idCopied && <Check size={16} />}
             {key}
           </Button>
         ) : (
@@ -1012,7 +1010,7 @@ function TaskBoardItemEditor({
             aria-hidden
             className="flex h-7 items-center gap-2 text-base text-muted-foreground opacity-50"
           >
-            <Bookmark size={16} />–
+            –
           </span>
         )}
 
