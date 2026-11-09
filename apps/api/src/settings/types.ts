@@ -65,6 +65,8 @@ export interface Settings {
    *  does NOT implicitly get cross-org kanban, and a member of an admin org
    *  does NOT get /api/_admin. Never union the two. */
   taskBoardAdminOrgIds: string[];
+  feedbackOrgId: string | undefined;
+  feedbackProjectId: string | undefined;
   /** Shared secret for server-to-server calls to /api/_admin (DEPLOYMENT_ADMIN_TOKEN),
    *  sent as `x-deployment-admin-token`. Read-only routes and member-add only —
    *  no impersonation. Unset = header ignored entirely. */

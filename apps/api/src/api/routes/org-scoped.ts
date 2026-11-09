@@ -1,3 +1,4 @@
+import { createFeedbackRoutes } from "./feedback";
 import { Hono } from "hono";
 import { createVoiceRoutes } from "./voice";
 import type { VoiceSessions } from "@/voice/sessions";
@@ -100,6 +101,8 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.use("*", resolveOrgFromPath);
   // Blocked orgs (see core/org-notice-gate) lose their control-plane writes.
   app.use("*", enforceOrgBlock);
+
+  app.route("/", createFeedbackRoutes());
 
   // --- Routes that don't need extra middleware ---
   app.route("/", createVoiceRoutes(deps.voiceSessions));
