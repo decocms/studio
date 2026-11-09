@@ -22,6 +22,7 @@ import { join, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { safePath } from "./safe-path";
 import { OrgFsClient } from "./client";
+import { TreeCache } from "./tree-cache";
 import { createWebdavHandler } from "./webdav";
 import type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 import {
@@ -70,6 +71,8 @@ export type InvalidatorFactory = (opts: {
   client: OrgFsClient;
   rcUrl: string;
   volume: string;
+  /** Drop the served listing of a changed directory before rclone re-reads it. */
+  invalidate: (dir: string) => void;
   log: (msg: string, err?: unknown) => void;
 }) => VolumeInvalidator;
 
@@ -77,13 +80,17 @@ export type InvalidatorFactory = (opts: {
 export function changeFeedInvalidator(
   untilActive?: InvalidatorDeps["untilActive"],
 ): InvalidatorFactory {
-  return ({ client, rcUrl, log }) => {
+  return ({ client, rcUrl, invalidate, log }) => {
     const ac = new AbortController();
+    const rcRefresh = makeRcRefresh(rcUrl);
     void runInvalidator({
       // wait: true → server holds the request open until a write nudge or its
       // hold timeout, so this is push-driven with the poll floor as a safety net.
       changes: (since) => client.changes(since, { wait: true }),
-      refresh: makeRcRefresh(rcUrl),
+      refresh: (dir) => {
+        invalidate(dir);
+        return rcRefresh(dir);
+      },
       signal: ac.signal,
       untilActive,
       log,
@@ -237,11 +244,14 @@ export class MountManager {
         volume: m.volume,
         token: config.token,
       });
+      const tree = new TreeCache(client, {
+        log: (msg, err) => this.log(`${m.volume}: ${msg}`, err),
+      });
       // Loopback only; rclone is the sole client and it sits behind it.
       const server = Bun.serve({
         port: 0,
         hostname: "127.0.0.1",
-        fetch: createWebdavHandler(client),
+        fetch: createWebdavHandler(tree),
       });
       const webdavUrl = `http://127.0.0.1:${server.port}`;
 
@@ -258,6 +268,7 @@ export class MountManager {
           client,
           rcUrl: `http://${rcAddr}`,
           volume: m.volume,
+          invalidate: (dir) => tree.invalidate(dir),
           log: this.log,
         });
         const entry: ActiveMount = {

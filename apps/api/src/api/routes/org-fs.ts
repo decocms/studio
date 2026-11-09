@@ -94,6 +94,8 @@ const MAX_CHANGES_LIMIT = 1000;
 const DEFAULT_CHANGES_LIMIT = 500;
 const MAX_RECENT_LIMIT = 200;
 const DEFAULT_RECENT_LIMIT = 50;
+// Twice the largest volume in production (about 25k entries), about 5 MB of JSON.
+const ORG_FS_TREE_MAX_ENTRIES = 50_000;
 /** Long-poll hold time, just under the usual 30s gateway/proxy timeout. */
 const CHANGES_LONG_POLL_MS = 28_000;
 /**
@@ -705,6 +707,34 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             ...(hasBrand && { hasBrand }),
           };
         }),
+      });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
+  // Every entry in a volume in one response, so the sandbox mount can serve
+  // directory listings from memory instead of asking here once per directory.
+  // A volume above the cap gets 413 and the mount lists directories one by one.
+  app.get("/:volume/tree", async (c) => {
+    const volume = c.req.param("volume");
+    const r = await resolve(c, volume, "ORG_FS_READ");
+    if (!r.ok) return r.res;
+    const caller = r.ctx.auth.user!.id;
+    try {
+      const rows = await r.fs.listVolume(volume, ORG_FS_TREE_MAX_ENTRIES + 1);
+      if (rows.length > ORG_FS_TREE_MAX_ENTRIES) {
+        return c.json({ error: "Volume too large to list whole" }, 413);
+      }
+      return c.json({
+        entries: rows
+          .filter((e) => canReadPersonal(volume, e.path, caller))
+          .map(({ path, kind, size, updatedAt }) => ({
+            path,
+            kind,
+            size,
+            updatedAt,
+          })),
       });
     } catch (err) {
       return fsErrorResponse(c, err);

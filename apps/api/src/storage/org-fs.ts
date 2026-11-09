@@ -272,6 +272,24 @@ export class OrgFsEntryStorage {
     return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
   }
 
+  /** Every live entry in a volume, at most `limit` rows, in path order. */
+  async listVolume(
+    organizationId: string,
+    volume: string,
+    limit: number,
+  ): Promise<OrgFsEntry[]> {
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("deleted_at", "is", null)
+      .select(COLUMNS)
+      .orderBy("path", "asc")
+      .limit(limit)
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+
   /** Every live file in a volume (the public-set syncer's diff base). */
   async listVolumeFiles(
     organizationId: string,
