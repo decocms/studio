@@ -81,7 +81,7 @@ export const sidebar = {
   "sidebar.feedback.removeScreenshot": "Remove screenshot",
   "sidebar.feedback.screenshotAlt": "Screenshot {n}",
   "sidebar.feedback.screenshotFailed": "Couldn't take the screenshot",
-  "sidebar.feedback.screenshotTooLarge": "Screenshot is larger than 100 MB",
+  "sidebar.feedback.screenshotTooLarge": "Screenshot is larger than 5 MB",
   "sidebar.feedback.tooManyScreenshots": "Up to {max} screenshots",
   "sidebar.feedback.send": "Send",
   "sidebar.feedback.sending": "Sending…",
