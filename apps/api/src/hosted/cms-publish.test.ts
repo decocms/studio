@@ -901,4 +901,66 @@ describe("a malformed latest.json reads as no release yet", () => {
       MalformedObjectError,
     );
   });
+
+  it("a cached release replaced by a malformed latest.json reads as none, uncached", async () => {
+    const { delivery, seed } = setup();
+    await seed({ a: { v: 1 } });
+    expect(await readLatest(delivery.store, SITE)).not.toBeNull();
+    delivery.objects.set(deliveryKeys.latest(SITE), {
+      text: PRE_163_LATEST,
+      etag: '"old"',
+      cacheControl: "",
+    });
+    delivery.reads.length = 0;
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await readLatest(delivery.store, SITE)).toBeNull();
+      expect(await readLatest(delivery.store, SITE)).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
+    // The first read revalidated the valid copy; it dropped it, so the
+    // second read is whole.
+    expect(delivery.reads).toEqual([
+      `get ${deliveryKeys.latest(SITE)} if-none-match`,
+      `get ${deliveryKeys.latest(SITE)}`,
+    ]);
+  });
+
+  it("a malformed latest.json changed or deleted mid-publish is a lost race", async () => {
+    for (const change of ["rewritten", "deleted"] as const) {
+      const { delivery, deps, draft, save } = setup();
+      malformed(delivery);
+      await save("a", { v: 1 });
+      const conditions: unknown[] = [];
+      delivery.hooks.beforePut = (key, condition) => {
+        if (key === deliveryKeys.latest(SITE)) conditions.push(condition);
+      };
+      deps.beforeLatestWrite = async (attempt) => {
+        if (attempt !== 1) return;
+        if (change === "deleted") {
+          delivery.objects.delete(deliveryKeys.latest(SITE));
+        } else {
+          delivery.objects.set(deliveryKeys.latest(SITE), {
+            text: "{still not json",
+            etag: '"new"',
+            cacheControl: "",
+          });
+        }
+      };
+      const warn = spyOn(console, "warn").mockImplementation(() => {});
+      const result = await publishCmsDraft(deps, draft, "");
+      warn.mockRestore();
+      expect(result).toMatchObject({ result: "published", previous: null });
+      expect(conditions).toEqual([
+        { ifMatch: '"old"' },
+        change === "deleted" ? { ifNoneMatch: "*" } : { ifMatch: '"new"' },
+      ]);
+      const live = await readLatest(delivery.store, SITE);
+      expect(live?.latest).toMatchObject({
+        revision: (result as { revision: string }).revision,
+        sequence: 1,
+      });
+    }
+  });
 });
