@@ -84,6 +84,7 @@ import {
 } from "../observability";
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
+import mcpConsentRoutes from "./routes/mcp-consent";
 import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
 import { createUserFsRoutes } from "./routes/user-fs";
 import { USER_FS_API_PREFIX } from "@/file-storage/user-fs";
@@ -106,6 +107,7 @@ import {
 } from "./middleware/log-deprecated-route";
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
+import { createCmsRoutes } from "./routes/cms";
 import { createOrgScopedApi } from "./routes/org-scoped";
 import { ElevenLabsConversationAdapter } from "@/ai-providers/voice/elevenlabs-conversation";
 import { OpenAIConversationAdapter } from "@/ai-providers/voice/openai";
@@ -1525,6 +1527,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // ============================================================================
 
   // Auth routes (API key management via web UI)
+  app.route("/api/auth/custom/mcp-consent", mcpConsentRoutes);
   app.route("/api/auth/custom", authRoutes);
 
   // Fence off the raw Better Auth admin plugin (/api/auth/admin/*) from
@@ -2326,6 +2329,11 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());
+
+  // The hosted CMS on R2 (drafts, save, publish, releases, schema, site
+  // tokens): /api/cms/:site/*. Instance-level (the site's org comes from
+  // org_sites, whose key is the slug), so it must win over `:org` below.
+  app.route("/api/cms", createCmsRoutes());
 
   // User-scoped, cross-organization reads (project search). Instance-level for
   // the same reason as the two above: `/api/:org` would bind the request to one

@@ -9,6 +9,7 @@ import {
 } from "./section-variants";
 import { unwrapSection } from "./unwrap-section";
 import type { SaveGuard } from "./use-save-block";
+import { copyDraftVersion } from "./draft-version";
 
 /**
  * The value an open section form starts from, in the same shape the form
@@ -173,29 +174,97 @@ export function findSectionMovedTo(
 }
 
 /**
+ * The version of a saved block a form's save names for the server's stale
+ * check (`base`). A form builds on what it last knew to be stored, unless its
+ * edits were just merged onto the stored copy.
+ *
+ * After a refusal, a stored copy that differs from that base and wasn't merged
+ * is one of the form's own versions (see `isOwnVersion`). It is either a read
+ * lagging behind the branch or the real head, as when a save landed but its
+ * answer was lost. Naming it settles which: the form's edits already descend
+ * from it, and the server refuses it if the branch holds anything else.
+ */
+export function formSaveExpects({
+  startedFrom,
+  stored,
+  rebased,
+  refused,
+}: {
+  startedFrom: Record<string, unknown>;
+  stored: Record<string, unknown> | null;
+  rebased: boolean;
+  /** An earlier try of this save was refused as stale. */
+  refused: boolean;
+}): Record<string, unknown> {
+  if (!stored) return startedFrom;
+  return rebased || (refused && formSourceMovedOn(startedFrom, stored))
+    ? stored
+    : startedFrom;
+}
+
+/**
  * The content protocol's guard for a section form save (v8; the other
  * backends send the form's `base` instead): `blocks.apply` writes only while
  * the block is still at the version the form's copy was checked against, and
  * a refusal comes back as a `BlockConflictError`, as a legacy 409 does.
  *
- * A saved block (`formBase` given) takes the form's version: read from the
- * cache (`versionOf`) when unset or when the form's edits were just rebased
- * on the stored copy, and moved to each landed save's version. A page
- * (`formBase: null`), rebuilt from the cache, takes its cached version. Both
- * are read when the save runs, after the branch's earlier saves landed, so a
- * save queued behind the form's own previous one expects that one's version.
- * An unknown version sends no guard.
+ * A saved block (`formBase` given) takes the form's version: read when unset
+ * or when the form's edits were just rebased on the stored copy, and moved
+ * to each landed save's version. A page (`formBase: null`), rebuilt from the
+ * cache, takes the version read each time. Both are read when the save runs,
+ * after the branch's earlier saves landed, so a save queued behind the
+ * form's own previous one expects that one's version. An unknown version
+ * sends no guard.
+ *
+ * On a hosted v8 draft (`copy` given) a version read is the one of the copy
+ * the save was built on, computed from it ({@link copyDraftVersion}, the
+ * server's own content hash), never the draft's version as the index says
+ * it: a poll puts someone else's version in the index before their copy of
+ * the block is loaded (and never loads it over a block being saved), so the
+ * index's version would let a save built on the copy the form still shows
+ * write over a change it never showed. `versionOf` then only says whether
+ * the draft holds the block (`null`: main's copy; the tombstone's for one
+ * the draft deletes).
  */
 export function formSaveGuard({
   formBase,
   rebased,
   versionOf,
+  copy,
 }: {
   formBase: FormBase | null;
   rebased: boolean;
   versionOf: (blockKey: string) => string | null | undefined;
+  /**
+   * Hosted v8: the block (the saved block, or the page) as the cache held
+   * it when the save was built, the copy the form's check read.
+   */
+  copy?: { value: unknown };
 }): SaveGuard {
   let guarded: string | null = null;
+  const guardOf = (version: string | null | undefined) =>
+    version === undefined || guarded === null
+      ? undefined
+      : { [guarded]: version };
+  if (copy) {
+    return {
+      ifMatch: async (blockKey) => {
+        guarded = blockKey;
+        if (formBase && formBase.version !== undefined && !rebased) {
+          return guardOf(formBase.version);
+        }
+        const version = await copyDraftVersion(versionOf(blockKey), copy.value);
+        if (formBase) formBase.version = version;
+        return guardOf(version);
+      },
+      onApplied: (versions) => {
+        if (formBase && guarded !== null && Object.hasOwn(versions, guarded)) {
+          formBase.version = versions[guarded];
+        }
+      },
+      reloadOnConflict: true,
+    };
+  }
   return {
     ifMatch: (blockKey) => {
       guarded = blockKey;
@@ -267,4 +336,61 @@ export function conflictRetry(
   return carriedStored
     ? { delay: 0, immediate: true }
     : { delay: CONFLICT_RETRY_BASE_MS * 2 ** conflicts, immediate: false };
+}
+
+/** Where a form's save goes, as {@link waitingChoiceBase} compares it. */
+export interface WaitingChoiceTarget {
+  pageKey: string | null;
+  global: boolean;
+  pageVariantIndex: number;
+  sectionVariantIndex: number;
+}
+
+/**
+ * The form whose choice between two versions a save waits for: its own,
+ * when the user's choice for it waits, else the one waiting for the same
+ * section (same page, page variant, section and section variant), whichever
+ * form record the save was built from. A save queued before the editor
+ * re-read the section, or built from a form record started again since,
+ * then waits for the user's choice too, rather than writing over their
+ * version while the dialog asks. Null when no choice waits for the section.
+ */
+export function waitingChoiceBase(
+  waiting: ReadonlyArray<{ formBase: FormBase; target: WaitingChoiceTarget }>,
+  formBase: FormBase | null,
+  target: WaitingChoiceTarget,
+  sectionIndex: number,
+): FormBase | null {
+  if (formBase && waiting.some((item) => item.formBase === formBase)) {
+    return formBase;
+  }
+  const same = waiting.find(
+    (item) =>
+      item.formBase.sectionIndex === sectionIndex &&
+      item.target.pageKey === target.pageKey &&
+      item.target.global === target.global &&
+      item.target.pageVariantIndex === target.pageVariantIndex &&
+      item.target.sectionVariantIndex === target.sectionVariantIndex,
+  );
+  return same?.formBase ?? null;
+}
+
+/**
+ * The form a save checks for a waiting choice (`base`, then
+ * `waitsForChoice`), and whether the save skips the typing pause (`runNow`).
+ * v8 (`protocolProject`): {@link waitingChoiceBase}, and a save whose
+ * section has a choice waiting runs at once, so "You (not saved yet)"
+ * follows the typing. v7, as before: only the form's own record, and the
+ * save keeps its pause.
+ */
+export function formSaveChoice(
+  waiting: ReadonlyArray<{ formBase: FormBase; target: WaitingChoiceTarget }>,
+  formBase: FormBase | null,
+  target: WaitingChoiceTarget,
+  sectionIndex: number,
+  protocolProject: boolean,
+): { base: FormBase | null; runNow: boolean } {
+  if (!protocolProject) return { base: formBase, runNow: false };
+  const base = waitingChoiceBase(waiting, formBase, target, sectionIndex);
+  return { base, runNow: base !== null };
 }

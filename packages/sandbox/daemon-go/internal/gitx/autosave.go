@@ -46,6 +46,9 @@ type AutosaveDeps struct {
 	// one wasted cycle, whereas taking the lock every interval would stall
 	// writers for nothing on a clean tree.
 	Dirty func() bool
+	// OnResult receives every checkpoint's outcome (nil on success), so a push
+	// that keeps failing reaches the user rather than only the log.
+	OnResult func(err error)
 	// publishFn is the publish to call. nil means the real Publish; set by tests.
 	publishFn func(PublishDeps, string) error
 }
@@ -160,7 +163,11 @@ func (a *Autosaver) Tick() {
 	// for a checkpoint — it is superseded by the next one and by the agent's own
 	// commit, and the alternative (cancelling the run to get a quiet tree, which
 	// is what shutdown does) is not available to a periodic save.
-	if err := a.deps.publishFn(a.deps.Publish, AutosaveMessage); err != nil {
+	err := a.deps.publishFn(a.deps.Publish, AutosaveMessage)
+	if a.deps.OnResult != nil {
+		a.deps.OnResult(err)
+	}
+	if err != nil {
 		// Never fatal. A checkpoint is best-effort: a detached HEAD mid-rebase, a
 		// protected branch, a transient push failure all mean "not this time",
 		// and the next tick tries again.

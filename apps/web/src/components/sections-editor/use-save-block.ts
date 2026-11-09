@@ -75,9 +75,7 @@ import {
   type HeldEdit,
   heldCopyVersion,
 } from "./held-copy";
-
-/** Debounce window for form-driven block autosaves (ms). */
-export const AUTOSAVE_DELAY = 700;
+import { autosaveDelay } from "./autosave-delay";
 
 interface UseSaveBlockParams {
   orgSlug: string;
@@ -106,7 +104,12 @@ interface UseSaveBlockOptions {
  * content-protocol backend sends it; the others have no versions.
  */
 export interface SaveGuard {
-  ifMatch: (blockKey: string) => Record<string, string | null> | undefined;
+  ifMatch: (
+    blockKey: string,
+  ) =>
+    | Record<string, string | null>
+    | undefined
+    | Promise<Record<string, string | null> | undefined>;
   /** `versions`: what `blocks.apply` answered, each written block's new version. */
   onApplied?: (versions: Record<string, string | null>) => void;
   /** A save the guard refused (or any failed guarded save): re-read the content. */
@@ -454,7 +457,14 @@ export function useSaveBlock(
       ? { [blockKey]: null }
       : shown
         ? { [blockKey]: await heldCopyVersion(shown) }
-        : await hostedIfMatch(ctx, [blockKey]);
+        : await hostedIfMatch(
+            ctx,
+            [blockKey],
+            // The copy the save was built on: guarded by it, never by the
+            // version the index lists (a poll lists theirs before their copy
+            // is loaded).
+            base ? { [blockKey]: base.value } : undefined,
+          );
     for (let round = 0; ; round++) {
       try {
         const result = await applyProtocolPatch(
@@ -659,7 +669,7 @@ export function useSaveBlock(
         // guard of its own means the draft's version. Either way a refusal
         // opens the reconcile flow rather than failing.
         if (hosted && guard && !guard.reloadOnConflict) {
-          const own = guard.ifMatch(blockKey);
+          const own = await guard.ifMatch(blockKey);
           const creates = create || (!!own && own[blockKey] === null);
           try {
             const result = await saveHostedBlock(
@@ -678,7 +688,7 @@ export function useSaveBlock(
             throw error;
           }
         }
-        let ifMatch = guard?.ifMatch(blockKey);
+        let ifMatch = await guard?.ifMatch(blockKey);
         if (guard && !ifMatch && hosted) {
           // Every hosted save carries its precondition: an unknown version
           // is read first (the draft's changes come with the content).
@@ -690,7 +700,7 @@ export function useSaveBlock(
           ).catch(() => {
             throw new HostedDraftUnreadError();
           });
-          ifMatch = guard.ifMatch(blockKey);
+          ifMatch = await guard.ifMatch(blockKey);
           // Still unknown: fail rather than write unguarded.
           if (!ifMatch) throw new HostedDraftUnreadError();
         }
@@ -860,6 +870,8 @@ export function useSaveBlock(
     hold: (blockKey: string) => heldCopies?.hold(blockKey),
     /** True while saves are guarded by the editor's own copy (hosted v8). */
     holdsCopy: held !== null,
+    /** This backend's debounce window for autosaves ({@link autosaveDelay}). */
+    autosaveDelay: autosaveDelay(protocol !== null),
     /**
      * An edit of `blockKey` is made now (holdsCopy): the copy it is built
      * on, for its save's `edit`. Undefined when saves aren't guarded by the
@@ -891,7 +903,7 @@ type SaveData =
  * Wraps {@link useSaveBlock} with the standard debounced-autosave loop shared by
  * every form-driven block editor (section forms, the SEO editor, the SEO
  * sheets). Call `save(blockKey, data)` on each change; the latest payload is
- * persisted once edits settle for {@link AUTOSAVE_DELAY}ms, with a toast on
+ * persisted once edits settle for {@link autosaveDelay}ms, with a toast on
  * failure. `data` may be a builder (see {@link SaveData}) that returns null to
  * abort the save.
  */
@@ -907,8 +919,15 @@ export function useDebouncedSaveBlock(
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
+  // A save writes the whole block, so edits made during one wait as one: the newest.
+  const sendingRef = useRef<Set<string>>(new Set());
+  const waitingRef = useRef<Set<string>>(new Set());
 
   const runPendingSave = (blockKey: string) => {
+    if (sendingRef.current.has(blockKey)) {
+      waitingRef.current.add(blockKey);
+      return;
+    }
     const pending = pendingRef.current.get(blockKey);
     if (!pending) return;
     const resolved = typeof pending === "function" ? pending() : pending;
@@ -916,13 +935,15 @@ export function useDebouncedSaveBlock(
     const edit = editsRef.current.get(blockKey);
     editsRef.current.delete(blockKey);
     if (!resolved) return;
-    saveBlock.mutate(
-      { blockKey, data: resolved, guard: opts?.guard, edit },
-      {
-        onSuccess: () => opts?.onSaved?.(),
-        onError: saveBlock.reportError,
-      },
-    );
+    sendingRef.current.add(blockKey);
+    // mutate's callbacks skip all but the latest call; the waiting edit needs this one's end.
+    void saveBlock
+      .mutateAsync({ blockKey, data: resolved, guard: opts?.guard, edit })
+      .then(() => opts?.onSaved?.(), saveBlock.reportError)
+      .finally(() => {
+        sendingRef.current.delete(blockKey);
+        if (waitingRef.current.delete(blockKey)) runPendingSave(blockKey);
+      });
   };
 
   const flush = () => {
@@ -944,8 +965,20 @@ export function useDebouncedSaveBlock(
       timersRef.current.delete(blockKey);
       pendingRef.current.delete(blockKey);
       editsRef.current.delete(blockKey);
+      waitingRef.current.delete(blockKey);
     }
   });
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — warns before unload drops unsent edits
+  useEffect(() => {
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (pendingRef.current.size > 0 || sendingRef.current.size > 0) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, []);
 
   // Cancel pending debounced saves on unmount so they can't fire against a torn
   // -down editor after navigation. Call `flush()` explicitly when closing a sheet
@@ -981,7 +1014,7 @@ export function useDebouncedSaveBlock(
       setTimeout(() => {
         timersRef.current.delete(blockKey);
         runPendingSave(blockKey);
-      }, AUTOSAVE_DELAY),
+      }, saveBlock.autosaveDelay),
     );
   };
 

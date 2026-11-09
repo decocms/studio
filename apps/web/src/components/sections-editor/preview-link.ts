@@ -10,8 +10,8 @@
  *   own side.
  *
  * Each value is URL-encoded. A draft pointer carries them in its path's query
- * (`<host><path>?__at=…@<version>`); a published release's commit SHA after a
- * `?` (`<sha>?__at=…&__test=…`). The site honours them only from a Studio
+ * (`<host><path>?__at=…@<version>`); a published release's revision id after
+ * a `?` (`<id>?__at=…&__test=…`). The site honours them only from a Studio
  * link on its preview hosts, as it does drafts: a visitor never picks them.
  */
 
@@ -25,8 +25,9 @@ export interface PreviewOptions {
 
 const AT_PARAM = "__at=";
 const TEST_PARAM = "__test=";
-/** A published release: its git commit SHA. */
-const REVISION_RE = /^[0-9a-f]{40}$/;
+/** A published release: its revision id, `<inv>-<uuidv7>` (contract §1.2). */
+const REVISION_RE =
+  /^[0-9a-f]{12}-[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export function hasPreviewOptions(options: PreviewOptions): boolean {
   return (
@@ -34,8 +35,8 @@ export function hasPreviewOptions(options: PreviewOptions): boolean {
   );
 }
 
-/** Whether a value is a published release's commit SHA. */
-export function isReleaseSha(value: string | null | undefined): boolean {
+/** Whether a value is a published release's revision id. */
+export function isReleaseRevision(value: string | null | undefined): boolean {
   return typeof value === "string" && REVISION_RE.test(value);
 }
 
@@ -70,7 +71,7 @@ function mergeQuery(query: string, extra: string[]): string {
 }
 
 /**
- * A version (a draft pointer, or a release's commit SHA with or without
+ * A version (a draft pointer, or a release's revision id with or without
  * preview parameters) with exactly these preview options: any moment or
  * forced tests it carried are replaced, everything else (forced variants
  * included) kept. A value that is neither is returned as it is.
@@ -82,7 +83,7 @@ export function withPreviewOptions(
   const extra = optionParams(options);
   const q = version.indexOf("?");
   const head = q === -1 ? version : version.slice(0, q);
-  if (isReleaseSha(head)) {
+  if (isReleaseRevision(head)) {
     return head + mergeQuery(q === -1 ? "" : version.slice(q + 1), extra);
   }
   const at = version.lastIndexOf("@");
@@ -97,7 +98,7 @@ export function withPreviewOptions(
 /**
  * A site URL whose `?__draft=` version carries these preview options. A URL
  * showing the published site (no version, or `off`) previews `release`, the
- * current release's commit SHA, when there are options to carry and it is
+ * current release's revision id, when there are options to carry and it is
  * known; otherwise it stays as it is.
  */
 export function withPreviewOptionsInDraftUrl(
@@ -113,7 +114,7 @@ export function withPreviewOptionsInDraftUrl(
       url.searchParams.set("__draft", withPreviewOptions(version, options));
       return url.toString();
     }
-    if (!isReleaseSha(release)) return href;
+    if (!isReleaseRevision(release)) return href;
     url.searchParams.set("__draft", withPreviewOptions(release!, options));
     return url.toString();
   } catch {
@@ -122,19 +123,19 @@ export function withPreviewOptionsInDraftUrl(
 }
 
 /**
- * The link that opens a published release in the site: `?__draft=<sha>` on
+ * The link that opens a published release in the site: `?__draft=<id>` on
  * the site's own page. `null` for a value that isn't a release or a URL that
  * doesn't parse.
  */
 export function releasePreviewUrl(
   siteUrl: string | null | undefined,
-  sha: string,
+  revision: string,
   path = "/",
 ): string | null {
-  if (!siteUrl || !isReleaseSha(sha)) return null;
+  if (!siteUrl || !isReleaseRevision(revision)) return null;
   try {
     const url = new URL(path, siteUrl);
-    url.searchParams.set("__draft", sha);
+    url.searchParams.set("__draft", revision);
     return url.toString();
   } catch {
     return null;

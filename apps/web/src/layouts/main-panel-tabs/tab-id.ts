@@ -361,6 +361,20 @@ export function resolveDefaultTabId(
 }
 
 /**
+ * Where entering a project lands: the view its settings name as the main
+ * view, or `null` to stay on the Overview. Unlike {@link resolveDefaultTabId},
+ * an unset or retired `chat` default means the Overview, not Settings.
+ */
+export function resolveProjectLandingTabId(
+  metadata: EntityLayoutMetadata | null,
+): string | null {
+  const type = metadata?.defaultMainView?.type;
+  if (!type || type === "chat") return null;
+  const tabId = resolveDefaultTabId(metadata);
+  return tabId === "overview" ? null : tabId;
+}
+
+/**
  * The view showing in the main panel, and whether the panel is open — the two
  * things `?main=` used to conflate, resolved from the two things that replaced
  * it: a canonical child route and the `?mainpanel` boolean.

@@ -113,6 +113,12 @@ const oauthCallbackRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/oauth-callback.tsx")),
 });
 
+const oauthConsentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/oauth/consent",
+  component: lazyRouteComponent(() => import("./routes/oauth-consent.tsx")),
+});
+
 const oauthCallbackAiProviderRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/oauth/callback/ai-provider",
@@ -575,6 +581,9 @@ const projectsIndexRoute = createRoute({
   },
 });
 
+/** The project the last non-preload navigation loaded. */
+let lastLoadedProjectId: string | undefined;
+
 /** Canonical identity boundary for one project. Every feature is a real child
  *  route and therefore owns both its composition and its URL. */
 const agentWorkspaceRoute = createRoute({
@@ -586,6 +595,17 @@ const agentWorkspaceRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/projects/$agentId",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  /** Arriving from outside the project lands its root on the configured main
+   *  view; moving to the root from inside it is an explicit visit to the
+   *  Overview. TanStack reports a project switch as `stay` because the route id
+   *  is unchanged, so the agent id is compared too. */
+  beforeLoad: ({ cause, params }) => {
+    if (cause === "preload") return { enteredProject: false };
+    const enteredProject =
+      cause === "enter" || params.agentId !== lastLoadedProjectId;
+    lastLoadedProjectId = params.agentId;
+    return { enteredProject };
+  },
   component: Outlet,
 });
 
@@ -855,23 +875,21 @@ const agentE2eRoute = createRoute({
   ),
 });
 
-const agentAnalyticsRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
+/** The retired Analytics app; its data lives in Monitor's Audience now. */
+const agentAnalyticsRedirectRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/analytics",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.analytics",
-    defaultMain: "analytics",
-    mainView: "analytics",
-  },
-  // `view` lets another tab deep-link straight to one of AnalyticsTab's
-  // DATA_VIEWS (e.g. Experiments' "ver dados" opens here with view=experiments)
-  // instead of always landing on "overview".
   validateSearch: z.object({ view: z.string().optional() }),
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-analytics.tsx"),
-  ),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/projects/$agentId/monitoring",
+      params,
+      search: {
+        view: search.view === "experiments" ? "experiments" : "audience",
+      },
+      replace: true,
+    });
+  },
 });
 
 /** The task board analytics, narrowed to this project's cards. */
@@ -890,21 +908,18 @@ const projectTaskBoardAnalyticsRoute = createRoute({
   ),
 });
 
-const agentExperimentsRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
+/** The retired Experiments app; Monitor's Experiments view renders it now. */
+const agentExperimentsRedirectRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/experiments",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.experiments",
-    defaultMain: "experiments",
-    mainView: "experiments",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$agentId/monitoring",
+      params,
+      search: { view: "experiments" },
+      replace: true,
+    });
   },
-  // `?ui=legacy` previews the pre-flag tab without flipping the org's flag.
-  validateSearch: z.object({ ui: z.literal("legacy").optional() }),
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-experiments.tsx"),
-  ),
 });
 
 const agentCalendarRoute = createRoute({
@@ -922,22 +937,18 @@ const agentCalendarRoute = createRoute({
   ),
 });
 
-const agentMonitorRoute = createRoute({
-  pendingComponent: ChatLayoutPending,
-  errorComponent: ChatLayoutError,
+/** The retired CDN app; its data lives in Monitor's Performance now. */
+const agentCdnRedirectRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
-  /** The stable tab id is `cdn`. Keeping that name in the canonical path also
-   * leaves the previously unambiguous project-first custom view `monitor`
-   * available to the compatibility catch-all below. */
   path: "/cdn",
-  staticData: {
-    pageTitle: "common.mainPanelTabs.cdn",
-    defaultMain: "cdn",
-    mainView: "cdn",
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/projects/$agentId/monitoring",
+      params,
+      search: { view: "performance" },
+      replace: true,
+    });
   },
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/agent-monitor.tsx"),
-  ),
 });
 
 const appArgsSearchSchema = z.object({ args: z.string().optional() });
@@ -1214,10 +1225,33 @@ const planRoute = createRoute({
 /** Monitor: the tab, the past day, and the store (ingest connection id) and
  *  instant under review. A malformed day is dropped, not a broken page. */
 const monitoringSearch = z.object({
-  view: z.enum(["metrics", "deploys", "experiments", "analytics"]).optional(),
+  // The names after `heatmap` are tabs that were renamed, merged or removed, kept so saved links still open.
+  view: z
+    .enum([
+      "metrics",
+      "performance",
+      "logs",
+      "audience",
+      "heatmap",
+      "analytics",
+      "errors",
+      "realtime",
+      "pages",
+      "events",
+      "deploys",
+      "experiments",
+    ])
+    .optional()
+    .catch(undefined),
   date: z.iso.date().optional().catch(undefined),
   store: z.string().optional(),
   at: z.string().optional(),
+  project: z.string().optional(),
+  section: z.string().optional(),
+  // The Analytics segment (components/monitor/analytics/segment.ts).
+  f: z.array(z.string()).optional().catch(undefined),
+  currency: z.string().optional(),
+  prop: z.string().optional(),
 });
 const orgMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1745,11 +1779,11 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentReleasesRoute,
   agentHostingRoute,
   agentE2eRoute,
-  agentAnalyticsRoute,
+  agentAnalyticsRedirectRoute,
   projectTaskBoardAnalyticsRoute,
-  agentExperimentsRoute,
+  agentExperimentsRedirectRoute,
   agentCalendarRoute,
-  agentMonitorRoute,
+  agentCdnRedirectRoute,
   agentAppRoute,
   agentViewRoute,
   agentOutputFileRoute,
@@ -1809,6 +1843,7 @@ const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   betterAuthRoutes,
   oauthCallbackRoute,
+  oauthConsentRoute,
   oauthCallbackAiProviderRoute,
 ]);
 

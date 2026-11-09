@@ -42,30 +42,6 @@ export async function seedStubRepo(
   expect(res.ok()).toBe(true);
 }
 
-/**
- * Moves a seeded repo's `main` to `files` (a new head), as a merge from
- * elsewhere would: the repo is re-seeded with its own id.
- */
-export async function moveStubMain(
-  ctx: APIRequestContext,
-  owner: string,
-  repo: string,
-  files: Record<string, string>,
-): Promise<void> {
-  const res = await ctx.get(`${GITHUB_STUB_ORIGIN}/repos/${owner}/${repo}`, {
-    headers: { authorization: "token e2e-admin" },
-  });
-  expect(res.ok()).toBe(true);
-  const { id } = (await res.json()) as { id: number };
-  await seedStubRepo(ctx, {
-    owner,
-    repo,
-    id,
-    defaultBranch: "main",
-    branches: { main: { files } },
-  });
-}
-
 export async function inspectStubRepo(
   ctx: APIRequestContext,
   owner: string,
@@ -76,6 +52,55 @@ export async function inspectStubRepo(
   );
   expect(res.ok()).toBe(true);
   return (await res.json()) as StubRepoInspection;
+}
+
+/**
+ * Commits `files` (path → content) onto `branch` in the stub, as another
+ * draft's publish or a developer's push would land. The decofile API refuses
+ * writes to the default branch, so this is how a spec moves `main` while
+ * keeping its history and other branches (unlike {@link moveStubMain}).
+ */
+export async function commitStubFiles(
+  ctx: APIRequestContext,
+  owner: string,
+  repo: string,
+  branch: string,
+  files: Record<string, string>,
+): Promise<void> {
+  const base = `${GITHUB_STUB_ORIGIN}/repos/${owner}/${repo}`;
+  const headers = { authorization: "token e2e-admin" };
+  const head = (await inspectStubRepo(ctx, owner, repo)).refs[branch];
+  expect(head, `branch ${branch} is not in the stub`).toBeTruthy();
+  const commit = await ctx.get(`${base}/git/commits/${head}`, { headers });
+  expect(commit.ok()).toBe(true);
+  const { tree } = (await commit.json()) as { tree: { sha: string } };
+  const nextTree = await ctx.post(`${base}/git/trees`, {
+    headers,
+    data: {
+      base_tree: tree.sha,
+      tree: Object.entries(files).map(([path, content]) => ({
+        path,
+        mode: "100644",
+        type: "blob",
+        content,
+      })),
+    },
+  });
+  expect(nextTree.ok()).toBe(true);
+  const next = await ctx.post(`${base}/git/commits`, {
+    headers,
+    data: {
+      message: "external change",
+      tree: ((await nextTree.json()) as { sha: string }).sha,
+      parents: [head],
+    },
+  });
+  expect(next.ok()).toBe(true);
+  const ref = await ctx.patch(`${base}/git/refs/heads/${branch}`, {
+    headers,
+    data: { sha: ((await next.json()) as { sha: string }).sha },
+  });
+  expect(ref.ok()).toBe(true);
 }
 
 /** Flip merge behavior on a seeded repo without re-seeding its history. */
@@ -216,4 +241,24 @@ export async function createFastPreviewProject(
 }
 
 /** Unique owner per test run keeps the stub's repo namespace parallel-safe. */
+/**
+ * Turns the project's "Blocks v8 site" switch on or off, as an org admin does
+ * in project settings (`blocksV8` on the update tool). The only way a project
+ * becomes v8: `deco schema push` is refused until it is on.
+ */
+export async function setBlocksV8Site(
+  ctx: APIRequestContext,
+  org: string,
+  vmcpId: string,
+  on: boolean,
+): Promise<void> {
+  const { item } = await callSelfMcpTool<{
+    item: { metadata?: Record<string, unknown> | null };
+  }>(ctx, org, "COLLECTION_VIRTUAL_MCP_UPDATE", {
+    id: vmcpId,
+    data: { blocksV8: on },
+  });
+  expect(item.metadata?.blocksV8 === true).toBe(on);
+}
+
 export const uniqueOwner = (): string => `e2e-${randomUUID().slice(0, 12)}`;

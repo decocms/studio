@@ -9,9 +9,6 @@ export const siteEditor = {
     "Publicado. {host} vai mostrar em instantes.",
   "siteEditor.publish.nothingToPublish": "Nada para publicar",
   "siteEditor.publish.everythingPublished": "Tudo já está publicado.",
-  "siteEditor.publish.savedNotPublished": "Salvo, mas ainda não publicado",
-  "siteEditor.publish.savedNotPublishedBody":
-    "Suas alterações estão salvas. Tente de novo para publicá-las.",
   "siteEditor.publish.publishedMeanwhile":
     "Outra pessoa publicou enquanto você publicava, então nada mudou. Revise suas alterações e publique de novo.",
   "siteEditor.publish.changedMeanwhile":
@@ -37,8 +34,6 @@ export const siteEditor = {
     "Não foi salvo: alguns campos não estão preenchidos corretamente. Corrija e tente de novo.",
   "siteEditor.save.tooLarge":
     "Não foi salvo: este conteúdo é grande demais. Diminua o tamanho e tente de novo.",
-  "siteEditor.retrying.github":
-    "Não foi possível acessar o GitHub agora. Tentando de novo…",
   "siteEditor.retrying.sandbox":
     "Não foi possível acessar o sandbox agora. Tentando de novo…",
   "siteEditor.contentTypes.changesInDraft": "Mudanças no rascunho",
@@ -89,4 +84,7 @@ export const siteEditor = {
   "siteEditor.siteNotOwned.body":
     "Outro projeto no Studio foi configurado com este site primeiro, então o conteúdo dele é editado e publicado lá. Abra esse projeto para mudar o conteúdo do site. Aqui você ainda pode conversar e trabalhar no código do site.",
   "siteEditor.siteNotOwned.openProjects": "Ver projetos",
+  "siteEditor.productionLocked.title": "Produção não pode ser editada aqui",
+  "siteEditor.productionLocked.body":
+    "As alterações são feitas em um draft e chegam ao site quando você o publica. Crie um novo draft para continuar editando.",
 } satisfies Record<keyof typeof siteEditorEn, string>;

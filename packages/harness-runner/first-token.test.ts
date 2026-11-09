@@ -6,6 +6,10 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 
 const log: string[] = [];
 let queries = 0;
+/** Each query's `DECOCMS_HOME`, in order. */
+const queryHomes: (string | undefined)[] = [];
+/** Ends the kept session on its next turn, so the runner starts a fresh one. */
+let dropKeptSession = false;
 
 /** One turn's SDK messages; `first` adds the session's init. */
 async function* turnMessages(first: boolean, id: string) {
@@ -49,8 +53,15 @@ async function* turnMessages(first: boolean, id: string) {
 }
 
 mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-  query: ({ prompt }: { prompt: string | AsyncIterable<unknown> }) => {
+  query: ({
+    prompt,
+    options,
+  }: {
+    prompt: string | AsyncIterable<unknown>;
+    options?: { env?: Record<string, string | undefined> };
+  }) => {
     queries++;
+    queryHomes.push(options?.env?.DECOCMS_HOME);
     const messages = async function* () {
       if (typeof prompt === "string") {
         yield* turnMessages(true, "msg_1");
@@ -58,6 +69,10 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
       }
       let turn = 0;
       for await (const _ of prompt) {
+        if (dropKeptSession) {
+          dropKeptSession = false;
+          throw new Error("kept session gone");
+        }
         turn++;
         yield* turnMessages(turn === 1, `msg_${turn}`);
       }
@@ -108,6 +123,54 @@ test("a persistent runner answers the next turn on the same SDK session", async 
     expect(queries).toBe(1);
     expect(log.filter((type) => type === "text-delta")).toHaveLength(2);
     expect(log.filter((type) => type === "finish")).toHaveLength(2);
+  } finally {
+    delete process.env.HARNESS_RUNNER_PERSISTENT;
+  }
+});
+
+test("a kept session's CLI session file carries each turn's key", async () => {
+  process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "runner-"));
+  process.env.HARNESS_RUNNER_PERSISTENT = "1";
+  try {
+    const { runClaudeCode } = await import("./claude-code");
+    const { processStudioCliHome } = await import("./studio-cli");
+    const turn = (key: string, expiresAt: number) =>
+      ({
+        ...input,
+        mcp: {
+          url: "https://studio.example.test/api/example-org/mcp/thread/thrd_1",
+          headers: { Authorization: `Bearer ${key}` },
+          expiresAt,
+        },
+        studioCli: { org: "example-org" },
+      }) as HarnessStreamInputWire;
+    const sessionFile = async () =>
+      JSON.parse(
+        await Bun.file(
+          join(
+            await processStudioCliHome(),
+            "session.studio.example.test.json",
+          ),
+        ).text(),
+      );
+
+    // The session the previous test kept was started without the CLI.
+    dropKeptSession = true;
+    const fresh = queries + 1;
+    await runClaudeCode(turn("key_one", 1_900_000_000_000), collect);
+    expect(queries).toBe(fresh);
+    expect(queryHomes.at(-1)).toBe(await processStudioCliHome());
+    expect(await sessionFile()).toMatchObject({
+      accessToken: "key_one",
+      expiresAt: 1_900_000_000,
+    });
+    const before = queries;
+    await runClaudeCode(turn("key_two", 1_900_003_600_000), collect);
+    expect(queries).toBe(before);
+    expect(await sessionFile()).toMatchObject({
+      accessToken: "key_two",
+      expiresAt: 1_900_003_600,
+    });
   } finally {
     delete process.env.HARNESS_RUNNER_PERSISTENT;
   }

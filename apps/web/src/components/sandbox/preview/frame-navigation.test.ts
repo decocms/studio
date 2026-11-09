@@ -3,6 +3,7 @@ import {
   type HeldFrameNavigation,
   frameNavigationLoaded,
   nextFrameNavigation,
+  nextFrameSwap,
 } from "./frame-navigation";
 
 describe("nextFrameNavigation", () => {
@@ -45,5 +46,69 @@ describe("nextFrameNavigation", () => {
       loading: false,
     });
     expect(nextFrameNavigation(idle, idle.src, false)).toBe(idle);
+  });
+});
+
+describe("nextFrameSwap", () => {
+  const BASE = "https://site.example";
+  const A = `${BASE}/?__draft=a`;
+  const B = `${BASE}/?__draft=b`;
+  const C = `${BASE}/?__draft=c`;
+  const loaded = { base: BASE, frameSrc: A, loadedSrc: A, canSwap: true };
+
+  it("swaps a moved draft pointer in, keeping the src the frame loaded", () => {
+    const swap = nextFrameSwap(null, { ...loaded, wanted: B });
+    expect(swap).toEqual({ base: BASE, src: A, shown: B });
+    // The next save swaps again; the frame still keeps A.
+    expect(nextFrameSwap(swap, { ...loaded, wanted: C })).toEqual({
+      base: BASE,
+      src: A,
+      shown: C,
+    });
+    // Nothing moved: the same object.
+    expect(nextFrameSwap(swap, { ...loaded, wanted: B })).toBe(swap);
+    // Back to the URL the frame loaded: still a swap, to it.
+    expect(nextFrameSwap(swap, { ...loaded, wanted: A })).toEqual({
+      base: BASE,
+      src: A,
+      shown: A,
+    });
+  });
+
+  it("loads the frame for another page, a page without HTML swap, or a frame still loading", () => {
+    expect(
+      nextFrameSwap(null, { ...loaded, wanted: `${BASE}/shirts?__draft=b` }),
+    ).toBeNull();
+    expect(
+      nextFrameSwap(null, {
+        ...loaded,
+        wanted: "https://other.example/?__draft=b",
+      }),
+    ).toBeNull();
+    expect(
+      nextFrameSwap(null, { ...loaded, canSwap: false, wanted: B }),
+    ).toBeNull();
+    expect(
+      nextFrameSwap(null, { ...loaded, loadedSrc: undefined, wanted: B }),
+    ).toBeNull();
+    // A swapped frame that can't swap the next one loads it.
+    const swap = nextFrameSwap(null, { ...loaded, wanted: B });
+    expect(
+      nextFrameSwap(swap, { ...loaded, canSwap: false, wanted: C }),
+    ).toBeNull();
+  });
+
+  it("a new frame (another base) forgets the swap", () => {
+    const swap = nextFrameSwap(null, { ...loaded, wanted: B });
+    const other = "https://sandbox.example";
+    expect(
+      nextFrameSwap(swap, {
+        base: other,
+        frameSrc: `${other}/`,
+        loadedSrc: `${other}/`,
+        canSwap: true,
+        wanted: `${other}/`,
+      }),
+    ).toBeNull();
   });
 });

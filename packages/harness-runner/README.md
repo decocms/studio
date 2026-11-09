@@ -46,6 +46,14 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   a `{"liveMessageAck":…}` stdout
   line, `accepted: false` once the turn has decided to finish, so the daemon
   answers Studio only with what is true.
+- Reach Studio through the `decocms` CLI when the input sets `studioCli`:
+  the run's minted key becomes a CLI session (`session.<host>.json`, mode
+  0600) in a private directory named by `DECOCMS_HOME`, rewritten every turn
+  so a kept session uses the current key. No `studio` MCP server is mounted
+  and the MCP preflight is skipped. A single plain
+  `decocms tools call <NAME> --org <slug> [-d '<json>']` command renders as
+  the `<NAME>` tool part. Codex read-only runs keep the research-only `studio`
+  MCP, because their sandbox blocks network for shell commands.
 - Continue an interrupted turn rather than redoing it. `input.resume` means a
   previous attempt was cut short by infrastructure and its conversation is gone;
   the work itself is in the checkout and in git (a replaced pod clones the branch
@@ -100,6 +108,8 @@ inside the sandbox runtime. Freestyle deployments opt in with
 - `codex.ts` — app-server requests, isolated runtime configuration, subscription refresh sync, and session resumption.
 - `codex-to-ui-chunks.ts` — Codex notifications translated to existing text, reasoning, tool, question, and plan parts.
 - `live-messages.ts` — the live-message line, ack and per-turn bookkeeping.
+- `studio-cli.ts` — the CLI session file, its prompt, and recognizing a
+  shell command that is one Studio tool call.
 - `to-ui-chunks.ts` — SDK messages → AI SDK `UIMessageChunk`s, with Claude
   Code's tools renamed to the canonical part names the chat UI renders
   (`Bash` → `bash`, `AskUserQuestion` → `user_ask`, `mcp__studio__<name>` →

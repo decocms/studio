@@ -123,12 +123,7 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
             return (
               <SettingsCardItem
                 key={viewId}
-                icon={
-                  <SidebarViewIcon
-                    viewId={viewId}
-                    blocksSite={views.blocksSite}
-                  />
-                }
+                icon={<SidebarViewIcon viewId={viewId} />}
                 title={views.labels[viewId]}
                 onClick={() => views.openView(viewId)}
                 action={

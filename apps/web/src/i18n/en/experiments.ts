@@ -4,7 +4,8 @@ export const experiments = {
   "experiments.noSite":
     "This project has no linked site, so it has no experiments.",
   "experiments.empty.title": "No experiments yet",
-  "experiments.empty.desc": "Create the first A/B test for this site.",
+  "experiments.empty.desc":
+    "Show two versions of a page to real visitors and see which one sells more.",
   "experiments.status.running": "Running",
   "experiments.status.paused": "Paused",
   "experiments.status.draft": "Draft",
@@ -106,7 +107,7 @@ export const experiments = {
 
   // Read only by experiments-tab-legacy.tsx; both go when the flag does.
   "experiments.subtitle":
-    "A/B tests for this site. The traffic split lives in the site's content; results come from analytics.",
+    "Compare versions of this site with real traffic and see which one converts better.",
   "experiments.col.name": "Name",
   "experiments.col.key": "Key",
   "experiments.col.status": "Status",
@@ -124,12 +125,145 @@ export const experiments = {
     "No analytics traffic found for {site}. The site may not be sending analytics events yet, or its traffic is reported under another site.",
   "experiments.results.empty": "No participants yet for this experiment.",
   "experiments.results.control": "Control",
+  "experiments.results.test": "Test",
   "experiments.results.variant": "Variant",
+  "experiments.results.weight": "{weight}% of traffic",
+  "experiments.results.arm": "Version",
+  "experiments.results.armsTitle": "Versions",
   "experiments.results.visitors": "Visitors",
-  "experiments.results.participants": "Participants",
-  "experiments.results.sampleSize": "Target sample size",
-  "experiments.results.probBest": "Probability variant best",
+  "experiments.results.visitorsHint":
+    "Counted once a day: someone who comes back on another day counts again.",
+  "experiments.results.exposed": "Exposed",
+  "experiments.results.exposedHint":
+    "Visitors who reached the point where the versions differ, in both versions. The fairest base for the comparison.",
+  "experiments.results.conversion": "Conversion",
+  "experiments.results.conversionHintExposed":
+    "Of the exposed visitors, the share who reached the goal “{goal}”.",
+  "experiments.results.conversionHintVisitors":
+    "Of all visitors, the share who reached the goal “{goal}”.",
+  "experiments.results.difference": "Difference",
+  "experiments.results.reference": "Baseline",
+  "experiments.results.range": "{low} to {high}",
+  "experiments.results.orders": "Orders",
+  "experiments.results.revenue": "Revenue",
+  "experiments.results.revenuePerVisitor": "Revenue per visitor",
+  "experiments.results.averageOrder": "Average order",
+  "experiments.results.differenceHint":
+    "How much the test converts above or below control, and the range the real difference falls in with 95% confidence.",
+  "experiments.results.verdict.few": "Not enough data yet",
+  "experiments.results.verdict.unclear": "No clear difference yet",
+  "experiments.results.verdict.better": "“{arm}” converts more",
+  "experiments.results.verdict.worse": "“{arm}” converts less",
+  "experiments.results.verdict.notWorse":
+    "“{arm}” is not worse than “{control}”",
+  "experiments.results.verdict.compareExposed":
+    "“{test}” converts {testRate} of {exposed} visitors, against {controlRate} for “{control}”.",
+  "experiments.results.verdict.compareVisitors":
+    "“{test}” converts {testRate} of its visitors, against {controlRate} for “{control}”.",
+  "experiments.results.verdict.noBase":
+    "Control has no conversions yet, so there is nothing to compare against.",
+  "experiments.results.verdict.fewHint":
+    "Each version needs at least {total} visitors and {successes} conversions before the comparison means anything.",
+  "experiments.results.claim.lower":
+    "The difference isn't {significant} yet, so the lower number doesn't mean “{test}” is losing.",
+  "experiments.results.claim.higher":
+    "The difference isn't {significant} yet, so the higher number doesn't mean “{test}” is winning.",
+  "experiments.results.claim.even": "The difference isn't {significant} yet.",
+  "experiments.results.claim.notWorse":
+    "The difference isn't {significant} yet, but a drop larger than {bar} is already ruled out.",
+  "experiments.results.claim.better":
+    "The increase is {significant}, so the measured number counts.",
+  "experiments.results.claim.worse":
+    "The drop is {significant}, too large to be chance.",
+  "experiments.results.range.cross":
+    "The real result can be anywhere from {low} worse to {high} better.",
+  "experiments.results.range.above":
+    "The real result is between {near} and {far} better.",
+  "experiments.results.range.below":
+    "The real result is between {near} and {far} worse.",
+  "experiments.results.fact.better": "Chance “{test}” is better",
+  "experiments.results.fact.target": "Chance it is at least {target} better",
+  "experiments.results.fact.safety": "Not worse than {bar}",
+  "experiments.results.safety.open": "Can't say yet",
+  "experiments.results.safety.openNote":
+    "To say so, the measured difference has to reach {bar}.",
+  "experiments.results.safety.notWorse": "Yes, traffic can grow",
+  "experiments.results.safety.worse": "No, the drop is significant",
+  "experiments.results.chanceAbove": "Over 99%",
+  "experiments.results.chanceBelow": "Under 1%",
+  "experiments.results.forecast.left":
+    "At the current pace, it reaches ±{margin} in {days} more days, with {exposed} more exposed.",
+  "experiments.results.forecast.leftOne":
+    "At the current pace, it reaches ±{margin} in 1 more day, with {exposed} more exposed.",
+  "experiments.results.forecast.reached": "Already under ±{margin}.",
+  "experiments.results.forecast.unknown":
+    "Not enough data yet to estimate when it narrows.",
+  "experiments.results.progress.running": "Running for {days} days.",
+  "experiments.results.progress.runningOne": "Running for 1 day.",
+  "experiments.results.progress.evenSplit":
+    "With half the traffic on each version, the margin would reach ±{margin} in {days} days.",
+  "experiments.results.progress.evenSplitOne":
+    "With half the traffic on each version, the margin would reach ±{margin} in 1 day.",
+  "experiments.results.liftTrend": "Running difference",
+  "experiments.results.liftTrendHint":
+    "Each point adds up every day so far. A wide band early on is normal: with few orders, one good or bad day moves the result a lot.",
+  "experiments.results.chart.aria":
+    "Conversion difference of “{test}” against “{control}”, {lift}, with a 95% range of {range}.",
+  "experiments.results.chart.worse": "Worse",
+  "experiments.results.chart.better": "Better",
+  "experiments.results.chart.measured": "Measured difference",
+  "experiments.results.chart.measuredTotal": "Difference with all days so far",
+  "experiments.results.chart.range": "95% range",
+  "experiments.results.chart.bar": "{bar} limit",
+  "experiments.results.chart.tooltip":
+    "Measured {lift}, with a 95% range of {range}.",
+  "experiments.results.chart.tooltipDay": "Difference so far {lift}",
+  "experiments.results.glossary.significant": "significant",
+  "experiments.results.glossary.significantTitle": "Significant",
+  "experiments.results.glossary.significantHint":
+    "Too large to be chance. Here, when there is at least 95% confidence that the real difference goes the way it measured.",
+  "experiments.results.glossary.exposed": "exposed",
+  "experiments.results.glossary.exposedTitle": "Exposed",
+  "experiments.results.glossary.exposedHint":
+    "A visitor who reached the part of the site that differs between versions. Conversion is measured among them, each counted once per day they visit.",
+  "experiments.results.glossary.margin": "Margin",
+  "experiments.results.glossary.marginTitle": "Margin",
+  "experiments.results.glossary.marginHint":
+    "How much the result can still move by chance alone, up or down, with 95% confidence. It narrows as the test adds days.",
+  "experiments.results.howTo.title": "How to read this result",
+  "experiments.results.howTo.range":
+    "The bar shows where the real difference probably is. While it crosses zero, winning and losing are both still possible, even with the measured point on one side.",
+  "experiments.results.howTo.early":
+    "Early on, a few orders move the difference a lot. One good or bad day in either version changes the whole result, so the band starts wide and narrows.",
+  "experiments.results.howTo.looks":
+    "Decide on the running total, never on a single day. Every look at the result is another chance to see a difference that is only chance, and deciding on the best day ends up deciding wrong.",
+  "experiments.results.howTo.calendar":
+    "Day of the week and novelty also move the first days, and the band doesn't include them.",
+  "experiments.results.howTo.method":
+    "The math follows deco's A/B rollout plan: one-sided 95% confidence on the ratio of conversion rates, a flat prior, and a {deff} design effect because visitors are split once and each counts once per day. The test can grow once it is not worse than {bar}, and an increase only counts when it is significant.",
+  "experiments.results.trend": "Conversion by day",
+  "experiments.results.behaviour": "Behaviour per visitor",
+  "experiments.results.pageviews": "Pages viewed",
+  "experiments.results.pageviewsHint": "Average pages viewed per visitor.",
+  "experiments.results.activeTime": "Active time",
+  "experiments.results.activeTimeHint":
+    "Average time per visitor with the page open and in use.",
+  "experiments.results.clicks": "Clicks",
+  "experiments.results.clicksHint": "Average clicks per visitor.",
+  "experiments.results.scroll": "Median scroll",
+  "experiments.results.scrollHint":
+    "How far down the page a typical visit scrolls.",
+  "experiments.results.jsErrors": "Visitors with JS errors",
+  "experiments.results.jsErrorsHint":
+    "Visitors of this version who had at least one JavaScript error on any page of the site.",
+  "experiments.results.minutes": "{m} min {s} s",
+  "experiments.results.seconds": "{s} s",
+  "experiments.results.goals": "Goals",
+  "experiments.results.goalsHint": "Visitors who reached each goal.",
+  "experiments.results.goalName.purchase": "Purchase",
+  "experiments.results.goalName.experience_impression": "Exposure",
   "experiments.results.goal": "Goal",
+  "experiments.results.sourceDeco": "Source: Deco Analytics",
   "experiments.v8.intro":
     "Your A/B tests are part of your site's content. Every change is saved in your draft and goes live when you publish.",
   "experiments.v8.new": "New A/B test",
@@ -140,8 +274,6 @@ export const experiments = {
   "experiments.v8.status.off": "Off",
   "experiments.v8.status.running": "Running",
   "experiments.v8.status.everyone": "Everyone",
-  "experiments.v8.usedBy": "Used by {count}",
-  "experiments.v8.notUsed": "Not used yet",
   "experiments.v8.state.new": "Not published yet",
   "experiments.v8.state.changed": "Changed in your draft",
   "experiments.v8.removedTitle": "Removed in your draft",
@@ -159,13 +291,6 @@ export const experiments = {
   "experiments.v8.save": "Save",
   "experiments.v8.turnOff": "Turn off",
   "experiments.v8.showEveryone": "Show to everyone",
-  "experiments.v8.renameHint":
-    "Every variant that uses this test is updated in the same change.",
-  "experiments.v8.renamed": "Test renamed to “{name}”",
-  "experiments.v8.renameWholeHint":
-    "Sections that read every test in their own code still look for the old name. Update them in the site editor.",
-  "experiments.v8.nameLocked":
-    "The name can't change while the test runs: visitors are grouped by it. Turn the test off to rename it.",
   "experiments.v8.delete": "Delete test",
   "experiments.v8.deleted": "Test “{name}” deleted from your draft",
   "experiments.v8.deletedHint":

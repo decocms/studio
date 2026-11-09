@@ -82,6 +82,10 @@ export const sectionsEditor = {
     "Nenhum teste ainda. Digite um nome para criar um.",
   "sectionsEditor.namedRulePicker.noCampaigns":
     "Nenhuma campanha ainda. Digite um nome para criar uma.",
+  "sectionsEditor.namedRulePicker.loadFailedTests":
+    "Não foi possível carregar seus testes.",
+  "sectionsEditor.namedRulePicker.loadFailedCampaigns":
+    "Não foi possível carregar suas campanhas.",
   "sectionsEditor.namedRulePicker.createTest": "Criar teste “{name}”",
   "sectionsEditor.namedRulePicker.createCampaign": "Criar campanha “{name}”",
   "sectionsEditor.namedRulePicker.shareOfVisitors": "{share}% dos visitantes",
@@ -132,40 +136,6 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.fieldNone": "Nada",
   "sectionsEditor.namedRulePicker.fieldPlaceholder":
     "Escolha o que este campo lê",
-  "sectionsEditor.namedRuleUses.title": "Usado em",
-  "sectionsEditor.namedRuleUses.loading": "Verificando onde é usado…",
-  "sectionsEditor.namedRuleUses.variant": "Variante {index}",
-  "sectionsEditor.namedRuleUses.draftOnly": "Ainda não publicado",
-  "sectionsEditor.namedRuleUses.removed": "Removido no seu rascunho",
-  "sectionsEditor.namedRuleUses.open": "Abrir",
-  "sectionsEditor.namedRuleUses.emptyTests":
-    "Ainda não usado. No editor do site, dê a uma variante a regra “Teste A/B” e escolha este teste.",
-  "sectionsEditor.namedRuleUses.emptyCampaigns":
-    "Ainda não usada. No editor do site, dê a uma variante a regra “Campanha” e escolha esta campanha.",
-  "sectionsEditor.namedRuleUses.wholeTests": "Seções que leem todos os testes",
-  "sectionsEditor.namedRuleUses.wholeTestsHint":
-    "Estas seções decidem no próprio código quais testes consultam.",
-  "sectionsEditor.namedRuleUses.wholeCampaigns":
-    "Seções que leem todas as campanhas",
-  "sectionsEditor.namedRuleUses.wholeCampaignsHint":
-    "Estas seções decidem no próprio código quais campanhas consultam.",
-  "sectionsEditor.namedRuleDelete.stillUsedOne":
-    "{places} ainda usa. Desfazer traz de volta.",
-  "sectionsEditor.namedRuleDelete.stillUsed":
-    "{places} ainda usam. Desfazer traz de volta.",
-  "sectionsEditor.namedRuleUses.countPageOne": "1 página",
-  "sectionsEditor.namedRuleUses.countPages": "{count} páginas",
-  "sectionsEditor.namedRuleUses.countSectionOne": "1 seção",
-  "sectionsEditor.namedRuleUses.countSections": "{count} seções",
-  "sectionsEditor.namedRuleUses.countBoth": "{pages} e {sections}",
-  "sectionsEditor.namedRuleUses.missingTestOne":
-    "Estas páginas e seções usam um teste que não está nos seus testes A/B.",
-  "sectionsEditor.namedRuleUses.missingTests":
-    "Estas páginas e seções usam testes que não estão nos seus testes A/B.",
-  "sectionsEditor.namedRuleUses.missingCampaignOne":
-    "Estas páginas e seções usam uma campanha que não está nas suas campanhas.",
-  "sectionsEditor.namedRuleUses.missingCampaigns":
-    "Estas páginas e seções usam campanhas que não estão nas suas campanhas.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "Isto mudou enquanto você editava",
   "sectionsEditor.namedRules.changedMeanwhileHint":
@@ -189,7 +159,6 @@ export const sectionsEditor = {
     "Deixe uma data vazia para manter aquele lado aberto. Os horários estão no fuso do seu computador.",
   "sectionsEditor.namedRules.endBeforeStart":
     "O fim precisa ser depois do início.",
-  "sectionsEditor.namedRules.rename": "Renomear",
   "sectionsEditor.namedRules.saved": "Salvo no seu rascunho",
   "sectionsEditor.namedRules.savedHint": "Vai ao ar quando você publicar.",
   "sectionsEditor.deletedConflict.theyDeletedTitle":
@@ -225,6 +194,10 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.create": "Criar",
   "sectionsEditor.namedRules.openEditor": "Abrir o editor do site",
   "sectionsEditor.namedRules.tryAgain": "Tentar de novo",
+  "sectionsEditor.hosted.blockLoadFailed":
+    "Não foi possível carregar este bloco.",
+  "sectionsEditor.hosted.blockLoadFailedHint":
+    "O Studio tenta de novo sozinho em instantes.",
   "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
   "sectionsEditor.field.missingRequiredTooltip":
     "Campo obrigatório não preenchido.",

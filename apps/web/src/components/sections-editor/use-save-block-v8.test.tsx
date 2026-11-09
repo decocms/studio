@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { afterAll, afterEach, describe, expect, it, mock } from "bun:test";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
@@ -21,6 +21,7 @@ import * as realSessionRuntime from "@/hooks/use-session-runtime";
 import * as realNamedRuleConflict from "./named-rule-conflict";
 import * as realLocalPreview from "@/hooks/use-local-preview-url";
 import type { SaveGuard } from "./use-save-block";
+import type { FormBase } from "./form-base";
 import { draftVersionOf } from "./draft-version";
 
 const ORG = "acme";
@@ -187,12 +188,22 @@ const { useSaveBlock, useDebouncedSaveBlock } = await import(
   "./use-save-block"
 );
 const { useCopyEpochs } = await import("./held-copy");
-const { protocolMetaQueryKey } = await import("./content-protocol-api");
+const { protocolMetaQueryKey, protocolBlockVersion } = await import(
+  "./content-protocol-api"
+);
+const { formSaveGuard } = await import("./form-base");
 const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
 const { useDeleteBlock } = await import("./use-delete-block");
 const { useMoveBlocks } = await import("./use-move-blocks");
 
 afterEach(() => resetContentSync());
+
+/**
+ * The version of the editor's copy of Hero in `setup()` (`{ title: "loaded" }`):
+ * a hosted save built on that copy is guarded by it, whatever version the
+ * draft's index lists.
+ */
+const LOADED_VERSION = await draftVersionOf({ title: "loaded" });
 
 /** The editor holds Hero at `h1`; meanwhile another writer stored `theirs` at `h2`. */
 function setup() {
@@ -368,7 +379,8 @@ describe("useSaveBlock on the content protocol (v8)", () => {
 describe("saved JSON carries no editor metadata", () => {
   it("a save sends the block exactly as the form holds it: no __meta, no user id", async () => {
     const { queryClient, result } = setup();
-    draftHolds(queryClient, { Hero: "h2" });
+    server.versions = { Hero: LOADED_VERSION };
+    draftHolds(queryClient, { Hero: LOADED_VERSION });
     await act(async () => {
       await result.current.mutateAsync({
         blockKey: "Hero",
@@ -376,7 +388,7 @@ describe("saved JSON carries no editor metadata", () => {
       });
     });
     expect(server.applied).toEqual([
-      { set: { Hero: { title: "mine" } }, ifMatch: { Hero: "h2" } },
+      { set: { Hero: { title: "mine" } }, ifMatch: { Hero: LOADED_VERSION } },
     ]);
     expect(JSON.stringify(server.blocks)).not.toMatch(/__meta|lastEdited/);
   });
@@ -491,17 +503,39 @@ describe("saved JSON carries no editor metadata", () => {
 });
 
 describe("every hosted v8 save is guarded by the draft (no guard of its own)", () => {
-  it("carries the draft's version, or null when the draft doesn't hold the block", async () => {
+  it("carries the draft's version of the copy it was built on, or null when the draft doesn't hold the block", async () => {
     const { queryClient, result } = setup();
-    server.versions = { Hero: "h2" };
-    draftHolds(queryClient, { Hero: "h2" });
+    server.versions = { Hero: LOADED_VERSION };
+    draftHolds(queryClient, { Hero: LOADED_VERSION });
     await act(async () => {
       await result.current.mutateAsync({ blockKey: "Hero", data: { a: 1 } });
       await result.current.mutateAsync({ blockKey: "Footer", data: { b: 1 } });
     });
     expect(server.applied.map((p) => p.ifMatch)).toEqual([
-      { Hero: "h2" },
+      { Hero: LOADED_VERSION },
       { Footer: null },
+    ]);
+  });
+
+  it("the index listing their version before their copy is loaded never lets a save built on the older copy overwrite it", async () => {
+    // A poll put the other editor's version (h2) in the index; their copy
+    // isn't loaded yet, so the page is rebuilt from the copy the editor holds.
+    const { queryClient, result } = setup();
+    server.draftInRefusal = true;
+    draftHolds(queryClient, { Hero: "h2" });
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "mine" },
+      });
+    });
+    // Guarded by the copy it was built on: refused, then asked.
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: LOADED_VERSION },
+      { Hero: "h2" },
+    ]);
+    expect(asked.fields.map((f) => [f.pointer, f.mine, f.theirs])).toEqual([
+      ["/title", "mine", "theirs"],
     ]);
   });
 
@@ -519,7 +553,7 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
       ["/title", "mine", "theirs"],
     ]);
     expect(server.applied.map((p) => p.ifMatch)).toEqual([
-      { Hero: "h1" },
+      { Hero: LOADED_VERSION },
       { Hero: "h2" },
     ]);
     expect(server.blocks.Hero).toEqual({ title: "mine" });
@@ -577,7 +611,7 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
       expect(asked.deleted).toEqual([{ kind: "theyDeleted", label: "Hero" }]);
       if (choice === "mine") {
         expect(server.applied.map((p) => p.ifMatch)).toEqual([
-          { Hero: "h1" },
+          { Hero: LOADED_VERSION },
           { Hero: "tombstone" },
         ]);
         expect(server.blocks.Hero).toEqual({
@@ -683,8 +717,8 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
 
     it("once the block exists, each save is guarded by the draft's version (never refused unread)", async () => {
       const { queryClient, result } = setup();
-      server.versions = { Hero: "h2" };
-      draftHolds(queryClient, { Hero: "h2" });
+      server.versions = { Hero: LOADED_VERSION };
+      draftHolds(queryClient, { Hero: LOADED_VERSION });
       const { state, guard } = createOnlyGuard();
       state.mode = "off";
       await act(async () => {
@@ -694,7 +728,9 @@ describe("every hosted v8 save is guarded by the draft (no guard of its own)", (
           guard,
         });
       });
-      expect(server.applied.map((p) => p.ifMatch)).toEqual([{ Hero: "h2" }]);
+      expect(server.applied.map((p) => p.ifMatch)).toEqual([
+        { Hero: LOADED_VERSION },
+      ]);
       expect(server.blocks.Hero).toEqual({ title: "mine" });
     });
 
@@ -1006,6 +1042,138 @@ describe("a debounced editor keeping its own copy (hosted v8)", () => {
   }
 });
 
+describe("debounced saves while one of the block's saves is running", () => {
+  const realApply = client.blocksApply;
+  afterEach(() => {
+    client.blocksApply = realApply;
+    server.hashed = false;
+  });
+
+  /** A server that answers each write only when the test lets it. */
+  function setupGated(options?: { failFirst?: boolean }) {
+    server.blocks = { Hero: { title: "loaded" } };
+    server.versions = { Hero: "h1" };
+    server.applied = [];
+    server.draftInRefusal = false;
+    server.hashed = true;
+    const sent: unknown[] = [];
+    const release: Array<() => void> = [];
+    client.blocksApply = (async (patch: Parameters<typeof realApply>[0]) => {
+      sent.push(Object.values(patch.set ?? {})[0]);
+      const turn = sent.length;
+      await new Promise<void>((resolve) => release.push(resolve));
+      if (options?.failFirst && turn === 1) throw new Error("gateway");
+      return realApply({ ...patch, ifMatch: undefined });
+    }) as typeof client.blocksApply;
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { title: "loaded" },
+    });
+    draftHolds(queryClient, { Hero: "h1" });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const onSaved = mock(() => {});
+    const hook = renderHook(
+      () =>
+        useDebouncedSaveBlock(
+          { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
+          { onSaved },
+        ),
+      { wrapper },
+    );
+    /** The `count`th write reached the server. */
+    const sentCount = (count: number) =>
+      waitFor(() => expect(sent).toHaveLength(count));
+    /** Answers the write on the wire, once it is there. */
+    const answer = async () => {
+      await waitFor(() => expect(release.length).toBeGreaterThan(0));
+      await act(async () => release.shift()?.());
+    };
+    const idle = () =>
+      waitFor(() => expect(hook.result.current.isPending).toBe(false));
+    return { ...hook, sent, sentCount, answer, idle, onSaved };
+  }
+
+  const edit = (
+    result: { current: ReturnType<typeof useDebouncedSaveBlock> },
+    title: string,
+    blockKey = "Hero",
+  ) =>
+    act(() => {
+      result.current.save(blockKey, { title });
+      result.current.flush();
+    });
+
+  it("sends only the newest of the edits made meanwhile, and nothing is lost", async () => {
+    const { result, sent, sentCount, answer, idle, onSaved } = setupGated();
+    edit(result, "one");
+    await sentCount(1);
+    for (const title of ["two", "three", "four", "five"]) {
+      edit(result, title);
+    }
+    // Still one on the wire: the others wait as one.
+    expect(sent).toEqual([{ title: "one" }]);
+    await answer();
+    await sentCount(2);
+    expect(sent[1]).toEqual({ title: "five" });
+    await answer();
+    await idle();
+    expect(sent).toHaveLength(2);
+    expect(server.blocks.Hero).toEqual({ title: "five" });
+    expect(onSaved).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed save doesn't strand the edit waiting behind it", async () => {
+    const { result, sent, sentCount, answer, idle } = setupGated({
+      failFirst: true,
+    });
+    edit(result, "one");
+    await sentCount(1);
+    edit(result, "two");
+    await answer();
+    await sentCount(2);
+    expect(sent[1]).toEqual({ title: "two" });
+    await answer();
+    await idle();
+    expect(server.blocks.Hero).toEqual({ title: "two" });
+  });
+
+  it("another block's edit isn't held back by this one's", async () => {
+    const { result, sent, sentCount, answer, idle } = setupGated();
+    edit(result, "one");
+    await sentCount(1);
+    edit(result, "other", "Other");
+    await answer();
+    // The write queue runs it next, with no newer edit of Hero to trigger it.
+    await sentCount(2);
+    expect(sent[1]).toEqual({ title: "other" });
+    await answer();
+    await idle();
+    expect(server.blocks.Other).toEqual({ title: "other" });
+  });
+
+  it("asks before leaving only while an edit hasn't been saved", async () => {
+    const { result, sentCount, answer, idle } = setupGated();
+    const leave = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(leave()).toBe(false);
+    // Armed: the debounce hasn't fired yet.
+    act(() => result.current.save("Hero", { title: "armed" }));
+    expect(leave()).toBe(true);
+    // On the wire.
+    act(() => result.current.flush());
+    await sentCount(1);
+    expect(leave()).toBe(true);
+    await answer();
+    await idle();
+    await waitFor(() => expect(leave()).toBe(false));
+  });
+});
+
 describe("the reconcile question of a block save names it as the editor does", () => {
   it("the block by its title, its fields by the form's labels, and who changed it (when known)", async () => {
     const { queryClient, result } = setup();
@@ -1190,15 +1358,31 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
   }
   const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
 
-  it("a delete carries the draft's version", async () => {
+  it("a delete carries the draft's version of the copy it was made on", async () => {
     const { queryClient, result } = setupHook(() => useDeleteBlock(params));
-    draftHolds(queryClient, { Hero: "h2" });
+    server.versions = { Hero: LOADED_VERSION };
+    draftHolds(queryClient, { Hero: LOADED_VERSION });
     await act(async () => {
       await result.current.mutateAsync({ blockKey: "Hero" });
     });
     expect(server.applied).toEqual([
-      { set: {}, delete: ["Hero"], ifMatch: { Hero: "h2" } },
+      { set: {}, delete: ["Hero"], ifMatch: { Hero: LOADED_VERSION } },
     ]);
+  });
+
+  it("a delete made while the index lists their version, before their copy is loaded, asks first", async () => {
+    const { queryClient, result } = setupHook(() => useDeleteBlock(params));
+    server.draftInRefusal = true;
+    asked.choice = "theirs";
+    draftHolds(queryClient, { Hero: "h2" });
+    await act(async () => {
+      await result.current.mutateAsync({ blockKey: "Hero" });
+    });
+    expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
+    expect(server.applied.map((p) => p.ifMatch)).toEqual([
+      { Hero: LOADED_VERSION },
+    ]);
+    expect(server.blocks.Hero).toEqual({ title: "theirs" });
   });
 
   for (const choice of ["mine", "theirs"] as const) {
@@ -1214,7 +1398,7 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
       expect(asked.deleted.map((q) => q.kind)).toEqual(["youDeleted"]);
       if (choice === "mine") {
         expect(server.applied.map((p) => p.ifMatch)).toEqual([
-          { Hero: "h1" },
+          { Hero: LOADED_VERSION },
           { Hero: "h2" },
         ]);
         expect(server.blocks.Hero).toBeUndefined();
@@ -1425,9 +1609,10 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
     expect(server.blocks.Hero).toEqual({ title: "mine", body: "theirs" });
   });
 
-  it("a move is one blocks.apply guarded by the draft's versions", async () => {
+  it("a move is one blocks.apply guarded by the draft's versions of the copies it was built on", async () => {
     const { queryClient, result } = setupHook(() => useMoveBlocks(params));
-    draftHolds(queryClient, { Hero: "h2" });
+    server.versions = { Hero: LOADED_VERSION };
+    draftHolds(queryClient, { Hero: LOADED_VERSION });
     await act(async () => {
       await result.current.move({
         writes: { Banner: { title: "loaded" } },
@@ -1438,8 +1623,113 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
       {
         set: { Banner: { title: "loaded" } },
         delete: ["Hero"],
-        ifMatch: { Banner: null, Hero: "h2" },
+        ifMatch: { Banner: null, Hero: LOADED_VERSION },
       },
     ]);
+  });
+});
+
+describe("a section form's save on the hosted draft is guarded by the copy it was built on", () => {
+  const LOADED = { title: "Probe B", body: "same" };
+  const THEIRS = { title: "A's headline", body: "same" };
+
+  /**
+   * The 30 s `cms.index` poll put A's version of Hero in the index; A's copy
+   * isn't loaded yet (or never is: a block being saved keeps the editor's),
+   * so the cache, and the form built from it, still hold B's copy.
+   */
+  async function indexAheadOfTheBlocks() {
+    const { queryClient, result } = setup();
+    server.hashed = true;
+    server.draftInRefusal = true;
+    server.blocks = { Hero: { ...THEIRS } };
+    server.versions = { Hero: await draftVersionOf(THEIRS) };
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), {
+      Hero: { ...LOADED },
+    });
+    const theirs = await draftVersionOf(THEIRS);
+    queryClient.setQueryData(KEYS.contentIndex(CACHE_KEY), {
+      revision: "r-a",
+      resolvedRef: "main",
+      sequence: 2,
+      entries: { Hero: { version: theirs } },
+      draft: { Hero: { operation: "set", version: theirs, editor: null } },
+    });
+    const versionOf = (blockKey: string) =>
+      protocolBlockVersion(queryClient, CACHE_KEY, blockKey, backend);
+    return { queryClient, result, versionOf, theirs };
+  }
+
+  it("refused and reconciled, never written over the change the form didn't show", async () => {
+    const { queryClient, result, versionOf, theirs } =
+      await indexAheadOfTheBlocks();
+    // The index's version is A's: guarding by it would land B's save.
+    expect(versionOf("Hero")).toBe(theirs);
+    const formBase: FormBase = {
+      sectionIndex: 0,
+      variantIndex: 0,
+      base: { ...LOADED },
+      emitted: { title: "Probe B more", body: "same" },
+      sectionCount: 1,
+      own: [],
+    };
+    const cached = queryClient.getQueryData<Record<string, unknown>>(
+      KEYS.decofile(CACHE_KEY),
+    );
+    let failure: unknown;
+    await act(async () => {
+      await result.current
+        .mutateAsync({
+          blockKey: "Hero",
+          data: { title: "Probe B more", body: "same" },
+          rebaseOnConflict: false,
+          guard: formSaveGuard({
+            formBase,
+            rebased: false,
+            versionOf,
+            copy: { value: cached?.Hero },
+          }),
+        })
+        .catch((error: unknown) => {
+          failure = error;
+        });
+    });
+    expect(server.applied[0]?.ifMatch).toEqual({
+      Hero: await draftVersionOf(LOADED),
+    });
+    expect(server.blocks.Hero).toEqual(THEIRS);
+    // As a legacy 409: the form re-reads A's copy and asks.
+    expect(failure).toBeInstanceOf(BlockConflictError);
+    expect(heroInCache(queryClient)).toEqual(THEIRS);
+  });
+
+  it("once A's copy is loaded, the form's save built on it lands", async () => {
+    const { queryClient, result, versionOf } = await indexAheadOfTheBlocks();
+    queryClient.setQueryData(KEYS.decofile(CACHE_KEY), { Hero: { ...THEIRS } });
+    const formBase: FormBase = {
+      sectionIndex: 0,
+      variantIndex: 0,
+      base: { ...THEIRS },
+      emitted: { title: "B over A", body: "same" },
+      sectionCount: 1,
+      own: [],
+    };
+    await act(async () => {
+      await result.current.mutateAsync({
+        blockKey: "Hero",
+        data: { title: "B over A", body: "same" },
+        rebaseOnConflict: false,
+        guard: formSaveGuard({
+          formBase,
+          rebased: false,
+          versionOf,
+          copy: { value: THEIRS },
+        }),
+      });
+    });
+    expect(server.blocks.Hero).toEqual({ title: "B over A", body: "same" });
+    expect(formBase.version).toBe(
+      await draftVersionOf({ title: "B over A", body: "same" }),
+    );
   });
 });

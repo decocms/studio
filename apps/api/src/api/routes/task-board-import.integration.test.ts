@@ -348,7 +348,7 @@ describe("Task Board Import Route", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("an externalKey matching an open item refreshes it instead of duplicating", async () => {
+  it("an externalKey matching an open item preserves its content instead of duplicating", async () => {
     const key = "diag:shop.com:GEO-001";
     const run1 = await app.fetch(
       post("org_board", "svc-secret", {
@@ -372,8 +372,7 @@ describe("Task Board Import Route", () => {
     });
 
     // A month later the diagnostic re-runs, finds the same issue with fresh
-    // evidence and a worse severity — the card is refreshed, not duplicated,
-    // and the human-facing title is left alone.
+    // evidence and a worse severity. The original card stays unchanged.
     const run2 = await app.fetch(
       post("org_board", "svc-secret", {
         items: [
@@ -401,8 +400,8 @@ describe("Task Board Import Route", () => {
       .execute();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.title).toBe("Liberar o GPTBot no WAF");
-    expect(rows[0]?.description).toBe("403 no WAF (run 2).");
-    expect(rows[0]?.priority).toBe("high");
+    expect(rows[0]?.description).toBe("403 no WAF (run 1).");
+    expect(rows[0]?.priority).toBe("medium");
     expect(rows[0]?.external_key).toBe(key);
   });
 
@@ -678,7 +677,7 @@ describe("Task Board Import Route", () => {
     expect(row.repository_id).toBe("repo_board");
   });
 
-  it("a refresh picks up a repository the card was created without", async () => {
+  it("a reimport leaves the existing repository binding unchanged", async () => {
     const now = new Date().toISOString();
     await sql`
       INSERT INTO repositories
@@ -719,7 +718,7 @@ describe("Task Board Import Route", () => {
       .select(["repository_id"])
       .where("external_key", "=", key)
       .executeTakeFirstOrThrow();
-    expect(after.repository_id).toBe("repo_board");
+    expect(after.repository_id).toBeNull();
   });
 
   it("refuses a repository belonging to another org, writing nothing", async () => {
@@ -807,7 +806,7 @@ describe("Task Board Import Route", () => {
     });
   });
 
-  it("an exact title match is refreshed by the deterministic pass, never offered to the model", async () => {
+  it("an exact title match preserves content and is never offered to the model", async () => {
     await app.fetch(
       post("org_board", "svc-secret", {
         items: [{ title: "LCP acima de 4s", description: "v1" }],
@@ -829,7 +828,7 @@ describe("Task Board Import Route", () => {
       .select(["description"])
       .where("organization_id", "=", "org_board")
       .execute();
-    expect(rows).toEqual([{ description: "v2" }]);
+    expect(rows).toEqual([{ description: "v1" }]);
     const activity = await database.db
       .selectFrom("task_board_activity")
       .select(["action"])
@@ -854,7 +853,7 @@ describe("Task Board Import Route", () => {
       delegated: 0,
       items: [entry(0, "created", card), entry(1, "updated", card)],
     });
-    expect(card.description).toBe("v2");
+    expect(card.description).toBe("v1");
     const rows = await database.db
       .selectFrom("task_board_items")
       .select(["id"])
@@ -897,7 +896,7 @@ describe("Task Board Import Route", () => {
     });
   });
 
-  it("a semantic match names the matched card, and refreshes it only when reports owns it", async () => {
+  it("a semantic match preserves both human and report card content", async () => {
     const storage = new TaskBoardStorage(database.db);
     const human = await storage.create({
       organizationId: "org_board",
@@ -963,7 +962,7 @@ describe("Task Board Import Route", () => {
     expect((await cardTitled(human.title)).description).toBe(
       "Escrito por uma pessoa.",
     );
-    expect((await cardTitled(reports.title)).description).toBe("LCP 4.8s.");
+    expect((await cardTitled(reports.title)).description).toBe("LCP 4.2s.");
     const reported = await database.db
       .selectFrom("task_board_activity")
       .select(["task_board_item_id"])

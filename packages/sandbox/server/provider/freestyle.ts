@@ -5,11 +5,13 @@
  *
  * The VM is the whole state: its slug is the handle and its metadata holds the
  * daemon bearer, so any Studio replica can find a sandbox without a database.
- * An idle VM is paused, and traffic to its domain resumes it; one paused for
- * `autoDeleteSeconds` is deleted.
+ * An idle VM is paused, and traffic to its domain resumes it. Freestyle deletes
+ * one paused for `autoDeleteSeconds` without a shutdown sync, so shortly before
+ * that the retire sweep deletes it only if nothing on it is missing from git.
  */
 
 import { createHash, createHmac, randomBytes } from "node:crypto";
+import { dirname } from "node:path";
 import type { Meter } from "@opentelemetry/api";
 import {
   type CreateVmOptions,
@@ -62,6 +64,9 @@ const DEFAULT_SIDECAR_IMAGE = "ghcr.io/decocms/studio/orgfs-sidecar:0.2.0";
 const HOST_ORG_DIR = "/srv/sandbox/org";
 const HOST_CTL_DIR = "/srv/sandbox/orgfs-ctl";
 const CTL_DIR = "/run/orgfs";
+/** Host file standing in for the pod's `git-signing-key` volume, at the pod's path inside. */
+const HOST_SIGNING_KEY = "/srv/sandbox/git-signing-key";
+const SIGNING_KEY_FILE = "/run/git-signing/key";
 /**
  * fstab, so both come back before Docker restarts the containers after a
  * reboot. The org dir is shared so the sidecar's FUSE mounts reach the
@@ -99,6 +104,25 @@ const WATCH_TIMEOUT_MS = 5 * 60_000;
 const LOOKUP_TIMEOUT_MS = 3_000;
 const IDLE_SWEEP_MS = 60_000;
 const IDLE_SWEEP_PAGE = 100;
+const RETIRE_SWEEP_MS = 30 * 60_000;
+/** How long before Freestyle's auto-delete the retire sweep looks at a VM. */
+const RETIRE_MARGIN_MS = 2 * 60 * 60_000;
+/** A VM older than this is no longer kept for its unsaved work. */
+const KEEP_UNSAVED_MAX_MS = 30 * 24 * 60 * 60_000;
+/**
+ * Exits 0 when the sandbox's repo has nothing git's remote lacks: no changed
+ * or untracked file, no commit outside a remote-tracking ref. Local only, so
+ * an expired push token can't make a clean VM look unsaved. Any git failure
+ * exits non-zero, which keeps the VM.
+ */
+const NOTHING_UNSAVED = `docker exec ${CONTAINER} sh -c ${shellQuote(
+  [
+    `cd ${WORKDIR}/repo 2>/dev/null || exit 0`,
+    `s=$(git -c safe.directory='*' status --porcelain) || exit 1`,
+    `c=$(git -c safe.directory='*' log --branches --not --remotes -1 --format=%H) || exit 1`,
+    `[ -z "$s" ] && [ -z "$c" ]`,
+  ].join("; "),
+)}`;
 /**
  * Freestyle deletes a repo snapshot nobody forked for this long, which reclaims
  * the ones a newer default-branch head superseded.
@@ -125,6 +149,12 @@ export interface FreestyleSandboxProviderOptions {
   image?: string;
   /** The org-fs sidecar image. Default: the chart's `orgFs.image`. */
   orgFsSidecarImage?: string;
+  /**
+   * What the daemon signs the bot's commits with, as the sandbox-env chart's
+   * `commitSigning` does for pods. Unset leaves commits unsigned. The key goes
+   * into the base snapshot, so code in any of these sandboxes can read it.
+   */
+  commitSigning?: { email: string; privateKey: string };
   /** Pause a VM after this long without network activity. Default 5 min. */
   idleTimeoutSeconds?: number;
   /**
@@ -135,16 +165,23 @@ export interface FreestyleSandboxProviderOptions {
    */
   idlePauseMs?: number;
   /**
-   * Delete a VM after this long without running. Default 1 day. A plan
-   * that caps it lower gets its cap.
+   * Freestyle deletes a VM after this long without running, with no shutdown
+   * sync. Default 1 day. A plan that caps it lower gets its cap.
    */
   autoDeleteSeconds?: number;
+  /**
+   * Whether to run the retire sweep, which deletes a paused VM before
+   * Freestyle does only when it holds nothing unsaved. Default on.
+   */
+  retireSweep?: boolean;
   /** Where daemon ports are published. Default `style.dev`, free on every account. */
   domainSuffix?: string;
   /** Records daemon request latency; see `daemonProxyTimer`. */
   meter?: Meter;
   /** Replaces the API client, for tests. */
   client?: Freestyle;
+  /** How long a started VM's daemon gets to answer /health, for tests. */
+  daemonBootTimeoutMs?: number;
 }
 
 interface Found {
@@ -159,9 +196,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly image: string;
   private readonly sidecarImage: string;
   private readonly allowUserNamespaces: boolean;
+  private readonly commitSigning: FreestyleSandboxProviderOptions["commitSigning"];
   private readonly idleTimeoutSeconds: number;
   private readonly idlePauseMs: number;
   private readonly autoDeleteSeconds: number;
+  private readonly daemonBootTimeoutMs: number;
 
   private readonly domainSuffix: string;
   private readonly timeDaemonRequest: ReturnType<typeof daemonProxyTimer>;
@@ -179,6 +218,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   >();
   private readonly idleSweep: ReturnType<typeof setInterval> | null = null;
   private sweeping = false;
+  private readonly retireSweep: ReturnType<typeof setInterval> | null = null;
+  private retiring = false;
   /** Org + repo → the newest repo snapshot known to exist, and the head it was built for. */
   private readonly repoSnapshots = new Map<
     string,
@@ -216,14 +257,24 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.allowUserNamespaces = opts.allowUserNamespaces ?? false;
+    this.commitSigning = opts.commitSigning;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 5 * 60;
     this.idlePauseMs = opts.idlePauseMs ?? 10 * 60_000;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 24 * 60 * 60;
+    this.daemonBootTimeoutMs =
+      opts.daemonBootTimeoutMs ?? DAEMON_BOOT_TIMEOUT_MS;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
     if (this.idlePauseMs > 0) {
       this.idleSweep = setInterval(() => void this.pauseIdle(), IDLE_SWEEP_MS);
       this.idleSweep.unref?.();
+    }
+    if (opts.retireSweep !== false) {
+      this.retireSweep = setInterval(
+        () => void this.retireIdle(),
+        RETIRE_SWEEP_MS,
+      );
+      this.retireSweep.unref?.();
     }
   }
 
@@ -297,7 +348,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private baseSnapshot(): Promise<string> {
     const { image, sidecarImage } = this;
     const namespaceMode = this.allowUserNamespaces ? "\nuser-namespaces" : "";
-    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}\nrunning${namespaceMode}`).digest("hex").slice(0, 16)}`;
+    // In the slug so that setting or rotating the key builds a new snapshot.
+    const signing = this.commitSigning
+      ? `\nsigning\n${this.commitSigning.email}\n${this.commitSigning.privateKey}`
+      : "";
+    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}\nrunning${namespaceMode}${signing}`).digest("hex").slice(0, 16)}`;
     if (this.knownSnapshots.has(slug)) return Promise.resolve(slug);
     return this.snapshotInflight.run(slug, async () => {
       if (await this.snapshotExists(slug)) {
@@ -356,11 +411,26 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       PROXY_PORT: String(DAEMON_PORT),
       ORGFS_SIDECAR_CONFIG_PATH: `${CTL_DIR}/config.json`,
       ORGFS_SIDECAR_STATUS_PATH: `${CTL_DIR}/status.json`,
+      ...(this.commitSigning && {
+        GIT_SIGNING_KEY_FILE: SIGNING_KEY_FILE,
+        GIT_SIGNING_KEY_EMAIL: this.commitSigning.email,
+      }),
     };
     // Bare `-e NAME` copies each value from the exec's env, keeping values out of the shell line.
     const envFlags = Object.keys(env)
       .map((k) => `-e ${shellQuote(k)}`)
       .join(" ");
+    if (this.commitSigning) {
+      // Owned by the image's `sandbox` user, which the daemon runs as.
+      await this.run(
+        vm,
+        `printf '%s' "$GIT_SIGNING_KEY" | sudo sh -c 'mkdir -p ${dirname(HOST_SIGNING_KEY)} && umask 377 && cat > ${HOST_SIGNING_KEY} && chown 1000:1000 ${HOST_SIGNING_KEY}'`,
+        { env: { GIT_SIGNING_KEY: this.commitSigning.privateKey } },
+      );
+    }
+    const signingKeyMount = this.commitSigning
+      ? ` -v ${HOST_SIGNING_KEY}:${SIGNING_KEY_FILE}:ro`
+      : "";
     // The sidecar first: it only polls for the config the daemon relays.
     // Its change-feed poll is network activity, which keeps a VM from
     // pausing, so it stops once the daemon has been idle for a minute.
@@ -372,7 +442,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     await this.run(
       vm,
       // Codex's read-only sandbox uses bubblewrap inside this per-user VM.
-      `docker run -d --name ${CONTAINER} --restart=always${this.allowUserNamespaces ? " --security-opt seccomp=unconfined --security-opt apparmor=unconfined" : ""} -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR} ${envFlags} ${shellQuote(this.image)}`,
+      `docker run -d --name ${CONTAINER} --restart=always${this.allowUserNamespaces ? " --security-opt seccomp=unconfined --security-opt apparmor=unconfined" : ""} -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR}${signingKeyMount} ${envFlags} ${shellQuote(this.image)}`,
       { env, timeoutMs: IMAGE_PULL_TIMEOUT_MS },
     );
   }
@@ -387,6 +457,12 @@ export class FreestyleSandboxProvider implements SandboxProvider {
    * previous head's: a fork checks out its own branch anyway, so a stale one
    * costs an incremental install.
    */
+  private forgetRepoSnapshot(slug: string): void {
+    for (const [key, known] of this.repoSnapshots) {
+      if (known.slug === slug) this.repoSnapshots.delete(key);
+    }
+  }
+
   private async repoSnapshotFor(
     opts: EnsureOptions,
     base: string,
@@ -625,7 +701,15 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     const { state, sourceSnapshotSlugAtCreate, metadata } =
       await found.vm.data();
     if (state !== "running") await found.vm.start();
-    await this.waitForDaemon(found.daemon.url);
+    await this.waitForDaemon(found.daemon.url).catch(async (err) => {
+      // A guest can resume wedged. Rebooted, its daemon comes back on the
+      // snapshot's sentinel, which `reclaim` below claims again.
+      console.warn(`[${LOG_LABEL}] ${handle}: ${errMsg(err)}; rebooting`);
+      await found.vm
+        .exec({ command: "reboot -f", timeoutMs: 10_000 })
+        .catch(() => {});
+      await this.waitForDaemon(found.daemon.url);
+    });
     // A repo snapshot's daemon still holds its base's sentinel.
     const sentinelSlug = metadata[BASE_KEY] ?? sourceSnapshotSlugAtCreate;
     if (sentinelSlug) {
@@ -763,35 +847,50 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       last = Date.now();
     };
     const base = await this.baseSnapshot();
-    const repoSnapshot = await this.repoSnapshotFor(opts, base);
+    let repoSnapshot = await this.repoSnapshotFor(opts, base);
     step("snapshot");
     const token = randomBytes(24).toString("hex");
-    const { vm } = await this.createVm({
-      snapshotId: repoSnapshot ?? base,
-      slug: handle,
-      idleTimeoutSeconds: this.idleTimeoutSeconds,
-      metadata: {
-        [TOKEN_KEY]: token,
-        ...(repoSnapshot ? { [BASE_KEY]: base } : {}),
-        ...(opts.tenant
-          ? { [ORG_KEY]: opts.tenant.orgId, [USER_KEY]: opts.tenant.userId }
-          : {}),
-      },
-      firewall: {
-        rules: [{ action: "allow", source: {}, destination: { public: true } }],
-      },
-      tls: {
-        rules: [
-          `${handle}.${this.domainSuffix}`,
-          ...this.appDomains(handle, opts.workload?.apps ?? []),
-        ].map((domain) => ({
-          action: "allow" as const,
-          domain,
-          source: { public: true as const },
-          destination: { port: DAEMON_PORT },
-        })),
-      },
-    });
+    const fork = (from: string | null) =>
+      this.createVm({
+        snapshotId: from ?? base,
+        slug: handle,
+        idleTimeoutSeconds: this.idleTimeoutSeconds,
+        metadata: {
+          [TOKEN_KEY]: token,
+          ...(from ? { [BASE_KEY]: base } : {}),
+          ...(opts.tenant
+            ? { [ORG_KEY]: opts.tenant.orgId, [USER_KEY]: opts.tenant.userId }
+            : {}),
+        },
+        firewall: {
+          rules: [
+            { action: "allow", source: {}, destination: { public: true } },
+          ],
+        },
+        tls: {
+          rules: [
+            `${handle}.${this.domainSuffix}`,
+            ...this.appDomains(handle, opts.workload?.apps ?? []),
+          ].map((domain) => ({
+            action: "allow" as const,
+            domain,
+            source: { public: true as const },
+            destination: { port: DAEMON_PORT },
+          })),
+        },
+      });
+    let vm: Vm;
+    try {
+      ({ vm } = await fork(repoSnapshot));
+    } catch (err) {
+      // Freestyle deleted it (past its autoDelete). Forget it: the lookup now
+      // checks the head's snapshot exists and rebuilds it, and this one forks the base.
+      if (!repoSnapshot || !isMissingSnapshot(err, repoSnapshot)) throw err;
+      console.warn(`[${LOG_LABEL}] repo snapshot ${repoSnapshot} is gone`);
+      this.forgetRepoSnapshot(repoSnapshot);
+      repoSnapshot = await this.repoSnapshotFor(opts, base);
+      ({ vm } = await fork(repoSnapshot));
+    }
     step("vm-fork");
     const daemon = { url: this.daemonUrl(handle), token };
     try {
@@ -910,30 +1009,65 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   private async waitForDaemon(url: string): Promise<void> {
-    const deadline = Date.now() + DAEMON_BOOT_TIMEOUT_MS;
+    const deadline = Date.now() + this.daemonBootTimeoutMs;
     while (Date.now() < deadline) {
       if (await daemonAnswers(url)) return;
       await sleep(HEALTH_POLL_MS);
     }
     throw new Error(
-      `sandbox daemon at ${url} did not answer /health within ${DAEMON_BOOT_TIMEOUT_MS / 1000}s`,
+      `sandbox daemon at ${url} did not answer /health within ${this.daemonBootTimeoutMs / 1000}s`,
     );
   }
 
+  /**
+   * Deletes the VM only once its shutdown sync is confirmed. Otherwise the
+   * user's unpushed work may still be on its disk, so it is detached instead:
+   * the handle is free for a new sandbox, and the VM stays recoverable by id
+   * until Freestyle's auto-delete.
+   */
   async delete(handle: string): Promise<void> {
     this.cancelRelease(handle);
     const found = await this.find(handle, { refresh: true });
     this.lookups.delete(handle);
     if (!found) return;
-    // SIGTERM first: the daemon publishes unsaved work to git on shutdown.
-    // Then the sidecar, which detaches and flushes its mounts.
-    await found.vm
-      .exec({
-        command: `docker stop -t 30 ${CONTAINER}; docker stop -t 10 ${SIDECAR}`,
+    if (await this.syncedOnShutdown(found.vm)) {
+      await found.vm.delete();
+      return;
+    }
+    const { rules } = await this.freestyle.tls.rules.list({
+      vmId: found.vm.id,
+    });
+    for (const rule of rules) await this.freestyle.tls.rules.delete(rule.id);
+    await found.vm.update({ slug: "" });
+    this.appIngress.delete(handle);
+    console.warn(
+      `[${LOG_LABEL}] ${handle}: shutdown sync not confirmed; detached VM ${found.vm.id} instead of deleting it`,
+    );
+  }
+
+  /**
+   * Stops the daemon, which publishes unsaved work to git on SIGTERM, then the
+   * sidecar, which flushes its mounts. The daemon exits 0 even when that
+   * publish fails, so its log decides.
+   */
+  private async syncedOnShutdown(vm: Vm): Promise<boolean> {
+    try {
+      const { state } = await vm.data();
+      if (state !== "running") await vm.start();
+      const res = await vm.exec({
+        command: [
+          "since=$(date +%s)",
+          `docker stop -t 30 ${CONTAINER} >/dev/null`,
+          `code=$(docker inspect -f '{{.State.ExitCode}}' ${CONTAINER})`,
+          `docker stop -t 10 ${SIDECAR} >/dev/null`,
+          `[ "$code" = 0 ] && ! docker logs --since "$since" ${CONTAINER} 2>&1 | grep -q "shutdown publish failed"`,
+        ].join("; "),
         timeoutMs: 60_000,
-      })
-      .catch(() => {});
-    await found.vm.delete();
+      });
+      return res.statusCode === 0;
+    } catch {
+      return false;
+    }
   }
 
   async lastTermination(_handle: string): Promise<PodTermination | null> {
@@ -1141,6 +1275,91 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     return handle;
   }
 
+  /**
+   * Look at every paused VM of ours that Freestyle is about to delete. One with
+   * nothing unsaved is deleted now. One whose repo holds work git's remote
+   * lacks is started and paused again, which resets Freestyle's clock, so it
+   * stays until a returning user's next run pushes the work (or for
+   * `KEEP_UNSAVED_MAX_MS`). Returns the handles deleted; never throws.
+   *
+   * ponytail: a kept VM costs one start a day; a per-VM "kept" mark would
+   * save that if many pile up.
+   */
+  async retireIdle(): Promise<string[]> {
+    if (this.retiring) return [];
+    this.retiring = true;
+    try {
+      const deleted: string[] = [];
+      for (let offset = 0; ; ) {
+        const { vms } = await this.freestyle.vms.list({
+          state: "paused",
+          limit: IDLE_SWEEP_PAGE,
+          offset,
+        });
+        let gone = 0;
+        // One at a time: each check starts a VM.
+        for (const data of vms) {
+          const handle = await this.retireIfDue(data);
+          if (handle) {
+            deleted.push(handle);
+            gone++;
+          }
+        }
+        if (vms.length < IDLE_SWEEP_PAGE) break;
+        offset += vms.length - gone;
+      }
+      return deleted;
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] retire sweep failed: ${errMsg(err)}`);
+      return [];
+    } finally {
+      this.retiring = false;
+    }
+  }
+
+  private async retireIfDue(
+    data: Awaited<ReturnType<Freestyle["vms"]["list"]>>["vms"][number],
+  ): Promise<string | null> {
+    const handle = data.slug;
+    if (!handle || !data.metadata[TOKEN_KEY] || !data.autoDeleteSeconds) {
+      return null;
+    }
+    const lastUp = Math.max(
+      Date.parse(data.updatedAt),
+      Date.parse(data.lastNetworkActivity ?? data.updatedAt),
+    );
+    const deletesAt = lastUp + data.autoDeleteSeconds * 1000;
+    if (Date.now() < deletesAt - RETIRE_MARGIN_MS) return null;
+    if (Date.now() - Date.parse(data.createdAt) > KEEP_UNSAVED_MAX_MS) {
+      return null;
+    }
+    const vm = this.freestyle.vms.ref(data.id);
+    try {
+      await vm.start();
+      const { statusCode } = await vm.exec({
+        command: NOTHING_UNSAVED,
+        timeoutMs: 60_000,
+      });
+      if (statusCode === 0) {
+        await vm.delete();
+        this.lookups.delete(handle);
+        this.appIngress.delete(handle);
+        console.log(`[${LOG_LABEL}] retired ${handle}: nothing unsaved`);
+        return handle;
+      }
+      // A user who came back while this ran keeps their VM running.
+      const idleMs = await daemonIdleMs(this.daemonUrl(handle));
+      if (idleMs === null || idleMs >= RETIRE_MARGIN_MS) await vm.pause();
+      console.warn(
+        `[${LOG_LABEL}] kept ${handle} (VM ${data.id}): its repo has work that is not on the remote`,
+      );
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] retire ${handle} failed: ${errMsg(err)}`);
+      await vm.pause().catch(() => {});
+    }
+    return null;
+  }
+
   private cancelRelease(handle: string): void {
     const timer = this.releaseTimers.get(handle);
     if (timer) clearTimeout(timer);
@@ -1149,6 +1368,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
 
   close(): void {
     if (this.idleSweep) clearInterval(this.idleSweep);
+    if (this.retireSweep) clearInterval(this.retireSweep);
     for (const timer of this.releaseTimers.values()) clearTimeout(timer);
     this.releaseTimers.clear();
     this.lookups.clear();
@@ -1235,6 +1455,15 @@ async function remoteHead(cloneUrl: string): Promise<string | null> {
 function credentialOf(url: string): string {
   const { username, password } = new URL(url);
   return decodeURIComponent(password || username);
+}
+
+/** Freestyle answers a fork of a deleted snapshot with 400 "snapshot <slug> does not exist". */
+function isMissingSnapshot(err: unknown, slug: string): boolean {
+  return (
+    err instanceof FreestyleApiError &&
+    err.status === 400 &&
+    err.message.includes(slug)
+  );
 }
 
 function shellQuote(s: string): string {

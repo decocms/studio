@@ -79,7 +79,7 @@ API Options:
 Tools Options:
   --org <slug>          Organization slug (first path segment of the studio URL)
   -d, --data <json>     Tool arguments: literal JSON, @<file>, or @- for stdin
-  --json                Print full objects from tools list and orgs
+  --json                Print full objects from tools list, tools describe and orgs
 
 Backfill Options (backfill-assets):
   --target <t>          all | threads | connections | organizations (default: all)

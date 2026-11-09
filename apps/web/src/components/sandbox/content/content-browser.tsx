@@ -45,7 +45,11 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useEnsureDecofileBlocks,
+  useIndexNamesOfType,
+} from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   liveMetaSchemaPollInterval,
@@ -105,9 +109,16 @@ import { RedirectFormDialog } from "./redirect-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
 import { useShownWhileClosing } from "./closing-dialog";
 import {
+  appendRedirectRule,
   buildRedirectBlock,
+  extractRedirectRules,
   extractRedirects,
   generateRedirectBlockKey,
+  REDIRECT_LOADER_RESOLVE_TYPES,
+  REDIRECTS_RESOLVE_TYPE,
+  redirectRuleOf,
+  redirectsBlockName,
+  removeRedirectRule,
   type RedirectEntry,
   type RedirectPayload,
 } from "./redirect-data";
@@ -123,6 +134,7 @@ import {
   uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
+  kindOfResolveType,
   listAllPostPayloads,
   missingFieldsLabel,
   postIdOfKey,
@@ -131,11 +143,7 @@ import {
   scanBlogEntries,
   stampPostModified,
 } from "./blog/blog-data";
-import {
-  type ContentSearchParams,
-  variantFocusFromSearch,
-} from "./content-search-params";
-import type { VariantFocus } from "@/components/sections-editor/named-rule-uses";
+import type { ContentSearchParams } from "./content-search-params";
 import {
   rescheduleToDay,
   scheduledPostPayload,
@@ -245,6 +253,16 @@ const PostCalendar = lazy(() =>
 const RedirectEditor = lazy(() =>
   import("./redirect-editor").then((m) => ({ default: m.RedirectEditor })),
 );
+
+/** Types whose list rows show fields of the body: loaded with the list (hosted v8). */
+function isBodyListedType(type: string): boolean {
+  return (
+    kindOfResolveType(type) !== null ||
+    type === REDIRECTS_RESOLVE_TYPE ||
+    type === "redirect" ||
+    REDIRECT_LOADER_RESOLVE_TYPES.has(type)
+  );
+}
 
 export type CollectionId =
   | "pages"
@@ -498,6 +516,16 @@ function ContentBrowserReady({
     fetchParams,
     { fetchEnabled: devServerReady },
   );
+  // Hosted v8: the lists read only the index; the bodies a view shows are
+  // loaded as it opens them (useEnsureDecofileBlocks). Type lists whose rows
+  // show fields of the body (blog records, redirect rules, the site app)
+  // load their blocks.
+  const scope = { orgSlug, virtualMcpId, branch };
+  const typeListNames = useIndexNamesOfType(
+    hostedDraft ? scope : null,
+    isBodyListedType,
+  );
+  useEnsureDecofileBlocks(hostedDraft ? scope : null, typeListNames);
 
   // Blog Manager's "Editar no Studio" redirect: ?contentCollection=posts&
   // contentItem=<blockKey> pre-selects a blog collection and opens a specific
@@ -530,25 +558,18 @@ function ContentBrowserReady({
       ? { collection: activeCollection, key: contentDeepLink.contentItem }
       : null,
   );
-  // The place in the open page or section to show: "Open" in a test's or
-  // campaign's "Used by" (here, or through the URL from the Experiments tab).
-  const [variantFocus, setVariantFocus] = useState<{
-    blockKey: string;
-    focus: VariantFocus;
-    seq: number;
-  } | null>(() => {
-    // A Blocks v8 site's links only (v7 opens the page as before).
-    const focus = runsSiteCode ? null : variantFocusFromSearch(contentDeepLink);
-    return focus && contentDeepLink.contentItem && selection
-      ? { blockKey: contentDeepLink.contentItem, focus, seq: 1 }
-      : null;
-  });
-  // It's for that one opening: once something else is open, it's done, so
-  // coming back to the page later opens it as usual.
   const selectedKey = selection && "key" in selection ? selection.key : null;
-  if (variantFocus && variantFocus.blockKey !== selectedKey) {
-    setVariantFocus(null);
-  }
+  // The open block and the blocks it references directly.
+  const openBlockKey = selectedKey ?? openEntry?.key ?? null;
+  const openBlockNames =
+    openBlockKey === null
+      ? []
+      : [redirectRuleOf(openBlockKey, decofile ?? {})?.block ?? openBlockKey];
+  const openBlockLoad = useEnsureDecofileBlocks(
+    hostedDraft ? scope : null,
+    openBlockNames,
+    { withRefs: true },
+  );
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   /**
@@ -632,10 +653,6 @@ function ContentBrowserReady({
     if (match) {
       setActiveCollection("pages");
       setSelection({ collection: "pages", key: match.key, path: match.path });
-      const focus = runsSiteCode
-        ? null
-        : variantFocusFromSearch(contentDeepLink);
-      if (focus) setVariantFocus({ blockKey: match.key, focus, seq: 1 });
     }
   }
   const [searchQuery, setSearchQuery] = useState("");
@@ -1360,13 +1377,27 @@ function ContentBrowserReady({
   };
 
   const submitRedirectDialog = async (values: RedirectPayload) => {
-    const key = generateRedirectBlockKey(decofile, values.from);
-    const data = buildRedirectBlock(values);
+    // Hosted v8 routes only the redirects block: a new rule is appended to
+    // it (created when absent).
+    const holder = hostedDraft ? redirectsBlockName(decofile) : null;
+    const rules =
+      holder === null ? null : extractRedirectRules(decofile, holder).length;
+    const key =
+      holder === null
+        ? generateRedirectBlockKey(decofile, values.from)
+        : holder;
+    const data =
+      holder === null
+        ? buildRedirectBlock(values)
+        : appendRedirectRule(decofile[holder], values);
     try {
       const created = await saveBlock.mutateAsync({ blockKey: key, data });
       if (!keptTheirVersion(created)) toast.success("Created redirect");
       setRedirectDialogOpen(false);
-      setSelection({ collection: "redirects", key });
+      setSelection({
+        collection: "redirects",
+        key: rules === null ? key : `${key}#${rules}`,
+      });
     } catch (err) {
       setRedirectDialogError(
         err instanceof Error ? err.message : "Could not create redirect",
@@ -1511,6 +1542,13 @@ function ContentBrowserReady({
           }
         }
         deleted = await deleteBlock.mutateAsync({ blockKey: key });
+      } else if (redirectRuleOf(key, decofile)) {
+        // A rule of the redirects block: the block, without it.
+        const rule = redirectRuleOf(key, decofile)!;
+        deleted = await saveBlock.mutateAsync({
+          blockKey: rule.block,
+          data: removeRedirectRule(decofile[rule.block], rule.index),
+        });
       } else {
         deleted = await deleteBlock.mutateAsync({ blockKey: key });
       }
@@ -1527,8 +1565,26 @@ function ContentBrowserReady({
     }
   };
 
-  // The editor side, as every collection shows it.
-  const editorPane = (
+  // The open rule of a redirects block, when a redirect entry is one.
+  const openRedirect =
+    selectedKey === null ? null : redirectRuleOf(selectedKey, decofile);
+  // The editor side, as every collection shows it (hosted v8: once the open
+  // block is loaded; a load that failed says so and is tried again).
+  const editorPane = openBlockLoad.failed ? (
+    <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+      <EmptyMessage
+        title={t("sectionsEditor.hosted.blockLoadFailed")}
+        description={t("sectionsEditor.hosted.blockLoadFailedHint")}
+      />
+      <Button variant="outline" size="sm" onClick={openBlockLoad.retry}>
+        {t("sectionsEditor.namedRules.tryAgain")}
+      </Button>
+    </div>
+  ) : !openBlockLoad.ready ? (
+    <div className="h-full w-full flex items-center justify-center">
+      <Spinner className="size-5 text-muted-foreground" />
+    </div>
+  ) : (
     <>
       {activeCollection === "loaders" || activeCollection === "actions" ? (
         <RunnableBlocksBrowser
@@ -1765,8 +1821,13 @@ function ContentBrowserReady({
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
+                blockKey={openRedirect?.block ?? selection.key}
+                rule={openRedirect?.index ?? null}
+                block={
+                  decofile[openRedirect?.block ?? selection.key] as
+                    | Record<string, unknown>
+                    | undefined
+                }
               />
             ) : (
               <NamedRuleViewsProvider value={namedRuleViews}>
@@ -1795,11 +1856,6 @@ function ContentBrowserReady({
                     openPageSeoKey === selection.key
                   }
                   onExitSeo={() => setOpenPageSeoKey(null)}
-                  focusVariant={
-                    variantFocus?.blockKey === selection.key
-                      ? { ...variantFocus.focus, seq: variantFocus.seq }
-                      : null
-                  }
                   onSelectRoot={() => {
                     setSelection(null);
                     setOpenPageSeoKey(null);

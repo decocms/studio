@@ -33,6 +33,7 @@ import {
   type ValuePreview,
 } from "./form-conflict";
 import type { ConflictAuthor } from "./conflict-author";
+import { useKeepTyping } from "./keep-typing";
 
 /**
  * Asks the user whose version to keep when they and someone else changed the
@@ -43,7 +44,7 @@ import type { ConflictAuthor } from "./conflict-author";
  * "yours", so one click keeps the user's version: OK saves the picks (Next
  * on every step but the last). On hosted v8 drafts their card names the
  * member, with their avatar and when they saved (conflict-author.ts), and so
- * do the titles; elsewhere "Someone else". It must be answered: an alert
+ * do the titles as soon as the member is known; elsewhere "Someone else". It must be answered: an alert
  * dialog with no close button, Escape or click outside; nothing of the form's
  * is saved until then.
  */
@@ -60,7 +61,9 @@ interface FormConflictChoicesProps {
   author?: ConflictAuthor | null;
   /**
    * Who made it wasn't known yet when the window opened (hosted v8): the
-   * titles name no one, and stay so when the name lands on their card.
+   * titles name no one while it is unknown ("The Headline was changed…",
+   * never "Someone else" for a member about to be named), and name them
+   * ("Ana changed the Headline…") once `author` says who.
    */
   anonymousTitle?: boolean;
   /**
@@ -91,14 +94,15 @@ export function FormConflictDialog({
   open,
   authorPending = false,
   waitForAuthor = false,
+  keepTyping = false,
   ...props
 }: FormConflictChoicesProps & {
   open: boolean;
   /**
    * Who made the other change is still being read (conflict-author.ts).
-   * The dialog opens at once all the same; its titles then name no one for
-   * as long as it is open (never "Someone else" switching to a name), and
-   * the name lands on their card when it is known.
+   * The dialog opens at once all the same; its titles name no one until it
+   * is known (never "Someone else" switching to a name), then name the
+   * member, as their card does.
    */
   authorPending?: boolean;
   /**
@@ -106,11 +110,19 @@ export function FormConflictDialog({
    * campaign windows, named from the members already read).
    */
   waitForAuthor?: boolean;
+  /**
+   * Opened from a form the user may still be typing in (the section form):
+   * the keystrokes typed as it opens go on into their field, and so into
+   * "You (not saved yet)", instead of being lost on the dialog
+   * (keep-typing.ts).
+   */
+  keepTyping?: boolean;
 }) {
   const { data: session } = authClient.useSession();
   const waiting = waitForAuthor && authorPending;
   // Decided when it first shows (the dialog is mounted per conflict).
   const [anonymousTitle] = useState(() => authorPending && !waitForAuthor);
+  const noteTyping = useKeepTyping(keepTyping && open && !waiting);
   return (
     // Controlled with no onOpenChange: only saving a choice closes it.
     <AlertDialog open={open && !waiting}>
@@ -119,6 +131,7 @@ export function FormConflictDialog({
           "max-h-[85vh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg",
         )}
         data-testid="form-conflict-dialog"
+        onOpenAutoFocus={noteTyping}
         onEscapeKeyDown={(event) => event.preventDefault()}
       >
         <FormConflictChoices
@@ -150,7 +163,9 @@ const plainHeading = (title: string, description: ReactNode) => (
  * One field: "Ana changed the title while you were editing". A step of
  * several: "Ana also changed the title", and on the last one a summary of the
  * picks instead of the hint. "Someone else" while who is unknown, "You … in
- * another tab or window" for the viewer's own change.
+ * another tab or window" for the viewer's own change. `anonymous` (a hosted
+ * window opened before who was known) says "The title was changed" instead
+ * of "Someone else", until `author` names someone.
  */
 export function conflictHeading(
   t: TFunction,
@@ -163,7 +178,7 @@ export function conflictHeading(
     anonymous = false,
     asLabeled = false,
   }: {
-    /** Titles that name no one (who made it unknown when it opened). */
+    /** Titles that name no one while who made it is unknown. */
     anonymous?: boolean;
     /** The field as its form labels it (hosted v8). */
     asLabeled?: boolean;
@@ -187,11 +202,13 @@ export function conflictHeading(
     block: block ?? "",
   };
   type Key = Parameters<TFunction>[0];
+  // Named as soon as who is known; no one while it isn't.
+  const unknown = anonymous && !author?.you && !name;
   const pick = (one: Key, named: Key, you: Key, nobody: Key) =>
-    t(anonymous ? nobody : author?.you ? you : name ? named : one, vars);
+    t(unknown ? nobody : author?.you ? you : name ? named : one, vars);
   const phrase = field?.phrase;
   const phraseTitle = (one: Key, named: Key, you: Key, nobody: Key) =>
-    t(anonymous ? nobody : author?.you ? you : name ? named : one, {
+    t(unknown ? nobody : author?.you ? you : name ? named : one, {
       thing: phrase ?? "",
       Thing: phrase
         ? phrase.charAt(0).toLocaleUpperCase() + phrase.slice(1)

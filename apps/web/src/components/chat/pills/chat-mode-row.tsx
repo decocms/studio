@@ -15,7 +15,7 @@ import {
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 
@@ -92,13 +92,13 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
 
   // Production branch shown as "Produção"; one shared source with the gate.
   const baseBranch = useBaseBranch(virtualMcp, currentBranch);
-  // The Localhost item is for Blocks v8 sites (main's schema); v7 keeps
+  // The Localhost item is for Blocks v8 projects (their switch); v7 keeps
   // main's Advanced → Local.
-  const mainSchema = useMainSchemaV8(virtualMcp?.id);
-  // A CMS session on a Blocks v8 main edits a hosted draft even on the base
+  const v8 = useBlocksV8Project(virtualMcp?.id);
+  // A CMS session on a Blocks v8 project edits a hosted draft even on the base
   // branch: the switcher shows it as that draft, not as "Production". v7 (and
   // a coding session) keeps main's labels.
-  const baseIsDraft = mainSchema === "v8" && sessionRuntime === "cms";
+  const baseIsDraft = v8 && sessionRuntime === "cms";
 
   const onChange = (next: string, draftRuntime?: ThreadRuntime) => {
     const action = branchPickAction({
@@ -133,7 +133,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         key={`${repoTargetKey(repoTarget)}:${repository.owner}/${repository.name}`}
         userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
-        isV8={mainSchema === "v8"}
+        isV8={v8}
         value={currentBranch}
         baseBranch={baseBranch}
         baseIsDraft={baseIsDraft}

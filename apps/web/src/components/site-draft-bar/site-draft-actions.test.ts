@@ -10,9 +10,10 @@ import { join } from "node:path";
  */
 describe("the site's draft bar", () => {
   const routes = join(import.meta.dir, "../../routes/workspace");
+  // Experiments lives in Monitor's Experiments view (`monitoring.tsx`).
   for (const file of [
     "agent-site-editor.tsx",
-    "agent-experiments.tsx",
+    "monitoring.tsx",
     "agent-calendar.tsx",
   ]) {
     test(`${file} mounts the shared SiteDraftActions`, () => {
@@ -35,10 +36,10 @@ describe("the site's draft bar", () => {
   test("the site editor mounts the bar on every site, with no v7/v8 switch", () => {
     // `siteDraftBarParts` holds main's rules (site-draft-bar-parts.test.ts),
     // so a v7 site gets main's bar from the same component, and a v8 site's
-    // bar never remounts (closing an open Publish panel) when main answers.
+    // bar never remounts (closing an open Publish panel).
     const source = readFileSync(join(routes, "agent-site-editor.tsx"), "utf8");
     expect(source).toContain("actions={<SiteDraftActions />}");
-    expect(source).not.toContain("useMainSchemaV8");
+    expect(source).not.toContain("useBlocksV8Project");
     expect(source).not.toContain("<CmsHeaderActions");
     expect(source).not.toContain("<ChatModeRow");
   });

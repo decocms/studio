@@ -106,7 +106,8 @@ bun run --cwd=packages/sandbox check
 bun run --cwd=packages/sandbox test
 ```
 
-Package the type generator baked into sandbox images:
+Package what sandbox images bake in from this revision (the type generator, the
+harness runner, and the `decocms` CLI with its decocms-studio skill plugin):
 
 ```bash
 bun run --cwd=packages/sandbox build
@@ -183,8 +184,11 @@ under Docker, with the daemon published at `https://<handle>.style.dev`. The
 VM's slug is the handle and its metadata holds the daemon bearer, so it needs
 no state store. A VM is paused after five minutes without network traffic, or
 once its daemon reports ten minutes without use, which catches a dev server
-that keeps the network busy on its own; traffic resumes it. A VM paused for a
-day is deleted, or sooner if the Freestyle plan caps it lower. The first
+that keeps the network busy on its own; traffic resumes it. Freestyle deletes
+a VM paused for a day (or the plan's lower cap) without a shutdown sync, so
+two hours before that a sweep checks the VM's repo: one with nothing missing
+from its remote is deleted, and one holding unpushed commits or changed files
+is kept, up to 30 days from its creation, for the user's next run to push. The first
 ensure for an image builds a base snapshot with the image pulled, unless the
 host already called `warm()` (the control plane does when it starts);
 `STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
@@ -198,6 +202,13 @@ AppArmor profiles unconfined; the per-user Freestyle VM remains its isolation
 boundary. The org-fs sidecar is unchanged. The setting gets a separate base
 snapshot, and existing VMs must be replaced to change their container policy.
 
+Set `STUDIO_SANDBOX_COMMIT_SIGNING_EMAIL` and `STUDIO_SANDBOX_COMMIT_SIGNING_KEY`
+to sign the bot's commits on Freestyle, the same values the `sandbox-env` chart
+takes as `commitSigning` for pods. Repositories that require verified signatures
+reject unsigned commits. The key is part of the base snapshot, so code running
+in a sandbox can read it. Setting or rotating it builds a new base snapshot, and
+existing VMs keep what they were created with until they are replaced.
+
 `SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
 input picks where a new sandbox runs, when that provider is configured and
 serves the requested image. Without it, `STUDIO_SANDBOX_FREESTYLE_SHARE`
@@ -205,10 +216,10 @@ serves the requested image. Without it, `STUDIO_SANDBOX_FREESTYLE_SHARE`
 handle so a retry lands where the first try did; the rest run on Kubernetes
 while it has capacity. Orgs with a tenant warm pool stay on Kubernetes. An
 existing sandbox stays with its provider; Kubernetes is asked first, so a
-Freestyle outage never touches Kubernetes sandboxes. When the chosen provider's
-ensure fails, the other one gets a try, except on a daemon config error or an
-image only Kubernetes runs. A resumed sandbox that moves this way has its old
-copy deleted. Handle-only calls go to the provider that owns the handle:
+Freestyle outage never touches Kubernetes sandboxes. When a Kubernetes ensure
+fails, Freestyle gets a try, except on a daemon config error or an image only
+Kubernetes runs; a resumed sandbox that moves this way has its old copy
+deleted. A failed Freestyle ensure is never retried on Kubernetes. Handle-only calls go to the provider that owns the handle:
 Freestyle answers ownership by VM lookup, and every other handle is
 Kubernetes'. If the Kubernetes provider cannot be
 built, Studio runs Freestyle alone. A control plane can host the router

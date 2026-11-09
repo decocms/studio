@@ -85,6 +85,23 @@ async function fsFetch(
   throw new Error(detail || `HTTP ${res.status}`);
 }
 
+/** Read one directory without depending on React's project context. */
+export async function fetchOrgFsList(
+  orgSlug: string,
+  volume: string,
+  path: string,
+): Promise<OrgFsEntry[]> {
+  const res = await fsFetch(fsUrl(orgSlug, volume, "list", { path }));
+  const body = (await res.json()) as { entries: OrgFsEntry[] };
+  return body.entries.toSorted((a, b) =>
+    a.kind !== b.kind
+      ? a.kind === "dir"
+        ? -1
+        : 1
+      : a.path.localeCompare(b.path),
+  );
+}
+
 /** Children of `path` ("" = volume root), dirs first then by name. */
 export function useOrgFsList(
   volume: string,
@@ -103,17 +120,7 @@ export function useOrgFsList(
       previousQuery.queryKey[2] === volume
         ? previousData
         : undefined,
-    queryFn: async () => {
-      const res = await fsFetch(fsUrl(org.slug, volume, "list", { path }));
-      const body = (await res.json()) as { entries: OrgFsEntry[] };
-      return body.entries.toSorted((a, b) =>
-        a.kind !== b.kind
-          ? a.kind === "dir"
-            ? -1
-            : 1
-          : a.path.localeCompare(b.path),
-      );
-    },
+    queryFn: () => fetchOrgFsList(org.slug, volume, path),
   });
 }
 

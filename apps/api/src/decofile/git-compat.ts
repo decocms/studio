@@ -29,6 +29,31 @@ import { resolveOrCreateHead } from "./read-decofile";
 const DIFF_MAX_FILES = 200;
 const DIFF_FETCH_CONCURRENCY = 12;
 
+/** The wire code for a refused write to the default branch. */
+export const DEFAULT_BRANCH_READ_ONLY = "default_branch_read_only";
+
+/**
+ * A Fast Preview write aimed at the repository's default branch. Production is
+ * never a draft: edits land on a draft branch and reach it only by publishing.
+ */
+export class DefaultBranchWriteError extends Error {
+  constructor(readonly branch: string) {
+    super(
+      `"${branch}" is the production branch and can't be edited directly; create a draft.`,
+    );
+    this.name = "DefaultBranchWriteError";
+  }
+}
+
+export async function assertNotDefaultBranch(
+  client: RepoContentClient,
+  branch: string,
+): Promise<void> {
+  if (branch === (await client.getDefaultBranch())) {
+    throw new DefaultBranchWriteError(branch);
+  }
+}
+
 /** How a path changed between base and head, in the publish manifest. */
 export type CompatChangeStatus = "added" | "modified" | "removed" | "renamed";
 
@@ -239,6 +264,8 @@ export async function repoGitRebase(
   branch: string,
   base: string,
 ): Promise<void> {
+  // A `base` other than the default would rewrite production onto it.
+  await assertNotDefaultBranch(client, branch);
   for (let attempt = 1; ; attempt++) {
     // Read first: the write's own guard re-reads it, catching a later autosave.
     const [branchHead, compared] = await Promise.all([
@@ -525,6 +552,7 @@ export async function repoGitDiscard(
 ): Promise<void> {
   if (filepaths.length === 0) return;
   const base = await client.getDefaultBranch();
+  if (base === branch) throw new DefaultBranchWriteError(branch);
   for (let attempt = 1; ; attempt++) {
     const branchHead = await requireBranchHead(client, branch);
     const { mergeBaseSha } = await client.compareDetailed(base, branch);

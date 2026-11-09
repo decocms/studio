@@ -7,6 +7,9 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-drawer-gate";
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
+import { ProductionNotice } from "@/layouts/main-panel-tabs/production-notice";
+import { useProductionGate } from "@/layouts/main-panel-tabs/use-production-gate";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { ChatLayout } from "@/components/chat-layout";
 import { useVirtualMCP } from "@/sdk";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
@@ -17,15 +20,13 @@ function SiteEditorDrawer() {
   const activeTask = session?.activeTask;
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
-  const { url: localPreviewUrl, undecided: tunnelUndecided } =
-    useLocalPreviewUrl(entity?.id);
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   const { connection: serveConnection } = useDecoServeConnection(
     entity?.id ?? session?.virtualMcpId,
   );
   const servingLocally = !!serveConnection;
   const showDrawer =
     !localPreviewUrl &&
-    !tunnelUndecided &&
     !servingLocally &&
     shouldShowTerminalDrawer({
       hasClonableSource:
@@ -46,7 +47,18 @@ export default function SiteEditorRoute() {
       actions={<SiteDraftActions />}
       drawer={<SiteEditorDrawer />}
     >
-      <Outlet />
+      <SiteEditorBody />
     </ChatLayout.Content>
   );
+}
+
+/** Nothing that reads or saves the site's content mounts on production. */
+function SiteEditorBody() {
+  const session = useOptionalChatTask();
+  const gate = useProductionGate();
+  if (gate === "pending") return <PanelLoading />;
+  if (gate === "blocked" && session) {
+    return <ProductionNotice virtualMcpId={session.virtualMcpId} />;
+  }
+  return <Outlet />;
 }

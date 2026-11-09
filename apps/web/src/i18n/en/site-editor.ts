@@ -12,9 +12,6 @@ export const siteEditor = {
   "siteEditor.publish.publishedOn": "Published. {host} will show it shortly.",
   "siteEditor.publish.nothingToPublish": "Nothing to publish",
   "siteEditor.publish.everythingPublished": "Everything is already published.",
-  "siteEditor.publish.savedNotPublished": "Saved, but not published yet",
-  "siteEditor.publish.savedNotPublishedBody":
-    "Your changes are safe. Try again to publish them.",
   "siteEditor.publish.publishedMeanwhile":
     "Someone else published while you were publishing, so nothing changed. Review your changes and publish again.",
   "siteEditor.publish.changedMeanwhile":
@@ -38,7 +35,6 @@ export const siteEditor = {
     "Not saved: some fields aren't filled in correctly. Fix them and try again.",
   "siteEditor.save.tooLarge":
     "Not saved: this content is too large. Make it smaller and try again.",
-  "siteEditor.retrying.github": "Can't reach GitHub right now. Trying again…",
   "siteEditor.retrying.sandbox":
     "Can't reach the sandbox right now. Trying again…",
   "siteEditor.contentTypes.changesInDraft": "Changes in draft",
@@ -89,4 +85,7 @@ export const siteEditor = {
   "siteEditor.siteNotOwned.body":
     "Another project in Studio was set up with this site first, so its content is edited and published there. Open that project to change the site's content. Here you can still chat and work on the site's code.",
   "siteEditor.siteNotOwned.openProjects": "See projects",
+  "siteEditor.productionLocked.title": "Production can't be edited here",
+  "siteEditor.productionLocked.body":
+    "Changes are made in a draft and reach your site when you publish it. Start a new draft to keep editing.",
 };

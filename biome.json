@@ -29,6 +29,10 @@
     {
       "includes": [".oxlintrc.json"],
       "json": { "parser": { "allowComments": true } }
+    },
+    {
+      "includes": ["apps/api/src/hosted/block-meta.ts"],
+      "formatter": { "lineWidth": 100 }
     }
   ],
   "assist": {

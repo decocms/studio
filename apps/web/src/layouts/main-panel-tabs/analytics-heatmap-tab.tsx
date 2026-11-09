@@ -13,19 +13,32 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowLeft,
+  Check,
   CursorClick01,
-  Lock01,
   Monitor04,
   Phone02,
   Settings01,
+  Sliders04,
   Tablet01,
 } from "@untitledui/icons";
+import { Badge as DsBadge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { Slider } from "@decocms/ui/components/slider.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@decocms/ui/components/tabs.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { TopbarSelect } from "@/components/monitor/topbar-select";
+import { ViewSwitch } from "@/components/monitor/view-switch";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -54,6 +67,7 @@ import {
   type HeatDevice,
   type HeatElement,
   type HeatFunnel,
+  type HeatElementValue,
   type HeatMode,
   type HeatRamp,
   type HeatRange,
@@ -88,11 +102,6 @@ type Hover = {
   pct?: number;
 };
 
-const SEG =
-  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors";
-const SEG_ON = "bg-background text-foreground shadow-xs";
-const SEG_OFF = "text-muted-foreground hover:text-foreground";
-
 export function HeatmapView({
   base,
   orgSlug,
@@ -100,6 +109,7 @@ export function HeatmapView({
   modules,
   domain,
   onConfigure,
+  fill = false,
 }: {
   base: string;
   orgSlug: string;
@@ -107,7 +117,10 @@ export function HeatmapView({
   modules: string[];
   /** The site's registered domain: the only origin the frame may load and talk to. */
   domain: string | null;
-  onConfigure: () => void;
+  /** Absent for a site whose settings can't be changed here. */
+  onConfigure?: () => void;
+  /** Grow into the parent's height instead of a share of the viewport. */
+  fill?: boolean;
 }) {
   const t = useT();
   const [preferences] = usePreferences();
@@ -142,10 +155,12 @@ export function HeatmapView({
         title={t(k("offTitle"))}
         description={t(k("offDescription"))}
         buttonComponent={
-          <Button size="sm" variant="outline" onClick={onConfigure}>
-            <Settings01 className="size-4" />
-            {t(k("openConfig"))}
-          </Button>
+          onConfigure ? (
+            <Button size="sm" variant="outline" onClick={onConfigure}>
+              <Settings01 className="size-4" />
+              {t(k("openConfig"))}
+            </Button>
+          ) : undefined
         }
       />
     );
@@ -174,65 +189,59 @@ export function HeatmapView({
     for (const c of CLICK_TYPES) counts[c] += weightOf(e, c);
   }
 
-  return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <PageInput
-          value={page}
-          pages={model?.pages ?? []}
-          label={t(k("page"))}
-          onChange={(p) => {
-            setPage(p);
-            setSample("");
-          }}
-        />
-        <div
-          role="group"
-          aria-label={t(k("device"))}
-          className="inline-flex rounded-lg border border-border bg-muted p-0.5"
-        >
-          {HEAT_DEVICES.map((d) => {
-            const Icon = DEVICE_ICON[d];
-            const views =
-              model?.devices.find((x) => x.device === d)?.views ?? 0;
-            return (
-              <button
-                key={d}
-                type="button"
-                aria-pressed={device === d}
-                title={t(k("deviceViews"), {
-                  device: t(k(d)),
-                  views: fmtInt(views, locale),
-                })}
-                onClick={() => setDevice(d)}
-                className={cn(SEG, device === d ? SEG_ON : SEG_OFF)}
-              >
-                <Icon className="size-4" />
-                <span className="max-sm:hidden">{t(k(d))}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div
-          role="group"
-          aria-label={t(k("range"))}
-          className="inline-flex rounded-lg border border-border bg-muted p-0.5"
-        >
-          {HEAT_RANGES.map((r) => (
-            <button
-              key={r}
-              type="button"
-              aria-pressed={range === r}
-              onClick={() => setRange(r)}
-              className={cn(SEG, range === r ? SEG_ON : SEG_OFF)}
+  const controls = (
+    <div className="flex flex-wrap items-center gap-2">
+      <PageInput
+        value={page}
+        pages={model?.pages ?? []}
+        label={t(k("page"))}
+        search={t(k("pageSearch"))}
+        empty={t(k("pageEmpty"))}
+        locale={locale}
+        onChange={(p) => {
+          setPage(p);
+          setSample("");
+        }}
+      />
+      <ViewSwitch label={t(k("device"))}>
+        {HEAT_DEVICES.map((d) => {
+          const Icon = DEVICE_ICON[d];
+          const views = model?.devices.find((x) => x.device === d)?.views ?? 0;
+          return (
+            <ViewSwitch.Item
+              key={d}
+              icon
+              pressed={d === device}
+              onClick={() => setDevice(d)}
+              aria-label={t(k(d))}
+              title={t(k("deviceViews"), {
+                device: t(k(d)),
+                views: fmtInt(views, locale),
+              })}
             >
-              {t(k(`range${r}`))}
-            </button>
-          ))}
-        </div>
-        {query.isFetching && model && <Spinner size="xs" />}
-      </div>
+              <Icon className="size-3.5" />
+            </ViewSwitch.Item>
+          );
+        })}
+      </ViewSwitch>
+      <TopbarSelect
+        label={t(k("range"))}
+        value={range}
+        options={HEAT_RANGES.map((r) => ({
+          value: r,
+          label: t(k(`range${r}`)),
+        }))}
+        onChange={setRange}
+      />
+      {query.isFetching && model && <Spinner size="xs" />}
+    </div>
+  );
 
+  return (
+    <div
+      className={cn("flex min-w-0 flex-col gap-4", fill && "min-h-0 flex-1")}
+    >
+      {!model && controls}
       {query.isLoading ? (
         <div className="flex flex-col gap-3">
           <Skeleton className="h-10 w-full" />
@@ -266,52 +275,78 @@ export function HeatmapView({
           clickType={clickType}
           onClickType={setClickType}
           counts={counts}
+          controls={controls}
+          fill={fill}
         />
       )}
     </div>
   );
 }
 
+/** The page to map: one with visits, or any path typed into the search. */
 function PageInput({
   value,
   pages,
   label,
+  search,
+  empty,
+  locale,
   onChange,
 }: {
   value: string;
   pages: { page: string; views: number }[];
   label: string;
+  search: string;
+  empty: string;
+  locale: string;
   onChange: (p: string) => void;
 }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = () => {
-    const v = (draft ?? value).trim() || "/";
-    setDraft(null);
-    if (v.startsWith("/") && v.length <= 512 && v !== value) onChange(v);
-  };
+  const [typed, setTyped] = useState("");
+  const path = typed.trim();
+  const known = pages.some((p) => p.page === path);
+  const options = [
+    ...(path.startsWith("/") && path.length <= 512 && !known
+      ? [{ value: path, label: path, views: null }]
+      : []),
+    ...pages.map((p) => ({ value: p.page, label: p.page, views: p.views })),
+  ];
+  if (!options.some((o) => o.value === value)) {
+    options.push({ value, label: value, views: null });
+  }
   return (
-    <form
-      className="min-w-0 max-sm:basis-full sm:w-64"
-      onSubmit={(e) => {
-        e.preventDefault();
-        commit();
-      }}
-    >
-      <Input
-        aria-label={label}
-        list="hm-pages"
-        value={draft ?? value}
-        spellCheck={false}
-        className="h-8 font-mono text-xs"
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+    <div className="min-w-0 max-sm:basis-full sm:w-48">
+      <Combobox
+        ariaLabel={label}
+        options={options}
+        value={value}
+        onChange={(v) => {
+          if (v && v !== value) onChange(v);
+        }}
+        onSearchChange={setTyped}
+        searchPlaceholder={search}
+        emptyMessage={empty}
+        width="w-full"
+        triggerClassName="h-8 px-3 text-sm font-normal"
+        contentClassName="min-w-64"
+        renderItem={(o, selected) => (
+          <span className="flex w-full min-w-0 items-center gap-2">
+            <span className="truncate">{o.label}</span>
+            {typeof o.views === "number" && (
+              <span className="text-meta tnum ml-auto shrink-0">
+                {fmtInt(o.views, locale)}
+              </span>
+            )}
+            <Check
+              className={cn(
+                "size-3.5 shrink-0",
+                typeof o.views !== "number" && "ml-auto",
+                selected ? "opacity-100" : "opacity-0",
+              )}
+            />
+          </span>
+        )}
       />
-      <datalist id="hm-pages">
-        {pages.map((p) => (
-          <option key={p.page} value={p.page} />
-        ))}
-      </datalist>
-    </form>
+    </div>
   );
 }
 
@@ -364,6 +399,8 @@ function Viewer({
   clickType,
   onClickType,
   counts,
+  controls,
+  fill,
 }: {
   t: TFunction;
   locale: string;
@@ -379,6 +416,9 @@ function Viewer({
   clickType: ClickType;
   onClickType: (c: ClickType) => void;
   counts: Record<ClickType, number>;
+  /** The page, device and period, at the end of the mode row. */
+  controls: ReactNode;
+  fill: boolean;
 }) {
   const [ramp, setRamp] = useState<HeatRamp>("thermal");
   const [opacity, setOpacity] = useState(0.85);
@@ -386,6 +426,7 @@ function Viewer({
   const [status, setStatus] = useState<"loading" | "ready" | "timeout">(
     "loading",
   );
+  const [attempt, setAttempt] = useState(0);
   const [placed, setPlaced] = useState<Placed | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [rowHover, setRowHover] = useState<string | null>(null);
@@ -531,13 +572,18 @@ function Viewer({
     ? placed.stats.matched / placed.stats.total
     : null;
   const activeKey = rowHover ?? pinned;
+  // An element without text is named by the section it sits in; the
+  // section then leaves its line under the name.
+  const textOf = (e: HeatElement) => itemBy.get(e.key)?.label || null;
   const labelOf = (e: HeatElement) =>
-    itemBy.get(e.key)?.label || t(k("noText"));
+    textOf(e) || rootName(e.root) || t(k("noText"));
   const sectionBy = new Map(model.sections.map((s) => [s.root, s]));
   // The funnel follows the pinned element; with nothing pinned the value list
   // shows the page's own, which is what every element is read against.
   const pinnedFunnel = pinned ? model.funnel.get(pinned) : undefined;
   const pinnedEl = pinned ? elBy.get(pinned) : undefined;
+  // A picked element takes the side panel; the list is one step back.
+  const detailEl = mode === "clicks" || mode === "value" ? pinnedEl : undefined;
   // Ranked by what they brought in, which is the question this mode asks.
   // Deliberately NOT filtered to what the live page still has: an element that
   // sold and has since been removed is the most interesting row on the list.
@@ -584,137 +630,72 @@ function Viewer({
   );
 
   return (
-    <div className="@container flex min-w-0 flex-col">
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-b border-border">
-        <div
-          role="tablist"
-          aria-label={t(k("map"))}
-          className="-mb-px flex gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
+    <div
+      className={cn(
+        "@container flex min-w-0 flex-col gap-3",
+        fill && "min-h-0 flex-1",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Tabs
+          value={mode}
+          onValueChange={(v) => {
+            const next = HEAT_MODES.find((m) => m === v);
+            if (next) changeMode(next);
+          }}
+          variant="underline"
         >
-          {HEAT_MODES.map((m) => (
-            <button
-              key={m}
-              role="tab"
-              type="button"
-              aria-selected={mode === m}
-              title={t(k(`${m}Hint`))}
-              onClick={() => changeMode(m)}
-              className={cn(
-                "shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-                mode === m
-                  ? "border-[var(--chart-1)] text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t(k(m))}
-            </button>
-          ))}
-        </div>
-        {mode === "clicks" && (
-          <div
-            role="group"
-            aria-label={t(k("clickType"))}
-            className="flex gap-1.5 overflow-x-auto pb-2 [scrollbar-width:none] max-sm:w-full"
-          >
-            {CLICK_TYPES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-pressed={clickType === c}
-                disabled={c !== "all" && !counts[c]}
-                onClick={() => {
-                  onClickType(c);
-                  setPinned(null);
-                }}
-                className={cn(
-                  "shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-colors disabled:opacity-40",
-                  clickType === c
-                    ? "border-foreground font-semibold text-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground",
-                )}
+          <TabsList variant="underline" aria-label={t(k("map"))}>
+            {HEAT_MODES.map((m) => (
+              <TabsTrigger
+                key={m}
+                value={m}
+                variant="underline"
+                title={t(k(`${m}Hint`))}
               >
-                {t(k(`type_${c}`))}
-                {c !== "all" && (
-                  <b className="ml-1 font-semibold tabular-nums text-muted-foreground">
-                    {fmtInt(counts[c] * est, locale)}
-                  </b>
-                )}
-              </button>
+                {t(k(m))}
+              </TabsTrigger>
             ))}
-          </div>
+          </TabsList>
+        </Tabs>
+        {mode === "clicks" && (
+          <TopbarSelect
+            label={t(k("clickType"))}
+            value={clickType}
+            options={CLICK_TYPES.filter(
+              (c) => c === "all" || counts[c] > 0,
+            ).map((c) => ({
+              value: c,
+              label:
+                c === "all"
+                  ? t(k("allClicks"))
+                  : `${t(k(`type_${c}`))} · ${fmtInt(counts[c] * est, locale)}`,
+            }))}
+            onChange={(c) => {
+              onClickType(c);
+              setPinned(null);
+            }}
+          />
         )}
-        <div className="ml-auto flex gap-1.5 overflow-x-auto pb-2 [scrollbar-width:none] max-sm:ml-0 max-sm:w-full">
-          <Pill title={t(k("viewsHint"))}>
-            {t(k("views"), { n: fmtInt(model.views, locale) })}
-          </Pill>
-          {est > 1.05 && (
-            <Pill title={t(k("scaleHint"))}>
-              {t(k("scale"), { n: fmtInt(est, locale) })}
-            </Pill>
-          )}
-          {model.smallSample && model.views > 0 && (
-            <Pill title={t(k("smallSampleHint"))} tone="warn">
-              {t(k("smallSample"))}
-            </Pill>
-          )}
-          {match != null && (
-            <Pill title={t(k("matchHint"))}>
-              <i
-                className={cn(
-                  "size-1.5 rounded-full",
-                  match < 0.8 ? "bg-warning" : "bg-success",
-                )}
-              />
-              {t(k("match"), { pct: fmtPct(match, locale) })}
-            </Pill>
-          )}
-        </div>
+        <div className="ml-auto max-sm:ml-0">{controls}</div>
       </div>
 
-      <div className="grid grid-cols-1 overflow-hidden rounded-b-xl border border-t-0 border-border @5xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div
+        className={cn(
+          "surface grid grid-cols-1 overflow-hidden @4xl:grid-cols-[minmax(0,1fr)_340px]",
+          fill && "min-h-0 flex-1",
+        )}
+      >
         <div
-          className="relative flex h-[clamp(520px,78vh,980px)] min-w-0 flex-col bg-muted px-5 pt-4 max-sm:h-[72vh] max-sm:min-h-[460px] max-sm:px-2 max-sm:pt-2"
-          style={{
-            backgroundImage:
-              "radial-gradient(color-mix(in srgb, var(--muted-foreground) 30%, transparent) 1px, transparent 1.2px)",
-            backgroundSize: "16px 16px",
-          }}
+          className={cn(
+            "surface-inset relative flex min-w-0 flex-col rounded-none px-5 pt-4 max-sm:h-[72vh] max-sm:min-h-[460px] max-sm:px-2 max-sm:pt-2",
+            fill ? "h-full min-h-[520px]" : "h-[clamp(520px,78vh,980px)]",
+          )}
         >
           <div
-            className="relative mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-t-xl border border-b-0 border-border bg-background shadow-lg"
+            className="relative mx-auto flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-t-lg border border-b-0 border-border bg-background"
             style={{ maxWidth: device === "desktop" ? undefined : width + 2 }}
           >
-            <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-              <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md bg-muted px-2.5 py-1">
-                <Lock01 className="size-3 shrink-0" />
-                <span className="truncate">
-                  {src
-                    ? src
-                        .replace(/^https?:\/\//, "")
-                        .replace(/[?&]dq_view=1/, "")
-                    : templatePage}
-                </span>
-              </div>
-              <span className="tabular-nums max-sm:hidden">{width} px</span>
-              <div className="inline-flex gap-0.5 max-sm:hidden">
-                {(["fit", 1] as const).map((z) => (
-                  <button
-                    key={z}
-                    type="button"
-                    aria-pressed={zoom === z}
-                    onClick={() => setZoom(z)}
-                    className={cn(
-                      "rounded px-1.5 py-0.5",
-                      zoom === z
-                        ? "bg-muted font-semibold text-foreground"
-                        : "hover:text-foreground",
-                    )}
-                  >
-                    {z === "fit" ? t(k("fit")) : "100%"}
-                  </button>
-                ))}
-              </div>
-            </div>
             <div
               ref={stageRef}
               className={cn(
@@ -725,6 +706,7 @@ function Viewer({
               {zoom !== "fit" && <div style={{ width, height: 1 }} />}
               {src ? (
                 <iframe
+                  key={attempt}
                   ref={frameRef}
                   title={t(k("frameTitle"))}
                   src={src}
@@ -757,7 +739,25 @@ function Viewer({
               )}
               {src && status === "timeout" && (
                 <Cover title={t(k("timeoutTitle"))}>
-                  {t(k("timeoutDescription"))}
+                  <span className="block">{t(k("timeoutHint"))}</span>
+                  <span className="pointer-events-auto mt-3 flex items-center justify-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setStatus("loading");
+                        setAttempt((n) => n + 1);
+                      }}
+                    >
+                      {t(k("timeoutRetry"))}
+                    </Button>
+                  </span>
+                  <details className="pointer-events-auto mt-3 text-left text-xs">
+                    <summary className="cursor-pointer text-center">
+                      {t(k("timeoutWhy"))}
+                    </summary>
+                    <p className="mt-2">{t(k("timeoutDescription"))}</p>
+                  </details>
                 </Cover>
               )}
               {src && status === "ready" && model.views === 0 && (
@@ -871,94 +871,152 @@ function Viewer({
               )}
             </div>
           </div>
-          <div className="absolute bottom-4 left-8 z-10 flex max-w-[calc(100%-4rem)] flex-wrap items-center gap-x-3.5 gap-y-2 rounded-xl border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur max-sm:inset-x-4 max-sm:max-w-none">
+          <div className="surface absolute bottom-4 left-8 z-10 flex max-w-[calc(100%-4rem)] flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 max-sm:inset-x-4 max-sm:max-w-none">
             <div className="flex min-w-44 flex-col gap-1 max-sm:min-w-0 max-sm:basis-full">
               <div
-                className="h-2.5 rounded-full bg-background ring-1 ring-border"
+                className="h-2 rounded-full border border-border"
                 style={{ backgroundImage: gradient }}
               />
-              <div className="flex justify-between gap-3 text-[11px] text-muted-foreground tabular-nums">
+              <div className="text-meta flex justify-between gap-3">
                 <span>{legend[0]}</span>
                 <span>{legend[1]}</span>
               </div>
             </div>
-            {mode !== "sections" && (
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {t(k("opacity"))}
-                <input
-                  type="range"
-                  min={0.2}
-                  max={1}
-                  step={0.05}
-                  value={opacity}
-                  onChange={(e) => setOpacity(Number(e.target.value))}
-                  className="w-20 accent-[var(--chart-1)]"
-                />
-              </label>
-            )}
-            <div
-              role="group"
-              aria-label={t(k("colors"))}
-              className="inline-flex gap-0.5"
-            >
-              {(["thermal", "inferno"] as const).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  aria-pressed={ramp === r}
-                  title={r === "inferno" ? t(k("infernoHint")) : undefined}
-                  onClick={() => setRamp(r)}
-                  className={cn(
-                    "rounded-md px-2 py-0.5 text-xs",
-                    ramp === r
-                      ? "bg-muted font-semibold text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 font-normal text-muted-foreground"
                 >
-                  {t(k(r))}
-                </button>
-              ))}
-            </div>
+                  <Sliders04 className="size-3.5" />
+                  {t(k("display"))}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="flex w-64 flex-col gap-4 p-4"
+              >
+                {mode !== "sections" && (
+                  <label className="flex flex-col gap-2">
+                    <span className="text-meta">{t(k("opacity"))}</span>
+                    <Slider
+                      thumbLabel={t(k("opacity"))}
+                      min={0.2}
+                      max={1}
+                      step={0.05}
+                      value={[opacity]}
+                      onValueChange={([v]) => v !== undefined && setOpacity(v)}
+                    />
+                  </label>
+                )}
+                <div className="flex flex-col gap-2">
+                  <span className="text-meta">{t(k("colors"))}</span>
+                  <ViewSwitch label={t(k("colors"))}>
+                    {(["thermal", "inferno"] as const).map((r) => (
+                      <ViewSwitch.Item
+                        key={r}
+                        pressed={r === ramp}
+                        onClick={() => setRamp(r)}
+                        title={
+                          r === "inferno" ? t(k("infernoHint")) : undefined
+                        }
+                      >
+                        {t(k(r))}
+                      </ViewSwitch.Item>
+                    ))}
+                  </ViewSwitch>
+                </div>
+                <div className="flex flex-col gap-2 max-sm:hidden">
+                  <span className="text-meta">{t(k("zoom"))}</span>
+                  <ViewSwitch label={t(k("zoom"))}>
+                    <ViewSwitch.Item
+                      pressed={zoom === "fit"}
+                      onClick={() => setZoom("fit")}
+                    >
+                      {t(k("fit"))}
+                    </ViewSwitch.Item>
+                    <ViewSwitch.Item
+                      pressed={zoom === 1}
+                      onClick={() => setZoom(1)}
+                    >
+                      {`${width} px`}
+                    </ViewSwitch.Item>
+                  </ViewSwitch>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
-        <aside className="flex min-h-0 flex-col border-border bg-background @max-5xl:border-t @5xl:h-[clamp(520px,78vh,980px)] @5xl:border-l">
-          <div className="grid grid-cols-2 gap-px border-b border-border bg-border">
-            <Stat
-              label={t(k("statClicks"))}
-              value={fmtInt(model.clicks * est, locale)}
-            />
-            <Stat
-              label={t(k("statDepth"))}
-              value={fmtPct(
-                model.avgDepth == null ? null : model.avgDepth / 100,
-                locale,
+        <aside
+          className={cn(
+            "flex min-h-0 flex-col border-border @max-4xl:border-t @4xl:border-l",
+            !fill && "@4xl:h-[clamp(520px,78vh,980px)]",
+          )}
+        >
+          <div className="flex flex-col gap-4 border-b border-border px-4 pt-4 pb-5">
+            <div className="text-meta flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              {[
+                {
+                  text: t(k("views"), { n: fmtInt(model.views, locale) }),
+                  hint: t(k("viewsHint")),
+                },
+                est > 1.05 && {
+                  text: t(k("scale"), { n: fmtInt(est, locale) }),
+                  hint: t(k("scaleHint")),
+                },
+                match != null &&
+                  match < 0.8 && {
+                    text: t(k("match"), { pct: fmtPct(match, locale) }),
+                    hint: t(k("matchHint")),
+                  },
+              ]
+                .filter((f) => f !== false)
+                .map((f, i) => (
+                  <span key={f.text} title={f.hint}>
+                    {i > 0 && <span aria-hidden>· </span>}
+                    {f.text}
+                  </span>
+                ))}
+              {model.smallSample && model.views > 0 && (
+                <DsBadge
+                  variant="warning"
+                  size="sm"
+                  title={t(k("smallSampleHint"))}
+                >
+                  {t(k("smallSample"))}
+                </DsBadge>
               )}
-              sub={
-                model.avgFold != null
-                  ? t(k("statFold"), {
-                      pct: fmtPct(model.avgFold / 100, locale),
-                    })
-                  : null
-              }
-            />
-            <Stat
-              label={t(k("statActive"))}
-              value={fmtSec(model.activeS, locale)}
-            />
-            <Stat
-              label={t(k("statRageDead"))}
-              value={`${fmtInt(model.rage * est, locale)} / ${fmtInt(model.dead * est, locale)}`}
-              sub={
-                model.error
-                  ? t(k("statErrors"), { n: fmtInt(model.error * est, locale) })
-                  : null
-              }
-            />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <Stat
+                label={t(k("statClicks"))}
+                value={fmtInt(model.clicks * est, locale)}
+              />
+              <Stat
+                label={t(k("statDepth"))}
+                value={fmtPct(
+                  model.avgDepth == null ? null : model.avgDepth / 100,
+                  locale,
+                )}
+                title={
+                  model.avgFold != null
+                    ? t(k("statFold"), {
+                        pct: fmtPct(model.avgFold / 100, locale),
+                      })
+                    : undefined
+                }
+              />
+              <Stat
+                label={t(k("statActive"))}
+                value={fmtSec(model.activeS, locale)}
+              />
+            </div>
           </div>
           <button
             type="button"
-            className="border-b border-border px-4 py-3 text-left text-sm font-semibold text-[var(--chart-1)] @5xl:hidden"
+            className="focus-ring border-b border-border px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-accent/50 @4xl:hidden"
             onClick={() => setRailOpen((o) => !o)}
           >
             {railOpen
@@ -975,409 +1033,382 @@ function Viewer({
           </button>
           <div
             className={cn(
-              "min-h-0 flex-1 flex-col @max-5xl:max-h-[60vh]",
-              railOpen ? "flex" : "hidden @5xl:flex",
+              "min-h-0 flex-1 flex-col @max-4xl:max-h-[60vh]",
+              railOpen ? "flex" : "hidden @4xl:flex",
             )}
           >
-            {mode === "clicks" && (
+            {detailEl ? (
+              <ElementDetail
+                t={t}
+                locale={locale}
+                mode={mode}
+                label={labelOf(detailEl)}
+                section={textOf(detailEl) ? rootName(detailEl.root) : null}
+                el={detailEl}
+                est={est}
+                ctr={ctrOf.get(detailEl.key)}
+                value={model.value.get(detailEl.key)}
+                currency={model.valueModel?.currency}
+                funnel={pinnedFunnel}
+                page={model.pageFunnel}
+                onBack={() => pick(detailEl.key)}
+              />
+            ) : (
               <>
-                <ListHead
-                  title={
-                    clickType !== "all"
-                      ? t(k("topOfType"), {
-                          type: t(k(`type_${clickType}`)).toLowerCase(),
-                        })
-                      : byCtr
-                        ? t(k("topCtr"))
-                        : t(k("topElements"))
-                  }
-                  aside={t(k("nElements"), {
-                    n: fmtInt(listed.length, locale),
-                  })}
-                />
-                {clickType === "all" && (
-                  <div
-                    role="group"
-                    aria-label={t(k("rankBy"))}
-                    className="mx-4 mb-1 flex w-fit items-center gap-0.5 rounded-lg border border-border p-0.5"
-                  >
-                    {(["clicks", "ctr"] as const).map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        aria-pressed={rankBy === r}
-                        title={r === "ctr" ? t(k("ctrHint")) : undefined}
-                        onClick={() => setRankBy(r)}
-                        className={cn(SEG, rankBy === r ? SEG_ON : SEG_OFF)}
-                      >
-                        {t(k(r === "ctr" ? "rankCtr" : "rankClicks"))}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {pinnedFunnel && pinnedEl && (
-                  <FunnelCard
-                    t={t}
-                    locale={locale}
-                    title={labelOf(pinnedEl)}
-                    f={pinnedFunnel}
-                    page={model.pageFunnel}
-                  />
-                )}
-                <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                  {byCtr && (
-                    <p className="px-2 pb-1 text-xs text-muted-foreground">
-                      {t(k("ctrMinNote"), {
-                        n: fmtInt(CTR_MIN_SEEN, locale),
-                      })}
-                    </p>
-                  )}
-                  {onPage.slice(0, 60).map((e, i) => {
-                    const w = weightOf(e, clickType);
-                    const share = w / totalW;
-                    const c = ctrOf.get(e.key);
-                    const meter = byCtr ? (c?.ctr ?? 0) / (topCtr || 1) : share;
-                    return (
-                      <Row
-                        key={e.key}
-                        id={e.key}
-                        rank={i + 1}
-                        label={labelOf(e)}
-                        value={
-                          byCtr
-                            ? fmtPct(c?.ctr ?? 0, locale, 1)
-                            : fmtInt(w * est, locale)
-                        }
-                        meter={Math.max(0.02, meter)}
-                        color={rampCss(
-                          ramp,
-                          0.25 + 0.75 * Math.min(1, byCtr ? meter : share * 4),
-                          1,
-                        )}
-                        active={activeKey === e.key}
-                        onEnter={() => enter(e.key)}
-                        onLeave={leave}
-                        onPick={() => pick(e.key)}
-                        sub={[
-                          rootName(e.root),
-                          // CTR before the click share: it is the figure the
-                          // row cannot show on its right, and the first to be
-                          // cut when the line truncates.
-                          byCtr
-                            ? t(k("ctrSeen"), {
-                                n: fmtInt((c?.seen ?? 0) * est, locale),
-                              })
-                            : c && c.seen
-                              ? t(k("ctrSub"), {
-                                  pct: fmtPct(c.ctr, locale, 1),
-                                })
-                              : "",
-                          byCtr
-                            ? ""
-                            : t(k("ofClicks"), {
-                                pct: fmtPct(share, locale, 1),
-                              }),
-                        ]
-                          .filter(Boolean)
-                          .join(", ")}
-                      >
-                        {itemBy.get(e.key)?.found === "sec" && (
-                          <Badge title={t(k("inSectionHint"))}>
-                            {t(k("inSection"))}
-                          </Badge>
-                        )}
-                        {e.rage > 0 && (
-                          <Badge tone="destructive">
-                            {t(k("badgeRage"), {
-                              n: fmtInt(e.rage * est, locale),
-                            })}
-                          </Badge>
-                        )}
-                        {e.dead > 0 && (
-                          <Badge tone="warning">
-                            {t(k("badgeDead"), {
-                              n: fmtInt(e.dead * est, locale),
-                            })}
-                          </Badge>
-                        )}
-                        {e.error > 0 && (
-                          <Badge tone="warning">
-                            {t(k("badgeError"), {
-                              n: fmtInt(e.error * est, locale),
-                            })}
-                          </Badge>
-                        )}
-                      </Row>
-                    );
-                  })}
-                  {!onPage.length && placed && (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">
-                      {t(k("noneOfType"))}
-                    </p>
-                  )}
-                  {offPage.length > 0 && (
-                    <details className="mx-2 mt-2 border-t border-dashed border-border pt-2">
-                      <summary className="cursor-pointer py-1 text-xs text-muted-foreground">
-                        {t(k("offPage"), {
-                          n: fmtInt(offPage.length, locale),
-                          pct: fmtPct(
-                            offPage.reduce(
-                              (s, e) => s + weightOf(e, clickType),
-                              0,
-                            ) / totalW,
-                            locale,
-                          ),
-                        })}
-                      </summary>
-                      {offPage.slice(0, 40).map((e) => (
-                        <div
-                          key={e.key}
-                          className="flex justify-between gap-2 px-2 py-1.5 text-xs"
-                        >
-                          <span className="truncate">
-                            {rootName(e.root) ?? t(k("outsideSections"))}
-                          </span>
-                          <span className="font-semibold tabular-nums">
-                            {fmtInt(weightOf(e, clickType) * est, locale)}
-                          </span>
-                        </div>
-                      ))}
-                    </details>
-                  )}
-                </div>
-              </>
-            )}
-            {mode === "value" && (
-              <>
-                <ListHead
-                  title={t(k("valueTitle"))}
-                  aside={model.valueModel?.currency ?? ""}
-                />
-                <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                  {model.valueModel && !model.valueModel.supported ? (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">
-                      {t(k("valueOtherGoal"))}
-                    </p>
-                  ) : !model.valueSummary ? (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">
-                      {t(k("valueNone"))}
-                    </p>
-                  ) : (
-                    <>
-                      {(pinnedFunnel && pinnedEl) || model.pageFunnel ? (
-                        <FunnelCard
-                          t={t}
-                          locale={locale}
-                          title={
-                            pinnedFunnel && pinnedEl
-                              ? labelOf(pinnedEl)
-                              : t(k("funnelPage"))
-                          }
-                          f={
-                            (pinnedFunnel && pinnedEl
-                              ? pinnedFunnel
-                              : model.pageFunnel)!
-                          }
-                          page={
-                            pinnedFunnel && pinnedEl ? model.pageFunnel : null
-                          }
-                        />
-                      ) : null}
-                      <p className="px-2 pb-2 text-xs text-muted-foreground">
-                        {t(k("valueBaseline"), {
-                          cvr: fmtPct(
-                            model.valueSummary.cvrPct / 100,
-                            locale,
-                            1,
-                          ),
-                          people: fmtInt(model.valueSummary.visitors, locale),
-                        })}
-                      </p>
-                      {valueRanked.map((v, i) => {
-                        const el = elBy.get(v.key);
-                        const top = valueRanked[0]?.revenue || 1;
+                {mode === "clicks" && (
+                  <>
+                    <ListHead
+                      title={
+                        clickType !== "all"
+                          ? t(k("topOfType"), {
+                              type: t(k(`type_${clickType}`)).toLowerCase(),
+                            })
+                          : byCtr
+                            ? t(k("topCtr"))
+                            : t(k("topElements"))
+                      }
+                      aside={
+                        clickType === "all" && (
+                          <ViewSwitch label={t(k("rankBy"))}>
+                            {(["clicks", "ctr"] as const).map((r) => (
+                              <ViewSwitch.Item
+                                key={r}
+                                pressed={r === rankBy}
+                                onClick={() => setRankBy(r)}
+                                title={
+                                  r === "ctr" ? t(k("ctrHint")) : undefined
+                                }
+                              >
+                                {t(k(r === "ctr" ? "rankCtr" : "rankClicks"))}
+                              </ViewSwitch.Item>
+                            ))}
+                          </ViewSwitch>
+                        )
+                      }
+                    />
+                    <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3">
+                      {byCtr && (
+                        <p className="px-2 pb-1 text-meta">
+                          {t(k("ctrMinNote"), {
+                            n: fmtInt(CTR_MIN_SEEN, locale),
+                          })}
+                        </p>
+                      )}
+                      {onPage.slice(0, 60).map((e) => {
+                        const w = weightOf(e, clickType);
+                        const share = w / totalW;
+                        const c = ctrOf.get(e.key);
+                        const meter = byCtr
+                          ? (c?.ctr ?? 0) / (topCtr || 1)
+                          : share;
                         return (
                           <Row
-                            key={v.key}
-                            id={v.key}
-                            rank={i + 1}
-                            label={el ? labelOf(el) : t(k("noText"))}
-                            value={fmtMoney(
-                              v.revenue,
-                              model.valueModel?.currency,
-                              locale,
-                            )}
-                            meter={Math.max(0.02, v.revenue / top)}
-                            color={rampCss(
-                              ramp,
-                              0.25 + 0.75 * (v.revenue / top),
-                              1,
-                            )}
-                            active={activeKey === v.key}
-                            onEnter={() => enter(v.key)}
+                            key={e.key}
+                            id={e.key}
+                            label={labelOf(e)}
+                            value={
+                              byCtr
+                                ? fmtPct(c?.ctr ?? 0, locale, 1)
+                                : fmtInt(w * est, locale)
+                            }
+                            meter={Math.max(0.02, meter)}
+                            active={activeKey === e.key}
+                            onEnter={() => enter(e.key)}
                             onLeave={leave}
-                            onPick={() => pick(v.key)}
-                            sub={t(k("valueRowSub"), {
-                              conv: fmtInt(v.convVisitors, locale),
-                              people: fmtInt(v.clickVisitors, locale),
-                              cvr: fmtPct(v.cvrPct / 100, locale, 1),
-                            })}
+                            onPick={() => pick(e.key)}
+                            sub={[
+                              textOf(e) ? rootName(e.root) : null,
+                              byCtr
+                                ? t(k("ctrSeen"), {
+                                    n: fmtInt((c?.seen ?? 0) * est, locale),
+                                  })
+                                : c && c.seen
+                                  ? t(k("ctrSub"), {
+                                      pct: fmtPct(c.ctr, locale, 1),
+                                    })
+                                  : "",
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}
                           >
-                            {/* The index, not the rate, is what a reader can
-                                act on: 1.0 is "exactly like its page". */}
-                            {!v.smallSample && v.rpvIndex > 0 && (
-                              <Badge
-                                tone={v.rpvIndex >= 1 ? "success" : "warning"}
-                                title={t(k("valueIndexHint"))}
-                              >
-                                {t(k("valueIndex"), {
-                                  x: v.rpvIndex.toLocaleString(locale, {
-                                    maximumFractionDigits: 2,
-                                  }),
+                            {itemBy.get(e.key)?.found === "sec" && (
+                              <Badge title={t(k("inSectionHint"))}>
+                                {t(k("inSection"))}
+                              </Badge>
+                            )}
+                            {e.rage > 0 && (
+                              <Badge>
+                                {t(k("badgeRage"), {
+                                  n: fmtInt(e.rage * est, locale),
                                 })}
                               </Badge>
                             )}
-                            {v.smallSample && (
-                              <Badge title={t(k("valueSmallHint"))}>
-                                {t(k("valueSmall"))}
+                            {e.dead > 0 && (
+                              <Badge>
+                                {t(k("badgeDead"), {
+                                  n: fmtInt(e.dead * est, locale),
+                                })}
+                              </Badge>
+                            )}
+                            {e.error > 0 && (
+                              <Badge>
+                                {t(k("badgeError"), {
+                                  n: fmtInt(e.error * est, locale),
+                                })}
                               </Badge>
                             )}
                           </Row>
                         );
                       })}
-                      {model.valueLeaks.length > 0 && (
+                      {!onPage.length && placed && (
+                        <p className="px-2 py-3 text-meta">
+                          {t(k("noneOfType"))}
+                        </p>
+                      )}
+                      {offPage.length > 0 && (
+                        <details className="mx-2 mt-2 border-t border-dashed border-border pt-2">
+                          <summary className="cursor-pointer py-1 text-meta">
+                            {t(k("offPage"), {
+                              n: fmtInt(offPage.length, locale),
+                              pct: fmtPct(
+                                offPage.reduce(
+                                  (s, e) => s + weightOf(e, clickType),
+                                  0,
+                                ) / totalW,
+                                locale,
+                              ),
+                            })}
+                          </summary>
+                          {offPage.slice(0, 40).map((e) => (
+                            <div
+                              key={e.key}
+                              className="flex justify-between gap-2 px-2 py-1.5 text-xs"
+                            >
+                              <span className="truncate">
+                                {rootName(e.root) ?? t(k("outsideSections"))}
+                              </span>
+                              <span className="tnum text-foreground">
+                                {fmtInt(weightOf(e, clickType) * est, locale)}
+                              </span>
+                            </div>
+                          ))}
+                        </details>
+                      )}
+                    </div>
+                  </>
+                )}
+                {mode === "value" && (
+                  <>
+                    <ListHead title={t(k("valueTitle"))} />
+                    <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3">
+                      {model.valueModel && !model.valueModel.supported ? (
+                        <p className="px-2 py-3 text-meta">
+                          {t(k("valueOtherGoal"))}
+                        </p>
+                      ) : !model.valueSummary ? (
+                        <p className="px-2 py-3 text-meta">
+                          {t(k("valueNone"))}
+                        </p>
+                      ) : (
                         <>
-                          <ListHead
-                            title={t(k("valueLeaksTitle"))}
-                            aside={t(k("valueLeaksAside"))}
-                          />
-                          {model.valueLeaks.map((v, i) => {
+                          <p className="px-2 pb-1 text-meta">
+                            {t(k("valueBaseline"), {
+                              cvr: fmtPct(
+                                model.valueSummary.cvrPct / 100,
+                                locale,
+                                1,
+                              ),
+                              people: fmtInt(
+                                model.valueSummary.visitors,
+                                locale,
+                              ),
+                            })}
+                          </p>
+                          {valueRanked.map((v) => {
                             const el = elBy.get(v.key);
+                            const top = valueRanked[0]?.revenue || 1;
                             return (
                               <Row
-                                key={`leak:${v.key}`}
+                                key={v.key}
                                 id={v.key}
-                                rank={i + 1}
                                 label={el ? labelOf(el) : t(k("noText"))}
-                                value={fmtInt(v.clickVisitors, locale)}
-                                meter={0.02}
-                                color="var(--chart-1)"
+                                value={fmtMoney(
+                                  v.revenue,
+                                  model.valueModel?.currency,
+                                  locale,
+                                )}
+                                meter={Math.max(0.02, v.revenue / top)}
                                 active={activeKey === v.key}
                                 onEnter={() => enter(v.key)}
                                 onLeave={leave}
                                 onPick={() => pick(v.key)}
-                                sub={t(k("valueLeakSub"), {
+                                sub={t(k("valueRowSub"), {
                                   people: fmtInt(v.clickVisitors, locale),
-                                  conv: fmtInt(v.convVisitors, locale),
+                                  cvr: fmtPct(v.cvrPct / 100, locale, 1),
                                 })}
-                              />
+                              >
+                                {/* The index, not the rate, is what a reader can
+                                act on: 1.0 is "exactly like its page". */}
+                                {!v.smallSample && v.rpvIndex > 0 && (
+                                  <span
+                                    title={t(k("valueIndexHint"))}
+                                    className={cn(
+                                      "shrink-0",
+                                      v.rpvIndex >= 1
+                                        ? "text-success"
+                                        : "text-warning",
+                                    )}
+                                  >
+                                    {"· "}
+                                    {t(k("valueIndex"), {
+                                      x: v.rpvIndex.toLocaleString(locale, {
+                                        maximumFractionDigits: 2,
+                                      }),
+                                    })}
+                                  </span>
+                                )}
+                                {v.smallSample && (
+                                  <span
+                                    title={t(k("valueSmallHint"))}
+                                    className="shrink-0"
+                                  >
+                                    {"· "}
+                                    {t(k("valueSmall"))}
+                                  </span>
+                                )}
+                              </Row>
                             );
                           })}
-                        </>
-                      )}
-                      {/* NOT optional. These numbers are associative, sampled
+                          {model.valueLeaks.length > 0 && (
+                            <>
+                              <h3 className="mt-3 border-t border-border px-2 pt-4 pb-1 text-sm font-medium text-foreground">
+                                {t(k("valueLeaksTitle"))}
+                              </h3>
+                              {model.valueLeaks.map((v) => {
+                                const el = elBy.get(v.key);
+                                return (
+                                  <Row
+                                    key={`leak:${v.key}`}
+                                    id={v.key}
+                                    label={el ? labelOf(el) : t(k("noText"))}
+                                    value={fmtInt(v.clickVisitors, locale)}
+                                    meter={0.02}
+                                    active={activeKey === v.key}
+                                    onEnter={() => enter(v.key)}
+                                    onLeave={leave}
+                                    onPick={() => pick(v.key)}
+                                    sub={t(k("valueLeakSub"), {
+                                      conv: fmtInt(v.convVisitors, locale),
+                                    })}
+                                  />
+                                );
+                              })}
+                            </>
+                          )}
+                          {/* NOT optional. These numbers are associative, sampled
                           and not summable; a reader who is not told will add
                           them up and call the result a total. */}
-                      <p className="px-2 pt-3 text-xs text-muted-foreground">
-                        {t(k("valueCaveat"), {
-                          minutes: model.valueModel?.windowMinutes ?? 30,
-                        })}
-                      </p>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-            {mode === "scroll" && (
-              <>
-                <ListHead
-                  title={t(k("reachTitle"))}
-                  aside={t(k("reachAside"))}
-                />
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
-                  <table className="w-full text-sm tabular-nums">
-                    <tbody>
-                      {[10, 25, 50, 75, 90, 100].map((d) => {
-                        const r = reachAt(model.scroll, d);
+                          <p className="px-2 pt-3 text-meta">
+                            {t(k("valueCaveat"), {
+                              minutes: model.valueModel?.windowMinutes ?? 30,
+                            })}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+                {mode === "scroll" && (
+                  <>
+                    <ListHead
+                      title={t(k("reachTitle"))}
+                      aside={t(k("reachAside"))}
+                    />
+                    <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3">
+                      <table className="tnum w-full text-sm">
+                        <tbody>
+                          {[10, 25, 50, 75, 90, 100].map((d) => {
+                            const r = reachAt(model.scroll, d);
+                            return (
+                              <tr key={d} className="border-b border-border">
+                                <td className="py-2">
+                                  <i
+                                    className="mr-2 inline-block size-2.5 rounded-sm align-[-1px]"
+                                    style={{
+                                      background: rampCss(ramp, r, 0.9),
+                                    }}
+                                  />
+                                  {t(k("reachRow"), { d: String(d) })}
+                                </td>
+                                <td className="py-2 text-right text-foreground">
+                                  {fmtPct(r, locale)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      <p className="mt-3 text-meta">{t(k("foldNote"))}</p>
+                    </div>
+                  </>
+                )}
+                {(mode === "sections" || mode === "attention") && (
+                  <>
+                    <ListHead
+                      title={t(
+                        k(
+                          mode === "sections"
+                            ? "sectionsByClicks"
+                            : "sectionsByTime",
+                        ),
+                      )}
+                      aside={t(k("nSections"), {
+                        n: fmtInt(blocks.length, locale),
+                      })}
+                    />
+                    <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3">
+                      {blocks.map((b) => {
+                        const key = `blk:${b.key}`;
+                        const v =
+                          mode === "sections" ? b.clicks : (b.seconds ?? 0);
                         return (
-                          <tr key={d} className="border-b border-border">
-                            <td className="py-2">
-                              <i
-                                className="mr-2 inline-block size-2.5 rounded-sm align-[-1px]"
-                                style={{ background: rampCss(ramp, r, 0.9) }}
-                              />
-                              {t(k("reachRow"), { d: String(d) })}
-                            </td>
-                            <td className="py-2 text-right font-semibold">
-                              {fmtPct(r, locale)}
-                            </td>
-                          </tr>
+                          <Row
+                            key={key}
+                            id={key}
+                            label={b.name}
+                            value={
+                              mode === "sections"
+                                ? fmtInt(b.clicks * est, locale)
+                                : fmtSec(b.seconds, locale)
+                            }
+                            meter={v / blockMax}
+                            active={activeKey === key}
+                            onEnter={() => enter(key)}
+                            onLeave={leave}
+                            onPick={() => pick(key)}
+                            sub={[
+                              b.heading,
+                              b.reach != null
+                                ? t(k("saw"), { pct: fmtPct(b.reach, locale) })
+                                : "",
+                              sectionBy.get(b.key)?.seenViews
+                                ? t(k("ctrSub"), {
+                                    pct: fmtPct(
+                                      (sectionBy.get(b.key)?.ctrPct ?? 0) / 100,
+                                      locale,
+                                      1,
+                                    ),
+                                  })
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}
+                          />
                         );
                       })}
-                    </tbody>
-                  </table>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {t(k("foldNote"))}
-                  </p>
-                </div>
-              </>
-            )}
-            {(mode === "sections" || mode === "attention") && (
-              <>
-                <ListHead
-                  title={t(
-                    k(
-                      mode === "sections"
-                        ? "sectionsByClicks"
-                        : "sectionsByTime",
-                    ),
-                  )}
-                  aside={t(k("nSections"), {
-                    n: fmtInt(blocks.length, locale),
-                  })}
-                />
-                <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                  {blocks.map((b, i) => {
-                    const key = `blk:${b.key}`;
-                    const v = mode === "sections" ? b.clicks : (b.seconds ?? 0);
-                    return (
-                      <Row
-                        key={key}
-                        id={key}
-                        rank={i + 1}
-                        label={b.name}
-                        value={
-                          mode === "sections"
-                            ? fmtInt(b.clicks * est, locale)
-                            : fmtSec(b.seconds, locale)
-                        }
-                        meter={v / blockMax}
-                        color={rampCss(ramp, 0.2 + 0.8 * (v / blockMax), 1)}
-                        active={activeKey === key}
-                        onEnter={() => enter(key)}
-                        onLeave={leave}
-                        onPick={() => pick(key)}
-                        sub={[
-                          b.heading,
-                          b.reach != null
-                            ? t(k("saw"), { pct: fmtPct(b.reach, locale) })
-                            : "",
-                          sectionBy.get(b.key)?.seenViews
-                            ? t(k("ctrSub"), {
-                                pct: fmtPct(
-                                  (sectionBy.get(b.key)?.ctrPct ?? 0) / 100,
-                                  locale,
-                                  1,
-                                ),
-                              })
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(", ")}
-                      />
-                    );
-                  })}
-                </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1396,55 +1427,12 @@ function attentionAt(model: HeatmapModel, pct: number): number | null {
   );
 }
 
-function Pill({
-  title,
-  tone,
-  children,
-}: {
-  title: string;
-  tone?: "warn";
-  children: ReactNode;
-}) {
+/** The DS badge at count size, muted: a row's flags are counts, not alarms. */
+function Badge({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <span
-      title={title}
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs tabular-nums",
-        tone === "warn"
-          ? "bg-warning/20 text-foreground"
-          : "bg-muted text-muted-foreground",
-      )}
-    >
+    <DsBadge variant="muted" size="sm" title={title}>
       {children}
-    </span>
-  );
-}
-
-function Badge({
-  title,
-  tone,
-  children,
-}: {
-  title?: string;
-  tone?: "destructive" | "warning" | "success";
-  children: ReactNode;
-}) {
-  return (
-    <span
-      title={title}
-      className={cn(
-        "shrink-0 whitespace-nowrap rounded-full px-1.5 text-[10.5px] font-semibold",
-        tone === "destructive"
-          ? "bg-destructive/15 text-destructive"
-          : tone === "warning"
-            ? "bg-warning/25 text-foreground"
-            : tone === "success"
-              ? "bg-success/15 text-success"
-              : "bg-muted text-muted-foreground",
-      )}
-    >
-      {children}
-    </span>
+    </DsBadge>
   );
 }
 
@@ -1452,105 +1440,219 @@ function Stat({
   label,
   value,
   sub,
+  title,
 }: {
   label: string;
   value: string;
   sub?: string | null;
+  /** More about the figure, on hover. */
+  title?: string;
 }) {
   return (
-    <div className="bg-background px-4 py-3">
-      <span className="block text-xs text-muted-foreground">{label}</span>
-      <b className="mt-0.5 block text-lg font-semibold tabular-nums">{value}</b>
-      {sub && (
-        <em className="text-xs not-italic text-muted-foreground tabular-nums">
-          {sub}
-        </em>
-      )}
+    <div className="flex min-w-0 flex-col gap-1" title={title}>
+      <span className="text-meta">{label}</span>
+      <span className="font-display tnum text-2xl text-foreground">
+        {value}
+      </span>
+      {sub && <span className="text-meta">{sub}</span>}
+    </div>
+  );
+}
+
+/** One element on its own: its figures, its flags and where its clickers went. */
+function ElementDetail({
+  t,
+  locale,
+  mode,
+  label,
+  section,
+  el,
+  est,
+  ctr,
+  value,
+  currency,
+  funnel,
+  page,
+  onBack,
+}: {
+  t: TFunction;
+  locale: string;
+  mode: HeatMode;
+  label: string;
+  section: string | null;
+  el: HeatElement;
+  est: number;
+  ctr: { ctr: number; seen: number } | undefined;
+  value: HeatElementValue | undefined;
+  currency: string | null | undefined;
+  funnel: HeatFunnel | undefined;
+  page: HeatFunnel | null;
+  onBack: () => void;
+}) {
+  const flags = [
+    el.rage > 0 && t(k("badgeRage"), { n: fmtInt(el.rage * est, locale) }),
+    el.dead > 0 && t(k("badgeDead"), { n: fmtInt(el.dead * est, locale) }),
+    el.error > 0 && t(k("badgeError"), { n: fmtInt(el.error * est, locale) }),
+  ].filter((f): f is string => Boolean(f));
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="px-2 pt-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          className="gap-1 font-normal text-muted-foreground"
+        >
+          <ArrowLeft size={14} />
+          {t(k("backToList"))}
+        </Button>
+      </div>
+      <div className="flex flex-col gap-5 border-b border-border px-4 pt-3 pb-5">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h3
+            className="truncate text-sm font-medium text-foreground"
+            title={label}
+          >
+            {label}
+          </h3>
+          {section && <span className="text-meta truncate">{section}</span>}
+        </div>
+        {mode === "value" && value ? (
+          <div className="grid grid-cols-2 gap-4">
+            <Stat
+              label={t(k("value"))}
+              value={fmtMoney(value.revenue, currency, locale)}
+            />
+            <Stat
+              label={t(k("funnel_bought"))}
+              value={fmtPct(value.cvrPct / 100, locale, 1)}
+              sub={t(k("funnelPeople"), {
+                n: fmtInt(value.clickVisitors, locale),
+              })}
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <Stat
+              label={t(k("statClicks"))}
+              value={fmtInt(el.clicks * est, locale)}
+            />
+            <Stat
+              label={t(k("rankCtr"))}
+              value={ctr?.seen ? fmtPct(ctr.ctr, locale, 1) : "—"}
+            />
+          </div>
+        )}
+        {mode === "value" &&
+          value &&
+          !value.smallSample &&
+          value.rpvIndex > 0 && (
+            <span
+              title={t(k("valueIndexHint"))}
+              className={cn(
+                "text-sm",
+                value.rpvIndex >= 1 ? "text-success" : "text-warning",
+              )}
+            >
+              {t(k("valueIndex"), {
+                x: value.rpvIndex.toLocaleString(locale, {
+                  maximumFractionDigits: 2,
+                }),
+              })}
+            </span>
+          )}
+        {flags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {flags.map((f) => (
+              <Badge key={f}>{f}</Badge>
+            ))}
+          </div>
+        )}
+      </div>
+      {funnel && <FunnelSteps t={t} locale={locale} f={funnel} page={page} />}
     </div>
   );
 }
 
 /** Where the people who clicked went next: each step as a share of them, with
- *  the page's own share beside it when there is one to compare against. */
-function FunnelCard({
+ *  the page's own share under it when there is one to compare against. */
+function FunnelSteps({
   t,
   locale,
-  title,
   f,
   page,
 }: {
   t: TFunction;
   locale: string;
-  title: string;
   f: HeatFunnel;
   page: HeatFunnel | null;
 }) {
   const of = (n: number, d: number) => (d ? n / d : 0);
   return (
-    <div className="mx-3 mb-2 rounded-lg border border-border p-3">
+    <section className="flex flex-col gap-4 px-4 py-5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-semibold">{t(k("funnelTitle"))}</span>
-        <span className="truncate text-xs text-muted-foreground" title={title}>
-          {title}
+        <h4 className="text-sm text-foreground/70">{t(k("funnelTitle"))}</h4>
+        <span className="text-meta tnum">
+          {t(k("funnelPeople"), { n: fmtInt(f.visitors, locale) })}
+          {f.visitors < 30 ? ` · ${t(k("valueSmall"))}` : ""}
         </span>
       </div>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        {t(k("funnelPeople"), { n: fmtInt(f.visitors, locale) })}
-        {f.visitors < 30 ? ` · ${t(k("valueSmall"))}` : ""}
-      </p>
-      <div className="mt-2 flex flex-col gap-1.5">
+      <ol className="flex flex-col gap-4">
         {FUNNEL_STEPS.map((step) => {
           const share = of(f[step], f.visitors);
           const base = page ? of(page[step], page.visitors) : null;
           return (
-            <div
-              key={step}
-              className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 text-xs"
-            >
-              <span className="truncate">{t(k(`funnel_${step}`))}</span>
-              <span className="font-semibold tabular-nums">
-                {fmtPct(share, locale, 1)}
-                {base != null && (
+            <li key={step} className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between gap-3 text-sm text-foreground">
+                <span className="truncate">{t(k(`funnel_${step}`))}</span>
+                <span className="tnum shrink-0">
+                  {fmtPct(share, locale, 1)}
+                </span>
+              </div>
+              <div className="surface-inset h-1.5 overflow-hidden rounded-full">
+                <div
+                  className="h-full rounded-full bg-chart-1"
+                  style={{ width: `${Math.min(100, share * 100)}%` }}
+                />
+              </div>
+              {base != null && (
+                <span className="text-meta tnum">
                   <span
                     className={cn(
-                      "ml-1.5 font-normal",
                       share >= base ? "text-success" : "text-warning",
                     )}
                   >
                     {t(k("funnelVsPage"), { pct: fmtPct(base, locale, 1) })}
                   </span>
-                )}
-              </span>
-              <span className="col-span-2 h-1 overflow-hidden rounded-full bg-muted">
-                <i
-                  className="block h-full rounded-full bg-[var(--chart-1)]"
-                  style={{ width: `${Math.min(100, share * 100)}%` }}
-                />
-              </span>
-            </div>
+                </span>
+              )}
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ol>
+    </section>
   );
 }
 
-function ListHead({ title, aside }: { title: string; aside: string }) {
+function ListHead({ title, aside }: { title: string; aside?: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 px-4 pt-3.5 pb-1.5">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <span className="text-xs text-muted-foreground">{aside}</span>
+    <div className="flex min-h-12 items-center justify-between gap-2 px-4 pt-4 pb-2">
+      <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      {typeof aside === "string" ? (
+        <span className="text-meta">{aside}</span>
+      ) : (
+        aside
+      )}
     </div>
   );
 }
 
+/** A ranked element or section, its bar behind it as in the Monitor's lists. */
 function Row(p: {
   id: string;
-  rank: number;
   label: string;
   value: string;
   meter: number;
-  color: string;
   sub: string;
   active: boolean;
   onEnter: () => void;
@@ -1569,30 +1671,26 @@ function Row(p: {
       onBlur={p.onLeave}
       onClick={p.onPick}
       className={cn(
-        "grid w-full grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 py-2 text-left text-sm hover:bg-muted",
-        p.active && "bg-muted",
+        "focus-ring flex w-full flex-col gap-1 rounded-md py-1 text-left hover:bg-accent/60",
+        p.active && "bg-accent",
       )}
     >
-      <span className="text-right text-xs text-muted-foreground tabular-nums">
-        {p.rank}
-      </span>
-      <span className="truncate font-medium" title={p.label}>
-        {p.label}
-      </span>
-      <span className="text-right font-semibold tabular-nums">{p.value}</span>
-      <span className="col-start-2 col-end-4 h-1 overflow-hidden rounded-full bg-muted">
-        <i
-          className="block h-full rounded-full"
-          style={{
-            width: `${Math.min(100, p.meter * 100)}%`,
-            background: p.color,
-          }}
+      <span className="relative flex items-center gap-2 rounded-md px-2 py-1 text-sm text-foreground">
+        <span
+          className="surface-inset absolute inset-y-0 left-0 rounded-md"
+          style={{ width: `${Math.min(100, p.meter * 100)}%` }}
         />
+        <span className="relative min-w-0 flex-1 truncate" title={p.label}>
+          {p.label}
+        </span>
+        <span className="tnum relative shrink-0">{p.value}</span>
       </span>
-      <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="truncate">{p.sub}</span>
-        {p.children}
-      </span>
+      {(p.sub || p.children) && (
+        <span className="text-meta flex min-w-0 items-center gap-1.5 px-2">
+          <span className="truncate">{p.sub}</span>
+          {p.children}
+        </span>
+      )}
     </button>
   );
 }
@@ -1611,10 +1709,8 @@ function Cover({ title, children }: { title?: string; children: ReactNode }) {
   // hovered or have its cookie banner accepted while this is shown.
   return (
     <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center p-6 text-center">
-      <div className="max-w-sm rounded-xl border border-border bg-background px-4 py-3.5 text-sm text-muted-foreground shadow-lg">
-        {title && (
-          <strong className="mb-1 block text-foreground">{title}</strong>
-        )}
+      <div className="surface max-w-sm px-5 py-4 text-sm text-muted-foreground">
+        {title && <h3 className="mb-1 font-medium text-foreground">{title}</h3>}
         {children}
       </div>
     </div>

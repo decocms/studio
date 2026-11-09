@@ -142,22 +142,15 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // API keys are capabilities bound to the organization that minted them.
   // Do this check before membership/rebinding so a valid key from org B cannot
   // be reused against org A merely because its owner is also an A member.
-  const apiKeyBinding = getApiKeyOrganizationBinding(ctx);
-  if (
-    ctx.auth?.apiKey?.id &&
-    apiKeyBinding.present &&
-    apiKeyBinding.id !== org.id
-  ) {
+  const scopedElsewhere = scopedToAnotherOrganization(ctx, org.id);
+  if (scopedElsewhere === "apiKey") {
     return c.json(
       { error: "forbidden: API key is scoped to another organization" },
       403,
     );
   }
 
-  if (
-    ctx.auth?.tokenOrganizationId &&
-    ctx.auth.tokenOrganizationId !== org.id
-  ) {
+  if (scopedElsewhere === "token") {
     return c.json(
       { error: "forbidden: token is scoped to another organization" },
       403,
@@ -190,26 +183,8 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // ctx.access.check() (UnauthorizedError → 401).
   let pathRole: string | undefined;
   if (userId) {
-    const membership = await db
-      .selectFrom("member")
-      .select(["role"])
-      .where("userId", "=", userId)
-      .where("organizationId", "=", org.id)
-      .executeTakeFirst();
-
-    if (membership) {
-      pathRole = membership.role;
-    } else if (await isTaskBoardAdminUser(db, userId)) {
-      // Widens every org-scoped route, not just the board — see isTaskBoardAdminUser.
-      auditTaskBoardAdminAction({
-        action: "org_scope_admit",
-        actorUserId: userId,
-        targetOrgId: org.id,
-        method: c.req.method,
-        route: c.req.path,
-      });
-      pathRole = "owner";
-    } else {
+    pathRole = await memberRole(c, db, userId, org.id);
+    if (pathRole === undefined) {
       // Public-share reads + password unlock are reachable by anyone, incl.
       // signed-in non-members — let them fall through to the route (which serves
       // only shared content and 403s the rest). All other routes stay gated.
@@ -230,11 +205,78 @@ export const resolveOrgFromPath: MiddlewareHandler<{
     }
   }
 
+  bindOrganization(ctx, org, pathRole);
+
+  return await next();
+};
+
+/**
+ * Whether the caller's API key or token is bound to an organization other
+ * than `orgId` (`null` when neither is).
+ */
+export function scopedToAnotherOrganization(
+  ctx: StudioContext,
+  orgId: string,
+): "apiKey" | "token" | null {
+  const apiKeyBinding = getApiKeyOrganizationBinding(ctx);
+  if (
+    ctx.auth?.apiKey?.id &&
+    apiKeyBinding.present &&
+    apiKeyBinding.id !== orgId
+  ) {
+    return "apiKey";
+  }
+  if (ctx.auth?.tokenOrganizationId && ctx.auth.tokenOrganizationId !== orgId) {
+    return "token";
+  }
+  return null;
+}
+
+/**
+ * The user's role in the organization: their membership's, or `owner` for a
+ * task-board admin (audited); `undefined` when neither.
+ */
+export async function memberRole(
+  c: Context,
+  db: NonNullable<StudioContext["db"]>,
+  userId: string,
+  orgId: string,
+): Promise<string | undefined> {
+  const membership = await db
+    .selectFrom("member")
+    .select(["role"])
+    .where("userId", "=", userId)
+    .where("organizationId", "=", orgId)
+    .executeTakeFirst();
+  if (membership) return membership.role;
+  if (await isTaskBoardAdminUser(db, userId)) {
+    // Widens every org-scoped route, not just the board — see isTaskBoardAdminUser.
+    auditTaskBoardAdminAction({
+      action: "org_scope_admit",
+      actorUserId: userId,
+      targetOrgId: orgId,
+      method: c.req.method,
+      route: c.req.path,
+    });
+    return "owner";
+  }
+  return undefined;
+}
+
+/**
+ * Bind the context to a resolved organization: `ctx.organization`, the
+ * access control's org and role, and every org-scoped storage.
+ */
+export function bindOrganization(
+  ctx: StudioContext,
+  org: { id: string; slug: string; name: string },
+  role: string | undefined,
+): void {
   ctx.organization = {
     id: org.id,
     slug: org.slug,
     name: org.name,
-    role: pathRole,
+    role,
   };
   // Tell AccessControl to use the path-resolved org for permission checks.
   // Without this, boundAuth.hasPermission falls back to the session's
@@ -246,13 +288,11 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // construction time from the session's active org. When the path targets a
   // different org — or when there's no active org and the role was undefined
   // — the bypass silently fails and owners get spurious 403s on tool calls.
-  ctx.access.setRole(pathRole);
+  ctx.access.setRole(role);
   // Everything org-scoped on the context (thread storage, object storage,
   // org-fs, asset hoisters) was constructed eagerly from the session's active
   // org — or from no org at all. Rebind it all to the path-resolved org so
   // cross-org navigation (session active=A, URL targets B) reads and writes
   // B's tenant scope, never A's.
   rebindOrgScope(ctx, org);
-
-  return await next();
-};
+}

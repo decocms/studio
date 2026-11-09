@@ -17,7 +17,7 @@ export interface CandidateConnection {
   id: string;
   app_name?: string | null;
   app_id?: string | null;
-  connection_token?: string | null;
+  has_connection_token?: boolean;
   oauth_config?: unknown | null;
   configuration_state?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;

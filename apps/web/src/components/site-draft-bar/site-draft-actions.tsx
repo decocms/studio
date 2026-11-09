@@ -20,15 +20,15 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { agentShowsRepositoryHeaderActions } from "@/lib/agent-capabilities";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
-import { editsBlocksDraft } from "@/layouts/main-panel-tabs/experiments-tab-choice";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
+import { useProductionGate } from "@/layouts/main-panel-tabs/use-production-gate";
 import { siteDraftBarParts } from "./site-draft-bar-parts";
 
 /**
  * `blocksOnly`: Experiments and Calendar show the bar only on a Blocks (v8)
  * site, where a test or a campaign is an edit to its draft; a v7 site's
- * Experiments keeps its own page, with no bar. Their publish panel has no
+ * Experiments has no bar. Their publish panel has no
  * Code tab (PO decision); the site editor's keeps it. The bar itself is the
  * same on all three views: a view's own actions sit in the view's header.
  */
@@ -37,8 +37,7 @@ export function SiteDraftActions({ blocksOnly }: { blocksOnly?: boolean }) {
 }
 
 function BlocksSiteDraftActions() {
-  const siteMajor = useMainSchemaV8(useRouteVirtualMcpId());
-  return editsBlocksDraft(siteMajor) ? (
+  return useBlocksV8Project(useRouteVirtualMcpId()) ? (
     <PublishCodeTab value={false}>
       <SiteDraftBar />
     </PublishCodeTab>
@@ -51,22 +50,23 @@ function SiteDraftBar() {
   const entity = useVirtualMCP(session?.virtualMcpId);
   const currentBranch = session?.currentBranch ?? null;
   const runtime = useSessionRuntime(entity?.id).runtime;
-  const { url: localPreviewUrl, undecided: tunnelUndecided } =
-    useLocalPreviewUrl(entity?.id);
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   // Outside a project (`/site-editor`) a connected `deco serve` is the only
   // thing behind the editor.
   const { connection: serveConnection } = useDecoServeConnection(
     entity?.id ?? session?.virtualMcpId,
   );
   const virtualMcpId = entity?.id ?? session?.virtualMcpId;
+  // Not known to be a draft yet counts too: Publish never flashes on production.
+  const onProduction = useProductionGate() !== "open";
   const parts = siteDraftBarParts({
     hasEntity: !!entity,
     servingLocally: !!serveConnection,
     localPreview: !!localPreviewUrl,
-    tunnelUndecided: !!tunnelUndecided,
     showsRepositoryActions:
       !!entity && agentShowsRepositoryHeaderActions(entity),
     runtime,
+    onProduction,
   });
   if (!virtualMcpId || parts.hidden) return null;
   return (

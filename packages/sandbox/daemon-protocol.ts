@@ -172,6 +172,10 @@ export type BranchMeta =
       aheadOfBase: number;
       behindBase: number;
       headSha: string;
+      /** The last checkpoint push failed and work is still only in the sandbox. */
+      pushError?: string;
+      /** ISO time of the first failure in the current run of failures. */
+      pushFailingSince?: string;
     };
 
 /** Active task summary surfaced for Studio's Run/Restart UI. */

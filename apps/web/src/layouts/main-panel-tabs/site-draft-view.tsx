@@ -12,18 +12,22 @@ import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useConflictMembers } from "@/components/sections-editor/conflict-author";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import { NAMED_RULE_BLOCKS } from "@/components/sections-editor/named-rules";
+import {
+  useDecofile,
+  useEnsureDecofileBlocks,
+} from "@/components/sections-editor/use-decofile";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
 import { isSiteNotOwned, SiteNotOwnedState } from "./blocks-tab-states";
 import { usePanelNavigate } from "./use-panel-navigate";
-import { preloadSiteEditorContentOnShow } from "./preload-site-editor-content";
 
 export interface SiteDraftGuideAction {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 /** One calm step: what's missing and the one thing to do about it. */
@@ -48,7 +52,11 @@ export function SiteDraftGuide({
             description={description}
             buttonProps={
               action
-                ? { children: action.label, onClick: action.onClick }
+                ? {
+                    children: action.label,
+                    onClick: action.onClick,
+                    disabled: action.disabled,
+                  }
                 : undefined
             }
           />
@@ -164,9 +172,15 @@ function SiteDraftLoaded({
   const metaQuery = useLiveMeta(params);
   const decofile = decofileQuery.data as Record<string, unknown> | undefined;
   const meta = metaQuery.data;
+  // Hosted v8: these views read the `experiments` and `campaigns` blocks
+  // only. They say nowhere where a name is used, so no other body loads.
+  const load = useEnsureDecofileBlocks(
+    { orgSlug, virtualMcpId, branch },
+    NAMED_RULE_BLOCKS,
+  );
 
-  if (!decofile || !meta) {
-    if (decofileQuery.isError || metaQuery.isError) {
+  if (!decofile || !meta || !load.ready) {
+    if (decofileQuery.isError || metaQuery.isError || load.failed) {
       return (
         <SiteDraftGuide
           icon={icon}
@@ -175,8 +189,9 @@ function SiteDraftLoaded({
           action={{
             label: t("sectionsEditor.namedRules.tryAgain"),
             onClick: () => {
-              void decofileQuery.refetch();
-              void metaQuery.refetch();
+              if (decofileQuery.isError) void decofileQuery.refetch();
+              if (metaQuery.isError) void metaQuery.refetch();
+              if (load.failed) load.retry();
             },
           }}
         />
@@ -185,9 +200,6 @@ function SiteDraftLoaded({
     return <>{skeleton}</>;
   }
   return (
-    // Their "Used by" opens the site editor: its code is ready by the click.
-    <div className="contents" ref={preloadSiteEditorContentOnShow}>
-      {children({ orgSlug, virtualMcpId, branch, threadId, decofile, meta })}
-    </div>
+    <>{children({ orgSlug, virtualMcpId, branch, threadId, decofile, meta })}</>
   );
 }

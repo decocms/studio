@@ -17,6 +17,7 @@ import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
 import { z } from "zod";
+import { readSignedGrant } from "./signed-grant";
 import { ConnectionStorage } from "../storage/connection";
 import { ConnectionCredentialVaultStorage } from "../storage/connection-credential-vault";
 import {
@@ -150,6 +151,33 @@ export function runMetadataFromApiKey(
     return undefined;
   }
   return parsed.data;
+}
+
+const ThreadGrantSchema = z.object({
+  threadId: z.string().min(1),
+  organizationId: z.string(),
+  expiresAt: z.number(),
+});
+
+/**
+ * The thread a sandbox run's key is bound to (see `mcpKeyMetadata`). Read from
+ * the key's stored metadata only: the run holds the bearer, so a thread named
+ * by a header, query or body would let it act on another run's thread. Signed,
+ * because a caller can write any metadata on a key it creates (`API_KEY_CREATE`).
+ */
+export function threadIdFromApiKey(
+  metadata: Record<string, unknown> | undefined,
+  organizationId: string | undefined,
+  now: number = Date.now(),
+): string | undefined {
+  const token = metadata?.threadGrant;
+  if (typeof token !== "string") return undefined;
+  const grant = ThreadGrantSchema.safeParse(readSignedGrant(token));
+  return grant.success &&
+    grant.data.organizationId === organizationId &&
+    grant.data.expiresAt > now
+    ? grant.data.threadId
+    : undefined;
 }
 
 export interface StudioContextConfig {
@@ -589,6 +617,7 @@ import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
+import { DraftStorage } from "@/storage/cms-drafts";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
@@ -853,6 +882,7 @@ async function authenticateRequest(
   apiKey?: StudioContext["auth"]["apiKey"];
   tokenOrganizationId?: string;
   organization?: OrganizationContext;
+  onBehalfOf?: boolean;
 }> {
   const authHeader = req.headers.get("Authorization");
 
@@ -1122,6 +1152,7 @@ async function authenticateRequest(
 
         return {
           method: "apiKey",
+          onBehalfOf: !!onBehalfOf,
           apiKeyId: result.key.id,
           // On-behalf-of fully replaces the principal (id + role) so user/role
           // stay consistent; the actor never inherits the key owner's role.
@@ -1545,6 +1576,7 @@ export async function createStudioContextFactory(
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
+    cmsDrafts: new DraftStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
     gitProviderAccounts: new GitProviderAccountStorage(config.db),
     gitProviderAccountCredentials: new GitProviderAccountCredentialStorage(
@@ -1650,10 +1682,17 @@ export async function createStudioContextFactory(
       permissionsOrganizationId: authResult.permissions
         ? authResult.organization?.id
         : undefined,
+      ...(authResult.method ? { method: authResult.method } : {}),
+      ...(authResult.onBehalfOf ? { onBehalfOf: true } : {}),
     };
 
     if (authResult.apiKey) {
       studioAuth.apiKey = authResult.apiKey;
+      const boundThreadId = threadIdFromApiKey(
+        authResult.apiKey.metadata,
+        authResult.organization?.id,
+      );
+      if (boundThreadId) studioAuth.boundThreadId = boundThreadId;
     }
 
     // Organization from Better Auth (OAuth session or API key metadata)

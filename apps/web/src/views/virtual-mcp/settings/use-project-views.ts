@@ -433,7 +433,7 @@ export function useProjectViews({
     1,
   );
   const sidebarViewLabels: Record<ProjectSidebarViewId, string> = {
-    overview: t("sidebar.navDestinations.home"),
+    overview: t("sidebar.navDestinations.overview"),
     reports: t("sidebar.navDestinations.reports"),
     board: t("sidebar.navDestinations.tasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
@@ -441,10 +441,7 @@ export function useProjectViews({
     releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),
-    analytics: t("common.mainPanelTabs.analytics"),
-    cdn: t("common.mainPanelTabs.cdn"),
     automations: t("virtualMcp.layoutTabContent.automations"),
-    experiments: t("experiments.title"),
     calendar: t("common.mainPanelTabs.calendar"),
   };
 
@@ -464,6 +461,8 @@ export function useProjectViews({
      * that final project row after the pinned-view loop below.
      */
     if (viewId === "automations") continue;
+    /** Already the first option. */
+    if (viewId === "overview") continue;
     defaultMainOptions.push({
       value: viewId,
       label: sidebarViewLabels[viewId],
@@ -492,8 +491,6 @@ export function useProjectViews({
   return {
     /** Every view this project can open, in sidebar order. */
     projectViews: availableSidebarViews,
-    /** A Blocks (v8) site (its Calendar is present). */
-    blocksSite,
     labels: sidebarViewLabels,
     pinned: (viewId: ProjectSidebarViewId) => sidebarViews.includes(viewId),
     isMainView: (value: string) => defaultMainView === value,

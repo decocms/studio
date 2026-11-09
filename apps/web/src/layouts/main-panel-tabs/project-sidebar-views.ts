@@ -7,19 +7,16 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "board",
   "site-editor",
   "calendar",
-  "experiments",
   "assets",
   "releases",
   "hosting",
   "e2e",
-  "analytics",
-  "cdn",
   "automations",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
- * preferences yet. A Blocks (v8) site also gets Experiments and Calendar,
- * peers of its Site Editor, through {@link offeredProjectSidebarViews}. */
+ * preferences yet. A Blocks v8 project also gets Calendar, a peer of its
+ * Site Editor, through {@link offeredProjectSidebarViews}. */
 export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
   "overview",
   "reports",
@@ -33,14 +30,13 @@ export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
 
 /**
  * Views a Blocks (v8) site gets once on top of a list saved before they were
- * defaults (PO decision): its A/B tests and campaigns are content its editors
- * own. Offered until the project's next sidebar save records them in
+ * defaults (PO decision): its campaigns are content its editors own.
+ * Offered until the project's next sidebar save records them in
  * `sidebarViewsSeen`; from then on the saved list alone decides, so hiding
  * one sticks. A v7 site is never offered them.
  */
 const BLOCKS_SITE_SIDEBAR_VIEWS = [
   "calendar",
-  "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 /**
@@ -80,13 +76,10 @@ export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 /** Native panels whose availability is discovered from project resources. */
 export const PROJECT_NATIVE_VIEW_IDS = [
   "calendar",
-  "experiments",
   "assets",
   "releases",
   "hosting",
   "e2e",
-  "analytics",
-  "cdn",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 export type ProjectNativeViewId = (typeof PROJECT_NATIVE_VIEW_IDS)[number];
@@ -97,12 +90,6 @@ export type ProjectSidebarViewPresence = Record<ProjectSidebarViewId, boolean>;
 export interface ProjectNativeViewPending {
   assets: boolean;
   siteAccess: boolean;
-  /** Main's schema is not read yet (or can't be, on a site last found v8),
-   *  so whether the site has Releases is not known. */
-  releases?: boolean;
-  /** Main's schema is not read yet, so whether the site is v8 (and has a
-   *  Calendar) is not known. */
-  calendar?: boolean;
 }
 
 export interface ProjectSidebarViewsMetadata {
@@ -208,10 +195,6 @@ export function projectSidebarViewPresence(
     releases: hasClonableSource && native.releases,
     hosting: native.hosting,
     e2e: native.e2e,
-    analytics: native.analytics,
-    cdn: native.cdn,
-    // Authored in the Site Editor decofile — only where a CMS source exists.
-    experiments: hasClonableSource && native.experiments,
     // A v8 site's campaigns block, edited in the same draft as the pages.
     calendar: hasClonableSource && native.calendar,
     automations: true,
@@ -279,13 +262,9 @@ export function projectSidebarViewUnavailable(
 ): boolean {
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
-  // Releases follows main's schema (`useMainSchemaV8`): a deep link waits
-  // for that read instead of bouncing to Settings before it lands.
-  if (viewId === "releases") return !pending.releases;
-  // Calendar and Experiments are a v8 site's: they wait for the same read.
-  if (viewId === "calendar" || viewId === "experiments") {
-    return !pending.calendar;
-  }
+  // Releases and Calendar are a v8 project's (its switch, known with the
+  // project): nothing to wait for.
+  if (viewId === "releases" || viewId === "calendar") return true;
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 

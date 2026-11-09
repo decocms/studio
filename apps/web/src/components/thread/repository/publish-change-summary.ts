@@ -27,7 +27,6 @@ import {
   namedRuleKindOfBlock,
   namedRuleKindOfType,
 } from "@/components/sections-editor/named-rules";
-import type { MissingNamedRuleUseCounts } from "@/components/sections-editor/named-rule-uses";
 import {
   type BlogBlockKind,
   blogBlockKind,
@@ -109,18 +108,6 @@ export interface PublishChange {
   sections: PublishSectionChange[];
   fromJson: Record<string, unknown> | null;
   toJson: Record<string, unknown> | null;
-  /**
-   * v8: its rules name a test or campaign of these kinds that the draft
-   * doesn't have (deleted, discarded, never created). The card says so;
-   * nothing is blocked.
-   */
-  missingRules?: NamedRuleKind[];
-  /**
-   * v8, on the A/B tests or Campaigns card: how many pages and how many
-   * sections use a name the draft doesn't have. Those may have no card of
-   * their own; nothing is blocked.
-   */
-  missingRuleUses?: { kind: NamedRuleKind } & MissingNamedRuleUseCounts;
   /**
    * The site's A/B tests or campaigns block, known when the card is built
    * (from the current blocks, either side, or its name when no content can be
@@ -216,8 +203,7 @@ export function humanizeFieldName(key: string): string {
 
 /**
  * Display name for a section entry ("site/sections/Hero.tsx" → "Hero"). On a
- * Blocks v8 site (`v8`), as the site editor's section list and "Used by" name
- * it (`labelFromResolveType`), so the release title says "Hero Scene" where
+ * Blocks v8 site (`v8`), as the site editor's section list names it (`labelFromResolveType`), so the release title says "Hero Scene" where
  * the editor does; on v7, the file name humanized, as before.
  */
 export function sectionDisplayName(
@@ -1075,16 +1061,6 @@ interface ContentChangesInput {
    */
   meta?: LiveMeta | null;
   /**
-   * Per block, the kinds of test or campaign its rules name that the draft
-   * doesn't have (named-rule-uses.ts `blocksUsingMissingNamedRules`).
-   */
-  missingRules?: ReadonlyMap<string, NamedRuleKind[]>;
-  /**
-   * Per kind, how many pages and how many sections use a name the draft
-   * doesn't have (named-rule-uses.ts `missingNamedRuleUseCounts`).
-   */
-  missingRuleUses?: ReadonlyMap<NamedRuleKind, MissingNamedRuleUseCounts>;
-  /**
    * Studio's hosted draft: a blog record is named by its title and kind
    * (its block `name` is its key). Other sources name it as before.
    */
@@ -1101,15 +1077,7 @@ interface ContentChangesInput {
 export function summarizeContentChanges(
   input: ContentChangesInput,
 ): PublishChangeSummary {
-  const {
-    changes,
-    sides,
-    lookup,
-    meta,
-    missingRules,
-    missingRuleUses,
-    hosted,
-  } = input;
+  const { changes, sides, lookup, meta, hosted } = input;
   const pages: PublishChange[] = [];
   const blocks: PublishChange[] = [];
   /** The sides of `name` the server couldn't read (any spelling's file). */
@@ -1139,19 +1107,12 @@ export function summarizeContentChanges(
     const headShape = readBlockShape(lookup, name);
     const nameShape = headShape ?? toJson ?? fromJson;
     const unreadable = unreadableOf(name);
-    const missing = missingRules?.get(name);
-    const ruleKind = namedRuleKindOfBlock(name);
-    const usesCounts = ruleKind ? missingRuleUses?.get(ruleKind) : undefined;
     const common = {
       blockKey: name,
       status,
       filepaths: [],
       entry: { name, version: change.version },
       ...(unreadable.length > 0 ? { unreadable } : {}),
-      ...(missing && missing.length > 0 ? { missingRules: missing } : {}),
-      ...(ruleKind && usesCounts && usesCounts.pages + usesCounts.sections > 0
-        ? { missingRuleUses: { kind: ruleKind, ...usesCounts } }
-        : {}),
       fromJson: maskSecrets(fromJson),
       toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),
     };

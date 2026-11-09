@@ -244,6 +244,8 @@ export function resolveConfig(
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    feedbackOrgId: envVars.STUDIO_FEEDBACK_ORG_ID?.trim() || undefined,
+    feedbackProjectId: envVars.STUDIO_FEEDBACK_PROJECT_ID?.trim() || undefined,
     deploymentAdminToken: envVars.DEPLOYMENT_ADMIN_TOKEN || undefined,
 
     // Observability
@@ -432,6 +434,7 @@ export function resolveConfig(
     // test-only: a local S3 store and the origin that serves it.
     deliveryR2Endpoint: envVars.DELIVERY_R2_ENDPOINT,
     deliveryPublicOrigin: envVars.DELIVERY_PUBLIC_ORIGIN,
+    deliveryKeyPrefix: envVars.DELIVERY_KEY_PREFIX,
     siteTokenSigningKey: envVars.DECO_SITE_TOKEN_SIGNING_KEY,
     cfDeliveryZoneId: envVars.CF_DELIVERY_ZONE_ID,
     cfPurgeApiToken: envVars.CF_PURGE_API_TOKEN,

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { storedExternalRegistration } from "@decocms/shared/deco-analytics";
 import type { StudioContext } from "../core/studio-context";
 import { lookupOwnedProject } from "../tools/experiments/ownership";
@@ -74,4 +75,24 @@ export async function ownedAnalyticsSiteId(
   return registration.status === "registered"
     ? { status: "registered", id: registration.id }
     : { status: "unregistered" };
+}
+
+const UsageScope = z.object({
+  usageScope: z.object({
+    site: z.string().nullable(),
+    reader: z.string(),
+    tenantScoped: z.boolean(),
+  }),
+});
+
+/**
+ * Whether a read-surface payload was answered by the tenant-scoped reader for
+ * `siteId`. The read surface trusts the master token to name any site, so any
+ * other payload could be someone else's numbers and must never render.
+ */
+export function isTenantScoped(payload: unknown, siteId: string): boolean {
+  const parsed = UsageScope.safeParse(payload);
+  if (!parsed.success) return false;
+  const { site, reader, tenantScoped } = parsed.data.usageScope;
+  return tenantScoped && reader === "stats_reader" && site === siteId;
 }

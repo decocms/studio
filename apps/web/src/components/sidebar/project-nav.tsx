@@ -9,11 +9,8 @@
 import type { ReactNode } from "react";
 import {
   ClockRewind,
-  BarChartSquare02,
-  Beaker02,
   Calendar,
   CheckDone01,
-  Globe02,
   Image01,
   Lightning01,
   Lock01,
@@ -29,7 +26,6 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { lastFoundV8 } from "@/hooks/use-main-schema-v8";
 import {
   keepAttachedPinnedViews,
   pinnedViewsOf,
@@ -84,15 +80,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   if (!project) return null;
 
   const hasClonableSource = agentHasClonableSource(project.metadata);
-  /** While main's schema is read (a GitHub round trip), a site the server last
-   *  found v8 already shows its Calendar and Experiments rows, so they don't
-   *  pop in late. The views themselves still wait for the answer. */
-  const v8WhileReading = nativeViews.calendarPending && lastFoundV8(project);
-  const presence = {
-    ...nativeViews.presence,
-    calendar: nativeViews.presence.calendar || v8WhileReading,
-    experiments: nativeViews.presence.experiments || v8WhileReading,
-  };
+  const presence = nativeViews.presence;
   const sidebarViews =
     optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
   const selectedViews = new Set(
@@ -148,18 +136,6 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     e2e: {
       label: t("common.mainPanelTabs.e2e"),
       icon: <CheckDone01 size={16} />,
-    },
-    analytics: {
-      label: t("common.mainPanelTabs.analytics"),
-      icon: <BarChartSquare02 size={16} />,
-    },
-    cdn: {
-      label: t("common.mainPanelTabs.cdn"),
-      icon: <Globe02 size={16} />,
-    },
-    experiments: {
-      label: t("experiments.title"),
-      icon: <Beaker02 size={16} />,
     },
     calendar: {
       label: t("common.mainPanelTabs.calendar"),

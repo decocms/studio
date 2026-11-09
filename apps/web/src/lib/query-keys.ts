@@ -13,6 +13,10 @@ export const KEYS = {
   // Public config (no auth required)
   publicConfig: () => ["publicConfig"] as const,
 
+  // MCP OAuth consent page: the client asking for access
+  mcpOAuthConsent: (authorizeQuery: string) =>
+    ["mcp-oauth-consent", authorizeQuery] as const,
+
   // Polled separately from publicConfig (which is cached forever) to detect
   // a deployed version newer than the client's own build.
   appVersionCheck: () => ["appVersionCheck"] as const,
@@ -777,6 +781,12 @@ export const KEYS = {
   // collapsible section caches independently and refetches on range change.
   analyticsData: (org: string, site: string, view: string, range: string) =>
     ["hosting", org, site, "analytics-data", view, range] as const,
+  // Monitor → Analytics: one view keyed by its full query string, so segments cache apart.
+  analyticsView: (org: string, site: string, query: string) =>
+    ["hosting", org, site, "analytics-view", query] as const,
+  // Monitor → Analytics: the filter builder's suggestions for one dimension.
+  analyticsValues: (org: string, site: string, dim: string, range: string) =>
+    ["hosting", org, site, "analytics-values", dim, range] as const,
   // Deco Analytics → Live map: the renderer bundle, proxied through the BFF at
   // /api/:org/hosting/:site/analytics/globe.js. A query rather than a loader of
   // its own because the script is fetched once and then cached for the session
@@ -811,6 +821,31 @@ export const KEYS = {
     ["monitor", base, "cdn-data", view, range] as const,
   siteMonitorData: (base: string, view: string, range: string) =>
     ["monitor", base, "site-data", view, range] as const,
+  /** Monitor Audience: one normalized view of a site's audience for a range. */
+  monitorAudience: (
+    org: string,
+    site: string,
+    trafficSite: string,
+    view: string,
+    range: string,
+    source: string,
+  ) =>
+    [
+      "monitor",
+      org,
+      "audience",
+      site,
+      trafficSite,
+      view,
+      range,
+      source,
+    ] as const,
+  /** One read of a site's logs and spans, by its query string. */
+  monitorSiteEvents: (org: string, site: string, params: string) =>
+    ["monitor", org, "site-events", site, params] as const,
+  /** Every Monitor audience read for one site, whichever source answers it. */
+  monitorAudienceSite: (org: string, site: string) =>
+    ["monitor", org, "audience", site] as const,
   // Order monitor: every key starts with this prefix, so one invalidation
   // (the `order-monitor.store.evaluated` SSE event) refreshes them all.
   orderMonitor: (org: string) => ["order-monitor", org] as const,
@@ -839,6 +874,22 @@ export const KEYS = {
 
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
+  // Static routes from a non-deco site's file-system router (page picker).
+  frameworkRoutes: (
+    org: string,
+    virtualMcpId: string,
+    branch: string,
+    threadId: string | null,
+    packagePath: string | null,
+  ) =>
+    [
+      "framework-routes",
+      org,
+      virtualMcpId,
+      branch,
+      threadId,
+      packagePath,
+    ] as const,
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current
   // branch head, populated by decofile API reads/writes (never fetched itself).
   decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
@@ -856,6 +907,9 @@ export const KEYS = {
   // Per block, the content-protocol version of the copy the editor holds.
   contentVersions: (cacheKey: string) =>
     ["content-versions", cacheKey] as const,
+  // A hosted v8 draft's index (`cms.index`): every name's version and meta,
+  // and the names the draft holds with their draft versions.
+  contentIndex: (cacheKey: string) => ["content-index", cacheKey] as const,
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
@@ -867,6 +921,10 @@ export const KEYS = {
   // per version of theirs.
   conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
     ["conflict-author", draftKey, blockKey, theirs] as const,
+  // Who last changed a block, as a refused hosted save carried it, per
+  // version of theirs (`rememberConflictEditor`).
+  conflictEditor: (blockKey: string, theirs: string) =>
+    ["conflict-editor", blockKey, theirs] as const,
   // The published copies of the blocks a draft deletes (`changes.get`), per
   // set of deletions (names and base versions), so a save elsewhere in the
   // draft doesn't read them again.
@@ -876,37 +934,12 @@ export const KEYS = {
   contentChangeSides: (cacheKey: string, revision: string) =>
     ["content-changes", cacheKey, "sides", revision] as const,
   // A hosted v8 project's draft pointer ({ draft, version }), from the
-  // session decofile read (GitHub backend).
+  // hosted CMS's `POST /drafts` on open.
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
-  // Main's schema answer (`isV8Schema` on main, from the server), once per
-  // project per session: what the editor waits for.
-  mainSchemaV8: (orgSlug: string, virtualMcpId: string) =>
-    ["main-schema-v8", orgSlug, virtualMcpId] as const,
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,
-  /** A hosted v8 Publish's review: the draft's blocks main also changed. */
-  hostedPublishReview: (
-    orgSlug: string,
-    virtualMcpId: string,
-    branch: string,
-  ) => ["hosted-publish-review", orgSlug, virtualMcpId, branch] as const,
-  /** Under `hostedReleases`: a publish or reapply refreshes it too. */
-  hostedReapplyCheck: (
-    orgSlug: string,
-    virtualMcpId: string,
-    sha: string | null,
-    latest: string | null,
-  ) =>
-    [
-      "hosted-releases",
-      orgSlug,
-      virtualMcpId,
-      "reapply-check",
-      sha,
-      latest,
-    ] as const,
   hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>

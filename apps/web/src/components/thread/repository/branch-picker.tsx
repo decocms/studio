@@ -54,7 +54,6 @@ import {
   Plus,
   Trash01,
 } from "@untitledui/icons";
-import { generateBranchName } from "@decocms/shared/branch-name";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import type { SandboxMap } from "@/sdk";
@@ -75,10 +74,11 @@ import {
   releaseDotClass,
   useReleases,
 } from "./use-releases";
+import { useStartDraft } from "./use-start-draft";
 
 interface Props {
   virtualMcpId: string;
-  /** A Blocks v8 site (the server's `blocksMajor` marker). v7 keeps main's
+  /** A Blocks v8 site (its "Blocks v8 site" switch). v7 keeps main's
    *  Local tunnel exactly; only v8 connects a `deco serve`. */
   isV8?: boolean;
   /** Human-readable creator label used to seed the generated branch name. */
@@ -86,7 +86,7 @@ interface Props {
   /** The current branch (a release's branch, or the base). */
   value: string | null | undefined;
   /** The project's production branch. Not listed (read-only); used only for the
-   *  current-version label and as the fallback when the active draft is deleted. */
+   *  current-version label. */
   baseBranch?: string | null;
   /** The base branch holds an editor draft (a hosted Blocks v8 CMS session):
    *  shown as that draft, not as "Production". v7 never sets it. */
@@ -159,6 +159,7 @@ export function BranchPicker({
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
+  const startDraft = useStartDraft({ virtualMcpId, userLabel, userId });
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
    * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
@@ -190,6 +191,9 @@ export function BranchPicker({
 
   // At RELEASES_MAX the server rejects another create, so gate it in the UI.
   const atReleaseCap = releases.length >= RELEASES_MAX;
+  // The last draft stays: without one, the session would fall back to
+  // production, where a Fast Preview save commits to the live site.
+  const canDeleteRelease = releases.length > 1;
   const capReachedMessage = t("thread.branchPicker.capReached", {
     max: RELEASES_MAX,
   });
@@ -270,22 +274,9 @@ export function BranchPicker({
   };
 
   const create = () => {
-    if (atReleaseCap) {
-      toast.error(capReachedMessage);
-      return;
-    }
+    const branch = startDraft();
+    if (!branch) return;
     clearLocal();
-    const branch = generateBranchName(userLabel);
-    createRelease({
-      branch,
-      name: nextDraftName(
-        releases,
-        t("thread.branchPicker.defaultVersionName"),
-      ),
-      color: nextReleaseColor(releases.length),
-      createdBy: userId,
-      createdAt: new Date().toISOString(),
-    }).catch(reportReleaseError);
     (onCreateBranch ?? onChange)(branch);
     setOpen(false);
   };
@@ -344,14 +335,16 @@ export function BranchPicker({
   const confirmDelete = () => {
     const r = pendingDelete;
     setPendingDelete(null);
-    if (!r) return;
-    // Deleting the active draft: switch to a sibling (non-`sandbox` first, so a CMS chat stays put), else production.
+    // Checked again: the other draft may have gone while the dialog was open.
+    if (!r || !canDeleteRelease) return;
+    // Deleting the active draft: switch to a sibling draft (non-`sandbox` first,
+    // so a CMS chat stays put) — never to production, where a Fast Preview save
+    // commits to the live site.
     if (r.branch === value) {
       const siblings = releases.filter((x) => x.branch !== r.branch);
       const sibling =
         siblings.find((x) => x.runtime !== "sandbox") ?? siblings[0];
       if (sibling) pick(sibling.branch);
-      else if (baseBranch) pick(baseBranch);
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
@@ -514,6 +507,7 @@ export function BranchPicker({
                     onSelect={() => pick(r.branch)}
                     onRename={() => startRename(r)}
                     onDelete={() => setPendingDelete(r)}
+                    deleteBlocked={!canDeleteRelease}
                   />
                 ),
               )}
@@ -647,6 +641,7 @@ function ReleaseRow({
   onSelect,
   onRename,
   onDelete,
+  deleteBlocked = false,
 }: {
   rowRef?: Ref<HTMLDivElement>;
   dot: string;
@@ -658,6 +653,8 @@ function ReleaseRow({
   onSelect: () => void;
   onRename: () => void;
   onDelete?: () => void;
+  /** It's the last draft: Delete shows, disabled, saying why. */
+  deleteBlocked?: boolean;
 }) {
   const t = useT();
   return (
@@ -710,11 +707,17 @@ function ReleaseRow({
           {onDelete && (
             <DropdownMenuItem
               onSelect={onDelete}
+              disabled={deleteBlocked}
               className="text-destructive focus:text-destructive"
             >
               <Trash01 className="h-4 w-4" />
               {t("thread.branchPicker.delete")}
             </DropdownMenuItem>
+          )}
+          {onDelete && deleteBlocked && (
+            <p className="max-w-48 px-2 pb-1.5 text-xs text-muted-foreground">
+              {t("thread.branchPicker.keepOneDraft")}
+            </p>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -810,7 +813,7 @@ function AdvancedPicker({
   onBack,
   onAdopt,
 }: {
-  /** A Blocks v8 site (the server's marker): no Local tab, Localhost is in
+  /** A Blocks v8 site (its "Blocks v8 site" switch): no Local tab, Localhost is in
    *  the drafts list instead. v7 gets main's Local tab. */
   isV8: boolean;
   orgId: string;

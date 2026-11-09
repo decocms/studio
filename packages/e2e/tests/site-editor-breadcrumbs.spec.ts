@@ -37,6 +37,8 @@ async function createEditor(
     repo,
     defaultBranch: "main",
     branches: {
+      // The session's draft, at main's head: production is read-only.
+      draft: null,
       main: {
         files: {
           ".deco/meta.gen.json": JSON.stringify({
@@ -111,7 +113,7 @@ async function createEditor(
     api,
     orgSlug,
     "COLLECTION_THREADS_CREATE",
-    { data: { virtual_mcp_id: project.vmcpId, branch: "main" } },
+    { data: { virtual_mcp_id: project.vmcpId, branch: "draft" } },
   );
   return {
     project,
@@ -256,7 +258,7 @@ test.describe("Site Editor breadcrumbs", () => {
       await expect
         .poll(async () => {
           const response = await page.request.get(
-            `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
+            `/api/${orgSlug}/decofile/${project.vmcpId}/draft`,
           );
           return JSON.stringify(await response.json());
         })
@@ -409,7 +411,7 @@ test.describe("Site Editor breadcrumbs", () => {
       await expect
         .poll(async () => {
           const response = await page.request.get(
-            `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
+            `/api/${orgSlug}/decofile/${project.vmcpId}/draft`,
           );
           return JSON.stringify(await response.json());
         })
