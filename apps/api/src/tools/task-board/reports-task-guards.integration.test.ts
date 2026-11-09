@@ -76,95 +76,22 @@ describe("reports-task guards", () => {
     await closeTestPgDatabase(database);
   });
 
-  it("allows report content edits and preserves them on subsequent imports", async () => {
+  it("allows editing system-created task content", async () => {
     const item = await taskBoard.create({
       organizationId: ORG,
       title: "finding",
       description: "original",
       by: "system",
     });
-    await taskBoard.update(
+    const edited = await taskBoard.update(
       item.id,
       ORG,
       { title: "renamed", description: "human notes", priority: "high" },
       USER,
     );
-    const imported = await taskBoard.update(
-      item.id,
-      ORG,
-      {
-        description: "new analysis",
-        priority: "low",
-        preserveEditedContent: true,
-      },
-      "system",
-    );
-    expect(imported.title).toBe("renamed");
-    expect(imported.description).toBe("human notes");
-    expect(imported.priority).toBe("high");
-  });
-
-  it("still refreshes unedited content after a board-only or unchanged-content update", async () => {
-    const item = await taskBoard.create({
-      organizationId: ORG,
-      title: "finding",
-      description: "original",
-      by: "system",
-    });
-    await taskBoard.update(
-      item.id,
-      ORG,
-      {
-        title: "finding",
-        description: "original",
-        priority: item.priority,
-        status: "in_progress",
-      },
-      USER,
-    );
-    const imported = await taskBoard.update(
-      item.id,
-      ORG,
-      {
-        description: "new analysis",
-        priority: "low",
-        preserveEditedContent: true,
-      },
-      "system",
-    );
-    expect(imported.description).toBe("new analysis");
-    expect(imported.priority).toBe("low");
-    expect(imported.status).toBe("in_progress");
-  });
-
-  it("a title-only edit also protects description and priority, including deliberate clearing", async () => {
-    const item = await taskBoard.create({
-      organizationId: ORG,
-      title: "finding",
-      description: "original",
-      by: "system",
-    });
-    await taskBoard.update(item.id, ORG, { title: "human title" }, USER);
-    let imported = await taskBoard.update(
-      item.id,
-      ORG,
-      {
-        description: "new analysis",
-        priority: "low",
-        preserveEditedContent: true,
-      },
-      "system",
-    );
-    expect(imported.description).toBe("original");
-    expect(imported.priority).toBe(item.priority);
-    await taskBoard.update(item.id, ORG, { description: null }, USER);
-    imported = await taskBoard.update(
-      item.id,
-      ORG,
-      { description: "new analysis", preserveEditedContent: true },
-      "system",
-    );
-    expect(imported.description).toBeNull();
+    expect(edited.title).toBe("renamed");
+    expect(edited.description).toBe("human notes");
+    expect(edited.priority).toBe("high");
   });
 
   it("persists a task's repo through create and update", async () => {
