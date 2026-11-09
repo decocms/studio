@@ -11,7 +11,7 @@ import { stripMustacheTokens } from "../array-item-display";
 import { blockRefOptionLabel } from "../block-ref-field-utils";
 import type { SchemaProperty } from "../resolve-schema";
 import { renderField, SchemaForm } from "../schema-form";
-import { withDefaultsForNew } from "../schema-defaults";
+import { useSeedNew } from "../defaults-on-create";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import {
@@ -53,6 +53,7 @@ function branchFormSchema(branch: Branch): SchemaProperty | null {
 export function InlineUnionField(props: FieldProps) {
   const t = useT();
   const { schema, value, onChange, path, label } = props;
+  const seedNew = useSeedNew(props.meta);
   const branches = schema.inlineUnionBranches ?? [];
 
   const inferred = inferInlineUnionIndex(
@@ -79,28 +80,18 @@ export function InlineUnionField(props: FieldProps) {
     if (next.startsWith(LOADER_OPTION_PREFIX)) {
       const ref =
         loaderOptions[Number(next.slice(LOADER_OPTION_PREFIX.length))];
-      if (ref) {
-        onChange(
-          withDefaultsForNew(
-            undefined,
-            { __resolveType: ref.resolveType },
-            props.meta,
-          ),
-        );
-      }
+      if (ref) onChange(seedNew(undefined, { __resolveType: ref.resolveType }));
       return;
     }
     const index = Number(next);
     setSelected(index);
-    // Fresh value for the chosen branch: [] for an array branch, else an object with its const discriminators (e.g. { name: "max-age" }) and its defaults.
+    // Fresh value for the chosen branch: [] for an array branch, else an object seeded with its const discriminators (e.g. { name: "max-age" }).
     onChange(
       branches[index]?.schema?.type === "array"
         ? []
-        : withDefaultsForNew(
-            branches[index]?.schema,
-            { ...(branches[index]?.discriminators ?? {}) },
-            props.meta,
-          ),
+        : seedNew(branches[index]?.schema, {
+            ...(branches[index]?.discriminators ?? {}),
+          }),
     );
   };
 
@@ -184,15 +175,19 @@ export function InlineUnionField(props: FieldProps) {
             schema={formSchema}
             value={value}
             // Re-apply the branch's stripped discriminators, same as LocationField.
-            onChange={(next) =>
+            onChange={(next) => {
+              const merged = mergeInlineUnionUpdate(
+                preserved,
+                next as Record<string, unknown>,
+                activeBranch.discriminators,
+              );
+              // An absent value is created by this first edit.
               onChange(
-                mergeInlineUnionUpdate(
-                  preserved,
-                  next as Record<string, unknown>,
-                  activeBranch.discriminators,
-                ),
-              )
-            }
+                value === undefined || value === null
+                  ? seedNew(activeBranch.schema, merged)
+                  : merged,
+              );
+            }}
             basePath={path}
             breadcrumbPath={props.breadcrumbPath}
             onBreadcrumbChange={props.onBreadcrumbChange}

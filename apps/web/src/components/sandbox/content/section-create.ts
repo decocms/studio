@@ -3,7 +3,10 @@ import { withDefaultsForNew } from "@/components/sections-editor/schema-defaults
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { nextUniqueBlockKey } from "./content-mutations";
 
-/** Build a new saved global section block from a catalog entry, with its defaults. */
+/**
+ * Build a new saved global section block from a catalog entry. With `meta`,
+ * it starts with its `@default`s (for a project whose forms won't fill them).
+ */
 export function buildSectionBlockFromCatalogEntry(
   entry: SectionCatalogEntry,
   decofile: Record<string, unknown>,
@@ -17,10 +20,10 @@ export function buildSectionBlockFromCatalogEntry(
   const blockKey = nextUniqueBlockKey(decofile, safeBase);
   return {
     blockKey,
-    data: withDefaultsForNew(
+    data: withDefaultsForNew<Record<string, unknown>>(
       undefined,
       { __resolveType: entry.resolveType, name: blockKey },
       meta,
-    ) as Record<string, unknown>,
+    ),
   };
 }

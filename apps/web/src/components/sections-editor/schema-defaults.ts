@@ -1,4 +1,3 @@
-import { canonicalBlockJson } from "@decocms/shared/decofile";
 import {
   detectBlockRefType,
   withBranchDiscriminator,
@@ -123,143 +122,13 @@ function seedDiscriminator(
  * its `@default`s filled in the same way {@link applySchemaDefaults} fills a
  * block. Saved-block references stay as they are.
  */
-export function withDefaultsForNew(
+export function withDefaultsForNew<T>(
   schema: SchemaProperty | null | undefined,
-  value: unknown,
+  value: T,
   meta?: LiveMeta,
-): unknown {
-  return seedValue(schema, value, meta);
-}
-
-/**
- * What a form built from `seeded` (`applySchemaDefaults(schema, value, meta)`)
- * emitted, reduced to `value` plus the user's own changes. A default the form
- * only showed is dropped again — including an object it materialized for its
- * defaulted children — so editing one field of an existing block never writes
- * defaults into the others. What the user creates (an array item, a switched
- * block, an absent object they edit) is kept as emitted, defaults included.
- * Returns `value` itself when nothing changed.
- */
-export function unseedSchemaDefaults(
-  schema: SchemaProperty | null | undefined,
-  value: unknown,
-  seeded: unknown,
-  emitted: unknown,
-  meta?: LiveMeta,
-): unknown {
-  if (emitted === seeded) return value;
-  const out =
-    isPlainObject(emitted) && isPlainObject(seeded)
-      ? unseedShape(schema, value, seeded, emitted, meta)
-      : emitted;
-  return same(out, value) ? value : out;
-}
-
-function unseedShape(
-  schema: SchemaProperty | null | undefined,
-  stored: unknown,
-  seeded: PlainObject,
-  emitted: PlainObject,
-  meta: LiveMeta | undefined,
-): PlainObject {
-  if (schema?.type !== "inline-union") {
-    return unseedObject(schema, stored, seeded, emitted, meta);
-  }
-  const branch = schema.inlineUnionBranches?.find(
-    (b) =>
-      b.discriminators &&
-      Object.entries(b.discriminators).every(([k, v]) => emitted[k] === v),
-  );
-  return unseedObject(branch?.schema, stored, seeded, emitted, meta);
-}
-
-function unseedObject(
-  schema: SchemaProperty | null | undefined,
-  stored: unknown,
-  seeded: PlainObject,
-  emitted: PlainObject,
-  meta: LiveMeta | undefined,
-): PlainObject {
-  const base = isPlainObject(stored) ? stored : {};
-  const out: PlainObject = {};
-  for (const [key, next] of Object.entries(emitted)) {
-    const shown = seeded[key];
-    const had = base[key];
-    const prop = schema?.properties?.[key];
-    if (next === shown) {
-      // Untouched: what was stored, without what seeding added inside it.
-      if (had !== undefined) out[key] = had;
-      continue;
-    }
-    if (had !== undefined || shown === undefined) {
-      out[key] =
-        had === undefined ? next : unseedValue(prop, had, shown, next, meta);
-      continue;
-    }
-    // Only shown as a default (or an object seeding materialized for its
-    // defaulted children): unless the user changed it, it stays unwritten. A
-    // change creates it, so it is written whole, with its defaults.
-    if (!same(next, shown)) out[key] = next;
-  }
-  return out;
-}
-
-function unseedValue(
-  schema: SchemaProperty | null | undefined,
-  stored: unknown,
-  seeded: unknown,
-  emitted: unknown,
-  meta: LiveMeta | undefined,
-): unknown {
-  if (emitted === seeded) return stored;
-  if (Array.isArray(emitted)) {
-    return Array.isArray(seeded)
-      ? unseedArray(schema?.items, stored, seeded, emitted, meta)
-      : emitted;
-  }
-  if (!isPlainObject(emitted) || !isPlainObject(seeded)) return emitted;
-  const resolveType = emitted.__resolveType;
-  if (typeof resolveType === "string") {
-    const switched =
-      seeded.__resolveType !== resolveType ||
-      (isPlainObject(stored) && stored.__resolveType !== resolveType);
-    if (switched || !meta || !isManifestBlockResolveType(meta, resolveType)) {
-      return emitted;
-    }
-    return unseedShape(
-      cachedResolveSchema(resolveType, meta),
-      stored,
-      seeded,
-      emitted,
-      meta,
-    );
-  }
-  return schema?.type === "object" || schema?.type === "inline-union"
-    ? unseedShape(schema, stored, seeded, emitted, meta)
-    : unseedObject(undefined, stored, seeded, emitted, meta);
-}
-
-/** Items are matched to the stored ones by reference (moves and removals keep it), else by position. */
-function unseedArray(
-  itemSchema: SchemaProperty | null | undefined,
-  stored: unknown,
-  seeded: unknown[],
-  emitted: unknown[],
-  meta: LiveMeta | undefined,
-): unknown[] {
-  const before = Array.isArray(stored) ? stored : [];
-  return emitted.map((item, i) => {
-    let j = seeded.indexOf(item);
-    if (j === -1 && emitted.length === seeded.length) j = i;
-    if (j === -1 || j >= before.length) return item;
-    return item === seeded[j]
-      ? before[j]
-      : unseedValue(itemSchema, before[j], seeded[j], item, meta);
-  });
-}
-
-function same(a: unknown, b: unknown): boolean {
-  return canonicalBlockJson(a) === canonicalBlockJson(b);
+): T {
+  // Seeding only adds missing keys, so the value keeps its shape.
+  return seedValue(schema, value, meta) as T;
 }
 
 function isPlainObject(value: unknown): value is PlainObject {

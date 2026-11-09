@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
-import { readFormValue } from "../harness/ct-utils";
+import { openRowActionsMenu, readFormValue } from "../harness/ct-utils";
 import { CT_PROJECT_DEFAULTS_ON_CREATE_ONLY } from "../harness/stubs/use-virtual-mcp";
 
 const meta = sectionWithProps({
@@ -36,7 +36,7 @@ test("by default, opening a form writes its missing defaults", async ({
     .toMatchObject({ title: "Hello" });
 });
 
-test("defaults only on creation: opening writes nothing, and editing one field writes only that field", async ({
+test("defaults only on creation: the form edits the stored block, so editing one field writes only that field", async ({
   mount,
 }) => {
   const component = await mount(
@@ -48,9 +48,8 @@ test("defaults only on creation: opening writes nothing, and editing one field w
     />,
   );
 
-  await expect(component.getByLabel("Title", { exact: true })).toHaveValue(
-    "Hello",
-  );
+  // Shown as stored: the runtime gets no `title` either.
+  await expect(component.getByLabel("Title", { exact: true })).toHaveValue("");
   await expect(component.getByTestId("write-count")).toHaveText("0");
 
   await component.getByLabel("Subtitle").fill("World");
@@ -76,4 +75,43 @@ test("defaults only on creation: a new array item starts with its defaults", asy
   await expect
     .poll(() => readFormValue(component))
     .toEqual({ links: [{ label: "A" }, { display: true }] });
+});
+
+test("defaults only on creation: duplicating an item copies it as stored", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      virtualMcpId={CT_PROJECT_DEFAULTS_ON_CREATE_ONLY}
+      initialValue={{ links: [{ label: "A" }] }}
+    />,
+  );
+
+  await openRowActionsMenu(component, "A");
+  // The DropdownMenu content is portaled onto document.body — query via page.
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ links: [{ label: "A" }, { label: "A" }] });
+});
+
+test("a form that never fills defaults (the blog's) adds an array item without them", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      withoutDefaultSeeding
+      initialValue={{ links: [] }}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Add item" }).click();
+
+  await expect.poll(() => readFormValue(component)).toEqual({ links: [{}] });
 });

@@ -5,6 +5,7 @@ import {
 } from "./page-block-template";
 import type { LiveMeta } from "./resolve-schema";
 import { useSaveBlock } from "./use-save-block";
+import { withDefaultsForNew } from "./schema-defaults";
 
 interface UseCreatePageParams {
   orgSlug: string;
@@ -79,6 +80,7 @@ export function useCreatePage(params: UseCreatePageParams | null) {
       path,
       template,
       schema,
+      defaultsMeta,
     }: {
       name: string;
       path: string;
@@ -92,6 +94,11 @@ export function useCreatePage(params: UseCreatePageParams | null) {
        * types from it. Absent on any other site (v7's page, as before).
        */
       schema?: NewPageSchema;
+      /**
+       * Fill the new page's (and its SEO's) `@default`s from this schema: its
+       * forms won't (`defaultsOnCreateOnly`). A cloned template is copied as is.
+       */
+      defaultsMeta?: LiveMeta | null;
     }): Promise<CreatePageResult> => {
       if (!params?.virtualMcpId || !params.branch) {
         throw new Error("Sandbox not ready");
@@ -99,7 +106,11 @@ export function useCreatePage(params: UseCreatePageParams | null) {
       const blockKey = generatePageBlockKey(name);
       const data = template
         ? { ...template, name, path }
-        : await emptyPageBlock(name, path, schema);
+        : await emptyPageBlock(name, path, schema).then((page) =>
+            defaultsMeta
+              ? withDefaultsForNew(undefined, page, defaultsMeta)
+              : page,
+          );
       await saveBlock.mutateAsync({ blockKey, data });
       return { key: blockKey, name, path };
     },

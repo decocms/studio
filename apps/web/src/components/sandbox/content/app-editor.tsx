@@ -35,6 +35,7 @@ import {
 import { SaveStatus } from "./blog/save-status";
 import { useT } from "@/i18n/use-t.ts";
 import { HeldBlockView } from "./held-block-view";
+import { useDefaultsOnCreateOnly } from "@/components/sections-editor/defaults-on-create";
 
 type AppEditorProps = Parameters<typeof AppEditorForm>[0];
 
@@ -150,6 +151,7 @@ function AppEditorForm({
     { guard: saveGuard, holdsCopy: true },
   );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const createOnly = useDefaultsOnCreateOnly(virtualMcpId);
   // Not debounced: the saved block's form reads its value from the decofile cache, which a delay leaves stale.
   const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
     saveBlock.mutate(
@@ -208,7 +210,7 @@ function AppEditorForm({
       const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
         entry,
         decofile,
-        meta,
+        createOnly ? meta : undefined,
       );
       const created = await saveBlock.mutateAsync({ blockKey: newKey, data });
       // Kept the version someone else created first (hosted v8): the hook's

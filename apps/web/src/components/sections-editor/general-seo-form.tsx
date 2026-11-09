@@ -3,7 +3,6 @@ import { Label } from "@decocms/ui/components/label.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import type { SandboxConfig } from "./fields/field-props";
 import type { SchemaProperty } from "./resolve-schema";
 import { renderField } from "./schema-form";
 import {
@@ -20,8 +19,6 @@ interface GeneralSeoFormProps {
   /** Site/default SEO — page overrides inherit when a field is unset. */
   siteDefaultSeo?: Record<string, unknown>;
   formResetKey: number;
-  /** The project's session: the form follows its CMS settings (`defaultsOnCreateOnly`). */
-  sandbox?: SandboxConfig;
 }
 
 function humanize(key: string): string {
@@ -60,7 +57,6 @@ export function GeneralSeoForm({
   onChange,
   siteDefaultSeo,
   formResetKey,
-  sandbox,
 }: GeneralSeoFormProps) {
   const t = useT();
   const filtered = filterSeoSchema(schema, DEFAULT_SEO_RESOLVE_TYPE);
@@ -127,7 +123,6 @@ export function GeneralSeoForm({
                 required: key === "type",
                 breadcrumbPath: [],
                 onBreadcrumbChange: () => {},
-                sandbox,
               })}
             </div>
             {inherit && (

@@ -44,7 +44,7 @@ import {
 } from "../array-item-hidden";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import { withBranchDiscriminator } from "../block-ref-field-utils";
-import { withDefaultsForNew } from "../schema-defaults";
+import { useSeedNew } from "../defaults-on-create";
 import {
   type Crumb,
   buildArrayDrillDownBreadcrumb,
@@ -171,6 +171,7 @@ export function ArrayField({
     useRequiredField();
   const items = Array.isArray(value) ? value : [];
   const itemSchema = expandRecursiveSchema(schema.items, meta);
+  const seedNew = useSeedNew(meta);
   const arrayFieldKey = arrayFieldKeyFromPath(path);
   // Options that let buildArrayDrillDownBreadcrumb decide whether this array's
   // own label must stay in the trail to keep the item uniquely addressable.
@@ -344,7 +345,7 @@ export function ArrayField({
                 : t === "array"
                   ? []
                   : "";
-    const created = withDefaultsForNew(itemSchema, defaultVal, meta);
+    const created = seedNew(itemSchema, defaultVal);
     const next = [...items, created];
     onChange(next);
     if (inline) {

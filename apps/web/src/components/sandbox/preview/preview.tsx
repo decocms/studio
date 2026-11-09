@@ -203,6 +203,7 @@ import {
 } from "./frame-navigation";
 import { useFrameworkRoutes } from "./use-framework-routes";
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
+import { useDefaultsOnCreateOnly } from "@/components/sections-editor/defaults-on-create";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
@@ -622,6 +623,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
+  const createOnly = useDefaultsOnCreateOnly(virtualMcpId);
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
@@ -1765,6 +1767,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               loadMeta: async () => (await metaQuery.refetch()).data,
             }
           : undefined,
+        defaultsMeta: createOnly ? meta : undefined,
       });
       setCreatePageDialogOpen(false);
       toast.success(t("sandbox.preview.pageCreated", { name }));

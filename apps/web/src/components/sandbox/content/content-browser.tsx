@@ -191,6 +191,8 @@ import {
   useTypeLabel,
 } from "./content-types-sidebar";
 import { ContentTypesTable } from "./content-types-table";
+import { useDefaultsOnCreateOnly } from "@/components/sections-editor/defaults-on-create";
+import { withDefaultsForNew } from "@/components/sections-editor/schema-defaults";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -695,6 +697,7 @@ function ContentBrowserReady({
         )
       : [];
   const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
+  const createOnly = useDefaultsOnCreateOnly(virtualMcpId);
   /** The app this tab just installed: its editor creates the block's defaults. */
   const [installedAppKey, setInstalledAppKey] = useState<string | null>(null);
   /**
@@ -1192,11 +1195,13 @@ function ContentBrowserReady({
           data = { ...template, name: values.name, path: values.path };
         } else {
           // v7 keeps its page and SEO section; v8 types it from its schema.
-          data = buildEmptyPage(
+          const page = buildEmptyPage(
             values.name,
             values.path,
             runsSiteCode ? undefined : meta,
           );
+          // Its forms won't fill the new page's defaults: fill them here.
+          data = createOnly ? withDefaultsForNew(undefined, page, meta) : page;
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
         const created = await saveBlock.mutateAsync({ blockKey: key, data });

@@ -4,6 +4,7 @@ import {
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
+import { SchemaFormWithoutDefaultSeeding } from "@/components/sandbox/content/blog/schema-form-without-default-seeding";
 import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
 
 /**
@@ -22,6 +23,7 @@ export function SchemaFormHarness({
   initialValue = {},
   decofile = {},
   virtualMcpId,
+  withoutDefaultSeeding = false,
 }: {
   meta: LiveMeta;
   resolveType: string;
@@ -29,16 +31,21 @@ export function SchemaFormHarness({
   decofile?: Record<string, unknown>;
   /** Renders the form inside this project (see the `use-virtual-mcp` stub). */
   virtualMcpId?: string;
+  /** The blog editors' form, which never fills `@default`s in. */
+  withoutDefaultSeeding?: boolean;
 }) {
   const resolved = resolveSchema(resolveType, meta);
   const [value, setValue] = useState<unknown>(initialValue);
   const [writes, setWrites] = useState(0);
   const [breadcrumb, setBreadcrumb] = useState<Crumb[]>([]);
+  const Form = withoutDefaultSeeding
+    ? SchemaFormWithoutDefaultSeeding
+    : SchemaForm;
 
   return (
     <div data-testid="harness">
       {resolved ? (
-        <SchemaForm
+        <Form
           schema={resolved}
           value={value}
           onChange={(next) => {

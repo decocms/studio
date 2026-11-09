@@ -3,7 +3,6 @@ import { isLegacyPageResolveType } from "./page-types";
 import { findNewPageResolveType } from "./section-catalog";
 import { isNoSchemaMeta } from "./schemaless";
 import { defaultPageSeoResolveType } from "./seo-schema";
-import { withDefaultsForNew } from "./schema-defaults";
 
 /**
  * Block types a new page gets on a v7 site (and when the site's schema isn't
@@ -38,27 +37,21 @@ export function createEmptyPageBlock(
     return { name, path, sections: [] as unknown[], __resolveType: "page" };
   }
   const pageResolveType = findNewPageResolveType(meta ?? undefined);
-  // A new page starts with its (and its SEO's) defaults.
-  const created = (page: Record<string, unknown>) =>
-    withDefaultsForNew(undefined, page, meta ?? undefined) as Record<
-      string,
-      unknown
-    >;
   if (!meta || isLegacyPageResolveType(pageResolveType)) {
-    return created({
+    return {
       name,
       path,
       sections: [] as unknown[],
       seo: { __resolveType: DEFAULT_PAGE_BLOCK.seoResolveType },
       __resolveType: DEFAULT_PAGE_BLOCK.resolveType,
-    });
+    };
   }
   const seoResolveType = defaultPageSeoResolveType(meta);
-  return created({
+  return {
     name,
     path,
     sections: [] as unknown[],
     ...(seoResolveType ? { seo: { __resolveType: seoResolveType } } : {}),
     __resolveType: pageResolveType,
-  });
+  };
 }

@@ -1,10 +1,9 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { SeoFormChrome } from "./seo-form-chrome";
 import { SeoFormFields } from "./seo-form-fields";
 import { SeoTypeSelect } from "./seo-type-select";
 import { useT } from "@/i18n/use-t.ts";
 import { useBlocksSiteEditor } from "./blocks-site-editor";
-import type { SandboxConfig } from "./fields/field-props";
 import type { SchemaProperty } from "./resolve-schema";
 import type { Crumb } from "./schema-form-breadcrumb";
 import type { SeoTypeOption } from "./seo-schema";
@@ -35,8 +34,6 @@ interface PageSeoFormProps {
   asyncRenderAvailable?: boolean;
   /** The site's schema is still loading: SEO can't be turned on yet. */
   seoTypesLoading?: boolean;
-  /** The project's session: the form follows its CMS settings (`defaultsOnCreateOnly`). */
-  sandbox?: SandboxConfig;
 }
 
 /** Page SEO: Enable + type + fields + Async render (admin EditSEO layout). */
@@ -57,9 +54,11 @@ export function PageSeoForm({
   beforeFields,
   asyncRenderAvailable = true,
   seoTypesLoading = false,
-  sandbox,
 }: PageSeoFormProps) {
   const t = useT();
+  // SEO switched on, or its type changed, here: the form that opens next
+  // creates that block, so it starts with its defaults.
+  const [seoCreated, setSeoCreated] = useState(false);
   // v8: no SEO type to start from (a page schema that lists none, or the
   // schema still loading): SEO can't be turned on, rather than saving a
   // type-less SEO block. v7 keeps its switch as before.
@@ -70,6 +69,7 @@ export function PageSeoForm({
     if (enabled) {
       if (!seoTypeAvailable) return;
       const nextRaw = defaultEnabledSeo(defaultResolveType);
+      setSeoCreated(true);
       onPersistRaw(nextRaw);
       onClearForm();
       onBumpFormKey();
@@ -87,6 +87,7 @@ export function PageSeoForm({
 
   const handleTypeChange = (nextType: string) => {
     // Drop fields from the previous type so PDP/PLP keys do not leak across.
+    setSeoCreated(true);
     onInnerChange({ __resolveType: nextType });
     onBumpFormKey();
   };
@@ -126,7 +127,7 @@ export function PageSeoForm({
           onChange={(next) => onInnerChange(next as Record<string, unknown>)}
           onBreadcrumbChange={onBreadcrumbChange}
           siteDefaultSeo={siteDefaultSeo}
-          sandbox={sandbox}
+          newBlock={seoCreated}
         />
       )}
     </SeoFormChrome>

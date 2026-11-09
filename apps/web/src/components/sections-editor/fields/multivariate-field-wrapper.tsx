@@ -78,6 +78,7 @@ import {
 import { duplicateVariantIndex, newVariantIndex } from "../section-variants";
 import { EditorRowLink } from "../editor-list-row";
 import type { FieldProps } from "./field-props";
+import { CreateOnlyContext } from "../defaults-on-create";
 
 export interface MultivariateFieldWrapperProps extends FieldProps {
   multivariateResolveType: string;
@@ -121,6 +122,7 @@ export function MultivariateFieldWrapper({
   ...props
 }: MultivariateFieldWrapperProps) {
   const t = useT();
+  const createOnly = useContext(CreateOnlyContext);
   const compact = useNewBlocksEditor();
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
@@ -261,7 +263,7 @@ export function MultivariateFieldWrapper({
     // Seed union-matcher discriminants so accepting the default branch still
     // persists a valid rule (see seedMatcherRule).
     const rule = resolveType
-      ? seedMatcherRule(resolveType, meta)
+      ? seedMatcherRule(resolveType, meta, { withDefaults: createOnly })
       : { __resolveType: alwaysMatcherResolveType(meta) };
     onChange(updateVariantRule(wrapper, safeIndex, rule));
   };

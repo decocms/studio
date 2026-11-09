@@ -44,7 +44,7 @@ import {
   withBranchDiscriminator,
 } from "../block-ref-field-utils";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
-import { withDefaultsForNew } from "../schema-defaults";
+import { useSeedNew } from "../defaults-on-create";
 import { labelFromResolveType } from "../section-types";
 import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
@@ -214,6 +214,7 @@ export function AnyOfField({
 }: FieldProps) {
   const t = useT();
   const compact = useNewBlocksEditor();
+  const seedNew = useSeedNew(meta);
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
@@ -351,11 +352,7 @@ export function AnyOfField({
       if (discriminatorKey) {
         const discValue = targetRef?.discriminatorValue ?? rt;
         onChange(
-          withDefaultsForNew(
-            branchSchema,
-            { ...next, [discriminatorKey]: discValue },
-            meta,
-          ),
+          seedNew(branchSchema, { ...next, [discriminatorKey]: discValue }),
         );
         return;
       }
@@ -363,12 +360,10 @@ export function AnyOfField({
       // Embedded union variants (ImageBanner | VideoBanner in Carousel.tsx)
       // must not get a persisted __resolveType — deco only expects plain props.
       if (isEmbeddedUnionResolveType(rt)) {
-        onChange(withDefaultsForNew(branchSchema, next, meta));
+        onChange(seedNew(branchSchema, next));
         return;
       }
-      onChange(
-        withDefaultsForNew(undefined, { ...next, __resolveType: rt }, meta),
-      );
+      onChange(seedNew(undefined, { ...next, __resolveType: rt }));
     };
 
     const persistUnionValue = (next: unknown) => {
@@ -378,13 +373,7 @@ export function AnyOfField({
       // A value that wasn't stored yet is created by this first edit.
       const created = value === undefined || value === null;
       onChange(
-        created
-          ? withDefaultsForNew(
-              discriminatorKey ? selectedRef?.schema : undefined,
-              branchValue,
-              meta,
-            )
-          : branchValue,
+        created ? seedNew(selectedRef?.schema, branchValue) : branchValue,
       );
     };
 

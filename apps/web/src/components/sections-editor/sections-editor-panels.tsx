@@ -159,7 +159,6 @@ export function SchemaFormPanel({
           onChange={onFormChange}
           onBreadcrumbChange={onBreadcrumbChange}
           siteDefaultSeo={siteDefaultSeo}
-          sandbox={sandbox ?? undefined}
         />
       ) : (
         <SchemaForm

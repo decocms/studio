@@ -311,4 +311,32 @@ describe("seedMatcherRule", () => {
     expect(seedMatcherRule(RT, null)).toEqual({ __resolveType: RT });
     expect(seedMatcherRule("", unionMeta)).toEqual({ __resolveType: "" });
   });
+
+  it("fills the rule's @defaults only when asked (its form won't)", () => {
+    const deviceMeta = {
+      manifest: {
+        blocks: {
+          matchers: {
+            "site/matchers/Device.ts": { $ref: "#/definitions/Device" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          Device: {
+            type: "object",
+            properties: { mobile: { type: "boolean", default: true } },
+          },
+        },
+      },
+    } as unknown as LiveMeta;
+    expect(seedMatcherRule("site/matchers/Device.ts", deviceMeta)).toEqual({
+      __resolveType: "site/matchers/Device.ts",
+    });
+    expect(
+      seedMatcherRule("site/matchers/Device.ts", deviceMeta, {
+        withDefaults: true,
+      }),
+    ).toEqual({ __resolveType: "site/matchers/Device.ts", mobile: true });
+  });
 });

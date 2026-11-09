@@ -1,10 +1,14 @@
 import { isV8Schema } from "@decocms/shared/blocks-major";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useContext, useEffect } from "react";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
-import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 import { resolveSchema } from "./resolve-schema";
-import { applySchemaDefaults, unseedSchemaDefaults } from "./schema-defaults";
+import { applySchemaDefaults } from "./schema-defaults";
+import {
+  CreateOnlyContext,
+  DefaultsProjectContext,
+  useDefaultsOnCreateOnly,
+} from "./defaults-on-create";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
@@ -537,8 +541,8 @@ interface SchemaFormProps {
  * drill-in/out (which unmounts sibling fields); nested instances reuse it. See
  * `object-field-expansion.tsx`. It also writes missing `@default`s back through
  * `onChange`, so the form only shows values that are saved — except in a
- * project that writes defaults only into new blocks, where they are shown and
- * only what the user changes is saved.
+ * project that writes defaults only into new blocks, where the form shows and
+ * edits the stored block as it is.
  */
 export function SchemaForm(props: SchemaFormProps) {
   const hasExpansionProvider = useHasObjectFieldExpansion();
@@ -567,21 +571,13 @@ export function useSeededFormValue(
   return seeded;
 }
 
-/**
- * Whether the project writes `@default`s only into new blocks (CMS settings;
- * off unless turned on). Suspends until the project is read, so such a project
- * never writes while its setting is loading.
- */
-function useDefaultsOnCreateOnly(virtualMcpId?: string | null): boolean {
-  const virtualMcp = useVirtualMCP(virtualMcpId);
-  return virtualMcp?.metadata?.defaultsOnCreateOnly === true;
-}
-
 function RootSchemaForm(props: SchemaFormProps) {
   const { schema, value, onChange, meta, persistDefaults, sandbox, newBlock } =
     props;
+  const contextProject = useContext(DefaultsProjectContext);
   const createOnly =
-    useDefaultsOnCreateOnly(sandbox?.virtualMcpId) && !newBlock;
+    useDefaultsOnCreateOnly(sandbox?.virtualMcpId ?? contextProject) &&
+    !newBlock;
   const seeded = useSeededFormValue(
     schema,
     value,
@@ -589,17 +585,14 @@ function RootSchemaForm(props: SchemaFormProps) {
     meta,
     persistDefaults !== false && !createOnly,
   );
-  // The fields edit `seeded`; only the user's own changes reach the save.
-  const emit = createOnly
-    ? (next: unknown) => {
-        const out = unseedSchemaDefaults(schema, value, seeded, next, meta);
-        if (out !== value) onChange(out);
-      }
-    : onChange;
+  // Create-only: the fields edit the stored block itself, so a save carries
+  // only what the user changed; what they create is filled in by the field.
   return (
-    <ObjectFieldExpansionProvider>
-      <SchemaFormBody {...props} value={seeded} onChange={emit} />
-    </ObjectFieldExpansionProvider>
+    <CreateOnlyContext.Provider value={createOnly}>
+      <ObjectFieldExpansionProvider>
+        <SchemaFormBody {...props} value={createOnly ? value : seeded} />
+      </ObjectFieldExpansionProvider>
+    </CreateOnlyContext.Provider>
   );
 }
 

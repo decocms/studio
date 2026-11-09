@@ -207,6 +207,10 @@ export function readMatcherRuleFormState(
 export function seedMatcherRule(
   resolveType: string,
   meta?: LiveMeta | null,
+  options?: {
+    /** Also its `@default`s: its form won't fill them (`defaultsOnCreateOnly`). */
+    withDefaults?: boolean;
+  },
 ): Record<string, unknown> {
   const base: Record<string, unknown> = { __resolveType: resolveType };
   if (!resolveType || !meta) return base;
@@ -215,10 +219,8 @@ export function seedMatcherRule(
     schema?.type === "inline-union"
       ? schema.inlineUnionBranches?.[0]?.discriminators
       : undefined;
-  // The rule is being created: it starts with its defaults too.
-  return withDefaultsForNew(
-    undefined,
-    discriminators ? { ...base, ...discriminators } : base,
-    meta,
-  ) as Record<string, unknown>;
+  const rule = discriminators ? { ...base, ...discriminators } : base;
+  return options?.withDefaults
+    ? withDefaultsForNew(undefined, rule, meta)
+    : rule;
 }
