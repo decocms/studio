@@ -41,10 +41,13 @@ export function StructuredMarkdownBlock({ block }: { block: StructuredBlock }) {
   if (block.kind === "testing") {
     const { data } = block;
     return (
-      <Card size="flush" className="my-4 gap-0">
+      <Card
+        size="flush"
+        className="my-4 gap-0 overflow-hidden focus-within-ring"
+      >
         <Accordion type="single" collapsible>
           <AccordionItem value="testing" className="py-0">
-            <AccordionTrigger className="px-4 py-3">
+            <AccordionTrigger className="rounded-none px-4 py-3 focus-visible:outline-none">
               <span className="flex min-w-0 items-center gap-2">
                 <ClipboardCheck className="size-4 shrink-0 text-muted-foreground" />
                 <span>{data.title ?? t("structuredMarkdown.testing")}</span>
