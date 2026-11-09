@@ -14,7 +14,11 @@ import {
   sectionFormSource,
   showMergeInForm,
   trackFormChange,
+  formSaveChoice,
+  waitingChoiceBase,
 } from "./form-base";
+import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
+import { draftVersionOf } from "./draft-version";
 import type { ParsedSection } from "./parse-sections";
 import type { RawSection } from "./section-types";
 
@@ -282,6 +286,106 @@ describe("formSaveGuard (v8 section saves)", () => {
   });
 });
 
+describe("formSaveGuard on a hosted v8 draft", () => {
+  const base = (): FormBase => ({
+    sectionIndex: 0,
+    variantIndex: 0,
+    base: { headline: "Probe B" },
+    emitted: { headline: "Probe B more" },
+    sectionCount: 1,
+    own: [],
+  });
+  const shown = {
+    __resolveType: "site/sections/Hero.tsx",
+    headline: "Probe B",
+  };
+  const theirs = { __resolveType: "site/sections/Hero.tsx", headline: "A's" };
+
+  it("a poll put someone else's version in the index before their copy loaded: the save guards by the copy it was built on, so it is refused", async () => {
+    // The index already says A's version; the cache (and the form) still
+    // hold B's copy. The index's version would let B write over A.
+    const indexed = await draftVersionOf(theirs);
+    const formBase = base();
+    const guard = formSaveGuard({
+      formBase,
+      rebased: false,
+      versionOf: () => indexed,
+      copy: { value: shown },
+    });
+    const sent = await guard.ifMatch("Hero");
+    expect(sent).toEqual({ Hero: await draftVersionOf(shown) });
+    expect(sent?.Hero).not.toBe(indexed);
+    expect(formBase.version).toBe(await draftVersionOf(shown));
+  });
+
+  it("the copy the index says: the same version, so the save goes through", async () => {
+    const indexed = await draftVersionOf(shown);
+    const guard = formSaveGuard({
+      formBase: base(),
+      rebased: false,
+      versionOf: () => indexed,
+      copy: { value: shown },
+    });
+    expect(await guard.ifMatch("Hero")).toEqual({ Hero: indexed });
+  });
+
+  it("a page is guarded by the copy it was rebuilt from, read each time", async () => {
+    const page = { __resolveType: "website/pages/Page.tsx", sections: [shown] };
+    const guard = formSaveGuard({
+      formBase: null,
+      rebased: false,
+      versionOf: () => "index-version",
+      copy: { value: page },
+    });
+    expect(await guard.ifMatch("pages-home")).toEqual({
+      "pages-home": await draftVersionOf(page),
+    });
+  });
+
+  it("rebased on the stored copy: that copy's version", async () => {
+    const formBase = { ...base(), version: "own" };
+    const guard = formSaveGuard({
+      formBase,
+      rebased: true,
+      versionOf: () => "index-version",
+      copy: { value: theirs },
+    });
+    expect(await guard.ifMatch("Hero")).toEqual({
+      Hero: await draftVersionOf(theirs),
+    });
+  });
+
+  it("keeps the form's own landed version", async () => {
+    const formBase = { ...base(), version: "own" };
+    const guard = formSaveGuard({
+      formBase,
+      rebased: false,
+      versionOf: () => "index-version",
+      copy: { value: shown },
+    });
+    expect(await guard.ifMatch("Hero")).toEqual({ Hero: "own" });
+    guard.onApplied?.({ Hero: "own-2" });
+    expect(formBase.version).toBe("own-2");
+  });
+
+  it("main's copy, a block the draft deletes, an unknown version: as the draft lists it", async () => {
+    const guardFor = (listed: string | null | undefined, value: unknown) =>
+      formSaveGuard({
+        formBase: base(),
+        rebased: false,
+        versionOf: () => listed,
+        copy: { value },
+      }).ifMatch("Hero");
+    expect(await guardFor(null, shown)).toEqual({ Hero: null });
+    expect(await guardFor(DRAFT_TOMBSTONE_VERSION, shown)).toEqual({
+      Hero: DRAFT_TOMBSTONE_VERSION,
+    });
+    expect(await guardFor(undefined, shown)).toBeUndefined();
+    // No copy held (gone from the cache): the draft's version as listed.
+    expect(await guardFor("v1", undefined)).toEqual({ Hero: "v1" });
+  });
+});
+
 describe("formSaveExpects", () => {
   const startedFrom = { title: "saved last" };
   const stored = { title: "read back" };
@@ -424,6 +528,94 @@ describe("conflictRetry", () => {
     expect(conflictRetry(2, false)).toEqual({
       delay: CONFLICT_RETRY_BASE_MS * 4,
       immediate: false,
+    });
+  });
+});
+
+describe("waitingChoiceBase (a save while the user's choice waits)", () => {
+  const record = (sectionIndex: number): FormBase => ({
+    sectionIndex,
+    variantIndex: 0,
+    base: { title: "stored" },
+    emitted: { title: "mine" },
+    sectionCount: 3,
+    own: [],
+  });
+  const at = {
+    pageKey: "pages-home",
+    global: false,
+    pageVariantIndex: 0,
+    sectionVariantIndex: 0,
+  };
+  const asked = record(1);
+  const waiting = [{ formBase: asked, target: at }];
+
+  it("a save of the form whose choice waits waits for it", () => {
+    expect(waitingChoiceBase(waiting, asked, at, 1)).toBe(asked);
+  });
+
+  it("a save of the same section built from another record of the form (queued before a re-read, or started again since) waits for the same choice", () => {
+    expect(waitingChoiceBase(waiting, record(1), at, 1)).toBe(asked);
+    expect(waitingChoiceBase(waiting, null, at, 1)).toBe(asked);
+  });
+
+  it("a save of another section, page variant, section variant or page goes ahead", () => {
+    expect(waitingChoiceBase(waiting, record(2), at, 2)).toBeNull();
+    expect(
+      waitingChoiceBase(waiting, null, { ...at, pageVariantIndex: 1 }, 1),
+    ).toBeNull();
+    expect(
+      waitingChoiceBase(waiting, null, { ...at, sectionVariantIndex: 1 }, 1),
+    ).toBeNull();
+    expect(
+      waitingChoiceBase(waiting, null, { ...at, pageKey: "pages-about" }, 1),
+    ).toBeNull();
+    expect(waitingChoiceBase([], record(1), at, 1)).toBeNull();
+  });
+});
+
+describe("formSaveChoice: v8 waits for the section's choice, v7 as before", () => {
+  const record = (sectionIndex: number): FormBase => ({
+    sectionIndex,
+    variantIndex: 0,
+    base: { title: "stored" },
+    emitted: { title: "mine" },
+    sectionCount: 3,
+    own: [],
+  });
+  const at = {
+    pageKey: "pages-home",
+    global: false,
+    pageVariantIndex: 0,
+    sectionVariantIndex: 0,
+  };
+  const asked = record(1);
+  const waiting = [{ formBase: asked, target: at }];
+
+  it("v7: checks the form's own record only and keeps the typing pause", () => {
+    const other = record(1);
+    expect(formSaveChoice(waiting, other, at, 1, false)).toEqual({
+      base: other,
+      runNow: false,
+    });
+    expect(formSaveChoice(waiting, asked, at, 1, false)).toEqual({
+      base: asked,
+      runNow: false,
+    });
+    expect(formSaveChoice(waiting, null, at, 1, false)).toEqual({
+      base: null,
+      runNow: false,
+    });
+  });
+
+  it("v8: the section's waiting choice, saved at once", () => {
+    expect(formSaveChoice(waiting, record(1), at, 1, true)).toEqual({
+      base: asked,
+      runNow: true,
+    });
+    expect(formSaveChoice(waiting, record(2), at, 2, true)).toEqual({
+      base: null,
+      runNow: false,
     });
   });
 });

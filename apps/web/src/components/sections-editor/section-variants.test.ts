@@ -10,6 +10,7 @@ import {
   hideSection,
   isDefaultVariantRule,
   newVariantIndex,
+  numberRepeatedLabels,
   parseSectionFlagVariants,
   pickVariantToKeepIndex,
   reorderMultivariateSectionVariant,
@@ -66,6 +67,50 @@ describe("section-variants", () => {
     expect(variants).toHaveLength(2);
     expect(variants[0]?.label).toBe("Default");
     expect(variants[1]?.label).toBe("Mobile");
+  });
+
+  it("after Add variant (v8), the new catch-all and the Default one get distinct labels, as a page's do", () => {
+    const always = { __resolveType: "multivariate/matchers/always" };
+    const hero = { __resolveType: "site/sections/Hero.tsx" };
+    const mvObj = {
+      __resolveType: "multivariate",
+      // The new variant, added above the trailing catch-all, has no rule
+      // chosen yet: a catch-all too.
+      variants: [
+        { rule: always, value: hero },
+        { rule: always, value: hero },
+      ],
+    };
+    const format = () => "Default";
+    expect(
+      parseSectionFlagVariants(mvObj, format, true).map((v) => v.label),
+    ).toEqual(["Default 1", "Default 2"]);
+    // Once a rule is chosen, each is named for its own rule.
+    const chosen = {
+      ...mvObj,
+      variants: [
+        { rule: { __resolveType: "device" }, value: hero },
+        { rule: always, value: hero },
+      ],
+    };
+    expect(
+      parseSectionFlagVariants(
+        chosen,
+        (rule) => (rule?.__resolveType === "device" ? "Mobile" : "Default"),
+        true,
+      ).map((v) => v.label),
+    ).toEqual(["Mobile", "Default"]);
+    // v7 keeps main's labels.
+    expect(parseSectionFlagVariants(mvObj, format).map((v) => v.label)).toEqual(
+      ["Default", "Default"],
+    );
+  });
+
+  it("numberRepeatedLabels numbers only the labels several share, in order", () => {
+    expect(
+      numberRepeatedLabels(["Default", "Mobile", "Default", "Desktop"]),
+    ).toEqual(["Default 1", "Mobile", "Default 2", "Desktop"]);
+    expect(numberRepeatedLabels([])).toEqual([]);
   });
 
   it("unwrapVariantSectionValue reads inline and lazy variant payloads", () => {

@@ -44,3 +44,62 @@ export function frameNavigationLoaded(
 ): HeldFrameNavigation {
   return current.loading ? { ...current, loading: false } : current;
 }
+
+/**
+ * A Blocks v8 page that shows a new URL of itself without loading it: Studio's
+ * HTML swap module fetches the URL and swaps the page's HTML in
+ * (studio-channel-host.ts `refresh`). The frame keeps the src it loaded,
+ * `src`, so it doesn't navigate, while its document shows `shown`.
+ */
+export interface FrameSwap {
+  /** The frame's base (`key` of the frame element): a new frame drops it. */
+  base: string;
+  /** The src the frame was given and loaded, which it keeps. */
+  src: string;
+  /** The URL the page shows. */
+  shown: string;
+}
+
+export interface FrameSwapInputs {
+  base: string;
+  /** The src the frame would be given now (`HeldFrameNavigation.src`). */
+  frameSrc: string | undefined;
+  /** The src whose load the frame last finished. */
+  loadedSrc: string | undefined;
+  /** The URL to show. */
+  wanted: string | undefined;
+  /** The frame's document has HTML swap loaded. */
+  canSwap: boolean;
+}
+
+/** The same page (origin and path): only its query moved, as a save's draft pointer does. */
+function samePage(a: string, b: string): boolean {
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    return x.origin === y.origin && x.pathname === y.pathname;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether the frame shows `wanted` by swapping (the swap to ask for), or by
+ * loading it (null: the frame's src follows `wanted`). It swaps only a new
+ * URL of the page it shows, once that page finished loading, with HTML swap
+ * in it. The same object comes back when nothing changes.
+ */
+export function nextFrameSwap(
+  current: FrameSwap | null,
+  { base, frameSrc, loadedSrc, wanted, canSwap }: FrameSwapInputs,
+): FrameSwap | null {
+  const live = current?.base === base ? current : null;
+  const src = live?.src ?? frameSrc;
+  const shown = live?.shown ?? frameSrc;
+  if (!wanted || !src || !shown) return null;
+  if (shown === wanted) return live;
+  if (canSwap && loadedSrc === src && samePage(shown, wanted)) {
+    return { base, src, shown: wanted };
+  }
+  return null;
+}

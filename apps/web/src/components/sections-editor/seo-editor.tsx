@@ -7,7 +7,11 @@ import { useT } from "@/i18n/use-t.ts";
 import { SeoFormFields } from "./seo-form-fields";
 import { resolveSchema } from "./resolve-schema";
 import type { LiveMeta } from "./resolve-schema";
-import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
+import {
+  findSiteSeoEntry,
+  resolveSeoTarget,
+  siteSeoBlockNames,
+} from "./seo-block";
 import type { SeoTarget } from "./seo-block";
 import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
@@ -17,6 +21,8 @@ import { copyScope, useCopyEpochs } from "./held-copy";
 import { SeoPreview } from "./seo-preview";
 import { isProtocolProject } from "./content-backend";
 import { useContentBackend } from "./use-content-backend";
+import { useEnsureDecofileBlocks } from "./use-decofile";
+import type { HostedBlocksLoad } from "./hosted-content";
 
 export type { SeoTarget } from "./seo-block";
 
@@ -36,7 +42,41 @@ interface SeoEditorProps {
   onBack?: () => void;
 }
 
-export function SeoEditor({
+/**
+ * Hosted v8: loads the blocks the site's default SEO may live in
+ * ({@link siteSeoBlockNames}) with the SEO views that read it. Always ready
+ * on other backends (they hold every body).
+ */
+export function useEnsureSiteSeoBlocks(
+  scope: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+  decofile: Record<string, unknown> | undefined,
+  meta: LiveMeta | undefined,
+): HostedBlocksLoad {
+  return useEnsureDecofileBlocks(
+    scope,
+    decofile ? siteSeoBlockNames(decofile, meta) : [],
+  );
+}
+
+/** The SEO editor, once the blocks the site's SEO may live in are loaded. */
+export function SeoEditor(props: SeoEditorProps) {
+  const { orgSlug, virtualMcpId, branch, decofile, meta } = props;
+  const load = useEnsureSiteSeoBlocks(
+    { orgSlug, virtualMcpId, branch },
+    decofile,
+    meta,
+  );
+  if (!load.ready) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <Spinner className="size-5 text-muted-foreground" />
+      </div>
+    );
+  }
+  return <SeoEditorLoaded {...props} />;
+}
+
+function SeoEditorLoaded({
   orgSlug,
   virtualMcpId,
   branch,

@@ -432,6 +432,12 @@ export function resolveConfig(
     // test-only: a local S3 store and the origin that serves it.
     deliveryR2Endpoint: envVars.DELIVERY_R2_ENDPOINT,
     deliveryPublicOrigin: envVars.DELIVERY_PUBLIC_ORIGIN,
+    deliveryKeyPrefix: envVars.DELIVERY_KEY_PREFIX,
+    recordR2Bucket: envVars.RECORD_R2_BUCKET,
+    recordR2Endpoint: envVars.RECORD_R2_ENDPOINT,
+    recordR2AccessKeyId: envVars.RECORD_R2_ACCESS_KEY_ID,
+    recordR2SecretAccessKey: envVars.RECORD_R2_SECRET_ACCESS_KEY,
+    recordKeyPrefix: envVars.RECORD_KEY_PREFIX,
     siteTokenSigningKey: envVars.DECO_SITE_TOKEN_SIGNING_KEY,
     cfDeliveryZoneId: envVars.CF_DELIVERY_ZONE_ID,
     cfPurgeApiToken: envVars.CF_PURGE_API_TOKEN,

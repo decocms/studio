@@ -1,8 +1,8 @@
 /**
  * The Campaigns view's model (a Blocks v8 site): every campaign of the saved
  * block `campaigns` (type `calendar`, name → one `{ start?, end? }`
- * window) in the draft, with its status at a moment, its uses and how it
- * compares with the published site, plus where its bar falls on a timeline.
+ * window) in the draft, with its status at a moment and how it compares
+ * with the published site, plus where its bar falls on a timeline.
  * Every dated variant names a campaign (`campaign { name }`), so these are
  * all the dates of a v8 site. Pure, for the view and its tests.
  */
@@ -13,10 +13,6 @@ import {
   namedRulesRemovedInDraft,
   publishedNamedRuleValue,
 } from "@/components/sections-editor/named-rule-edits";
-import {
-  type NamedRuleUses,
-  namedRuleUseCount,
-} from "@/components/sections-editor/named-rule-uses";
 import {
   type CampaignWindow,
   readNamedRuleBlock,
@@ -66,8 +62,6 @@ export interface CampaignRowModel {
   name: string;
   window: CampaignWindow;
   status: CampaignStatus;
-  /** Pages and sections whose variants use it in the draft. */
-  uses: number;
   /** Against the published site; `null` while that isn't known. */
   entryState: NamedRuleEntryState | null;
   /** The window live now, when the draft changed it. */
@@ -88,12 +82,12 @@ const STATUS_ORDER: Record<CampaignStatus, number> = {
  */
 export function campaignRows(
   decofile: Record<string, unknown>,
-  uses: NamedRuleUses | null,
+  /** The published content; `null` while it isn't known. */
+  published: Record<string, unknown> | null,
   now: Date,
 ): CampaignRowModel[] {
   const read = readNamedRuleBlock(decofile, "campaigns");
   if (read.kind === "conflict") return [];
-  const published = uses?.published ?? null;
   const rows = Object.entries(read.values).map(([name, window]) => {
     const entryState = namedRuleEntryState(
       published,
@@ -109,7 +103,6 @@ export function campaignRows(
       name,
       window,
       status: campaignStatus(window, now),
-      uses: uses ? namedRuleUseCount(uses, "campaigns", name) : 0,
       entryState,
       ...(live !== undefined ? { publishedWindow: live } : {}),
     } satisfies CampaignRowModel;
@@ -130,13 +123,9 @@ export function campaignRows(
 /** The published campaigns the draft deleted: they stop at the next Publish. */
 export function removedCampaigns(
   decofile: Record<string, unknown>,
-  uses: NamedRuleUses | null,
+  published: Record<string, unknown> | null,
 ): string[] {
-  return namedRulesRemovedInDraft(
-    decofile,
-    uses?.published ?? null,
-    "campaigns",
-  );
+  return namedRulesRemovedInDraft(decofile, published, "campaigns");
 }
 
 /** A campaign's bar on a timeline from `rangeStart` to `rangeEnd`. */

@@ -26,7 +26,6 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { lastFoundV8 } from "@/hooks/use-main-schema-v8";
 import {
   keepAttachedPinnedViews,
   pinnedViewsOf,
@@ -81,14 +80,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   if (!project) return null;
 
   const hasClonableSource = agentHasClonableSource(project.metadata);
-  /** While main's schema is read (a GitHub round trip), a site the server last
-   *  found v8 already shows its Calendar row, so it doesn't pop in late.
-   *  The view itself still waits for the answer. */
-  const v8WhileReading = nativeViews.calendarPending && lastFoundV8(project);
-  const presence = {
-    ...nativeViews.presence,
-    calendar: nativeViews.presence.calendar || v8WhileReading,
-  };
+  const presence = nativeViews.presence;
   const sidebarViews =
     optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
   const selectedViews = new Set(

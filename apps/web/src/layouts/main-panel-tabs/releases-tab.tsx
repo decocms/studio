@@ -1,16 +1,13 @@
 /**
- * Releases tab (the `releases` route) — a hosted v8 site's timeline: main's
- * commits, newest first. A commit with a companion release is a version that
- * can be reapplied: that publishes a NEW version with its content (the API
- * commits it and runs Publish's release path), never moves the site back.
- * "Latest" marks the version latest.json names (releases-status.ts). A commit
- * without a companion (a developer push, or a Publish whose release write
- * failed) is listed with no pill and no action, as "Site update" (its own
- * message, which may name git, is developer detail in the tooltip).
+ * Releases tab (the `releases` route) — a hosted v8 site's releases on the
+ * hosted CMS, newest first: one row per revision. "Make current" on any
+ * other than the latest publishes a NEW release with its content (a
+ * rollback, or a roll-forward), never moves the site back. "Latest" marks
+ * the release latest.json names (releases-status.ts). A release whose
+ * details couldn't be read is a plain row with its date only: no actions.
  *
- * Business-user copy: no sha, CDN or git words on screen, and calm words: a
- * version made for an earlier design is reapplied all the same, and the
- * dialog (and the toast) only add how to go back. One toast per action
+ * Business-user copy: no id, CDN or git words on screen. The author is a
+ * Studio user id, shown by the org member's name. One toast per action
  * (shared with Publish), with the error's own text behind Details.
  */
 
@@ -47,14 +44,14 @@ import {
   errorDetail,
   toastPublishFailed,
 } from "@/components/sections-editor/site-editor-toast.tsx";
-import { notifySavedNotPublished } from "@/components/thread/repository/hosted-publish-feedback.ts";
+import { CmsRequestError } from "@/components/sections-editor/cms-api";
+import type { OrgMemberRow } from "@/components/sections-editor/conflict-author";
+import { useMembersQuery } from "@/hooks/use-members";
 import {
-  HostedRequestError,
-  type ReleaseCommit,
+  type ReadableRelease,
+  type ReleaseRevision,
   useReapply,
-  useReapplyCheck,
   useReleases,
-  useRetryRelease,
 } from "./releases-api";
 import { releasePreviewUrl } from "@/components/sections-editor/preview-link";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -63,12 +60,12 @@ import {
   canReapply,
   formatWhen,
   isLatest,
-  latestSha,
+  isUnreadable,
   releaseTitle,
-  titleLine,
+  revisionTime,
 } from "./releases-status";
 
-const short = (sha: string) => sha.slice(0, 7);
+const short = (id: string) => id.slice(0, 12);
 
 function LatestPill() {
   const t = useT();
@@ -82,26 +79,50 @@ function LatestPill() {
   );
 }
 
+/**
+ * A release whose details (its meta.json) couldn't be read: no note, author
+ * or actions, only the date its id carries.
+ */
+function UnreadableRow({ revision }: { revision: ReleaseRevision }) {
+  const t = useT();
+  const [{ language }] = usePreferences();
+  const when = revisionTime(revision.id);
+  return (
+    <li
+      id={`release-${revision.id}`}
+      data-testid="release-unreadable"
+      className="flex items-center gap-3 px-1 py-2"
+    >
+      <div className="min-w-0 flex-1" title={short(revision.id)}>
+        <p className="truncate text-sm text-muted-foreground">
+          {t("releases.unreadable")}
+        </p>
+        {when ? (
+          <p className="truncate text-xs text-muted-foreground">
+            {formatWhen(when, language)}
+          </p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
 export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const [{ language }] = usePreferences();
   const { org } = useProjectContext();
   const releases = useReleases(org.slug, virtualMcpId);
   const reapply = useReapply(org.slug, virtualMcpId);
-  const retryRelease = useRetryRelease(org.slug, virtualMcpId);
+  // An author is a Studio user id: its name comes from the org's members.
+  const membersQuery = useMembersQuery();
+  const members =
+    (membersQuery.data as { data?: { members?: OrgMemberRow[] } } | undefined)
+      ?.data?.members ?? [];
   // "Preview this version": the site's own page reading that release, from
   // the same address Studio's preview uses (its preview hosts honour it).
   const { previewServerUrl } = useSessionRuntime(virtualMcpId);
-  const [confirm, setConfirm] = useState<ReleaseCommit | null>(null);
+  const [confirm, setConfirm] = useState<ReadableRelease | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
-  // Whether the version in the dialog was made for another design: only
-  // adds how to go back; the dialog never waits for it.
-  const check = useReapplyCheck(
-    org.slug,
-    virtualMcpId,
-    confirm?.sha ?? null,
-    latestSha(releases.data?.pages[0]),
-  );
 
   if (releases.isPending) {
     return (
@@ -135,56 +156,52 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
-  const commits = releases.data.pages.flatMap((page) => page.commits);
-  // What latest.json names, as the first page read it.
-  const { current } = releases.data.pages[0]!;
-  const bySha = new Map(commits.map((c) => [c.sha, c]));
-  const titleOf = (commit: ReleaseCommit) => releaseTitle(t, commit, language);
+  const revisions = releases.data.pages.flatMap((page) => page.revisions);
+  const byId = new Map(
+    revisions.flatMap((r) => (isUnreadable(r) ? [] : [[r.id, r] as const])),
+  );
+  const current = revisions.find(isLatest) ?? null;
+  const live = releases.data.pages[0]?.live ?? null;
+  const titleOf = (revision: ReadableRelease) =>
+    releaseTitle(t, revision.meta, language);
+  const authorOf = (revision: ReadableRelease) =>
+    members
+      .find((m) => m.userId === revision.meta.author)
+      ?.user?.name?.trim() || null;
 
-  /** "Try again" when the content was saved but wasn't released. */
-  const tryAgainRelease = async () => {
-    try {
-      await retryRelease.mutateAsync();
-      toast.success(t("releases.reapplied"), {
-        ...FRESH_TOAST,
-        id: SITE_EDITOR_PUBLISH_TOAST,
-        description: undefined,
-      });
-    } catch (error) {
-      notifySavedNotPublished(t, error, () => void tryAgainRelease());
-    }
-  };
-
-  const runReapply = async (commit: ReleaseCommit) => {
-    const retry = () => void runReapply(commit);
+  const runReapply = async (revision: ReadableRelease) => {
+    const retry = () => void runReapply(revision);
     toast.loading(t("releases.reapplying"), {
       ...FRESH_TOAST,
       id: SITE_EDITOR_PUBLISH_TOAST,
       description: undefined,
     });
     try {
-      const result = await reapply.mutateAsync({ sha: commit.sha });
+      const result = await reapply.mutateAsync({ id: revision.id });
       if (result.result === "up-to-date") {
         toast.message(t("releases.alreadyShown"), {
           ...FRESH_TOAST,
           id: SITE_EDITOR_PUBLISH_TOAST,
           description: undefined,
         });
-      } else if (result.release === "current") {
+      } else {
         toast.success(t("releases.reapplied"), {
           ...FRESH_TOAST,
           id: SITE_EDITOR_PUBLISH_TOAST,
-          description: result.schemaChanged
-            ? t("releases.reappliedUndoHint")
-            : undefined,
+          description: undefined,
         });
-      } else {
-        // Saved as a new version, not released yet: Publish's own "Try again".
-        notifySavedNotPublished(t, null, () => void tryAgainRelease());
       }
     } catch (error) {
-      const code = error instanceof HostedRequestError ? error.code : null;
-      if (code === "main-moved") {
+      const code = error instanceof CmsRequestError ? error.code : null;
+      if (code === "not_published") {
+        // Never published: nothing to make current over (contract §4.11).
+        toastPublishFailed(t, {
+          tone: "warning",
+          headline: t("releases.notPublished"),
+        });
+        return;
+      }
+      if (code === "production_moved") {
         toastPublishFailed(t, {
           tone: "warning",
           headline: t("releases.publishedMeanwhile"),
@@ -208,22 +225,24 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
     if (pending) void runReapply(pending);
   };
 
-  const showRow = (sha: string) => {
+  const showRow = (id: string) => {
     document
-      .getElementById(`release-${sha}`)
+      .getElementById(`release-${id}`)
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    setHighlight(sha);
+    setHighlight(id);
     setTimeout(
-      () => setHighlight((shown) => (shown === sha ? null : shown)),
+      () => setHighlight((shown) => (shown === id ? null : shown)),
       2_000,
     );
   };
 
   const header = current
     ? t("releases.lastPublished", {
-        when: formatRelativeTime(new Date(current.publishedAt), language),
+        when: formatRelativeTime(new Date(current.meta.publishedAt), language),
       })
-    : t("releases.nothingPublished");
+    : live
+      ? null
+      : t("releases.nothingPublished");
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
@@ -242,44 +261,47 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <ul className="divide-y divide-border/60">
-          {commits.map((commit) => {
-            const latest = commit.hasRelease && isLatest(commit.sha, current);
+          {revisions.map((revision) => {
+            if (isUnreadable(revision))
+              return <UnreadableRow key={revision.id} revision={revision} />;
+            const latest = isLatest(revision);
             // The original's row, when it is loaded (else plain text).
-            const originalRow = commit.reapplyOf
-              ? bySha.get(commit.reapplyOf.sha)
-              : undefined;
-            const originalDate =
-              originalRow?.date ?? commit.reapplyOf?.date ?? null;
+            const original = revision.meta.reapplyOf;
+            const originalRow = original ? byId.get(original) : undefined;
+            const originalDate = originalRow
+              ? new Date(originalRow.meta.publishedAt)
+              : original
+                ? revisionTime(original)
+                : null;
             const sameContentAs = originalDate
               ? t("releases.sameContentAs", {
-                  when: formatWhen(new Date(originalDate), language),
+                  when: formatWhen(originalDate, language),
                 })
+              : null;
+            const previewUrl = canPreviewRelease(revision)
+              ? releasePreviewUrl(previewServerUrl, revision.id)
               : null;
             return (
               <li
-                key={commit.sha}
-                id={`release-${commit.sha}`}
+                key={revision.id}
+                id={`release-${revision.id}`}
                 className={cn(
                   "flex items-center gap-3 px-1 py-2 transition-colors",
                   latest && "bg-muted/40",
-                  highlight === commit.sha && "bg-primary/10",
+                  highlight === revision.id && "bg-primary/10",
                 )}
               >
-                {/* The sha (and a developer push's own message) is developer
-                    detail: a tooltip, never on screen. */}
-                <div
-                  className="min-w-0 flex-1"
-                  title={
-                    commit.hasRelease
-                      ? short(commit.sha)
-                      : `${short(commit.sha)} ${titleLine(commit.message)}`
-                  }
-                >
-                  <p className="truncate text-sm">{titleOf(commit)}</p>
+                {/* The revision id is developer detail: a tooltip, never on
+                    screen. */}
+                <div className="min-w-0 flex-1" title={short(revision.id)}>
+                  <p className="truncate text-sm">{titleOf(revision)}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {[
-                      commit.author,
-                      formatRelativeTime(new Date(commit.date), language),
+                      authorOf(revision),
+                      formatRelativeTime(
+                        new Date(revision.meta.publishedAt),
+                        language,
+                      ),
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -288,7 +310,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                     <button
                       type="button"
                       className="truncate text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
-                      onClick={() => showRow(originalRow.sha)}
+                      onClick={() => showRow(originalRow.id)}
                     >
                       {sameContentAs}
                     </button>
@@ -299,9 +321,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                   ) : null}
                 </div>
                 {latest ? <LatestPill /> : null}
-                {canReapply(commit, current) ||
-                (canPreviewRelease(commit) &&
-                  releasePreviewUrl(previewServerUrl, commit.sha)) ? (
+                {canReapply(revision, live) || previewUrl ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -314,26 +334,21 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {canPreviewRelease(commit) &&
-                      releasePreviewUrl(previewServerUrl, commit.sha) ? (
+                      {previewUrl ? (
                         <DropdownMenuItem
                           data-testid="release-preview"
-                          onSelect={() => {
-                            const url = releasePreviewUrl(
-                              previewServerUrl,
-                              commit.sha,
-                            );
-                            if (url) window.open(url, "_blank", "noopener");
-                          }}
+                          onSelect={() =>
+                            window.open(previewUrl, "_blank", "noopener")
+                          }
                         >
                           <Eye size={14} />
                           {t("releases.preview")}
                         </DropdownMenuItem>
                       ) : null}
-                      {canReapply(commit, current) ? (
+                      {canReapply(revision, live) ? (
                         <DropdownMenuItem
                           disabled={reapply.isPending}
-                          onSelect={() => setConfirm(commit)}
+                          onSelect={() => setConfirm(revision)}
                         >
                           <RefreshCcw01 size={14} />
                           {t("releases.reapply")}
@@ -378,14 +393,6 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                 ? t("releases.reapplyBody", { title: titleOf(confirm) })
                 : null}
             </AlertDialogDescription>
-            {confirm && check.data?.schemaChanged ? (
-              <p
-                className="text-sm text-muted-foreground"
-                data-testid="reapply-undo-hint"
-              >
-                {t("releases.reapplyUndoHint")}
-              </p>
-            ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("releases.cancel")}</AlertDialogCancel>

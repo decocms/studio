@@ -78,6 +78,9 @@ export const sectionsEditor = {
     "No tests yet. Type a name to create one.",
   "sectionsEditor.namedRulePicker.noCampaigns":
     "No campaigns yet. Type a name to create one.",
+  "sectionsEditor.namedRulePicker.loadFailedTests": "Couldn't load your tests.",
+  "sectionsEditor.namedRulePicker.loadFailedCampaigns":
+    "Couldn't load your campaigns.",
   "sectionsEditor.namedRulePicker.createTest": "Create test “{name}”",
   "sectionsEditor.namedRulePicker.createCampaign": "Create campaign “{name}”",
   "sectionsEditor.namedRulePicker.shareOfVisitors": "{share}% of visitors",
@@ -127,40 +130,6 @@ export const sectionsEditor = {
   "sectionsEditor.namedRulePicker.fieldNone": "Nothing",
   "sectionsEditor.namedRulePicker.fieldPlaceholder":
     "Choose what this field reads",
-  "sectionsEditor.namedRuleUses.title": "Used by",
-  "sectionsEditor.namedRuleUses.loading": "Checking where it's used…",
-  "sectionsEditor.namedRuleUses.variant": "Variant {index}",
-  "sectionsEditor.namedRuleUses.draftOnly": "Not published yet",
-  "sectionsEditor.namedRuleUses.removed": "Removed in your draft",
-  "sectionsEditor.namedRuleUses.open": "Open",
-  "sectionsEditor.namedRuleUses.emptyTests":
-    "Not used yet. In the site editor, give a variant the rule “A/B test” and pick this test.",
-  "sectionsEditor.namedRuleUses.emptyCampaigns":
-    "Not used yet. In the site editor, give a variant the rule “Campaign” and pick this campaign.",
-  "sectionsEditor.namedRuleUses.wholeTests": "Sections that read every test",
-  "sectionsEditor.namedRuleUses.wholeTestsHint":
-    "These sections decide in their own code which tests they look at.",
-  "sectionsEditor.namedRuleUses.wholeCampaigns":
-    "Sections that read every campaign",
-  "sectionsEditor.namedRuleUses.wholeCampaignsHint":
-    "These sections decide in their own code which campaigns they look at.",
-  "sectionsEditor.namedRuleDelete.stillUsedOne":
-    "{places} still uses it. Undo brings it back.",
-  "sectionsEditor.namedRuleDelete.stillUsed":
-    "{places} still use it. Undo brings it back.",
-  "sectionsEditor.namedRuleUses.countPageOne": "1 page",
-  "sectionsEditor.namedRuleUses.countPages": "{count} pages",
-  "sectionsEditor.namedRuleUses.countSectionOne": "1 section",
-  "sectionsEditor.namedRuleUses.countSections": "{count} sections",
-  "sectionsEditor.namedRuleUses.countBoth": "{pages} and {sections}",
-  "sectionsEditor.namedRuleUses.missingTestOne":
-    "These pages and sections use a test that isn't in your A/B tests.",
-  "sectionsEditor.namedRuleUses.missingTests":
-    "These pages and sections use tests that aren't in your A/B tests.",
-  "sectionsEditor.namedRuleUses.missingCampaignOne":
-    "These pages and sections use a campaign that isn't in your campaigns.",
-  "sectionsEditor.namedRuleUses.missingCampaigns":
-    "These pages and sections use campaigns that aren't in your campaigns.",
   "sectionsEditor.namedRules.changedMeanwhile":
     "This changed while you were editing",
   "sectionsEditor.namedRules.changedMeanwhileHint":
@@ -184,7 +153,6 @@ export const sectionsEditor = {
     "Leave a date empty to keep that side open. Times are in your computer's time zone.",
   "sectionsEditor.namedRules.endBeforeStart":
     "The end needs to be after the start.",
-  "sectionsEditor.namedRules.rename": "Rename",
   "sectionsEditor.namedRules.saved": "Saved in your draft",
   "sectionsEditor.namedRules.savedHint": "It goes live when you publish.",
   "sectionsEditor.deletedConflict.theyDeletedTitle":
@@ -219,6 +187,9 @@ export const sectionsEditor = {
   "sectionsEditor.namedRules.create": "Create",
   "sectionsEditor.namedRules.openEditor": "Open the site editor",
   "sectionsEditor.namedRules.tryAgain": "Try again",
+  "sectionsEditor.hosted.blockLoadFailed": "Couldn't load this block.",
+  "sectionsEditor.hosted.blockLoadFailedHint":
+    "Studio tries again on its own in a moment.",
   "sectionsEditor.field.missingRequired": "Missing a required field",
   "sectionsEditor.field.missingRequiredTooltip":
     "Required field not filled in.",

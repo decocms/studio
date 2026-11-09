@@ -8,17 +8,15 @@ import { ProjectIcon } from "@/components/project-icon";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { type Experiment, experimentsQuery } from "@/hooks/use-experiments";
 import {
-  useLastFoundV8,
-  useMainSchemaV8,
-  useProjectsMainSchemaV8,
-} from "@/hooks/use-main-schema-v8";
+  blocksV8Project,
+  useBlocksV8Project,
+} from "@/hooks/use-blocks-v8-project";
 import { useT } from "@/i18n/use-t.ts";
 import {
   ExperimentRow,
   ExperimentsTab,
 } from "@/layouts/main-panel-tabs/experiments-tab";
-import { ExperimentsTabSkeleton } from "@/layouts/main-panel-tabs/experiments-block-tab";
-import { experimentsRouteView } from "@/layouts/main-panel-tabs/experiments-tab-choice";
+import { experimentsTabVisible } from "@/layouts/main-panel-tabs/experiments-tab-choice";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useProjectContext, useVirtualMCPsNonBlocking } from "@/sdk";
 import { Locked } from "./locked";
@@ -70,21 +68,18 @@ function OrgExperiments({ projects }: { projects: readonly SiteProject[] }) {
   const navigate = useNavigate();
   const entities = useVirtualMCPsNonBlocking();
   // A Blocks v8 site keeps its experiments in its draft, read in the project's own tab.
-  const majors = useProjectsMainSchemaV8(
-    projects.map((p) => entities.find((e) => e.id === p.id)),
+  const v8 = projects.map((p) =>
+    blocksV8Project(entities.find((e) => e.id === p.id)),
   );
-  const listed = projects.filter((_, i) => majors[i] === "v7");
-  const blocks8 = projects.filter(
-    (_, i) => majors[i] === "v8" || majors[i] === "error",
-  );
+  const listed = projects.filter((_, i) => !v8[i]);
+  const blocks8 = projects.filter((_, i) => v8[i]);
   const results = useQueries({
     queries: listed.map((p) => ({
       ...experimentsQuery(locator, studio, p.site),
       retry: false,
     })),
   });
-  const loading =
-    majors.includes("loading") || results.some((r) => r.isLoading);
+  const loading = results.some((r) => r.isLoading);
   const failed = listed.filter((_, i) => results[i]?.isError);
   const rows = listed
     .flatMap((project, i) =>
@@ -185,33 +180,19 @@ function ExperimentsLocked({ scopeId }: { scopeId: string | null }) {
   );
 }
 
-/** One project's tests: the org's rollout, or any Blocks (v8) site, whose
+/** One project's tests: the org's rollout, or any Blocks v8 project, whose
  *  tests are content its editors already own. */
 function ProjectExperiments({ scopeId }: { scopeId: string }) {
   const views = useControlPlaneViews();
-  const siteMajor = useMainSchemaV8(scopeId);
-  const lastFoundV8 = useLastFoundV8(scopeId);
-  const show = experimentsRouteView({
-    orgEnabled: views.experiments,
-    siteMajor,
-    lastFoundV8,
-  });
-  switch (show) {
-    case "tab":
-      return (
-        <div className="flex h-full min-h-0 flex-col">
-          <ExperimentsTab virtualMcpId={scopeId} />
-        </div>
-      );
-    case "loading":
-      return <ExperimentsTabSkeleton />;
-    case "settings":
-      return <ExperimentsLocked scopeId={scopeId} />;
-    default: {
-      const unhandled: never = show;
-      return unhandled;
-    }
+  const v8 = useBlocksV8Project(scopeId);
+  if (!experimentsTabVisible(views.experiments, v8)) {
+    return <ExperimentsLocked scopeId={scopeId} />;
   }
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ExperimentsTab virtualMcpId={scopeId} />
+    </div>
+  );
 }
 
 export function ExperimentsView({ scopeId }: { scopeId: string | null }) {

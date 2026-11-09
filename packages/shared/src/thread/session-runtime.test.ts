@@ -113,37 +113,52 @@ describe("parseThreadRuntime", () => {
 
 describe("Blocks v8 is always Fast Preview; v7 keeps main's rule", () => {
   const URL = "https://acme.com";
-  // [marker, fastPreview, preview URL] -> default runtime
+  // [blocksV8, fastPreview, preview URL] -> default runtime
   const rows: Array<
-    [8 | undefined, boolean | undefined, string | undefined, "cms" | "sandbox"]
+    [
+      true | undefined,
+      boolean | undefined,
+      string | undefined,
+      "cms" | "sandbox",
+    ]
   > = [
-    // v7 (no marker): exactly main's rule — the switch AND a URL.
+    // v7 (Blocks v8 site off): exactly main's rule — Fast Preview AND a URL.
     [undefined, true, URL, "cms"],
     [undefined, false, URL, "sandbox"],
     [undefined, undefined, URL, "sandbox"],
     [undefined, true, undefined, "sandbox"],
     [undefined, false, undefined, "sandbox"],
-    // v8: always cms with a URL, whatever a stale switch says.
-    [8, true, URL, "cms"],
-    [8, false, URL, "cms"],
-    [8, undefined, URL, "cms"],
+    // v8 (switch on): always cms with a URL, whatever a stale switch says.
+    [true, true, URL, "cms"],
+    [true, false, URL, "cms"],
+    [true, undefined, URL, "cms"],
     // v8 with no URL still has nothing to render against.
-    [8, true, undefined, "sandbox"],
-    [8, undefined, undefined, "sandbox"],
+    [true, true, undefined, "sandbox"],
+    [true, undefined, undefined, "sandbox"],
   ];
   for (const [marker, fastPreview, previewServerUrl, expected] of rows) {
-    test(`marker=${marker} fastPreview=${fastPreview} url=${!!previewServerUrl} -> ${expected}`, () => {
-      const meta = { blocksMajor: marker, fastPreview, previewServerUrl };
+    test(`blocksV8=${marker} fastPreview=${fastPreview} url=${!!previewServerUrl} -> ${expected}`, () => {
+      const meta = { blocksV8: marker, fastPreview, previewServerUrl };
       expect(defaultThreadRuntime(meta)).toBe(expected);
       expect(fastPreviewCapability(meta)).toBe(expected === "cms");
     });
   }
 
+  test("a stale v8 marker an earlier Studio wrote is v7", () => {
+    expect(
+      defaultThreadRuntime({
+        blocksMajor: 8,
+        fastPreview: false,
+        previewServerUrl: URL,
+      } as Parameters<typeof defaultThreadRuntime>[0]),
+    ).toBe("sandbox");
+  });
+
   test("a stamp still wins on a v8 project", () => {
     expect(
       readThreadRuntime(
         { runtime: "sandbox" },
-        { blocksMajor: 8, previewServerUrl: URL },
+        { blocksV8: true, previewServerUrl: URL },
       ),
     ).toBe("sandbox");
   });

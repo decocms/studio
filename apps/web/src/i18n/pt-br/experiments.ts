@@ -275,8 +275,6 @@ export const experiments = {
   "experiments.v8.status.off": "Desligado",
   "experiments.v8.status.running": "Rodando",
   "experiments.v8.status.everyone": "Todos",
-  "experiments.v8.usedBy": "Usado em {count}",
-  "experiments.v8.notUsed": "Ainda não usado",
   "experiments.v8.state.new": "Ainda não publicado",
   "experiments.v8.state.changed": "Alterado no seu rascunho",
   "experiments.v8.removedTitle": "Removidos no seu rascunho",
@@ -294,13 +292,6 @@ export const experiments = {
   "experiments.v8.save": "Salvar",
   "experiments.v8.turnOff": "Desligar",
   "experiments.v8.showEveryone": "Mostrar para todos",
-  "experiments.v8.renameHint":
-    "Toda variante que usa este teste é atualizada na mesma mudança.",
-  "experiments.v8.renamed": "Teste renomeado para “{name}”",
-  "experiments.v8.renameWholeHint":
-    "Seções que leem todos os testes no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
-  "experiments.v8.nameLocked":
-    "O nome não pode mudar enquanto o teste roda: os visitantes são agrupados por ele. Desligue o teste para renomeá-lo.",
   "experiments.v8.delete": "Excluir teste",
   "experiments.v8.deleted": "Teste “{name}” excluído do seu rascunho",
   "experiments.v8.deletedHint":

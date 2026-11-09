@@ -18,8 +18,6 @@ import {
 import type { ReactElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { en } from "@/i18n/en/index.ts";
-import { ptBR } from "@/i18n/pt-br/index.ts";
 import { NamedRuleDeleteButton } from "./named-rule-delete";
 import type { NamedRuleKind } from "./named-rules";
 import type {
@@ -31,19 +29,6 @@ const render = (ui: ReactElement) =>
   rtlRender(
     <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
   );
-
-const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
-const meta = {
-  manifest: {
-    blocks: {
-      matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },
-      loaders: { multivariate: builtIn, lazy: builtIn },
-      content: { "split-traffic": builtIn, calendar: builtIn },
-      pages: { page: builtIn },
-    },
-  },
-  schema: {},
-};
 
 const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
 const page = (name: string, path: string, rule: unknown) => ({
@@ -74,7 +59,7 @@ const decofile = {
     __resolveType: "campaign",
     name: "bf",
   }),
-  // Reads every test and campaign in its own code: not counted as a use.
+  // Reads every test and campaign in its own code.
   Banner: {
     __resolveType: "site/sections/Banner.tsx",
     tests: { __resolveType: "experiments" },
@@ -141,7 +126,6 @@ function setup(
     <NamedRuleDeleteButton
       kind={kind}
       name={name}
-      meta={meta}
       pending={false}
       apply={apply}
       reread={reread}
@@ -157,7 +141,7 @@ function setup(
 }
 
 describe("NamedRuleDeleteButton", () => {
-  test("a test that pages use is deleted, with an Undo and how many pages and sections still use it", async () => {
+  test("a test that pages use is just deleted, with an Undo and the usual hint", async () => {
     const { apply, onDeleted, onUndo, body, button } = setup(
       "experiments",
       "hero",
@@ -181,7 +165,7 @@ describe("NamedRuleDeleteButton", () => {
     expect(toastCalls).toHaveLength(1);
     expect(toastCalls[0]!.message).toBe("Test “hero” deleted from your draft");
     expect(toastCalls[0]!.description).toBe(
-      "1 page still uses it. Undo brings it back.",
+      "It leaves the site when you publish. Undo brings it back.",
     );
     expect(toastCalls[0]!.action?.label).toBe("Undo");
     // Undo puts back only "hero".
@@ -191,45 +175,6 @@ describe("NamedRuleDeleteButton", () => {
         experiments: { __resolveType: "split-traffic", spare: 10, hero: 50 },
       },
     });
-  });
-
-  test("the toast counts every page that still uses it", async () => {
-    const now = {
-      ...decofile,
-      "pages-promo": page("Promo", "/promo", {
-        __resolveType: "experiment",
-        name: "hero",
-      }),
-    };
-    const { button } = setup("experiments", "hero", { stored: [now] });
-    await act(async () => fireEvent.click(button));
-    expect(toastCalls[0]!.description).toBe(
-      "2 pages still use it. Undo brings it back.",
-    );
-  });
-
-  test("the toast counts pages and sections apart, never a section as a page", async () => {
-    const now = {
-      ...decofile,
-      "pages-promo": page("Promo", "/promo", {
-        __resolveType: "experiment",
-        name: "hero",
-      }),
-      Hero: {
-        __resolveType: "site/sections/Hero.tsx",
-        title: {
-          __resolveType: "multivariate",
-          variants: [
-            { rule: { __resolveType: "experiment", name: "hero" }, value: "B" },
-          ],
-        },
-      },
-    };
-    const { button } = setup("experiments", "hero", { stored: [now] });
-    await act(async () => fireEvent.click(button));
-    expect(toastCalls[0]!.description).toBe(
-      "2 pages and 1 section still use it. Undo brings it back.",
-    );
   });
 
   test("an unused test is deleted from the draft, with the usual hint", async () => {
@@ -262,7 +207,9 @@ describe("NamedRuleDeleteButton", () => {
       stored: [now],
     });
     await act(async () => fireEvent.click(button));
+    // One plain read: no use is looked for.
     expect(reread).toHaveBeenCalledTimes(1);
+    expect(reread).toHaveBeenCalledWith();
     expect(apply).toHaveBeenCalledWith({
       writes: {
         experiments: { __resolveType: "split-traffic", hero: 50, fresh: 5 },
@@ -351,7 +298,7 @@ describe("NamedRuleDeleteButton", () => {
       "Campaign “bf” deleted from your draft",
     );
     expect(toastCalls[0]!.description).toBe(
-      "1 page still uses it. Undo brings it back.",
+      "It leaves the site when you publish. Undo brings it back.",
     );
     await act(async () => toastCalls[0]!.action!.onClick());
     expect(onUndo).toHaveBeenCalledWith({
@@ -363,17 +310,5 @@ describe("NamedRuleDeleteButton", () => {
         },
       },
     });
-  });
-
-  test("the toast speaks pt-br too", () => {
-    expect(ptBR["sectionsEditor.namedRuleDelete.stillUsedOne"]).toBe(
-      "{places} ainda usa. Desfazer traz de volta.",
-    );
-    expect(ptBR["sectionsEditor.namedRuleDelete.stillUsed"]).toBe(
-      "{places} ainda usam. Desfazer traz de volta.",
-    );
-    expect(ptBR["sectionsEditor.namedRuleDelete.stillUsed"]).not.toBe(
-      en["sectionsEditor.namedRuleDelete.stillUsed"],
-    );
   });
 });

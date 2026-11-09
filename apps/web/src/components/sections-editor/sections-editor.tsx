@@ -25,11 +25,15 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { VariantRenameDialog } from "./variant-rename-dialog";
 import { toast } from "sonner";
-import { useDecofile, useDecofileCacheKey } from "./use-decofile";
+import {
+  useDecofile,
+  useDecofileCacheKey,
+  useEnsureDecofileBlocks,
+} from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
+import { autosaveDelay } from "./autosave-delay";
 import {
-  AUTOSAVE_DELAY,
   keptTheirVersion,
   useDebouncedSaveBlock,
   useSaveBlock,
@@ -53,6 +57,7 @@ import {
   showMergeInForm,
   trackFormChange,
   type FormBase,
+  formSaveChoice,
 } from "./form-base";
 import {
   type ConflictChoices,
@@ -71,7 +76,7 @@ import { FormConflictDialog } from "./form-conflict-dialog";
 import {
   conflictAuthorDraft,
   useConflictAuthor,
-  versionTag,
+  heldBlockTag,
 } from "./conflict-author";
 import { BlockConflictError } from "./decofile-api";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
@@ -79,6 +84,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema, type SchemaProperty } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
+import { useEnsureSiteSeoBlocks } from "./seo-editor";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import {
   activeSeoResolveType,
@@ -105,12 +111,13 @@ import {
 } from "./named-rule-picker";
 import type { NamedRulePickerProps } from "./matcher-picker";
 import {
+  type NamedRuleBlocksLoad,
   NamedRuleFieldProvider,
   type NamedRuleFieldSupport,
 } from "./named-rule-step";
 import { RootVariantFocusProvider } from "./fields/multivariate-field-wrapper";
-import type { VariantFocus } from "./named-rule-uses";
 import {
+  NAMED_RULE_BLOCKS,
   namedRuleKindInfo,
   namedRuleOf,
   readNamedRuleBlock,
@@ -145,10 +152,10 @@ import {
 import {
   appendPageVariantSections,
   buildPageSectionsFromVariants,
-  countSavedMatcherBlockReferences,
   duplicatePageVariantEntry,
   isMultivariateArrayWrapper,
   type PageVariant,
+  shouldDeleteOrphanMatcherBlock,
 } from "./page-variants";
 import {
   buildPageDataWithSections,
@@ -321,7 +328,6 @@ export function SectionsEditor({
   onViewJsonFile,
   onFocusedBlockChange,
   onVariantPreviewOverride,
-  focusVariant,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -364,12 +370,6 @@ export function SectionsEditor({
    * nothing selected).
    */
   onVariantPreviewOverride?: (params: string[] | null) => void;
-  /**
-   * Opens the page (or saved section) on this place once its content is
-   * read: "Open" in a test's or campaign's "Used by". `seq` tells a new
-   * request from the same one seen again.
-   */
-  focusVariant?: (VariantFocus & { seq: number }) | null;
 }) {
   const t = useT();
   const task = useOptionalChatTask();
@@ -429,14 +429,8 @@ export function SectionsEditor({
   const [prevExternalSeq, setPrevExternalSeq] = useState<
     number | null | undefined
   >(undefined);
-  const [seenFocusSeq, setSeenFocusSeq] = useState<number | null>(null);
-  const [pendingFocus, setPendingFocus] = useState<VariantFocus | null>(null);
-  if (focusVariant && focusVariant.seq !== seenFocusSeq) {
-    setSeenFocusSeq(focusVariant.seq);
-    setPendingFocus(focusVariant);
-  }
-  // A saved section's variant to open its form on (`focusVariant`, then the
-  // one last shown, so a rebuilt form stays on it).
+  // A saved section's variant to open its form on: the one last shown, so a
+  // rebuilt form stays on it.
   const [globalVariantFocus, setGlobalVariantFocus] = useState<number | null>(
     null,
   );
@@ -686,12 +680,13 @@ export function SectionsEditor({
     virtualMcpId,
     branch,
   });
+  // Their version is tagged as the block the save writes, whole, as the
+  // refusal recorded who changed it: the dialog's values are only the
+  // section's.
   const conflictAuthor = useConflictAuthor(
     hostedConflictDraft,
     formConflicts[0]?.blockKey ?? null,
-    formConflicts[0]
-      ? versionTag(canonicalBlockJson(formConflicts[0].plan.theirs))
-      : null,
+    heldBlockTag(decofile, formConflicts[0]?.blockKey ?? null),
   );
 
   // Declared above the early returns below: a hook after a conditional return
@@ -705,7 +700,66 @@ export function SectionsEditor({
   const contentEpoch = useContentSyncState(orgSlug, virtualMcpId).epoch;
   const [seenContentEpoch, setSeenContentEpoch] = useState(contentEpoch);
 
-  if (!previewReady || decofileLoading || metaLoading) {
+  // Hosted v8: the site's SEO block is loaded while the page's SEO is open.
+  useEnsureSiteSeoBlocks(
+    editingSeo ? { orgSlug, virtualMcpId, branch } : null,
+    decofile ?? undefined,
+    meta ?? undefined,
+  );
+
+  // Hosted v8: the decofile holds only the index's stubs until a view loads
+  // the bodies it opens. The open page (or global block) and the blocks it
+  // references directly are loaded here, so every way into the editor (the
+  // site editor's panel as well as the content browser) shows its sections.
+  const hostedOpenKey =
+    activeGlobalBlockKey ??
+    (decofile && meta
+      ? (findPageForPath(
+          extractPages(decofile, meta),
+          currentPath,
+          activePageBlockKey,
+        )?.key ?? null)
+      : null);
+  const hostedOpenLoad = useEnsureDecofileBlocks(
+    { orgSlug, virtualMcpId, branch },
+    hostedOpenKey ? [hostedOpenKey] : [],
+    { withRefs: true },
+  );
+  // Hosted v8: the rule picker loads the tests and campaigns blocks when it
+  // first opens (they stay loaded, and follow the index, from then on), so
+  // it lists the names that exist and never offers one of them as new.
+  const [namedRuleBlocksWanted, setNamedRuleBlocksWanted] = useState(false);
+  const namedRuleBlocksLoad = useEnsureDecofileBlocks(
+    { orgSlug, virtualMcpId, branch },
+    namedRuleBlocksWanted ? NAMED_RULE_BLOCKS : [],
+  );
+  const namedRuleLoad: NamedRuleBlocksLoad = {
+    ready:
+      !(contentBackend.kind === "protocol" && contentBackend.hosted) ||
+      (namedRuleBlocksWanted && namedRuleBlocksLoad.ready),
+    failed: namedRuleBlocksLoad.failed,
+    retry: namedRuleBlocksLoad.retry,
+    request: () => setNamedRuleBlocksWanted(true),
+  };
+
+  if (hostedOpenLoad.failed) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
+        <p>{t("sectionsEditor.hosted.blockLoadFailed")}</p>
+        <p>{t("sectionsEditor.hosted.blockLoadFailedHint")}</p>
+        <Button variant="outline" size="sm" onClick={hostedOpenLoad.retry}>
+          {t("sectionsEditor.namedRules.tryAgain")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (
+    !previewReady ||
+    decofileLoading ||
+    metaLoading ||
+    !hostedOpenLoad.ready
+  ) {
     return (
       <div className="h-full w-full flex items-center justify-center">
         <Spinner className="size-5 text-muted-foreground" />
@@ -1067,47 +1121,6 @@ export function SectionsEditor({
     }
   }
 
-  // "Open" from a test's or campaign's "Used by": once the content is read,
-  // go to the page variant first (its sections are another list), then open
-  // the section on its variant. A place that is gone opens the page as is.
-  if (pendingFocus && (isGlobalBlockMode ? globalBlockData : pageData)) {
-    const wantPage = pendingFocus.pageVariant;
-    const pageThere =
-      !isGlobalBlockMode &&
-      wantPage !== undefined &&
-      wantPage < pageVariants.length;
-    if (pageThere && wantPage !== safeVariantIndex) {
-      selectPageVariant(wantPage);
-    } else {
-      setPendingFocus(null);
-      const { section, variant } = pendingFocus;
-      if (isGlobalBlockMode) {
-        if (variant !== undefined) {
-          setGlobalVariantFocus(variant);
-          setFieldBreadcrumbs([]);
-          setFormResetKey((key) => key + 1);
-        }
-      } else if (
-        section !== undefined &&
-        openSectionAt(section, variant ?? 0)
-      ) {
-        // The preview shows that variant too, once this render is done.
-        const rawSection = rawSections[section]!;
-        const parsed = parsedSections[section]!;
-        const mvObj = parsed.isMultivariate
-          ? getMultivariateSectionObject(rawSection, parsed)
-          : null;
-        if (mvObj && variant !== undefined) {
-          queueMicrotask(() =>
-            syncVariantPreviewOverride(mvObj, section, variant),
-          );
-        }
-      } else if (pageThere) {
-        selectPageVariant(wantPage);
-      }
-    }
-  }
-
   // A discard, a publish or someone else's change rewrote the content: the
   // open form re-reads its block, or its next autosave would send the old
   // values back. Not while its own save is pending: that save is newer.
@@ -1364,6 +1377,13 @@ export function SectionsEditor({
     setTimeout(refreshFormIfLeft, 0);
   };
 
+  /**
+   * Studio's hosted v8 draft: a form save's guard is the version of the copy
+   * it was built on (formSaveGuard), never the index's.
+   */
+  const hostedDraft =
+    contentBackend.kind === "protocol" && contentBackend.source === "github";
+
   /** A block's content-protocol version in the cache (v8 saves' `ifMatch`). */
   const protocolVersionOf = (blockKey: string) =>
     protocolBlockVersion(
@@ -1596,6 +1616,18 @@ export function SectionsEditor({
     const target: FormSaveTarget = given ?? openFormTarget(sectionIndex);
     const targetSectionVariantIndex = target.sectionVariantIndex;
     const formBase = target.formBase;
+    // v8: a choice waits for this section: nothing is saved until it is
+    // made, and what the user types meanwhile is their version in the
+    // dialog at once ("You (not saved yet)"), with no typing pause.
+    const runNow =
+      immediate ||
+      formSaveChoice(
+        formConflictsRef.current,
+        formBase,
+        target,
+        sectionIndex,
+        protocolProject,
+      ).runNow;
     const pending = pendingSectionSaveRef.current;
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -1623,7 +1655,17 @@ export function SectionsEditor({
       // The form waits for the user's choice between their version and
       // someone else's: nothing of it is saved until then, and what they
       // change meanwhile is part of their version.
-      if (formBase && waitsForChoice(formBase, nextValue)) return;
+      // v8: a save of a section whose choice waits, built from another
+      // record of the form (queued before the re-read, or started again
+      // since), waits for it too. v7: the form's own record only.
+      const waitingBase = formSaveChoice(
+        formConflictsRef.current,
+        formBase,
+        target,
+        sectionIndex,
+        protocolProject,
+      ).base;
+      if (waitingBase && waitsForChoice(waitingBase, nextValue)) return;
       const latestDecofile = latestRef.current.decofile;
       const {
         rawSections: latestRawSections,
@@ -1791,7 +1833,7 @@ export function SectionsEditor({
                 // Saves of this form made meanwhile are in the retry; the
                 // others run behind it (or now, when it sends nothing).
                 waitingFormSavesRef.current.delete(waitingKey);
-                runWaitingFormSaves(AUTOSAVE_DELAY);
+                runWaitingFormSaves(autosaveDelay(protocolProject));
               }, retry.delay);
             } else {
               reloadStaleForm();
@@ -1821,7 +1863,7 @@ export function SectionsEditor({
             formSaveInFlightRef.current = false;
             // After a refusal the stored copy is re-read first; give the
             // editor a render to show it before building on it.
-            runWaitingFormSaves(refused ? AUTOSAVE_DELAY : 0);
+            runWaitingFormSaves(refused ? autosaveDelay(protocolProject) : 0);
             refreshFormIfLeft();
           });
       };
@@ -1852,6 +1894,10 @@ export function SectionsEditor({
             formBase,
             rebased: !!rebased,
             versionOf: protocolVersionOf,
+            // The saved block as the check above read it.
+            ...(hostedDraft
+              ? { copy: { value: latestDecofile[blockKey] } }
+              : {}),
           }),
         });
         return;
@@ -1943,6 +1989,10 @@ export function SectionsEditor({
           formBase: null,
           rebased: false,
           versionOf: protocolVersionOf,
+          // The page as it was rebuilt from.
+          ...(hostedDraft
+            ? { copy: { value: latestDecofile[latestPageKey] } }
+            : {}),
         }),
       });
     };
@@ -1951,7 +2001,7 @@ export function SectionsEditor({
       sectionVariantIndex: targetSectionVariantIndex,
       write,
     };
-    if (immediate) {
+    if (runNow) {
       pendingSectionSaveRef.current = null;
       write();
       return;
@@ -1959,7 +2009,7 @@ export function SectionsEditor({
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
       write();
-    }, AUTOSAVE_DELAY);
+    }, autosaveDelay(protocolProject));
   };
 
   const handleSelectSection = (index: number) => {
@@ -2617,6 +2667,7 @@ export function SectionsEditor({
       selected: named,
       campaignPrefill: inlineDateWindow(rule),
       onPick,
+      load: namedRuleLoad,
     };
   };
   const canAddSection =
@@ -2636,12 +2687,22 @@ export function SectionsEditor({
     }
   };
 
+  /**
+   * v7: deletes the saved matcher block `blockKey` once nothing in the
+   * projected decofile references it. A v8 site keeps its saved rules, used
+   * or not.
+   */
   const cleanupOrphanMatcherBlock = async (
     blockKey: string,
     projectedDecofile: Record<string, unknown>,
   ) => {
     if (
-      countSavedMatcherBlockReferences(projectedDecofile, blockKey, meta) > 0
+      !shouldDeleteOrphanMatcherBlock(
+        projectedDecofile,
+        blockKey,
+        meta,
+        protocolProject,
+      )
     ) {
       return;
     }
@@ -2723,7 +2784,7 @@ export function SectionsEditor({
           onError: saveBlock.reportError,
         },
       );
-    }, AUTOSAVE_DELAY);
+    }, autosaveDelay(protocolProject));
   };
 
   const handleMatcherTypeChange = (newRt: string) => {
@@ -2816,6 +2877,7 @@ export function SectionsEditor({
     namedRuleKinds.length > 0
       ? {
           kinds: namedRuleKinds,
+          load: namedRuleLoad,
           prepare: async (pick) => {
             const saved = await saveNamedRulePick(
               pick,
@@ -2845,7 +2907,6 @@ export function SectionsEditor({
       variantIndex,
     } = latestRef.current;
     if (!pageKey) return;
-    let prevBlockKey: string | null = null;
     const saved = await saveNamedRulePick(pick, latestDecofile, (rule) => {
       const fullPageData = latestDecofile[pageKey] as Record<string, unknown>;
       const current = fullPageData?.sections;
@@ -2857,11 +2918,6 @@ export function SectionsEditor({
       const variants = [...(mv.variants as Array<Record<string, unknown>>)];
       const target = variants[variantIndex];
       if (!target) return null;
-      prevBlockKey = getSavedMatcherBlockKey(
-        target.rule as Record<string, unknown> | undefined,
-        latestDecofile,
-        meta,
-      );
       variants[variantIndex] = { ...target, rule };
       return {
         blockKey: pageKey,
@@ -2876,15 +2932,14 @@ export function SectionsEditor({
     );
     setRuleResolveType(resolveType);
     setRuleFormValue(formValue);
-    if (prevBlockKey)
-      await cleanupOrphanMatcherBlock(prevBlockKey, saved.projected);
     onSaved?.();
   };
 
   /**
    * Point the active page variant at an existing saved matcher block (global
-   * rule). Writes the page with a reference (`{ __resolveType: blockKey }`) and
-   * cleans up the previously-referenced block if it becomes orphaned.
+   * rule). Writes the page with a reference (`{ __resolveType: blockKey }`).
+   * On v7 the previously-referenced block is deleted if it becomes orphaned;
+   * on v8 the saved rule it used before stays, used or not.
    */
   const handlePageVariantSelectGlobal = async (blockKey: string) => {
     cancelPendingRuleSaves();
@@ -3036,7 +3091,7 @@ export function SectionsEditor({
           onError: saveBlock.reportError,
         },
       );
-    }, AUTOSAVE_DELAY);
+    }, autosaveDelay(protocolProject));
   };
 
   const handleSectionMatcherTypeChange = (newRt: string) => {
@@ -3071,21 +3126,12 @@ export function SectionsEditor({
       variantIndex: latestVariantIndex,
     } = latestRef.current;
     if (targetSectionIndex === null || !pageKey) return;
-    let prevBlockKey: string | null = null;
     const saved = await saveNamedRulePick(pick, latestDecofile, (rule) => {
       const rawSection = latestRawSections[targetSectionIndex];
       const parsed = latestParsedSections[targetSectionIndex];
       if (!rawSection || !parsed?.isMultivariate) return null;
       const mvObj = getMultivariateSectionObject(rawSection, parsed);
       if (!mvObj) return null;
-      const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
-      prevBlockKey = getSavedMatcherBlockKey(
-        variants[targetSectionVariantIndex]?.rule as
-          | Record<string, unknown>
-          | undefined,
-        latestDecofile,
-        meta,
-      );
       const updatedSections = [...latestRawSections];
       updatedSections[targetSectionIndex] = rebuildSectionWithMultivariate(
         rawSection,
@@ -3115,15 +3161,14 @@ export function SectionsEditor({
     );
     setSectionRuleResolveType(resolveType);
     setSectionRuleFormValue(formValue);
-    if (prevBlockKey)
-      await cleanupOrphanMatcherBlock(prevBlockKey, saved.projected);
     onSaved?.();
   };
 
   /**
    * Point the active section variant at an existing saved matcher block (global
-   * rule). Writes the page with a reference and cleans up the previously-
-   * referenced block if it becomes orphaned.
+   * rule). Writes the page with a reference. On v7 the previously-referenced
+   * block is deleted if it becomes orphaned; on v8 the saved rule it used
+   * before stays, used or not.
    */
   const handleSectionVariantSelectGlobal = async (blockKey: string) => {
     cancelPendingRuleSaves();
@@ -3224,7 +3269,7 @@ export function SectionsEditor({
       ? getMultivariateSectionObject(selectedRawSection, selectedParsed)
       : null;
   const sectionFlagVariants = sectionMvObj
-    ? parseSectionFlagVariants(sectionMvObj, formatMatcher)
+    ? parseSectionFlagVariants(sectionMvObj, formatMatcher, protocolProject)
     : [];
   const safeSectionVariantIndex = Math.min(
     activeSectionVariantIndex,
@@ -4100,8 +4145,9 @@ export function SectionsEditor({
 
   /**
    * Point a directly-opened section-multivariate variant at an existing saved
-   * global matcher block, cleaning up the previously-referenced block if it
-   * becomes orphaned. Whole-block analogue of handleSectionVariantSelectGlobal.
+   * global matcher block (on v7, deleting the previously-referenced block if
+   * it becomes orphaned). Whole-block analogue of
+   * handleSectionVariantSelectGlobal.
    */
   const handleFieldVariantSelectGlobal = async (
     wrapperValue: Record<string, unknown>,
@@ -4169,7 +4215,6 @@ export function SectionsEditor({
     const { activePageKey: targetBlockKey, decofile: latestDecofile } =
       latestRef.current;
     if (!targetBlockKey) return;
-    let prevBlockKey: string | null = null;
     let data: Record<string, unknown> | null = null;
     const saved = await saveNamedRulePick(pick, latestDecofile, (rule) => {
       const variants = Array.isArray(wrapperValue.variants)
@@ -4177,19 +4222,12 @@ export function SectionsEditor({
         : [];
       const target = variants[variantIndex];
       if (!target) return null;
-      prevBlockKey = getSavedMatcherBlockKey(
-        target.rule as Record<string, unknown> | undefined,
-        latestDecofile,
-        meta,
-      );
       variants[variantIndex] = { ...target, rule };
       data = { ...wrapperValue, variants };
       return { blockKey: targetBlockKey, data };
     });
     if (!saved || !data) return;
     setFormValue(data);
-    if (prevBlockKey)
-      await cleanupOrphanMatcherBlock(prevBlockKey, saved.projected);
     onSaved?.();
   };
 
@@ -4201,6 +4239,9 @@ export function SectionsEditor({
 
   const exitSectionEditing = () => {
     clearSectionEditing();
+    // Leaving a section drops the variant it pinned in the preview (a v8
+    // site's `__variant`), keeping only the page's; v7 keeps main's override.
+    if (protocolProject) syncVariantPreviewOverride(null, -1, 0);
   };
 
   const handleSeoInnerChange = (nextRecord: Record<string, unknown>) => {
@@ -4934,6 +4975,9 @@ export function SectionsEditor({
               // windows name a field; elsewhere as before.
               fieldsAsLabeled={hostedConflictDraft !== null}
               fresh={waitingChoice.fresh}
+              // v8: the burst typed as it opens goes on into the field. v7:
+              // as before, the dialog takes the keystrokes.
+              keepTyping={protocolProject}
               onChoose={(pointer, choice) =>
                 setConflictChoices({
                   ...waitingChoice.choices,

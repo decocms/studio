@@ -1,20 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import {
-  canRenameExperiment,
   experimentStatus,
   isInlineDateRule,
   isPlainRecord,
   namedRule,
   namedRuleKindOfBlock,
   namedRuleKindOfType,
-  namedRuleNames,
   namedRuleOf,
   namedRuleSupport,
   readNamedRuleBlock,
   readNamedRuleValues,
   withNamedRuleEntry,
   withoutNamedRuleEntry,
-  withRenamedNamedRuleEntry,
 } from "./named-rules";
 
 /**
@@ -205,19 +202,12 @@ describe("readNamedRuleValues", () => {
   });
 });
 
-describe("experiment status and renames", () => {
+describe("experiment status", () => {
   it("derives the status from the share", () => {
     expect(experimentStatus(0)).toBe("off");
     expect(experimentStatus(1)).toBe("running");
     expect(experimentStatus(99)).toBe("running");
     expect(experimentStatus(100)).toBe("everyone");
-  });
-
-  it("locks a running test's name", () => {
-    expect(canRenameExperiment(50)).toBe(false);
-    expect(canRenameExperiment(0)).toBe(true);
-    expect(canRenameExperiment(100)).toBe(true);
-    expect(canRenameExperiment(undefined)).toBe(true);
   });
 });
 
@@ -320,19 +310,6 @@ describe("editing the block", () => {
     });
     expect(withoutNamedRuleEntry(block, "__resolveType")).toBe(block);
   });
-
-  it("renames in place, and not onto a taken name", () => {
-    const renamed = withRenamedNamedRuleEntry(block, "a", "c");
-    expect(renamed).toEqual({
-      __resolveType: "calendar",
-      c: { start: "x" },
-      b: {},
-    });
-    expect(Object.keys(renamed)).toEqual(["__resolveType", "c", "b"]);
-    expect(withRenamedNamedRuleEntry(block, "a", "b")).toBe(block);
-    expect(withRenamedNamedRuleEntry(block, "missing", "c")).toBe(block);
-    expect(withRenamedNamedRuleEntry(block, "a", "__resolveType")).toBe(block);
-  });
 });
 
 describe("kind lookups", () => {
@@ -342,20 +319,6 @@ describe("kind lookups", () => {
     expect(namedRuleKindOfType("experiments")).toBeNull();
     expect(namedRuleKindOfBlock("campaigns")).toBe("campaigns");
     expect(namedRuleKindOfBlock("calendar")).toBeNull();
-  });
-
-  it("lists every name the block holds, readable or not", () => {
-    const decofile = {
-      experiments: { __resolveType: "split-traffic", a: 50, bad: "x" },
-      campaigns: { __resolveType: "site/loaders/x.ts" },
-    };
-    expect(namedRuleNames(readNamedRuleBlock(decofile, "experiments"))).toEqual(
-      ["a", "bad"],
-    );
-    expect(namedRuleNames(readNamedRuleBlock(decofile, "campaigns"))).toEqual(
-      [],
-    );
-    expect(namedRuleNames(readNamedRuleBlock({}, "campaigns"))).toEqual([]);
   });
 
   it("isPlainRecord takes objects only", () => {

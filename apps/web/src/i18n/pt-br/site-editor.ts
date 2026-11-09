@@ -9,9 +9,6 @@ export const siteEditor = {
     "Publicado. {host} vai mostrar em instantes.",
   "siteEditor.publish.nothingToPublish": "Nada para publicar",
   "siteEditor.publish.everythingPublished": "Tudo já está publicado.",
-  "siteEditor.publish.savedNotPublished": "Salvo, mas ainda não publicado",
-  "siteEditor.publish.savedNotPublishedBody":
-    "Suas alterações estão salvas. Tente de novo para publicá-las.",
   "siteEditor.publish.publishedMeanwhile":
     "Outra pessoa publicou enquanto você publicava, então nada mudou. Revise suas alterações e publique de novo.",
   "siteEditor.publish.changedMeanwhile":
@@ -37,8 +34,6 @@ export const siteEditor = {
     "Não foi salvo: alguns campos não estão preenchidos corretamente. Corrija e tente de novo.",
   "siteEditor.save.tooLarge":
     "Não foi salvo: este conteúdo é grande demais. Diminua o tamanho e tente de novo.",
-  "siteEditor.retrying.github":
-    "Não foi possível acessar o GitHub agora. Tentando de novo…",
   "siteEditor.retrying.sandbox":
     "Não foi possível acessar o sandbox agora. Tentando de novo…",
   "siteEditor.contentTypes.changesInDraft": "Mudanças no rascunho",

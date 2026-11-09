@@ -43,7 +43,6 @@ describe("the delete toast's Undo", () => {
         <NamedRuleDeleteButton
           kind="experiments"
           name="spare"
-          meta={null}
           pending={false}
           apply={async () => ({ ok: true })}
           reread={async () => drafts[Math.min(reads++, 1)]!}

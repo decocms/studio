@@ -51,7 +51,7 @@ export interface VariantMatcherOps {
 export type RenameAction =
   | { kind: "noop" }
   /** Clear the name: replace the block reference with the inline matcher and
-   *  garbage-collect the now-possibly-orphaned block. */
+   *  (v7 only) garbage-collect the now-possibly-orphaned block. */
   | { kind: "inline"; blockKey: string; inlinedRule: Record<string, unknown> }
   /** The rule already references a saved block: rewrite that block's display
    *  name only; the variant rule is unchanged. */

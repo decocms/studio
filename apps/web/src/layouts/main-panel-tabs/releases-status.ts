@@ -2,9 +2,10 @@
  * What each row of the Releases screen says, as pure functions: its title in
  * business words, its pill and whether it offers "Make current".
  *
- * "Latest" is the version latest.json names: the newest one Publish (or a
- * reapply) put on the CDN. It says nothing about what a visitor's page
- * shows at this second; the screen never claims that.
+ * "Latest" is the revision latest.json names: the newest one a Publish (or
+ * a "Make current") put on the CDN. It says nothing about what a visitor's
+ * page shows at this second; the screen never claims that. Every other
+ * revision is listed the same way, a publish that lost its race included.
  */
 
 import {
@@ -14,48 +15,56 @@ import {
   UNKNOWN_RELEASE_NOTES,
 } from "@decocms/shared/release-notes";
 import type { TFunction } from "@/i18n/use-t.ts";
-import type { ReleaseCommit, ReleasePointer } from "./releases-api";
+import { isReleaseRevision } from "@/components/sections-editor/preview-link";
+import type {
+  ReadableRelease,
+  ReleaseRevision,
+  UnreadableRelease,
+} from "./releases-api";
 
-/** Whether the row for commit `sha` is the latest version. */
-export function isLatest(sha: string, current: ReleasePointer | null): boolean {
-  return current !== null && sha === current.revision;
+/** Whether the row is the latest release (what latest.json names). */
+export function isLatest(
+  revision: ReleaseRevision,
+): revision is ReadableRelease {
+  return revision.status === "current";
 }
 
-/** The sha latest.json names on a releases page, or null. */
-export function latestSha(
-  page: { current: ReleasePointer | null } | undefined,
-): string | null {
-  if (!page) return null;
-  const { current } = page;
-  return current ? current.revision : null;
+/** Whether the row's details (its meta.json) couldn't be read. */
+export function isUnreadable(
+  revision: ReleaseRevision,
+): revision is UnreadableRelease {
+  return revision.status === "unreadable";
 }
 
 /**
- * Whether a version can be opened in the preview ("Preview this version"):
- * any one with a companion release, the latest included. The site reads that
- * release by its commit SHA from a Studio link only.
+ * Whether a release can be opened in the preview ("Preview this version"):
+ * any listed one, the latest included. The site reads that release by its
+ * revision id from a Studio link only.
  */
 export function canPreviewRelease(
-  commit: Pick<ReleaseCommit, "sha" | "hasRelease">,
+  revision: Pick<ReleaseRevision, "id" | "status">,
 ): boolean {
-  return commit.hasRelease && /^[0-9a-f]{40}$/.test(commit.sha);
+  return revision.status !== "unreadable" && isReleaseRevision(revision.id);
 }
 
-/** Whether a row offers "Make current": an earlier release that was released. */
+/**
+ * Whether a row offers "Make current": any readable one but the latest, once
+ * the site has been published (`live`, the page's latest.json revision).
+ * Before the first publish the server refuses it (409 `not_published`).
+ */
 export function canReapply(
-  commit: Pick<ReleaseCommit, "sha" | "hasRelease">,
-  current: ReleasePointer | null,
-): boolean {
-  return commit.hasRelease && !isLatest(commit.sha, current);
+  revision: ReleaseRevision,
+  live: string | null,
+): revision is ReadableRelease {
+  return live !== null && revision.status === "listed";
 }
 
 // The server's note words ("Made current: …", "release from …"), shared with
-// apps/api's reapply.ts. Publish's no-note title is developer words, never shown.
+// apps/api's cms-publish.ts. Publish's no-note title is developer words, never shown.
 const NO_NOTE = NO_NOTE_TITLE;
 
-/** A commit message's title line: the note a Publish wrote. */
-export const titleLine = (message: string) =>
-  message.split("\n")[0]?.trim() ?? "";
+/** A note's title line: the note a Publish wrote. */
+const titleLine = (message: string) => message.split("\n")[0]?.trim() ?? "";
 
 /** A date and time in the viewer's language. */
 export function formatWhen(date: Date, language: string): string {
@@ -65,14 +74,24 @@ export function formatWhen(date: Date, language: string): string {
   }).format(date);
 }
 
-/** A version's note in business words (a reapply is localized). */
+/**
+ * When a revision was made, from its id: the UUIDv7 after the inverted-time
+ * prefix starts with its 48-bit millisecond timestamp. Null for any other id.
+ */
+export function revisionTime(id: string): Date | null {
+  if (!isReleaseRevision(id)) return null;
+  const hex = id.slice(13, 21) + id.slice(22, 26);
+  const when = new Date(Number.parseInt(hex, 16));
+  return Number.isNaN(when.getTime()) ? null : when;
+}
+
+/** A release's note in business words (a "Make current" is localized). */
 export function releaseTitle(
   t: TFunction,
-  commit: Pick<ReleaseCommit, "message" | "hasRelease">,
+  meta: { message: string },
   language: string,
 ): string {
-  if (!commit.hasRelease) return t("releases.siteUpdate");
-  const title = titleLine(commit.message);
+  const title = titleLine(meta.message);
   const prefix = MADE_CURRENT_PREFIXES.find((p) => title.startsWith(p));
   if (prefix) {
     const rest = title.slice(prefix.length).trim();

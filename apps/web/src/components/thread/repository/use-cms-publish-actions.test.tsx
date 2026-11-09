@@ -43,8 +43,6 @@ import {
   pollProtocolContent,
 } from "@/components/sections-editor/content-protocol-api";
 import { decofileWriteScope } from "@/components/sections-editor/decofile-api";
-import { blocksUsingMissingNamedRules } from "@/components/sections-editor/named-rule-uses";
-import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   blockKeyFromDiffPath,
   type PublishChange,
@@ -124,6 +122,12 @@ function dropFromDraft(names: string[]) {
   };
   server.etag++;
 }
+// The real exports, put back after this file: `mock.module` replaces the
+// module for every later test file in the same run.
+const realGitExports = { ...realGit };
+afterAll(() => {
+  mock.module("./sandbox-git-api", () => realGitExports);
+});
 const discardGitFiles = mock(discardFromDraft);
 const fetchGitDiff = mock(async (..._args: unknown[]) => ({ diffs: {} }));
 mock.module("./sandbox-git-api", () => ({
@@ -216,6 +220,7 @@ function hostedBackend() {
     client,
     describe: {} as DescribeResult,
     cacheKeySuffix: "",
+    site: "acme-site",
   };
   return {
     backend,
@@ -632,7 +637,11 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       calls.push(String(input));
       return new Response(
-        JSON.stringify({ result: "merged", sha: "abc", release: "current" }),
+        JSON.stringify({
+          result: "published",
+          revision: "abc",
+          previous: null,
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as typeof fetch;
@@ -647,7 +656,7 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
     await act(() => done);
     // Published: the dialog keeps its list through the close (publish-hold.ts).
     expect(await done).toBe(true);
-    expect(calls).toEqual([`/api/${ORG}/decofile/${VM}/${BRANCH}/publish`]);
+    expect(calls).toEqual([`/api/cms/acme-site/drafts/${BRANCH}/publish`]);
     expect(reads.releases).toBe(before.releases + 1);
     expect(reads.pointer).toBe(before.pointer + 1);
     expect(onPublished).toHaveBeenCalledTimes(1);
@@ -666,7 +675,11 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
       server.draft = { set: {}, delete: [] };
       server.etag++;
       return new Response(
-        JSON.stringify({ result: "merged", sha: "abc", release: "current" }),
+        JSON.stringify({
+          result: "published",
+          revision: "abc",
+          previous: null,
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as unknown as typeof fetch;
@@ -705,10 +718,13 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
   it("a failed publish clears the pending state and shows the error", async () => {
     const { backend } = hostedBackend();
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ error: "main-moved" }), {
-        status: 409,
-        headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
+      new Response(
+        JSON.stringify({ error: "production moved", code: "production_moved" }),
+        {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        },
+      )) as unknown as typeof fetch;
     const { result } = render(backend, { hosted: true });
     await act(() => result.current.submit());
     expect(result.current.publishError).toBeTruthy();
@@ -720,19 +736,6 @@ describe("useCmsPublishActions on a hosted v8 site", () => {
 });
 
 describe("useCmsPublishActions: a discard is never blocked", () => {
-  const builtIn = { $ref: "#/definitions/x", namespace: "deco" };
-  const meta = {
-    blocksMajor: 8,
-    manifest: {
-      blocks: {
-        matchers: { always: builtIn, campaign: builtIn, experiment: builtIn },
-        loaders: { multivariate: builtIn, lazy: builtIn },
-        content: { "split-traffic": builtIn, calendar: builtIn },
-        pages: { page: builtIn },
-      },
-    },
-    schema: {},
-  } as unknown as LiveMeta;
   const promoPage = {
     __resolveType: "page",
     name: "Promo",
@@ -758,7 +761,7 @@ describe("useCmsPublishActions: a discard is never blocked", () => {
     entry: testsEntry,
   } as unknown as PublishChange;
 
-  it("discarding only the A/B tests change a page uses goes through, and the page is flagged", async () => {
+  it("discarding only the A/B tests change a page uses goes through, and the page keeps its rule", async () => {
     const { backend } = hostedBackend();
     server.main = {
       experiments: { __resolveType: "split-traffic", hero: 50 },
@@ -768,7 +771,6 @@ describe("useCmsPublishActions: a discard is never blocked", () => {
       "pages-promo": promoPage,
     };
     await mountPolledBlocks(backend);
-    expect(blocksUsingMissingNamedRules(editorBlocks()!, meta).size).toBe(0);
     const { result } = render(backend, {
       hosted: true,
       entries: [testsEntry, { name: "pages-promo", version: "v-pages-promo" }],
@@ -784,9 +786,6 @@ describe("useCmsPublishActions: a discard is never blocked", () => {
       experiments: { __resolveType: "split-traffic", hero: 50 },
       "pages-promo": promoPage,
     });
-    expect([...blocksUsingMissingNamedRules(editorBlocks()!, meta)]).toEqual([
-      ["pages-promo", ["experiments"]],
-    ]);
   });
 });
 
