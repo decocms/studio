@@ -86,6 +86,7 @@ import { getPublicUrl } from "@/core/server-constants";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
+import { rotateGitCredentialWhileRunning } from "@/tools/sandbox/sync-git-credentials";
 import {
   publishRunStatusStage,
   type RunStatusStreamBuffer,
@@ -654,6 +655,12 @@ export class SandboxDispatchClient {
     const { ctx, harnessId, virtualMcpId, branch, interactive, streamBuffer } =
       this;
     const credentialProviderId = this.credential.providerId;
+    // The repo the sandbox pushes to, whose token must outlive a long run.
+    const repository =
+      (await getThreadRepository(ctx, input.threadId)) ??
+      (await getCodingAgentProjectMetadata(ctx, virtualMcpId, agent))
+        ?.repository ??
+      null;
 
     // Provisioning is re-done per attempt on purpose. On the continuation path
     // the pod is gone, and `ensureSandbox` + `pushSandboxEnv` are what put a
@@ -726,19 +733,33 @@ export class SandboxDispatchClient {
               .join("\n\n"),
           },
         };
-        yield* withModelMetadata(
-          dispatchToDaemon({
-            provider,
-            handle: sandbox.sandboxHandle,
-            harnessId,
-            input: resume ? { ...boundInput, resume } : boundInput,
-            runId,
-            signal: input.signal,
-          }),
-          // A continuation's `start` is dropped downstream, so don't re-stamp it.
-          resume ? null : (modelEnv.CODEX_MODEL ?? modelEnv.CLAUDE_CODE_MODEL),
-          credentialProviderId,
-        );
+        const stopGitRotation = repository
+          ? rotateGitCredentialWhileRunning(
+              ctx,
+              provider,
+              sandbox.sandboxHandle,
+              repository,
+            )
+          : () => {};
+        try {
+          yield* withModelMetadata(
+            dispatchToDaemon({
+              provider,
+              handle: sandbox.sandboxHandle,
+              harnessId,
+              input: resume ? { ...boundInput, resume } : boundInput,
+              runId,
+              signal: input.signal,
+            }),
+            // A continuation's `start` is dropped downstream, so don't re-stamp it.
+            resume
+              ? null
+              : (modelEnv.CODEX_MODEL ?? modelEnv.CLAUDE_CODE_MODEL),
+            credentialProviderId,
+          );
+        } finally {
+          stopGitRotation();
+        }
       })();
 
     try {
