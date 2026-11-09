@@ -1,5 +1,8 @@
 import type { voiceInbox as en } from "../en/voice-inbox";
 export const voiceInbox = {
+  "voiceInbox.previewAction": "Preview",
+  "voiceInbox.queue": "Fila de tarefas",
+  "voiceInbox.closePanel": "Fechar painel",
   "voiceInbox.breadcrumb": "Organização e projeto",
   "voiceInbox.mine": "Minhas tarefas",
   "voiceInbox.allActive": "Todas ativas",

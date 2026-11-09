@@ -1052,7 +1052,7 @@ function TaskBoardItemEditor({
             <div
               className={cn(
                 "flex min-w-0 flex-col gap-2",
-                embedded ? "px-5 py-4" : "px-5 py-6 sm:px-8",
+                embedded ? "px-3 py-3 sm:px-5 sm:py-4" : "px-5 py-6 sm:px-8",
               )}
             >
               {item && !embedded && (
@@ -1091,7 +1091,12 @@ function TaskBoardItemEditor({
               )}
               <div>
                 {item && !editingPost ? (
-                  <h1 className="text-2xl font-semibold leading-snug text-foreground">
+                  <h1
+                    className={cn(
+                      "font-semibold leading-snug text-foreground",
+                      embedded ? "text-lg sm:text-2xl" : "text-2xl",
+                    )}
+                  >
                     {title}
                   </h1>
                 ) : (
@@ -1115,7 +1120,8 @@ function TaskBoardItemEditor({
                     autoFocus={!item}
                     rows={1}
                     className={cn(
-                      "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
+                      "w-full resize-none overflow-hidden border-0 bg-transparent font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
+                      embedded ? "text-lg sm:text-2xl" : "text-2xl",
                     )}
                   />
                 )}

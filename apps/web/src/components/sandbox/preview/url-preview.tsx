@@ -7,10 +7,16 @@ import { PreviewCanvas, PreviewNavigation } from "./preview-surface";
 import type { PreviewDeviceSize } from "./device-hint";
 
 /** Supplies a deployed URL to the shared preview without sandbox lifecycle hooks. */
-export function UrlPreview({ url }: { url: string }) {
+export function UrlPreview({
+  url,
+  initialDevice = "desktop",
+}: {
+  url: string;
+  initialDevice?: PreviewDeviceSize;
+}) {
   const t = useT();
   const [revision, setRevision] = useState(0);
-  const [device, setDevice] = useState<PreviewDeviceSize>("desktop");
+  const [device, setDevice] = useState<PreviewDeviceSize>(initialDevice);
   return (
     <section
       className="surface flex h-full min-h-0 min-w-0 flex-col overflow-hidden"

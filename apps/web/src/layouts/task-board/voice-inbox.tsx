@@ -1,3 +1,11 @@
+import {
+  Drawer,
+  DrawerTrigger,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerClose,
+} from "@decocms/ui/components/drawer.tsx";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
@@ -6,6 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   MicrophoneOff01,
+  XClose,
+  List,
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
@@ -50,6 +60,7 @@ export function VoiceInbox() {
   const { items, isLoading, error } = useTaskBoardItems();
   const actions = useTaskBoardItemActions();
   const index = useProjectIndex(items);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [mine, setMine] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -75,12 +86,38 @@ export function VoiceInbox() {
         .id,
     );
   };
+  const decisionActions = task ? (
+    <>
+      <Button
+        size={mobile ? "default" : "sm"}
+        variant="ghost"
+        onClick={() => setDismissed([...dismissed, task.id])}
+      >
+        {t("voiceInbox.dismiss")}
+      </Button>
+      {task.status === "customer_approval" && (
+        <Button
+          size="sm"
+          variant="success"
+          disabled={actions.update.isPending}
+          onClick={() =>
+            actions.update.mutate({
+              id: task.id,
+              status: "ready_for_deployment",
+            })
+          }
+        >
+          {t("voiceInbox.approveAction")}
+        </Button>
+      )}
+    </>
+  ) : null;
   return createPortal(
     <div
       data-testid="voice-inbox"
       className="fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden bg-background text-foreground"
     >
-      <header className="flex h-14 shrink-0 items-center gap-2 px-3 sm:px-6">
+      <header className="flex h-14 shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-6">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -140,58 +177,144 @@ export function VoiceInbox() {
             </>
           )}
         </nav>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setMine(!mine);
-              setSelectedId(null);
-            }}
-          >
-            {t(mine ? "voiceInbox.mine" : "voiceInbox.allActive")}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
+        {mobile ? (
+          <Drawer open={queueOpen} onOpenChange={setQueueOpen}>
+            <DrawerTrigger asChild>
+              <Button
+                variant="ghost"
+                className="ml-auto h-11 shrink-0 gap-1 px-2"
+                aria-label={t("voiceInbox.queue")}
+              >
+                <List className="size-4" />
                 {available.length}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="max-h-80 w-80 overflow-y-auto"
-            >
-              {available.map((item) => (
-                <DropdownMenuItem
-                  key={item.id}
-                  onSelect={() => setSelectedId(item.id)}
+            </DrawerTrigger>
+            <DrawerContent aria-describedby={undefined}>
+              <DrawerHeader className="flex-row items-center justify-between">
+                <DrawerTitle>{t("voiceInbox.queue")}</DrawerTitle>
+                <DrawerClose asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("voiceInbox.closePanel")}
+                  >
+                    <XClose />
+                  </Button>
+                </DrawerClose>
+              </DrawerHeader>
+              <div className="flex items-center justify-between border-b px-4 pb-3">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setMine(!mine);
+                    setSelectedId(null);
+                  }}
                 >
-                  {item.title}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("voiceInbox.previousTask")}
-            disabled={!task}
-            onClick={() => move(-1)}
-          >
-            <ChevronLeft />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("voiceInbox.nextTask")}
-            disabled={!task}
-            onClick={() => move(1)}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
+                  {t(mine ? "voiceInbox.mine" : "voiceInbox.allActive")}
+                </Button>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("voiceInbox.previousTask")}
+                    disabled={!task}
+                    onClick={() => {
+                      move(-1);
+                      setQueueOpen(false);
+                    }}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("voiceInbox.nextTask")}
+                    disabled={!task}
+                    onClick={() => {
+                      move(1);
+                      setQueueOpen(false);
+                    }}
+                  >
+                    <ChevronRight />
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-[60dvh] overflow-y-auto p-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                {available.length === 0 && (
+                  <p className="p-4 text-sm text-muted-foreground">
+                    {t("voiceInbox.emptyLive")}
+                  </p>
+                )}
+                {available.map((item) => (
+                  <Button
+                    key={item.id}
+                    variant={item.id === task?.id ? "secondary" : "ghost"}
+                    className="h-auto min-h-12 w-full justify-start whitespace-normal py-3 text-left"
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setQueueOpen(false);
+                    }}
+                  >
+                    {item.title}
+                  </Button>
+                ))}
+              </div>
+            </DrawerContent>
+          </Drawer>
+        ) : (
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setMine(!mine);
+                setSelectedId(null);
+              }}
+            >
+              {t(mine ? "voiceInbox.mine" : "voiceInbox.allActive")}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  {available.length}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="max-h-80 w-80 overflow-y-auto"
+              >
+                {available.map((item) => (
+                  <DropdownMenuItem
+                    key={item.id}
+                    onSelect={() => setSelectedId(item.id)}
+                  >
+                    {item.title}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("voiceInbox.previousTask")}
+              disabled={!task}
+              onClick={() => move(-1)}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("voiceInbox.nextTask")}
+              disabled={!task}
+              onClick={() => move(1)}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+        )}
       </header>
-      <main className="min-h-0 flex-1 px-3">
+      <main className="min-h-0 flex-1 px-1.5 sm:px-3">
         {error ? (
           <p role="alert" className="p-6">
             {error.message}
@@ -235,32 +358,7 @@ export function VoiceInbox() {
                   onSetSprint={(sprintId) =>
                     actions.update.mutate({ id: task.id, sprintId })
                   }
-                  headerActions={
-                    <>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDismissed([...dismissed, task.id])}
-                      >
-                        {t("voiceInbox.dismiss")}
-                      </Button>
-                      {task.status === "customer_approval" && (
-                        <Button
-                          size="sm"
-                          variant="success"
-                          disabled={actions.update.isPending}
-                          onClick={() =>
-                            actions.update.mutate({
-                              id: task.id,
-                              status: "ready_for_deployment",
-                            })
-                          }
-                        >
-                          {t("voiceInbox.approveAction")}
-                        </Button>
-                      )}
-                    </>
-                  }
+                  headerActions={mobile ? null : decisionActions}
                 />
               </div>
             </ResizablePanel>
@@ -271,8 +369,44 @@ export function VoiceInbox() {
           </div>
         )}
       </main>
+      {mobile && task && (
+        <div
+          data-testid="inbox-mobile-actions"
+          className="flex shrink-0 items-center justify-between gap-2 border-t px-3 py-2 [&>button]:h-11"
+        >
+          <Drawer key={task.id}>
+            <DrawerTrigger asChild>
+              <Button variant="secondary" className="h-11 px-3">
+                {t("voiceInbox.previewAction")}
+              </Button>
+            </DrawerTrigger>
+            <DrawerContent className="h-[90dvh]" aria-describedby={undefined}>
+              <DrawerHeader className="flex-row items-center justify-between">
+                <DrawerTitle>{t("structuredMarkdown.preview")}</DrawerTitle>
+                <DrawerClose asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("voiceInbox.closePanel")}
+                  >
+                    <XClose />
+                  </Button>
+                </DrawerClose>
+              </DrawerHeader>
+              <div className="min-h-0 flex-1 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+                <TaskPreview
+                  item={task}
+                  initialDevice="mobile"
+                  showEmptyState
+                />
+              </div>
+            </DrawerContent>
+          </Drawer>
+          {decisionActions}
+        </div>
+      )}
       {task && (
-        <footer className="mx-auto my-2 flex w-full max-w-4xl shrink-0 items-center gap-3 px-4 sm:px-6">
+        <footer className="mx-auto flex w-full max-w-4xl shrink-0 items-center gap-2 px-3 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:my-2 sm:gap-3 sm:px-6">
           <div
             aria-hidden
             className="studio-voice-orb"

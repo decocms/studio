@@ -1,4 +1,7 @@
 export const voiceInbox = {
+  "voiceInbox.previewAction": "Preview",
+  "voiceInbox.queue": "Task queue",
+  "voiceInbox.closePanel": "Close panel",
   "voiceInbox.breadcrumb": "Organization and project",
   "voiceInbox.mine": "My tasks",
   "voiceInbox.allActive": "All active",
