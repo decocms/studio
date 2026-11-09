@@ -38,3 +38,14 @@ export function renameReleaseIn(
 ): Release[] {
   return current.map((r) => (r.branch === branch ? { ...r, name } : r));
 }
+
+/** Content drafts first, then coding (`sandbox`) drafts, each in list order. */
+export function groupReleasesByRuntime(releases: Release[]): {
+  content: Release[];
+  code: Release[];
+} {
+  return {
+    content: releases.filter((r) => r.runtime !== "sandbox"),
+    code: releases.filter((r) => r.runtime === "sandbox"),
+  };
+}

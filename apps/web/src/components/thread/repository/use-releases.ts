@@ -46,6 +46,20 @@ const DOT_CLASS: Record<string, string> = {
   teal: "bg-teal-500",
 };
 
+const ICON_CLASS: Record<string, string> = {
+  orange: "text-orange-500",
+  violet: "text-violet-500",
+  blue: "text-blue-500",
+  pink: "text-pink-500",
+  amber: "text-amber-500",
+  teal: "text-teal-500",
+};
+
+/** Text color for a coding draft's icon, which replaces its dot. */
+export function releaseIconClass(color: string | undefined): string {
+  return (color && ICON_CLASS[color]) || "text-muted-foreground";
+}
+
 /** Tailwind class for a stored color token; falls back to a neutral dot. */
 export function releaseDotClass(color: string | undefined): string {
   return (color && DOT_CLASS[color]) || "bg-muted-foreground";

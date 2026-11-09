@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Release } from "@decocms/shared/sdk/types";
 import {
   addRelease,
+  groupReleasesByRuntime,
   markReleaseSandbox,
   removeRelease,
   renameReleaseIn,
@@ -63,5 +64,22 @@ describe("release-edits", () => {
       const out = removeRelease(addRelease(start, rel("fresh")), "published");
       expect(out).toEqual([rel("fresh")]);
     });
+  });
+});
+
+describe("groupReleasesByRuntime", () => {
+  const content = { ...rel("a"), runtime: "cms" as const };
+  const unstamped = rel("b");
+  const code = { ...rel("c"), runtime: "sandbox" as const };
+
+  it("puts sandbox drafts in code and the rest in content, in list order", () => {
+    expect(groupReleasesByRuntime([code, content, unstamped])).toEqual({
+      content: [content, unstamped],
+      code: [code],
+    });
+  });
+
+  it("returns empty groups for an empty list", () => {
+    expect(groupReleasesByRuntime([])).toEqual({ content: [], code: [] });
   });
 });

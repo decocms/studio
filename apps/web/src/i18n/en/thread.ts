@@ -1,6 +1,10 @@
 export const thread = {
   "thread.branchPicker.allLoaded": "All loaded",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
+  "thread.branchPicker.codeDraftTooltip":
+    "Coding session: opens with this branch's code",
+  "thread.branchPicker.groupCode": "Code",
+  "thread.branchPicker.groupContent": "Content",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Couldn't load branches from GitHub. You can still pick from your branches.",
