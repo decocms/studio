@@ -109,5 +109,5 @@ test("Stop stops the run in progress, and the card is free for the next", async 
   await expect(running.getByText("Stopping…")).toBeVisible();
   await expect(running.getByText("Stopped", { exact: true })).toBeVisible();
   await expect(running.getByRole("button", { name: "Stop" })).toHaveCount(0);
-  await expect(running.getByTitle("Continue this run")).toBeVisible();
+  await expect(running.getByTitle("Continue this run").first()).toBeVisible();
 });
