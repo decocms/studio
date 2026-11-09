@@ -6,6 +6,7 @@ import { openRowActionsMenu, readFormValue } from "../harness/ct-utils";
 const meta = sectionWithProps({
   title: { type: "string", title: "Title", default: "Hello" },
   subtitle: { type: "string", title: "Subtitle" },
+  columns: { type: "number", title: "Columns", default: 4 },
   links: {
     type: "array",
     title: "Links",
@@ -43,8 +44,9 @@ test("defaults only on creation: the form edits the stored block, so editing one
     />,
   );
 
-  // Shown as stored: the runtime gets no `title` either.
+  // Shown as stored: the runtime gets no `title` or `columns` either.
   await expect(component.getByLabel("Title", { exact: true })).toHaveValue("");
+  await expect(component.getByLabel("Columns")).toHaveValue("");
   await expect(component.getByTestId("write-count")).toHaveText("0");
 
   await component.getByLabel("Subtitle").fill("World");
@@ -98,7 +100,7 @@ for (const [stored, initialValue] of [
   ["an absent", {}],
   ["a null", { card: null }],
 ] as const) {
-  test(`defaults only on creation: the first edit inside ${stored} object creates it with its defaults`, async ({
+  test(`defaults only on creation: the first edit inside ${stored} object writes only that edit`, async ({
     mount,
   }) => {
     const withCard = sectionWithProps({
@@ -125,7 +127,7 @@ for (const [stored, initialValue] of [
 
     await expect
       .poll(() => readFormValue(component))
-      .toEqual({ card: { heading: "Hi", showPrice: true } });
+      .toEqual({ card: { heading: "Hi" } });
   });
 }
 

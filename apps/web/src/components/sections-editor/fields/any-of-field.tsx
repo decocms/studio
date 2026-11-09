@@ -367,13 +367,10 @@ export function AnyOfField({
     };
 
     const persistUnionValue = (next: unknown) => {
-      const branchValue = discriminatorKey
-        ? withBranchDiscriminator(next, discriminatorKey, selectedRef)
-        : blockRefValueForBranch(next, activeRt);
-      // A value that wasn't stored yet is created by this first edit.
-      const created = value === undefined || value === null;
       onChange(
-        created ? seedNew(selectedRef?.schema, branchValue) : branchValue,
+        discriminatorKey
+          ? withBranchDiscriminator(next, discriminatorKey, selectedRef)
+          : blockRefValueForBranch(next, activeRt),
       );
     };
 

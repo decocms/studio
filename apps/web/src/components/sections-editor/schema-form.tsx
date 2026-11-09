@@ -4,7 +4,7 @@ import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import { applySchemaDefaults } from "./schema-defaults";
-import { CreateOnlyContext, useSeedNew } from "./defaults-on-create";
+import { CreateOnlyContext } from "./defaults-on-create";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
@@ -113,14 +113,15 @@ function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
   return { ...schema, type: "array", items: inferredItems };
 }
 
-// Ignores `@default`: the root form saves missing defaults first (see `RootSchemaForm`).
+// Ignores `@default`: a form that fills defaults in saves them first, and a
+// create-only one shows what is stored (see `RootSchemaForm`). A number shows
+// empty, not a 0 nothing stored.
 function emptyValueForType(type: string | undefined): unknown {
   switch (type) {
     case "string":
-      return "";
     case "number":
     case "integer":
-      return 0;
+      return "";
     case "boolean":
       return false;
     case "array":
@@ -609,7 +610,6 @@ function SchemaFormBody({
   const t = useT();
   // Which blocks editor renders this form, for browser tests to tell apart.
   const editor = useNewBlocksEditor() ? "new" : "classic";
-  const seedNew = useSeedNew(meta);
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
   // block config whose props are a plain `A | B | C` union (e.g. the VTEX
@@ -699,11 +699,7 @@ function SchemaFormBody({
       onChange(rest);
       return;
     }
-    // A value the stored block doesn't have (absent or null) is created by
-    // this first edit, with its defaults (when the form fills none in itself).
-    const created =
-      objValue[key] == null ? seedNew(properties[key], fieldValue) : fieldValue;
-    onChange({ ...objValue, [key]: created });
+    onChange({ ...objValue, [key]: fieldValue });
   };
 
   const containerResolveType =

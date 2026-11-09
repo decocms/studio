@@ -120,20 +120,15 @@ function seedDiscriminator(
 /**
  * A value being created — a new section, array item, branch or option — with
  * its `@default`s filled in the same way {@link applySchemaDefaults} fills a
- * block. Unlike an existing value, it also starts from its own object
- * `default` and, as a union, from its branch's defaults. Saved-block
- * references stay as they are.
+ * block. Unlike an existing value, a new union value also gets its branch's
+ * defaults. Saved-block references stay as they are.
  */
 export function withDefaultsForNew<T>(
   schema: SchemaProperty | null | undefined,
   value: T,
   meta?: LiveMeta,
 ): T {
-  const base =
-    isPlainObject(value) && isPlainObject(schema?.default)
-      ? { ...structuredClone(schema.default), ...value }
-      : value;
-  const seeded = seedValue(schema, base, meta);
+  const seeded = seedValue(schema, value, meta);
   const branch = createdBranchSchema(schema, seeded);
   // Seeding only adds missing keys, so the value keeps its shape.
   return (

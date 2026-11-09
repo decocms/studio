@@ -258,28 +258,6 @@ describe("withDefaultsForNew", () => {
     expect(withDefaultsForNew(menuItem, {})).toEqual({ display: true });
   });
 
-  test("starts a new object from its own default, under the edit", () => {
-    const layout: SchemaProperty = {
-      ...schema({
-        columns: { type: "number" },
-        gap: { type: "string" },
-        dense: { type: "boolean", default: false },
-      }),
-      default: { columns: 3, gap: "md" },
-    };
-    expect(
-      withDefaultsForNew<Record<string, unknown>>(layout, { columns: 4 }),
-    ).toEqual({
-      columns: 4,
-      gap: "md",
-      dense: false,
-    });
-    // The schema's default object is copied, not shared.
-    const created = withDefaultsForNew<Record<string, unknown>>(layout, {});
-    created.gap = "lg";
-    expect(layout.default).toEqual({ columns: 3, gap: "md" });
-  });
-
   test("fills a new type-discriminated union value from its branch", () => {
     const card: SchemaProperty = {
       type: "block-ref",
