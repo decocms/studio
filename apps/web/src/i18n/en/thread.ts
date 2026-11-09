@@ -102,6 +102,8 @@ export const thread = {
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
   "thread.headerActions.publishAnyway": "Publish anyway",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
+  "thread.headerActions.pushFailing":
+    "Changes since {since} are not saved to GitHub yet. Last attempt: {error}",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.review": "Review",
   "thread.headerActions.saving": "Saving…",
