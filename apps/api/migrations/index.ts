@@ -1,3 +1,4 @@
+import * as migration264taskcontentedited from "./264-task-content-edited";
 import * as migration256taskboardharness from "./256-task-board-harness";
 import * as migration257taskboarditemhierarchy from "./257-task-board-item-hierarchy";
 import * as migration259repositorymonitordeploys from "./259-repository-monitor-deploys";
@@ -566,6 +567,7 @@ const migrations: Record<string, Migration> = {
   "262-automation-card-mention-trigger":
     migration262automationcardmentiontrigger,
   "263-cms-drafts": migration263cmsdrafts,
+  "264-task-content-edited": migration264taskcontentedited,
 };
 
 export default migrations;

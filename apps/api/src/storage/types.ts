@@ -1791,6 +1791,7 @@ export interface TaskBoardItemTable {
   >;
   id: string;
   organization_id: string;
+  content_edited: ColumnType<boolean, boolean | undefined, boolean>;
   title: string;
   description: string | null;
   /** The key of the column the card sits in — free text, because on a board

@@ -537,6 +537,7 @@ export class TaskBoardStorage {
     id: string,
     organizationId: string,
     data: {
+      preserveEditedContent?: boolean;
       harnessId?: TaskBoardHarnessId;
       title?: string;
       description?: string | null;
@@ -584,17 +585,51 @@ export class TaskBoardStorage {
     hierarchy: { parent_id?: string | null; is_epic?: boolean },
     by: string,
   ) {
+    const changes = [
+      ...(data.title !== undefined
+        ? [sql`title is distinct from ${data.title}`]
+        : []),
+      ...(data.description !== undefined
+        ? [sql`description is distinct from ${data.description}`]
+        : []),
+      ...(data.priority !== undefined
+        ? [sql`priority is distinct from ${data.priority}`]
+        : []),
+    ];
     return db
       .updateTable("task_board_items")
       .set({
         ...hierarchy,
+        ...(by !== "system" && changes.length
+          ? {
+              content_edited: sql<boolean>`content_edited or (${sql.join(changes, sql` or `)})`,
+            }
+          : {}),
         ...(data.harnessId !== undefined ? { harness_id: data.harnessId } : {}),
-        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.title !== undefined
+          ? {
+              title: data.preserveEditedContent
+                ? sql<string>`case when content_edited then title else ${data.title} end`
+                : data.title,
+            }
+          : {}),
         ...(data.description !== undefined
-          ? { description: data.description }
+          ? {
+              description: data.preserveEditedContent
+                ? sql<
+                    string | null
+                  >`case when content_edited then description else ${data.description} end`
+                : data.description,
+            }
           : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
-        ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.priority !== undefined
+          ? {
+              priority: data.preserveEditedContent
+                ? sql<string>`case when content_edited then priority else ${data.priority} end`
+                : data.priority,
+            }
+          : {}),
         ...(data.type !== undefined ? { type: data.type } : {}),
         ...(data.assigneeId !== undefined
           ? { assignee_id: data.assigneeId }

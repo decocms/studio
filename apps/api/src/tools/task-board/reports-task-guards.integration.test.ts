@@ -1,6 +1,6 @@
 /**
  * Real-Postgres coverage for the reports-task guards in the board tools:
- * content immutability (UPDATE) and delete-dismisses.
+ * content preservation on import and delete-dismisses.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -76,38 +76,95 @@ describe("reports-task guards", () => {
     await closeTestPgDatabase(database);
   });
 
-  it("rejects content edits on a reports task; user tasks stay editable", async () => {
-    const reportsTask = await taskBoard.create({
+  it("allows report content edits and preserves them on subsequent imports", async () => {
+    const item = await taskBoard.create({
       organizationId: ORG,
       title: "finding",
+      description: "original",
       by: "system",
     });
-    for (const patch of [
-      { title: "renamed" },
-      { description: "rewritten" },
-      { priority: "high" as const },
-    ]) {
-      await expect(
-        TASK_BOARD_ITEM_UPDATE.handler({ id: reportsTask.id, ...patch }, ctx),
-      ).rejects.toThrow(/generated from your report/);
-    }
-    // Board interactions stay free: status/drag and due date.
-    const moved = await TASK_BOARD_ITEM_UPDATE.handler(
-      { id: reportsTask.id, status: "in_progress", sortOrder: 1 },
-      ctx,
+    await taskBoard.update(
+      item.id,
+      ORG,
+      { title: "renamed", description: "human notes", priority: "high" },
+      USER,
     );
-    expect(moved.item.status).toBe("in_progress");
+    const imported = await taskBoard.update(
+      item.id,
+      ORG,
+      {
+        description: "new analysis",
+        priority: "low",
+        preserveEditedContent: true,
+      },
+      "system",
+    );
+    expect(imported.title).toBe("renamed");
+    expect(imported.description).toBe("human notes");
+    expect(imported.priority).toBe("high");
+  });
 
-    const userTask = await taskBoard.create({
+  it("still refreshes unedited content after a board-only or unchanged-content update", async () => {
+    const item = await taskBoard.create({
       organizationId: ORG,
-      title: "mine",
-      by: USER,
+      title: "finding",
+      description: "original",
+      by: "system",
     });
-    const renamed = await TASK_BOARD_ITEM_UPDATE.handler(
-      { id: userTask.id, title: "renamed" },
-      ctx,
+    await taskBoard.update(
+      item.id,
+      ORG,
+      {
+        title: "finding",
+        description: "original",
+        priority: item.priority,
+        status: "in_progress",
+      },
+      USER,
     );
-    expect(renamed.item.title).toBe("renamed");
+    const imported = await taskBoard.update(
+      item.id,
+      ORG,
+      {
+        description: "new analysis",
+        priority: "low",
+        preserveEditedContent: true,
+      },
+      "system",
+    );
+    expect(imported.description).toBe("new analysis");
+    expect(imported.priority).toBe("low");
+    expect(imported.status).toBe("in_progress");
+  });
+
+  it("a title-only edit also protects description and priority, including deliberate clearing", async () => {
+    const item = await taskBoard.create({
+      organizationId: ORG,
+      title: "finding",
+      description: "original",
+      by: "system",
+    });
+    await taskBoard.update(item.id, ORG, { title: "human title" }, USER);
+    let imported = await taskBoard.update(
+      item.id,
+      ORG,
+      {
+        description: "new analysis",
+        priority: "low",
+        preserveEditedContent: true,
+      },
+      "system",
+    );
+    expect(imported.description).toBe("original");
+    expect(imported.priority).toBe(item.priority);
+    await taskBoard.update(item.id, ORG, { description: null }, USER);
+    imported = await taskBoard.update(
+      item.id,
+      ORG,
+      { description: "new analysis", preserveEditedContent: true },
+      "system",
+    );
+    expect(imported.description).toBeNull();
   });
 
   it("persists a task's repo through create and update", async () => {

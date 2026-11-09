@@ -348,8 +348,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.labelsLabel": "Tags",
   "taskBoard.taskDialog.projectLabel": "Projeto",
   "taskBoard.taskDialog.reviewsLabel": "Revisões",
-  "taskBoard.taskDialog.reportsContentLocked":
-    "Gerado pelo seu Deco Score — título, descrição e prioridade são gerenciados automaticamente",
   "taskBoard.taskDialog.savingLabel": "Salvando...",
   "taskBoard.taskDialog.showMore": "Ver mais",
   "taskBoard.taskDialog.timelineFoldMore": "mais {count} atualizações",

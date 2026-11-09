@@ -486,6 +486,7 @@ export const createTaskBoardImportRoutes = () => {
             existingId,
             organizationId,
             {
+              preserveEditedContent: true,
               description: item.description ?? null,
               priority: item.priority,
               // Refreshed like the evidence, not preserved like the title: a
@@ -552,6 +553,7 @@ export const createTaskBoardImportRoutes = () => {
                   matched.id,
                   organizationId,
                   {
+                    preserveEditedContent: true,
                     description: item.description ?? null,
                     priority: item.priority,
                     ...(item.repositoryId !== undefined

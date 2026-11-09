@@ -74,7 +74,6 @@ import {
   LinkExternal01,
   Lightning01,
   Loading02,
-  Lock01,
   Plus,
   RefreshCw01,
   Link03,
@@ -755,11 +754,6 @@ function TaskBoardItemEditor({
     ? members.find((m) => m.userId === item.createdBy)
     : undefined;
   const StatusIcon = laneVisual(status).icon;
-  // Reports-generated tasks: content (title/description/priority) is owned by
-  // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
-  // rejects a write that touches any of those fields. Board interactions
-  // (status/drag, assignee/delegating, due date, tags) stay free.
-  const contentLocked = !!item && isReportsTask(item);
 
   /** Header row: what the task is on the left, its actions on the right. */
   /** The task's own actions. A page hands them to the page header beside
@@ -1010,23 +1004,21 @@ function TaskBoardItemEditor({
                   <time dateTime={item.createdAt}>
                     {formatTimeAgo(new Date(item.createdAt))}
                   </time>
-                  {!contentLocked && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() => {
-                        flush();
-                        setEditingPost((value) => !value);
-                      }}
-                    >
-                      {t(
-                        editingPost
-                          ? "taskBoard.conversation.doneEditing"
-                          : "taskBoard.conversation.edit",
-                      )}
-                    </Button>
-                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => {
+                      flush();
+                      setEditingPost((value) => !value);
+                    }}
+                  >
+                    {t(
+                      editingPost
+                        ? "taskBoard.conversation.doneEditing"
+                        : "taskBoard.conversation.edit",
+                    )}
+                  </Button>
                 </div>
               )}
               <div>
@@ -1043,7 +1035,6 @@ function TaskBoardItemEditor({
                     }}
                     value={title}
                     onChange={(e) => {
-                      if (contentLocked) return;
                       patch({ title: e.target.value }, true);
                       e.target.style.height = "auto";
                       e.target.style.height = `${e.target.scrollHeight}px`;
@@ -1055,10 +1046,8 @@ function TaskBoardItemEditor({
                     placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
                     autoFocus={!item}
                     rows={1}
-                    readOnly={contentLocked}
                     className={cn(
                       "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
-                      contentLocked && "cursor-default",
                     )}
                   />
                 )}
@@ -1078,12 +1067,6 @@ function TaskBoardItemEditor({
                       ) : null;
                     })}
                   </div>
-                )}
-                {contentLocked && (
-                  <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Lock01 size={12} />
-                    {t("taskBoard.taskDialog.reportsContentLocked")}
-                  </p>
                 )}
               </div>
 
@@ -1136,7 +1119,6 @@ function TaskBoardItemEditor({
                           placeholder={t(
                             "taskBoard.taskDialog.descriptionPlaceholder",
                           )}
-                          editable={!contentLocked}
                         />
                       )}
                     </div>
@@ -1243,19 +1225,7 @@ function TaskBoardItemEditor({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={contentLocked}
-                    title={
-                      contentLocked
-                        ? t("taskBoard.taskDialog.reportsContentLocked")
-                        : undefined
-                    }
-                    className={cn(
-                      PROPERTY_BUTTON,
-                      contentLocked && "cursor-default opacity-60",
-                    )}
-                  >
+                  <button type="button" className={cn(PROPERTY_BUTTON)}>
                     {(() => {
                       const Icon = TASK_TYPE_CONFIG[taskType].icon;
                       return <Icon size={16} />;
@@ -1283,16 +1253,9 @@ function TaskBoardItemEditor({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    disabled={contentLocked}
-                    title={
-                      contentLocked
-                        ? t("taskBoard.taskDialog.reportsContentLocked")
-                        : undefined
-                    }
                     className={cn(
                       PROPERTY_BUTTON,
                       priority === "none" && EMPTY_PROPERTY,
-                      contentLocked && "cursor-default opacity-60",
                     )}
                   >
                     {priority === "none" ? (
