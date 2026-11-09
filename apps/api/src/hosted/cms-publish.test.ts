@@ -867,21 +867,118 @@ describe("a malformed latest.json reads as no release yet", () => {
     expect(Object.keys(live?.latest.blocks ?? {})).toEqual(["a", "b"]);
   });
 
-  it("a rollback over it is refused as before the first publish, writing nothing", async () => {
-    const { delivery, deps, writes } = setup();
-    const target = newRevisionId(clock++);
-    await seedRelease(delivery.store, SITE, target, { a: { v: 1 } });
-    delivery.objects.set(deliveryKeys.latest(SITE), {
-      text: "{not json",
-      etag: '"old"',
-      cacheControl: "",
-    });
+  /** r1, then r2 live (with a note), then latest.json made malformed. */
+  async function malformedOverHistory() {
+    const ctx = setup();
+    const r1 = newRevisionId(clock++);
+    const r2 = newRevisionId(clock++);
+    await seedRelease(ctx.delivery.store, SITE, r1, { a: { v: 1 } });
+    await seedRelease(
+      ctx.delivery.store,
+      SITE,
+      r2,
+      { a: { v: 2 } },
+      { message: "Summer sale" },
+    );
+    malformed(ctx.delivery);
+    const conditions: unknown[] = [];
+    ctx.delivery.hooks.beforePut = (key, condition) => {
+      if (key === deliveryKeys.latest(SITE)) conditions.push(condition);
+    };
+    return { ...ctx, r1, r2, conditions };
+  }
+
+  it("a rollback replaces it If-Match its ETag: the target is live, one past its sequence", async () => {
+    const { delivery, deps, r2, conditions, writes } =
+      await malformedOverHistory();
     writes();
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    await expect(rollbackToRevision(deps, target, "")).rejects.toBeInstanceOf(
-      NotPublishedError,
-    );
+    const result = await rollbackToRevision(deps, r2, "");
     warn.mockRestore();
+    expect(result).toMatchObject({ result: "published", previous: null });
+    const id = (result as { revision: string }).revision;
+    expect(conditions).toEqual([{ ifMatch: '"old"' }]);
+    expect(writes()).toEqual([
+      `put ${deliveryKeys.revisionIndex(SITE, id)}`,
+      `put ${deliveryKeys.revisionMeta(SITE, id)}`,
+      `put ${deliveryKeys.latest(SITE)}`,
+      `purge ${deliveryKeys.latest(SITE)}`,
+    ]);
+    const live = await readLatest(delivery.store, SITE);
+    // r2 is sequence 2: an isolate still holding it adopts only a higher one.
+    expect(live?.latest).toMatchObject({ revision: id, sequence: 3 });
+    expect(live?.latest.blocks).toEqual({
+      a: { version: blockVersion({ v: 2 }) },
+    });
+    expect(await readRevisionMeta(delivery.store, SITE, id)).toEqual({
+      reapplyOf: r2,
+      previous: null,
+      author: "usr_ana",
+      via: "cli",
+      message: "Made current: Summer sale",
+      publishedAt: "2026-11-04T10:00:00.000Z",
+    });
+  });
+
+  it("a rollback over it detects a change between the read and the write", async () => {
+    for (const change of ["rewritten", "published"] as const) {
+      const { delivery, deps, r1, conditions, writes } =
+        await malformedOverHistory();
+      const other = newRevisionId(clock++);
+      let landed: string | undefined;
+      deps.beforeLatestWrite = async (attempt) => {
+        if (attempt !== 1) return;
+        if (change === "published") {
+          await seedRelease(delivery.store, SITE, other, { a: { v: 3 } });
+          conditions.length = 0;
+          landed = delivery.objects.get(deliveryKeys.latest(SITE))?.etag;
+        } else {
+          delivery.objects.set(deliveryKeys.latest(SITE), {
+            text: "{still not json",
+            etag: '"new"',
+            cacheControl: "",
+          });
+        }
+      };
+      writes();
+      const warn = spyOn(console, "warn").mockImplementation(() => {});
+      const result = await rollbackToRevision(deps, r1, "");
+      warn.mockRestore();
+      expect(writes()).toContain(`refused ${deliveryKeys.latest(SITE)}`);
+      const live = await readLatest(delivery.store, SITE);
+      const id = (result as { revision: string }).revision;
+      expect(live?.latest.revision).toBe(id);
+      expect(live?.latest.blocks).toEqual({
+        a: { version: blockVersion({ v: 1 }) },
+      });
+      if (change === "published") {
+        // The retry builds on the release that landed.
+        expect(result).toMatchObject({ result: "published", previous: other });
+        expect(conditions).toEqual([{ ifMatch: '"old"' }, { ifMatch: landed }]);
+        expect(live?.latest.sequence).toBe(2);
+      } else {
+        expect(result).toMatchObject({ result: "published", previous: null });
+        expect(conditions).toEqual([
+          { ifMatch: '"old"' },
+          { ifMatch: '"new"' },
+        ]);
+        expect(live?.latest.sequence).toBe(2);
+      }
+    }
+  });
+
+  it("a rollback over it to a malformed target index still fails, writing nothing", async () => {
+    const { delivery, deps, r1, writes } = await malformedOverHistory();
+    delivery.objects.set(deliveryKeys.revisionIndex(SITE, r1), {
+      text: "{not json",
+      etag: '"x"',
+      cacheControl: "",
+    });
+    clearRevisionCache();
+    writes();
+    await expect(rollbackToRevision(deps, r1, "")).rejects.toBeInstanceOf(
+      MalformedObjectError,
+    );
     expect(writes()).toEqual([]);
   });
 

@@ -470,6 +470,55 @@ describe("a malformed latest.json is no release yet", () => {
       sequence: 1,
     });
   });
+  it("a rollback replaces it: the target is live, recorded as made current", async () => {
+    const t = cmsTestApp();
+    const target = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));
+    await seedRelease(
+      t.delivery.store,
+      "acme",
+      target,
+      { a: { id: "a" } },
+      { message: "Summer sale" },
+    );
+    malformed(t);
+    const res = await t.call("POST", `acme/releases/${target}/rollback`, {});
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ result: "published", previous: null });
+    const id = res.body.revision as string;
+    const latest = JSON.parse(
+      t.delivery.objects.get(deliveryKeys.latest("acme"))!.text,
+    );
+    expect(latest).toMatchObject({ revision: id, sequence: 2 });
+    const after = await t.call("GET", "acme/releases");
+    expect(after.body.live).toBe(id);
+    expect(after.body.revisions[0]).toMatchObject({
+      id,
+      status: "current",
+      meta: expect.objectContaining({
+        reapplyOf: target,
+        previous: null,
+        message: "Made current: Summer sale",
+      }),
+    });
+  });
+
+  it("a rollback over it to a malformed target index is still 500 malformed", async () => {
+    const t = cmsTestApp();
+    const target = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));
+    await seedRelease(t.delivery.store, "acme", target, { a: { id: "a" } });
+    malformed(t);
+    t.delivery.objects.set(deliveryKeys.revisionIndex("acme", target), {
+      text: "{not json",
+      etag: '"x"',
+      cacheControl: "",
+    });
+    const res = await t.call("POST", `acme/releases/${target}/rollback`, {});
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({
+      error: `sites/acme/revisions/${target}/index.json is malformed`,
+      code: "malformed",
+    });
+  });
 });
 
 describe("releases and rollback", () => {
