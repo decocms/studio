@@ -12,3 +12,5 @@ export const FEEDBACK_SCREENSHOT_TYPES: readonly string[] = [
   "image/jpeg",
   "image/webp",
 ];
+
+export const FEEDBACK_TAG_NAME = "feedback button";

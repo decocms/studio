@@ -33,12 +33,19 @@ test("feedback stores private files and copies them into the configured board", 
   const db = await connectDevDb();
   try {
     const result = await db.query(
-      "SELECT description, virtual_mcp_id FROM task_board_items WHERE organization_id = $1 AND title = $2",
+      "SELECT id, created_by, description, virtual_mcp_id FROM task_board_items WHERE organization_id = $1 AND title = $2",
       [targetOrg, `Feedback: ${message}`],
     );
     expect(result.rows).toHaveLength(1);
     const row = result.rows[0];
     expect(row.virtual_mcp_id).toBe(targetProject);
+    expect(row.created_by).toBe("system");
+    expect(row.description).toContain("Sender name: ");
+    const tags = await db.query(
+      "SELECT t.name FROM organization_tags t JOIN task_board_item_tags link ON link.id = t.id WHERE link.task_board_item_id = $1",
+      [row.id],
+    );
+    expect(tags.rows.map((tag) => tag.name)).toContain("feedback button");
     expect(row.description).not.toContain("base64");
     expect(row.description).not.toContain("token=secret");
     const match = row.description.match(/!\[Screenshot 1\]\(([^)]+)\)/);
