@@ -32,8 +32,13 @@
  * index under a new id and the next `sequence`, with `reapplyOf` (its
  * entries' meta recomputed when it predates `META_VERSION`); no block
  * object is written, since every hash exists. A no-op when it equals the
- * live index; refused before the site's first publish (`NotPublishedError`,
- * 409 `not_published`).
+ * live index; refused when there is no latest.json at all
+ * (`NotPublishedError`, 409 `not_published`). Over a malformed latest.json
+ * it replaces it like a publish does (`If-Match` its ETag), with no
+ * `previous` and a `sequence` one past both the target's and the malformed
+ * object's own (when it has one): a site isolate adopts a latest.json only
+ * with a higher `sequence` than the one it holds, and one may still hold
+ * the target, or the malformed object (the SDK's parser is looser).
  */
 
 import { canonicalJson } from "@decocms/blocks/protocol";
@@ -64,12 +69,11 @@ import {
   writeDraftFile,
 } from "./cms-drafts";
 import {
-  type Latest,
   MAX_BLOCK_BYTES,
   MAX_INDEX_BYTES,
   metaVersionOf,
   readBlockBody,
-  readLatest,
+  readLatestObject,
   readRevisionIndex,
   readRevisionMeta,
   type RevisionMeta,
@@ -157,11 +161,17 @@ const utf8Length = (text: string) => Buffer.byteLength(text, "utf8");
 
 /**
  * Steps 5–7 over the latest.json read in this attempt: writes the revision,
- * then moves latest.json. Returns the new id, or null on a lost race.
+ * then moves latest.json, `If-Match` the `etag` read (create-only when
+ * there was none). The new index's `sequence` is one past `after.sequence`
+ * and its meta's `previous` is `after.previous`: the live release's, or
+ * (none live: a first publish, a malformed latest.json) the malformed
+ * object's own `sequence` (else 0) and null for a publish. Returns the new
+ * id, or null on a lost race.
  */
 async function writeAndPoint(
   deps: CmsPublishDeps,
-  base: { latest: Latest; etag: string | null } | null,
+  after: { sequence: number; previous: string | null },
+  etag: string | null,
   blocks: BlockIndex,
   meta: Omit<RevisionMeta, "previous" | "publishedAt" | "author" | "via">,
   attempt: number,
@@ -169,7 +179,7 @@ async function writeAndPoint(
   const id = (deps.newId ?? newRevisionId)();
   const index = {
     revision: id,
-    sequence: (base?.latest.sequence ?? 0) + 1,
+    sequence: after.sequence + 1,
     metaVersion: META_VERSION,
     blocks,
   };
@@ -180,7 +190,7 @@ async function writeAndPoint(
   }
   await writeRevision(deps.store, deps.site, text, id, {
     ...meta,
-    previous: base?.latest.revision ?? null,
+    previous: after.previous,
     author: deps.author,
     via: deps.via,
     publishedAt: (deps.now?.() ?? new Date()).toISOString(),
@@ -191,7 +201,7 @@ async function writeAndPoint(
       deps.store,
       deps.site,
       { ...index, previewHosts: [...deps.previewHosts] },
-      base?.etag ?? null,
+      etag,
     );
   } catch (error) {
     if (error instanceof ObjectChangedError) return null;
@@ -475,7 +485,9 @@ export async function publishCmsDraft(
 ): Promise<CmsPublishResult> {
   const { store, site } = deps;
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
-    const base = await readLatest(store, site);
+    // A malformed latest.json is no release yet, overwritten `If-Match`.
+    const read = await readLatestObject(store, site);
+    const base = read.release;
     const state = await readDraftState(store, site, draft.slug);
     const baseBlocks = base?.latest.blocks ?? {};
     const sets = new Map<string, Record<string, unknown>>();
@@ -526,7 +538,10 @@ export async function publishCmsDraft(
     }
     const id = await writeAndPoint(
       deps,
-      base,
+      base
+        ? { sequence: base.latest.sequence, previous: base.latest.revision }
+        : { sequence: read.malformedSequence ?? 0, previous: null },
+      read.etag,
       blocks,
       { draft: draft.name, message: message.trim() },
       attempt,
@@ -582,14 +597,16 @@ function reapplyTitle(original: { message: string; date: string }): string {
 }
 
 export type CmsRollbackResult =
-  | { result: "published"; revision: string; previous: string }
+  | { result: "published"; revision: string; previous: string | null }
   | { result: "up-to-date"; revision: string };
 
 /**
  * Rollback / roll-forward to `target`, any revision with a readable
  * meta.json and index.json (whether latest.json ever named it or not):
- * steps 1 and 4–7, writing no block object. Refused before the first
- * publish (`NotPublishedError`).
+ * steps 1 and 4–7, writing no block object. Refused when there is no
+ * latest.json (`NotPublishedError`); a malformed one is replaced, as a
+ * publish replaces it (`previous` null, a `sequence` past the target's and
+ * the malformed object's own).
  */
 export async function rollbackToRevision(
   deps: CmsPublishDeps,
@@ -606,9 +623,12 @@ export async function rollbackToRevision(
     baseMetaVersion: metaVersionOf(targetIndex),
   });
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
-    const live = await readLatest(store, site);
-    if (!live) throw new NotPublishedError();
+    // A malformed latest.json is no release live, overwritten `If-Match`.
+    const read = await readLatestObject(store, site);
+    const live = read.release;
+    if (!live && read.etag === null) throw new NotPublishedError();
     if (
+      live &&
       canonicalJson(wanted) === canonicalJson(live.latest.blocks) &&
       metaVersionOf(live.latest) === META_VERSION
     ) {
@@ -616,7 +636,16 @@ export async function rollbackToRevision(
     }
     const id = await writeAndPoint(
       deps,
-      live,
+      live
+        ? { sequence: live.latest.sequence, previous: live.latest.revision }
+        : {
+            sequence: Math.max(
+              targetIndex.sequence,
+              read.malformedSequence ?? 0,
+            ),
+            previous: null,
+          },
+      read.etag,
       wanted,
       {
         reapplyOf: target,
@@ -633,7 +662,7 @@ export async function rollbackToRevision(
     return {
       result: "published",
       revision: id,
-      previous: live.latest.revision,
+      previous: live?.latest.revision ?? null,
     };
   }
   throw new ProductionMovedError();

@@ -112,28 +112,28 @@ function parseEntry(value: unknown): IndexEntry | null {
   return entry;
 }
 
-/** Parses an index's text; `MalformedObjectError` for anything else. */
-function parseIndex(key: string, text: string): RevisionIndex {
+/** An index's text parsed, or why it isn't an index this Studio writes. */
+function indexOrWhy(text: string): RevisionIndex | { why: string } {
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch {
-    throw new MalformedObjectError(key);
+    return { why: "not JSON" };
   }
+  if (!isRecord(value)) return { why: "not a JSON object" };
+  if (!isRevisionId(value.revision)) return { why: "revision is not an id" };
   if (
-    !isRecord(value) ||
-    !isRevisionId(value.revision) ||
     typeof value.sequence !== "number" ||
     !Number.isSafeInteger(value.sequence) ||
-    value.sequence < 1 ||
-    !isRecord(value.blocks)
+    value.sequence < 1
   ) {
-    throw new MalformedObjectError(key);
+    return { why: "sequence is not a positive integer" };
   }
+  if (!isRecord(value.blocks)) return { why: "blocks is not an object" };
   const blocks: Array<[string, IndexEntry]> = [];
   for (const [name, raw] of Object.entries(value.blocks)) {
     const entry = parseEntry(raw);
-    if (!entry) throw new MalformedObjectError(key);
+    if (!entry) return { why: `entry ${JSON.stringify(name)} is malformed` };
     blocks.push([name, entry]);
   }
   // Absent or unreadable: version 1 (as the SDK reads it).
@@ -152,36 +152,91 @@ function parseIndex(key: string, text: string): RevisionIndex {
   };
 }
 
+/** Parses an index's text; `MalformedObjectError` for anything else. */
+function parseIndex(key: string, text: string): RevisionIndex {
+  const index = indexOrWhy(text);
+  if ("why" in index) throw new MalformedObjectError(key);
+  return index;
+}
+
 /** latest.json per site, by ETag: revalidated on every read. */
 const latestCache = new Map<string, { etag: string; latest: Latest }>();
 
+/** The release latest.json names, with its ETag (for the `If-Match` write). */
+export interface LiveRelease {
+  latest: Latest;
+  etag: string | null;
+}
+
 /**
- * latest.json with its ETag (for the `If-Match` write), or null before the
- * site's first publish. A strong read, conditional on the cached ETag.
+ * latest.json as the publish path reads it: the release it names (null
+ * before the first publish, or when it is malformed), and the object's
+ * ETag whatever it holds (null when there is none). A malformed
+ * latest.json is overwritten `If-Match` that ETag, never create-only: it
+ * exists, and a concurrent publish replacing it is still a lost race.
+ */
+export interface LatestObject {
+  release: LiveRelease | null;
+  etag: string | null;
+  /**
+   * A malformed latest.json's own `sequence`, when it holds a positive
+   * integer one (absent otherwise). The SDK's parser is looser than this
+   * Studio's (it drops an entry's non-object `meta`, where Studio rejects
+   * the index), so a site isolate may hold it, and it adopts only a higher
+   * `sequence`: whatever replaces the object goes past it.
+   */
+  malformedSequence?: number;
+}
+
+/** `text`'s `sequence` if it is a positive integer one past which fits. */
+function sequenceOf(text: string): number | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const sequence = isRecord(value) ? value.sequence : undefined;
+  return typeof sequence === "number" &&
+    Number.isSafeInteger(sequence + 1) &&
+    sequence >= 1
+    ? sequence
+    : undefined;
+}
+
+/**
+ * The release latest.json names, or null before the site's first publish.
+ * A latest.json this Studio didn't write (a pointer from before
+ * content-addressed revisions, unparseable JSON, a bad index) reads as no
+ * release yet, logged; the next publish replaces it. A strong read,
+ * conditional on the cached ETag.
  */
 export async function readLatest(
   store: DeliveryStore,
   site: string,
-): Promise<{ latest: Latest; etag: string | null } | null> {
+): Promise<LiveRelease | null> {
+  return (await readLatestObject(store, site)).release;
+}
+
+/** latest.json with its object's ETag, malformed or not (`LatestObject`). */
+export async function readLatestObject(
+  store: DeliveryStore,
+  site: string,
+): Promise<LatestObject> {
   const key = deliveryKeys.latest(site);
   const cached = latestCache.get(site);
   const object = await store.get(key, { ifNoneMatch: cached?.etag ?? null });
   if (!object) {
     latestCache.delete(site);
-    return null;
+    return { release: null, etag: null };
   }
   if ("notModified" in object) {
-    if (cached) return { latest: cached.latest, etag: cached.etag };
+    if (cached) return { release: { ...cached }, etag: cached.etag };
     // A 304 for an ETag this process no longer holds: read it whole.
-    return readLatestWhole(store, site);
+    const whole = await store.get(key);
+    if (!whole) return { release: null, etag: null };
+    return adoptLatest(site, key, whole.text, whole.etag);
   }
-  return adoptLatest(site, key, object.text, object.etag);
-}
-
-async function readLatestWhole(store: DeliveryStore, site: string) {
-  const key = deliveryKeys.latest(site);
-  const object = await store.get(key);
-  if (!object) return null;
   return adoptLatest(site, key, object.text, object.etag);
 }
 
@@ -190,14 +245,22 @@ function adoptLatest(
   key: string,
   text: string,
   etag: string | null,
-) {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new MalformedObjectError(key);
+): LatestObject {
+  const index = indexOrWhy(text);
+  if ("why" in index) {
+    // Never cached: the next read sees the object again (fixed or not).
+    latestCache.delete(site);
+    console.warn("cms: latest.json is malformed; read as no release yet", {
+      site,
+      key,
+      why: index.why,
+    });
+    const sequence = sequenceOf(text);
+    return sequence === undefined
+      ? { release: null, etag }
+      : { release: null, etag, malformedSequence: sequence };
   }
-  const index = parseIndex(key, text);
+  const value: unknown = JSON.parse(text);
   const hosts =
     isRecord(value) && Array.isArray(value.previewHosts)
       ? value.previewHosts.filter((h): h is string => typeof h === "string")
@@ -205,7 +268,7 @@ function adoptLatest(
   const latest: Latest = { ...index, previewHosts: hosts };
   if (etag) latestCache.set(site, { etag, latest });
   else latestCache.delete(site);
-  return { latest, etag };
+  return { release: { latest, etag }, etag };
 }
 
 /** The index text Studio writes: plain `JSON.stringify` (contract §2.2). */
