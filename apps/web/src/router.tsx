@@ -581,8 +581,10 @@ const projectsIndexRoute = createRoute({
   },
 });
 
-/** The project the last non-preload navigation loaded. */
-let lastLoadedProjectId: string | undefined;
+/** What the last non-preload navigation into a project loaded. */
+let lastProjectLoad:
+  | { agentId: string; pathname: string; enteredProject: boolean }
+  | undefined;
 
 /** Canonical identity boundary for one project. Every feature is a real child
  *  route and therefore owns both its composition and its URL. */
@@ -598,12 +600,21 @@ const agentWorkspaceRoute = createRoute({
   /** Arriving from outside the project lands its root on the configured main
    *  view; moving to the root from inside it is an explicit visit to the
    *  Overview. TanStack reports a project switch as `stay` because the route id
-   *  is unchanged, so the agent id is compared too. */
-  beforeLoad: ({ cause, params }) => {
+   *  is unchanged, so the agent id is compared too. A search-only navigation
+   *  (the shell resuming the entry `?thread=`) keeps the arrival. */
+  beforeLoad: ({ cause, params, location }) => {
     if (cause === "preload") return { enteredProject: false };
-    const enteredProject =
-      cause === "enter" || params.agentId !== lastLoadedProjectId;
-    lastLoadedProjectId = params.agentId;
+    const previous = lastProjectLoad;
+    const sameProject =
+      cause === "stay" && previous?.agentId === params.agentId;
+    const enteredProject = !sameProject
+      ? true
+      : previous.pathname === location.pathname && previous.enteredProject;
+    lastProjectLoad = {
+      agentId: params.agentId,
+      pathname: location.pathname,
+      enteredProject,
+    };
     return { enteredProject };
   },
   component: Outlet,

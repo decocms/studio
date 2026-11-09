@@ -435,7 +435,7 @@ export function useProjectViews({
   const sidebarViewLabels: Record<ProjectSidebarViewId, string> = {
     overview: t("sidebar.navDestinations.overview"),
     reports: t("sidebar.navDestinations.reports"),
-    board: t("sidebar.navDestinations.tasks"),
+    board: t("sidebar.navDestinations.spineTasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
     assets: t("common.mainPanelTabs.assets"),
     releases: t("common.mainPanelTabs.releases"),
