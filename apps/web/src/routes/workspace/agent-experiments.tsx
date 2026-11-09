@@ -17,7 +17,11 @@ function AgentExperimentsContent() {
       <Navigate
         to={PROJECT_ROUTE.monitoring}
         params={{ org: org.slug, agentId: virtualMcpId }}
-        search={(prev) => ({ thread: prev.thread, view: "experiments" })}
+        search={(prev) => ({
+          thread: prev.thread,
+          sidepanel: prev.sidepanel,
+          view: "experiments",
+        })}
         replace
       />
     );

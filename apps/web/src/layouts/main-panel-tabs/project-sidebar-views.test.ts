@@ -30,12 +30,13 @@ const nativePresence = (
   hosting: present.includes("hosting"),
   e2e: present.includes("e2e"),
   calendar: present.includes("calendar"),
+  experiments: present.includes("experiments"),
 });
 
 describe("project sidebar views", () => {
   test("covers every persisted sidebar id but the retired apps, once", () => {
     // Retired apps, moved into Monitor; saved layouts may still name them.
-    const retired = new Set(["analytics", "cdn", "experiments"]);
+    const retired = new Set(["analytics", "cdn"]);
     expect<string[]>([...PROJECT_SIDEBAR_VIEW_IDS]).toEqual(
       VirtualMcpSidebarViewSchema.options.filter((v) => !retired.has(v)),
     );
@@ -299,10 +300,10 @@ describe("project sidebar views", () => {
     ).toBe(false);
   });
 
-  test("Releases and Calendar deep links follow the v8 switch at once", () => {
+  test("Releases, Calendar and Experiments deep links follow the v8 switch at once", () => {
     const none = projectSidebarViewPresence(true, nativePresence([]));
     const pending = { assets: true, siteAccess: true };
-    for (const viewId of ["releases", "calendar"] as const) {
+    for (const viewId of ["releases", "calendar", "experiments"] as const) {
       // The switch off (v7): unavailable, nothing to wait for.
       expect(projectSidebarViewUnavailable(viewId, none, pending)).toBe(true);
       // The switch on (v8): there.
@@ -403,7 +404,7 @@ describe("Calendar added once to a Blocks site's saved list", () => {
 
   test("a list saved before it was a default gets it on a Blocks site", () => {
     const offered = offeredProjectSidebarViews(undefined, true);
-    expect(offered).toEqual(["calendar"]);
+    expect(offered).toEqual(["calendar", "experiments"]);
     expect(selectedProjectSidebarViews(saved, v8, 1, offered)).toEqual([
       "site-editor",
       "calendar",
@@ -432,7 +433,7 @@ describe("Calendar added once to a Blocks site's saved list", () => {
     );
     const next = toggleProjectSidebarView(shown, "calendar", false, 1);
     const seen = seenProjectSidebarViewsAfterSave(undefined, true);
-    expect(seen).toEqual(["calendar"]);
+    expect(seen).toEqual(["calendar", "experiments"]);
     // Read back: nothing is offered again, the saved list decides.
     const offered = offeredProjectSidebarViews(seen, true);
     expect(offered).toEqual([]);
@@ -449,6 +450,7 @@ describe("Calendar added once to a Blocks site's saved list", () => {
     ]);
     expect(offeredProjectSidebarViews(["site-editor"], true)).toEqual([
       "calendar",
+      "experiments",
     ]);
   });
 
@@ -473,5 +475,81 @@ describe("Calendar added once to a Blocks site's saved list", () => {
         offeredProjectSidebarViews(undefined, true),
       ),
     ).not.toContain("calendar");
+  });
+});
+
+describe("Experiments on a Blocks (v8) site", () => {
+  const v8 = projectSidebarViewPresence(
+    true,
+    nativePresence(["calendar", "experiments"]),
+  );
+
+  test("shows as a peer of the Site Editor, after Calendar", () => {
+    expect(
+      selectedProjectSidebarViews(
+        undefined,
+        v8,
+        undefined,
+        offeredProjectSidebarViews(undefined, true),
+      ),
+    ).toEqual([
+      "overview",
+      "reports",
+      "board",
+      "site-editor",
+      "calendar",
+      "experiments",
+    ]);
+  });
+
+  test("is absent where the site isn't v8 (v7 tests stay in Monitor), and needs a source", () => {
+    const v7 = projectSidebarViewPresence(true, nativePresence([]));
+    expect(v7.experiments).toBe(false);
+    expect(
+      selectedProjectSidebarViews(
+        ["site-editor", "experiments"],
+        v7,
+        1,
+        offeredProjectSidebarViews(undefined, false),
+      ),
+    ).toEqual(["site-editor"]);
+    expect(
+      projectSidebarViewPresence(false, nativePresence(["experiments"]))
+        .experiments,
+    ).toBe(false);
+  });
+
+  test("offered once to a list that already saw Calendar", () => {
+    const offered = offeredProjectSidebarViews(["calendar"], true);
+    expect(offered).toEqual(["experiments"]);
+    expect(
+      selectedProjectSidebarViews(["site-editor"], v8, 1, offered),
+    ).toEqual(["site-editor", "experiments"]);
+  });
+
+  test("once: hidden after a save, it stays hidden", () => {
+    const seen = seenProjectSidebarViewsAfterSave(["calendar"], true);
+    expect(seen).toEqual(["calendar", "experiments"]);
+    const offered = offeredProjectSidebarViews(seen, true);
+    expect(offered).toEqual([]);
+    expect(
+      selectedProjectSidebarViews(["site-editor"], v8, 1, offered),
+    ).toEqual(["site-editor"]);
+  });
+
+  test("a deep link is unavailable at once where it's absent", () => {
+    const none = projectSidebarViewPresence(true, nativePresence([]));
+    expect(
+      projectSidebarViewUnavailable("experiments", none, {
+        assets: true,
+        siteAccess: true,
+      }),
+    ).toBe(true);
+    expect(
+      projectSidebarViewUnavailable("experiments", v8, {
+        assets: false,
+        siteAccess: false,
+      }),
+    ).toBe(false);
   });
 });

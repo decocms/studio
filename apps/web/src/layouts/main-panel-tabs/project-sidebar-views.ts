@@ -7,6 +7,7 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "board",
   "site-editor",
   "calendar",
+  "experiments",
   "assets",
   "releases",
   "hosting",
@@ -15,8 +16,8 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
- * preferences yet. A Blocks v8 project also gets Calendar, a peer of its
- * Site Editor, through {@link offeredProjectSidebarViews}. */
+ * preferences yet. A Blocks v8 project also gets Calendar and Experiments,
+ * peers of its Site Editor, through {@link offeredProjectSidebarViews}. */
 export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
   "overview",
   "reports",
@@ -30,13 +31,15 @@ export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
 
 /**
  * Views a Blocks (v8) site gets once on top of a list saved before they were
- * defaults (PO decision): its campaigns are content its editors own.
+ * defaults (PO decision): its campaigns and A/B tests are content its
+ * editors own.
  * Offered until the project's next sidebar save records them in
  * `sidebarViewsSeen`; from then on the saved list alone decides, so hiding
  * one sticks. A v7 site is never offered them.
  */
 const BLOCKS_SITE_SIDEBAR_VIEWS = [
   "calendar",
+  "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 /**
@@ -76,6 +79,7 @@ export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 /** Native panels whose availability is discovered from project resources. */
 export const PROJECT_NATIVE_VIEW_IDS = [
   "calendar",
+  "experiments",
   "assets",
   "releases",
   "hosting",
@@ -197,6 +201,8 @@ export function projectSidebarViewPresence(
     e2e: native.e2e,
     // A v8 site's campaigns block, edited in the same draft as the pages.
     calendar: hasClonableSource && native.calendar,
+    // A v8 site's A/B tests block, edited in the same draft too.
+    experiments: hasClonableSource && native.experiments,
     automations: true,
   };
 }
@@ -262,9 +268,15 @@ export function projectSidebarViewUnavailable(
 ): boolean {
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
   if (!isProjectNativeViewId(viewId)) return true;
-  // Releases and Calendar are a v8 project's (its switch, known with the
-  // project): nothing to wait for.
-  if (viewId === "releases" || viewId === "calendar") return true;
+  // Releases, Calendar and Experiments are a v8 project's (its switch, known
+  // with the project): nothing to wait for.
+  if (
+    viewId === "releases" ||
+    viewId === "calendar" ||
+    viewId === "experiments"
+  ) {
+    return true;
+  }
   return !(viewId === "assets" ? pending.assets : pending.siteAccess);
 }
 

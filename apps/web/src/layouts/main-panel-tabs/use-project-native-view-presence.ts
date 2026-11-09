@@ -30,7 +30,7 @@ export function useProjectNativeViewPresence(
   const controlPlaneViews = useControlPlaneViews();
   const fileConfigs = useFileConfigsQuery();
   // The hosted Deco CMS: Blocks v8 projects (their switch). A v7 project
-  // never gets Releases nor Calendar.
+  // never gets Releases, Calendar nor Experiments.
   const v8 = blocksV8Project(project);
   const siteSlug = resolveAgentSiteSlug(project);
   const hostingEnabled = config.hostingEnabled === true;
@@ -46,6 +46,9 @@ export function useProjectNativeViewPresence(
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
       // Every v8 site: its campaigns are content its editors own.
       calendar: v8,
+      // Every v8 site: its A/B tests are content too (v7 tests stay in
+      // Monitor).
+      experiments: v8,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
     // A disabled TanStack query is still pending; it is only unresolved when a

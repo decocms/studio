@@ -547,9 +547,15 @@ function ContentBrowserReady({
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
   // Calendar views. Both keep the open thread, so they work in this same draft.
+  // A test opens on itself in the Experiments app (`?test=`).
   const namedRuleViews: NamedRuleViews = {
-    open: (kind) => {
-      openPanel(kind === "campaigns" ? "calendar" : "experiments");
+    open: (kind, name) => {
+      if (kind === "campaigns") openPanel("calendar");
+      else {
+        openPanel("experiments", {
+          search: name ? (prev) => ({ ...prev, test: name }) : undefined,
+        });
+      }
     },
   };
   const [selection, setSelection] = useState<Selection>(() =>
