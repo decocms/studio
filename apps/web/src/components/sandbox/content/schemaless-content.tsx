@@ -57,7 +57,7 @@ const isRecord = (value: unknown): value is JsonRecord =>
  * so Studio gets its schema on every deploy. Commands live only here, for
  * the agent; the banner itself never shows one.
  */
-export function schemaAgentPrompt(t: TFunction, site: string | null): string {
+function schemaAgentPrompt(t: TFunction, site: string | null): string {
   return t("sandbox.schemaless.agentPrompt", {
     site: site ? `"${site}"` : t("sandbox.schemaless.agentPromptSiteUnknown"),
   });
