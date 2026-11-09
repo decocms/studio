@@ -312,4 +312,14 @@ export const experiments = {
   "experiments.v8.loadFailed": "Couldn't load your tests.",
   "experiments.v8.previewHint":
     "To see a test on or off before publishing, use “Preview as” in the site editor's preview.",
+  "experiments.live.title": "Live now",
+  "experiments.live.intro": "What visitors get on the published site.",
+  "experiments.live.edit": "Edit in Experiments",
+  "experiments.live.editTest": "Edit",
+  "experiments.live.viewInMonitor": "View in Monitor",
+  "experiments.live.unpublished":
+    "Your draft has changes to these tests that aren't published yet.",
+  "experiments.live.empty.title": "No A/B tests live",
+  "experiments.live.empty.desc": "Create one in Experiments and publish it.",
+  "experiments.live.noDraft": "Open Experiments to see this site's tests.",
 } as const;

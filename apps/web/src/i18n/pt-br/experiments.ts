@@ -314,4 +314,15 @@ export const experiments = {
   "experiments.v8.loadFailed": "Não foi possível carregar seus testes.",
   "experiments.v8.previewHint":
     "Para ver um teste ligado ou desligado antes de publicar, use “Visualizar como” na pré-visualização do editor do site.",
+  "experiments.live.title": "No ar agora",
+  "experiments.live.intro": "O que os visitantes recebem no site publicado.",
+  "experiments.live.edit": "Editar em Experimentos",
+  "experiments.live.editTest": "Editar",
+  "experiments.live.viewInMonitor": "Ver no Monitor",
+  "experiments.live.unpublished":
+    "Seu rascunho tem mudanças nesses testes que ainda não foram publicadas.",
+  "experiments.live.empty.title": "Nenhum teste A/B no ar",
+  "experiments.live.empty.desc": "Crie um em Experimentos e publique.",
+  "experiments.live.noDraft":
+    "Abra Experimentos para ver os testes deste site.",
 } satisfies Record<keyof typeof enExperiments, string>;

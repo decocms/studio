@@ -123,6 +123,7 @@ export function ShareSplit({
   value,
   onChange,
   onCommit,
+  readOnly,
   sliderLabel,
   inTestLabel,
   restLabel,
@@ -132,8 +133,11 @@ export function ShareSplit({
   className,
 }: {
   value: number;
-  onChange: (value: number) => void;
+  /** Required unless `readOnly`. */
+  onChange?: (value: number) => void;
   onCommit?: (value: number) => void;
+  /** Shows the share without the slider (Monitor's read-only view). */
+  readOnly?: boolean;
   /** The slider's accessible name. */
   sliderLabel: string;
   /** "See the test", beside the in-test share. */
@@ -181,22 +185,24 @@ export function ShareSplit({
           value={share}
           testId="share-split-in"
         />
-        <Slider
-          value={[share]}
-          min={0}
-          max={100}
-          step={1}
-          disabled={disabled}
-          thumbLabel={sliderLabel}
-          thumbValueText={`${share}%`}
-          onValueChange={([next]) => onChange(clampShare(next ?? 0))}
-          onValueCommit={([next]) => onCommit?.(clampShare(next ?? 0))}
-          style={
-            inColor === PRIMARY_COLOR
-              ? undefined
-              : ({ "--primary": inColor } as CSSProperties)
-          }
-        />
+        {!readOnly && (
+          <Slider
+            value={[share]}
+            min={0}
+            max={100}
+            step={1}
+            disabled={disabled}
+            thumbLabel={sliderLabel}
+            thumbValueText={`${share}%`}
+            onValueChange={([next]) => onChange?.(clampShare(next ?? 0))}
+            onValueCommit={([next]) => onCommit?.(clampShare(next ?? 0))}
+            style={
+              inColor === PRIMARY_COLOR
+                ? undefined
+                : ({ "--primary": inColor } as CSSProperties)
+            }
+          />
+        )}
         <Side
           color={restColor}
           label={restLabel}

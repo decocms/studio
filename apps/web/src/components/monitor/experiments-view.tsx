@@ -1,9 +1,15 @@
-/** The Experiments tab: one project's experiments in its own screen, or every project's in one list. */
+/**
+ * The Experiments tab: one project's experiments in its own screen, or every
+ * project's in one list. A Blocks v8 project's tests are read-only here (what
+ * is live); they are edited in its Experiments app.
+ */
 
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowUpRight } from "@untitledui/icons";
 import { useQueries } from "@tanstack/react-query";
 import { Card } from "@decocms/ui/components/card.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { ProjectExperimentsLive } from "@/components/experiments/experiments-live";
 import { ProjectIcon } from "@/components/project-icon";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { type Experiment, experimentsQuery } from "@/hooks/use-experiments";
@@ -61,17 +67,30 @@ function byRunningThenRecent(
   );
 }
 
-function OrgExperiments({ projects }: { projects: readonly SiteProject[] }) {
+/** Each project's "Blocks v8 site" switch, in the projects' order. */
+function useProjectsV8(projects: readonly SiteProject[]): boolean[] {
+  const entities = useVirtualMCPsNonBlocking();
+  return projects.map((p) =>
+    blocksV8Project(entities.find((e) => e.id === p.id)),
+  );
+}
+
+function OrgExperiments({
+  projects,
+  listV7,
+}: {
+  projects: readonly SiteProject[];
+  /** The org's v7 rollout: its projects' tests are listed. */
+  listV7: boolean;
+}) {
   const t = useT();
   const { org, locator } = useProjectContext();
   const studio = useStudioTools();
   const navigate = useNavigate();
-  const entities = useVirtualMCPsNonBlocking();
-  // A Blocks v8 site keeps its experiments in its draft, read in the project's own tab.
-  const v8 = projects.map((p) =>
-    blocksV8Project(entities.find((e) => e.id === p.id)),
-  );
-  const listed = projects.filter((_, i) => !v8[i]);
+  // A Blocks v8 site keeps its tests in its content, edited in its own
+  // Experiments app: linked below, not listed.
+  const v8 = useProjectsV8(projects);
+  const listed = listV7 ? projects.filter((_, i) => !v8[i]) : [];
   const blocks8 = projects.filter((_, i) => v8[i]);
   const results = useQueries({
     queries: listed.map((p) => ({
@@ -146,14 +165,48 @@ function OrgExperiments({ projects }: { projects: readonly SiteProject[] }) {
           })}
         </p>
       )}
-      {blocks8.length > 0 && (
-        <p className="text-meta px-2 pb-1">
-          {t("monitor.org.blocks8Experiments", {
-            names: blocks8.map((p) => p.title).join(", "),
-          })}
-        </p>
-      )}
+      {blocks8.length > 0 && <Blocks8Experiments projects={blocks8} />}
     </div>
+  );
+}
+
+/** The Blocks v8 projects, each with the way to its Experiments app. */
+function Blocks8Experiments({
+  projects,
+}: {
+  projects: readonly SiteProject[];
+}) {
+  const t = useT();
+  const { org } = useProjectContext();
+  return (
+    <section
+      className="flex flex-col gap-2 pt-2"
+      data-testid="monitor-blocks8-experiments"
+    >
+      <p className="text-meta px-2">
+        {t("monitor.org.blocks8ExperimentsTitle")}
+      </p>
+      <Card
+        size="flush"
+        className="gap-0 divide-y divide-border overflow-hidden"
+      >
+        {projects.map((project) => (
+          <div
+            key={project.id}
+            className="flex items-center justify-between gap-4 px-5 py-3 text-sm"
+          >
+            <ProjectName project={project} />
+            <Link
+              {...projectLink(org.slug, project.id, "experimentsApp")}
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-foreground underline-offset-2 hover:underline"
+            >
+              {t("monitor.org.openExperiments")}
+              <ArrowUpRight size={12} />
+            </Link>
+          </div>
+        ))}
+      </Card>
+    </section>
   );
 }
 
@@ -185,6 +238,14 @@ function ExperimentsLocked({ scopeId }: { scopeId: string | null }) {
 function ProjectExperiments({ scopeId }: { scopeId: string }) {
   const views = useControlPlaneViews();
   const v8 = useBlocksV8Project(scopeId);
+  // What is live, read-only: the tests are edited in the Experiments app.
+  if (v8) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <ProjectExperimentsLive virtualMcpId={scopeId} />
+      </div>
+    );
+  }
   if (!experimentsTabVisible(views.experiments, v8)) {
     return <ExperimentsLocked scopeId={scopeId} />;
   }
@@ -196,16 +257,24 @@ function ProjectExperiments({ scopeId }: { scopeId: string }) {
 }
 
 export function ExperimentsView({ scopeId }: { scopeId: string | null }) {
+  if (scopeId) return <ProjectExperiments key={scopeId} scopeId={scopeId} />;
+  return <OrgExperimentsView />;
+}
+
+function OrgExperimentsView() {
   const views = useControlPlaneViews();
   const projects = useSiteProjects();
-  if (scopeId) return <ProjectExperiments key={scopeId} scopeId={scopeId} />;
-  if (!views.experiments || projects.length === 0) {
+  const v8 = useProjectsV8(projects);
+  if (
+    projects.length === 0 ||
+    !experimentsTabVisible(views.experiments, v8.some(Boolean))
+  ) {
     return <ExperimentsLocked scopeId={null} />;
   }
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
-        <OrgExperiments projects={projects} />
+        <OrgExperiments projects={projects} listV7={views.experiments} />
       </div>
     </div>
   );
