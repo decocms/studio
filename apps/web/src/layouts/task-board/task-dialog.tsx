@@ -997,7 +997,7 @@ function TaskBoardItemEditor({
                 <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Avatar
                     url={creator?.user?.image ?? undefined}
-                    fallback={creator?.user?.name ?? "?"}
+                    fallback={creator?.user?.name ?? item.createdByName ?? "?"}
                     shape="circle"
                     size="xs"
                   />
@@ -1005,6 +1005,7 @@ function TaskBoardItemEditor({
                     {isReportsTask(item)
                       ? t("taskBoard.taskDialog.createdBySystemLabel")
                       : (creator?.user?.name ??
+                        item.createdByName ??
                         t("taskBoard.taskDialog.unknownCreatorLabel"))}
                   </span>
                   <time dateTime={item.createdAt}>

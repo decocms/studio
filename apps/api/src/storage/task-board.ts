@@ -455,6 +455,7 @@ export class TaskBoardStorage {
     /** `jira` hides the card from the board: it anchors a run, it is not work
      *  the board shows. */
     source?: "jira" | null;
+    tagIds?: string[];
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -525,7 +526,29 @@ export class TaskBoardStorage {
           parentId: params.parentId,
         });
       }
-      return insert(trx);
+      const created = await insert(trx);
+      if (params.tagIds?.length) {
+        const tags = await trx
+          .selectFrom("organization_tags")
+          .select("id")
+          .where("organization_id", "=", params.organizationId)
+          .where("id", "in", params.tagIds)
+          .execute();
+        if (tags.length !== new Set(params.tagIds).size)
+          throw new Error("Invalid task tags");
+        await trx
+          .insertInto("task_board_item_tags")
+          .values(
+            tags.map(({ id }) => ({
+              task_board_item_id: created.id,
+              id,
+              created_by: params.by,
+              created_at: now,
+            })),
+          )
+          .execute();
+      }
+      return created;
     });
 
     // Freshly created — no linked threads yet, and in its first lane since now.
@@ -2498,6 +2521,20 @@ export class TaskBoardStorage {
     return item;
   }
 
+  private async attachCreatorNames(
+    db: Kysely<Database>,
+    items: TaskBoardItem[],
+  ): Promise<void> {
+    const users = await db
+      .selectFrom("user")
+      .select(["id", "name"])
+      .where("id", "in", [...new Set(items.map((item) => item.createdBy))])
+      .execute();
+    const names = new Map(users.map((user) => [user.id, user.name]));
+    for (const item of items)
+      item.createdByName = names.get(item.createdBy) ?? null;
+  }
+
   /**
    * Populate each item's `threads`, `tags` and `reviewVerdicts` — one
    * transaction, so a card can't read one of them from before a concurrent
@@ -2513,6 +2550,7 @@ export class TaskBoardStorage {
       Promise.all([
         this.attachThreads(db, items, organizationId),
         this.attachTags(db, items),
+        this.attachCreatorNames(db, items),
         this.attachActivityFields(db, items),
       ]),
     );

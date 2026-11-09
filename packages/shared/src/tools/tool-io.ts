@@ -474,6 +474,7 @@ export interface StudioToolIO {
         createdAt: string;
         updatedBy: string;
         updatedAt: string;
+        createdByName?: string | null | undefined;
       };
       deduplicated: boolean;
       duplicateCheck: "off" | "matched" | "no_match" | "skipped";
@@ -555,6 +556,7 @@ export interface StudioToolIO {
         createdAt: string;
         updatedBy: string;
         updatedAt: string;
+        createdByName?: string | null | undefined;
       }[];
       repos: string[];
       columns: { key: string; title: string; position: number }[];
@@ -667,6 +669,7 @@ export interface StudioToolIO {
         createdAt: string;
         updatedBy: string;
         updatedAt: string;
+        createdByName?: string | null | undefined;
       };
     };
   };
