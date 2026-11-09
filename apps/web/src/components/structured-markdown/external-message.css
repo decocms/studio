@@ -48,13 +48,37 @@
   margin-bottom: 0;
 }
 .external-message[data-source="gchat"] .external-message-body {
-  padding: 12px 16px;
-  border-radius: 4px 20px 20px;
-  background: #f0f4f9;
+  padding: 8px 12px;
+  border-radius: 20px;
+  background: #f2f2f2;
+  line-height: 20px;
+  width: fit-content;
+  max-width: 100%;
   color: #1f1f1f;
 }
 .external-message[data-source="gchat"] .external-message-author {
   padding-left: 12px;
+  margin-bottom: 2px;
+  min-height: 16px;
+  gap: 8px;
+}
+.external-message[data-source="gchat"] .external-message-author > span,
+.external-message[data-source="gchat"] .external-message-time {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.external-message[data-source="gchat"] .external-message-avatar {
+  margin-top: 18px;
+}
+.external-message[data-source="gchat"] .external-message-content {
+  gap: 16px;
+}
+.external-message[data-source="gchat"] .external-message-body p {
+  margin-block: 0 16px;
+}
+.external-message[data-source="gchat"] .external-message-body p:last-child {
+  margin-bottom: 0;
 }
 .external-message[data-source="whatsapp"] .external-message-origin {
   background: #f0f2f5;
