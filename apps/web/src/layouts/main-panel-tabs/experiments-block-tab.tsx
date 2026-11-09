@@ -12,7 +12,7 @@
  * that names a test that isn't there).
  */
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Beaker02, Plus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
@@ -42,6 +42,7 @@ import {
   useCopyEpochs,
 } from "@/components/sections-editor/held-copy";
 import { namedRuleKindInfo } from "@/components/sections-editor/named-rules";
+import type { PublishedRead } from "@/components/sections-editor/use-published-content";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type ExperimentRowModel,
@@ -92,6 +93,8 @@ function GuideState(props: {
 export interface ExperimentsOpenTest {
   name: string | null;
   set: (name: string | null) => void;
+  /** Drops a name the draft doesn't have, in place. */
+  clear?: () => void;
 }
 
 /** What the slot under the list gets: the draft, and what is published. */
@@ -99,8 +102,9 @@ export interface ExperimentsLiveSlotContext {
   orgSlug: string;
   virtualMcpId: string;
   draft: Record<string, unknown>;
-  /** `null` while it isn't known. */
-  published: Record<string, unknown> | null;
+  /** The `experiments` block as it is live (never the draft's copy). */
+  published: PublishedRead;
+  /** Opens a test of the draft in the editor above. */
   openTest: (name: string) => void;
 }
 
@@ -161,6 +165,17 @@ export function ExperimentsBlockReady({
     EXPERIMENTS_BLOCK,
   );
 
+  const rows = experimentRows(decofile, view.published);
+  const opened = rows.find((row) => row.name === view.openName) ?? null;
+  // A `?test=` the draft doesn't have (a live test the draft removed, an old
+  // link): the list, without the name left in the URL.
+  const unmatched = !view.blocked && view.openName !== null && !opened;
+  const clearOpen = open?.clear;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- syncs the URL (an external store) with the draft's names once they are known
+  useEffect(() => {
+    if (unmatched) clearOpen?.();
+  }, [unmatched, clearOpen]);
+
   if (view.blocked === "missing") {
     return (
       <GuideState
@@ -190,10 +205,8 @@ export function ExperimentsBlockReady({
     );
   }
 
-  const rows = experimentRows(decofile, view.published);
   const removed = removedExperiments(decofile, view.published);
 
-  const opened = rows.find((row) => row.name === view.openName) ?? null;
   if (opened) {
     return (
       <ExperimentBlockDetail
@@ -248,7 +261,7 @@ export function ExperimentsBlockReady({
             orgSlug,
             virtualMcpId,
             draft: decofile,
-            published: view.published,
+            published: view.live,
             openTest: (name) => view.setOpenName(name),
           })}
         </div>

@@ -167,9 +167,15 @@ describe("Monitor › Experiments of the org", () => {
       "store test",
     );
     const blocks8 = body().getByTestId("monitor-blocks8-experiments");
+    // Each row's link names its project, and the section has a heading.
     const link = within(blocks8).getByRole("link", {
-      name: /Open Experiments/,
+      name: "Open Blocks store Experiments",
     });
+    expect(
+      within(blocks8).getByRole("heading", {
+        name: "These sites manage their A/B tests in their own Experiments app",
+      }),
+    ).toBeTruthy();
     expect(link.getAttribute("href")).toBe("/acme/projects/vm-8/experiments");
     expect(within(blocks8).queryByText("Store")).toBeNull();
   });

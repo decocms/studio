@@ -131,5 +131,8 @@ describe("the Experiments app's route", () => {
       view: "experiments",
     });
     expect(to.getAttribute("data-replace")).toBe("true");
+    // Nothing of the app mounts first: no layout actions, no draft bar.
+    expect(body.queryByTestId("actions")).toBeNull();
+    expect(body.queryByTestId("draft-bar")).toBeNull();
   });
 });

@@ -138,8 +138,8 @@ export function ShareSplit({
   onCommit?: (value: number) => void;
   /** Shows the share without the slider (Monitor's read-only view). */
   readOnly?: boolean;
-  /** The slider's accessible name. */
-  sliderLabel: string;
+  /** The slider's accessible name; required unless `readOnly`. */
+  sliderLabel?: string;
   /** "See the test", beside the in-test share. */
   inTestLabel: string;
   /** "See the page as it is", beside the rest. */
@@ -185,7 +185,15 @@ export function ShareSplit({
           value={share}
           testId="share-split-in"
         />
-        {!readOnly && (
+        {readOnly ? (
+          // Where the slider would be: a rule, so the two sides read as one
+          // split rather than two loose lines.
+          <div
+            className="h-px w-full bg-border"
+            aria-hidden="true"
+            data-testid="share-split-divider"
+          />
+        ) : (
           <Slider
             value={[share]}
             min={0}

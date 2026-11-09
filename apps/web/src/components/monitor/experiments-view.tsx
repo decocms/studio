@@ -181,11 +181,12 @@ function Blocks8Experiments({
   return (
     <section
       className="flex flex-col gap-2 pt-2"
+      aria-labelledby="monitor-blocks8-experiments-title"
       data-testid="monitor-blocks8-experiments"
     >
-      <p className="text-meta px-2">
+      <h2 id="monitor-blocks8-experiments-title" className="text-meta px-2">
         {t("monitor.org.blocks8ExperimentsTitle")}
-      </p>
+      </h2>
       <Card
         size="flush"
         className="gap-0 divide-y divide-border overflow-hidden"
@@ -198,6 +199,9 @@ function Blocks8Experiments({
             <ProjectName project={project} />
             <Link
               {...projectLink(org.slug, project.id, "experimentsApp")}
+              aria-label={t("monitor.org.openExperimentsNamed", {
+                project: project.title,
+              })}
               className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-foreground underline-offset-2 hover:underline"
             >
               {t("monitor.org.openExperiments")}

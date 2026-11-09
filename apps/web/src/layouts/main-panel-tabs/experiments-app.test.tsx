@@ -37,7 +37,7 @@ mock.module("./experiments-block-tab", () => ({
           orgSlug: "acme",
           virtualMcpId: props.virtualMcpId,
           draft: tests({ hero: 60 }),
-          published: tests({ hero: 40 }),
+          published: { state: "ready", content: tests({ hero: 40, old: 10 }) },
           openTest: (name) => openedInEditor.push(name),
         })}
       </div>
@@ -83,6 +83,29 @@ describe("the Experiments app", () => {
     ).toBe("menu");
     await act(async () => last?.open?.set(null));
     expect(router.state.location.search).not.toHaveProperty("test");
+    // Closing went back over the entry opening pushed: no second list
+    // entry for Back to land on.
+    expect(router.history.canGoBack()).toBe(false);
+  });
+
+  test("closing a test a link opened replaces the entry", async () => {
+    const { router, body } = await renderApp(
+      "/acme/projects/vm-1/experiments?test=hero",
+    );
+    await body.findByTestId("crud-tab");
+    await act(async () => last?.open?.set(null));
+    expect(router.state.location.search).not.toHaveProperty("test");
+    expect(router.history.canGoBack()).toBe(false);
+  });
+
+  test("clear drops ?test= in place", async () => {
+    const { router, body } = await renderApp(
+      "/acme/projects/vm-1/experiments?test=gone",
+    );
+    await body.findByTestId("crud-tab");
+    await act(async () => last?.open?.clear?.());
+    expect(router.state.location.search).not.toHaveProperty("test");
+    expect(router.history.canGoBack()).toBe(false);
   });
 
   test("shows what is live under the tests, read-only, with the way to Monitor", async () => {
@@ -91,16 +114,22 @@ describe("the Experiments app", () => {
     );
     const live = await body.findByTestId("experiments-live-compact");
     const rows = within(live).getAllByTestId("experiment-live-row");
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByText("40% of visitors")).toBeTruthy();
+    // The draft list above badges what changed; no note repeats it here.
     expect(
-      within(live).getByTestId("experiments-live-unpublished"),
-    ).toBeTruthy();
+      within(live).queryByTestId("experiments-live-unpublished"),
+    ).toBeNull();
     expect(
       within(live).getByTestId("experiments-live-monitor").getAttribute("href"),
     ).toBe("/acme/projects/vm-1/monitoring?thread=t-1&view=experiments");
     expect(within(live).queryByRole("slider")).toBeNull();
-    act(() => within(rows[0]!).getByRole("button", { name: "hero" }).click());
+    act(() =>
+      within(rows[0]!).getByRole("button", { name: "Edit hero" }).click(),
+    );
     expect(openedInEditor).toEqual(["hero"]);
+    // A live test the draft removed has nothing to open in the editor.
+    expect(within(rows[1]!).queryByRole("button")).toBeNull();
+    expect(within(rows[1]!).getByText("Removed in your draft")).toBeTruthy();
   });
 });

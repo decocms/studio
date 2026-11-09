@@ -252,6 +252,7 @@ export const monitor = {
   "monitor.performance.org.blocks8":
     "Site Blocks v8: abra para ver a telemetria",
   "monitor.org.blocks8ExperimentsTitle":
-    "Sites Blocks mantêm os testes A/B no app Experimentos",
+    "Estes sites gerenciam os testes A/B no próprio app Experimentos",
   "monitor.org.openExperiments": "Abrir Experimentos",
+  "monitor.org.openExperimentsNamed": "Abrir Experimentos de {project}",
 } satisfies Record<keyof typeof monitorEn, string>;

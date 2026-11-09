@@ -95,4 +95,20 @@ describe("ShareSplit", () => {
     expect(view.getByTestId("share-split-in").textContent).toBe("0%");
     expect(view.getByTestId("share-split-rest").textContent).toBe("100%");
   });
+
+  test("read-only: no slider, a rule between the two sides", () => {
+    const view = render(
+      <ShareSplit
+        value={40}
+        readOnly
+        inTestLabel="See the test"
+        restLabel="See the page as it is"
+        centerLabel="see the test"
+      />,
+    );
+    expect(view.queryByRole("slider")).toBeNull();
+    expect(view.getByTestId("share-split-divider")).toBeTruthy();
+    expect(view.getByTestId("share-split-in").textContent).toBe("40%");
+    expect(view.getByTestId("share-split-rest").textContent).toBe("60%");
+  });
 });

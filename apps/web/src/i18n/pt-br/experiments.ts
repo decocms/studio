@@ -315,14 +315,27 @@ export const experiments = {
   "experiments.v8.previewHint":
     "Para ver um teste ligado ou desligado antes de publicar, use “Visualizar como” na pré-visualização do editor do site.",
   "experiments.live.title": "No ar agora",
-  "experiments.live.intro": "O que os visitantes recebem no site publicado.",
+  "experiments.live.intro": "O que os visitantes veem no site publicado.",
   "experiments.live.edit": "Editar em Experimentos",
   "experiments.live.editTest": "Editar",
   "experiments.live.viewInMonitor": "Ver no Monitor",
   "experiments.live.unpublished":
-    "Seu rascunho tem mudanças nesses testes que ainda não foram publicadas.",
+    "Seu rascunho tem mudanças em testes A/B que ainda não foram publicadas.",
+  "experiments.live.unpublishedTest":
+    "Seu rascunho muda este teste; ainda não foi publicado.",
+  "experiments.live.removedTest":
+    "Seu rascunho remove este teste; ele continua no ar até você publicar.",
+  "experiments.live.notLive": "“{name}” ainda não está no ar.",
+  "experiments.live.editNamed": "Editar {name} em Experimentos",
+  "experiments.live.editRow": "Editar {name}",
+  "experiments.live.unknown.title": "Não foi possível ler o que está no ar",
+  "experiments.live.unknown.desc":
+    "Seu rascunho muda os testes A/B, e a cópia publicada deles não pôde ser lida. Tente de novo em instantes.",
   "experiments.live.empty.title": "Nenhum teste A/B no ar",
   "experiments.live.empty.desc": "Crie um em Experimentos e publique.",
-  "experiments.live.noDraft":
-    "Abra Experimentos para ver os testes deste site.",
+  "experiments.live.noDraft.title":
+    "Escolha um rascunho para ver o que está no ar",
+  "experiments.live.noDraft.desc":
+    "O que está no ar é lido a partir de um rascunho. Escolha um em Experimentos para ver os testes deste site aqui.",
+  "experiments.live.noDraft.action": "Escolher um rascunho em Experimentos",
 } satisfies Record<keyof typeof enExperiments, string>;

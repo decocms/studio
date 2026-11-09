@@ -8,7 +8,12 @@ import { experimentsRouteView } from "@/layouts/main-panel-tabs/experiments-tab-
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { useProjectContext } from "@/sdk";
 
-function AgentExperimentsContent() {
+/**
+ * A Blocks v8 project's A/B tests, with the site editor's draft bar on top.
+ * Any other project goes to Monitor's Experiments view before the app's
+ * layout or draft bar mount.
+ */
+export default function AgentExperimentsRoute() {
   const virtualMcpId = useRouteVirtualMcpId();
   const { org } = useProjectContext();
   // A v7 project's tests stay in Monitor's Experiments view.
@@ -26,14 +31,9 @@ function AgentExperimentsContent() {
       />
     );
   }
-  return <ExperimentsApp virtualMcpId={virtualMcpId} />;
-}
-
-/** A Blocks v8 project's A/B tests, with the site editor's draft bar on top. */
-export default function AgentExperimentsRoute() {
   return (
     <ChatLayout.Content actions={<SiteDraftActions blocksOnly />}>
-      <AgentExperimentsContent />
+      <ExperimentsApp virtualMcpId={virtualMcpId} />
     </ChatLayout.Content>
   );
 }

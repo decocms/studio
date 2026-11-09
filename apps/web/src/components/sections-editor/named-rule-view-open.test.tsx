@@ -24,6 +24,7 @@ mock.module("./use-apply-named-rule", () => ({
 mock.module("./use-published-content", () => ({
   ...restore.published,
   usePublishedContent: () => null,
+  usePublishedRead: () => ({ state: "loading" }),
 }));
 
 const { useNamedRuleView } = await import("./named-rule-view");

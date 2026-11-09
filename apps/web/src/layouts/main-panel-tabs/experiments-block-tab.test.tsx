@@ -36,6 +36,7 @@ const saves: Array<NamedRuleChange | null> = [];
 let holdsCopy = true;
 let openName: string | null = "hero";
 const opened: Array<string | null> = [];
+let cleared = 0;
 
 const realView = { ...realNamedRuleView };
 const realNavigate = { ...realPanelNavigate };
@@ -51,6 +52,7 @@ mock.module("@/components/sections-editor/named-rule-view", () => ({
   ...realView,
   useNamedRuleView: () => ({
     published: null,
+    live: { state: "loading" },
     apply: async () => ({ ok: true }),
     reread: async () => null,
     isPending: false,
@@ -76,6 +78,7 @@ beforeEach(() => {
   holdsCopy = true;
   openName = "hero";
   opened.length = 0;
+  cleared = 0;
 });
 
 function view(decofile: Record<string, unknown>) {
@@ -166,6 +169,49 @@ describe("the list, with a slot under it (the Experiments app)", () => {
     expect(seen.at(-1)).toEqual(tests(10));
     act(() => body.getByRole("button", { name: "live slot" }).click());
     expect(opened).toEqual(["hero"]);
+  });
+
+  test("hands the slot the strict live read, not the lenient one", () => {
+    const reads: unknown[] = [];
+    list((ctx) => {
+      reads.push(ctx.published);
+      return null;
+    });
+    expect(reads.at(-1)).toEqual({ state: "loading" });
+  });
+
+  test("a ?test= the draft doesn't have is dropped from the URL", () => {
+    openName = null;
+    const queryClient = new QueryClient();
+    const open = (name: string | null) => ({
+      name,
+      set: () => {},
+      clear: () => {
+        cleared += 1;
+      },
+    });
+    const ui = (name: string | null) => (
+      <QueryClientProvider client={queryClient}>
+        <ExperimentsBlockReady
+          {...SCOPE}
+          threadId={null}
+          decofile={tests(10)}
+          meta={meta as never}
+          open={open(name)}
+        />
+      </QueryClientProvider>
+    );
+    // The mocked view reads the open name from `openName`.
+    openName = "gone";
+    const view = render(ui("gone"));
+    expect(cleared).toBeGreaterThan(0);
+    expect(
+      within(view.container).getAllByTestId("experiment-v8-row"),
+    ).toHaveLength(1);
+    cleared = 0;
+    openName = "hero";
+    view.rerender(ui("hero"));
+    expect(cleared).toBe(0);
   });
 
   test("without a slot, the list is as before", () => {
