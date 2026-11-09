@@ -433,7 +433,7 @@ export function useProjectViews({
     1,
   );
   const sidebarViewLabels: Record<ProjectSidebarViewId, string> = {
-    overview: t("sidebar.navDestinations.home"),
+    overview: t("sidebar.navDestinations.overview"),
     reports: t("sidebar.navDestinations.reports"),
     board: t("sidebar.navDestinations.tasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
@@ -461,6 +461,8 @@ export function useProjectViews({
      * that final project row after the pinned-view loop below.
      */
     if (viewId === "automations") continue;
+    /** Already the first option. */
+    if (viewId === "overview") continue;
     defaultMainOptions.push({
       value: viewId,
       label: sidebarViewLabels[viewId],
