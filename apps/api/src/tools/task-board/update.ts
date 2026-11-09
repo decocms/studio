@@ -1,9 +1,5 @@
 import { resolveTaskRunModel } from "./task-run-harness";
-import {
-  isReportsTask,
-  LANES,
-  TaskBoardHarnessSchema,
-} from "@decocms/shared/task-board";
+import { LANES, TaskBoardHarnessSchema } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { ConflictError } from "@/core/conflict-error";
 import { defineTool } from "@/core/define-tool";
@@ -373,23 +369,6 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
     const queuedStatus = becameSuperAgent ? LANES.progress : undefined;
     const nextStatus = queuedStatus ?? input.status;
-
-    if (previous && isReportsTask(previous)) {
-      // Reports-pushed tasks are the report's findings — their CONTENT is
-      // owned by the reports sync (which refreshes description/priority on
-      // open items), so users can't rewrite it. Board interactions stay
-      // free: status/drag, assignee (delegating IS how a run starts), due
-      // date, tags, thread links.
-      if (
-        input.title !== undefined ||
-        input.description !== undefined ||
-        input.priority !== undefined
-      ) {
-        throw new ConflictError(
-          "This task was generated from your report and can't be edited — create your own task instead.",
-        );
-      }
-    }
 
     if (
       previous &&

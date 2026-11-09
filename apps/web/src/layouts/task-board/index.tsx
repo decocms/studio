@@ -181,7 +181,6 @@ import { RerunDialog } from "./rerun-dialog";
 import {
   CANONICAL_COLUMN_KEYS,
   DEFAULT_TASK_TYPE,
-  isReportsTask,
   type ReviewerKind,
 } from "@decocms/shared/task-board";
 import {
@@ -1809,17 +1808,8 @@ function TaskBoardBody() {
               closeTask();
               return;
             }
-            /* Reports tasks own their title/description/priority in the
-               reports sync, and TASK_BOARD_ITEM_UPDATE 500s on a write that
-               touches them. The editor locks those fields but still
-               round-trips their values, so drop them here; board fields
-               (status/assignee/dueDate/tagIds) always go through. */
-            const { title, description, priority, ...boardFields } = input;
-            const contentFields = isReportsTask(openItem)
-              ? {}
-              : { title, description, priority };
             actions.update.mutate(
-              { id: openItem.id, ...boardFields, ...contentFields },
+              { id: openItem.id, ...input },
               { onError: onDelegateError },
             );
           }}
