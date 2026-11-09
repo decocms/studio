@@ -27,7 +27,7 @@ const {
   GitPushAuthError,
   parseRepositoryBinding,
   refreshSandboxGitCredentials,
-  rotateGitCredentialWhileRunning,
+  keepSandboxGitCredentialFresh,
   rotateReusedSandboxGitCredential,
 } = await import("./sync-git-credentials");
 
@@ -183,7 +183,7 @@ describe("rotateReusedSandboxGitCredential", () => {
   });
 });
 
-describe("rotateGitCredentialWhileRunning", () => {
+describe("keepSandboxGitCredentialFresh", () => {
   test("keeps rotating until stopped, and survives a failed rotation", async () => {
     buildCloneInfo.mockImplementation(async () => ({
       cloneUrl: "https://x-access-token:fresh@github.com/acme/site.git",
@@ -196,9 +196,9 @@ describe("rotateGitCredentialWhileRunning", () => {
         ++puts === 1
           ? new Response("busy", { status: 503 })
           : new Response("{}"),
-    } as unknown as Parameters<typeof rotateGitCredentialWhileRunning>[1];
+    } as unknown as Parameters<typeof keepSandboxGitCredentialFresh>[1];
 
-    const stop = rotateGitCredentialWhileRunning(
+    const stop = keepSandboxGitCredentialFresh(
       legacyRepoCtx,
       runner,
       "handle_1",

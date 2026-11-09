@@ -1044,6 +1044,7 @@ export const createSandboxRoutes = () => {
       userId: claim.userId,
       projectRef: claim.projectRef,
       virtualMcpMetadata: claim.virtualMcpMetadata,
+      connectionIds: claim.connectionIds,
     });
   });
 

@@ -86,7 +86,7 @@ import { getPublicUrl } from "@/core/server-constants";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
 import { ensureSandbox } from "@/tools/sandbox/start";
-import { rotateGitCredentialWhileRunning } from "@/tools/sandbox/sync-git-credentials";
+import { keepSandboxGitCredentialFresh } from "@/tools/sandbox/sync-git-credentials";
 import {
   publishRunStatusStage,
   type RunStatusStreamBuffer,
@@ -734,7 +734,7 @@ export class SandboxDispatchClient {
           },
         };
         const stopGitRotation = repository
-          ? rotateGitCredentialWhileRunning(
+          ? keepSandboxGitCredentialFresh(
               ctx,
               provider,
               sandbox.sandboxHandle,

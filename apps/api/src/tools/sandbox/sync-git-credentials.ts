@@ -101,22 +101,23 @@ export async function rotateReusedSandboxGitCredential(
   });
 }
 
-/** Under the reuse buffer, so a running sandbox's token always has 20+ minutes left. */
-const RUN_TOKEN_CHECK_MS = 10 * 60_000;
+/** Under the reuse buffer, so a sandbox in use always holds a token with 20+ minutes left. */
+const IN_USE_TOKEN_CHECK_MS = 10 * 60_000;
 
 /**
- * Rotates a sandbox's git token on an interval for as long as a run streams,
- * returning the stop. The token is minted once per sandbox start and lives an
- * hour, so a longer run's checkpoints and pushes failed once it lapsed. A
- * rotation re-mints only inside the reuse buffer; otherwise it is one config
- * request the daemon ignores. Best-effort: a failed one waits for the next.
+ * Rotates a sandbox's git token on an interval while it is in use (a run
+ * streams, or someone has its preview open), returning the stop. The token is
+ * minted when the sandbox starts and lives an hour, so later checkpoints,
+ * including the one the daemon pushes before the VM goes idle, failed once it
+ * lapsed. A rotation re-mints only inside the reuse buffer; otherwise it is one
+ * config request the daemon ignores. Best-effort: a failed one waits for the next.
  */
-export function rotateGitCredentialWhileRunning(
+export function keepSandboxGitCredentialFresh(
   ctx: StudioContext,
   runner: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
   repository: RepositoryBinding,
-  everyMs = RUN_TOKEN_CHECK_MS,
+  everyMs = IN_USE_TOKEN_CHECK_MS,
 ): () => void {
   const timer = setInterval(
     () =>

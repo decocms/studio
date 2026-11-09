@@ -21,6 +21,11 @@ import {
   resolveVm,
 } from "../../tools/sandbox/sandbox-map";
 import {
+  keepSandboxGitCredentialFresh,
+  parseRepositoryBinding,
+} from "../../tools/sandbox/sync-git-credentials";
+import {
+  getThreadRepository,
   getThreadSandboxMap,
   removeThreadSandboxMapEntry,
   setThreadHeadRef,
@@ -84,6 +89,7 @@ export interface VmEventsHandlerArgs {
   userId: string;
   projectRef: string;
   virtualMcpMetadata: Record<string, unknown> | null;
+  connectionIds: string[];
 }
 
 export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
@@ -96,6 +102,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     userId,
     projectRef,
     virtualMcpMetadata,
+    connectionIds,
   } = args;
   // The agent row is a no-op sandbox store for the synthetic Decopilot agent —
   // its records live on the THREAD (see `setThreadSandboxMapEntry`). Resolve the
@@ -125,6 +132,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
       clearInterval(ttlRenew);
     });
 
+    let stopGitRotation: (() => void) | null = null;
     try {
       // Prefer the agent entry; fall back to the thread entry (thread-scoped
       // branches). `fromThread` steers cleanup to the right store.
@@ -186,6 +194,19 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
       });
 
       // ---- Phase 2: daemon SSE proxy --------------------------------------
+      // Edits made here run outside any turn, and the daemon pushes them before
+      // the VM idles, with whatever token it holds by then.
+      const repository =
+        (await getThreadRepository(ctx, threadId)) ??
+        parseRepositoryBinding(virtualMcpMetadata, connectionIds);
+      if (repository) {
+        stopGitRotation = keepSandboxGitCredentialFresh(
+          ctx,
+          runner,
+          claimName,
+          repository,
+        );
+      }
       await proxyDaemonEvents({
         stream,
         runner,
@@ -195,6 +216,7 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     } finally {
       clearInterval(heartbeat);
       clearInterval(ttlRenew);
+      stopGitRotation?.();
     }
   });
 }
