@@ -136,10 +136,6 @@ export const createFeedbackRoutes = () => {
           const url = `/api/${encodeURIComponent(target.slug)}/fs/${VOLUME}/read?path=${encodeURIComponent(path)}`;
           links.push(`![Screenshot ${index + 1}](${url})`);
         }
-        const tag = await ctx.storage.tags.createTag(
-          target.id,
-          "feedback button",
-        );
         const item = await ctx.storage.taskBoard.create({
           organizationId: target.id,
           virtualMcpId: project.id,
@@ -147,29 +143,15 @@ export const createFeedbackRoutes = () => {
           description: [
             fields.data.message,
             `Sender: ${user.id}`,
-            `Sender name: ${user.name}`,
             `Organization: ${ctx.organization.id}`,
             `Page: ${fields.data.pageUrl}`,
             ...links,
           ].join("\n\n"),
           status: "triage",
-          by: user.id,
-          tagIds: [tag.id],
+          by: "system",
         });
         committed = true;
-        emitTaskBoardUpdated(target.id, {
-          ...item,
-          createdByName: user.name,
-          tags: [
-            {
-              id: tag.id,
-              name: tag.name,
-              color: tag.color,
-              createdBy: user.id,
-              createdAt: item.createdAt,
-            },
-          ],
-        });
+        emitTaskBoardUpdated(target.id, item);
         await notifyOrgFsChangeFromServer(target.id, VOLUME).catch(() => {});
         return c.json({ ok: true }, 201);
       } catch (error) {

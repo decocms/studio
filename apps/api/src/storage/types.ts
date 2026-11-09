@@ -2204,7 +2204,6 @@ export interface TaskBoardItem {
   /** When the card entered its current status; null when the log cannot say. */
   statusSince: string | null;
   createdBy: string;
-  createdByName?: string | null;
   createdAt: string;
   updatedBy: string;
   updatedAt: string;

@@ -235,7 +235,6 @@ export const TaskBoardItemSchema = z.object({
   /** When the card entered its current status; null when the activity log
    *  cannot say. Present on every `TaskBoardItem`, so it MUST be modeled here. */
   statusSince: z.string().datetime().nullable(),
-  createdByName: z.string().nullable().optional(),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),
