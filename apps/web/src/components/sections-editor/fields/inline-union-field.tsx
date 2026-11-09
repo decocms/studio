@@ -175,19 +175,15 @@ export function InlineUnionField(props: FieldProps) {
             schema={formSchema}
             value={value}
             // Re-apply the branch's stripped discriminators, same as LocationField.
-            onChange={(next) => {
-              const merged = mergeInlineUnionUpdate(
-                preserved,
-                next as Record<string, unknown>,
-                activeBranch.discriminators,
-              );
-              // An absent value is created by this first edit.
+            onChange={(next) =>
               onChange(
-                value === undefined || value === null
-                  ? seedNew(activeBranch.schema, merged)
-                  : merged,
-              );
-            }}
+                mergeInlineUnionUpdate(
+                  preserved,
+                  next as Record<string, unknown>,
+                  activeBranch.discriminators,
+                ),
+              )
+            }
             basePath={path}
             breadcrumbPath={props.breadcrumbPath}
             onBreadcrumbChange={props.onBreadcrumbChange}

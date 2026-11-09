@@ -15,14 +15,11 @@ export function useDefaultsOnCreateOnly(
   return virtualMcp?.metadata?.defaultsOnCreateOnly === true;
 }
 
-/** The project a form follows when it has no `sandbox` (the SEO forms). */
-export const DefaultsProjectContext = createContext<string | null>(null);
-
 /**
- * On while the outermost form edits the stored block of a project that writes
- * defaults only into new blocks. The form no longer fills defaults in, so what
- * a field creates inside it (an item, a branch) gets its own. Forms that never
- * fill defaults (the blog's) leave it off.
+ * On while the outermost form edits its stored block as it is
+ * (`defaultsOnCreateOnly`). The form fills no defaults in, so what is created
+ * inside it (an item, a branch, a value the block didn't have) gets its own.
+ * Every other form, the blog's included, leaves it off.
  */
 export const CreateOnlyContext = createContext(false);
 

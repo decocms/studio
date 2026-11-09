@@ -191,8 +191,6 @@ import {
   useTypeLabel,
 } from "./content-types-sidebar";
 import { ContentTypesTable } from "./content-types-table";
-import { useDefaultsOnCreateOnly } from "@/components/sections-editor/defaults-on-create";
-import { withDefaultsForNew } from "@/components/sections-editor/schema-defaults";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -697,9 +695,6 @@ function ContentBrowserReady({
         )
       : [];
   const installApp = useInstallApp({ orgSlug, virtualMcpId, branch });
-  const createOnly = useDefaultsOnCreateOnly(virtualMcpId);
-  /** The app this tab just installed: its editor creates the block's defaults. */
-  const [installedAppKey, setInstalledAppKey] = useState<string | null>(null);
   /**
    * Why this session cannot install, when it cannot. A Fast Preview session
    * never writes code, so offering the button there buys a toast and nothing
@@ -742,10 +737,8 @@ function ContentBrowserReady({
       { blockKey: entry.id },
       {
         // Most apps carry credentials they cannot work without.
-        onSuccess: (block) => {
-          setInstalledAppKey(block.key);
-          selectItem({ collection: "apps", key: block.key });
-        },
+        onSuccess: (block) =>
+          selectItem({ collection: "apps", key: block.key }),
         onError: (err) => toast.error(err.message),
       },
     );
@@ -1195,13 +1188,11 @@ function ContentBrowserReady({
           data = { ...template, name: values.name, path: values.path };
         } else {
           // v7 keeps its page and SEO section; v8 types it from its schema.
-          const page = buildEmptyPage(
+          data = buildEmptyPage(
             values.name,
             values.path,
             runsSiteCode ? undefined : meta,
           );
-          // Its forms won't fill the new page's defaults: fill them here.
-          data = createOnly ? withDefaultsForNew(undefined, page, meta) : page;
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
         const created = await saveBlock.mutateAsync({ blockKey: key, data });
@@ -1728,9 +1719,6 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 previewBaseUrl={previewUrl}
-                // Its schema arrives only after the install, so the form
-                // that first opens it is what creates its defaults.
-                newBlock={selection.key === installedAppKey}
                 // Hosted v8: opening an entry never changes the draft, and
                 // a type with several entries says which one is open.
                 {...(typesMode

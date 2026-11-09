@@ -14,8 +14,6 @@ interface SeoFormFieldsProps {
   onBreadcrumbChange?: (path: Crumb[]) => void;
   /** Page SEO only — enables General "Use default" toggles. */
   siteDefaultSeo?: Record<string, unknown>;
-  /** The SEO block was only just created here (see `SchemaForm`'s `newBlock`). */
-  newBlock?: boolean;
 }
 
 /**
@@ -30,7 +28,6 @@ export function SeoFormFields({
   onChange,
   onBreadcrumbChange,
   siteDefaultSeo,
-  newBlock,
 }: SeoFormFieldsProps) {
   const v8 = useBlocksSiteEditor();
   const mode = getSeoFormMode(resolveType, schema, v8);
@@ -58,7 +55,6 @@ export function SeoFormFields({
       basePath=""
       breadcrumbPath={[]}
       onBreadcrumbChange={onBreadcrumbChange ?? (() => {})}
-      newBlock={newBlock}
     />
   );
 }

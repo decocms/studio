@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { SeoFormChrome } from "./seo-form-chrome";
 import { SeoFormFields } from "./seo-form-fields";
 import { SeoTypeSelect } from "./seo-type-select";
@@ -56,9 +56,6 @@ export function PageSeoForm({
   seoTypesLoading = false,
 }: PageSeoFormProps) {
   const t = useT();
-  // SEO switched on, or its type changed, here: the form that opens next
-  // creates that block, so it starts with its defaults.
-  const [seoCreated, setSeoCreated] = useState(false);
   // v8: no SEO type to start from (a page schema that lists none, or the
   // schema still loading): SEO can't be turned on, rather than saving a
   // type-less SEO block. v7 keeps its switch as before.
@@ -69,7 +66,6 @@ export function PageSeoForm({
     if (enabled) {
       if (!seoTypeAvailable) return;
       const nextRaw = defaultEnabledSeo(defaultResolveType);
-      setSeoCreated(true);
       onPersistRaw(nextRaw);
       onClearForm();
       onBumpFormKey();
@@ -87,7 +83,6 @@ export function PageSeoForm({
 
   const handleTypeChange = (nextType: string) => {
     // Drop fields from the previous type so PDP/PLP keys do not leak across.
-    setSeoCreated(true);
     onInnerChange({ __resolveType: nextType });
     onBumpFormKey();
   };
@@ -127,7 +122,6 @@ export function PageSeoForm({
           onChange={(next) => onInnerChange(next as Record<string, unknown>)}
           onBreadcrumbChange={onBreadcrumbChange}
           siteDefaultSeo={siteDefaultSeo}
-          newBlock={seoCreated}
         />
       )}
     </SeoFormChrome>

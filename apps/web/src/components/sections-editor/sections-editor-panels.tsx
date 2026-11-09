@@ -126,6 +126,7 @@ export function SchemaFormPanel({
   previewBaseUrl,
   onRequestAddSection,
   onVariantMatcherOp,
+  defaultsOnCreateOnly,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -147,6 +148,8 @@ export function SchemaFormPanel({
   previewBaseUrl?: string | null;
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   onVariantMatcherOp?: VariantMatcherOps;
+  /** The section form edits the stored block (see `SchemaForm`). Not SEO. */
+  defaultsOnCreateOnly?: boolean;
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -176,6 +179,7 @@ export function SchemaFormPanel({
           previewBaseUrl={previewBaseUrl}
           onRequestAddSection={onRequestAddSection}
           onVariantMatcherOp={onVariantMatcherOp}
+          defaultsOnCreateOnly={defaultsOnCreateOnly}
         />
       )
     ) : null;

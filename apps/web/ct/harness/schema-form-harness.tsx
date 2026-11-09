@@ -4,8 +4,8 @@ import {
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
-import { SchemaFormWithoutDefaultSeeding } from "@/components/sandbox/content/blog/schema-form-without-default-seeding";
 import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
+import { SchemaFormWithoutDefaultSeeding } from "@/components/sandbox/content/blog/schema-form-without-default-seeding";
 
 /**
  * Canonical CT surface: raw CMS JSON Schema (LiveMeta) in → resolveSchema →
@@ -14,23 +14,24 @@ import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb"
  * true "a field in the CMS schema renders the right widget and round-trips its
  * value" guarantee.
  *
- * The current value and breadcrumb trail are dumped into testid'd <pre>s so
- * specs can assert the serialized form state after interactions.
+ * The current value, the number of writes and the breadcrumb trail are dumped
+ * into testid'd <pre>s so specs can assert the serialized form state after
+ * interactions.
  */
 export function SchemaFormHarness({
   meta,
   resolveType,
   initialValue = {},
   decofile = {},
-  virtualMcpId,
+  defaultsOnCreateOnly,
   withoutDefaultSeeding = false,
 }: {
   meta: LiveMeta;
   resolveType: string;
   initialValue?: Record<string, unknown>;
   decofile?: Record<string, unknown>;
-  /** Renders the form inside this project (see the `use-virtual-mcp` stub). */
-  virtualMcpId?: string;
+  /** A section form of a project that writes defaults only into new blocks. */
+  defaultsOnCreateOnly?: boolean;
   /** The blog editors' form, which never fills `@default`s in. */
   withoutDefaultSeeding?: boolean;
 }) {
@@ -57,11 +58,7 @@ export function SchemaFormHarness({
           onBreadcrumbChange={setBreadcrumb}
           meta={meta}
           decofile={decofile}
-          sandbox={
-            virtualMcpId
-              ? { orgSlug: "ct", virtualMcpId, branch: "draft", threadId: null }
-              : undefined
-          }
+          defaultsOnCreateOnly={defaultsOnCreateOnly}
         />
       ) : (
         <div data-testid="resolve-null">resolveSchema returned null</div>

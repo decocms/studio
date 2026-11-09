@@ -17,7 +17,6 @@ import { copyScope, useCopyEpochs } from "./held-copy";
 import { SeoPreview } from "./seo-preview";
 import { isProtocolProject } from "./content-backend";
 import { useContentBackend } from "./use-content-backend";
-import { DefaultsProjectContext } from "./defaults-on-create";
 
 export type { SeoTarget } from "./seo-block";
 
@@ -37,16 +36,7 @@ interface SeoEditorProps {
   onBack?: () => void;
 }
 
-/** Its forms have no `sandbox`: they follow the project's CMS settings through context. */
-export function SeoEditor(props: SeoEditorProps) {
-  return (
-    <DefaultsProjectContext.Provider value={props.virtualMcpId}>
-      <SeoEditorContent {...props} />
-    </DefaultsProjectContext.Provider>
-  );
-}
-
-function SeoEditorContent({
+export function SeoEditor({
   orgSlug,
   virtualMcpId,
   branch,

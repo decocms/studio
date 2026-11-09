@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/experimental-ct-react";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
 import { openRowActionsMenu, readFormValue } from "../harness/ct-utils";
-import { CT_PROJECT_DEFAULTS_ON_CREATE_ONLY } from "../harness/stubs/use-virtual-mcp";
 
 const meta = sectionWithProps({
   title: { type: "string", title: "Title", default: "Hello" },
@@ -20,15 +19,11 @@ const meta = sectionWithProps({
   },
 });
 
-test("by default, opening a form writes its missing defaults", async ({
+test("by default, opening a section form writes its missing defaults", async ({
   mount,
 }) => {
   const component = await mount(
-    <SchemaFormHarness
-      meta={meta}
-      resolveType={TEST_RESOLVE_TYPE}
-      virtualMcpId="ct-project"
-    />,
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
   );
 
   await expect
@@ -43,7 +38,7 @@ test("defaults only on creation: the form edits the stored block, so editing one
     <SchemaFormHarness
       meta={meta}
       resolveType={TEST_RESOLVE_TYPE}
-      virtualMcpId={CT_PROJECT_DEFAULTS_ON_CREATE_ONLY}
+      defaultsOnCreateOnly
       initialValue={{ subtitle: "Old", links: [{ label: "A" }] }}
     />,
   );
@@ -65,7 +60,7 @@ test("defaults only on creation: a new array item starts with its defaults", asy
     <SchemaFormHarness
       meta={meta}
       resolveType={TEST_RESOLVE_TYPE}
-      virtualMcpId={CT_PROJECT_DEFAULTS_ON_CREATE_ONLY}
+      defaultsOnCreateOnly
       initialValue={{ links: [{ label: "A" }] }}
     />,
   );
@@ -85,7 +80,7 @@ test("defaults only on creation: duplicating an item copies it as stored", async
     <SchemaFormHarness
       meta={meta}
       resolveType={TEST_RESOLVE_TYPE}
-      virtualMcpId={CT_PROJECT_DEFAULTS_ON_CREATE_ONLY}
+      defaultsOnCreateOnly
       initialValue={{ links: [{ label: "A" }] }}
     />,
   );
@@ -97,6 +92,36 @@ test("defaults only on creation: duplicating an item copies it as stored", async
   await expect
     .poll(() => readFormValue(component))
     .toEqual({ links: [{ label: "A" }, { label: "A" }] });
+});
+
+test("defaults only on creation: the first edit inside an absent object creates it with its defaults", async ({
+  mount,
+}) => {
+  const withCard = sectionWithProps({
+    card: {
+      type: "object",
+      title: "Card",
+      properties: {
+        heading: { type: "string", title: "Heading" },
+        showPrice: { type: "boolean", title: "Show price", default: true },
+      },
+    },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={withCard}
+      resolveType={TEST_RESOLVE_TYPE}
+      defaultsOnCreateOnly
+      initialValue={{}}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Card" }).click();
+  await component.getByLabel("Heading").fill("Hi");
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ card: { heading: "Hi", showPrice: true } });
 });
 
 test("a form that never fills defaults (the blog's) adds an array item without them", async ({

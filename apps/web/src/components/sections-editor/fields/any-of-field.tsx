@@ -347,8 +347,8 @@ export function AnyOfField({
         ...filtered,
       };
 
-      // The picked branch is created here, so it starts with its defaults.
-      const branchSchema = resolvedTargetSchema ?? targetRef?.schema;
+      // The picked branch is created here, so it starts with its own defaults.
+      const branchSchema = targetRef?.schema;
       if (discriminatorKey) {
         const discValue = targetRef?.discriminatorValue ?? rt;
         onChange(

@@ -2,7 +2,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { BlockBreadcrumbs } from "./block-breadcrumbs";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { type ComponentProps, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useT } from "@/i18n/use-t";
 import { KEYS } from "@/lib/query-keys";
@@ -209,10 +209,7 @@ import { isLazyWrapper } from "./lazy-value";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
 import { BlocksSiteEditorProvider } from "./blocks-site-editor";
 import { withDefaultsForNew } from "./schema-defaults";
-import {
-  DefaultsProjectContext,
-  useDefaultsOnCreateOnly,
-} from "./defaults-on-create";
+import { useDefaultsOnCreateOnly } from "./defaults-on-create";
 
 /** One toast for a section form's save outcome, however many saves it took. */
 const STALE_FORM_TOAST = "section-form-stale-save";
@@ -309,18 +306,7 @@ function conflictDialogKey(formBase: FormBase): number {
   return key;
 }
 
-/** Its SEO forms have no `sandbox`: they follow the project's CMS settings through context. */
-export function SectionsEditor(
-  props: ComponentProps<typeof SectionsEditorContent>,
-) {
-  return (
-    <DefaultsProjectContext.Provider value={props.virtualMcpId}>
-      <SectionsEditorContent {...props} />
-    </DefaultsProjectContext.Provider>
-  );
-}
-
-function SectionsEditorContent({
+export function SectionsEditor({
   orgSlug,
   virtualMcpId,
   branch,
@@ -390,8 +376,8 @@ function SectionsEditorContent({
   const t = useT();
   const task = useOptionalChatTask();
   const threadId = task?.taskId ?? null;
-  // Its forms edit stored blocks as they are, so what is created here is
-  // filled in here (see `defaultsOnCreateOnly`).
+  // Its section forms edit stored blocks as they are, so a section added
+  // here is filled in here (see `defaultsOnCreateOnly`).
   const createOnly = useDefaultsOnCreateOnly(virtualMcpId);
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch, threadId, previewUrl }
@@ -2754,7 +2740,7 @@ function SectionsEditorContent({
     // Seed union-matcher discriminants so accepting the default branch still
     // persists a valid rule (see seedMatcherRule).
     const newRule: Record<string, unknown> = newRt
-      ? seedMatcherRule(newRt, meta, { withDefaults: createOnly })
+      ? seedMatcherRule(newRt, meta)
       : { __resolveType: alwaysMatcherResolveType(meta) };
     setRuleFormValue(newRt ? newRule : {});
     scheduleRuleSave(newRule);
@@ -3065,7 +3051,7 @@ function SectionsEditorContent({
   const handleSectionMatcherTypeChange = (newRt: string) => {
     setSectionRuleResolveType(newRt);
     const newRule: Record<string, unknown> = newRt
-      ? seedMatcherRule(newRt, meta, { withDefaults: createOnly })
+      ? seedMatcherRule(newRt, meta)
       : { __resolveType: alwaysMatcherResolveType(meta) };
     setSectionRuleFormValue(newRt ? newRule : {});
     scheduleSectionRuleSave(newRule);
@@ -4997,6 +4983,7 @@ function SectionsEditorContent({
                   }
                 >
                   <SchemaFormPanel
+                    defaultsOnCreateOnly={createOnly}
                     activeSchema={activeSchema}
                     formValue={formValue}
                     formResetKey={formResetKey}
@@ -5035,6 +5022,7 @@ function SectionsEditorContent({
                   }
                 >
                   <SchemaFormPanel
+                    defaultsOnCreateOnly={createOnly}
                     activeSchema={activeSchema}
                     formValue={formValue}
                     formResetKey={formResetKey}
