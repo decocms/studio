@@ -908,18 +908,27 @@ const projectTaskBoardAnalyticsRoute = createRoute({
   ),
 });
 
-/** The retired Experiments app; Monitor's Experiments view renders it now. */
-const agentExperimentsRedirectRoute = createRoute({
+/**
+ * A Blocks v8 project's Experiments app: its A/B tests, edited in the draft
+ * beside what is live. Any other project's tests live in Monitor's
+ * Experiments view, which the route component sends it to. `test` opens one.
+ */
+const agentExperimentsRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/experiments",
-  beforeLoad: ({ params }) => {
-    throw redirect({
-      to: "/$org/projects/$agentId/monitoring",
-      params,
-      search: { view: "experiments" },
-      replace: true,
-    });
+  staticData: {
+    pageTitle: "common.mainPanelTabs.experiments",
+    defaultMain: "experiments",
+    mainView: "experiments",
   },
+  validateSearch: z.object({
+    test: z.string().optional().catch(undefined),
+  }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-experiments.tsx"),
+  ),
 });
 
 const agentCalendarRoute = createRoute({
@@ -1248,6 +1257,8 @@ const monitoringSearch = z.object({
   at: z.string().optional(),
   project: z.string().optional(),
   section: z.string().optional(),
+  // A Blocks v8 test opened in the Experiments view, by name.
+  test: z.string().optional().catch(undefined),
   // The Analytics segment (components/monitor/analytics/segment.ts).
   f: z.array(z.string()).optional().catch(undefined),
   currency: z.string().optional(),
@@ -1781,7 +1792,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentE2eRoute,
   agentAnalyticsRedirectRoute,
   projectTaskBoardAnalyticsRoute,
-  agentExperimentsRedirectRoute,
+  agentExperimentsRoute,
   agentCalendarRoute,
   agentCdnRedirectRoute,
   agentAppRoute,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  experimentsRouteView,
   experimentsTabVisible,
   pickExperimentsTab,
 } from "./experiments-tab-choice";
@@ -47,5 +48,15 @@ describe("experimentsTabVisible", () => {
 
   it("shows the tab on every v8 project", () => {
     expect(experimentsTabVisible(false, true)).toBe(true);
+  });
+});
+
+describe("experimentsRouteView", () => {
+  it("gives a Blocks v8 project its Experiments app", () => {
+    expect(experimentsRouteView(true)).toBe("app");
+  });
+
+  it("sends any other project to Monitor's Experiments view", () => {
+    expect(experimentsRouteView(false)).toBe("monitor");
   });
 });

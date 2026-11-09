@@ -102,6 +102,8 @@ export function useNamedRuleView(
     branch: string;
     decofile: Record<string, unknown>;
     meta: LiveMeta | null | undefined;
+    /** The open name, when the caller keeps it (a URL); else kept here. */
+    open?: { name: string | null; set: (name: string | null) => void };
   },
 ) {
   const t = useT();
@@ -117,7 +119,9 @@ export function useNamedRuleView(
     virtualMcpId,
     branch,
   });
-  const [openName, setOpenName] = useState<string | null>(null);
+  const [ownOpenName, setOwnOpenName] = useState<string | null>(null);
+  const openName = input.open ? input.open.name : ownOpenName;
+  const setOpenName = input.open ? input.open.set : setOwnOpenName;
   const [creating, setCreating] = useState(false);
 
   const save: NamedRuleSave = async (

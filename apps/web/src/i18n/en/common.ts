@@ -235,6 +235,7 @@ export const common = {
   "common.mainPanelTabs.hosting": "Hosting",
   "common.mainPanelTabs.e2e": "E2E",
   "common.mainPanelTabs.calendar": "Calendar",
+  "common.mainPanelTabs.experiments": "Experiments",
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
   "common.taskBoard.feedView": "Feed",

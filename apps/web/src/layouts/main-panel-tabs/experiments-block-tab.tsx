@@ -12,14 +12,14 @@
  * that names a test that isn't there).
  */
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Beaker02, Plus } from "@untitledui/icons";
-import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { ExperimentStatusPill } from "@/components/experiments/experiment-status-pill";
 import { ShareSplit } from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
 import {
@@ -41,10 +41,7 @@ import {
   copyScope,
   useCopyEpochs,
 } from "@/components/sections-editor/held-copy";
-import {
-  type ExperimentStatus,
-  namedRuleKindInfo,
-} from "@/components/sections-editor/named-rules";
+import { namedRuleKindInfo } from "@/components/sections-editor/named-rules";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type ExperimentRowModel,
@@ -78,32 +75,6 @@ function ExperimentsTabSkeleton() {
   );
 }
 
-const STATUS_DOT: Record<ExperimentStatus, string> = {
-  running: "bg-success",
-  everyone: "bg-primary",
-  off: "bg-muted-foreground/50",
-};
-
-function useStatusLabel() {
-  const t = useT();
-  return (status: ExperimentStatus) =>
-    status === "running"
-      ? t("experiments.v8.status.running")
-      : status === "everyone"
-        ? t("experiments.v8.status.everyone")
-        : t("experiments.v8.status.off");
-}
-
-function StatusPill({ status }: { status: ExperimentStatus }) {
-  const label = useStatusLabel();
-  return (
-    <Badge variant="secondary" data-status={status}>
-      <span className={cn("size-1.5 rounded-full", STATUS_DOT[status])} />
-      {label(status)}
-    </Badge>
-  );
-}
-
 function GuideState(props: {
   title: string;
   description: string;
@@ -117,11 +88,35 @@ function GuideState(props: {
   );
 }
 
+/** The test the tab shows, when its caller keeps it (the app's `?test=`). */
+export interface ExperimentsOpenTest {
+  name: string | null;
+  set: (name: string | null) => void;
+}
+
+/** What the slot under the list gets: the draft, and what is published. */
+export interface ExperimentsLiveSlotContext {
+  orgSlug: string;
+  virtualMcpId: string;
+  draft: Record<string, unknown>;
+  /** `null` while it isn't known. */
+  published: Record<string, unknown> | null;
+  openTest: (name: string) => void;
+}
+
+export interface ExperimentsBlockTabProps {
+  virtualMcpId: string;
+  /** Left out, the tab keeps the open test itself. */
+  open?: ExperimentsOpenTest;
+  /** Rendered under the list (the app's "Live now"). */
+  live?: (ctx: ExperimentsLiveSlotContext) => ReactNode;
+}
+
 export function ExperimentsBlockTab({
   virtualMcpId,
-}: {
-  virtualMcpId: string;
-}) {
+  open,
+  live,
+}: ExperimentsBlockTabProps) {
   const t = useT();
   return (
     <SiteDraftView
@@ -136,7 +131,7 @@ export function ExperimentsBlockTab({
       }}
       skeleton={<ExperimentsTabSkeleton />}
     >
-      {(ready) => <ExperimentsBlockReady {...ready} />}
+      {(ready) => <ExperimentsBlockReady {...ready} open={open} live={live} />}
     </SiteDraftView>
   );
 }
@@ -147,7 +142,9 @@ export function ExperimentsBlockReady({
   branch,
   decofile,
   meta,
-}: SiteDraftViewReady) {
+  open,
+  live,
+}: SiteDraftViewReady & Pick<ExperimentsBlockTabProps, "open" | "live">) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
   const view = useNamedRuleView("experiments", {
@@ -156,6 +153,7 @@ export function ExperimentsBlockReady({
     branch,
     decofile,
     meta,
+    open,
   });
   // A reconcile of the tests (hosted v8) replaced the copy the detail
   // shows: it shows the draft's copy again.
@@ -246,6 +244,13 @@ export function ExperimentsBlockReady({
           <p className="text-xs text-muted-foreground">
             {t("experiments.v8.previewHint")}
           </p>
+          {live?.({
+            orgSlug,
+            virtualMcpId,
+            draft: decofile,
+            published: view.published,
+            openTest: (name) => view.setOpenName(name),
+          })}
         </div>
       </Page.Content>
       <NamedRuleCreateDialog
@@ -291,7 +296,7 @@ function ExperimentBlockRow({
         <NamedRuleEntryBadge kind="experiments" state={row.entryState} />
       </div>
       <div className="flex w-24 shrink-0">
-        <StatusPill status={row.status} />
+        <ExperimentStatusPill status={row.status} />
       </div>
     </div>
   );
@@ -350,7 +355,7 @@ function ExperimentBlockDetail(
           <NamedRuleDetailTitle
             kind="experiments"
             name={row.name}
-            status={<StatusPill status={row.status} />}
+            status={<ExperimentStatusPill status={row.status} />}
             entryState={row.entryState}
           />
 

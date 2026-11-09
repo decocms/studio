@@ -42,3 +42,12 @@ export function experimentsTabVisible(
 ): boolean {
   return orgEnabled || v8;
 }
+
+/**
+ * What the Experiments app's route renders: a Blocks v8 project's app (its
+ * tests, edited in the draft), or, for any other project, the way to Monitor's
+ * Experiments view, where v7 tests are kept.
+ */
+export function experimentsRouteView(v8: boolean): "app" | "monitor" {
+  return v8 ? "app" : "monitor";
+}
