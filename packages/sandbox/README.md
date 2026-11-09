@@ -184,8 +184,11 @@ under Docker, with the daemon published at `https://<handle>.style.dev`. The
 VM's slug is the handle and its metadata holds the daemon bearer, so it needs
 no state store. A VM is paused after five minutes without network traffic, or
 once its daemon reports ten minutes without use, which catches a dev server
-that keeps the network busy on its own; traffic resumes it. A VM paused for a
-day is deleted, or sooner if the Freestyle plan caps it lower. The first
+that keeps the network busy on its own; traffic resumes it. Freestyle deletes
+a VM paused for a day (or the plan's lower cap) without a shutdown sync, so
+two hours before that a sweep checks the VM's repo: one with nothing missing
+from its remote is deleted, and one holding unpushed commits or changed files
+is kept, up to 30 days from its creation, for the user's next run to push. The first
 ensure for an image builds a base snapshot with the image pulled, unless the
 host already called `warm()` (the control plane does when it starts);
 `STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the

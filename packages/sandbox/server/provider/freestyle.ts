@@ -5,8 +5,9 @@
  *
  * The VM is the whole state: its slug is the handle and its metadata holds the
  * daemon bearer, so any Studio replica can find a sandbox without a database.
- * An idle VM is paused, and traffic to its domain resumes it; one paused for
- * `autoDeleteSeconds` is deleted.
+ * An idle VM is paused, and traffic to its domain resumes it. Freestyle deletes
+ * one paused for `autoDeleteSeconds` without a shutdown sync, so shortly before
+ * that the retire sweep deletes it only if nothing on it is missing from git.
  */
 
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -103,6 +104,25 @@ const WATCH_TIMEOUT_MS = 5 * 60_000;
 const LOOKUP_TIMEOUT_MS = 3_000;
 const IDLE_SWEEP_MS = 60_000;
 const IDLE_SWEEP_PAGE = 100;
+const RETIRE_SWEEP_MS = 30 * 60_000;
+/** How long before Freestyle's auto-delete the retire sweep looks at a VM. */
+const RETIRE_MARGIN_MS = 2 * 60 * 60_000;
+/** A VM older than this is no longer kept for its unsaved work. */
+const KEEP_UNSAVED_MAX_MS = 30 * 24 * 60 * 60_000;
+/**
+ * Exits 0 when the sandbox's repo has nothing git's remote lacks: no changed
+ * or untracked file, no commit outside a remote-tracking ref. Local only, so
+ * an expired push token can't make a clean VM look unsaved. Any git failure
+ * exits non-zero, which keeps the VM.
+ */
+const NOTHING_UNSAVED = `docker exec ${CONTAINER} sh -c ${shellQuote(
+  [
+    `cd ${WORKDIR}/repo 2>/dev/null || exit 0`,
+    `s=$(git -c safe.directory='*' status --porcelain) || exit 1`,
+    `c=$(git -c safe.directory='*' log --branches --not --remotes -1 --format=%H) || exit 1`,
+    `[ -z "$s" ] && [ -z "$c" ]`,
+  ].join("; "),
+)}`;
 /**
  * Freestyle deletes a repo snapshot nobody forked for this long, which reclaims
  * the ones a newer default-branch head superseded.
@@ -145,10 +165,15 @@ export interface FreestyleSandboxProviderOptions {
    */
   idlePauseMs?: number;
   /**
-   * Delete a VM after this long without running. Default 1 day. A plan
-   * that caps it lower gets its cap.
+   * Freestyle deletes a VM after this long without running, with no shutdown
+   * sync. Default 1 day. A plan that caps it lower gets its cap.
    */
   autoDeleteSeconds?: number;
+  /**
+   * Whether to run the retire sweep, which deletes a paused VM before
+   * Freestyle does only when it holds nothing unsaved. Default on.
+   */
+  retireSweep?: boolean;
   /** Where daemon ports are published. Default `style.dev`, free on every account. */
   domainSuffix?: string;
   /** Records daemon request latency; see `daemonProxyTimer`. */
@@ -193,6 +218,8 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   >();
   private readonly idleSweep: ReturnType<typeof setInterval> | null = null;
   private sweeping = false;
+  private readonly retireSweep: ReturnType<typeof setInterval> | null = null;
+  private retiring = false;
   /** Org + repo → the newest repo snapshot known to exist, and the head it was built for. */
   private readonly repoSnapshots = new Map<
     string,
@@ -241,6 +268,13 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     if (this.idlePauseMs > 0) {
       this.idleSweep = setInterval(() => void this.pauseIdle(), IDLE_SWEEP_MS);
       this.idleSweep.unref?.();
+    }
+    if (opts.retireSweep !== false) {
+      this.retireSweep = setInterval(
+        () => void this.retireIdle(),
+        RETIRE_SWEEP_MS,
+      );
+      this.retireSweep.unref?.();
     }
   }
 
@@ -1241,6 +1275,91 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     return handle;
   }
 
+  /**
+   * Look at every paused VM of ours that Freestyle is about to delete. One with
+   * nothing unsaved is deleted now. One whose repo holds work git's remote
+   * lacks is started and paused again, which resets Freestyle's clock, so it
+   * stays until a returning user's next run pushes the work (or for
+   * `KEEP_UNSAVED_MAX_MS`). Returns the handles deleted; never throws.
+   *
+   * ponytail: a kept VM costs one start a day; a per-VM "kept" mark would
+   * save that if many pile up.
+   */
+  async retireIdle(): Promise<string[]> {
+    if (this.retiring) return [];
+    this.retiring = true;
+    try {
+      const deleted: string[] = [];
+      for (let offset = 0; ; ) {
+        const { vms } = await this.freestyle.vms.list({
+          state: "paused",
+          limit: IDLE_SWEEP_PAGE,
+          offset,
+        });
+        let gone = 0;
+        // One at a time: each check starts a VM.
+        for (const data of vms) {
+          const handle = await this.retireIfDue(data);
+          if (handle) {
+            deleted.push(handle);
+            gone++;
+          }
+        }
+        if (vms.length < IDLE_SWEEP_PAGE) break;
+        offset += vms.length - gone;
+      }
+      return deleted;
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] retire sweep failed: ${errMsg(err)}`);
+      return [];
+    } finally {
+      this.retiring = false;
+    }
+  }
+
+  private async retireIfDue(
+    data: Awaited<ReturnType<Freestyle["vms"]["list"]>>["vms"][number],
+  ): Promise<string | null> {
+    const handle = data.slug;
+    if (!handle || !data.metadata[TOKEN_KEY] || !data.autoDeleteSeconds) {
+      return null;
+    }
+    const lastUp = Math.max(
+      Date.parse(data.updatedAt),
+      Date.parse(data.lastNetworkActivity ?? data.updatedAt),
+    );
+    const deletesAt = lastUp + data.autoDeleteSeconds * 1000;
+    if (Date.now() < deletesAt - RETIRE_MARGIN_MS) return null;
+    if (Date.now() - Date.parse(data.createdAt) > KEEP_UNSAVED_MAX_MS) {
+      return null;
+    }
+    const vm = this.freestyle.vms.ref(data.id);
+    try {
+      await vm.start();
+      const { statusCode } = await vm.exec({
+        command: NOTHING_UNSAVED,
+        timeoutMs: 60_000,
+      });
+      if (statusCode === 0) {
+        await vm.delete();
+        this.lookups.delete(handle);
+        this.appIngress.delete(handle);
+        console.log(`[${LOG_LABEL}] retired ${handle}: nothing unsaved`);
+        return handle;
+      }
+      // A user who came back while this ran keeps their VM running.
+      const idleMs = await daemonIdleMs(this.daemonUrl(handle));
+      if (idleMs === null || idleMs >= RETIRE_MARGIN_MS) await vm.pause();
+      console.warn(
+        `[${LOG_LABEL}] kept ${handle} (VM ${data.id}): its repo has work that is not on the remote`,
+      );
+    } catch (err) {
+      console.warn(`[${LOG_LABEL}] retire ${handle} failed: ${errMsg(err)}`);
+      await vm.pause().catch(() => {});
+    }
+    return null;
+  }
+
   private cancelRelease(handle: string): void {
     const timer = this.releaseTimers.get(handle);
     if (timer) clearTimeout(timer);
@@ -1249,6 +1368,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
 
   close(): void {
     if (this.idleSweep) clearInterval(this.idleSweep);
+    if (this.retireSweep) clearInterval(this.retireSweep);
     for (const timer of this.releaseTimers.values()) clearTimeout(timer);
     this.releaseTimers.clear();
     this.lookups.clear();

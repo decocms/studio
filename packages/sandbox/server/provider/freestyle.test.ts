@@ -861,3 +861,153 @@ describe("repo snapshots", () => {
     provider.close();
   });
 });
+
+describe("retireIdle", () => {
+  const DAY = 24 * 60 * 60;
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const vm = (slug: string, extra: Record<string, unknown> = {}) => ({
+    id: `id-${slug}`,
+    slug,
+    state: "paused",
+    metadata: { "studio-daemon-token": "t" },
+    autoDeleteSeconds: DAY,
+    createdAt: ago(3 * DAY * 1000),
+    updatedAt: ago(23 * 60 * 60_000),
+    lastNetworkActivity: ago(23 * 60 * 60_000),
+    ...extra,
+  });
+
+  function fleet(vms: ReturnType<typeof vm>[], unsaved: Set<string>) {
+    const log: string[] = [];
+    const client = {
+      vms: {
+        list: async () => ({ vms }),
+        ref: (id: string) => ({
+          start: async () => void log.push(`start ${id}`),
+          pause: async () => void log.push(`pause ${id}`),
+          delete: async () => void log.push(`delete ${id}`),
+          exec: async () => ({ statusCode: unsaved.has(id) ? 1 : 0 }),
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      idlePauseMs: 0,
+      retireSweep: false,
+    });
+    return { provider, log };
+  }
+
+  test("deletes a VM about to be auto-deleted only when nothing on it is unsaved", async () => {
+    globalThis.fetch = Object.assign(
+      async () => Response.json({ idleMs: DAY * 1000 }),
+      { preconnect: realFetch.preconnect },
+    );
+    const { provider, log } = fleet(
+      [vm("clean"), vm("unsaved")],
+      new Set(["id-unsaved"]),
+    );
+    expect(await provider.retireIdle()).toEqual(["clean"]);
+    expect(log).toEqual([
+      "start id-clean",
+      "delete id-clean",
+      "start id-unsaved",
+      "pause id-unsaved",
+    ]);
+    provider.close();
+  });
+
+  test("leaves VMs that aren't due, aren't ours, never auto-delete, or are past keeping", async () => {
+    const { provider, log } = fleet(
+      [
+        vm("recent", { lastNetworkActivity: ago(60 * 60_000) }),
+        vm("foreign", { metadata: {} }),
+        vm("detached", { slug: "" }),
+        vm("forever", { autoDeleteSeconds: null }),
+        vm("ancient", { createdAt: ago(40 * DAY * 1000) }),
+      ],
+      new Set(),
+    );
+    expect(await provider.retireIdle()).toEqual([]);
+    expect(log).toEqual([]);
+    provider.close();
+  });
+
+  test("keeps running a VM whose user came back mid-check", async () => {
+    globalThis.fetch = Object.assign(async () => Response.json({ idleMs: 0 }), {
+      preconnect: realFetch.preconnect,
+    });
+    const { provider, log } = fleet([vm("back")], new Set(["id-back"]));
+    expect(await provider.retireIdle()).toEqual([]);
+    expect(log).toEqual(["start id-back"]);
+    provider.close();
+  });
+
+  test("the check reads the repo locally: unsaved means a changed file or an unpushed commit", async () => {
+    let command = "";
+    const client = {
+      vms: {
+        list: async () => ({ vms: [vm("v")] }),
+        ref: () => ({
+          start: async () => {},
+          delete: async () => {},
+          exec: async (o: { command: string }) => {
+            command = o.command;
+            return { statusCode: 0 };
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      retireSweep: false,
+    });
+    await provider.retireIdle();
+    provider.close();
+    expect(command.startsWith("docker exec sandbox ")).toBe(true);
+
+    const root = mkdtempSync(join(tmpdir(), "retire-check-"));
+    const git = (cwd: string, ...args: string[]) => {
+      const r = Bun.spawnSync(["git", ...args], { cwd });
+      if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+    };
+    const check = (repo: string) =>
+      Bun.spawnSync([
+        "sh",
+        "-c",
+        command
+          .slice("docker exec sandbox ".length)
+          .replaceAll("/app/repo", repo),
+      ]).exitCode;
+    try {
+      const remote = join(root, "remote.git");
+      const repo = join(root, "repo");
+      git(root, "init", "-q", "--bare", remote);
+      git(root, "clone", "-q", remote, repo);
+      git(repo, "config", "user.email", "t@example.com");
+      git(repo, "config", "user.name", "t");
+      writeFileSync(join(repo, "a.txt"), "a\n");
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", "a");
+      git(repo, "push", "-q", "origin", "HEAD:feature");
+      git(repo, "fetch", "-q", "origin");
+      expect(check(repo)).toBe(0);
+      expect(check(join(root, "never-cloned"))).toBe(0);
+
+      writeFileSync(join(repo, "b.txt"), "b\n");
+      expect(check(repo)).not.toBe(0);
+
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", "b");
+      expect(check(repo)).not.toBe(0);
+
+      git(repo, "push", "-q", "origin", "HEAD:feature");
+      git(repo, "fetch", "-q", "origin");
+      expect(check(repo)).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
