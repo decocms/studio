@@ -12,7 +12,6 @@ import {
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useT } from "@/i18n/use-t";
-import { usePanelActions } from "@/layouts/shell-layout";
 import { useProjectContext } from "@/sdk";
 
 const ThreadButtonSlotContext = createContext<{
@@ -39,6 +38,8 @@ function useThreadButtonSlot() {
   return slot;
 }
 
+/** Mobile only: it swaps between the chat and the main panel. On desktop
+ *  the chat never closes, and the main panel's header brings it back. */
 function ThreadButton({
   open,
   onToggle,
@@ -47,7 +48,7 @@ function ThreadButton({
   onToggle: () => void;
 }) {
   const t = useT();
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { setOpenMobile } = useSidebar();
   const label = t(open ? "page.closeThread" : "page.openThread");
   return (
     <Tooltip>
@@ -59,7 +60,7 @@ function ThreadButton({
           className="size-7 shrink-0 group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:size-8"
           onClick={() => {
             onToggle();
-            if (isMobile) setOpenMobile(false);
+            setOpenMobile(false);
           }}
         >
           <MessageCircle01 size={16} />
@@ -88,7 +89,7 @@ export function SidebarThreadButton() {
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const { openSidePanel } = usePanelActions();
+  if (!isMobile) return null;
   return (
     <>
       <div
@@ -103,16 +104,14 @@ export function SidebarThreadButton() {
               void navigate({
                 to: "/$org/home",
                 params: { org: org.slug },
-                search: { sidepanel: true, mainpanel: !isMobile },
+                search: { sidepanel: true, mainpanel: false },
               });
-            } else if (isMobile) {
+            } else {
               void navigate({
                 to: ".",
                 search: (prev) => ({ ...prev, ...mobileSurfaceSearch("chat") }),
                 replace: true,
               });
-            } else {
-              void openSidePanel();
             }
           }}
         />

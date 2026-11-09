@@ -10,6 +10,10 @@ export const page = {
   "page.views": "Page views",
   "page.openThread": "Open chat",
   "page.closeThread": "Close chat",
+  "page.enterFullscreen": "Expand",
+  "page.exitFullscreen": "Show chat",
+  "page.openMainPanel": "Open panel",
+  "page.closeMainPanel": "Close",
   "page.collapseSidebar": "Collapse sidebar",
   "page.expandSidebar": "Expand sidebar",
 } as const;

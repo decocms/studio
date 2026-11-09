@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
 import { useRouterState } from "@tanstack/react-router";
-import { LayoutLeft, MessageCircle01 } from "@untitledui/icons";
+import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import {
   Tooltip,
@@ -14,7 +14,6 @@ import { Page } from "@/components/page";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useInSettings } from "@/hooks/use-in-settings";
-import { useOptionalChatLayout } from "@/components/chat-layout";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 import { useScopeId } from "@/hooks/use-project-scope";
@@ -25,18 +24,17 @@ import { useProjectContext, useVirtualMCPNonBlocking } from "@/sdk";
 export function RoutePageHeader({
   actions,
   navigation,
+  trailingActions,
 }: {
   actions?: ReactNode;
   navigation?: ReactNode;
+  trailingActions?: ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const scopeId = useScopeId();
   const project = useVirtualMCPNonBlocking(scopeId);
   const inSettings = useInSettings();
-  const { toggleSidebar } = useSidebar();
-  const collapsed = useSidebarCollapsed();
-  const chatLayout = useOptionalChatLayout();
   const projectFirstNav = useProjectFirstNav();
   const page = useRouterState({
     select: (state) =>
@@ -75,63 +73,53 @@ export function RoutePageHeader({
     });
   }
   breadcrumbs.push({ key: "page", label: title });
-  /** Project-first collapses the sidebar away, and its toggles with it: they
-   *  move here, beside the breadcrumb. */
-  const sidebarHidden = projectFirstNav && collapsed;
-  const chatToggle = sidebarHidden && chatLayout && !chatLayout.threadless && (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          aria-label={t(
-            chatLayout.threadOpen ? "page.closeThread" : "page.openThread",
-          )}
-          aria-pressed={chatLayout.threadOpen}
-          active={chatLayout.threadOpen}
-          onClick={chatLayout.toggleThread}
-        >
-          <MessageCircle01 size={16} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {t(chatLayout.threadOpen ? "page.closeThread" : "page.openThread")}
-      </TooltipContent>
-    </Tooltip>
-  );
   return (
     <Page.Header
-      leading={
-        <>
-          {projectFirstNav ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToolbarIconButton
-                  className={cn(!sidebarHidden && "md:hidden")}
-                  onClick={toggleSidebar}
-                  aria-label={t("page.expandSidebar")}
-                >
-                  <LayoutLeft size={16} />
-                </ToolbarIconButton>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t("page.expandSidebar")}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <ToolbarIconButton
-              className="md:hidden"
-              onClick={toggleSidebar}
-              aria-label={t("layouts.shellControls.toggleSidebar")}
-            >
-              <LayoutLeft size={16} />
-            </ToolbarIconButton>
-          )}
-          {chatToggle}
-        </>
-      }
+      leading={<SidebarToggleButton />}
       breadcrumbs={breadcrumbs}
       scope={org.name}
       actions={actions}
       navigation={navigation}
+      trailingActions={trailingActions}
     />
+  );
+}
+
+/** Brings a collapsed sidebar back from the leftmost visible panel. Mobile
+ *  always shows it; desktop only once project-first nav hid the sidebar. */
+export function SidebarToggleButton({
+  showOnDesktop = true,
+}: {
+  showOnDesktop?: boolean;
+}) {
+  const t = useT();
+  const { toggleSidebar } = useSidebar();
+  const collapsed = useSidebarCollapsed();
+  const projectFirstNav = useProjectFirstNav();
+  if (!projectFirstNav) {
+    return (
+      <ToolbarIconButton
+        className="md:hidden"
+        onClick={toggleSidebar}
+        aria-label={t("layouts.shellControls.toggleSidebar")}
+      >
+        <LayoutLeft size={16} />
+      </ToolbarIconButton>
+    );
+  }
+  const sidebarHidden = showOnDesktop && collapsed;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          className={cn(!sidebarHidden && "md:hidden")}
+          onClick={toggleSidebar}
+          aria-label={t("page.expandSidebar")}
+        >
+          <LayoutLeft size={16} />
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{t("page.expandSidebar")}</TooltipContent>
+    </Tooltip>
   );
 }

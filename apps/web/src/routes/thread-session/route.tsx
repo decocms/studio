@@ -1,7 +1,4 @@
 import type { ReactNode } from "react";
-import { LayoutLeft } from "@untitledui/icons";
-import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
-import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 /** Binds project and thread runtime to ChatLayout and its routed content. */
 
 import {
@@ -51,7 +48,12 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 
-import { ChatLayout } from "@/components/chat-layout";
+import {
+  ChatLayout,
+  OpenMainPanelButton,
+  useOptionalChatLayout,
+} from "@/components/chat-layout";
+import { SidebarToggleButton } from "@/layouts/route-page-header";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
@@ -382,19 +384,14 @@ function VmEventsBridge({
 // ---------------------------------------------------------------------------
 
 function ThreadTopbar() {
-  const t = useT();
-  const { toggleSidebar } = useSidebar();
   const { virtualMcpId, taskId } = useChatTask();
+  const mainPanelClosed = useOptionalChatLayout()?.contentOpen === false;
   return (
-    <Panel.Topbar className="border-b border-border/60 px-3">
+    <Panel.Topbar className="border-b border-border/60 pr-3 pl-1">
       <Panel.Topbar.Left>
-        <ToolbarIconButton
-          className="md:hidden"
-          onClick={toggleSidebar}
-          aria-label={t("layouts.shellControls.toggleSidebar")}
-        >
-          <LayoutLeft size={16} />
-        </ToolbarIconButton>
+        {/* With the main panel closed, the chat is the leftmost panel. */}
+        <SidebarToggleButton showOnDesktop={mainPanelClosed} />
+        <OpenMainPanelButton />
         <ThreadsMenu />
       </Panel.Topbar.Left>
       <div className="min-w-0 md:hidden">
@@ -419,16 +416,16 @@ function ThreadSessionContent({
   const { virtualMcpId, taskId } = useChatTask();
 
   const contentKey = useActivePanelTabId() ?? "overview";
-  /** Takeover apps default the chat panel closed, in local state so
-   *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
-   *  the chat in one app does not carry into the next one launched. */
+  /** Takeover apps open full screen, in local state so neither `?sidepanel`
+   *  nor the person's full-screen preference changes it. Keyed on the view,
+   *  so showing the chat in one app does not carry into the next one. */
   const takeover = useAppTakeover();
   const [threadOpenIn, setThreadOpenIn] = useState<string | null>(null);
   const takeoverThreadOpen = threadOpenIn === contentKey;
   const threadOpen = takeover ? takeoverThreadOpen : layout.threadOpen;
-  const toggleThread = takeover
+  const toggleFullscreen = takeover
     ? () => setThreadOpenIn(takeoverThreadOpen ? null : contentKey)
-    : layout.toggleThread;
+    : layout.toggleFullscreen;
 
   return (
     <>
@@ -439,17 +436,17 @@ function ThreadSessionContent({
       <ChatLayout
         {...layout}
         threadOpen={threadOpen}
-        toggleThread={toggleThread}
+        toggleFullscreen={toggleFullscreen}
         contentKey={contentKey}
         contentNavigation={
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
         }
       >
+        <Outlet />
         <ChatLayout.Thread topbar={<ThreadTopbar />}>
           {/* The conversation is per thread; the app beside it is not. */}
           <ActiveTaskBoundary key={taskId ?? "threadless"} />
         </ChatLayout.Thread>
-        <Outlet />
       </ChatLayout>
     </>
   );

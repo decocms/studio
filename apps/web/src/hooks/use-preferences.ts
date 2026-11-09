@@ -26,6 +26,8 @@ interface Preferences {
   /** Project-first navigation: the org rail, project launcher, project tree and
    *  Today/Agents home. Unset until the person picks; see `projectFirstNavEnabled`. */
   projectFirstNav?: boolean;
+  /** The main panel stays expanded over the chat. */
+  contentFullscreen: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -36,6 +38,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   language: detectLocale(),
   taskBoardLaneVisibility: {},
   collapsedTaskBoardLanes: [],
+  contentFullscreen: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -136,6 +139,9 @@ export function usePreferences() {
       }
       if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
         merged.collapsedTaskBoardLanes = [];
+      }
+      if (typeof merged.contentFullscreen !== "boolean") {
+        merged.contentFullscreen = false;
       }
       if (typeof merged.projectFirstNav !== "boolean") {
         delete merged.projectFirstNav;

@@ -55,6 +55,7 @@ import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { QueueTray } from "./queue-tray";
+import { PendingDraftStrip } from "./drafts/draft-card";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/hooks/collections/use-ai-providers";
@@ -770,6 +771,7 @@ export function ChatInput({
           {stream && taskCtx && <ChatHighlight />}
 
           {stream && taskCtx && taskId ? <QueueTray taskId={taskId} /> : null}
+          {taskCtx && taskId ? <PendingDraftStrip /> : null}
 
           <TiptapProvider
             key={taskId}

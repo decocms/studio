@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -75,15 +76,21 @@ interface MessageStatsBarProps {
   usage: UsageStatsType | null | undefined;
   /** Reasoning duration in milliseconds */
   duration?: number | null;
+  /** When the message was sent, kept on the same line as its cost. */
+  timestamp?: ReactNode;
 }
 
-export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
+export function MessageStatsBar({
+  usage,
+  duration,
+  timestamp,
+}: MessageStatsBarProps) {
   const showCost = useModelDisclosure();
   const hasDuration = duration != null && duration > 0;
   const hasCost = showCost && usage != null && (usage.cost ?? 0) > 0;
   const hasTokens = usage != null && (usage.totalTokens ?? 0) > 0;
 
-  if (!hasDuration && !hasCost && !hasTokens) return null;
+  if (!hasDuration && !hasCost && !hasTokens) return timestamp ?? null;
 
   const durationLabel = hasDuration ? formatDuration(duration! / 1000) : null;
 
@@ -154,6 +161,12 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
             </div>
           </TooltipContent>
         </Tooltip>
+      )}
+      {timestamp && (
+        <>
+          <span className="text-muted-foreground/40 select-none">·</span>
+          {timestamp}
+        </>
       )}
     </div>
   );

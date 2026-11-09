@@ -60,6 +60,7 @@ import {
   InstallSnippet,
 } from "@/components/connect/install-snippet";
 import { mcpUrl } from "@/components/connect/mcp-url";
+import { CONNECT_KEY_PREFIX } from "@/components/connect/connect-key";
 import {
   cliLoginCommand,
   skillInstallCommand,
@@ -72,7 +73,7 @@ import { RequireCapability } from "@/components/require-capability";
 import { useCapability } from "@/hooks/use-capability";
 import { ApiKeysSection } from "@/views/settings/api-keys";
 
-const KEY_NAME_PREFIX = "Connect: ";
+const KEY_NAME_PREFIX = CONNECT_KEY_PREFIX;
 
 type ConnectVia = "skill" | "mcp";
 

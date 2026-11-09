@@ -163,7 +163,7 @@ export function useProjectViews({
   const pinnedViews = form.watch("metadata.ui.pinnedViews") ?? [];
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
-  const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? true;
   // A Blocks (v8) site: Experiments and Calendar are offered once on top of
   // a list saved before they were defaults, until the next save.
   const blocksSite = nativeViews.presence.calendar;

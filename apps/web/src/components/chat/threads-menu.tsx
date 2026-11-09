@@ -7,12 +7,7 @@
  */
 
 import { useState } from "react";
-import {
-  ChevronDown,
-  Edit05,
-  MessageTextSquare01,
-  SearchSm,
-} from "@untitledui/icons";
+import { ChevronDown, Edit05, SearchSm } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
@@ -64,7 +59,6 @@ export function ThreadsMenu() {
                   open && "bg-sidebar-accent",
                 )}
               >
-                <MessageTextSquare01 size={16} className="shrink-0" />
                 <span className="truncate max-w-[10rem] font-medium">
                   {activeTitle}
                 </span>

@@ -12,7 +12,7 @@ import {
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { Suspense } from "react";
 import { Page } from "@/components/page";
-import { ConnectPill } from "./connect-pill";
+import { ConnectBanner } from "./connect-pill";
 import { DailyBriefCard } from "./daily-brief-card";
 import { runningAgents, shippedSince, tasksNeedingMe } from "./daily-pulse";
 import {
@@ -187,7 +187,7 @@ export function TodayPage() {
 
   return (
     <Page>
-      <Page.Actions secondary={<ConnectPill />}>
+      <Page.Actions>
         {canManageProjects && <NewProjectButton source="org_home_header" />}
       </Page.Actions>
       <Page.Content>
@@ -196,6 +196,7 @@ export function TodayPage() {
           /** `min-h-full` gives the empty state a height to centre in. */
           className="flex min-h-full flex-col gap-10"
         >
+          <ConnectBanner />
           {taskIntakeEnabled && (
             <Suspense fallback={null}>
               <DetachedChatContext>

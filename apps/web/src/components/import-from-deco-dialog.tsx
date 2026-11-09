@@ -285,7 +285,7 @@ export function ImportFromDecoDialog({
                   pinnedViews: null,
                   layout: {
                     defaultMainView: { type: "site-editor" },
-                    chatDefaultOpen: false,
+                    chatDefaultOpen: true,
                   },
                 },
               },

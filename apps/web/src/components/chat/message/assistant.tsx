@@ -296,7 +296,11 @@ function renderItem({
       id={message.id}
       usageStats={
         shouldShowUsage && (
-          <MessageStatsBar usage={usage} duration={totalDuration} />
+          <MessageStatsBar
+            usage={usage}
+            duration={totalDuration}
+            timestamp={!isLoading && <MessageTimestamp message={message} />}
+          />
         )
       }
       dataParts={dataParts}
@@ -635,6 +639,13 @@ export function MessageAssistant({
   const { collapsed, tail } = shouldCollapse
     ? splitCollapsible(renderOrder, message!.parts)
     : { collapsed: [] as RenderItem[], tail: renderOrder };
+  const lastVisible = tail.findLast((r) =>
+    message ? isVisiblePartItem(r, message.parts) : false,
+  );
+  const endsInText =
+    !!message &&
+    lastVisible?.kind === "part" &&
+    message.parts[lastVisible.index]?.type === "text";
 
   // Sent to this run and not read yet: under what it has produced so far.
   const { pending } = useLiveMessages();
@@ -700,7 +711,8 @@ export function MessageAssistant({
               {isTerminallyDone && <NextActionChip />}
             </>
           )}
-          {!isLoading && <MessageTimestamp message={message!} />}
+          {/* A reply ending in text shows its time beside the cost instead. */}
+          {!isLoading && !endsInText && <MessageTimestamp message={message!} />}
         </div>
       ) : (
         <WithPendingLiveMessages pending={pendingLiveMessages}>
