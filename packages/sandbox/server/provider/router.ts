@@ -213,9 +213,12 @@ export class SandboxProviderRouter implements SandboxProvider {
       failure = tagSandboxProvider(err, placed.kind);
     }
     const fallback = other(placed.kind);
+    // Freestyle never falls back to Kubernetes: a cold pod is slower than the
+    // retry, and the turn would run on a different sandbox than the preview's.
     if (
       !placed.reason ||
       placed.reason === "image" ||
+      placed.kind === "freestyle" ||
       repeatsElsewhere(failure)
     ) {
       throw failure;

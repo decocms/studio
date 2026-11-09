@@ -423,6 +423,12 @@ export class FreestyleSandboxProvider implements SandboxProvider {
    * previous head's: a fork checks out its own branch anyway, so a stale one
    * costs an incremental install.
    */
+  private forgetRepoSnapshot(slug: string): void {
+    for (const [key, known] of this.repoSnapshots) {
+      if (known.slug === slug) this.repoSnapshots.delete(key);
+    }
+  }
+
   private async repoSnapshotFor(
     opts: EnsureOptions,
     base: string,
@@ -807,35 +813,50 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       last = Date.now();
     };
     const base = await this.baseSnapshot();
-    const repoSnapshot = await this.repoSnapshotFor(opts, base);
+    let repoSnapshot = await this.repoSnapshotFor(opts, base);
     step("snapshot");
     const token = randomBytes(24).toString("hex");
-    const { vm } = await this.createVm({
-      snapshotId: repoSnapshot ?? base,
-      slug: handle,
-      idleTimeoutSeconds: this.idleTimeoutSeconds,
-      metadata: {
-        [TOKEN_KEY]: token,
-        ...(repoSnapshot ? { [BASE_KEY]: base } : {}),
-        ...(opts.tenant
-          ? { [ORG_KEY]: opts.tenant.orgId, [USER_KEY]: opts.tenant.userId }
-          : {}),
-      },
-      firewall: {
-        rules: [{ action: "allow", source: {}, destination: { public: true } }],
-      },
-      tls: {
-        rules: [
-          `${handle}.${this.domainSuffix}`,
-          ...this.appDomains(handle, opts.workload?.apps ?? []),
-        ].map((domain) => ({
-          action: "allow" as const,
-          domain,
-          source: { public: true as const },
-          destination: { port: DAEMON_PORT },
-        })),
-      },
-    });
+    const fork = (from: string | null) =>
+      this.createVm({
+        snapshotId: from ?? base,
+        slug: handle,
+        idleTimeoutSeconds: this.idleTimeoutSeconds,
+        metadata: {
+          [TOKEN_KEY]: token,
+          ...(from ? { [BASE_KEY]: base } : {}),
+          ...(opts.tenant
+            ? { [ORG_KEY]: opts.tenant.orgId, [USER_KEY]: opts.tenant.userId }
+            : {}),
+        },
+        firewall: {
+          rules: [
+            { action: "allow", source: {}, destination: { public: true } },
+          ],
+        },
+        tls: {
+          rules: [
+            `${handle}.${this.domainSuffix}`,
+            ...this.appDomains(handle, opts.workload?.apps ?? []),
+          ].map((domain) => ({
+            action: "allow" as const,
+            domain,
+            source: { public: true as const },
+            destination: { port: DAEMON_PORT },
+          })),
+        },
+      });
+    let vm: Vm;
+    try {
+      ({ vm } = await fork(repoSnapshot));
+    } catch (err) {
+      // Freestyle deleted it (past its autoDelete). Forget it: the lookup now
+      // checks the head's snapshot exists and rebuilds it, and this one forks the base.
+      if (!repoSnapshot || !isMissingSnapshot(err, repoSnapshot)) throw err;
+      console.warn(`[${LOG_LABEL}] repo snapshot ${repoSnapshot} is gone`);
+      this.forgetRepoSnapshot(repoSnapshot);
+      repoSnapshot = await this.repoSnapshotFor(opts, base);
+      ({ vm } = await fork(repoSnapshot));
+    }
     step("vm-fork");
     const daemon = { url: this.daemonUrl(handle), token };
     try {
@@ -1314,6 +1335,15 @@ async function remoteHead(cloneUrl: string): Promise<string | null> {
 function credentialOf(url: string): string {
   const { username, password } = new URL(url);
   return decodeURIComponent(password || username);
+}
+
+/** Freestyle answers a fork of a deleted snapshot with 400 "snapshot <slug> does not exist". */
+function isMissingSnapshot(err: unknown, slug: string): boolean {
+  return (
+    err instanceof FreestyleApiError &&
+    err.status === 400 &&
+    err.message.includes(slug)
+  );
 }
 
 function shellQuote(s: string): string {
