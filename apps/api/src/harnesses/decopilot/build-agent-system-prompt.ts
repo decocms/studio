@@ -33,7 +33,10 @@ import {
   type SystemMessage,
 } from "@/harnesses/lib/decopilot/system-prompt";
 import { listPromptsBlock, listConnectionsBlock } from "./prompt";
-import { buildAgentsBlock } from "@/harnesses/lib/decopilot/agents-block";
+import {
+  buildAgentsBlock,
+  CAPABILITY_DISCOVERY,
+} from "@/harnesses/lib/decopilot/agents-block";
 import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-block";
 import type { ConnectionsBlockTool } from "@/harnesses/lib/decopilot/connections-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
@@ -200,7 +203,7 @@ export async function buildAgentSystemPrompt(
     if (opts.isDecopilot) {
       add("identity", buildDecopilotAgentPrompt());
       add("agentManagement", buildAgentManagementPrompt());
-      add("capabilityDiscovery", CAPABILITY_DISCOVERY_PROMPT);
+      add("capabilityDiscovery", CAPABILITY_DISCOVERY);
     }
     // For custom agents (kind: "agent" && !isDecopilot), no identity
     // prompt — the agent's own instructions (via agentInstructions
@@ -291,28 +294,6 @@ shows what you can aggregate into one. You cannot create or edit connections.
   reply with one short line confirming what happened.
 </agent-management>`;
 }
-
-/**
- * Super Agent only: it is the one asked "do we have an app for X?" and the one
- * holding CONNECTION_TOOLS_SEARCH (`built-in-tools/agent-tools.ts`). Without
- * this it answers from the agent catalog alone and misses capabilities that
- * live in a connection's tools.
- */
-const CAPABILITY_DISCOVERY_PROMPT = `<capability-discovery>
-<available-agents> carries each agent's name and a short description only. The
-tools inside the org's connections are not in your context, and descriptions
-lag behind what an app can do.
-
-- Before telling the user the org has no app, agent or tool for something,
-  call \`CONNECTION_TOOLS_SEARCH\` with the user's words and their synonyms
-  (e.g. "assets", "equipment", "laptop").
-- A hit names the connections that offer the tool. Find the agents built on
-  one with \`COLLECTION_VIRTUAL_MCP_LIST\` and
-  \`where: { field: ["connection_id"], operator: "eq", value: "<id>" }\`,
-  then point the user to that agent or delegate to it with \`subtask\`.
-- Answer "none" only after the search comes back empty, and say what you
-  searched for.
-</capability-discovery>`;
 
 /**
  * Read a MEMORY.md index from the `home` volume and render it as a system

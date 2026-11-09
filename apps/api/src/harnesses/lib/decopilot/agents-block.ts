@@ -74,6 +74,29 @@ function truncate(s: string, max: number): string {
   return `${s.slice(0, max - 1)}…`;
 }
 
+/**
+ * Rides with the agent catalog on both harnesses. The catalog carries names and
+ * short descriptions only, so without this the agent answers "do we have an
+ * app for X?" from it alone and misses capabilities that live in a
+ * connection's tools.
+ */
+export const CAPABILITY_DISCOVERY = `<capability-discovery>
+<available-agents> carries each agent's name and a short description only. The
+tools inside the org's connections are not listed there, and descriptions lag
+behind what an app can do.
+
+- Before telling the user the org has no app, agent or tool for something,
+  search the org's connection tools with the Studio tool
+  \`CONNECTION_TOOLS_SEARCH\` (\`{ "query": "..." }\`), using the user's words
+  and their synonyms (e.g. "assets", "equipment", "laptop").
+- A hit names the connections that offer the tool. Find the agents built on
+  one with \`COLLECTION_VIRTUAL_MCP_LIST\` and
+  \`where: { field: ["connection_id"], operator: "eq", value: "<id>" }\`,
+  then point the user to that agent or hand the work to it.
+- Answer "none" only after the search comes back empty, and say what you
+  searched for.
+</capability-discovery>`;
+
 /** The `<available-agents>` CSV for `agents`, or "" when there are none. */
 export function agentsCatalog(agents: AgentsBlockEntry[]): string {
   if (agents.length === 0) return "";

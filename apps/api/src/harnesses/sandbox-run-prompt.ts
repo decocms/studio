@@ -4,7 +4,10 @@
  * prompt, and the chat mode the user picked for this message.
  */
 
-import { agentsCatalog } from "@/harnesses/lib/decopilot/agents-block";
+import {
+  agentsCatalog,
+  CAPABILITY_DISCOVERY,
+} from "@/harnesses/lib/decopilot/agents-block";
 import type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
@@ -49,6 +52,7 @@ export function sandboxRunPrompt(args: {
       userContext: args.userContext,
     }),
     agentsCatalog(otherAgents),
+    otherAgents.length > 0 ? CAPABILITY_DISCOVERY : null,
     modeInstruction(args.mode),
     args.previewWatched ? PREVIEW_INSTRUCTION : null,
   ]

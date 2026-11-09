@@ -82,6 +82,28 @@ describe("sandboxRunPrompt", () => {
     expect(prompt).not.toContain("agent-off");
   });
 
+  test("tells the agent to search connection tools when it lists other agents", () => {
+    const withAgents = sandboxRunPrompt({
+      ...base,
+      userContext: {
+        agents: [
+          {
+            id: "agent-sales",
+            name: "Sales",
+            description: "Answers pricing",
+            status: "active",
+          },
+        ],
+      },
+    });
+    // The catalog alone hides capabilities that live in a connection's tools.
+    expect(withAgents).toContain("<capability-discovery>");
+    expect(withAgents).toContain("`CONNECTION_TOOLS_SEARCH`");
+    expect(sandboxRunPrompt({ ...base, userContext: {} })).not.toContain(
+      "capability-discovery",
+    );
+  });
+
   test("appends the mode line", () => {
     const prompt = sandboxRunPrompt({
       ...base,
