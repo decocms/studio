@@ -1330,6 +1330,8 @@ export const sandbox = {
   "sandbox.schemaless.bannerTitle":
     "Os formulários de conteúdo estão mostrando campos crus",
   "sandbox.schemaless.copyPrompt": "Copiar prompt para o seu agente",
+  "sandbox.schemaless.copyPromptFailed":
+    "Não foi possível copiar o prompt. Verifique se esta página pode usar a área de transferência e tente de novo.",
   "sandbox.schemaless.empty": "Vazio",
   "sandbox.schemaless.installSkill": "Instalar a skill",
   "sandbox.schemaless.item": "Item {n}",

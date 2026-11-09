@@ -12,6 +12,7 @@
  */
 
 import { lazy, Suspense, useState } from "react";
+import { toast } from "sonner";
 import {
   Check,
   ChevronLeft,
@@ -107,7 +108,9 @@ function SchemaPendingBanner({
           variant="outline"
           size="sm"
           onClick={() =>
-            void handleCopy(schemaAgentPrompt(t, site)).catch(() => {})
+            void handleCopy(schemaAgentPrompt(t, site)).catch(() =>
+              toast.error(t("sandbox.schemaless.copyPromptFailed")),
+            )
           }
         >
           {copied ? <Check className="text-success" /> : <Copy01 />}

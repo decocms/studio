@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../../test/setup";
 setupComponentTest();
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import {
   act,
   fireEvent,
@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactElement, useState } from "react";
+import { toast } from "sonner";
 import {
   isNoSchemaMeta,
   noSchemaMeta,
@@ -246,6 +247,35 @@ describe("SchemalessContent", () => {
       expect(prompt).toContain("the Studio site this project uses");
       expect(prompt).not.toContain("{site}");
     } finally {
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+  test("a failed copy says so instead of claiming it copied", async () => {
+    const writeText = mock((_text: string) =>
+      Promise.reject(new Error("denied")),
+    );
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const toastError = spyOn(toast, "error").mockImplementation(() => 0);
+    try {
+      const { getByRole, queryByRole } = render(
+        <SchemalessContent decofile={decofile} onChange={() => {}} />,
+      );
+      await act(async () => {
+        fireEvent.click(
+          getByRole("button", { name: "Copy prompt for your agent" }),
+        );
+      });
+      expect(toastError).toHaveBeenCalledWith(
+        "Couldn't copy the prompt. Check that this page may use the clipboard, then try again.",
+      );
+      expect(queryByRole("button", { name: "Copied" })).toBeNull();
+    } finally {
+      toastError.mockRestore();
       if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
       else delete (navigator as { clipboard?: unknown }).clipboard;
     }

@@ -1297,6 +1297,8 @@ export const sandbox = {
     "This site hasn't sent Studio its schema yet (the description of each form's fields), so every block opens with plain fields built from its saved values. Saving still keeps everything else as it is. Ask the coding agent working on your site to set it up: copy the prompt and paste it into the agent. It takes one deploy, and the forms here update on their own.",
   "sandbox.schemaless.bannerTitle": "Content forms are showing raw fields",
   "sandbox.schemaless.copyPrompt": "Copy prompt for your agent",
+  "sandbox.schemaless.copyPromptFailed":
+    "Couldn't copy the prompt. Check that this page may use the clipboard, then try again.",
   "sandbox.schemaless.empty": "Empty",
   "sandbox.schemaless.installSkill": "Install skill",
   "sandbox.schemaless.item": "Item {n}",

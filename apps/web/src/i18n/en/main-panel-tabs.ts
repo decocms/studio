@@ -698,7 +698,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.previewTab.noSourceToPreview": "No source to preview",
   "mainPanelTabs.previewTab.localhostNoPreview.title": "No app to preview yet",
   "mainPanelTabs.previewTab.localhostNoPreview.body":
-    "Studio is connected to your computer, but it didn't report an app to preview. Meanwhile, you can edit your content in the Content tab.",
+    "Studio is connected to deco serve on your computer, but deco serve didn't report an app to preview. Meanwhile, you can edit your content in the Content tab.",
   "mainPanelTabs.previewTab.localAppWaiting.title": "Waiting for your app",
   "mainPanelTabs.previewTab.localAppWaiting.body":
     "Your app at `{host}` isn't answering yet. If it isn't running, start it on your computer. Meanwhile, you can edit your content in the Content tab.",
