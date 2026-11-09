@@ -1,5 +1,5 @@
 import { PreviewFrame } from "./preview-frame";
-import type { CSSProperties } from "react";
+import { previewViewportLayout } from "./preview-viewport";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import type { PageEntry } from "@/components/sections-editor/page-list";
 import type { LastPreviewPage } from "./last-preview-page";
@@ -221,26 +221,6 @@ import { usePackagePath } from "@/components/sections-editor/use-package-path";
 
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
-
-/**
- * Logical viewport dimensions per device, matching the legacy admin. The iframe
- * always renders the page at this fixed logical size and is then scaled down
- * with a CSS transform to fit the available canvas width — so widening the
- * blocks panel shrinks a faithful proportional miniature of the full layout
- * instead of reflowing the responsive breakpoints (desktop) or clipping the
- * frame (mobile/tablet).
- */
-const PREVIEW_VIEWPORTS: Record<
-  PreviewDeviceSize,
-  { width: number; height: number }
-> = {
-  mobile: { width: 412, height: 823 }, // Moto G Power
-  tablet: { width: 1024, height: 1366 }, // iPad Pro
-  desktop: { width: 1280, height: 800 }, // MacBook Pro 14
-};
-
-/** Px inset so the scaled frame's border doesn't sit flush against the canvas edge. */
-const PREVIEW_OFFSET = 1;
 
 const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
 const EDITING_MODES: PreviewEditingMode[] = ["preview", "visual", "blocks"];
@@ -2295,31 +2275,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // (none in the account-less `/site-editor`).
   const canVisualEdit = (runsSiteCode || hasChat) && display.mode === "sandbox";
 
-  // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
-  const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
-  const previewFluid =
-    previewDeviceSize === "desktop" &&
-    (canvasSize.width === 0 ||
-      canvasSize.width >= previewViewport.width + 2 * PREVIEW_OFFSET);
-  const previewScale = previewFluid
-    ? 1
-    : Math.min(
-        canvasSize.width > 0
-          ? canvasSize.width / (previewViewport.width + 2 * PREVIEW_OFFSET)
-          : 1,
-        1,
-      );
-  const previewFrameStyle: CSSProperties = previewFluid
-    ? { width: "100%", height: "100%" }
-    : {
-        width: `${previewViewport.width}px`,
-        height:
-          canvasSize.height > 0
-            ? `${canvasSize.height / previewScale}px`
-            : `${previewViewport.height}px`,
-        transform: `scale(${previewScale})`,
-        transformOrigin: "top center",
-      };
+  const { fluid: previewFluid, style: previewFrameStyle } =
+    previewViewportLayout(previewDeviceSize, canvasSize);
 
   const previewTools = (
     <>

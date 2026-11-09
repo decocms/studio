@@ -7,7 +7,8 @@ import {
   LinkExternal01,
 } from "@untitledui/icons";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { useElementSize } from "@/hooks/use-element-size";
+import { previewViewportLayout } from "./preview-viewport";
 import { useT } from "@/i18n/use-t";
 import { PreviewFrame } from "./preview-frame";
 
@@ -16,6 +17,11 @@ export function UrlPreview({ url }: { url: string }) {
   const t = useT();
   const [revision, setRevision] = useState(0);
   const [mobile, setMobile] = useState(false);
+  const [canvasSize, canvasRef] = useElementSize();
+  const { style } = previewViewportLayout(
+    mobile ? "mobile" : "desktop",
+    canvasSize,
+  );
   return (
     <section
       className="surface flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
@@ -60,18 +66,20 @@ export function UrlPreview({ url }: { url: string }) {
           </a>
         </IconButton>
       </div>
-      <div className="flex min-h-0 flex-1 justify-center overflow-hidden bg-muted/30">
-        <PreviewFrame
-          key={`${url}:${revision}`}
-          src={url}
-          title={t("structuredMarkdown.preview")}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
-          referrerPolicy="strict-origin-when-cross-origin"
-          className={cn(
-            "block h-full min-h-0 shrink-0 border-0 bg-background",
-            mobile ? "w-[390px] max-w-full" : "w-full",
-          )}
-        />
+      <div
+        ref={canvasRef}
+        className="flex min-h-0 flex-1 justify-center overflow-hidden bg-muted/30"
+      >
+        <div className="shrink-0" style={style}>
+          <PreviewFrame
+            key={`${url}:${revision}`}
+            src={url}
+            title={t("structuredMarkdown.preview")}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+            referrerPolicy="strict-origin-when-cross-origin"
+            className="block h-full w-full border-0 bg-background"
+          />
+        </div>
       </div>
     </section>
   );

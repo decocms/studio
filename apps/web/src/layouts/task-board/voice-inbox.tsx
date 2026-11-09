@@ -206,7 +206,7 @@ export function VoiceInbox() {
             {!mobile && (
               <>
                 <ResizablePanel
-                  defaultSize="60%"
+                  defaultSize="65%"
                   minSize="20%"
                   className="min-h-0 p-0.5"
                 >
@@ -219,7 +219,7 @@ export function VoiceInbox() {
               </>
             )}
             <ResizablePanel
-              defaultSize={mobile ? "100%" : "40%"}
+              defaultSize={mobile ? "100%" : "35%"}
               minSize="30%"
               className="flex min-h-0 min-w-0 p-0.5"
             >
