@@ -11,6 +11,7 @@
     "./plugins/ban-e2e-app-imports.js",
     "./plugins/ban-web-server-imports.js",
     "./plugins/ban-git-provider-reachthrough.js",
+    "./plugins/ban-cms-git-imports.js",
     "./plugins/ensure-tailwind-design-system-tokens.js"
   ],
   "rules": {
@@ -121,6 +122,7 @@
     "ban-e2e-app-imports/ban-e2e-app-imports": "error",
     "ban-web-server-imports/ban-web-server-imports": "warn",
     "ban-git-provider-reachthrough/ban-git-provider-reachthrough": "error",
+    "ban-cms-git-imports/ban-cms-git-imports": "error",
     "ensure-tailwind-design-system-tokens/ensure-tailwind-design-system-tokens": "error"
   },
   "plugins": ["react"],

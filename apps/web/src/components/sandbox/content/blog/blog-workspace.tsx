@@ -1,11 +1,16 @@
 import type { ReactNode } from "react";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { BookOpen01 } from "@untitledui/icons";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useEnsureDecofileBlocks,
+  useIndexNamesOfType,
+} from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useContentBackend } from "@/components/sections-editor/use-content-backend";
@@ -28,8 +33,13 @@ import { useT } from "@/i18n/use-t.ts";
 import { SandboxStateRenderer } from "../sandbox-state-renderer";
 import { resolveContentSandboxGate } from "../content-sandbox-gate";
 import { EmptyMessage } from "../empty-message";
-import { BLOG_KINDS, scanBlogEntries } from "./blog-data";
+import { BLOG_KINDS, kindOfResolveType, scanBlogEntries } from "./blog-data";
 import { findBlogPageSlug } from "./blog-preview-url";
+
+/** A post, author or category block. */
+function isBlogRecordType(type: string): boolean {
+  return kindOfResolveType(type) !== null;
+}
 
 export interface BlogWorkspaceContext {
   orgSlug: string;
@@ -170,10 +180,41 @@ function BlogWorkspaceData({
   const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
     fetchEnabled: devServerReady,
   });
+  /**
+   * Hosted v8: the decofile lists the index, and a block's body loads when a
+   * view opens it. Every Blog row and editor shows a record's body, and an
+   * editor started from an index stub would save the stub back over the
+   * record, so the records and the blocks they reference load first. Ready at
+   * once for every other backend, which holds every body.
+   */
+  const hostedScope = hostedDraft ? { orgSlug, virtualMcpId, branch } : null;
+  const recordNames = useIndexNamesOfType(hostedScope, isBlogRecordType);
+  const records = useEnsureDecofileBlocks(hostedScope, recordNames, {
+    withRefs: true,
+  });
+
+  if (records.failed) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <EmptyMessage
+          title={t("sectionsEditor.hosted.blockLoadFailed")}
+          description={t("sectionsEditor.hosted.blockLoadFailedHint")}
+        />
+        <Button variant="outline" size="sm" onClick={records.retry}>
+          {t("sectionsEditor.namedRules.tryAgain")}
+        </Button>
+      </div>
+    );
+  }
 
   // The committed snapshot outlives the dev server, so only spin while warming.
   const dataMissing = !decofile || !meta;
-  if (decofileLoading || metaLoading || (dataMissing && sandboxWarming)) {
+  if (
+    decofileLoading ||
+    metaLoading ||
+    !records.ready ||
+    (dataMissing && sandboxWarming)
+  ) {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <Spinner className="size-5 text-muted-foreground" />

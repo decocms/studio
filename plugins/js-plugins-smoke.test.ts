@@ -91,6 +91,10 @@ const FIXTURES: Record<string, { path: string; code: string }> = {
     path: "apps/api/src/tools/reach-through.ts",
     code: 'import { x } from "@/git-providers/github/client";\nexport const y = x;\n',
   },
+  "ban-cms-git-imports": {
+    path: "apps/api/src/hosted/cms-reach.ts",
+    code: 'import { x } from "@/git-providers";\nexport const y = x;\n',
+  },
   "ensure-tailwind-design-system-tokens": {
     path: "apps/web/src/tokens.tsx",
     code: 'export const C = () => <div className="bg-emerald-600" />;\n',

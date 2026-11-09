@@ -33,9 +33,9 @@ import {
   resolveAnalyticsSiteSlug,
 } from "@decocms/shared/site-slug";
 import {
-  useMainSchemaV8,
-  useProjectsMainSchemaV8,
-} from "@/hooks/use-main-schema-v8";
+  blocksV8Project,
+  useBlocksV8Project,
+} from "@/hooks/use-blocks-v8-project";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import {
   type BreakdownRow,
@@ -49,10 +49,7 @@ import {
   statusName,
   type TimelinePoint,
 } from "@/layouts/main-panel-tabs/cdn-tab";
-import {
-  monitorKind,
-  relativeChange,
-} from "@/layouts/main-panel-tabs/monitor-v8";
+import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
 import { SiteTelemetryMonitor } from "@/layouts/main-panel-tabs/monitor-v8-tab";
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { KEYS } from "@/lib/query-keys";
@@ -644,15 +641,7 @@ function SitePerformance({
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(projectId);
-  const kind = monitorKind(useMainSchemaV8(projectId));
-  if (kind === "loading") {
-    return (
-      <Frame>
-        <Skeleton className="h-28" />
-        <Skeleton className="h-64" />
-      </Frame>
-    );
-  }
+  const v8 = useBlocksV8Project(projectId);
   // A site deco doesn't host never reaches the CDN; its Deco Analytics is under Analytics.
   if (storedExternalRegistration(entity?.metadata)) {
     return (
@@ -664,7 +653,7 @@ function SitePerformance({
       </Frame>
     );
   }
-  if (kind !== "v7") {
+  if (v8) {
     // A v8 site reports under the site its token was issued for.
     const v8Site = resolveAgentSiteSlug(entity);
     if (!v8Site) {
@@ -857,10 +846,10 @@ function OrgPerformance({
   const prev = previousWindow(range);
   const entities = useVirtualMCPsNonBlocking();
   // A Blocks v8 site's traffic is its own telemetry, read in the project, not the CDN's.
-  const kinds = useProjectsMainSchemaV8(
-    projects.map((p) => entities.find((e) => e.id === p.id)),
-  ).map(monitorKind);
-  const onCdn = projects.filter((_, i) => kinds[i] === "v7");
+  const v8 = projects.map((p) =>
+    blocksV8Project(entities.find((e) => e.id === p.id)),
+  );
+  const onCdn = projects.filter((_, i) => !v8[i]);
   const base = (p: SiteProject) =>
     `/api/${org.slug}/monitor/${encodeURIComponent(p.analyticsSite)}`;
   const summaries = useQueries({
@@ -883,16 +872,15 @@ function OrgPerformance({
     ),
   });
   const action = <RangeAction value={range} onChange={setRange} />;
-  const loading =
-    kinds.includes("loading") || summaries.some((q) => q.isLoading);
+  const loading = summaries.some((q) => q.isLoading);
 
   const rows = projects
     .map((project, i) => {
       const at = onCdn.indexOf(project);
       return {
         project,
-        kind: kinds[i],
-        loading: kinds[i] === "loading" || !!summaries[at]?.isLoading,
+        v8: v8[i],
+        loading: !!summaries[at]?.isLoading,
         error: summaries[at]?.error ?? null,
         summary: summaries[at]?.data ?? null,
         previous: previous[at]?.data ?? null,
@@ -1088,7 +1076,7 @@ function OrgPerformance({
                         row.error && "text-destructive",
                       )}
                     >
-                      {row.kind === "v8"
+                      {row.v8
                         ? t("monitor.performance.org.blocks8")
                         : row.error
                           ? t("mainPanelTabs.cdnTab.errorTitle")

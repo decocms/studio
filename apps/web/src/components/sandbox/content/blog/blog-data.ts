@@ -104,7 +104,7 @@ export interface BlogEntry {
   duplicateName?: boolean;
 }
 
-function kindOfResolveType(resolveType: unknown): BlogKind | null {
+export function kindOfResolveType(resolveType: unknown): BlogKind | null {
   return typeof resolveType === "string"
     ? (KIND_FOR_RESOLVE_TYPE[resolveType] ?? null)
     : null;

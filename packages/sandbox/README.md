@@ -213,10 +213,10 @@ serves the requested image. Without it, `STUDIO_SANDBOX_FREESTYLE_SHARE`
 handle so a retry lands where the first try did; the rest run on Kubernetes
 while it has capacity. Orgs with a tenant warm pool stay on Kubernetes. An
 existing sandbox stays with its provider; Kubernetes is asked first, so a
-Freestyle outage never touches Kubernetes sandboxes. When the chosen provider's
-ensure fails, the other one gets a try, except on a daemon config error or an
-image only Kubernetes runs. A resumed sandbox that moves this way has its old
-copy deleted. Handle-only calls go to the provider that owns the handle:
+Freestyle outage never touches Kubernetes sandboxes. When a Kubernetes ensure
+fails, Freestyle gets a try, except on a daemon config error or an image only
+Kubernetes runs; a resumed sandbox that moves this way has its old copy
+deleted. A failed Freestyle ensure is never retried on Kubernetes. Handle-only calls go to the provider that owns the handle:
 Freestyle answers ownership by VM lookup, and every other handle is
 Kubernetes'. If the Kubernetes provider cannot be
 built, Studio runs Freestyle alone. A control plane can host the router

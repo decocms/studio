@@ -2,8 +2,9 @@
  * Send ONE more user turn onto an existing task run's thread, preserving its
  * context.
  *
- * Shared by the two callers that need it: the board-open stall recovery (finish
- * what you started) and the reviewer comment enforcement (record your pass).
+ * Shared by the callers that need it: the board-open stall recovery (finish
+ * what you started), the reviewer comment enforcement (record your pass), and
+ * a person's comment to a run (`mention-runs.ts`).
  * Everything is keyed off (caller-chosen) ids rather than fresh ones — the
  * message id makes the part write idempotent and the `workflowID` makes the
  * enqueue collapse — so a caller that re-runs every minute forever still
@@ -66,7 +67,9 @@ export async function nudgeThreadTurn(
   }
   await assertAiBudget(ctx, organizationId, "continuing a task agent");
 
-  const userId = item.assignedBy ?? item.createdBy;
+  // The dispatch refuses anyone but the thread's owner, who stays the same when
+  // the card is handed to someone else or a teammate writes to the run.
+  const userId = thread.created_by;
   const model =
     thread.harness_id === "claude-code"
       ? await resolveTaskRunModel(ctx, organizationId, userId, "claude-code")

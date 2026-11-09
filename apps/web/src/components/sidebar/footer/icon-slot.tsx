@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 /**
- * The glyph size the footer's three rows share: plan, invite, account.
+ * The glyph size the footer's three rows share: plan, feedback, account.
  *
  * 16px, the same as every nav row above — the footer is the bottom of one
  * rail, not a block with its own scale. `shrink-0` so a glyph that arrives
@@ -14,7 +14,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 export const SIDEBAR_FOOTER_ICON_SIZE = "size-4 shrink-0";
 
 /**
- * The icon box the footer's three rows share: plan, invite, account.
+ * The icon box the footer's three rows share: plan, feedback, account.
  *
  * One definition rather than three, because "the same size with the same
  * padding around it" is a property of the box, not of each glyph. The box is

@@ -623,3 +623,17 @@ describe("resolveConfig plans gateway JWT secret", () => {
     });
   });
 });
+
+describe("feedback configuration", () => {
+  it("requires an explicit destination and trims configured ids", () => {
+    expect(resolveConfig({}).feedbackOrgId).toBeUndefined();
+    expect(resolveConfig({}).feedbackProjectId).toBeUndefined();
+    const config = resolveConfig({
+      STUDIO_FEEDBACK_ORG_ID: " org_example ",
+      STUDIO_FEEDBACK_PROJECT_ID: " project_example ",
+    });
+    expect(config.feedbackOrgId).toBe("org_example");
+    expect(config.feedbackProjectId).toBe("project_example");
+    expect(config.taskBoardAdminOrgIds).toEqual([]);
+  });
+});

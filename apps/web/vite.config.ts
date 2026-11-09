@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { defineConfig, type Plugin } from "vite";
+import { build as viteBuild, defineConfig, type Plugin } from "vite";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -8,6 +9,12 @@ import { createRequire } from "node:module";
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { MONACO_VS_PATH } from "./src/lib/monaco-vs-path";
+import {
+  STUDIO_MODULE_NAMES,
+  STUDIO_MODULES_PATH,
+  STUDIO_MODULES_VERSION,
+  type StudioModuleName,
+} from "./src/studio-modules/messages";
 
 const bunServerTarget =
   process.env.STUDIO_LOCAL_API_TARGET ||
@@ -137,6 +144,95 @@ const serveSelfHostedMonaco: Plugin = {
         type: "asset",
         fileName: `${MONACO_VS_PATH.slice(1)}/${relativePath}`,
         source: readFileSync(join(monacoVsDir, relativePath)),
+      });
+    }
+  },
+};
+
+/**
+ * Studio's modules for a Blocks v8 site's page (`src/studio-modules/`): each
+ * one bundled into ONE self-contained ES module, since the page imports it
+ * from Studio's origin and a chunk import would be a second cross-origin
+ * fetch. Served at `/studio-modules/v1/<name>.js` (no content hash: the
+ * version is the path, Studio's build the query), bundled on request by the
+ * dev server and emitted as assets by the build. The page imports them
+ * cross-origin, so they answer with `access-control-allow-origin: *` (the API
+ * server does the same for the built files, see apps/api/src/index.ts).
+ */
+const studioModulesDir = fileURLToPath(
+  new URL("./src/studio-modules/", import.meta.url),
+);
+
+async function bundleStudioModule(name: StudioModuleName): Promise<string> {
+  const result = await viteBuild({
+    configFile: false,
+    logLevel: "silent",
+    publicDir: false,
+    plugins: [],
+    build: {
+      write: false,
+      emptyOutDir: false,
+      minify: true,
+      sourcemap: false,
+      target: "es2020",
+      lib: {
+        entry: join(studioModulesDir, `${name}.ts`),
+        formats: ["es"],
+        fileName: name,
+      },
+      rollupOptions: { output: { inlineDynamicImports: true } },
+    },
+  });
+  const outputs = Array.isArray(result) ? result : [result];
+  for (const output of outputs) {
+    if (!("output" in output)) continue;
+    const entry = output.output.find(
+      (chunk) => chunk.type === "chunk" && chunk.isEntry,
+    );
+    if (entry && entry.type === "chunk") return entry.code;
+  }
+  throw new Error(`studio module ${name}: no entry chunk`);
+}
+
+const isStudioModuleName = (name: string): name is StudioModuleName =>
+  (STUDIO_MODULE_NAMES as readonly string[]).includes(name);
+
+const studioModules: Plugin = {
+  name: "studio-modules",
+  configureServer(server) {
+    server.middlewares.use(
+      `${STUDIO_MODULES_PATH}/${STUDIO_MODULES_VERSION}`,
+      (req, res) => {
+        const name = decodeRequestPath(req.url)?.match(
+          /^\/([a-z-]+)\.js$/,
+        )?.[1];
+        // A miss is a 404, never the SPA's index.html (see the Monaco plugin).
+        if (!name || !isStudioModuleName(name)) {
+          res.statusCode = 404;
+          res.end("not found");
+          return;
+        }
+        bundleStudioModule(name).then(
+          (code) => {
+            res.setHeader("content-type", "text/javascript; charset=utf-8");
+            res.setHeader("access-control-allow-origin", "*");
+            res.setHeader("cache-control", "no-cache");
+            res.end(code);
+          },
+          (error: unknown) => {
+            res.statusCode = 500;
+            res.end(String(error));
+          },
+        );
+      },
+    );
+  },
+  async generateBundle() {
+    for (const name of STUDIO_MODULE_NAMES) {
+      this.emitFile({
+        type: "asset",
+        fileName: `${STUDIO_MODULES_PATH.slice(1)}/${STUDIO_MODULES_VERSION}/${name}.js`,
+        source: await bundleStudioModule(name),
       });
     }
   },
@@ -415,5 +511,6 @@ export default defineConfig({
     tailwindcss(),
     tsconfigPaths({ root: "." }),
     serveSelfHostedMonaco,
+    studioModules,
   ],
 });

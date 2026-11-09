@@ -226,20 +226,18 @@ describe("SandboxProviderRouter", () => {
     });
   });
 
-  test("falls back to Kubernetes when Freestyle fails", async () => {
+  test("a failed Freestyle ensure never moves to Kubernetes", async () => {
+    const kubernetes = fake("k8s");
     const router = new SandboxProviderRouter({
-      kubernetes: fake("k8s"),
+      kubernetes,
       freestyle: fake("fs", {
         ensureError: new FreestyleApiError(429, { code: "RATE_LIMITED" }),
       }),
     });
-    const sb = await router.ensure(ID, { provider: "freestyle" });
-    expect(sb.provider).toBe("kubernetes");
-    expect(sb.placement).toEqual({
-      reason: "fallback",
-      fallbackFrom: "freestyle",
-    });
-    expect(await router.getPreviewUrl(HANDLE)).toBe("k8s");
+    await expect(
+      router.ensure(ID, { provider: "freestyle" }),
+    ).rejects.toBeInstanceOf(FreestyleApiError);
+    expect(kubernetes.calls).not.toContain("ensure");
   });
 
   test("falls back to Freestyle when Kubernetes has no capacity", async () => {
@@ -266,21 +264,6 @@ describe("SandboxProviderRouter", () => {
       ConfigRequestError,
     );
     expect(freestyle.calls).not.toContain("ensure");
-  });
-
-  test("a resume that falls back deletes the old sandbox", async () => {
-    const freestyle = fake("fs", {
-      owns: true,
-      ensureError: new FreestyleApiError(503, { code: "UNAVAILABLE" }),
-    });
-    const router = new SandboxProviderRouter({
-      kubernetes: fake("k8s"),
-      freestyle,
-    });
-    const sb = await router.ensure(ID, {});
-    expect(sb.provider).toBe("kubernetes");
-    await sleep(0);
-    expect(freestyle.calls).toContain("delete");
   });
 
   test("Android never goes to Freestyle, even on failure", async () => {

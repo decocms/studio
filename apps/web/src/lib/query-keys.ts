@@ -907,6 +907,9 @@ export const KEYS = {
   // Per block, the content-protocol version of the copy the editor holds.
   contentVersions: (cacheKey: string) =>
     ["content-versions", cacheKey] as const,
+  // A hosted v8 draft's index (`cms.index`): every name's version and meta,
+  // and the names the draft holds with their draft versions.
+  contentIndex: (cacheKey: string) => ["content-index", cacheKey] as const,
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
@@ -918,6 +921,10 @@ export const KEYS = {
   // per version of theirs.
   conflictAuthor: (draftKey: string, blockKey: string, theirs: string) =>
     ["conflict-author", draftKey, blockKey, theirs] as const,
+  // Who last changed a block, as a refused hosted save carried it, per
+  // version of theirs (`rememberConflictEditor`).
+  conflictEditor: (blockKey: string, theirs: string) =>
+    ["conflict-editor", blockKey, theirs] as const,
   // The published copies of the blocks a draft deletes (`changes.get`), per
   // set of deletions (names and base versions), so a save elsewhere in the
   // draft doesn't read them again.
@@ -927,37 +934,12 @@ export const KEYS = {
   contentChangeSides: (cacheKey: string, revision: string) =>
     ["content-changes", cacheKey, "sides", revision] as const,
   // A hosted v8 project's draft pointer ({ draft, version }), from the
-  // session decofile read (GitHub backend).
+  // hosted CMS's `POST /drafts` on open.
   protocolDraftRead: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["protocol-draft-read", orgSlug, virtualMcpId, branch] as const,
-  // Main's schema answer (`isV8Schema` on main, from the server), once per
-  // project per session: what the editor waits for.
-  mainSchemaV8: (orgSlug: string, virtualMcpId: string) =>
-    ["main-schema-v8", orgSlug, virtualMcpId] as const,
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,
-  /** A hosted v8 Publish's review: the draft's blocks main also changed. */
-  hostedPublishReview: (
-    orgSlug: string,
-    virtualMcpId: string,
-    branch: string,
-  ) => ["hosted-publish-review", orgSlug, virtualMcpId, branch] as const,
-  /** Under `hostedReleases`: a publish or reapply refreshes it too. */
-  hostedReapplyCheck: (
-    orgSlug: string,
-    virtualMcpId: string,
-    sha: string | null,
-    latest: string | null,
-  ) =>
-    [
-      "hosted-releases",
-      orgSlug,
-      virtualMcpId,
-      "reapply-check",
-      sha,
-      latest,
-    ] as const,
   hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>

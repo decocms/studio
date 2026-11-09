@@ -1,9 +1,11 @@
-import { serializeBlock } from "@decocms/blocks/protocol";
+import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
+import { cmsBlockVersion } from "./cms-api";
+import { isIndexStub } from "./hosted-content";
 
 /**
  * A block's version in Studio's hosted draft, computed from the block
- * itself, as the server computes it: the git blob id (sha1 over `blob
- * <byte length>\0<text>`) of the block's stored text (`serializeBlock`).
+ * itself, as the server computes it: the first 16 bytes of
+ * `sha256(canonicalJson(block))` in base64url (`cmsBlockVersion`).
  *
  * An editor that keeps its own copy guards each save by the version of the
  * copy it shows, so the guard can never be paired with a newer version read
@@ -11,14 +13,30 @@ import { serializeBlock } from "@decocms/blocks/protocol";
  * the draft no longer holds is refused and reconciled, never written over
  * what it doesn't show.
  */
-export async function draftVersionOf(block: unknown): Promise<string> {
-  const text = new TextEncoder().encode(serializeBlock(block));
-  const header = new TextEncoder().encode(`blob ${text.byteLength}\0`);
-  const bytes = new Uint8Array(header.byteLength + text.byteLength);
-  bytes.set(header, 0);
-  bytes.set(text, header.byteLength);
-  const digest = await crypto.subtle.digest("SHA-1", bytes);
-  return Array.from(new Uint8Array(digest), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
+export function draftVersionOf(block: unknown): Promise<string> {
+  return cmsBlockVersion(block);
+}
+
+/**
+ * The `ifMatch` of a hosted save built on `copy`, a copy of a block whose
+ * version the draft lists as `listed` (the index, or the draft's changes):
+ * the copy's own content hash when the draft holds the block and there is a
+ * loaded copy; otherwise `listed` as it is (unknown, `null` for "not in the
+ * draft", the tombstone for a block the draft deletes, or the listed
+ * version when there is no copy or only an index stub).
+ *
+ * Never the listed version for a copy: a poll puts someone else's version
+ * in the index before their copy of the block is loaded (and never reloads a
+ * block being saved), so a save built on the copy the editor still holds,
+ * guarded by the listed version, would be written over a change it never
+ * showed. Guarded by its copy, it is refused and reconciled.
+ */
+export async function copyDraftVersion(
+  listed: string | null | undefined,
+  copy: unknown,
+): Promise<string | null | undefined> {
+  if (listed === undefined || listed === null) return listed;
+  if (listed === DRAFT_TOMBSTONE_VERSION) return listed;
+  if (copy === undefined || isIndexStub(copy)) return listed;
+  return draftVersionOf(copy);
 }

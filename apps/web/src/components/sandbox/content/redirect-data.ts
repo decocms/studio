@@ -14,7 +14,8 @@
  *
  *   { "__resolveType": "redirect", from, to, permanent, status?, discardQueryParameters? }
  *
- * where `status` (301/302/307/308) wins over `permanent` (301, else 302). An
+ * where `status` (301/302/307/308) wins over `permanent` (301, else 307, as
+ * the Blocks SDK answers a temporary redirect). An
  * entry keeps the shape it was read in; new redirects use the nested shape,
  * which every site understands.
  */
@@ -60,10 +61,13 @@ export interface RedirectEntry extends RedirectPayload {
   key: string;
 }
 
-/** The status code a redirect answers with. A flat temporary one is a 302. */
+/**
+ * The status code a redirect answers with: an explicit `status` (flat shape
+ * only), else 301 for a permanent one and 307 for a temporary one, in both
+ * shapes, as the Blocks SDK serves them.
+ */
 export function redirectStatus(payload: RedirectPayload): number {
-  if (!payload.flat) return REDIRECT_STATUS[payload.type];
-  return payload.status ?? (payload.type === "permanent" ? 301 : 302);
+  return (payload.flat && payload.status) || REDIRECT_STATUS[payload.type];
 }
 
 const asStr = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -192,4 +196,163 @@ export function generateRedirectBlockKey(
     if (!Object.hasOwn(decofile, key)) return key;
   }
   throw new Error("Could not generate a unique redirect block key");
+}
+
+/**
+ * Hosted Blocks (v8) sites route only the one redirects block (contract
+ * §3.8): `{ "__resolveType": "redirects", "redirects": [...] }`, named
+ * `Redirects` (`redirects` is a reserved type name). Each item keeps either
+ * shape a per-rule block has, without its `__resolveType`; the editor lists
+ * its items as entries keyed `<block name>#<position>` (`Redirects#0`, …).
+ */
+export const REDIRECTS_BLOCK = "Redirects";
+export const REDIRECTS_RESOLVE_TYPE = "redirects";
+
+/** Whether `value` is a redirects block (`__resolveType: "redirects"`). */
+function isRedirectsBlock(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { __resolveType?: unknown }).__resolveType ===
+      REDIRECTS_RESOLVE_TYPE
+  );
+}
+
+/**
+ * The name of the block a new rule goes into: the first redirects block in
+ * code-unit name order (the one the SDK routes), else `Redirects`.
+ */
+export function redirectsBlockName(blocks: Record<string, unknown>): string {
+  const names = Object.keys(blocks)
+    .filter((name) => isRedirectsBlock(blocks[name]))
+    .sort();
+  return names[0] ?? REDIRECTS_BLOCK;
+}
+
+/**
+ * The rule a list entry's key names (`<block>#<position>`, where `<block>`
+ * is a redirects block of `blocks`); null for any other key.
+ */
+export function redirectRuleOf(
+  key: string,
+  blocks: Record<string, unknown>,
+): { block: string; index: number } | null {
+  const at = key.lastIndexOf("#");
+  if (at <= 0) return null;
+  const block = key.slice(0, at);
+  const position = key.slice(at + 1);
+  if (!/^\d+$/.test(position)) return null;
+  if (!Object.hasOwn(blocks, block) || !isRedirectsBlock(blocks[block])) {
+    return null;
+  }
+  return { block, index: Number(position) };
+}
+
+function rulesOf(block: unknown): Record<string, unknown>[] {
+  if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+  const rules = (block as { redirects?: unknown }).redirects;
+  return Array.isArray(rules)
+    ? rules.filter(
+        (r): r is Record<string, unknown> =>
+          !!r && typeof r === "object" && !Array.isArray(r),
+      )
+    : [];
+}
+
+/** One rule of the redirects block, as a payload. */
+function readRule(rule: Record<string, unknown>): RedirectPayload {
+  return "redirect" in rule
+    ? readRedirect(rule)
+    : readFlatRedirect({ ...rule, __resolveType: FLAT_REDIRECT_RESOLVE_TYPE });
+}
+
+/** The rule a payload stores, keeping the fields of `base` the editor doesn't know. */
+function buildRule(
+  payload: RedirectPayload,
+  base?: Record<string, unknown>,
+): Record<string, unknown> {
+  const { __resolveType: _type, ...rule } = buildRedirectBlock(payload, {
+    ...base,
+  });
+  return rule;
+}
+
+/**
+ * The redirects block's rules as per-rule blocks (what `getRedirectPayload`
+ * reads), keyed `<name>#<position>`, for lists built over blocks.
+ */
+export function redirectRuleBlocks(
+  name: string,
+  block: unknown,
+): Array<[string, Record<string, unknown>]> {
+  return rulesOf(block).map((rule, i) => [
+    `${name}#${i}`,
+    "redirect" in rule
+      ? { ...rule, __resolveType: REDIRECT_RESOLVE_TYPE }
+      : { ...rule, __resolveType: FLAT_REDIRECT_RESOLVE_TYPE },
+  ]);
+}
+
+/** The rules of the redirects block `name` as entries (`<name>#<position>`). */
+export function extractRedirectRules(
+  decofile: Record<string, unknown>,
+  name: string = redirectsBlockName(decofile),
+): RedirectEntry[] {
+  return rulesOf(decofile[name]).map((rule, i) => ({
+    key: `${name}#${i}`,
+    ...readRule(rule),
+  }));
+}
+
+/** The payload of the rule at `index` (empty defaults when there is none). */
+export function getRedirectRulePayload(
+  block: unknown,
+  index: number,
+): RedirectPayload {
+  const rule = rulesOf(block)[index];
+  return rule ? readRule(rule) : readRedirect(undefined);
+}
+
+/** The redirects block (any other fields kept) with its rules replaced. */
+function withRules(
+  block: unknown,
+  rules: Record<string, unknown>[],
+): Record<string, unknown> {
+  const base =
+    block && typeof block === "object" && !Array.isArray(block)
+      ? (block as Record<string, unknown>)
+      : {};
+  return { ...base, __resolveType: REDIRECTS_RESOLVE_TYPE, redirects: rules };
+}
+
+/** The redirects block with one more rule, at the end; created when absent. */
+export function appendRedirectRule(
+  block: unknown,
+  payload: RedirectPayload,
+): Record<string, unknown> {
+  return withRules(block, [...rulesOf(block), buildRule(payload)]);
+}
+
+/** The redirects block with the rule at `index` replaced. */
+export function setRedirectRule(
+  block: unknown,
+  index: number,
+  payload: RedirectPayload,
+): Record<string, unknown> {
+  const rules = rulesOf(block);
+  const next = rules.slice();
+  next[index] = buildRule(payload, rules[index]);
+  return withRules(block, next);
+}
+
+/** The redirects block without the rule at `index`. */
+export function removeRedirectRule(
+  block: unknown,
+  index: number,
+): Record<string, unknown> {
+  return withRules(
+    block,
+    rulesOf(block).filter((_, i) => i !== index),
+  );
 }

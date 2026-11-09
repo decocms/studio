@@ -1,3 +1,4 @@
+import { createFeedbackRoutes } from "./feedback";
 import { Hono } from "hono";
 import { createVoiceRoutes } from "./voice";
 import type { VoiceSessions } from "@/voice/sessions";
@@ -46,7 +47,6 @@ import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
-import { createHostedRoutes } from "./hosted";
 
 interface OrgScopedDeps {
   voiceSessions: VoiceSessions;
@@ -102,6 +102,8 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   // Blocked orgs (see core/org-notice-gate) lose their control-plane writes.
   app.use("*", enforceOrgBlock);
 
+  app.route("/", createFeedbackRoutes());
+
   // --- Routes that don't need extra middleware ---
   app.route("/", createVoiceRoutes(deps.voiceSessions));
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
@@ -124,7 +126,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
-  app.route("/hosted", createHostedRoutes()); // /api/:org/hosted/:virtualMcpId/* — hosted Deco CMS (v8) releases and site tokens
   app.route("/", createHomeNextActionsRoutes());
   app.route("/", createOrgNoticeRoutes()); // /api/:org/notice — the org's pinned billing notice
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites

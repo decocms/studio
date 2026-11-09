@@ -76,7 +76,9 @@ export function BuiltinAutomationSettings({
                   ? t("automations.builtin.prMergedDescription")
                   : automation.system_key === "chat_pr"
                     ? t("automations.builtin.chatPrDescription")
-                    : t("automations.builtin.description")}
+                    : automation.system_key === "agent_mentions"
+                      ? t("automations.builtin.mentionsDescription")
+                      : t("automations.builtin.description")}
         </p>
       </div>
     </div>

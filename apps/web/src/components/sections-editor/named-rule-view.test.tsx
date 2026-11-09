@@ -1,6 +1,6 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -15,16 +15,10 @@ import { translate } from "@/i18n/use-t.ts";
 import { nameProblemMessage } from "./named-rule-step";
 import {
   NamedRuleCreateDialog,
-  type NamedRuleDetailProps,
   NamedRuleDraftNotes,
   NamedRuleEntryBadge,
-  NamedRuleRenameSection,
-  namedRuleUsesLabel,
   namedRuleViewBlocked,
-  useNamedRuleRename,
 } from "./named-rule-view";
-import type { NamedRuleKind } from "./named-rules";
-import type { NamedRuleChange } from "./use-apply-named-rule";
 
 /**
  * Types into a controlled field. happy-dom doesn't deliver input events to
@@ -65,7 +59,7 @@ const meta = {
 };
 
 const decofile = {
-  // `broken` can't be read: not listed, but a rename can't move onto it.
+  // `broken` can't be read: not listed.
   experiments: { __resolveType: "split-traffic", hero: 0, broken: "50" },
   campaigns: {
     __resolveType: "calendar",
@@ -73,97 +67,6 @@ const decofile = {
     broken: { start: 123 },
   },
 };
-
-function RenameHarness({
-  kind,
-  name,
-  onSave,
-  wholeUses = 0,
-}: {
-  kind: NamedRuleKind;
-  name: string;
-  onSave: NamedRuleDetailProps<{ name: string }>["onSave"];
-  wholeUses?: number;
-}) {
-  const rename = useNamedRuleRename(kind, {
-    row: { name },
-    decofile,
-    meta: meta as never,
-    planStored: async (plan) => plan(decofile),
-    onSave,
-    onRenamed: () => {},
-  });
-  return (
-    <NamedRuleRenameSection
-      kind={kind}
-      id="name"
-      rename={rename}
-      pending={false}
-      wholeUses={wholeUses}
-    />
-  );
-}
-
-function renderRename(kind: NamedRuleKind, name: string, wholeUses = 0) {
-  const onSave = mock(
-    async (_change: NamedRuleChange | null, _title?: string) => true,
-  );
-  const view = render(
-    <RenameHarness
-      kind={kind}
-      name={name}
-      onSave={onSave}
-      wholeUses={wholeUses}
-    />,
-  );
-  const body = within(view.container);
-  return { onSave, body };
-}
-
-describe("the views' shared rename", () => {
-  for (const [kind, name, toast] of [
-    ["experiments", "hero", "Test renamed to “launch”"],
-    ["campaigns", "bf", "Campaign renamed to “launch”"],
-  ] as const) {
-    test(`${kind}: one change, with a toast that names the new name`, async () => {
-      const { onSave, body } = renderRename(kind, name);
-      typeInto(body.getByLabelText("Name"), "launch");
-      await act(async () =>
-        fireEvent.click(body.getByRole("button", { name: "Rename" })),
-      );
-      expect(onSave).toHaveBeenCalledTimes(1);
-      expect(onSave.mock.calls[0]![1]).toBe(toast);
-    });
-
-    test(`${kind}: a name the block holds unreadable is taken`, () => {
-      const { body } = renderRename(kind, name);
-      typeInto(body.getByLabelText("Name"), "broken");
-      expect(body.getByText("That name is already in use.")).toBeTruthy();
-      expect(
-        (body.getByRole("button", { name: "Rename" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(true);
-    });
-  }
-
-  test("both kinds say that sections reading every name keep the old one", () => {
-    expect(
-      renderRename("experiments", "hero", 1).body.getByText(
-        /Sections that read every test in their own code/,
-      ),
-    ).toBeTruthy();
-    expect(
-      renderRename("campaigns", "bf", 1).body.getByText(
-        /Sections that read every campaign in their own code/,
-      ),
-    ).toBeTruthy();
-    expect(
-      renderRename("experiments", "hero", 0).body.queryByText(
-        /Sections that read every test/,
-      ),
-    ).toBeNull();
-  });
-});
 
 describe("the views' shared pieces", () => {
   test("blocked: the site's schema first, then a clashing block", () => {
@@ -209,9 +112,7 @@ describe("the views' shared pieces", () => {
     expect(body.getByText("That name is already in use.")).toBeTruthy();
   });
 
-  test("rows and badges speak per kind", () => {
-    expect(namedRuleUsesLabel(translate, "experiments", 2)).toBe("Used by 2");
-    expect(namedRuleUsesLabel(translate, "campaigns", 0)).toBe("Not used yet");
+  test("badges speak per kind", () => {
     const badge = render(
       <>
         <NamedRuleEntryBadge kind="campaigns" state="changed" />
@@ -225,13 +126,7 @@ describe("the views' shared pieces", () => {
 
   test("the names removed in the draft are listed, with the kind's hint", () => {
     const view = render(
-      <NamedRuleDraftNotes
-        kind="campaigns"
-        missing={[]}
-        missingNames={0}
-        removed={["xmas"]}
-        onOpenUse={() => {}}
-      />,
+      <NamedRuleDraftNotes kind="campaigns" removed={["xmas"]} />,
     );
     const body = within(view.container);
     expect(body.getByText("Removed in your draft")).toBeTruthy();
@@ -252,8 +147,6 @@ describe("Experiments and Calendar share one view shell", () => {
       const source = readFileSync(join(src, file), "utf8");
       for (const shared of [
         "useNamedRuleView(",
-        "useNamedRuleRename(",
-        "<NamedRuleRenameSection",
         "<NamedRuleCreateDialog",
         "<NamedRuleDraftNotes",
         "<NamedRuleDetailDelete",
@@ -267,6 +160,21 @@ describe("Experiments and Calendar share one view shell", () => {
         "SITE_EDITOR_SAVE_TOAST",
       ]) {
         expect(source).not.toContain(copied);
+      }
+    });
+
+    test(`${file} says nowhere where a name is used, and renames none`, () => {
+      const source = readFileSync(join(src, file), "utf8");
+      for (const gone of [
+        "NamedRuleUsedBy",
+        "namedRuleUsesLabel",
+        "namedRuleDetailUses",
+        "useNamedRuleRename",
+        "NamedRuleRenameSection",
+        "planStored",
+        "onOpenUse",
+      ]) {
+        expect(source).not.toContain(gone);
       }
     });
   }

@@ -27,19 +27,17 @@ export function reloadIframeOrFallback(
 }
 
 /**
- * The site in an iframe, with the reload policy that keeps a dev server alive.
+ * The site in an iframe, for the Blog post preview, with the Site Editor
+ * preview's reload policy: almost never reload on its own. A sandbox session's
+ * saves are reloaded by the dev server's own HMR, and asking for the page a
+ * second time on top of that is what makes the daemon's `HEAD /` probe time
+ * out and kill the dev server. Fast Preview moves the `?__draft=` version
+ * instead, so `src` changes and the frame navigates — one navigation at a time
+ * when `holdNavigation` is set (frame-navigation.ts, shared with the Site
+ * Editor's preview).
  *
- * Shared by the Site Editor's Preview and the Blog post editor so there is one
- * answer to "when does the frame reload". The short answer is: almost never on
- * its own. A sandbox session's saves are reloaded by the dev server's own HMR,
- * and asking for the page a second time on top of that is what makes the
- * daemon's `HEAD /` probe time out and kill the dev server. Fast Preview moves
- * the `?__draft=` version instead, so `src` changes and the frame navigates —
- * one navigation at a time when `holdNavigation` is set (frame-navigation.ts).
- *
- * The frame owns only the scaled surface. Overlays, toolbars, state cards and
- * anything injected into the page stay with the caller, which also owns the
- * canvas element this measures against.
+ * The frame owns only the scaled surface. Toolbars and state cards stay with
+ * the caller, which also owns the canvas element this measures against.
  */
 export function SitePreviewFrame({
   iframeRef,
@@ -51,10 +49,6 @@ export function SitePreviewFrame({
   recoveryActive,
   draftUrl,
   holdNavigation = false,
-  onNavigate,
-  onLoad,
-  onError,
-  onMouseLeave,
 }: {
   /** Owned by the caller, which postMessages into the frame. */
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -82,11 +76,6 @@ export function SitePreviewFrame({
    * cancelling it, and the latest one goes in after.
    */
   holdNavigation?: boolean;
-  /** A forced navigation is starting, for the caller's progress indicator. */
-  onNavigate?: () => void;
-  onLoad?: () => void;
-  onError?: () => void;
-  onMouseLeave?: () => void;
 }) {
   const geometry = resolvePreviewFrameGeometry({ device, canvas });
   const recovery = useIframeLoadRecovery({
@@ -131,18 +120,16 @@ export function SitePreviewFrame({
     lastDraftUrlRef.current = draftUrl;
     const iframe = iframeRef.current;
     if (iframe && iframe.getAttribute("src") !== frameSrc) {
-      onNavigate?.();
       iframe.src = frameSrc;
     }
     return clear;
-    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- the ref and the callback must not retrigger a navigation
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- the ref must not retrigger a navigation
   }, [draftUrl, frameSrc, frameLoading]);
 
   return (
     <div
       className={cn("shrink-0", !geometry.fluid && "bg-background shadow-edge")}
       style={geometry.style}
-      onMouseLeave={onMouseLeave}
     >
       {/* TODO(security): this frame has no sandbox. It loads the user's own dev
           server cross-origin and the editor drives it (navigation, hover,
@@ -157,15 +144,11 @@ export function SitePreviewFrame({
         src={frameSrc}
         className="w-full h-full border-0"
         title={title}
-        onError={() => {
-          recovery.handleError();
-          onError?.();
-        }}
+        onError={recovery.handleError}
         onLoad={() => {
           // A held navigation may go in now.
           setNavigation(frameNavigationLoaded);
           recovery.handleLoad();
-          onLoad?.();
         }}
       />
     </div>

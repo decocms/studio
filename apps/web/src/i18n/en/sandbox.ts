@@ -1401,8 +1401,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.status.ended": "Ended",
   "sandbox.dateCampaigns.status.always": "Always on",
   "sandbox.dateCampaigns.status.unreadable": "Dates can't be read",
-  "sandbox.dateCampaigns.usedBy": "Used by {count}",
-  "sandbox.dateCampaigns.notUsed": "Not used yet",
   "sandbox.dateCampaigns.state.new": "Not published yet",
   "sandbox.dateCampaigns.state.changed": "Changed in your draft",
   "sandbox.dateCampaigns.removedTitle": "Removed in your draft",
@@ -1412,15 +1410,10 @@ export const sandbox = {
     "One of its dates can't be read, so its variants don't show. Pick new dates and save.",
   "sandbox.dateCampaigns.publishedWindow": "Published: {window}",
   "sandbox.dateCampaigns.saveDates": "Save dates",
-  "sandbox.dateCampaigns.renameHint":
-    "Every variant that uses this campaign is updated in the same change.",
-  "sandbox.dateCampaigns.renameWholeHint":
-    "Sections that read every campaign in their own code still look for the old name. Update them in the site editor.",
   "sandbox.dateCampaigns.delete": "Delete campaign",
   "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
   "sandbox.dateCampaigns.deletedHint":
     "It leaves the site when you publish. Undo brings it back.",
-  "sandbox.dateCampaigns.renamed": "Campaign renamed to “{name}”",
   "sandbox.dateCampaigns.allCampaigns": "All campaigns",
   "sandbox.dateCampaigns.today": "Today",
   "sandbox.dateCampaigns.previous": "Earlier",
@@ -1451,6 +1444,8 @@ export const sandbox = {
   "sandbox.previewAs.testsHint":
     "Not set: you see the side your own visit got.",
   "sandbox.previewAs.noTests": "No A/B tests yet.",
+  "sandbox.previewAs.testsLoadFailed": "Couldn't load your tests.",
+  "sandbox.previewAs.tryAgain": "Try again",
   "sandbox.previewAs.off": "Off",
   "sandbox.previewAs.on": "On",
   "sandbox.previewAs.reset": "Show as it is now",

@@ -1,13 +1,14 @@
 /**
- * Delete for a test (Experiments tab) or a campaign (Campaigns view). It is
- * never blocked: the name leaves the draft at once, with an Undo, and when
- * pages or sections still use it the toast says how many of each. Those then
- * show that the test or campaign isn't there (named-rule-uses.ts
- * `missingNamedRules`).
+ * Delete for a test (Experiments tab) or a campaign (Campaigns view). A
+ * delete just deletes: the name leaves the draft at once, with an Undo. No
+ * use is looked for, rewritten or counted; a rule still naming it is
+ * reported by `deco check` and shows in the preview as a rule that is never
+ * true.
  *
- * Delete reads the draft as stored right now (another tab may have changed
- * it) and plans from that copy; Undo puts back only the deleted name onto
- * the block as it is then, so a test or campaign created since stays.
+ * Delete reads the `experiments` and `campaigns` blocks as stored right now
+ * (another tab may have changed them) and plans from that copy; Undo puts
+ * back only the deleted name onto the block as it is then, so a test or
+ * campaign created since stays.
  */
 
 import { useState } from "react";
@@ -16,10 +17,7 @@ import { Trash01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { planNamedRuleDelete, planNamedRuleRestore } from "./named-rule-edits";
-import { namedRuleUseCounts } from "./named-rule-uses";
-import { namedRuleUsePlaces } from "./named-rule-use-copy";
 import { type NamedRuleKind, readNamedRuleBlock } from "./named-rules";
-import type { LiveMeta } from "./resolve-schema";
 import {
   SAVE_TOAST,
   SITE_EDITOR_UNDO_TOAST,
@@ -33,7 +31,6 @@ import type {
 export function NamedRuleDeleteButton({
   kind,
   name,
-  meta,
   pending,
   apply,
   reread,
@@ -42,7 +39,6 @@ export function NamedRuleDeleteButton({
 }: {
   kind: NamedRuleKind;
   name: string;
-  meta?: LiveMeta | null;
   /** A change is being saved. */
   pending: boolean;
   apply: (change: NamedRuleChange) => Promise<NamedRuleApplyOutcome>;
@@ -106,10 +102,6 @@ export function NamedRuleDeleteButton({
     if (!change) return;
     const read = readNamedRuleBlock(fresh, kind);
     const raw = read.kind === "saved" ? read.block[name] : undefined;
-    const used = namedRuleUsePlaces(
-      t,
-      namedRuleUseCounts(fresh, meta, kind, name),
-    );
     const outcome = await apply(change);
     if (!outcome.ok) return;
     // They changed it meanwhile and the user kept their version.
@@ -124,17 +116,9 @@ export function NamedRuleDeleteButton({
         : t("sandbox.dateCampaigns.deleted", { name }),
       {
         id: SITE_EDITOR_UNDO_TOAST,
-        description: used?.one
-          ? t("sectionsEditor.namedRuleDelete.stillUsedOne", {
-              places: used.places,
-            })
-          : used
-            ? t("sectionsEditor.namedRuleDelete.stillUsed", {
-                places: used.places,
-              })
-            : tests
-              ? t("experiments.v8.deletedHint")
-              : t("sandbox.dateCampaigns.deletedHint"),
+        description: tests
+          ? t("experiments.v8.deletedHint")
+          : t("sandbox.dateCampaigns.deletedHint"),
         action: {
           label: t("sectionsEditor.namedRules.undo"),
           onClick: () => void undo(raw),

@@ -26,7 +26,7 @@ import { Panel } from "@/components/panel";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { omitSandboxMap } from "@/lib/omit-sandbox-map";
+import { omitServerManagedMetadata } from "@/lib/omit-server-managed-metadata";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -71,7 +71,7 @@ export function ProjectMultiAppPreview({
         id: project.id,
         data: {
           metadata: {
-            ...omitSandboxMap(project.metadata),
+            ...omitServerManagedMetadata(project.metadata),
             runtime: { ...runtime, apps: next.length ? next : null },
           },
         },

@@ -380,7 +380,7 @@ describe("buildBlogPostPreviewUrl", () => {
       forcedVariants: ["pages-home@sections=1"],
       previewOptions: { at: "2026-10-23T10:00:00-03:00" },
     };
-    const pointer = "delivery.decocms.com/sites/acme/drafts/s1.json@e2";
+    const pointer = "delivery.decocms.com/sites/acme/drafts/s1/index.json@e2";
     const frame = hostedPreviewUrls({
       display: {
         mode: "production",

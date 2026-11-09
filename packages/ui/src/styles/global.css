@@ -202,6 +202,12 @@
     var(--edge-drop);
 }
 
+@utility shadow-edge-success {
+  box-shadow:
+    0 0 0 var(--border-hairline) var(--success),
+    var(--edge-drop);
+}
+
 /* ============================================================
    Colour.
 

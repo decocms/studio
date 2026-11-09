@@ -9,7 +9,6 @@ const base: SiteDraftBarInput = {
   hasEntity: true,
   servingLocally: false,
   localPreview: false,
-  tunnelUndecided: false,
   showsRepositoryActions: true,
   runtime: "cms",
   onProduction: false,
@@ -43,9 +42,6 @@ describe("siteDraftBarParts", () => {
   test("local edits are never published from here", () => {
     expect(
       siteDraftBarParts({ ...base, localPreview: true }).publish,
-    ).toBeNull();
-    expect(
-      siteDraftBarParts({ ...base, tunnelUndecided: true }).publish,
     ).toBeNull();
     const served = siteDraftBarParts({ ...base, servingLocally: true });
     expect(served.publish).toBeNull();
@@ -85,7 +81,6 @@ describe("siteDraftBarParts", () => {
           !hidden &&
           i.hasEntity &&
           !i.localPreview &&
-          !i.tunnelUndecided &&
           !i.servingLocally &&
           i.showsRepositoryActions
             ? i.runtime === "cms"
@@ -98,19 +93,17 @@ describe("siteDraftBarParts", () => {
     for (const hasEntity of flags)
       for (const servingLocally of flags)
         for (const localPreview of flags)
-          for (const tunnelUndecided of flags)
-            for (const showsRepositoryActions of flags)
-              for (const runtime of ["cms", "sandbox", null]) {
-                const input = {
-                  hasEntity,
-                  servingLocally,
-                  localPreview,
-                  tunnelUndecided,
-                  showsRepositoryActions,
-                  runtime,
-                  onProduction: false,
-                };
-                expect(siteDraftBarParts(input)).toEqual(main(input));
-              }
+          for (const showsRepositoryActions of flags)
+            for (const runtime of ["cms", "sandbox", null]) {
+              const input = {
+                hasEntity,
+                servingLocally,
+                localPreview,
+                showsRepositoryActions,
+                runtime,
+                onProduction: false,
+              };
+              expect(siteDraftBarParts(input)).toEqual(main(input));
+            }
   });
 });

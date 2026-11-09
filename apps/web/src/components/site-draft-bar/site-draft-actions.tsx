@@ -21,8 +21,7 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { agentShowsRepositoryHeaderActions } from "@/lib/agent-capabilities";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
-import { editsBlocksDraft } from "@/layouts/main-panel-tabs/experiments-tab-choice";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { useProductionGate } from "@/layouts/main-panel-tabs/use-production-gate";
 import { siteDraftBarParts } from "./site-draft-bar-parts";
@@ -39,8 +38,7 @@ export function SiteDraftActions({ blocksOnly }: { blocksOnly?: boolean }) {
 }
 
 function BlocksSiteDraftActions() {
-  const siteMajor = useMainSchemaV8(useRouteVirtualMcpId());
-  return editsBlocksDraft(siteMajor) ? (
+  return useBlocksV8Project(useRouteVirtualMcpId()) ? (
     <PublishCodeTab value={false}>
       <SiteDraftBar />
     </PublishCodeTab>
@@ -53,8 +51,7 @@ function SiteDraftBar() {
   const entity = useVirtualMCP(session?.virtualMcpId);
   const currentBranch = session?.currentBranch ?? null;
   const runtime = useSessionRuntime(entity?.id).runtime;
-  const { url: localPreviewUrl, undecided: tunnelUndecided } =
-    useLocalPreviewUrl(entity?.id);
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   // Outside a project (`/site-editor`) a connected `deco serve` is the only
   // thing behind the editor.
   const { connection: serveConnection } = useDecoServeConnection(
@@ -67,7 +64,6 @@ function SiteDraftBar() {
     hasEntity: !!entity,
     servingLocally: !!serveConnection,
     localPreview: !!localPreviewUrl,
-    tunnelUndecided: !!tunnelUndecided,
     showsRepositoryActions:
       !!entity && agentShowsRepositoryHeaderActions(entity),
     runtime,

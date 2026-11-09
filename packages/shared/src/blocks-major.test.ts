@@ -2,12 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
-  hostedRevision,
-  hostedRevisionParts,
+  BLOCKS_V8_METADATA_KEY,
   isBlocksV8Project,
   isV8Schema,
-  isV8SchemaText,
-  schemaGenPath,
 } from "./blocks-major.ts";
 
 describe("isV8Schema", () => {
@@ -35,31 +32,32 @@ describe("isV8Schema", () => {
       expect(isV8Schema(schema)).toBe(false);
     }
   });
-
-  test("text: parsed first; unparseable or missing text is v7", () => {
-    expect(isV8SchemaText('{"blocksMajor":8}')).toBe(true);
-    expect(isV8SchemaText('{"blocksMajor":7}')).toBe(false);
-    expect(isV8SchemaText("[]")).toBe(false);
-    expect(isV8SchemaText("{")).toBe(false);
-    expect(isV8SchemaText("")).toBe(false);
-    expect(isV8SchemaText(null)).toBe(false);
-    expect(isV8SchemaText(undefined)).toBe(false);
-  });
-
-  test("the schema file, at the repo root or under the site's folder", () => {
-    expect(schemaGenPath(null)).toBe(".deco/schema.gen.json");
-    expect(schemaGenPath("apps/site")).toBe("apps/site/.deco/schema.gen.json");
-  });
 });
 
-describe("isBlocksV8Project (the cached answer for main)", () => {
-  test("only the server's marker 8 counts", () => {
-    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(true);
-    expect(isBlocksV8Project({ blocksMajor: "8" })).toBe(false);
-    expect(isBlocksV8Project({ blocksMajor: 7 })).toBe(false);
-    expect(isBlocksV8Project({})).toBe(false);
-    expect(isBlocksV8Project(null)).toBe(false);
-    expect(isBlocksV8Project(undefined)).toBe(false);
+describe("isBlocksV8Project (the Blocks v8 site switch)", () => {
+  test("the switch is metadata.blocksV8", () => {
+    expect(BLOCKS_V8_METADATA_KEY).toBe("blocksV8");
+  });
+
+  test("only the switch on (a strict true) is v8", () => {
+    expect(isBlocksV8Project({ blocksV8: true })).toBe(true);
+    for (const metadata of [
+      { blocksV8: false },
+      { blocksV8: "true" },
+      { blocksV8: 1 },
+      {},
+      null,
+      undefined,
+    ]) {
+      expect(isBlocksV8Project(metadata)).toBe(false);
+    }
+  });
+
+  test("a blocksMajor marker an earlier Studio wrote is not the switch", () => {
+    expect(isBlocksV8Project({ blocksMajor: 8 })).toBe(false);
+    expect(
+      isBlocksV8Project({ blocksMajor: 8, cmsSchemaPush: { site: "a" } }),
+    ).toBe(false);
   });
 });
 
@@ -143,7 +141,7 @@ describe("one v8 detector", () => {
   const isTestFile = (rel: string) =>
     /\.(test|spec|e2e)\.[cm]?[jt]sx?$/.test(rel) ||
     /(^|\/)(e2e|daemon-e2e|ct|fixtures|__tests__)\//.test(rel) ||
-    /test-helpers?\.[jt]sx?$/.test(rel);
+    /(test-helpers?|-test-app)\.[jt]sx?$/.test(rel);
 
   const files = ["apps", "packages"]
     .flatMap((top) => sources(join(root, top)))
@@ -174,7 +172,9 @@ describe("one v8 detector", () => {
 
   test("the scan sees the code it guards", () => {
     const rels = new Set(files.map((f) => f.rel));
-    expect(rels.has("apps/api/src/hosted/scope.ts")).toBe(true);
+    expect(rels.has("apps/api/src/tools/virtual/blocks-v8-switch.ts")).toBe(
+      true,
+    );
     expect(
       rels.has("apps/web/src/components/sections-editor/content-backend.ts"),
     ).toBe(true);
@@ -195,9 +195,9 @@ describe("one v8 detector", () => {
     // `?.["blocksMajor"]`, `"blocksMajor" in s`, `Reflect.get(s,
     // "blocksMajor")`), a destructuring, a write. Only these may name it:
     const allowed = (rel: string, line: string) =>
-      // The marker's type on the project metadata the runtime reads.
-      (rel === "packages/shared/src/thread/session-runtime.ts" &&
-        /^\s*blocksMajor\?: number \| null;\s*$/.test(line)) ||
+      // The schema push answer's field (contract §4.12).
+      (rel === "apps/api/src/api/routes/cms.ts" &&
+        /^\s*blocksMajor: isV8 \? BLOCKS_V8_MAJOR : null,\s*$/.test(line)) ||
       // Copy telling a developer what their schema needs.
       (/^apps\/web\/src\/i18n\/(en|pt-br)\/deco-serve\.ts$/.test(rel) &&
         /"blocksMajor": 8/.test(line));
@@ -243,7 +243,7 @@ describe("one v8 detector", () => {
 
   test("no other v8 predicate is defined", () => {
     const own =
-      /(?:function|const|let|var|class)\s+(isV8Schema|isV8SchemaText|isBlocksV8Project|BLOCKS_V8_MAJOR|BLOCKS_MAJOR_METADATA_KEY|schemaGenPath)\b/;
+      /(?:function|const|let|var|class)\s+(isV8Schema|isBlocksV8Project|BLOCKS_V8_MAJOR|BLOCKS_V8_METADATA_KEY)\b/;
     expect(offending(files, own)).toEqual([]);
   });
 
@@ -251,28 +251,22 @@ describe("one v8 detector", () => {
     // Each delegates to the shared predicate (or is UI, not a decision).
     // A new one must be added here, with a reason.
     const KNOWN: Record<string, string> = {
-      "apps/api/src/hosted/scope.ts#mainIsV8": "isV8SchemaText on main",
-      "apps/api/src/hosted/scope.ts#schemaBlobIsV8": "isV8SchemaText on a blob",
-      "apps/api/src/hosted/blocks-major.ts#projectMainIsV8":
-        "mainIsV8 (recent), written through to the marker",
-      "apps/api/src/api/routes/decofile.ts#scopeIsV8": "projectMainIsV8",
-      "apps/api/src/api/routes/decofile.ts#unownedV8": "scopeIsV8",
-      "apps/web/src/hooks/use-main-schema-v8.ts#useMainSchemaV8":
-        "fetchMainSchemaV8",
-      "apps/web/src/hooks/use-main-schema-v8.ts#useProjectMainSchemaV8":
-        "fetchMainSchemaV8, for a project already in hand",
-      "apps/web/src/hooks/use-main-schema-v8.ts#useProjectsMainSchemaV8":
-        "fetchMainSchemaV8, for several projects in hand",
-      "apps/web/src/hooks/use-main-schema-v8.ts#fetchMainSchemaV8":
-        "isV8Schema on main's schema (rpc schema.get)",
-      "apps/web/src/hooks/use-main-schema-v8.ts#useLastFoundV8":
-        "the marker (the server's cached mainIsV8): a hint for a failed read, never v8",
-      "apps/web/src/hooks/use-main-schema-v8.ts#lastFoundV8":
-        "useLastFoundV8 for a project in hand: the sidebar's hint while main is read, never v8",
+      "apps/web/src/hooks/use-blocks-v8-project.ts#blocksV8Project":
+        "isBlocksV8Project on a project in hand's metadata",
+      "apps/web/src/hooks/use-blocks-v8-project.ts#useBlocksV8Project":
+        "blocksV8Project for a project id",
       "apps/web/src/components/sections-editor/content-version-badge.tsx#showsV8Badge":
         "UI: reads the backend the probe chose",
       "apps/web/src/components/thread/repository/localhost-row.tsx#V8LocalhostRow":
         "UI component",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts#requireOrgAdminForBlocksV8Switch":
+        "the switch's writer: an org admin check, not a decision",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts#refuseBlocksV8MetadataWrite":
+        "the switch's writer: refuses a client metadata write of it",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts#blocksV8SwitchPatch":
+        "the switch's writer: isBlocksV8Project on the stored metadata",
+      "apps/web/src/views/virtual-mcp/settings/blocks-v8-site-section.tsx#BlocksV8SiteSection":
+        "UI component: the admin's switch",
     };
     const definition =
       /(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*[vV]8[\w$]*)\s*(?:[=(<]|:\s*\(|:\s*[A-Z][\w$<>, |]*\s*=\s*(?:async\s*)?\()/g;
@@ -290,9 +284,11 @@ describe("one v8 detector", () => {
     };
     const functions = found.filter(isFunction);
     // The scan finds them (so a new one can't slip by unnoticed)...
-    expect(functions).toContain("apps/api/src/hosted/scope.ts#mainIsV8");
     expect(functions).toContain(
-      "apps/api/src/api/routes/decofile.ts#scopeIsV8",
+      "apps/web/src/hooks/use-blocks-v8-project.ts#useBlocksV8Project",
+    );
+    expect(functions).toContain(
+      "apps/web/src/hooks/use-blocks-v8-project.ts#blocksV8Project",
     );
     // ...and every one is known.
     expect(functions.filter((key) => !KNOWN[key])).toEqual([]);
@@ -324,11 +320,10 @@ describe("one v8 detector", () => {
     // `meta.gen.json` is v7's schema. The files that decide v8 never consult
     // it; elsewhere (v7 code still reads it) no line ties it to v8.
     const DECIDERS = [
-      "apps/api/src/hosted/scope.ts",
-      "apps/api/src/hosted/blocks-major.ts",
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts",
       "apps/web/src/components/sections-editor/content-backend.ts",
       "apps/web/src/components/sections-editor/use-content-backend.ts",
-      "apps/web/src/hooks/use-main-schema-v8.ts",
+      "apps/web/src/hooks/use-blocks-v8-project.ts",
       "apps/web/src/hooks/use-deco-serve-connection.ts",
     ];
     const deciders = source.filter((f) => DECIDERS.includes(f.rel));
@@ -342,19 +337,52 @@ describe("one v8 detector", () => {
     ]).toEqual([]);
   });
 
-  test("the web app never decides v8 from the marker", () => {
-    // The marker is the server's cache of main's answer. The web app reads
-    // main's schema itself (`useMainSchemaV8`), which only compares it
-    // with the marker it holds to re-read a project the server just rewrote,
-    // and to tell a failed read on a site last found v8 (waits) from any
-    // other (v7, as on main): `useLastFoundV8`, never a v8 answer.
+  test("no editor mode decides v8 from a schema", () => {
+    // GitHub, Sandbox and Localhost alike: the switch decides; the content
+    // backends never ask a schema (main's, a working tree's, a deco serve's).
+    const DECIDERS = [
+      "apps/web/src/components/sections-editor/content-backend.ts",
+      "apps/web/src/components/sections-editor/use-content-backend.ts",
+      "apps/web/src/hooks/use-blocks-v8-project.ts",
+      "apps/web/src/hooks/use-deco-serve-connection.ts",
+      "apps/web/src/hooks/use-local-preview-url.ts",
+    ];
+    const deciders = source.filter((f) => DECIDERS.includes(f.rel));
+    expect(deciders.map((f) => f.rel).sort()).toEqual([...DECIDERS].sort());
+    expect(offending(deciders, /\bisV8Schema\b/)).toEqual([]);
+  });
+
+  test("the web app reads the switch in one place", () => {
+    // The "Blocks v8 site" switch. The web app reads it in one place,
+    // `use-blocks-v8-project.ts`, which every v8 screen asks.
     const allowed = (rel: string) =>
-      rel === "apps/web/src/hooks/use-main-schema-v8.ts";
+      rel === "apps/web/src/hooks/use-blocks-v8-project.ts";
     expect(
       offending(
         source.filter((f) => f.rel.startsWith("apps/web/")),
-        /\b(isBlocksV8Project|BLOCKS_MAJOR_METADATA_KEY)\b/,
+        /\b(isBlocksV8Project|BLOCKS_V8_METADATA_KEY)\b/,
         (rel) => allowed(rel),
+      ),
+    ).toEqual([]);
+  });
+
+  test("only the admin's switch writes the v8 flag", () => {
+    // The key is named by its definition (this module's), its one writer
+    // (an org admin's `blocksV8`), and the strip that keeps clients off it.
+    const WRITERS = new Set([
+      "apps/api/src/tools/virtual/blocks-v8-switch.ts",
+      "apps/api/src/tools/strip-server-managed-metadata.ts",
+    ]);
+    expect(
+      offending(source, /\bBLOCKS_V8_METADATA_KEY\b/, (rel) =>
+        WRITERS.has(rel),
+      ),
+    ).toEqual([]);
+    // Nothing sets the flag to a literal true outside that writer (a schema
+    // push, a backfill or a create deriving it).
+    expect(
+      offending(source, /["']?\bblocksV8\b["']?\s*:\s*true\b/, (rel) =>
+        WRITERS.has(rel),
       ),
     ).toEqual([]);
   });
@@ -371,16 +399,5 @@ describe("one v8 detector", () => {
       .filter((f) => f.rel !== GUARD && f.text.includes(flag))
       .map((f) => f.rel);
     expect(offenders).toEqual([]);
-  });
-});
-
-describe("hosted revisions", () => {
-  test("are <main>~<draft>, and split back at the first ~", () => {
-    expect(hostedRevision("abc", "e1")).toBe("abc~e1");
-    expect(hostedRevision("abc", null)).toBe("abc~none");
-    // A save never reads main: an empty main part.
-    expect(hostedRevisionParts("~e2")).toEqual({ main: "", draft: "e2" });
-    expect(hostedRevisionParts("abc~e1")).toEqual({ main: "abc", draft: "e1" });
-    expect(hostedRevisionParts("r1")).toBeNull();
   });
 });
