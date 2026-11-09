@@ -244,6 +244,8 @@ export function resolveConfig(
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    feedbackOrgId: envVars.STUDIO_FEEDBACK_ORG_ID?.trim() || undefined,
+    feedbackProjectId: envVars.STUDIO_FEEDBACK_PROJECT_ID?.trim() || undefined,
     deploymentAdminToken: envVars.DEPLOYMENT_ADMIN_TOKEN || undefined,
 
     // Observability
