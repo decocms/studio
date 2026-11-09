@@ -7,7 +7,7 @@
  * it happens to be on the rail today. Typing searches the server.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SearchLg } from "@untitledui/icons";
 import {
@@ -40,7 +40,9 @@ export function OrgSearch({
   currentSlug,
   hiddenCount,
   onSelect,
+  trigger,
 }: {
+  trigger?: ReactNode;
   orgs: readonly SearchableOrg[];
   currentSlug: string;
   /** Drawn on the trigger so the rail admits what it is not showing. */
@@ -66,27 +68,38 @@ export function OrgSearch({
 
   return (
     <>
-      <RailItem active={false}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("sidebar.rail.searchOrganizations")}
-              onClick={() => openChange(true)}
-              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
-            >
-              <SearchLg size={18} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {hiddenCount > 0
-              ? t("sidebar.rail.searchMoreOrganizations", {
-                  count: hiddenCount,
-                })
-              : t("sidebar.rail.searchOrganizations")}
-          </TooltipContent>
-        </Tooltip>
-      </RailItem>
+      {trigger ? (
+        <button
+          type="button"
+          aria-label={t("sidebar.rail.searchOrganizations")}
+          onClick={() => openChange(true)}
+          className="focus-ring flex h-8 min-w-0 shrink-0 items-center gap-2 rounded-md px-2 text-sm font-medium leading-5 hover:bg-accent"
+        >
+          {trigger}
+        </button>
+      ) : (
+        <RailItem active={false}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("sidebar.rail.searchOrganizations")}
+                onClick={() => openChange(true)}
+                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
+              >
+                <SearchLg size={18} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {hiddenCount > 0
+                ? t("sidebar.rail.searchMoreOrganizations", {
+                    count: hiddenCount,
+                  })
+                : t("sidebar.rail.searchOrganizations")}
+            </TooltipContent>
+          </Tooltip>
+        </RailItem>
+      )}
 
       <CommandDialog
         open={open}

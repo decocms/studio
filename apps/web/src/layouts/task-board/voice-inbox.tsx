@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, MicrophoneOff01 } from "@untitledui/icons";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  MicrophoneOff01,
+} from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import {
@@ -15,7 +20,8 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/resizable";
-import { authClient } from "@/lib/auth-client";
+import { OrgSearch } from "@/components/sidebar/org-search";
+import { authClient, useActiveOrganizations } from "@/lib/auth-client";
 import { useProjectContext } from "@/sdk";
 import {
   useTaskBoardItems,
@@ -37,6 +43,7 @@ import "@/components/chat/voice/voice.css";
 export function VoiceInbox() {
   const t = useT();
   const { org } = useProjectContext();
+  const { data: organizations } = useActiveOrganizations();
   const navigate = useNavigate();
   const mobile = useIsMobile();
   const { data: session } = authClient.useSession();
@@ -86,16 +93,33 @@ export function VoiceInbox() {
           aria-label={t("voiceInbox.breadcrumb")}
           className="flex min-w-0 items-center gap-1"
         >
-          <span className="flex h-8 min-w-0 shrink-0 items-center gap-2 px-1 text-sm font-medium leading-5">
-            {org.logo && (
-              <img
-                src={org.logo}
-                alt=""
-                className="size-5 shrink-0 rounded object-contain"
-              />
-            )}
-            <span className="max-w-24 truncate">{org.name}</span>
-          </span>
+          <OrgSearch
+            orgs={organizations ?? []}
+            currentSlug={org.slug}
+            hiddenCount={0}
+            onSelect={(slug) => {
+              setSelectedId(null);
+              setDismissed([]);
+              void navigate({
+                to: "/$org/tasks/{-$taskKey}",
+                params: { org: slug, taskKey: undefined },
+                search: { voice: true },
+              });
+            }}
+            trigger={
+              <>
+                {org.logo && (
+                  <img
+                    src={org.logo}
+                    alt=""
+                    className="size-5 shrink-0 rounded object-contain"
+                  />
+                )}
+                <span className="max-w-24 truncate">{org.name}</span>
+                <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+              </>
+            }
+          />
           {task && (
             <>
               <span
@@ -182,7 +206,7 @@ export function VoiceInbox() {
             {!mobile && (
               <>
                 <ResizablePanel
-                  defaultSize="55%"
+                  defaultSize="60%"
                   minSize="20%"
                   className="min-h-0 p-0.5"
                 >
@@ -195,7 +219,7 @@ export function VoiceInbox() {
               </>
             )}
             <ResizablePanel
-              defaultSize={mobile ? "100%" : "45%"}
+              defaultSize={mobile ? "100%" : "40%"}
               minSize="30%"
               className="flex min-h-0 min-w-0 p-0.5"
             >
