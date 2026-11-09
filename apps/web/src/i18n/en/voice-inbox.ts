@@ -1,4 +1,14 @@
 export const voiceInbox = {
+  "voiceInbox.mine": "My tasks",
+  "voiceInbox.allActive": "All active",
+  "voiceInbox.previousTask": "Previous task",
+  "voiceInbox.nextTask": "Next task",
+  "voiceInbox.loadingBoard": "Loading board…",
+  "voiceInbox.emptyLive":
+    "No tasks in this queue. Switch to all active tasks to browse the board.",
+  "voiceInbox.livePlaceholder":
+    "Comment on this task, or @Super Agent to send it directly…",
+  "voiceInbox.voiceUnavailable": "Voice is not connected yet",
   "voiceInbox.approveAction": "Approve",
   "voiceInbox.dismiss": "Dismiss",
   "voiceInbox.resizePanels": "Resize preview and task",

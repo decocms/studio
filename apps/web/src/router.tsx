@@ -1132,6 +1132,7 @@ const tasksRoute = createRoute({
     mainView: "board",
   },
   validateSearch: z.object({
+    voice: z.boolean().optional(),
     /** LEGACY INPUT ONLY — the card is a path segment now. Still arrives from
      *  the `/$org` resolver and from `/$org/$taskId`; `beforeLoad` rewrites it
      *  to the path form. Nothing writes it. */

@@ -1,5 +1,15 @@
 import type { voiceInbox as en } from "../en/voice-inbox";
 export const voiceInbox = {
+  "voiceInbox.mine": "Minhas tarefas",
+  "voiceInbox.allActive": "Todas ativas",
+  "voiceInbox.previousTask": "Tarefa anterior",
+  "voiceInbox.nextTask": "Próxima tarefa",
+  "voiceInbox.loadingBoard": "Carregando board…",
+  "voiceInbox.emptyLive":
+    "Nenhuma tarefa nesta fila. Troque para todas ativas para ver o board.",
+  "voiceInbox.livePlaceholder":
+    "Comente nesta tarefa ou use @Super Agent para enviar diretamente…",
+  "voiceInbox.voiceUnavailable": "Voz ainda não conectada",
   "voiceInbox.approveAction": "Aprovar",
   "voiceInbox.dismiss": "Dismiss",
   "voiceInbox.resizePanels": "Redimensionar preview e tarefa",

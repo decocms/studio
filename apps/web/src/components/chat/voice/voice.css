@@ -22,6 +22,18 @@
   transition: opacity 200ms;
   animation: studio-voice-breathe 4s ease-in-out infinite;
 }
+.studio-voice-orb[data-size="compact"] {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  margin: 0;
+  background: radial-gradient(
+    circle at 30% 25%,
+    var(--background),
+    var(--special) 50%,
+    var(--foreground)
+  );
+}
 .studio-voice-orb[data-phase="speaking"] {
   animation: studio-voice-talk 1.1s ease-in-out infinite alternate;
 }
