@@ -6,7 +6,6 @@ import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { SeoFormFields } from "./seo-form-fields";
 import { resolveSchema } from "./resolve-schema";
-import { DefaultsProjectContext } from "./defaults-on-create";
 import type { LiveMeta } from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import type { SeoTarget } from "./seo-block";
@@ -18,6 +17,7 @@ import { copyScope, useCopyEpochs } from "./held-copy";
 import { SeoPreview } from "./seo-preview";
 import { isProtocolProject } from "./content-backend";
 import { useContentBackend } from "./use-content-backend";
+import { DefaultsProjectContext } from "./defaults-on-create";
 
 export type { SeoTarget } from "./seo-block";
 
@@ -37,7 +37,16 @@ interface SeoEditorProps {
   onBack?: () => void;
 }
 
-export function SeoEditor({
+/** Its forms have no `sandbox`: they follow the project's CMS settings through context. */
+export function SeoEditor(props: SeoEditorProps) {
+  return (
+    <DefaultsProjectContext.Provider value={props.virtualMcpId}>
+      <SeoEditorContent {...props} />
+    </DefaultsProjectContext.Provider>
+  );
+}
+
+function SeoEditorContent({
   orgSlug,
   virtualMcpId,
   branch,
@@ -156,116 +165,109 @@ export function SeoEditor({
   const showSiteForm = target.kind === "site" && resolved && seoSchema;
 
   return (
-    // The project the SEO forms follow; they have no `sandbox` of their own.
-    <DefaultsProjectContext.Provider value={virtualMcpId}>
-      <div className="flex h-full w-full flex-col">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-          {target.kind === "page" ? (
-            <nav className="flex min-w-0 items-center gap-1 text-sm">
-              <button
-                type="button"
-                onClick={handleBack}
-                title={target.pageName}
-                className="min-w-0 truncate rounded-[var(--studio-control-radius,var(--radius-md))] px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                {target.pageName}
-              </button>
-              <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
-              <span className="px-1 py-0.5 font-medium text-foreground">
-                SEO
-              </span>
-            </nav>
-          ) : (
-            <div className="flex min-w-0 items-center gap-2">
-              <CreditCardSearch
-                size={16}
-                className="shrink-0 text-muted-foreground"
-              />
-              <span className="text-sm font-medium">
-                {t("sectionsEditor.seoEditor.defaultSeoLabel")}
-              </span>
-              <span className="hidden truncate text-xs text-muted-foreground sm:inline">
-                · {t("sectionsEditor.seoEditor.appliedToEveryPage")}
-              </span>
-            </div>
-          )}
-
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            {isPending && (
-              <Spinner className="size-3.5 text-muted-foreground" />
-            )}
-            {target.kind === "page" && onEditDefaultSeo && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onEditDefaultSeo}
-              >
-                <CreditCardSearch size={14} />
-                {t("sectionsEditor.seoEditor.editDefaultSeoButton")}
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {!resolved || (!showPageSeoChrome && !showSiteForm) ? (
-          <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-            {emptyMessage}
-          </div>
+    <div className="flex h-full w-full flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        {target.kind === "page" ? (
+          <nav className="flex min-w-0 items-center gap-1 text-sm">
+            <button
+              type="button"
+              onClick={handleBack}
+              title={target.pageName}
+              className="min-w-0 truncate rounded-[var(--studio-control-radius,var(--radius-md))] px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              {target.pageName}
+            </button>
+            <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+            <span className="px-1 py-0.5 font-medium text-foreground">SEO</span>
+          </nav>
         ) : (
-          <div className="flex min-h-0 flex-1">
-            <ScrollArea className="w-full max-w-md shrink-0 border-r [&_[data-slot=scroll-area-viewport]>div]:!block">
-              <div className="px-5 py-4">
-                {showPageSeoChrome ? (
-                  <>
-                    <p className="mb-3 text-xs text-muted-foreground">
-                      {t("sectionsEditor.seoEditor.emptyFieldsHint")}
-                    </p>
-                    <PageSeoForm
-                      rawSeo={displayRawSeo}
-                      innerSeo={effectiveSeo}
-                      defaultResolveType={defaultResolveType}
-                      seoSchema={seoSchema}
-                      activeResolveType={activeResolveType}
-                      seoTypeOptions={resolved.seoTypeOptions}
-                      formResetKey={formResetKey}
-                      siteDefaultSeo={siteDefaultSeo}
-                      onPersistRaw={(raw) => {
-                        setRawSeoOverride(raw);
-                        persistRawSeo(raw);
-                      }}
-                      onInnerChange={(inner) => {
-                        setFormValue(inner);
-                        persistSeo(inner);
-                      }}
-                      onClearForm={clearSeoForm}
-                      onBumpFormKey={bumpSeoFormKey}
-                      asyncRenderAvailable={asyncRenderAvailable}
-                    />
-                  </>
-                ) : (
-                  seoSchema &&
-                  activeResolveType && (
-                    <SeoFormFields
-                      schema={seoSchema}
-                      resolveType={activeResolveType}
-                      value={effectiveSeo}
-                      formResetKey={formResetKey}
-                      onChange={handleChange}
-                    />
-                  )
-                )}
-              </div>
-            </ScrollArea>
-            <ScrollArea className="min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
-              <div className="@container px-5 py-4">
-                <SeoPreview seo={previewSeo} url={previewUrl} path={path} />
-              </div>
-            </ScrollArea>
+          <div className="flex min-w-0 items-center gap-2">
+            <CreditCardSearch
+              size={16}
+              className="shrink-0 text-muted-foreground"
+            />
+            <span className="text-sm font-medium">
+              {t("sectionsEditor.seoEditor.defaultSeoLabel")}
+            </span>
+            <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+              · {t("sectionsEditor.seoEditor.appliedToEveryPage")}
+            </span>
           </div>
         )}
+
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {isPending && <Spinner className="size-3.5 text-muted-foreground" />}
+          {target.kind === "page" && onEditDefaultSeo && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onEditDefaultSeo}
+            >
+              <CreditCardSearch size={14} />
+              {t("sectionsEditor.seoEditor.editDefaultSeoButton")}
+            </Button>
+          )}
+        </div>
       </div>
-    </DefaultsProjectContext.Provider>
+
+      {!resolved || (!showPageSeoChrome && !showSiteForm) ? (
+        <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          {emptyMessage}
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <ScrollArea className="w-full max-w-md shrink-0 border-r [&_[data-slot=scroll-area-viewport]>div]:!block">
+            <div className="px-5 py-4">
+              {showPageSeoChrome ? (
+                <>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    {t("sectionsEditor.seoEditor.emptyFieldsHint")}
+                  </p>
+                  <PageSeoForm
+                    rawSeo={displayRawSeo}
+                    innerSeo={effectiveSeo}
+                    defaultResolveType={defaultResolveType}
+                    seoSchema={seoSchema}
+                    activeResolveType={activeResolveType}
+                    seoTypeOptions={resolved.seoTypeOptions}
+                    formResetKey={formResetKey}
+                    siteDefaultSeo={siteDefaultSeo}
+                    onPersistRaw={(raw) => {
+                      setRawSeoOverride(raw);
+                      persistRawSeo(raw);
+                    }}
+                    onInnerChange={(inner) => {
+                      setFormValue(inner);
+                      persistSeo(inner);
+                    }}
+                    onClearForm={clearSeoForm}
+                    onBumpFormKey={bumpSeoFormKey}
+                    asyncRenderAvailable={asyncRenderAvailable}
+                  />
+                </>
+              ) : (
+                seoSchema &&
+                activeResolveType && (
+                  <SeoFormFields
+                    schema={seoSchema}
+                    resolveType={activeResolveType}
+                    value={effectiveSeo}
+                    formResetKey={formResetKey}
+                    onChange={handleChange}
+                  />
+                )
+              )}
+            </div>
+          </ScrollArea>
+          <ScrollArea className="min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
+            <div className="@container px-5 py-4">
+              <SeoPreview seo={previewSeo} url={previewUrl} path={path} />
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+    </div>
   );
 }
 
