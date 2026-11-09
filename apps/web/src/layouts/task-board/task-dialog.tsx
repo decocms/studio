@@ -861,7 +861,7 @@ function TaskBoardItemEditor({
                   {t("taskBoard.conversation.behindTheScenes")}
                 </DropdownMenuCheckboxItem>
               )}
-              {embedded && !contentLocked && (
+              {embedded && (
                 <DropdownMenuItem
                   onSelect={() => {
                     flush();
