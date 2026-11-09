@@ -5,15 +5,19 @@
  * lists), plus the raw JSON editor. An edit replaces only the value it
  * touched, so a save writes every other value back exactly as it was read.
  *
- * A banner explains how to get the typed forms. Nothing here is a mode: the
+ * A banner explains how to get the typed forms: a prompt to copy for the
+ * coding agent working on the site, never a command to run. Nothing here is a mode: the
  * editor's poll swaps the real schema in when it appears, and the regular
  * editor takes over (see `isNoSchemaMeta`).
  */
 
 import { lazy, Suspense, useState } from "react";
+import { toast } from "sonner";
 import {
+  Check,
   ChevronLeft,
   Code01,
+  Copy01,
   InfoCircle,
   LinkExternal01,
   SearchMd,
@@ -25,11 +29,10 @@ import { Label } from "@decocms/ui/components/label.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useT } from "@/i18n/use-t.ts";
-import { blocksDocs } from "@/lib/blocks-docs";
-import { SCHEMA_COMMAND } from "@/components/sections-editor/deco-serve-connection";
-import { CommandSnippet } from "@/components/sections-editor/deco-serve-notices";
+import { type TFunction, useT } from "@/i18n/use-t.ts";
+import { DECO_SITE_WORKFLOW_SKILL_URL } from "@/lib/blocks-docs";
 import {
   groupBlocksByType,
   type JsonPath,
@@ -49,9 +52,30 @@ type JsonRecord = Record<string, unknown>;
 const isRecord = (value: unknown): value is JsonRecord =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
-/** The one notice of a site without a schema: what's missing and the fix. */
-function SchemaPendingBanner({ className }: { className?: string }) {
+/**
+ * The prompt the banner copies: what a coding agent does in the site's repo
+ * so Studio gets its schema on every deploy. Commands live only here, for
+ * the agent; the banner itself never shows one.
+ */
+function schemaAgentPrompt(t: TFunction, site: string | null): string {
+  return t("sandbox.schemaless.agentPrompt", {
+    site: site ? `"${site}"` : t("sandbox.schemaless.agentPromptSiteUnknown"),
+  });
+}
+
+/**
+ * The one notice of a site without a schema: what's missing, and a prompt to
+ * hand the coding agent working on the site (with the skill it relies on).
+ */
+function SchemaPendingBanner({
+  site,
+  className,
+}: {
+  site: string | null;
+  className?: string;
+}) {
   const t = useT();
+  const { handleCopy, copied } = useCopy();
   return (
     <section
       aria-labelledby="schema-pending-title"
@@ -78,20 +102,39 @@ function SchemaPendingBanner({ className }: { className?: string }) {
           </p>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pl-6">
-        <div className="min-w-64 max-w-md flex-1">
-          <CommandSnippet command={SCHEMA_COMMAND} />
-        </div>
-        <a
-          href={blocksDocs.schema}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-foreground underline-offset-4 hover:underline focus-visible:underline"
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pl-6">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            void handleCopy(schemaAgentPrompt(t, site)).catch(() =>
+              toast.error(t("sandbox.schemaless.copyPromptFailed")),
+            )
+          }
         >
-          {t("sandbox.schemaless.docsLink")}
-          <LinkExternal01 aria-hidden="true" className="size-3.5" />
-          <span className="sr-only">{t("decoServe.docs.newTab")}</span>
-        </a>
+          {copied ? <Check className="text-success" /> : <Copy01 />}
+          {copied
+            ? t("sandbox.schemaless.promptCopied")
+            : t("sandbox.schemaless.copyPrompt")}
+        </Button>
+        <span className="sr-only" role="status" aria-live="polite">
+          {copied ? t("sandbox.schemaless.promptCopiedAnnouncement") : ""}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {t("sandbox.schemaless.usesSkill")}
+          <span aria-hidden="true"> · </span>
+          <a
+            href={DECO_SITE_WORKFLOW_SKILL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-foreground underline-offset-4 hover:underline focus-visible:underline"
+          >
+            {t("sandbox.schemaless.installSkill")}
+            <LinkExternal01 aria-hidden="true" className="size-3.5" />
+            <span className="sr-only">{t("decoServe.docs.newTab")}</span>
+          </a>
+        </span>
       </div>
     </section>
   );
@@ -461,10 +504,13 @@ export function SchemalessContent({
   onLeaveBlock,
   onOpenBlock,
   copyEpochOf,
+  site = null,
   initialKey = null,
   compact = false,
 }: {
   decofile: Record<string, unknown>;
+  /** The project's Studio site (`DECO_SITE`), named in the agent prompt. */
+  site?: string | null;
   /** Saves one block's whole value (the caller debounces). */
   onChange: (blockKey: string, next: JsonRecord) => void;
   /** Leaving a block: the caller saves what's pending. */
@@ -615,7 +661,7 @@ export function SchemalessContent({
       data-testid="schemaless-content"
       className="flex h-full min-h-0 w-full flex-col"
     >
-      <SchemaPendingBanner />
+      <SchemaPendingBanner site={site} />
       <div className="flex min-h-0 flex-1">
         {compact ? (selected && isRecord(block) ? editor : list) : list}
         {!compact && editor}

@@ -12,3 +12,11 @@ export const blocksDocs = {
   schema: `${BLOCKS_DOCS_URL}/next/cli#deco-schema-and-deco-content`,
   troubleshooting: `${BLOCKS_DOCS_URL}/next/troubleshooting#site-editor`,
 } as const;
+
+/**
+ * The `deco-site-workflow` agent skill (in the Blocks repo; `npx deco skills
+ * install` copies it into a site). Its `references/schema.md` is what the
+ * schema banner's prompt sends a coding agent to.
+ */
+export const DECO_SITE_WORKFLOW_SKILL_URL =
+  "https://github.com/decocms/blocks/tree/main/.agents/skills/deco-site-workflow";

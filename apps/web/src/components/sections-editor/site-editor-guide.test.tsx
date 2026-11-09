@@ -82,26 +82,17 @@ describe("SiteEditorGuide", () => {
       }),
     ).toBeInTheDocument();
     expect(view.queryByText(/incomplete/i)).toBeNull();
-    // The two steps, in order; no address field and no way to disconnect.
+    // One step, unnumbered; no command to run, no address field and no way
+    // to disconnect.
     const steps = view.getAllByRole("heading", { level: 3 });
     expect(steps.map((step) => step.textContent)).toEqual([
-      "Start deco serve in your site's folder",
       "Studio connects on its own",
     ]);
+    expect(view.container.querySelector("code")).toBeNull();
+    expect(view.queryByText(/npx/)).toBeNull();
+    expect(view.queryByRole("button", { name: /copy/i })).toBeNull();
     expect(view.queryByRole("textbox")).toBeNull();
     expect(view.queryByRole("button", { name: /disconnect/i })).toBeNull();
-    // The same command on any Studio origin: deco serve answers them all.
-    expect(
-      view.getByText(
-        (_, element) =>
-          element?.tagName === "CODE" &&
-          element.textContent?.replace(/^\$\s*/, "") ===
-            "npx @decocms/blocks serve",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      view.getByRole("button", { name: "Copy command" }),
-    ).toBeInTheDocument();
     expect(
       await view.findByText("Looking for deco serve on localhost:4545…"),
     ).toBeInTheDocument();
