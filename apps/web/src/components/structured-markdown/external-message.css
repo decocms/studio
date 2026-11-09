@@ -1,0 +1,134 @@
+/* Source-specific message surfaces; surrounding controls use Studio tokens. */
+.external-message {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+}
+.external-message-origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.external-message-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+}
+.external-message-envelope {
+  min-width: 0;
+  flex: 1;
+}
+.external-message-author {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+.external-message-time {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.external-message-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.external-message-body > :first-child {
+  margin-top: 0;
+}
+.external-message-body > :last-child {
+  margin-bottom: 0;
+}
+.external-message[data-source="gchat"] .external-message-body {
+  padding: 12px 16px;
+  border-radius: 4px 20px 20px;
+  background: #f0f4f9;
+  color: #1f1f1f;
+}
+.external-message[data-source="gchat"] .external-message-author {
+  padding-left: 12px;
+}
+.external-message[data-source="whatsapp"] .external-message-origin {
+  background: #f0f2f5;
+  color: #111b21;
+}
+.external-message[data-source="whatsapp"] .external-message-content {
+  background: #efeae2;
+}
+.external-message[data-source="whatsapp"] .external-message-envelope {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 0 8px 8px;
+  background: #fff;
+  color: #111b21;
+  box-shadow: 0 1px 1px #0b141a20;
+}
+.external-message[data-source="whatsapp"] .external-message-envelope::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -6px;
+  border-top: 7px solid #fff;
+  border-left: 7px solid transparent;
+}
+.external-message[data-source="whatsapp"] .external-message-author > span {
+  color: #008069;
+}
+.external-message[data-source="whatsapp"] .external-message-time {
+  color: #667781;
+  margin-left: auto;
+}
+.external-message[data-source="slack"] .external-message-avatar {
+  border-radius: 4px;
+}
+.external-message[data-source="slack"] .external-message-author {
+  margin-bottom: 2px;
+}
+.external-message[data-source="slack"] .external-message-author > span {
+  font-weight: 700;
+}
+.external-message[data-source="email"] .external-message-body {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.external-message[data-source="email"] .external-message-time {
+  margin-left: auto;
+}
+.dark .external-message[data-source="gchat"] .external-message-body {
+  background: #282a2c;
+  color: #e3e3e3;
+}
+.dark .external-message[data-source="whatsapp"] .external-message-origin {
+  background: #202c33;
+  color: #e9edef;
+}
+.dark .external-message[data-source="whatsapp"] .external-message-content {
+  background: #0b141a;
+}
+.dark .external-message[data-source="whatsapp"] .external-message-envelope {
+  background: #202c33;
+  color: #e9edef;
+}
+.dark
+  .external-message[data-source="whatsapp"]
+  .external-message-envelope::before {
+  border-top-color: #202c33;
+}
+.dark
+  .external-message[data-source="whatsapp"]
+  .external-message-author
+  > span {
+  color: #53bdeb;
+}
+.dark .external-message[data-source="whatsapp"] .external-message-time {
+  color: #8696a0;
+}

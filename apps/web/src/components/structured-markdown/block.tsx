@@ -1,9 +1,10 @@
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import "./external-message.css";
 import { Card } from "@decocms/ui/components/card.tsx";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Mail01,
-  MessageChatCircle,
   LinkExternal01,
   ClipboardCheck,
   Globe01,
@@ -111,8 +112,12 @@ export function StructuredMarkdownBlock({ block }: { block: StructuredBlock }) {
   const { data, source } = block;
   const brand = sources[source];
   return (
-    <section className="surface my-4 overflow-hidden" aria-label={brand.name}>
-      <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-3">
+    <section
+      className="external-message my-4"
+      data-source={source}
+      aria-label={brand.name}
+    >
+      <div className="external-message-origin">
         {brand.icon ? (
           <img
             src={brand.icon}
@@ -142,60 +147,53 @@ export function StructuredMarkdownBlock({ block }: { block: StructuredBlock }) {
           </a>
         )}
       </div>
-      <div className="p-4">
-        <div className="mb-3 flex items-center gap-2">
-          {data.author.avatarUrl ? (
-            <img
-              src={data.author.avatarUrl}
-              alt=""
-              className="size-8 rounded-full object-cover"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span className="flex size-8 items-center justify-center rounded-full bg-muted">
-              <MessageChatCircle className="size-4" />
-            </span>
-          )}
-          <span className="text-sm font-medium">{data.author.name}</span>
-          {data.sentAt && (
-            <time
-              dateTime={data.sentAt}
-              className="ml-auto text-xs text-muted-foreground"
-            >
-              {new Date(data.sentAt).toLocaleString()}
-            </time>
-          )}
-        </div>
-        <div className="min-w-0 break-words text-sm">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={markdownComponents}
-            skipHtml
-          >
-            {data.body}
-          </ReactMarkdown>
-        </div>
-        {data.attachments?.map((attachment, index) => (
-          <a
-            key={index}
-            href={attachment.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 block text-sm underline"
-          >
-            {attachment.kind === "image" && (
-              <img
-                src={attachment.url}
-                alt={attachment.name}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                className="mb-1 max-h-64 max-w-full rounded-lg object-contain"
-              />
+      <div className="external-message-content">
+        <Avatar
+          url={data.author.avatarUrl}
+          fallback={data.author.name}
+          shape={source === "slack" ? "square" : "circle"}
+          size="sm"
+          className="external-message-avatar"
+        />
+        <div className="external-message-envelope">
+          <div className="external-message-author">
+            <span className="text-sm font-medium">{data.author.name}</span>
+            {data.sentAt && (
+              <time dateTime={data.sentAt} className="external-message-time">
+                {new Date(data.sentAt).toLocaleString()}
+              </time>
             )}
-            {attachment.name}
-          </a>
-        ))}
+          </div>
+          <div className="external-message-body">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+              skipHtml
+            >
+              {data.body}
+            </ReactMarkdown>
+            {data.attachments?.map((attachment, index) => (
+              <a
+                key={index}
+                href={attachment.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 block text-sm underline"
+              >
+                {attachment.kind === "image" && (
+                  <img
+                    src={attachment.url}
+                    alt={attachment.name}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="mb-1 max-h-64 max-w-full rounded-lg object-contain"
+                  />
+                )}
+                {attachment.name}
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );
