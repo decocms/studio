@@ -42,6 +42,7 @@ export function VariantRuleEditor({
   named,
   namedRow,
   rule,
+  defaultsOnCreateOnly,
 }: {
   currentRt: string;
   currentLabel: string;
@@ -62,6 +63,8 @@ export function VariantRuleEditor({
     data: Record<string, unknown>,
   ) => void;
   sandbox?: SandboxConfig | null;
+  /** A section variant's rule edits the stored rule (see `SchemaForm`). */
+  defaultsOnCreateOnly?: boolean;
   /** v8: tests and campaigns by name in the picker. */
   named?: NamedRulePickerProps;
   /**
@@ -169,6 +172,7 @@ export function VariantRuleEditor({
               decofile={decofile}
               onSaveReferencedBlock={onSaveReferencedBlock}
               sandbox={sandbox}
+              defaultsOnCreateOnly={defaultsOnCreateOnly}
             />
           </div>
         )

@@ -94,35 +94,40 @@ test("defaults only on creation: duplicating an item copies it as stored", async
     .toEqual({ links: [{ label: "A" }, { label: "A" }] });
 });
 
-test("defaults only on creation: the first edit inside an absent object creates it with its defaults", async ({
-  mount,
-}) => {
-  const withCard = sectionWithProps({
-    card: {
-      type: "object",
-      title: "Card",
-      properties: {
-        heading: { type: "string", title: "Heading" },
-        showPrice: { type: "boolean", title: "Show price", default: true },
+for (const [stored, initialValue] of [
+  ["an absent", {}],
+  ["a null", { card: null }],
+] as const) {
+  test(`defaults only on creation: the first edit inside ${stored} object creates it with its defaults`, async ({
+    mount,
+  }) => {
+    const withCard = sectionWithProps({
+      card: {
+        type: "object",
+        title: "Card",
+        properties: {
+          heading: { type: "string", title: "Heading" },
+          showPrice: { type: "boolean", title: "Show price", default: true },
+        },
       },
-    },
+    });
+    const component = await mount(
+      <SchemaFormHarness
+        meta={withCard}
+        resolveType={TEST_RESOLVE_TYPE}
+        defaultsOnCreateOnly
+        initialValue={initialValue}
+      />,
+    );
+
+    await component.getByRole("button", { name: "Card" }).click();
+    await component.getByLabel("Heading").fill("Hi");
+
+    await expect
+      .poll(() => readFormValue(component))
+      .toEqual({ card: { heading: "Hi", showPrice: true } });
   });
-  const component = await mount(
-    <SchemaFormHarness
-      meta={withCard}
-      resolveType={TEST_RESOLVE_TYPE}
-      defaultsOnCreateOnly
-      initialValue={{}}
-    />,
-  );
-
-  await component.getByRole("button", { name: "Card" }).click();
-  await component.getByLabel("Heading").fill("Hi");
-
-  await expect
-    .poll(() => readFormValue(component))
-    .toEqual({ card: { heading: "Hi", showPrice: true } });
-});
+}
 
 test("a form that never fills defaults (the blog's) adds an array item without them", async ({
   mount,

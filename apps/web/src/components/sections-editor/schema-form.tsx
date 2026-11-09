@@ -699,12 +699,10 @@ function SchemaFormBody({
       onChange(rest);
       return;
     }
-    // A value the stored block doesn't have is created by this first edit,
-    // with its defaults (when the form fills none in itself).
+    // A value the stored block doesn't have (absent or null) is created by
+    // this first edit, with its defaults (when the form fills none in itself).
     const created =
-      objValue[key] === undefined
-        ? seedNew(properties[key], fieldValue)
-        : fieldValue;
+      objValue[key] == null ? seedNew(properties[key], fieldValue) : fieldValue;
     onChange({ ...objValue, [key]: created });
   };
 

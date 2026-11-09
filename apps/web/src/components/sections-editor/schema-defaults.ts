@@ -120,15 +120,37 @@ function seedDiscriminator(
 /**
  * A value being created — a new section, array item, branch or option — with
  * its `@default`s filled in the same way {@link applySchemaDefaults} fills a
- * block. Saved-block references stay as they are.
+ * block. Unlike an existing value, it also starts from its own object
+ * `default` and, as a union, from its branch's defaults. Saved-block
+ * references stay as they are.
  */
 export function withDefaultsForNew<T>(
   schema: SchemaProperty | null | undefined,
   value: T,
   meta?: LiveMeta,
 ): T {
+  const base =
+    isPlainObject(value) && isPlainObject(schema?.default)
+      ? { ...structuredClone(schema.default), ...value }
+      : value;
+  const seeded = seedValue(schema, base, meta);
+  const branch = createdBranchSchema(schema, seeded);
   // Seeding only adds missing keys, so the value keeps its shape.
-  return seedValue(schema, value, meta) as T;
+  return (
+    branch && isPlainObject(seeded) ? seedShape(branch, seeded, meta) : seeded
+  ) as T;
+}
+
+/** The branch a new union value (no `__resolveType`) belongs to. */
+function createdBranchSchema(
+  schema: SchemaProperty | null | undefined,
+  value: unknown,
+): SchemaProperty | undefined {
+  if (schema?.type !== "block-ref" || !isPlainObject(value)) return undefined;
+  if (typeof value.__resolveType === "string") return undefined;
+  const refs = schema.anyOfRefs ?? [];
+  const shown = detectBlockRefType(value, refs);
+  return refs.find((r) => r.resolveType === shown)?.schema;
 }
 
 function isPlainObject(value: unknown): value is PlainObject {

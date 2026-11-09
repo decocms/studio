@@ -1,10 +1,17 @@
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { withDefaultsForNew } from "@/components/sections-editor/schema-defaults";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
 import { nextUniqueBlockKey } from "./content-mutations";
 
-/** Build a new saved global section block from a catalog entry. */
+/**
+ * Build a new saved global section block from a catalog entry. With `meta`,
+ * it starts with its `@default`s (for a project whose section forms don't
+ * fill them in).
+ */
 export function buildSectionBlockFromCatalogEntry(
   entry: SectionCatalogEntry,
   decofile: Record<string, unknown>,
+  meta?: LiveMeta,
 ): { blockKey: string; data: Record<string, unknown> } {
   const baseLabel = (entry.title || entry.resolveType.split("/").pop() || "")
     .replace(/\.(tsx?|jsx?)$/, "")
@@ -14,9 +21,10 @@ export function buildSectionBlockFromCatalogEntry(
   const blockKey = nextUniqueBlockKey(decofile, safeBase);
   return {
     blockKey,
-    data: {
-      __resolveType: entry.resolveType,
-      name: blockKey,
-    },
+    data: withDefaultsForNew<Record<string, unknown>>(
+      undefined,
+      { __resolveType: entry.resolveType, name: blockKey },
+      meta,
+    ),
   };
 }

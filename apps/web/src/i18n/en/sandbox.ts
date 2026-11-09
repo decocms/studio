@@ -1191,9 +1191,9 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.description":
     "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",
   "sandbox.defaultsOnCreateOnlyField.label":
-    "Fill default values only in new blocks",
+    "Fill section defaults only in new sections",
   "sandbox.defaultsOnCreateOnlyField.description":
-    "Editing a block never writes defaults for fields you didn't change. New sections, items and options still start with their defaults.",
+    "Editing a section never writes defaults for fields you didn't change. New sections, items and options in them still start with their defaults. Pages, SEO and apps are not affected.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",

@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { DefaultsOnCreateOnlyField } from "./defaults-on-create-only-field";
 
-const LABEL = "Fill default values only in new blocks";
+const LABEL = "Fill section defaults only in new sections";
 
 // useT() reads the language preference through TanStack Query.
 function wrapper({ children }: { children: ReactNode }) {

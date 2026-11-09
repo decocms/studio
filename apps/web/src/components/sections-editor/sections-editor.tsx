@@ -3051,7 +3051,7 @@ export function SectionsEditor({
   const handleSectionMatcherTypeChange = (newRt: string) => {
     setSectionRuleResolveType(newRt);
     const newRule: Record<string, unknown> = newRt
-      ? seedMatcherRule(newRt, meta)
+      ? seedMatcherRule(newRt, meta, { withDefaults: createOnly })
       : { __resolveType: alwaysMatcherResolveType(meta) };
     setSectionRuleFormValue(newRt ? newRule : {});
     scheduleSectionRuleSave(newRule);
@@ -4544,6 +4544,7 @@ export function SectionsEditor({
       />
       <VariantRuleSection>
         <VariantRuleEditor
+          defaultsOnCreateOnly={createOnly}
           currentRt={sectionRuleResolveType ?? ""}
           currentLabel={resolveVariantRuleLabel(
             activeSectionFlagVariant?.rule,
