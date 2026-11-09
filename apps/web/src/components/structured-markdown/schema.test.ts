@@ -19,6 +19,30 @@ describe("structured markdown", () => {
         parseStructuredBlock(source, JSON.stringify(message)),
       ).toMatchObject({ kind: "message", source, data: message });
     });
+  test("video attachments work across sources and reject unsafe URLs", () => {
+    for (const source of ["gchat", "whatsapp", "slack", "email"]) {
+      const attachment = {
+        kind: "video",
+        name: "Reported behavior.mp4",
+        url: "https://example.com/api/org_example/fs/home/read?path=report.mp4",
+      };
+      expect(
+        parseStructuredBlock(
+          source,
+          JSON.stringify({ ...message, attachments: [attachment] }),
+        ),
+      ).toMatchObject({ data: { attachments: [attachment] } });
+      expect(
+        parseStructuredBlock(
+          source,
+          JSON.stringify({
+            ...message,
+            attachments: [{ ...attachment, url: "javascript:alert(1)" }],
+          }),
+        ),
+      ).toBeNull();
+    }
+  });
   test("testing preserves structured links and steps", () => {
     expect(parseStructuredBlock("testing", JSON.stringify(testing))).toEqual({
       kind: "testing",

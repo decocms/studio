@@ -29,7 +29,7 @@ const messageSchema = z
           .object({
             name: text.max(200),
             url,
-            kind: z.enum(["image", "file"]).default("file"),
+            kind: z.enum(["image", "video", "file"]).default("file"),
           })
           .strict(),
       )

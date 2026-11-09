@@ -173,24 +173,35 @@ export function StructuredMarkdownBlock({ block }: { block: StructuredBlock }) {
               {data.body}
             </ReactMarkdown>
             {data.attachments?.map((attachment, index) => (
-              <a
-                key={index}
-                href={attachment.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 block text-sm underline"
-              >
-                {attachment.kind === "image" && (
-                  <img
+              <div key={index} className="mt-3 min-w-0">
+                {attachment.kind === "video" && (
+                  <video
                     src={attachment.url}
-                    alt={attachment.name}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="mb-1 max-h-64 max-w-full rounded-lg object-contain"
+                    controls
+                    playsInline
+                    preload="metadata"
+                    aria-label={attachment.name}
+                    className="mb-1 max-h-80 w-full rounded-lg bg-black"
                   />
                 )}
-                {attachment.name}
-              </a>
+                <a
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-sm underline"
+                >
+                  {attachment.kind === "image" && (
+                    <img
+                      src={attachment.url}
+                      alt={attachment.name}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="mb-1 max-h-64 max-w-full rounded-lg object-contain"
+                    />
+                  )}
+                  {attachment.name}
+                </a>
+              </div>
             ))}
           </div>
         </div>

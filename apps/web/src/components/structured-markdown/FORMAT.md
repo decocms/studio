@@ -29,7 +29,7 @@ Use `gchat`, `whatsapp`, `slack` or `email` as the fence language. They share on
 ```
 ````
 
-`author.name` and `body` are required. Copy the sender's display name from the source. Omit unavailable optional fields; keep the report distinct from the agent's diagnosis. Label a paraphrase or historical reconstruction in the body rather than presenting it as a verbatim message. `body` supports ordinary Markdown, without raw HTML or recursive structured blocks. Attachments use `image` or `file`; videos remain file links. Timestamps require an ISO date with timezone.
+`author.name` and `body` are required. Copy the sender's display name from the source. Omit unavailable optional fields; keep the report distinct from the agent's diagnosis. Label a paraphrase or historical reconstruction in the body rather than presenting it as a verbatim message. `body` supports ordinary Markdown, without raw HTML or recursive structured blocks. Attachments use `image`, `video` or `file`. Videos render inline with native controls, without autoplay, and retain a link to open the file. Import avatars and attachments into the organization filesystem before writing the message; use its stable authenticated read URLs rather than temporary source URLs. Timestamps require an ISO date with timezone.
 
 ## Testing
 
