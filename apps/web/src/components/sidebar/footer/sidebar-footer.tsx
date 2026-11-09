@@ -2,45 +2,26 @@ import { AccountPopover } from "@/components/account-popover";
 import {
   SidebarFooter,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
 } from "@decocms/ui/components/sidebar.tsx";
-import { UserPlus01 } from "@untitledui/icons";
-import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { SidebarTopActions } from "@/components/sidebar/top-actions";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
-import { useT } from "@/i18n/use-t";
 import { InboxIconButton } from "./inbox";
 import { SettingsIconButton } from "./settings-button";
-import { SidebarFooterIcon, SIDEBAR_FOOTER_ICON_SIZE } from "./icon-slot";
 import { SidebarLinkClaude } from "./link-claude";
+import { SidebarFeedback } from "./feedback";
 
-/** Quick actions above the account row: linking your own Claude plan (until
- *  it is linked, and not in reports-only orgs) and inviting members. */
+/** Quick actions above the account row. */
 function SidebarExtraActions({ showLinkClaude }: { showLinkClaude: boolean }) {
-  const t = useT();
   return (
     <SidebarMenu className="gap-0.5">
       {showLinkClaude && <SidebarLinkClaude />}
-      <SidebarMenuItem>
-        <InviteMemberDialog
-          trigger={
-            <SidebarMenuButton
-              tooltip={t("sidebar.sidebarFooter.inviteMembers")}
-            >
-              <SidebarFooterIcon>
-                <UserPlus01 className={SIDEBAR_FOOTER_ICON_SIZE} />
-              </SidebarFooterIcon>
-              <span>{t("sidebar.sidebarFooter.inviteMembers")}</span>
-            </SidebarMenuButton>
-          }
-        />
-      </SidebarMenuItem>
+      <SidebarFeedback />
     </SidebarMenu>
   );
 }
 
-/** Account footer — the invite action, the account row, and the controls that
+/** Account footer — the quick actions, the account row, and the controls that
  *  sit beside it: Settings and notifications. Neither control is a destination
  *  — you open it, change something and come back — which is why it is an icon
  *  on the account row rather than a row in the spine. The usage chip only shows
