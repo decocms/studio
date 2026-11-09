@@ -465,9 +465,10 @@ describe("a malformed latest.json is no release yet", () => {
     const latest = JSON.parse(
       t.delivery.objects.get(deliveryKeys.latest("acme"))!.text,
     );
+    // Past the malformed object's own sequence (3).
     expect(latest).toMatchObject({
       revision: published.body.revision,
-      sequence: 1,
+      sequence: 4,
     });
   });
   it("a rollback replaces it: the target is live, recorded as made current", async () => {
@@ -488,7 +489,8 @@ describe("a malformed latest.json is no release yet", () => {
     const latest = JSON.parse(
       t.delivery.objects.get(deliveryKeys.latest("acme"))!.text,
     );
-    expect(latest).toMatchObject({ revision: id, sequence: 2 });
+    // Past both the target's sequence (1) and the malformed object's (3).
+    expect(latest).toMatchObject({ revision: id, sequence: 4 });
     const after = await t.call("GET", "acme/releases");
     expect(after.body.live).toBe(id);
     expect(after.body.revisions[0]).toMatchObject({

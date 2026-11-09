@@ -35,9 +35,10 @@
  * live index; refused when there is no latest.json at all
  * (`NotPublishedError`, 409 `not_published`). Over a malformed latest.json
  * it replaces it like a publish does (`If-Match` its ETag), with no
- * `previous` and the target's `sequence` + 1: a site isolate adopts a
- * latest.json only with a higher `sequence` than the one it holds, and one
- * may still hold the target.
+ * `previous` and a `sequence` one past both the target's and the malformed
+ * object's own (when it has one): a site isolate adopts a latest.json only
+ * with a higher `sequence` than the one it holds, and one may still hold
+ * the target, or the malformed object (the SDK's parser is looser).
  */
 
 import { canonicalJson } from "@decocms/blocks/protocol";
@@ -163,8 +164,9 @@ const utf8Length = (text: string) => Buffer.byteLength(text, "utf8");
  * then moves latest.json, `If-Match` the `etag` read (create-only when
  * there was none). The new index's `sequence` is one past `after.sequence`
  * and its meta's `previous` is `after.previous`: the live release's, or
- * (none live: a first publish, a malformed latest.json) 0 and null for a
- * publish. Returns the new id, or null on a lost race.
+ * (none live: a first publish, a malformed latest.json) the malformed
+ * object's own `sequence` (else 0) and null for a publish. Returns the new
+ * id, or null on a lost race.
  */
 async function writeAndPoint(
   deps: CmsPublishDeps,
@@ -538,7 +540,7 @@ export async function publishCmsDraft(
       deps,
       base
         ? { sequence: base.latest.sequence, previous: base.latest.revision }
-        : { sequence: 0, previous: null },
+        : { sequence: read.malformedSequence ?? 0, previous: null },
       read.etag,
       blocks,
       { draft: draft.name, message: message.trim() },
@@ -603,7 +605,8 @@ export type CmsRollbackResult =
  * meta.json and index.json (whether latest.json ever named it or not):
  * steps 1 and 4–7, writing no block object. Refused when there is no
  * latest.json (`NotPublishedError`); a malformed one is replaced, as a
- * publish replaces it (`previous` null, the target's `sequence` + 1).
+ * publish replaces it (`previous` null, a `sequence` past the target's and
+ * the malformed object's own).
  */
 export async function rollbackToRevision(
   deps: CmsPublishDeps,
@@ -635,7 +638,13 @@ export async function rollbackToRevision(
       deps,
       live
         ? { sequence: live.latest.sequence, previous: live.latest.revision }
-        : { sequence: targetIndex.sequence, previous: null },
+        : {
+            sequence: Math.max(
+              targetIndex.sequence,
+              read.malformedSequence ?? 0,
+            ),
+            previous: null,
+          },
       read.etag,
       wanted,
       {

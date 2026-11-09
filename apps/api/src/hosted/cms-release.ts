@@ -178,6 +178,30 @@ export interface LiveRelease {
 export interface LatestObject {
   release: LiveRelease | null;
   etag: string | null;
+  /**
+   * A malformed latest.json's own `sequence`, when it holds a positive
+   * integer one (absent otherwise). The SDK's parser is looser than this
+   * Studio's (it drops an entry's non-object `meta`, where Studio rejects
+   * the index), so a site isolate may hold it, and it adopts only a higher
+   * `sequence`: whatever replaces the object goes past it.
+   */
+  malformedSequence?: number;
+}
+
+/** `text`'s `sequence` if it is a positive integer one past which fits. */
+function sequenceOf(text: string): number | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const sequence = isRecord(value) ? value.sequence : undefined;
+  return typeof sequence === "number" &&
+    Number.isSafeInteger(sequence + 1) &&
+    sequence >= 1
+    ? sequence
+    : undefined;
 }
 
 /**
@@ -231,7 +255,10 @@ function adoptLatest(
       key,
       why: index.why,
     });
-    return { release: null, etag };
+    const sequence = sequenceOf(text);
+    return sequence === undefined
+      ? { release: null, etag }
+      : { release: null, etag, malformedSequence: sequence };
   }
   const value: unknown = JSON.parse(text);
   const hosts =

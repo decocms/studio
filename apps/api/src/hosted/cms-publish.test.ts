@@ -784,8 +784,9 @@ describe("a malformed latest.json reads as no release yet", () => {
       "a pre-content-addressed pointer",
       PRE_163_LATEST,
       "revision is not an id",
+      { malformedSequence: 4 },
     ],
-    ["unparseable JSON", "{not json", "not JSON"],
+    ["unparseable JSON", "{not json", "not JSON", {}],
     [
       "a bad entry",
       JSON.stringify({
@@ -794,37 +795,48 @@ describe("a malformed latest.json reads as no release yet", () => {
         blocks: { a: { version: "short" } },
       }),
       'entry "a" is malformed',
+      { malformedSequence: 1 },
     ],
-  ])("%s: null, one warning per read, never cached", async (_, text, why) => {
-    const { delivery } = setup();
-    delivery.objects.set(deliveryKeys.latest(SITE), {
-      text,
-      etag: '"old"',
-      cacheControl: "",
-    });
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      expect(await readLatest(delivery.store, SITE)).toBeNull();
-      expect(await readLatestObject(delivery.store, SITE)).toEqual({
-        release: null,
+    [
+      "an unusable sequence",
+      JSON.stringify({ revision: "x", sequence: 1.5, blocks: {} }),
+      "revision is not an id",
+      {},
+    ],
+  ])(
+    "%s: null, one warning per read, never cached",
+    async (_, text, why, extra) => {
+      const { delivery } = setup();
+      delivery.objects.set(deliveryKeys.latest(SITE), {
+        text,
         etag: '"old"',
+        cacheControl: "",
       });
-      expect(warn).toHaveBeenCalledTimes(2);
-      expect(warn).toHaveBeenCalledWith(
-        "cms: latest.json is malformed; read as no release yet",
-        { site: SITE, key: deliveryKeys.latest(SITE), why },
-      );
-    } finally {
-      warn.mockRestore();
-    }
-    // Nothing cached: neither read was conditional.
-    expect(delivery.reads).toEqual([
-      `get ${deliveryKeys.latest(SITE)}`,
-      `get ${deliveryKeys.latest(SITE)}`,
-    ]);
-  });
+      const warn = spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        expect(await readLatest(delivery.store, SITE)).toBeNull();
+        expect(await readLatestObject(delivery.store, SITE)).toStrictEqual({
+          release: null,
+          etag: '"old"',
+          ...extra,
+        });
+        expect(warn).toHaveBeenCalledTimes(2);
+        expect(warn).toHaveBeenCalledWith(
+          "cms: latest.json is malformed; read as no release yet",
+          { site: SITE, key: deliveryKeys.latest(SITE), why },
+        );
+      } finally {
+        warn.mockRestore();
+      }
+      // Nothing cached: neither read was conditional.
+      expect(delivery.reads).toEqual([
+        `get ${deliveryKeys.latest(SITE)}`,
+        `get ${deliveryKeys.latest(SITE)}`,
+      ]);
+    },
+  );
 
-  it("a publish replaces it If-Match its ETag, as a first publish (sequence 1)", async () => {
+  it("a publish replaces it If-Match its ETag, as a first publish past its sequence", async () => {
     const { delivery, deps, draft, save, writes } = setup();
     malformed(delivery);
     await save("a", { v: 1 });
@@ -841,7 +853,8 @@ describe("a malformed latest.json reads as no release yet", () => {
     expect(conditions).toEqual([{ ifMatch: '"old"' }]);
     expect(writes()).toContain(`put ${deliveryKeys.latest(SITE)}`);
     const live = await readLatest(delivery.store, SITE);
-    expect(live?.latest).toMatchObject({ revision: id, sequence: 1 });
+    // PRE_163_LATEST is sequence 4.
+    expect(live?.latest).toMatchObject({ revision: id, sequence: 5 });
     expect(await readRevisionMeta(delivery.store, SITE, id)).toMatchObject({
       previous: null,
     });
@@ -867,8 +880,11 @@ describe("a malformed latest.json reads as no release yet", () => {
     expect(Object.keys(live?.latest.blocks ?? {})).toEqual(["a", "b"]);
   });
 
-  /** r1, then r2 live (with a note), then latest.json made malformed. */
-  async function malformedOverHistory() {
+  /**
+   * r1, then r2 live (with a note), then latest.json made malformed (no
+   * sequence of its own, unless `text` gives one).
+   */
+  async function malformedOverHistory(text = "{not json") {
     const ctx = setup();
     const r1 = newRevisionId(clock++);
     const r2 = newRevisionId(clock++);
@@ -880,7 +896,11 @@ describe("a malformed latest.json reads as no release yet", () => {
       { a: { v: 2 } },
       { message: "Summer sale" },
     );
-    malformed(ctx.delivery);
+    ctx.delivery.objects.set(deliveryKeys.latest(SITE), {
+      text,
+      etag: '"old"',
+      cacheControl: "",
+    });
     const conditions: unknown[] = [];
     ctx.delivery.hooks.beforePut = (key, condition) => {
       if (key === deliveryKeys.latest(SITE)) conditions.push(condition);
@@ -918,6 +938,47 @@ describe("a malformed latest.json reads as no release yet", () => {
       message: "Made current: Summer sale",
       publishedAt: "2026-11-04T10:00:00.000Z",
     });
+  });
+
+  it("a rollback goes past the malformed object's own sequence, which an isolate may hold", async () => {
+    // A non-object `meta` fails this Studio's parser, not the SDK's: an
+    // isolate may hold this pointer, at sequence 7.
+    const held = JSON.stringify({
+      revision: newRevisionId(clock++),
+      sequence: 7,
+      blocks: { a: { version: blockVersion({ v: 9 }), meta: null } },
+    });
+    const { delivery, deps, r1, conditions } = await malformedOverHistory(held);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const result = await rollbackToRevision(deps, r1, "");
+    warn.mockRestore();
+    expect(result).toMatchObject({ result: "published", previous: null });
+    expect(conditions).toEqual([{ ifMatch: '"old"' }]);
+    const live = await readLatest(delivery.store, SITE);
+    expect(live?.latest).toMatchObject({
+      revision: (result as { revision: string }).revision,
+      sequence: 8,
+    });
+  });
+
+  it("a publish goes past the malformed object's own sequence too", async () => {
+    const { delivery, deps, draft, save } = setup();
+    delivery.objects.set(deliveryKeys.latest(SITE), {
+      text: JSON.stringify({
+        revision: newRevisionId(clock++),
+        sequence: 7,
+        blocks: { a: { version: blockVersion({ v: 9 }), meta: null } },
+      }),
+      etag: '"old"',
+      cacheControl: "",
+    });
+    await save("a", { v: 1 });
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const result = await publishCmsDraft(deps, draft, "");
+    warn.mockRestore();
+    expect(result).toMatchObject({ result: "published", previous: null });
+    const live = await readLatest(delivery.store, SITE);
+    expect(live?.latest.sequence).toBe(8);
   });
 
   it("a rollback over it detects a change between the read and the write", async () => {
