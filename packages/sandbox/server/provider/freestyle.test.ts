@@ -789,6 +789,43 @@ describe("repo snapshots", () => {
     provider.close();
   });
 
+  test("a repo snapshot Freestyle deleted is forgotten, and the sandbox forks the base", async () => {
+    const { fake, snapshots, creates } = client();
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client: fake,
+    });
+    const opts = { tenant: TENANT, repo: REPO, repoSnapshot: true };
+    const forked = () => creates.filter((c) => c.slug).at(-1)?.snapshotId;
+    await provider.ensure(ref("a"), opts);
+    await settled(() => snapshots.length === 1);
+    const [gone] = snapshots;
+    await provider.ensure(ref("b"), opts);
+    expect(forked()).toBe(gone);
+
+    snapshots.length = 0;
+    const create = fake.vms.create.bind(fake.vms);
+    fake.vms.create = (async (options: Record<string, unknown>) => {
+      if (options.snapshotId === gone && !snapshots.includes(gone)) {
+        creates.push(options);
+        throw new FreestyleApiError(400, {
+          code: "BAD_REQUEST",
+          message: `snapshot ${gone} does not exist`,
+        });
+      }
+      return create(options);
+    }) as typeof fake.vms.create;
+
+    const sb = await provider.ensure(ref("c"), opts);
+    expect(String(forked())).toStartWith("studio-sandbox-");
+    expect(sb.warmPoolAdopted).toBe(false);
+    // It is rebuilt right away, and the next sandbox forks the new one.
+    await settled(() => snapshots.length === 1);
+    await provider.ensure(ref("d"), opts);
+    expect(forked()).toBe(snapshots[0]);
+    provider.close();
+  });
+
   test("builds nothing unless asked, nor for a run with no dev server", async () => {
     const { fake, snapshots } = client();
     const provider = new FreestyleSandboxProvider({
