@@ -160,14 +160,14 @@ function useDecoOverview(project: SiteProject | undefined, today: boolean) {
   const { org } = useProjectContext();
   const status = useAnalyticsStatus(
     org.slug,
-    { site: project?.site ?? "" },
+    { analyticsSite: project?.analyticsSite ?? "" },
     project !== undefined,
   );
   const registered =
     project !== undefined && status.data?.registered === true && today;
   const query = useDecoView({
     orgSlug: org.slug,
-    site: project?.site ?? "",
+    site: project?.analyticsSite ?? "",
     view: "overview",
     range: "24h",
     segment: EMPTY_SEGMENT,
