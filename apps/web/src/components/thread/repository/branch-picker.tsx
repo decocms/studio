@@ -677,7 +677,7 @@ function ReleaseGroupHeader({
   return (
     <p
       className={cn(
-        "px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground",
+        "px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground",
         divided && "mt-1 border-t",
       )}
     >
