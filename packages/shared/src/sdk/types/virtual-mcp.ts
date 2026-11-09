@@ -739,6 +739,23 @@ const publishPolicyMetadataField = PublishPolicySchema.nullable()
   );
 
 /**
+ * What a CMS Publish checks in the content it publishes: required fields left
+ * missing, which a site running `deco check` rejects at build time.
+ * - `none` (default): nothing is checked.
+ * - `changes`: a field the change leaves missing holds the Publish;
+ *   one that was already missing is only listed.
+ * - `all`: any missing required field holds it.
+ */
+const ContentCheckSchema = z.enum(["none", "changes", "all"]);
+export type ContentCheck = z.infer<typeof ContentCheckSchema>;
+
+const contentCheckMetadataField = ContentCheckSchema.nullable()
+  .optional()
+  .describe(
+    "What a CMS Publish checks for required fields left missing. 'none' (default) checks nothing; 'changes' holds it only for fields the change leaves missing; 'all' holds it for any missing required field.",
+  );
+
+/**
  * Reusable `metadata.fastPreview` field. When true — and a preview server URL
  * is set (`previewServerUrl`, or the legacy `productionUrl` key) — the project
  * is SANDBOX-LESS: the CMS preview renders the site's own real page on the
@@ -882,6 +899,7 @@ const VirtualMcpMetadataFields = {
       "The project's site id (asset tenancy, CDN paths, site tokens). Set once when the site is created or imported; any write that would change it is refused.",
     ),
   publishPolicy: publishPolicyMetadataField,
+  contentCheck: contentCheckMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
   productionUrl: z
     .string()

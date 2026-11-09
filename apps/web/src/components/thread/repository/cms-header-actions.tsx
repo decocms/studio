@@ -532,6 +532,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           owner={repository.owner}
           repo={repository.name}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
+          contentCheck={vm?.metadata?.contentCheck}
           draftPreviewUrl={draftPreviewUrl}
           destinationHost={draftPreview.host}
           previewServerUrl={previewServerUrl}

@@ -1,4 +1,5 @@
 import { isV8Schema } from "@decocms/shared/blocks-major";
+import { isSecretBlock } from "@decocms/shared/decofile";
 import { arrayItemDisplayValue } from "./array-item-hidden";
 import { cachedResolveSchema } from "./fields/resolved-schema-cache";
 import { isEmptyFieldValue } from "./fields/required-field-context";
@@ -36,56 +37,99 @@ function arrayItemValueToValidate(
 /** Matches schema-form's structural descent cap; a section tree is far shallower. */
 const MAX_DEPTH = 32;
 
+/** A required prop the open form would flag as empty. */
+export interface MissingRequiredField {
+  /** Keys and array indices from the checked value down to the prop. */
+  path: Array<string | number>;
+  /** `path` for people: each prop's title (its key when untitled). */
+  labels: Array<string | number>;
+  /**
+   * The prop is missing (or `null`) and the schema gives it no default, which
+   * `deco check` rejects. A blank value (`""`, `[]`, `{}`) is still there, so
+   * the site builds; the form flags it all the same.
+   */
+  blocks: boolean;
+}
+
 /**
- * Whether an object's config is missing a required prop the open form would
- * flag as empty. Mirrors schema-form's per-object
- * `required && isEmptyFieldValue(value[key])` rule (skipping hidden props),
- * recursing through nested plain-object properties and plain-object array items
- * — the same places the form renders a required marker. Block-ref/section
- * arrays (whose items are wrappers, not plain objects) are skipped via the
- * `items.properties` guard, so their null-hole `required` guard never counts.
+ * Every required prop an object's config leaves empty, by the open form's
+ * per-object `required && isEmptyFieldValue(value[key])` rule (skipping hidden
+ * props and secrets), recursing through nested plain-object properties and plain-object
+ * array items — the same places the form renders a required marker.
+ * Block-ref/section arrays (whose items are wrappers, not plain objects) are
+ * skipped via the `items.properties` guard, so their null-hole `required`
+ * guard never counts.
  */
-export function hasMissingRequiredField(
+export function missingRequiredFields(
   schema: SchemaProperty | null | undefined,
   value: unknown,
+  at: Pick<MissingRequiredField, "path" | "labels"> = { path: [], labels: [] },
   depth = 0,
-): boolean {
-  if (!schema?.properties || depth > MAX_DEPTH) return false;
+): MissingRequiredField[] {
+  if (!schema?.properties || depth > MAX_DEPTH) return [];
   const properties = schema.properties;
   const obj =
     value != null && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  const child = (key: string) => ({
+    path: [...at.path, key],
+    labels: [...at.labels, properties[key]?.title?.trim() || key],
+  });
+  const missing: MissingRequiredField[] = [];
   for (const key of schema.required ?? []) {
     if (HIDDEN_PROPS.has(key) || properties[key]?.hidden === true) continue;
-    if (isEmptyFieldValue(obj[key])) return true;
+    const current = obj[key];
+    if (!isEmptyFieldValue(current)) continue;
+    missing.push({
+      ...child(key),
+      blocks: current == null && properties[key]?.default === undefined,
+    });
   }
   for (const [key, childSchema] of Object.entries(properties)) {
     const childValue = obj[key];
-    if (childValue == null) continue;
+    // Older sites store a secret as `encrypted`, not the schema's `ciphertext`.
+    if (childValue == null || childSchema.hidden === true) continue;
+    if (isSecretBlock(childValue)) continue;
     if (
       childSchema.properties &&
       typeof childValue === "object" &&
-      !Array.isArray(childValue) &&
-      hasMissingRequiredField(childSchema, childValue, depth + 1)
+      !Array.isArray(childValue)
     ) {
-      return true;
+      missing.push(
+        ...missingRequiredFields(
+          childSchema,
+          childValue,
+          child(key),
+          depth + 1,
+        ),
+      );
     }
-    if (
-      childSchema.items?.properties &&
-      Array.isArray(childValue) &&
-      childValue.some((item) => {
+    if (childSchema.items?.properties && Array.isArray(childValue)) {
+      const list = child(key);
+      childValue.forEach((item, index) => {
         const itemValue = arrayItemValueToValidate(item);
-        return (
-          itemValue !== SKIP_ARRAY_ITEM &&
-          hasMissingRequiredField(childSchema.items, itemValue, depth + 1)
+        if (itemValue === SKIP_ARRAY_ITEM) return;
+        missing.push(
+          ...missingRequiredFields(
+            childSchema.items,
+            itemValue,
+            { path: [...list.path, index], labels: [...list.labels, index] },
+            depth + 1,
+          ),
         );
-      })
-    ) {
-      return true;
+      });
     }
   }
-  return false;
+  return missing;
+}
+
+/** Whether {@link missingRequiredFields} finds any: the form's required marker. */
+export function hasMissingRequiredField(
+  schema: SchemaProperty | null | undefined,
+  value: unknown,
+): boolean {
+  return missingRequiredFields(schema, value).length > 0;
 }
 
 /**

@@ -50,6 +50,9 @@ import {
   readLastPreviewPage,
 } from "@/components/sandbox/preview/last-preview-page.ts";
 import { changeId, PublishChangeCard } from "./cms-publish-change-card.tsx";
+import { publishRequiredFieldsGate } from "./publish-required-fields.ts";
+import { PublishRequiredFieldsRow } from "./publish-required-fields-row.tsx";
+import { useCachedSiteMeta } from "./use-cached-site-meta.ts";
 import { PublishCompare } from "./cms-publish-compare.tsx";
 import type { CompareDraft } from "./cms-publish-compare-path.ts";
 import {
@@ -77,6 +80,7 @@ import {
   type PublishPolicy,
 } from "./sandbox-git-api.ts";
 import type { PrSummary } from "./use-pr-data.ts";
+import type { ContentCheck } from "@decocms/shared/sdk/types/virtual-mcp";
 import {
   useCmsPublishActions,
   type CmsPublishMode,
@@ -116,6 +120,8 @@ export interface PublishDialogProps {
   owner: string;
   repo: string;
   publishPolicy: PublishPolicy;
+  /** The site's `contentCheck`: what Publish checks for missing required fields. */
+  contentCheck: ContentCheck | null | undefined;
   /** Where Preview opens: Fast Preview's draft URL, or the sandbox preview. */
   draftPreviewUrl: string | null;
   destinationHost: string | null;
@@ -694,6 +700,7 @@ function CmsPublishView({
   repoTarget,
   owner,
   repo,
+  contentCheck,
   draftPreviewUrl,
   destinationHost,
   previewServerUrl,
@@ -863,7 +870,20 @@ function CmsPublishView({
   /** Changes to publish: the listed ones, a v8 sandbox's other work, or a
    *  hosted site's saved changes that aren't live yet. */
   const hasWork = summary.count > 0 || otherWork || notLive;
-  const canSubmit = !isPublishing && hasWork && (isReview || gate.allowed);
+  const siteMeta = useCachedSiteMeta({ orgSlug, virtualMcpId, branch });
+  const requiredFields = publishRequiredFieldsGate({
+    meta: siteMeta,
+    check: contentCheck,
+    changes,
+    contentPending: bodiesPending,
+    contentFailed: bodiesFailed,
+    review: isReview,
+  });
+  const canSubmit =
+    !isPublishing &&
+    hasWork &&
+    !requiredFields.blocks &&
+    (isReview || gate.allowed);
 
   const headerTitle = isReview
     ? summary.count === 0
@@ -1146,7 +1166,19 @@ function CmsPublishView({
               </>
             )
           }
-          gate={gateRow}
+          gate={
+            <>
+              {hasWork ? (
+                <PublishRequiredFieldsRow
+                  found={requiredFields.found}
+                  checking={requiredFields.checking}
+                  blocking={requiredFields.blocks}
+                  review={isReview}
+                />
+              ) : null}
+              {gateRow}
+            </>
+          }
           footer={
             <>
               <div className="flex gap-2">

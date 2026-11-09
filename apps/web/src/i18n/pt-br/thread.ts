@@ -240,6 +240,15 @@ export const thread = {
   "thread.publishPopover.discardAll": "Descartar tudo",
   "thread.publishPopover.discardAllConfirm": "Isso não pode ser desfeito.",
   "thread.publishPopover.discardAllTitle": "Descartar todas as alterações?",
+  "thread.publishPopover.requiredFieldsChecking":
+    "Verificando campos obrigatórios…",
+  "thread.publishPopover.requiredFieldsEmpty":
+    "Há campos obrigatórios vazios. Dá para publicar, mas confira antes:",
+  "thread.publishPopover.requiredFieldsMissing":
+    "Faltam campos obrigatórios. Preencha-os, ou descarte essas alterações, para publicar:",
+  "thread.publishPopover.requiredFieldsMissingReview":
+    "Faltam campos obrigatórios. Eles precisam ser preenchidos antes de publicar estas alterações:",
+  "thread.publishPopover.requiredFieldsMore": "e mais {count}",
   "thread.publishPopover.reviewNote": "Nota para quem revisa",
   "thread.publishPopover.reviewNotePlaceholder": "O que mudou e por quê…",
   "thread.publishPopover.reviewing": "Revisando conteúdo…",
