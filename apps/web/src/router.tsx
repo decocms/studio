@@ -1141,6 +1141,14 @@ const tasksRoute = createRoute({
     ...taskBoardSearchShape,
   }),
   beforeLoad: ({ params, search }) => {
+    if (search.voice) {
+      throw redirect({
+        to: "/$org/inbox",
+        params: { org: params.org },
+        replace: true,
+      });
+    }
+
     const promoted = promoteLegacyTaskParam(params.taskKey, search);
     if (!promoted) return;
     throw redirect({
@@ -1152,6 +1160,22 @@ const tasksRoute = createRoute({
     });
   },
   component: lazyRouteComponent(() => import("./routes/workspace/tasks.tsx")),
+});
+
+const inboxRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/inbox",
+  staticData: {
+    pageTitle: "voiceInbox.inbox",
+    defaultMain: "board",
+    mainView: "board",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/tasks.tsx"),
+    "InboxRoute",
+  ),
 });
 
 /** The org board's analytics. Every member; the cross-org picker is admin-org only. */
@@ -1815,6 +1839,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   legacyAgentsIndexRoute,
   legacyAgentsDeepRoute,
   tasksRoute,
+  inboxRoute,
   taskBoardAnalyticsRoute,
   threadAnalyticsRoute,
   reportsRoute,

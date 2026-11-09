@@ -1,4 +1,4 @@
-import { useSearch } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { VoiceInbox } from "@/layouts/task-board/voice-inbox";
 import { ChatLayout } from "@/components/chat-layout";
 import { TaskBoardPage } from "@/layouts/task-board";
@@ -16,9 +16,8 @@ function Board() {
   );
 }
 
-export default function TasksRoute() {
+function TaskBoardAccess({ children }: { children: ReactNode }) {
   const { locator } = useProjectContext();
-  const search = useSearch({ strict: false });
   return (
     <ChatLayout.Content>
       <FeatureGate
@@ -36,8 +35,24 @@ export default function TasksRoute() {
           </PaywallBackdrop>
         }
       >
-        {search.voice ? <VoiceInbox /> : <Board />}
+        {children}
       </FeatureGate>
     </ChatLayout.Content>
+  );
+}
+
+export default function TasksRoute() {
+  return (
+    <TaskBoardAccess>
+      <Board />
+    </TaskBoardAccess>
+  );
+}
+
+export function InboxRoute() {
+  return (
+    <TaskBoardAccess>
+      <VoiceInbox />
+    </TaskBoardAccess>
   );
 }

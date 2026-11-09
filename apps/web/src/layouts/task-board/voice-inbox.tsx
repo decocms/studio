@@ -101,9 +101,8 @@ export function VoiceInbox() {
               setSelectedId(null);
               setDismissed([]);
               void navigate({
-                to: "/$org/tasks/{-$taskKey}",
-                params: { org: slug, taskKey: undefined },
-                search: { voice: true },
+                to: "/$org/inbox",
+                params: { org: slug },
               });
             }}
             trigger={
