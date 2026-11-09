@@ -1,4 +1,5 @@
 export const voiceInbox = {
+  "voiceInbox.breadcrumb": "Organization and project",
   "voiceInbox.mine": "My tasks",
   "voiceInbox.allActive": "All active",
   "voiceInbox.previousTask": "Previous task",

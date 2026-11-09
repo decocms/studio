@@ -13,12 +13,14 @@ export function TaskProjectPicker({
   selectedEntry,
   fallbackLabel,
   className,
+  showIcon = true,
   onSelect,
 }: {
   entries: ProjectIndexEntry[];
   selectedEntry?: ProjectIndexEntry;
   fallbackLabel?: string;
   className?: string;
+  showIcon?: boolean;
   onSelect: (entry: ProjectIndexEntry | null) => void;
 }) {
   const t = useT();
@@ -30,7 +32,7 @@ export function TaskProjectPicker({
           className={className}
           aria-label={t("taskBoard.taskDialog.projectLabel")}
         >
-          <ProjectEntryIcon entry={selectedEntry} />
+          {showIcon && <ProjectEntryIcon entry={selectedEntry} />}
           <span className="min-w-0 truncate text-left">
             {selectedEntry?.title ??
               fallbackLabel ??

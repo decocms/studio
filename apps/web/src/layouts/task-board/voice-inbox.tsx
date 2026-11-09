@@ -82,25 +82,41 @@ export function VoiceInbox() {
         >
           <ChevronLeft />
         </Button>
-        {org.logo && (
-          <img
-            src={org.logo}
-            alt=""
-            className="size-7 rounded-lg object-contain"
-          />
-        )}
-        <span className="text-sm font-medium">{org.name}</span>
-        {task && (
-          <TaskProjectPicker
-            entries={stampableEntries(index)}
-            selectedEntry={entry ?? undefined}
-            fallbackLabel={task.repo ?? undefined}
-            className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground"
-            onSelect={(project) =>
-              actions.update.mutate({ id: task.id, ...stampFor(project) })
-            }
-          />
-        )}
+        <nav
+          aria-label={t("voiceInbox.breadcrumb")}
+          className="flex min-w-0 items-center gap-1"
+        >
+          <span className="flex h-8 min-w-0 shrink-0 items-center gap-2 px-1 text-sm font-medium leading-5">
+            {org.logo && (
+              <img
+                src={org.logo}
+                alt=""
+                className="size-5 shrink-0 rounded object-contain"
+              />
+            )}
+            <span className="max-w-24 truncate">{org.name}</span>
+          </span>
+          {task && (
+            <>
+              <span
+                aria-hidden
+                className="px-1 text-sm leading-5 text-muted-foreground/50"
+              >
+                /
+              </span>
+              <TaskProjectPicker
+                entries={stampableEntries(index)}
+                selectedEntry={entry ?? undefined}
+                fallbackLabel={task.repo ?? undefined}
+                showIcon={false}
+                className="focus-ring flex h-8 min-w-0 items-center rounded-md px-2 text-sm font-medium leading-5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                onSelect={(project) =>
+                  actions.update.mutate({ id: task.id, ...stampFor(project) })
+                }
+              />
+            </>
+          )}
+        </nav>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"

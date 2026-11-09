@@ -1,5 +1,6 @@
 import type { voiceInbox as en } from "../en/voice-inbox";
 export const voiceInbox = {
+  "voiceInbox.breadcrumb": "Organização e projeto",
   "voiceInbox.mine": "Minhas tarefas",
   "voiceInbox.allActive": "Todas ativas",
   "voiceInbox.previousTask": "Tarefa anterior",
