@@ -251,6 +251,8 @@ await retry(
 );
 
 const server = Bun.serve({
+  // Three 100 MiB feedback images plus multipart overhead; routes enforce their own limits.
+  maxRequestBodySize: 301 * 1024 * 1024,
   // This was necessary because MCP has SSE endpoints (like notification) that disconnects after 10 seconds (default bun idle timeout)
   idleTimeout: 0,
   port,

@@ -85,7 +85,7 @@ export const createFeedbackRoutes = () => {
       if (!fields.success || files.length > FEEDBACK_MAX_SCREENSHOTS) {
         return c.json({ error: "Invalid feedback" }, 400);
       }
-      const images: { bytes: Uint8Array; mime: string; ext: string }[] = [];
+      const images: { file: File; mime: string; ext: string }[] = [];
       for (const file of files) {
         if (
           !(file instanceof File) ||
@@ -94,7 +94,7 @@ export const createFeedbackRoutes = () => {
         ) {
           return c.json({ error: "Invalid screenshot size" }, 400);
         }
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
         const type = sniffAvatarType(bytes);
         if (
           !type ||
@@ -103,7 +103,7 @@ export const createFeedbackRoutes = () => {
         ) {
           return c.json({ error: "Invalid screenshot format" }, 400);
         }
-        images.push({ bytes, ...type });
+        images.push({ file, ...type });
       }
       const personal = buildUserFs(ctx);
       const s3 = getObjectStorageS3Service();
@@ -120,16 +120,17 @@ export const createFeedbackRoutes = () => {
       let committed = false;
       try {
         for (const [index, image] of images.entries()) {
+          const bytes = new Uint8Array(await image.file.arrayBuffer());
           const path = `${submission}/${index}.${image.ext}`;
           const personalPath = `feedback/${path}`;
           // Track both copies so a failed submission can remove completed writes.
           written.push({ fs: personal, volume: user.id, path: personalPath });
-          await personal.write(user.id, personalPath, image.bytes, {
+          await personal.write(user.id, personalPath, bytes, {
             actor: user.id,
             contentType: image.mime,
           });
           written.push({ fs: destination, volume: VOLUME, path });
-          await destination.write(VOLUME, path, image.bytes, {
+          await destination.write(VOLUME, path, bytes, {
             actor: "system",
             contentType: image.mime,
           });

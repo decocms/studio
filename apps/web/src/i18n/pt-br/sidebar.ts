@@ -85,7 +85,7 @@ export const sidebar = {
   "sidebar.feedback.removeScreenshot": "Remover print",
   "sidebar.feedback.screenshotAlt": "Print {n}",
   "sidebar.feedback.screenshotFailed": "Não foi possível tirar o print",
-  "sidebar.feedback.screenshotTooLarge": "O print tem mais de 5 MB",
+  "sidebar.feedback.screenshotTooLarge": "O print tem mais de 100 MB",
   "sidebar.feedback.tooManyScreenshots": "Até {max} prints",
   "sidebar.feedback.send": "Enviar",
   "sidebar.feedback.sending": "Enviando…",

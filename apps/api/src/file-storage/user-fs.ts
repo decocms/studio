@@ -40,8 +40,8 @@ export const AVATAR_DIR = "avatars";
  * filesystem is not a place to park a dataset, and the quota is per user.
  */
 const USER_FS_LIMITS: OrgFsLimits = {
-  maxFileBytes: 5 * 1024 * 1024,
-  volumeQuotaBytes: 64 * 1024 * 1024,
+  maxFileBytes: 100 * 1024 * 1024,
+  volumeQuotaBytes: 1024 * 1024 * 1024,
 };
 
 /** Hard ceiling on a single avatar upload. */
