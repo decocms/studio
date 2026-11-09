@@ -559,7 +559,7 @@ function ThreadSessionProvider() {
       session?.user?.id,
       defaultThreadRuntime(entity?.metadata),
       hasActiveRepository,
-      { baseBranch },
+      { baseBranch, releases: entity?.metadata?.releases ?? undefined },
     );
   const localEntry =
     resolvingEntry && threadsStatus.kind !== "loading"
