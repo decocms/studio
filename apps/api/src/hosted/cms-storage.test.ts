@@ -20,12 +20,12 @@ import {
 } from "./cms-storage";
 import {
   deleteFile,
-  memoryRecordStore,
   seedDraftFile,
   seedRelease,
   setFile,
 } from "./cms-test-helpers";
 import {
+  CACHE_SCHEMA,
   DeliveryUnavailableError,
   deliveryKeys,
   newDraftSlug,
@@ -57,12 +57,10 @@ type Answer = {
 
 function setup(userId = "usr_ana", now = 1793800000) {
   const delivery = memoryDeliveryStore();
-  const records = memoryRecordStore();
   const slug = newDraftSlug();
   const send = async (body: unknown, who = userId): Promise<unknown> => {
     const storage = createCmsStorage({
       store: delivery.store,
-      records,
       site: SITE,
       slug,
       userId: who,
@@ -84,7 +82,7 @@ function setup(userId = "usr_ana", now = 1793800000) {
   };
   const call = async (method: string, params: unknown = {}, who = userId) =>
     (await send({ jsonrpc: "2.0", id: 1, method, params }, who)) as Answer;
-  return { delivery, records, slug, send, call };
+  return { delivery, slug, send, call };
 }
 
 /** Reads the store saw, of `blocks/` objects. */
@@ -656,13 +654,19 @@ describe("changes.* and schema.get", () => {
   });
 
   it("reads schema.json and revalidates the cached copy on every read", async () => {
-    const { records, call } = setup();
+    const { delivery, call } = setup();
     expect((await call("schema.get")).result?.schema).toBeNull();
-    await records.putSchema(SITE, '{"root":{}}');
+    await delivery.store.putText(
+      deliveryKeys.schema(SITE),
+      '{"root":{}}',
+      CACHE_SCHEMA,
+    );
     const first = await call("schema.get");
     expect(first.result?.schema).toEqual({ root: {} });
     const second = await call("schema.get");
     expect(second.result?.schema).toEqual({ root: {} });
-    expect(records.reads.at(-1)?.ifNoneMatch).toBe('"schema1"');
+    expect(delivery.reads.at(-1)).toBe(
+      `get ${deliveryKeys.schema(SITE)} if-none-match`,
+    );
   });
 });

@@ -92,7 +92,7 @@ describe("gates, in today's order", () => {
       // Writes are refused the same way, before anything is stored.
       const write = await t.call("PUT", "beta/schema", undefined, SCHEMA_TEXT);
       expect(write.status).toBe(403);
-      expect(t.records.objects.has("beta")).toBe(false);
+      expect(t.delivery.objects.has("sites/beta/schema.json")).toBe(false);
     });
 
     it("a member of a role scoped to other projects is refused (session)", async () => {
@@ -302,8 +302,14 @@ describe("schema push", () => {
     const t = cmsTestApp();
     const res = await t.call("PUT", "acme/schema", undefined, SCHEMA_TEXT);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ etag: "schema1", blocksMajor: 8 });
-    expect(t.records.objects.get("acme")?.text).toBe(SCHEMA_TEXT);
+    // In the delivery bucket, next to the site's releases.
+    const stored = t.delivery.objects.get("sites/acme/schema.json");
+    expect(stored?.text).toBe(SCHEMA_TEXT);
+    expect(stored?.cacheControl).toBe("no-cache, max-age=0, must-revalidate");
+    expect(res.body).toEqual({
+      etag: stored?.etag.replaceAll('"', ""),
+      blocksMajor: 8,
+    });
     expect(t.patches).toEqual([]);
     // The editor's forms read it back through the protocol.
     await t.call("POST", "acme/drafts", { name: "d" });
@@ -327,7 +333,7 @@ describe("schema push", () => {
     expect(res.body.code).toBe("not_blocks_v8_site");
     expect(res.body.error).toContain('"Blocks v8 site"');
     // Nothing is stored, and the switch is not turned on.
-    expect(t.records.objects.has("acme")).toBe(false);
+    expect(t.delivery.objects.has("sites/acme/schema.json")).toBe(false);
     expect(t.patches).toEqual([]);
   });
 

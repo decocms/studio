@@ -72,15 +72,16 @@ import { createCmsStorage } from "@/hosted/cms-storage";
 import { type DeliveryPurge, deliveryPurge } from "@/hosted/delivery-purge";
 import {
   bareEtag,
+  CACHE_SCHEMA,
   type DeliveryStore,
   DeliveryUnavailableError,
+  deliveryKeys,
   deliveryStore,
 } from "@/hosted/delivery-store";
 import {
   type SiteDomainsReader,
   sitePreviewHosts,
 } from "@/hosted/preview-hosts";
-import { type RecordStore, recordStore } from "@/hosted/record-store";
 import { isRevisionId } from "@/hosted/revision-id";
 import { refuseUnguardedSave, saveRequestBody } from "@/hosted/save-guards";
 import { createSiteTokens, importSigningKey } from "@/hosted/site-token";
@@ -102,7 +103,6 @@ interface CmsSite {
 interface Buckets {
   store: DeliveryStore;
   purge: DeliveryPurge;
-  records: RecordStore | null;
 }
 
 type CmsEnv = Env & {
@@ -135,9 +135,7 @@ const MAX_SCHEMA_BYTES = 16 * 1024 * 1024;
 
 function defaultBuckets(): Buckets | null {
   const store = deliveryStore();
-  return store
-    ? { store, purge: deliveryPurge(), records: recordStore() }
-    : null;
+  return store ? { store, purge: deliveryPurge() } : null;
 }
 
 /**
@@ -481,10 +479,9 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
     const body = await saveRequestBody(c.req.raw);
     const unguarded = refuseUnguardedSave(body, "draft");
     if (unguarded) return unguarded;
-    const { store, records } = c.get("buckets");
+    const { store } = c.get("buckets");
     const storage = createCmsStorage({
       store,
-      records,
       site: site.site,
       slug: row.slug,
       userId: site.userId,
@@ -572,15 +569,7 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
         `${site.site} is not a Blocks v8 site, so deco schema push is refused. An organization admin turns on "Blocks v8 site" in the project's settings (CMS); then push again.`,
       );
     }
-    const { records } = c.get("buckets");
-    if (!records) {
-      return fail(
-        c,
-        503,
-        "hosted_delivery_unconfigured",
-        "hosted record bucket not configured",
-      );
-    }
+    const { store } = c.get("buckets");
     const length = Number(c.req.header("content-length"));
     if (Number.isFinite(length) && length > MAX_SCHEMA_BYTES) {
       return fail(
@@ -609,7 +598,14 @@ export function createCmsRoutes(options: CmsRoutesOptions = {}) {
       return fail(c, 400, "invalid_body", "The schema isn't a JSON object");
     }
     try {
-      const { etag } = await records.putSchema(site.site, text);
+      const key = deliveryKeys.schema(site.site);
+      const { etag } = await store
+        .putText(key, text, CACHE_SCHEMA)
+        .catch((error: unknown) => {
+          throw error instanceof DeliveryUnavailableError
+            ? error
+            : new DeliveryUnavailableError(key, error);
+        });
       const isV8 = isV8Schema(schema);
       return c.json({
         etag: bareEtag(etag),

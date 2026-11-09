@@ -358,17 +358,6 @@ export interface Settings {
   deliveryPublicOrigin: string | undefined;
   /** test-only: a prefix for every delivery key (E2E writes under `spikes/e2e/`). */
   deliveryKeyPrefix: string | undefined;
-  /**
-   * The private `record` bucket (the schema each deploy pushes). Each of
-   * these defaults to its delivery counterpart, so one R2 account and key
-   * serve both; only the bucket must be set.
-   */
-  recordR2Bucket: string | undefined;
-  recordR2Endpoint: string | undefined;
-  recordR2AccessKeyId: string | undefined;
-  recordR2SecretAccessKey: string | undefined;
-  /** test-only: a prefix for every record key. */
-  recordKeyPrefix: string | undefined;
   /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
   siteTokenSigningKey: string | undefined;
   /**

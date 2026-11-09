@@ -5,7 +5,7 @@
 
 import { Hono } from "hono";
 import type { StudioContext } from "@/core/studio-context";
-import { memoryDraftTable, memoryRecordStore } from "@/hosted/cms-test-helpers";
+import { memoryDraftTable } from "@/hosted/cms-test-helpers";
 import { memoryDeliveryStore, memoryKv } from "@/hosted/hosted-test-helpers";
 import type { Env } from "../hono-env";
 import { createCmsRoutes } from "./cms";
@@ -43,7 +43,6 @@ export function cmsTestApp(
   } = {},
 ) {
   const delivery = memoryDeliveryStore();
-  const records = memoryRecordStore();
   const table = memoryDraftTable();
   const patches: Array<{ set: Record<string, unknown>; unset: string[] }> = [];
   const project = {
@@ -110,7 +109,7 @@ export function cmsTestApp(
       buckets: () =>
         options.configured === false
           ? null
-          : { store: delivery.store, purge: delivery.purge, records },
+          : { store: delivery.store, purge: delivery.purge },
       draftTable: () => table,
       siteDomains: async () => ["www.acme.com"],
       hasCms: async () => options.hasCms ?? true,
@@ -168,7 +167,6 @@ export function cmsTestApp(
   return {
     app,
     delivery,
-    records,
     table,
     patches,
     project,
