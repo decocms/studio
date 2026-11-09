@@ -4,6 +4,8 @@ import {
   copyScope,
   useCopyEpochs,
 } from "@/components/sections-editor/held-copy";
+import { cmsSiteOf } from "@/components/sections-editor/cms-api";
+import { useVirtualMCP } from "@/sdk";
 import { SchemalessContent } from "./schemaless-content";
 
 /**
@@ -27,6 +29,8 @@ export function SchemalessEditor({
   initialKey?: string | null;
   compact?: boolean;
 }) {
+  // The Studio site the banner's agent prompt names (`DECO_SITE`).
+  const site = cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
   // Each block's form keeps its own copy: hosted saves are guarded by it.
   const { save, flush, hold } = useDebouncedSaveBlock(
     { orgSlug, virtualMcpId, branch },
@@ -43,6 +47,7 @@ export function SchemalessEditor({
   return (
     <SchemalessContent
       decofile={decofile}
+      site={site}
       onChange={(blockKey, next) => save(blockKey, next)}
       onLeaveBlock={flush}
       onOpenBlock={hold}

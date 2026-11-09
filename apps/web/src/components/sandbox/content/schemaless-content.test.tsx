@@ -129,7 +129,7 @@ describe("SchemalessContent", () => {
     expect(JSON.stringify(saved)).toBe(JSON.stringify(hero));
   });
 
-  test("shows the banner with the command, until the schema exists", () => {
+  test("shows the banner, with no command, until the schema exists", () => {
     // Mirrors the Content browser: the schemaless view while the polled
     // schema is the empty, marked one; the regular editor once it's real.
     function Harness() {
@@ -156,20 +156,98 @@ describe("SchemalessContent", () => {
     const banner = getByTestId("schema-pending-banner");
     expect(
       within(banner).getByRole("heading", {
-        name: "Forms get proper fields once the schema exists",
+        name: "Content forms are showing raw fields",
       }),
     ).toBeInTheDocument();
-    expect(banner.textContent).toContain("npx @decocms/blocks schema");
+    // Never a command for the person to run: no snippet, no `npx`.
+    expect(banner.querySelector("code")).toBeNull();
+    expect(banner.textContent).not.toMatch(/npx|deco schema/);
     expect(
-      within(banner).getByRole("button", { name: /copy/i }),
+      within(banner).getByRole("button", {
+        name: "Copy prompt for your agent",
+      }),
     ).toBeInTheDocument();
-    expect(within(banner).getByRole("link")).toHaveAttribute(
-      "href",
-      expect.stringContaining("/next/cli#deco-schema"),
-    );
 
     fireEvent.click(getByRole("button", { name: "schema generated" }));
     expect(queryByTestId("schema-pending-banner")).toBeNull();
     expect(getByText("typed forms")).toBeInTheDocument();
+  });
+
+  test("the copy button copies the agent prompt, naming the site and the skill", async () => {
+    const writeText = mock((_text: string) => Promise.resolve());
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    try {
+      const { getByTestId, findByText, getByRole } = render(
+        <SchemalessContent
+          decofile={decofile}
+          onChange={() => {}}
+          site="my-store"
+        />,
+      );
+      const banner = getByTestId("schema-pending-banner");
+      await act(async () => {
+        fireEvent.click(
+          within(banner).getByRole("button", {
+            name: "Copy prompt for your agent",
+          }),
+        );
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
+      const prompt = writeText.mock.calls[0]?.[0] ?? "";
+      expect(prompt).toContain('"my-store"');
+      expect(prompt).toContain("deco-site-workflow");
+      expect(prompt).toContain("references/schema.md");
+      expect(prompt).toContain("npx deco skills install");
+      expect(prompt).toContain("npx deco schema push");
+      expect(prompt).toContain("npx deco check");
+      expect(prompt).toContain("8.11.0");
+      // A transient "Copied", announced to screen readers.
+      expect(
+        within(banner).getByRole("button", { name: "Copied" }),
+      ).toBeInTheDocument();
+      expect(
+        await findByText("Prompt copied to the clipboard"),
+      ).toHaveAttribute("role", "status");
+      // The skill it relies on, one click away in a new tab.
+      const link = getByRole("link", { name: /Install skill/ });
+      expect(link).toHaveAttribute(
+        "href",
+        "https://github.com/decocms/blocks/tree/main/.agents/skills/deco-site-workflow",
+      );
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(banner.textContent).toContain("Uses the deco-site-workflow skill");
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  test("without a known site, the prompt asks the agent to find it", async () => {
+    const writeText = mock((_text: string) => Promise.resolve());
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    try {
+      const { getByRole } = render(
+        <SchemalessContent decofile={decofile} onChange={() => {}} />,
+      );
+      await act(async () => {
+        fireEvent.click(
+          getByRole("button", { name: "Copy prompt for your agent" }),
+        );
+      });
+      const prompt = writeText.mock.calls[0]?.[0] ?? "";
+      expect(prompt).toContain("the Studio site this project uses");
+      expect(prompt).not.toContain("{site}");
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+      else delete (navigator as { clipboard?: unknown }).clipboard;
+    }
   });
 });
