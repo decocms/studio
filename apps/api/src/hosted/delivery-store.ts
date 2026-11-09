@@ -8,6 +8,7 @@
  *   sites/<site>/latest.json                     the live index + previewHosts
  *   sites/<site>/drafts/<slug>/index.json        { names }
  *   sites/<site>/drafts/<slug>/<name>.json       one draft file per block name
+ *   sites/<site>/schema.json                     the schema the last `deco schema push` sent
  *
  * Keys are only ever built here, from a validated site slug, block hash,
  * revision id, draft slug or block name, so no caller can address anything
@@ -45,6 +46,11 @@ export const CACHE_REVISION = "public, max-age=31536000, immutable";
 /** A block object never changes: its key is its content's hash. */
 export const CACHE_BLOCK = "public, max-age=31536000, immutable";
 export const CACHE_DRAFT = "no-cache, max-age=0, must-revalidate";
+/**
+ * The schema is replaced by every deploy's `deco schema push`; Studio reads
+ * it from the bucket with a conditional GET, and any other reader revalidates.
+ */
+export const CACHE_SCHEMA = "no-cache, max-age=0, must-revalidate";
 
 /** The test-only key prefix (`DELIVERY_KEY_PREFIX`), `""` in production. */
 function keyPrefix(): string {
@@ -81,6 +87,8 @@ export function draftFileName(name: string): string {
 
 export const deliveryKeys = {
   latest: (site: string) => `${siteKey(site)}/latest.json`,
+  /** The schema the last `deco schema push` sent: `schema.json`. */
+  schema: (site: string) => `${siteKey(site)}/schema.json`,
   /** A block body by its hash (immutable): `blocks/<hash>.json`. */
   block: (site: string, hash: string) => {
     if (!BLOCK_HASH_RE.test(hash)) throw new Error("invalid block hash");

@@ -58,16 +58,14 @@ const jiraStubPort = process.env.JIRA_STUB_PORT || "4103";
 // the config isn't a spec module).
 // The hosted Deco CMS (Blocks v8) writes to the delivery bucket through the
 // S3 API; delivery-stub-server.ts stands in for both that API and the public
-// origin sites read (DELIVERY_PUBLIC_ORIGIN). The record bucket (the schema
-// `deco schema push` sends) is the same stub, under its own key prefix, so it
-// never shares a key with a delivery object. The site-token signing key is
-// minted per run.
+// origin sites read (DELIVERY_PUBLIC_ORIGIN); the schema `deco schema push`
+// sends is stored there too. The site-token signing key is minted per run.
 const deliveryStubPort = process.env.DELIVERY_STUB_PORT || "4104";
 const deliveryStubOrigin = `http://127.0.0.1:${deliveryStubPort}`;
 const siteTokenSigningKey = generateKeyPairSync("ed25519")
   .privateKey.export({ format: "der", type: "pkcs8" })
   .toString("base64");
-const hostedEnv = `DELIVERY_R2_ENDPOINT=${deliveryStubOrigin} DELIVERY_R2_BUCKET=delivery DELIVERY_R2_ACCESS_KEY_ID=e2e DELIVERY_R2_SECRET_ACCESS_KEY=e2e DELIVERY_PUBLIC_ORIGIN=${deliveryStubOrigin} RECORD_R2_BUCKET=delivery RECORD_KEY_PREFIX=records/ DECO_SITE_TOKEN_SIGNING_KEY=${siteTokenSigningKey}`;
+const hostedEnv = `DELIVERY_R2_ENDPOINT=${deliveryStubOrigin} DELIVERY_R2_BUCKET=delivery DELIVERY_R2_ACCESS_KEY_ID=e2e DELIVERY_R2_SECRET_ACCESS_KEY=e2e DELIVERY_PUBLIC_ORIGIN=${deliveryStubOrigin} DECO_SITE_TOKEN_SIGNING_KEY=${siteTokenSigningKey}`;
 
 const vaultServiceToken = "e2e-vault-service-token";
 const organizationNoticesApiKey = "e2e-organization-notices-api-key";

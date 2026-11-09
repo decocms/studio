@@ -21,7 +21,6 @@ import {
   writeDraftFile,
 } from "./cms-drafts";
 import type { DeliveryStore } from "./delivery-store";
-import type { RecordStore } from "./record-store";
 
 export function memoryDraftTable(): DraftStoragePort & {
   rows: Map<string, CmsDraftRow>;
@@ -51,33 +50,6 @@ export function memoryDraftTable(): DraftStoragePort & {
     },
     async delete(site, name) {
       return rows.delete(key(site, name));
-    },
-  };
-}
-
-export function memoryRecordStore(): RecordStore & {
-  objects: Map<string, { text: string; etag: string }>;
-  reads: Array<{ site: string; ifNoneMatch: string | null }>;
-} {
-  const objects = new Map<string, { text: string; etag: string }>();
-  const reads: Array<{ site: string; ifNoneMatch: string | null }> = [];
-  let n = 0;
-  return {
-    objects,
-    reads,
-    async putSchema(site, text) {
-      const etag = `"schema${++n}"`;
-      objects.set(site, { text, etag });
-      return { etag };
-    },
-    async getSchema(site, ifNoneMatch) {
-      reads.push({ site, ifNoneMatch: ifNoneMatch ?? null });
-      const o = objects.get(site);
-      if (!o) return null;
-      if (ifNoneMatch && ifNoneMatch === o.etag) {
-        return { notModified: true, etag: o.etag };
-      }
-      return { notModified: false, text: o.text, etag: o.etag };
     },
   };
 }

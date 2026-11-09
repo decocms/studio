@@ -68,9 +68,9 @@ import {
   bareEtag,
   type DeliveryStore,
   DeliveryUnavailableError,
+  deliveryKeys,
   ObjectChangedError,
 } from "./delivery-store";
-import type { RecordStore } from "./record-store";
 
 const NO_REVISION = "none";
 /** Block bodies read at once from the bucket. */
@@ -88,17 +88,18 @@ export function clearSchemaCache() {
 
 /** Reads the site's schema.json, revalidating the cached copy. */
 async function readSiteSchema(
-  records: RecordStore | null,
+  store: DeliveryStore,
   site: string,
 ): Promise<{ text: string; etag: string } | null> {
-  if (!records) return null;
   const cached = schemaCache.get(site);
-  const read = await records.getSchema(site, cached?.etag ?? null);
+  const read = await store.get(deliveryKeys.schema(site), {
+    ifNoneMatch: cached?.etag ?? null,
+  });
   if (!read) {
     schemaCache.delete(site);
     return null;
   }
-  if (read.notModified) return cached ?? null;
+  if ("notModified" in read) return cached ?? null;
   const etag = read.etag ?? "";
   if (etag) schemaCache.set(site, { etag, text: read.text });
   return { text: read.text, etag };
@@ -276,7 +277,6 @@ export interface CmsStorage extends ContentStorage {
 
 export function createCmsStorage(options: {
   store: DeliveryStore;
-  records: RecordStore | null;
   site: string;
   slug: string;
   /** Who saves through this storage (written into each draft file). */
@@ -574,7 +574,7 @@ export function createCmsStorage(options: {
     },
 
     async readSchema(): Promise<StoredSchema | null> {
-      const schema = await readSiteSchema(options.records, site).catch(
+      const schema = await readSiteSchema(options.store, site).catch(
         unavailableFrom,
       );
       return schema
