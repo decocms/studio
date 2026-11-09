@@ -107,6 +107,28 @@ describe("buildAgentSystemPrompt", () => {
     expect(joined).toContain("<todo-write>");
   });
 
+  test("Super Agent is told to search connection tools before answering none", async () => {
+    const superAgent = JSON.stringify(
+      await buildAgentSystemPrompt({
+        ...baseOpts,
+        kind: "agent",
+        isDecopilot: true,
+      }),
+    );
+    expect(superAgent).toContain("<capability-discovery>");
+    expect(superAgent).toContain("CONNECTION_TOOLS_SEARCH");
+
+    // Only the Super Agent holds the search tool.
+    const customAgent = JSON.stringify(
+      await buildAgentSystemPrompt({
+        ...baseOpts,
+        kind: "agent",
+        isDecopilot: false,
+      }),
+    );
+    expect(customAgent).not.toContain("<capability-discovery>");
+  });
+
   test("kind: 'agent' with isDecopilot: false omits decopilot identity prompt", async () => {
     const out = await buildAgentSystemPrompt({
       ...baseOpts,

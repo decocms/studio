@@ -19,6 +19,7 @@ import { tool, zodSchema, type ToolSet } from "ai";
 import type { StudioContext } from "@/core/studio-context";
 import { COLLECTION_CONNECTIONS_GET } from "@/tools/connection/get";
 import { COLLECTION_CONNECTIONS_LIST } from "@/tools/connection/list";
+import { CONNECTION_TOOLS_SEARCH } from "@/tools/connection/gateway";
 import { COLLECTION_VIRTUAL_MCP_CREATE } from "@/tools/virtual/create";
 import { COLLECTION_VIRTUAL_MCP_DELETE } from "@/tools/virtual/delete";
 import { COLLECTION_VIRTUAL_MCP_GET } from "@/tools/virtual/get";
@@ -26,7 +27,13 @@ import { COLLECTION_VIRTUAL_MCP_LIST } from "@/tools/virtual/list";
 import { COLLECTION_VIRTUAL_MCP_UPDATE } from "@/tools/virtual/update";
 import { VIRTUAL_MCP_PINNED_VIEWS_UPDATE } from "@/tools/virtual/pinned-views-update";
 
-/** The Agent Manager's former toolset, verbatim. */
+const CONNECTION_TOOLS_SEARCH_DESCRIPTION =
+  "Search the tools of every connection in this org by keywords. Returns " +
+  "tool names, descriptions and the connections that offer them. Use it to " +
+  "find which app or agent covers a capability before saying the org has " +
+  "none; to use a hit, delegate to an agent that aggregates its connection.";
+
+/** The Agent Manager's former toolset, plus the org-wide tool search. */
 export function createAgentTools(ctx: StudioContext): ToolSet {
   return {
     COLLECTION_VIRTUAL_MCP_CREATE: tool({
@@ -68,6 +75,15 @@ export function createAgentTools(ctx: StudioContext): ToolSet {
       description: COLLECTION_CONNECTIONS_GET.description,
       inputSchema: zodSchema(COLLECTION_CONNECTIONS_GET.inputSchema),
       execute: (input) => COLLECTION_CONNECTIONS_GET.execute(input, ctx),
+    }),
+    // The agent catalog in the prompt carries names and short descriptions
+    // only, so a capability living in one connection's tools is invisible
+    // until searched. Search only: the Super Agent has no CONNECTION_TOOL_CALL,
+    // so its description must not point there.
+    CONNECTION_TOOLS_SEARCH: tool({
+      description: CONNECTION_TOOLS_SEARCH_DESCRIPTION,
+      inputSchema: zodSchema(CONNECTION_TOOLS_SEARCH.inputSchema),
+      execute: (input) => CONNECTION_TOOLS_SEARCH.execute(input, ctx),
     }),
   };
 }

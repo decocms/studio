@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { createAgentTools } from "./agent-tools";
 
 describe("createAgentTools", () => {
-  test("registers the retired Agent Manager's toolset under its raw names", () => {
+  test("registers the retired Agent Manager's toolset and the tool search under their raw names", () => {
     // ctx is only read inside execute(), never during construction.
     const tools = createAgentTools({} as never);
 
@@ -20,6 +20,7 @@ describe("createAgentTools", () => {
       "COLLECTION_VIRTUAL_MCP_GET",
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_UPDATE",
+      "CONNECTION_TOOLS_SEARCH",
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
     ]);
   });
@@ -29,5 +30,16 @@ describe("createAgentTools", () => {
     expect(tools).not.toHaveProperty("COLLECTION_CONNECTIONS_CREATE");
     expect(tools).not.toHaveProperty("COLLECTION_CONNECTIONS_UPDATE");
     expect(tools).not.toHaveProperty("COLLECTION_CONNECTIONS_DELETE");
+  });
+
+  test("searches connection tools without calling them", () => {
+    const tools = createAgentTools({} as never);
+    expect(tools).toHaveProperty("CONNECTION_TOOLS_SEARCH");
+    expect(tools).not.toHaveProperty("CONNECTION_TOOL_CALL");
+    // The shared description points at CONNECTION_TOOL_CALL, which this
+    // toolset doesn't have; following it would call a tool that isn't there.
+    expect(tools.CONNECTION_TOOLS_SEARCH?.description).not.toContain(
+      "CONNECTION_TOOL_CALL",
+    );
   });
 });
