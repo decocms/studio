@@ -1174,7 +1174,10 @@ describe("Task Board Import Route", () => {
     expect((await second.json()).items).toEqual([
       entry(0, "updated", { id: old.id, key_seq: old.keySeq }),
     ]);
-    expect((await cardTitled("Adicionar H1 na home")).description).toBe("v2");
+    // Matching reuses the card without rewriting its content.
+    const card = await cardTitled("Adicionar H1 na home");
+    expect(card.id).toBe(old.id);
+    expect(card.description).toBeNull();
   });
 
   it("a key joins the keyless card the semantic pass matches, dismissed ones included", async () => {
