@@ -3,7 +3,7 @@
  * contract §4.5–§4.6), against the in-memory delivery bucket.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { indexEntry, META_VERSION } from "./block-meta";
 import { blockVersion } from "./block-version";
 import { readDraftFile, readDraftIndex } from "./cms-drafts";
@@ -22,6 +22,7 @@ import {
   clearRevisionCache,
   MalformedObjectError,
   readLatest,
+  readLatestObject,
   readRevisionIndex,
   readRevisionMeta,
 } from "./cms-release";
@@ -753,5 +754,151 @@ describe("readLatest", () => {
       `get ${deliveryKeys.latest(SITE)} if-none-match`,
       `get ${deliveryKeys.latest(SITE)} if-none-match`,
     ]);
+  });
+});
+
+/** A latest.json from before content-addressed revisions: a 40-hex SHA. */
+const PRE_163_LATEST = JSON.stringify({
+  revision: "0123456789abcdef0123456789abcdef01234567",
+  sequence: 4,
+  blocks: { a: "revisions/0123456789abcdef0123456789abcdef01234567.json" },
+});
+
+describe("a malformed latest.json reads as no release yet", () => {
+  function malformed(delivery: ReturnType<typeof setup>["delivery"]) {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    delivery.objects.set(`sites/${SITE}/revisions/${sha}.json`, {
+      text: '{"a":{}}',
+      etag: '"sha"',
+      cacheControl: "",
+    });
+    delivery.objects.set(deliveryKeys.latest(SITE), {
+      text: PRE_163_LATEST,
+      etag: '"old"',
+      cacheControl: "",
+    });
+  }
+
+  it.each([
+    [
+      "a pre-content-addressed pointer",
+      PRE_163_LATEST,
+      "revision is not an id",
+    ],
+    ["unparseable JSON", "{not json", "not JSON"],
+    [
+      "a bad entry",
+      JSON.stringify({
+        revision: newRevisionId(clock),
+        sequence: 1,
+        blocks: { a: { version: "short" } },
+      }),
+      'entry "a" is malformed',
+    ],
+  ])("%s: null, one warning per read, never cached", async (_, text, why) => {
+    const { delivery } = setup();
+    delivery.objects.set(deliveryKeys.latest(SITE), {
+      text,
+      etag: '"old"',
+      cacheControl: "",
+    });
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await readLatest(delivery.store, SITE)).toBeNull();
+      expect(await readLatestObject(delivery.store, SITE)).toEqual({
+        release: null,
+        etag: '"old"',
+      });
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledWith(
+        "cms: latest.json is malformed; read as no release yet",
+        { site: SITE, key: deliveryKeys.latest(SITE), why },
+      );
+    } finally {
+      warn.mockRestore();
+    }
+    // Nothing cached: neither read was conditional.
+    expect(delivery.reads).toEqual([
+      `get ${deliveryKeys.latest(SITE)}`,
+      `get ${deliveryKeys.latest(SITE)}`,
+    ]);
+  });
+
+  it("a publish replaces it If-Match its ETag, as a first publish (sequence 1)", async () => {
+    const { delivery, deps, draft, save, writes } = setup();
+    malformed(delivery);
+    await save("a", { v: 1 });
+    writes();
+    const conditions: unknown[] = [];
+    delivery.hooks.beforePut = (key, condition) => {
+      if (key === deliveryKeys.latest(SITE)) conditions.push(condition);
+    };
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const result = await publishCmsDraft(deps, draft, "");
+    warn.mockRestore();
+    expect(result).toMatchObject({ result: "published", previous: null });
+    const id = (result as { revision: string }).revision;
+    expect(conditions).toEqual([{ ifMatch: '"old"' }]);
+    expect(writes()).toContain(`put ${deliveryKeys.latest(SITE)}`);
+    const live = await readLatest(delivery.store, SITE);
+    expect(live?.latest).toMatchObject({ revision: id, sequence: 1 });
+    expect(await readRevisionMeta(delivery.store, SITE, id)).toMatchObject({
+      previous: null,
+    });
+  });
+
+  it("a concurrent publish over it is still a lost race: the retry builds on it", async () => {
+    const { delivery, deps, draft, save, writes } = setup();
+    malformed(delivery);
+    await save("b", { v: 2 });
+    const other = newRevisionId(clock++);
+    deps.beforeLatestWrite = async (attempt) => {
+      if (attempt === 1)
+        await seedRelease(delivery.store, SITE, other, { a: { v: 1 } });
+    };
+    writes();
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const result = await publishCmsDraft(deps, draft, "");
+    warn.mockRestore();
+    expect(writes()).toContain(`refused ${deliveryKeys.latest(SITE)}`);
+    expect(result).toMatchObject({ result: "published", previous: other });
+    const live = await readLatest(delivery.store, SITE);
+    expect(live?.latest.sequence).toBe(2);
+    expect(Object.keys(live?.latest.blocks ?? {})).toEqual(["a", "b"]);
+  });
+
+  it("a rollback over it is refused as before the first publish, writing nothing", async () => {
+    const { delivery, deps, writes } = setup();
+    const target = newRevisionId(clock++);
+    await seedRelease(delivery.store, SITE, target, { a: { v: 1 } });
+    delivery.objects.set(deliveryKeys.latest(SITE), {
+      text: "{not json",
+      etag: '"old"',
+      cacheControl: "",
+    });
+    writes();
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    await expect(rollbackToRevision(deps, target, "")).rejects.toBeInstanceOf(
+      NotPublishedError,
+    );
+    warn.mockRestore();
+    expect(writes()).toEqual([]);
+  });
+
+  it("a malformed index a valid latest.json's release names still fails", async () => {
+    const { delivery, deps, seed } = setup();
+    const r1 = await seed({ a: { v: 1 } });
+    await seed({ a: { v: 2 } });
+    delivery.objects.set(deliveryKeys.revisionIndex(SITE, r1), {
+      text: "{not json",
+      etag: '"x"',
+      cacheControl: "",
+    });
+    await expect(
+      readRevisionIndex(delivery.store, SITE, r1),
+    ).rejects.toBeInstanceOf(MalformedObjectError);
+    await expect(rollbackToRevision(deps, r1, "")).rejects.toBeInstanceOf(
+      MalformedObjectError,
+    );
   });
 });

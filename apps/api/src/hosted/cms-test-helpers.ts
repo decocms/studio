@@ -7,7 +7,7 @@ import type { DraftStoragePort } from "@/storage/ports";
 import type { CmsDraftRow } from "@/storage/types";
 import { type BlockIndex, indexEntry, META_VERSION } from "./block-meta";
 import {
-  readLatest,
+  readLatestObject,
   type RevisionMeta,
   serializeIndex,
   writeBlockObject,
@@ -69,7 +69,8 @@ export async function seedRelease(
   meta: Partial<RevisionMeta> = {},
   options: { legacy?: boolean } = {},
 ): Promise<BlockIndex> {
-  const live = await readLatest(store, site);
+  const read = await readLatestObject(store, site);
+  const live = read.release;
   const names = Object.keys(blocks);
   const bodyOf = (name: string) =>
     Object.hasOwn(blocks, name) ? blocks[name] : undefined;
@@ -109,12 +110,7 @@ export async function seedRelease(
     publishedAt: "2026-11-03T12:00:00.000Z",
     ...meta,
   });
-  await writeLatest(
-    store,
-    site,
-    { ...index, previewHosts: [] },
-    live?.etag ?? null,
-  );
+  await writeLatest(store, site, { ...index, previewHosts: [] }, read.etag);
   return entries;
 }
 

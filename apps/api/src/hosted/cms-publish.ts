@@ -70,6 +70,7 @@ import {
   metaVersionOf,
   readBlockBody,
   readLatest,
+  readLatestObject,
   readRevisionIndex,
   readRevisionMeta,
   type RevisionMeta,
@@ -157,11 +158,15 @@ const utf8Length = (text: string) => Buffer.byteLength(text, "utf8");
 
 /**
  * Steps 5–7 over the latest.json read in this attempt: writes the revision,
- * then moves latest.json. Returns the new id, or null on a lost race.
+ * then moves latest.json, `If-Match` the `etag` read (create-only when
+ * there was none). `base` is the release it named: null on a site's first
+ * publish or over a malformed latest.json. Returns the new id, or null on
+ * a lost race.
  */
 async function writeAndPoint(
   deps: CmsPublishDeps,
-  base: { latest: Latest; etag: string | null } | null,
+  base: Latest | null,
+  etag: string | null,
   blocks: BlockIndex,
   meta: Omit<RevisionMeta, "previous" | "publishedAt" | "author" | "via">,
   attempt: number,
@@ -169,7 +174,7 @@ async function writeAndPoint(
   const id = (deps.newId ?? newRevisionId)();
   const index = {
     revision: id,
-    sequence: (base?.latest.sequence ?? 0) + 1,
+    sequence: (base?.sequence ?? 0) + 1,
     metaVersion: META_VERSION,
     blocks,
   };
@@ -180,7 +185,7 @@ async function writeAndPoint(
   }
   await writeRevision(deps.store, deps.site, text, id, {
     ...meta,
-    previous: base?.latest.revision ?? null,
+    previous: base?.revision ?? null,
     author: deps.author,
     via: deps.via,
     publishedAt: (deps.now?.() ?? new Date()).toISOString(),
@@ -191,7 +196,7 @@ async function writeAndPoint(
       deps.store,
       deps.site,
       { ...index, previewHosts: [...deps.previewHosts] },
-      base?.etag ?? null,
+      etag,
     );
   } catch (error) {
     if (error instanceof ObjectChangedError) return null;
@@ -475,7 +480,9 @@ export async function publishCmsDraft(
 ): Promise<CmsPublishResult> {
   const { store, site } = deps;
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
-    const base = await readLatest(store, site);
+    // A malformed latest.json is no release yet, overwritten `If-Match`.
+    const read = await readLatestObject(store, site);
+    const base = read.release;
     const state = await readDraftState(store, site, draft.slug);
     const baseBlocks = base?.latest.blocks ?? {};
     const sets = new Map<string, Record<string, unknown>>();
@@ -526,7 +533,8 @@ export async function publishCmsDraft(
     }
     const id = await writeAndPoint(
       deps,
-      base,
+      base?.latest ?? null,
+      read.etag,
       blocks,
       { draft: draft.name, message: message.trim() },
       attempt,
@@ -589,7 +597,7 @@ export type CmsRollbackResult =
  * Rollback / roll-forward to `target`, any revision with a readable
  * meta.json and index.json (whether latest.json ever named it or not):
  * steps 1 and 4–7, writing no block object. Refused before the first
- * publish (`NotPublishedError`).
+ * publish, a malformed latest.json included (`NotPublishedError`).
  */
 export async function rollbackToRevision(
   deps: CmsPublishDeps,
@@ -616,7 +624,8 @@ export async function rollbackToRevision(
     }
     const id = await writeAndPoint(
       deps,
-      live,
+      live.latest,
+      live.etag,
       wanted,
       {
         reapplyOf: target,
