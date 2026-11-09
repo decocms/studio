@@ -1,6 +1,9 @@
 import { PreviewFrame } from "./preview-frame";
-import { previewViewportLayout } from "./preview-viewport";
-import type { TranslationKey } from "@/i18n/use-t.ts";
+import {
+  PreviewCanvas,
+  PreviewNavigation,
+  PREVIEW_DEVICES,
+} from "./preview-surface";
 import type { PageEntry } from "@/components/sections-editor/page-list";
 import type { LastPreviewPage } from "./last-preview-page";
 import type { OptionSource } from "./path-param-picker";
@@ -41,14 +44,10 @@ import { useT } from "@/i18n/use-t.ts";
 import {
   Code01,
   CursorClick01,
-  LinkExternal01,
   ChevronDown,
   Database01,
   Globe01,
   Plus,
-  Monitor04,
-  Phone02,
-  Tablet01,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -222,15 +221,7 @@ import { usePackagePath } from "@/components/sections-editor/use-package-path";
 /** Delay before navigating to a newly created page, giving the dev server time to route it. */
 const DEV_SERVER_SETTLE_MS = 500;
 
-const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
 const EDITING_MODES: PreviewEditingMode[] = ["preview", "visual", "blocks"];
-
-// Device labels are resolved per-render in the component to use t()
-const DEVICE_LABEL_KEYS: Record<PreviewDeviceSize, TranslationKey> = {
-  mobile: "sandbox.preview.deviceMobile",
-  tablet: "sandbox.preview.deviceTablet",
-  desktop: "sandbox.preview.deviceDesktop",
-};
 
 /**
  * Force `__decoFBT=0` and `__deco_ssr=1` on the preview URL — `__decoFBT=0`
@@ -436,7 +427,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     useLocalStorage<PreviewDeviceSize>(
       LOCALSTORAGE_KEYS.previewDeviceSize(virtualMcpId),
       (existing) =>
-        existing && DEVICE_CYCLE.includes(existing) ? existing : "desktop",
+        existing && PREVIEW_DEVICES.includes(existing) ? existing : "desktop",
     );
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
@@ -465,7 +456,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       return !open;
     });
   // Live canvas size, used to scale the fixed-width frame to fit.
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Pages dropdown in URL bar
   const [pagesOpen, setPagesOpen] = useState(false);
@@ -1774,11 +1764,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- reload on a revision change only; the reload reads refs
   }, [contentRevision]);
 
-  const handleDeviceToggle = () => {
-    const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
-    setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
-  };
-
   const setPathParamValue = (name: string, value: string) => {
     if (!currentPageKey) return;
     const pageKey = currentPageKey;
@@ -2219,29 +2204,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const previewNavigation =
     showPreviewToolbar || contentEditingEnabled ? (
-      <div className="flex min-w-0 items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-            >
-              {previewDeviceSize === "mobile" ? (
-                <Phone02 size={16} />
-              ) : previewDeviceSize === "tablet" ? (
-                <Tablet01 size={16} />
-              ) : (
-                <Monitor04 size={16} />
-              )}
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-          </TooltipContent>
-        </Tooltip>
-        {urlControls}
-        <div className="flex shrink-0 items-center gap-1">
-          {previewAsAvailable && (
+      <PreviewNavigation
+        device={previewDeviceSize}
+        onDeviceChange={setPreviewDeviceSize}
+        urlControls={urlControls}
+        actions={
+          previewAsAvailable && (
             <PreviewAsControl
               tests={previewTests}
               load={previewAsLoad}
@@ -2256,17 +2224,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 !!servePointerBase || !showsPublished || !previewOptionsActive
               }
             />
-          )}
-          <ToolbarIconButton
-            onClick={handleOpenPreview}
-            // A hosted draft's link waits for its pointer; v7 is as on main.
-            disabled={hostedDraft && !openInNewTabUrl}
-            aria-label={t("sandbox.preview.openInNewTab")}
-          >
-            <LinkExternal01 size={16} />
-          </ToolbarIconButton>
-        </div>
-      </div>
+          )
+        }
+        onOpen={handleOpenPreview}
+        openDisabled={hostedDraft && !openInNewTabUrl}
+      />
     ) : null;
 
   // Desktop composition (portaled into the panel header's centre slot).
@@ -2274,9 +2236,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // A v7 site keeps visual editing as before; a v8 one needs a chat to ask
   // (none in the account-less `/site-editor`).
   const canVisualEdit = (runsSiteCode || hasChat) && display.mode === "sandbox";
-
-  const { fluid: previewFluid, style: previewFrameStyle } =
-    previewViewportLayout(previewDeviceSize, canvasSize);
 
   const previewTools = (
     <>
@@ -2424,29 +2383,116 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   minSize="30%"
                   className="min-w-0 overflow-hidden"
                 >
-                  <div
-                    ref={(node) => {
-                      if (!node) return;
-                      const measure = () =>
-                        setCanvasSize((prev) =>
-                          prev.width === node.clientWidth &&
-                          prev.height === node.clientHeight
-                            ? prev
-                            : {
-                                width: node.clientWidth,
-                                height: node.clientHeight,
-                              },
-                        );
-                      measure();
-                      const observer = new ResizeObserver(measure);
-                      observer.observe(node);
-                      return () => observer.disconnect();
-                    }}
-                    className={cn(
-                      // `overflow-clip`, not `hidden`: the scaled frame's layout box outgrows this container, and a scroll port would let the browser scroll it to reveal a focused descendant (section select), jumping the preview up.
-                      "h-full relative overflow-clip flex justify-center",
-                      previewSurfaceActive && !previewFluid && "bg-muted/30",
-                    )}
+                  <PreviewCanvas
+                    device={previewDeviceSize}
+                    onFrameMouseLeave={clearEditorHover}
+                    frame={
+                      previewSurfaceActive && iframeSrc ? (
+                        <>
+                          {/* TODO(security): this frame has no sandbox. It loads the
+                            user's own dev server cross-origin and the editor drives it
+                            (navigation, hover, postMessage), so picking the token set is
+                            a change that needs the real sandbox running to verify — a
+                            missing token silently breaks a customer's site preview.
+                            Deliberately not bolted on during a lint sweep. */}
+                          <PreviewFrame
+                            // Key on the iframe base: remount when the base URL changes
+                            // (branch switch, or the production→sandbox swap once the dev
+                            // server is up). Path navigation is driven by `iframeSrc`.
+                            key={display.iframeBase}
+                            ref={previewIframeRef}
+                            src={frameSrc}
+                            className="w-full h-full border-0"
+                            title={t("sandbox.preview.devServerPreviewTitle")}
+                            onError={iframeRecovery.handleError}
+                            onLoad={() => {
+                              // A held Fast Preview pointer may go in now.
+                              setFrameNavigation(frameNavigationLoaded);
+                              // A Blocks v8 page may now swap a new URL of itself in.
+                              setLoadedFrameSrc(frameSrc);
+                              // A load reached the frame — cancel the recovery watchdog
+                              // and reset its backoff before anything else.
+                              iframeRecovery.handleLoad();
+                              // The page finished loading — always clear the navigation
+                              // indicator first, before any of the early returns below.
+                              endNavigation();
+                              loadedSrcRef.current = iframeSrcRef.current;
+                              if (confirmsContentReloads) {
+                                confirmPreviewReloaded(contentScope);
+                              }
+                              // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                              if (
+                                display.mode !== "sandbox" ||
+                                localPreviewUrl
+                              ) {
+                                if (
+                                  ((display.mode === "production" &&
+                                    !display.showWakingPill) ||
+                                    localPreviewUrl) &&
+                                  effectiveEditingMode === "blocks"
+                                ) {
+                                  injectCmsEditor();
+                                }
+                                return;
+                              }
+                              // This is the VM dev-server preview (sandboxed running app),
+                              // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
+                              track("vm_preview_loaded", {
+                                view_mode: effectiveEditingMode,
+                                vm_id: vmEntry?.sandboxHandle ?? null,
+                                // Intentionally excluding the full previewUrl — it can contain
+                                // ephemeral tokens / user data in the query string.
+                              });
+                              // Sync currentPath when the user navigates inside the iframe.
+                              // Skip while a programmatic navigation is pending — stale
+                              // onLoad events from the previous URL would reset us to "/".
+                              if (!activeGlobalSection) {
+                                try {
+                                  const iframePath =
+                                    previewIframeRef.current?.contentWindow
+                                      ?.location?.pathname;
+                                  if (!iframePath) return;
+                                  const intended = intendedPathRef.current;
+                                  if (intended !== null) {
+                                    intendedPathRef.current = null;
+                                    // Stale onLoad from the previous URL — ignore.
+                                    if (
+                                      normPath(iframePath) !==
+                                      normPath(intended)
+                                    ) {
+                                      return;
+                                    }
+                                  }
+                                  // Keep the template as currentPath when the loaded
+                                  // path is just the template with params filled in —
+                                  // otherwise the page match and param inputs are lost.
+                                  if (
+                                    normPath(iframePath) ===
+                                    normPath(resolvedPath)
+                                  ) {
+                                    return;
+                                  }
+                                  setCurrentPath(iframePath);
+                                  persistLastPage({
+                                    path: iframePath,
+                                    pageKey: pinnedPageKey,
+                                    params: pathParamValues,
+                                  });
+                                } catch {
+                                  // Cross-origin — can't read, keep current value
+                                }
+                              }
+                              if (effectiveEditingMode === "visual") {
+                                injectVisualEditor();
+                              }
+                              if (effectiveEditingMode === "blocks") {
+                                injectCmsEditor();
+                              }
+                            }}
+                          />
+                        </>
+                      ) : null
+                    }
                   >
                     {/* Asymptotic "commit ramp" progress: brand lime fill over a
                     transparent track — no strip across the site, just the
@@ -2525,116 +2571,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         onDismiss={() => setVisualElement(null)}
                       />
                     )}
-
-                    {previewSurfaceActive && iframeSrc && (
-                      <div
-                        className={cn(
-                          "shrink-0",
-                          !previewFluid && "bg-background shadow-edge",
-                        )}
-                        style={previewFrameStyle}
-                        onMouseLeave={clearEditorHover}
-                      >
-                        {/* TODO(security): this frame has no sandbox. It loads the
-                            user's own dev server cross-origin and the editor drives it
-                            (navigation, hover, postMessage), so picking the token set is
-                            a change that needs the real sandbox running to verify — a
-                            missing token silently breaks a customer's site preview.
-                            Deliberately not bolted on during a lint sweep. */}
-                        <PreviewFrame
-                          // Key on the iframe base: remount when the base URL changes
-                          // (branch switch, or the production→sandbox swap once the dev
-                          // server is up). Path navigation is driven by `iframeSrc`.
-                          key={display.iframeBase}
-                          ref={previewIframeRef}
-                          src={frameSrc}
-                          className="w-full h-full border-0"
-                          title={t("sandbox.preview.devServerPreviewTitle")}
-                          onError={iframeRecovery.handleError}
-                          onLoad={() => {
-                            // A held Fast Preview pointer may go in now.
-                            setFrameNavigation(frameNavigationLoaded);
-                            // A Blocks v8 page may now swap a new URL of itself in.
-                            setLoadedFrameSrc(frameSrc);
-                            // A load reached the frame — cancel the recovery watchdog
-                            // and reset its backoff before anything else.
-                            iframeRecovery.handleLoad();
-                            // The page finished loading — always clear the navigation
-                            // indicator first, before any of the early returns below.
-                            endNavigation();
-                            loadedSrcRef.current = iframeSrcRef.current;
-                            if (confirmsContentReloads) {
-                              confirmPreviewReloaded(contentScope);
-                            }
-                            // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
-                            if (display.mode !== "sandbox" || localPreviewUrl) {
-                              if (
-                                ((display.mode === "production" &&
-                                  !display.showWakingPill) ||
-                                  localPreviewUrl) &&
-                                effectiveEditingMode === "blocks"
-                              ) {
-                                injectCmsEditor();
-                              }
-                              return;
-                            }
-                            // This is the VM dev-server preview (sandboxed running app),
-                            // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
-                            track("vm_preview_loaded", {
-                              view_mode: effectiveEditingMode,
-                              vm_id: vmEntry?.sandboxHandle ?? null,
-                              // Intentionally excluding the full previewUrl — it can contain
-                              // ephemeral tokens / user data in the query string.
-                            });
-                            // Sync currentPath when the user navigates inside the iframe.
-                            // Skip while a programmatic navigation is pending — stale
-                            // onLoad events from the previous URL would reset us to "/".
-                            if (!activeGlobalSection) {
-                              try {
-                                const iframePath =
-                                  previewIframeRef.current?.contentWindow
-                                    ?.location?.pathname;
-                                if (!iframePath) return;
-                                const intended = intendedPathRef.current;
-                                if (intended !== null) {
-                                  intendedPathRef.current = null;
-                                  // Stale onLoad from the previous URL — ignore.
-                                  if (
-                                    normPath(iframePath) !== normPath(intended)
-                                  ) {
-                                    return;
-                                  }
-                                }
-                                // Keep the template as currentPath when the loaded
-                                // path is just the template with params filled in —
-                                // otherwise the page match and param inputs are lost.
-                                if (
-                                  normPath(iframePath) ===
-                                  normPath(resolvedPath)
-                                ) {
-                                  return;
-                                }
-                                setCurrentPath(iframePath);
-                                persistLastPage({
-                                  path: iframePath,
-                                  pageKey: pinnedPageKey,
-                                  params: pathParamValues,
-                                });
-                              } catch {
-                                // Cross-origin — can't read, keep current value
-                              }
-                            }
-                            if (effectiveEditingMode === "visual") {
-                              injectVisualEditor();
-                            }
-                            if (effectiveEditingMode === "blocks") {
-                              injectCmsEditor();
-                            }
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
+                  </PreviewCanvas>
                 </ResizablePanel>
                 {jsonPanelOpen && jsonBlockKey && (
                   <>

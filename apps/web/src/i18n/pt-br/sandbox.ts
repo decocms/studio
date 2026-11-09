@@ -1056,8 +1056,8 @@ export const sandbox = {
   "sandbox.preview.devServerPreviewTitle":
     "Visualização do servidor de desenvolvimento",
   "sandbox.preview.deviceDesktop": "Desktop",
-  "sandbox.preview.deviceMobile": "Celular (375px)",
-  "sandbox.preview.deviceTablet": "Tablet (768px)",
+  "sandbox.preview.deviceMobile": "Celular (412px)",
+  "sandbox.preview.deviceTablet": "Tablet (1024px)",
   "sandbox.preview.enterToGo": "Enter para ir",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
   "sandbox.preview.globalBadge": "Global",
