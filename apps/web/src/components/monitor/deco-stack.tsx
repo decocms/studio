@@ -36,7 +36,7 @@ export function DecoStack({
   return (
     <DecoSection
       orgSlug={org.slug}
-      site={project.site}
+      site={project.analyticsSite}
       status={status.data}
       segment={segment}
       section={section}
@@ -61,7 +61,7 @@ export function HeatmapScreen({
   const [configure, setConfigure] = useState(false);
   const status = useAnalyticsStatus(
     org.slug,
-    { site: project?.site ?? "" },
+    { analyticsSite: project?.analyticsSite ?? "" },
     project !== undefined,
   );
   const { segment } = useAnalyticsSegment();
@@ -100,7 +100,7 @@ export function HeatmapScreen({
       <>
         <DecoSection
           orgSlug={org.slug}
-          site={project.site}
+          site={project.analyticsSite}
           status={status.data}
           segment={segment}
           section="heatmap"

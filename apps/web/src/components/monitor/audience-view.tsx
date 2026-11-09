@@ -645,7 +645,7 @@ function ProjectAudience({
         {onDeco && (
           <SegmentActions
             orgSlug={org.slug}
-            site={project.site}
+            site={project.analyticsSite}
             range={decoRange}
             segment={segment}
           />
@@ -670,7 +670,7 @@ function ProjectAudience({
             const body = (
               <DecoSection
                 orgSlug={org.slug}
-                site={project.site}
+                site={project.analyticsSite}
                 status={deco}
                 segment={segment}
                 section={section}
