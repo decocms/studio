@@ -118,6 +118,24 @@ export type StudioChannelModule<
   Out extends ModuleMessage = ModuleMessage,
 > = (context: StudioChannelContext<In, Out>) => void | Promise<void>;
 
+/**
+ * The `window` property a binding sets when its framework can show a save by
+ * re-rendering the page in place (Next.js: `router.refresh()`): a
+ * {@link StudioPageRefresh}. Studio's HTML swap calls it instead of replacing
+ * the document, whose new scripts never run, so the page's client components
+ * would stop at their server markup (a footer revealed on scroll, a carousel).
+ * A page without it gets the document swap.
+ */
+export const STUDIO_PAGE_REFRESH = "__decoStudioRefresh";
+
+/**
+ * Shows `url` (absolute, on the page's own origin: the page's URL, or a new one
+ * whose draft pointer moved) from the server without reloading, keeping the
+ * page's client state; resolves once the new content is on screen, rejects
+ * when it can't show it (Studio then reloads the frame).
+ */
+export type StudioPageRefresh = (url: string) => Promise<void>;
+
 /** Types a module's default export: `export default defineStudioModule<In, Out>((channel) => …)`. */
 export function defineStudioModule<
   In extends ModuleMessage = ModuleMessage,
