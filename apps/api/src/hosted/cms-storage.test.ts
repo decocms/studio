@@ -568,6 +568,46 @@ describe("blocks.apply (the save)", () => {
     ).not.toBeNull();
   });
 
+  it("a retry whose PUT meets the first try's own late write counts it as landed; another body is still a lost race", async () => {
+    for (const late of [{ v: 1 }, { v: 2 }]) {
+      const { delivery, slug, call } = setup();
+      const second = deliveryKeys.draftFile(SITE, slug, "b");
+      let tries = 0;
+      delivery.hooks.beforePut = (key) => {
+        if (key !== second) return;
+        tries++;
+        if (tries === 1) {
+          throw new DeliveryUnavailableError(
+            key,
+            new Error(`no answer within ${CONDITIONAL_PUT_TIMEOUT_MS} ms`),
+          );
+        }
+        // The given-up PUT commits now: after the retry read the draft,
+        // before the retry's own PUT.
+        delivery.objects.set(key, {
+          text: JSON.stringify(setFile(late)),
+          etag: '"late"',
+          cacheControl: "",
+        });
+      };
+      const first = await call("blocks.apply", {
+        set: { a: { v: 1 }, b: { v: 1 } },
+        ifMatch: { a: null, b: null },
+      });
+      expect(first.error?.code).toBe(-32008);
+      const retry = await call("blocks.apply", {
+        set: { b: { v: 1 } },
+        ifMatch: { b: null },
+      });
+      if (late.v === 1) {
+        expect(retry.result?.versions).toEqual({ b: blockVersion({ v: 1 }) });
+      } else {
+        expect(retry.error?.code).toBe(-32008);
+        expect(retry.error?.data).toEqual({ retryAfterMs: 250, landed: {} });
+      }
+    }
+  });
+
   it("an R2 429 before any file landed is -32008 with landed {}", async () => {
     const { delivery, slug, call } = setup();
     delivery.hooks.beforePut = (key) => {
