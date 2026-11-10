@@ -51,4 +51,46 @@ describe("pickerCurrent", () => {
       ).toEqual({ isBase: false, current: undefined, unlisted: true });
     }
   });
+
+  it("hosted v8: a CLI draft no release names shows by its own name", () => {
+    const cli = {
+      name: "fix-footer-refs",
+      via: "cli",
+      createdBy: "u",
+      createdAt: "2026-11-10T05:07:16.461Z",
+    };
+    expect(
+      pickerCurrent({
+        value: "fix-footer-refs",
+        baseBranch: "main",
+        releases: [],
+        baseIsDraft: true,
+        storeDrafts: [cli],
+      }),
+    ).toEqual({
+      isBase: false,
+      current: undefined,
+      storeDraft: cli,
+      unlisted: false,
+    });
+  });
+
+  it("a release wins over a CMS draft of the same name", () => {
+    const release = { ...named, branch: "fix-footer-refs" } as Release;
+    expect(
+      pickerCurrent({
+        value: "fix-footer-refs",
+        baseBranch: "main",
+        releases: [release],
+        storeDrafts: [
+          {
+            name: "fix-footer-refs",
+            via: "cli",
+            createdBy: "u",
+            createdAt: "2026-11-10T05:07:16.461Z",
+          },
+        ],
+      }),
+    ).toEqual({ isBase: false, current: release, unlisted: false });
+  });
 });

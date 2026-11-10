@@ -74,6 +74,11 @@ import {
   useReleases,
 } from "./use-releases";
 import { useStartDraft } from "./use-start-draft";
+import {
+  storeDraftVia,
+  unlistedStoreDrafts,
+  useStoreDrafts,
+} from "./cms-store-drafts";
 
 interface Props {
   virtualMcpId: string;
@@ -158,6 +163,11 @@ export function BranchPicker({
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
   const startDraft = useStartDraft({ virtualMcpId, userLabel, userId });
+  // Hosted v8: the drafts the CMS holds that no release names — the ones
+  // `deco push --draft` made. Read again on every open.
+  const storeDraftsQuery = useStoreDrafts(virtualMcpId, isV8);
+  const storeDrafts = unlistedStoreDrafts(releases, storeDraftsQuery.data);
+  const refetchStoreDrafts = storeDraftsQuery.refetch;
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
    * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
@@ -196,16 +206,19 @@ export function BranchPicker({
     max: RELEASES_MAX,
   });
 
-  const { isBase, current, unlisted } = pickerCurrent({
+  const { isBase, current, storeDraft, unlisted } = pickerCurrent({
     value,
     baseBranch,
     releases,
     baseIsDraft,
+    storeDrafts,
   });
 
   const currentLabel = isBase
     ? t("thread.branchPicker.live")
-    : (current?.name ?? t("thread.branchPicker.defaultVersionName"));
+    : (current?.name ??
+      storeDraft?.name ??
+      t("thread.branchPicker.defaultVersionName"));
   const label = localhostActive
     ? t("thread.branchPicker.localhost.label")
     : localActive
@@ -220,7 +233,9 @@ export function BranchPicker({
       ? "bg-special"
       : isBase
         ? "bg-success"
-        : releaseDotClass(current?.color ?? "orange");
+        : storeDraft
+          ? releaseDotClass(undefined)
+          : releaseDotClass(current?.color ?? "orange");
 
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
@@ -303,10 +318,11 @@ export function BranchPicker({
     setEditName("");
   };
 
-  // Naming the current unlisted branch adopts it as a release (a named version).
-  const saveUnlistedName = () => {
+  // Naming the current unlisted branch adopts it as a release (a named
+  // version); so does naming a CMS draft (`branch`, its name).
+  const saveUnlistedName = (branch: string | null | undefined = value) => {
     const next = editName.trim();
-    if (next && value) {
+    if (next && branch) {
       if (atReleaseCap) {
         toast.error(capReachedMessage);
         setEditing(null);
@@ -314,7 +330,7 @@ export function BranchPicker({
         return;
       }
       createRelease({
-        branch: value,
+        branch,
         name: next,
         color: nextReleaseColor(releases.length),
         createdBy: userId,
@@ -353,6 +369,7 @@ export function BranchPicker({
           ? undefined
           : (next) => {
               if (!next) resetTransient();
+              else if (isV8) void refetchStoreDrafts();
               setOpen(next);
             }
       }
@@ -455,7 +472,7 @@ export function BranchPicker({
                   <RenameInput
                     value={editName}
                     onChange={setEditName}
-                    onSave={saveUnlistedName}
+                    onSave={() => saveUnlistedName()}
                     onCancel={cancelRename}
                   />
                 ) : (
@@ -506,6 +523,43 @@ export function BranchPicker({
                   />
                 ),
               )}
+              {storeDrafts.map((d) =>
+                editing === d.name ? (
+                  <RenameInput
+                    key={`store:${d.name}`}
+                    value={editName}
+                    onChange={setEditName}
+                    onSave={() => saveUnlistedName(d.name)}
+                    onCancel={cancelRename}
+                  />
+                ) : (
+                  <ReleaseRow
+                    key={`store:${d.name}`}
+                    rowRef={
+                      !localActive && d.name === value
+                        ? selectedRowRef
+                        : undefined
+                    }
+                    dot={releaseDotClass(undefined)}
+                    label={d.name}
+                    creator={[
+                      creatorName(d.createdBy),
+                      t("thread.branchPicker.storeDraftVia", {
+                        via: storeDraftVia(d.via),
+                      }),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                    branch={d.name}
+                    selected={!localActive && d.name === value}
+                    onSelect={() => pick(d.name)}
+                    onRename={() => {
+                      setEditing(d.name);
+                      setEditName(d.name);
+                    }}
+                  />
+                ),
+              )}
               {isV8 && (
                 <V8LocalhostRow
                   virtualMcpId={virtualMcpId}
@@ -516,9 +570,10 @@ export function BranchPicker({
                 />
               )}
             </div>
-            {(unlisted || releases.length > 0 || isV8) && (
-              <div className="my-1 border-t" />
-            )}
+            {(unlisted ||
+              releases.length > 0 ||
+              storeDrafts.length > 0 ||
+              isV8) && <div className="my-1 border-t" />}
             <button
               type="button"
               onClick={() => void create()}
