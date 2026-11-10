@@ -11,6 +11,7 @@ import { agentSandboxEnabled } from "@/settings";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import {
+  getThreadRepository,
   resolveSandboxBranchForThread,
   threadBranch,
 } from "@/tools/sandbox/thread-repo";
@@ -104,14 +105,17 @@ export async function startThreadSandbox(
   );
   if (!virtualMcp) return null;
   const agent = resolveEffectiveStudioPackVirtualMcp(virtualMcp);
-  const repository = (
+  const agentRepo = (
     agent.metadata as { repository?: RepositoryBinding | null } | null
   )?.repository;
   const branch = await resolveSandboxBranchForThread(ctx, {
     threadId: thread.id,
-    agentRepo: repository,
+    agentRepo,
     runBranch: thread.branch ?? threadBranch(thread.id),
   });
+  // After the branch: reading the thread's repo can repoint and persist it.
+  // Dispatch's order: a repo bound to the chat wins over the agent's.
+  const repository = (await getThreadRepository(ctx, thread.id)) ?? agentRepo;
   const boot = async () => {
     const { sandboxHandle, previewUrl } = await ensureSandbox(
       {

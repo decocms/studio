@@ -18,6 +18,8 @@ export interface SandboxOptions extends SessionOptions {
   org?: string;
   /** Agent for `new`. Defaults to the org's default agent, which has no repo. */
   agent?: string;
+  /** Linked repository for `new`, by id or owner/name, on the default agent. */
+  repo?: string;
   /** `exec` timeout in seconds; the daemon caps it at 120. */
   timeout?: number;
   /** Injectable for tests. Defaults to process stdout/stderr. */
@@ -25,7 +27,7 @@ export interface SandboxOptions extends SessionOptions {
 }
 
 const USAGE = `Usage:
-  deco sandbox new --org <slug> [--agent <id>]
+  deco sandbox new --org <slug> [--repo <owner/name> | --agent <id>]
   deco sandbox chat <chat-id> "<message>" --org <slug>
   deco sandbox exec <chat-id> --org <slug> [--timeout <s>] -- <command>`;
 
@@ -72,6 +74,12 @@ export async function sandboxCommand(options: SandboxOptions): Promise<number> {
     console.error(USAGE);
     return 1;
   }
+  if (options.repo && options.agent) {
+    console.error(
+      "Pass --repo or --agent, not both: an agent uses its own repository.",
+    );
+    return 1;
+  }
   if (!org) {
     console.error(
       "Missing --org <slug>. The slug is the first path segment of the studio URL.",
@@ -87,7 +95,9 @@ export async function sandboxCommand(options: SandboxOptions): Promise<number> {
   const api = new Api(session, org, options.fetch);
 
   try {
-    if (subcommand === "new") return await newSandbox(api, options.agent);
+    if (subcommand === "new") {
+      return await newSandbox(api, options.agent, options.repo);
+    }
     const [threadId, ...rest] = args as [string, ...string[]];
     if (subcommand === "chat") {
       return await chat(api, threadId, rest.join(" "), write);
@@ -106,7 +116,11 @@ export async function sandboxCommand(options: SandboxOptions): Promise<number> {
   }
 }
 
-async function newSandbox(api: Api, agent: string | undefined) {
+async function newSandbox(
+  api: Api,
+  agent: string | undefined,
+  repository: string | undefined,
+) {
   const agentId = agent ?? getDecopilotId(await api.orgId());
   const created = z.object({ item: z.object({ id: z.string() }) }).parse(
     await api.tool("COLLECTION_THREADS_CREATE", {
@@ -115,7 +129,11 @@ async function newSandbox(api: Api, agent: string | undefined) {
   );
   const threadId = created.item.id;
   // The boot keeps going after this returns; the first exec waits for it.
-  await api.tool("THREAD_SANDBOX_START", { threadId, wait: false });
+  await api.tool("THREAD_SANDBOX_START", {
+    threadId,
+    wait: false,
+    ...(repository ? { repository } : {}),
+  });
   console.error(`Sandbox booting for chat ${threadId}.`);
   console.log(threadId);
   return 0;

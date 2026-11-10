@@ -40,6 +40,7 @@ const { values, positionals } = parseArgs({
     limit: { type: "string" },
     org: { type: "string" },
     agent: { type: "string" },
+    repo: { type: "string" },
     timeout: { type: "string" },
     method: { type: "string", short: "X" },
     data: { type: "string", short: "d" },
@@ -86,6 +87,7 @@ Tools Options:
 
 Sandbox Options:
   --org <slug>          Organization slug
+  --repo <owner/name>   Linked repository to clone for \`sandbox new\` (or its id)
   --agent <id>          Agent for \`sandbox new\` (default: the org's default agent, no repo)
   --timeout <s>         \`sandbox exec\` timeout in seconds (default 30, max 120)
 
@@ -104,7 +106,7 @@ Examples:
   deco orgs
   deco tools list --org my-org thread
   deco tools call ORGANIZATION_LIST --org my-org
-  deco sandbox new --org my-org
+  deco sandbox new --org my-org --repo my-org/my-site
   deco sandbox chat <chat-id> "run the tests" --org my-org
   deco sandbox exec <chat-id> --org my-org -- git status
   deco api "/api/my-org/fs/<volume>/list?path=/"
@@ -288,6 +290,7 @@ if (command === "sandbox") {
     args: positionals.slice(2),
     org: values.org,
     agent: values.agent,
+    repo: values.repo,
     timeout,
   });
   process.exit(code);
