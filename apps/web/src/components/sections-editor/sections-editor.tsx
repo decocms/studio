@@ -215,6 +215,8 @@ import { withVariantValue } from "./variant-shape";
 import { isLazyWrapper } from "./lazy-value";
 import { HeaderSlotProvider, HeaderSlotTarget } from "./header-slot";
 import { BlocksSiteEditorProvider } from "./blocks-site-editor";
+import { withDefaultsForNew } from "./schema-defaults";
+import { useDefaultsOnCreateOnly } from "./defaults-on-create";
 
 /** One toast for a section form's save outcome, however many saves it took. */
 const STALE_FORM_TOAST = "section-form-stale-save";
@@ -374,6 +376,9 @@ export function SectionsEditor({
   const t = useT();
   const task = useOptionalChatTask();
   const threadId = task?.taskId ?? null;
+  // Its section forms edit stored blocks as they are, so a section added
+  // here is filled in here (see `defaultsOnCreateOnly`).
+  const createOnly = useDefaultsOnCreateOnly(virtualMcpId);
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch, threadId, previewUrl }
     : null;
@@ -2229,13 +2234,17 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
+  const newSection = (resolveType: string): RawSection => {
+    const section = { __resolveType: resolveType } as RawSection;
+    return createOnly
+      ? withDefaultsForNew(undefined, section, meta ?? undefined)
+      : section;
+  };
+
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
-    const updatedSections = [
-      ...rawSections,
-      { __resolveType: entry.resolveType } as RawSection,
-    ];
+    const updatedSections = [...rawSections, newSection(entry.resolveType)];
     const newIndex = updatedSections.length - 1;
 
     // The save updates the decofile cache optimistically; no need to await it.
@@ -2304,7 +2313,7 @@ export function SectionsEditor({
       handleAddSection(entry);
       return;
     }
-    append({ __resolveType: entry.resolveType });
+    append(newSection(entry.resolveType));
     setAddSectionOpen(false);
     pendingAppendRef.current = null;
   };
@@ -3097,7 +3106,7 @@ export function SectionsEditor({
   const handleSectionMatcherTypeChange = (newRt: string) => {
     setSectionRuleResolveType(newRt);
     const newRule: Record<string, unknown> = newRt
-      ? seedMatcherRule(newRt, meta)
+      ? seedMatcherRule(newRt, meta, { withDefaults: createOnly })
       : { __resolveType: alwaysMatcherResolveType(meta) };
     setSectionRuleFormValue(newRt ? newRule : {});
     scheduleSectionRuleSave(newRule);
@@ -4576,6 +4585,7 @@ export function SectionsEditor({
       />
       <VariantRuleSection>
         <VariantRuleEditor
+          defaultsOnCreateOnly={createOnly}
           currentRt={sectionRuleResolveType ?? ""}
           currentLabel={resolveVariantRuleLabel(
             activeSectionFlagVariant?.rule,
@@ -5018,6 +5028,7 @@ export function SectionsEditor({
                   }
                 >
                   <SchemaFormPanel
+                    defaultsOnCreateOnly={createOnly}
                     activeSchema={activeSchema}
                     formValue={formValue}
                     formResetKey={formResetKey}
@@ -5056,6 +5067,7 @@ export function SectionsEditor({
                   }
                 >
                   <SchemaFormPanel
+                    defaultsOnCreateOnly={createOnly}
                     activeSchema={activeSchema}
                     formValue={formValue}
                     formResetKey={formResetKey}

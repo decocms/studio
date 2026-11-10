@@ -7,6 +7,7 @@ import { type NamedRuleValues, readNamedRuleValues } from "./named-rules";
 import { globalSectionLabel } from "./page-list";
 import { isPageResolveTypeOnBlocksSite } from "./page-types";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
+import { withDefaultsForNew } from "./schema-defaults";
 
 export interface UnwrappedMatcherRule {
   resolveType: string;
@@ -206,6 +207,10 @@ export function readMatcherRuleFormState(
 export function seedMatcherRule(
   resolveType: string,
   meta?: LiveMeta | null,
+  options?: {
+    /** Also its `@default`s: its form won't fill them (`defaultsOnCreateOnly`). */
+    withDefaults?: boolean;
+  },
 ): Record<string, unknown> {
   const base: Record<string, unknown> = { __resolveType: resolveType };
   if (!resolveType || !meta) return base;
@@ -214,5 +219,8 @@ export function seedMatcherRule(
     schema?.type === "inline-union"
       ? schema.inlineUnionBranches?.[0]?.discriminators
       : undefined;
-  return discriminators ? { ...base, ...discriminators } : base;
+  const rule = discriminators ? { ...base, ...discriminators } : base;
+  return options?.withDefaults
+    ? withDefaultsForNew(undefined, rule, meta)
+    : rule;
 }

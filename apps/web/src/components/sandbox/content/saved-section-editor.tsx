@@ -59,6 +59,7 @@ export function SavedSectionEditor({
   decofile,
   blockKey,
   onSaveReferencedBlock,
+  defaultsOnCreateOnly = false,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -71,6 +72,8 @@ export function SavedSectionEditor({
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  /** Edit the stored section as it is (the project's `defaultsOnCreateOnly`). */
+  defaultsOnCreateOnly?: boolean;
 }) {
   const t = useT();
   const task = useOptionalChatTask();
@@ -235,6 +238,7 @@ export function SavedSectionEditor({
                     decofile={decofile}
                     onSaveReferencedBlock={onSaveReferencedBlock}
                     sandbox={sandbox}
+                    defaultsOnCreateOnly={defaultsOnCreateOnly}
                   />
                 ) : (
                   <div className="px-3 py-6 text-center text-xs text-muted-foreground">

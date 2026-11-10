@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applySchemaDefaults } from "./schema-defaults";
+import { applySchemaDefaults, withDefaultsForNew } from "./schema-defaults";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 
 const schema = (
@@ -72,7 +72,9 @@ describe("applySchemaDefaults", () => {
     });
     const result = applySchemaDefaults(
       schema({ items: { type: "array", items: item } }),
-      { items: [{ children: [{ label: "A" }] }] },
+      {
+        items: [{ children: [{ label: "A" }] }],
+      },
     );
     expect(result).toEqual({
       items: [{ display: true, children: [{ label: "A", display: true }] }],
@@ -89,7 +91,9 @@ describe("applySchemaDefaults", () => {
     } satisfies SchemaProperty;
     expect(
       applySchemaDefaults(schema({ style }), { style: { color: "red" } }),
-    ).toEqual({ style: { color: "red", visible: true } });
+    ).toEqual({
+      style: { color: "red", visible: true },
+    });
     expect(
       applySchemaDefaults(
         schema({
@@ -216,5 +220,86 @@ describe("applySchemaDefaults", () => {
     const value = { a: 1 };
     expect(applySchemaDefaults({ type: "object" }, value)).toBe(value);
     expect(applySchemaDefaults(null, value)).toBe(value);
+  });
+});
+
+const bannerMeta = {
+  manifest: {
+    blocks: {
+      sections: {
+        "site/sections/Banner.tsx": {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            show: { type: "boolean", default: true },
+          },
+        },
+      },
+    },
+  },
+} as unknown as LiveMeta;
+
+describe("withDefaultsForNew", () => {
+  test("fills a new block from its own schema, and leaves saved references alone", () => {
+    expect(
+      withDefaultsForNew<Record<string, unknown>>(
+        { type: "block-ref" },
+        { __resolveType: "site/sections/Banner.tsx" },
+        bannerMeta,
+      ),
+    ).toEqual({ __resolveType: "site/sections/Banner.tsx", show: true });
+    const savedRef = { __resolveType: "Banner - Home" };
+    expect(
+      withDefaultsForNew({ type: "block-ref" }, savedRef, bannerMeta),
+    ).toBe(savedRef);
+  });
+
+  test("fills a new object item from the item schema", () => {
+    expect(withDefaultsForNew(menuItem, {})).toEqual({ display: true });
+  });
+
+  test("fills a new type-discriminated union value from its branch", () => {
+    const card: SchemaProperty = {
+      type: "block-ref",
+      discriminatorKey: "type",
+      anyOfRefs: [
+        {
+          resolveType: "image",
+          title: "Image",
+          discriminatorValue: "image",
+          discriminatorRequired: true,
+          schema: schema({
+            type: { type: "string" },
+            src: { type: "string" },
+            lazy: { type: "boolean", default: true },
+          }),
+        },
+        {
+          resolveType: "text",
+          title: "Text",
+          discriminatorValue: "text",
+          discriminatorRequired: true,
+          schema: schema({
+            type: { type: "string" },
+            size: { type: "string", default: "md" },
+          }),
+        },
+      ],
+    };
+    expect(
+      withDefaultsForNew<Record<string, unknown>>(card, { type: "text" }),
+    ).toEqual({
+      type: "text",
+      size: "md",
+    });
+    // No discriminator: the branch the editor shows (the first one).
+    expect(withDefaultsForNew<Record<string, unknown>>(card, {})).toEqual({
+      type: "image",
+      lazy: true,
+    });
+    // An existing value only gets its discriminator, as before.
+    expect(applySchemaDefaults(schema({ card }), { card: {} })).toEqual({
+      card: { type: "image" },
+    });
   });
 });

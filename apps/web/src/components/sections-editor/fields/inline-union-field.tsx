@@ -11,6 +11,7 @@ import { stripMustacheTokens } from "../array-item-display";
 import { blockRefOptionLabel } from "../block-ref-field-utils";
 import type { SchemaProperty } from "../resolve-schema";
 import { renderField, SchemaForm } from "../schema-form";
+import { useSeedNew } from "../defaults-on-create";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import {
@@ -52,6 +53,7 @@ function branchFormSchema(branch: Branch): SchemaProperty | null {
 export function InlineUnionField(props: FieldProps) {
   const t = useT();
   const { schema, value, onChange, path, label } = props;
+  const seedNew = useSeedNew(props.meta);
   const branches = schema.inlineUnionBranches ?? [];
 
   const inferred = inferInlineUnionIndex(
@@ -78,7 +80,7 @@ export function InlineUnionField(props: FieldProps) {
     if (next.startsWith(LOADER_OPTION_PREFIX)) {
       const ref =
         loaderOptions[Number(next.slice(LOADER_OPTION_PREFIX.length))];
-      if (ref) onChange({ __resolveType: ref.resolveType });
+      if (ref) onChange(seedNew(undefined, { __resolveType: ref.resolveType }));
       return;
     }
     const index = Number(next);
@@ -87,7 +89,9 @@ export function InlineUnionField(props: FieldProps) {
     onChange(
       branches[index]?.schema?.type === "array"
         ? []
-        : { ...(branches[index]?.discriminators ?? {}) },
+        : seedNew(branches[index]?.schema, {
+            ...(branches[index]?.discriminators ?? {}),
+          }),
     );
   };
 

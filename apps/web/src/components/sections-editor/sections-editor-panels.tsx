@@ -69,6 +69,7 @@ export function VariantRuleForm({
   decofile,
   onSaveReferencedBlock,
   sandbox,
+  defaultsOnCreateOnly,
 }: {
   schema: SchemaProperty;
   value: Record<string, unknown>;
@@ -80,6 +81,8 @@ export function VariantRuleForm({
     data: Record<string, unknown>,
   ) => void;
   sandbox?: SandboxConfig | null;
+  /** A section variant's rule edits the stored rule (see `SchemaForm`). */
+  defaultsOnCreateOnly?: boolean;
 }) {
   const t = useT();
   const [breadcrumbPath, setBreadcrumbPath] = useState<Crumb[]>([]);
@@ -103,6 +106,7 @@ export function VariantRuleForm({
         decofile={decofile}
         onSaveReferencedBlock={onSaveReferencedBlock}
         sandbox={sandbox}
+        defaultsOnCreateOnly={defaultsOnCreateOnly}
       />
     </div>
   );
@@ -126,6 +130,7 @@ export function SchemaFormPanel({
   previewBaseUrl,
   onRequestAddSection,
   onVariantMatcherOp,
+  defaultsOnCreateOnly,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -147,6 +152,8 @@ export function SchemaFormPanel({
   previewBaseUrl?: string | null;
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   onVariantMatcherOp?: VariantMatcherOps;
+  /** The section form edits the stored block (see `SchemaForm`). Not SEO. */
+  defaultsOnCreateOnly?: boolean;
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -176,6 +183,7 @@ export function SchemaFormPanel({
           previewBaseUrl={previewBaseUrl}
           onRequestAddSection={onRequestAddSection}
           onVariantMatcherOp={onVariantMatcherOp}
+          defaultsOnCreateOnly={defaultsOnCreateOnly}
         />
       )
     ) : null;

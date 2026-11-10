@@ -44,6 +44,7 @@ import {
   withBranchDiscriminator,
 } from "../block-ref-field-utils";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
+import { useSeedNew } from "../defaults-on-create";
 import { labelFromResolveType } from "../section-types";
 import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
@@ -213,6 +214,7 @@ export function AnyOfField({
 }: FieldProps) {
   const t = useT();
   const compact = useNewBlocksEditor();
+  const seedNew = useSeedNew(meta);
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
@@ -345,19 +347,23 @@ export function AnyOfField({
         ...filtered,
       };
 
+      // The picked branch is created here, so it starts with its own defaults.
+      const branchSchema = targetRef?.schema;
       if (discriminatorKey) {
         const discValue = targetRef?.discriminatorValue ?? rt;
-        onChange({ ...next, [discriminatorKey]: discValue });
+        onChange(
+          seedNew(branchSchema, { ...next, [discriminatorKey]: discValue }),
+        );
         return;
       }
 
       // Embedded union variants (ImageBanner | VideoBanner in Carousel.tsx)
       // must not get a persisted __resolveType — deco only expects plain props.
       if (isEmbeddedUnionResolveType(rt)) {
-        onChange(next);
+        onChange(seedNew(branchSchema, next));
         return;
       }
-      onChange({ ...next, __resolveType: rt });
+      onChange(seedNew(undefined, { ...next, __resolveType: rt }));
     };
 
     const persistUnionValue = (next: unknown) => {

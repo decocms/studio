@@ -4,6 +4,7 @@ import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
 import { applySchemaDefaults } from "./schema-defaults";
+import { CreateOnlyContext } from "./defaults-on-create";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
@@ -112,14 +113,15 @@ function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
   return { ...schema, type: "array", items: inferredItems };
 }
 
-// Ignores `@default`: the root form saves missing defaults first (see `RootSchemaForm`).
+// Ignores `@default`: a form that fills defaults in saves them first, and a
+// create-only one shows what is stored (see `RootSchemaForm`). A number shows
+// empty, not a 0 nothing stored.
 function emptyValueForType(type: string | undefined): unknown {
   switch (type) {
     case "string":
-      return "";
     case "number":
     case "integer":
-      return 0;
+      return "";
     case "boolean":
       return false;
     case "array":
@@ -498,10 +500,17 @@ interface SchemaFormProps {
   /**
    * Outermost form only: whether missing `@default`s are written back through
    * `onChange` as soon as the form opens (the default). With `false` they are
-   * shown, and saved with the first real change, so opening a block that
-   * isn't saved yet never creates it.
+   * shown, and saved with the first real change, so opening a block that isn't
+   * saved yet never creates it.
    */
   persistDefaults?: boolean;
+  /**
+   * Outermost form only: edit the stored block as it is, filling in no
+   * `@default`s; only what is created inside it (an item, a branch) starts
+   * with its own. Set by the section forms of a project with
+   * `defaultsOnCreateOnly` on.
+   */
+  defaultsOnCreateOnly?: boolean;
   basePath: string;
   breadcrumbPath?: Crumb[];
   onBreadcrumbChange?: (path: Crumb[]) => void;
@@ -528,7 +537,8 @@ interface SchemaFormProps {
  * `ObjectField` expansion store so manually-expanded groups survive breadcrumb
  * drill-in/out (which unmounts sibling fields); nested instances reuse it. See
  * `object-field-expansion.tsx`. It also writes missing `@default`s back through
- * `onChange`, so the form only shows values that are saved.
+ * `onChange`, so the form only shows values that are saved — unless
+ * `defaultsOnCreateOnly`, where it shows and edits the stored block as it is.
  */
 export function SchemaForm(props: SchemaFormProps) {
   const hasExpansionProvider = useHasObjectFieldExpansion();
@@ -540,7 +550,8 @@ export function SchemaForm(props: SchemaFormProps) {
  * The value the outermost form shows: `value` with its missing `@default`s
  * filled in. With `persist` (the default) they are also written back through
  * `onChange` when the form opens, as the old admin's form did; without it they
- * reach `onChange` only with the first real change.
+ * reach `onChange` only with the first real change. Without `fill`, nothing
+ * is filled in: `value` itself.
  */
 export function useSeededFormValue(
   schema: SchemaProperty,
@@ -548,8 +559,9 @@ export function useSeededFormValue(
   onChange: (value: unknown) => void,
   meta: LiveMeta | undefined,
   persist = true,
+  fill = true,
 ): unknown {
-  const seeded = applySchemaDefaults(schema, value, meta);
+  const seeded = fill ? applySchemaDefaults(schema, value, meta) : value;
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- persists missing @defaults to the stored block when the form opens, as the old admin's form did
   useEffect(() => {
     if (persist && seeded !== value) onChange(seeded);
@@ -559,17 +571,23 @@ export function useSeededFormValue(
 
 function RootSchemaForm(props: SchemaFormProps) {
   const { schema, value, onChange, meta, persistDefaults } = props;
-  const seeded = useSeededFormValue(
+  const createOnly = props.defaultsOnCreateOnly === true;
+  // Create-only: the fields edit the stored block itself, so a save carries
+  // only what the user changed; what they create is filled in by the field.
+  const shown = useSeededFormValue(
     schema,
     value,
     onChange,
     meta,
-    persistDefaults,
+    persistDefaults !== false,
+    !createOnly,
   );
   return (
-    <ObjectFieldExpansionProvider>
-      <SchemaFormBody {...props} value={seeded} />
-    </ObjectFieldExpansionProvider>
+    <CreateOnlyContext.Provider value={createOnly}>
+      <ObjectFieldExpansionProvider>
+        <SchemaFormBody {...props} value={shown} />
+      </ObjectFieldExpansionProvider>
+    </CreateOnlyContext.Provider>
   );
 }
 

@@ -5,6 +5,7 @@ import { SavedSectionEditor } from "./saved-section-editor";
 import { EmptyMessage } from "./empty-message";
 import { HeldBlockView } from "./held-block-view";
 import { useT } from "@/i18n/use-t.ts";
+import { useDefaultsOnCreateOnly } from "@/components/sections-editor/defaults-on-create";
 
 export function SectionsRightPane({
   selection,
@@ -44,6 +45,7 @@ export function SectionsRightPane({
   ) => void;
 }) {
   const t = useT();
+  const defaultsOnCreateOnly = useDefaultsOnCreateOnly(virtualMcpId);
 
   if (!selection) {
     return (
@@ -94,6 +96,7 @@ export function SectionsRightPane({
         decofile={decofile}
         blockKey={selection.key}
         onSaveReferencedBlock={onSaveReferencedBlock}
+        defaultsOnCreateOnly={defaultsOnCreateOnly}
       />
     </HeldBlockView>
   );
