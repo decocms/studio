@@ -7,6 +7,12 @@ export const thread = {
     "Sessão de código: abre com o código desta branch",
   "thread.branchPicker.groupCode": "Código",
   "thread.branchPicker.groupContent": "Conteúdo",
+  "thread.branchPicker.viaStudioUi": "por pessoa via web",
+  "thread.branchPicker.storeDraftVia": "por agente via {via}",
+  "thread.branchPicker.discardStoreDraftConfirm":
+    'Descartar "{name}" do CMS? As alterações não publicadas são apagadas para todos. O conteúdo publicado não muda.',
+  "thread.branchPicker.discardStoreDraftError":
+    "Não foi possível descartar o draft",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",

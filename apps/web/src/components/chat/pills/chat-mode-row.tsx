@@ -35,13 +35,14 @@ export function ChatModeRowPure({ branchPill }: PureProps) {
 
 export type BranchPickAction =
   | { kind: "switch" }
-  | { kind: "new-chat"; runtime?: "sandbox" };
+  | { kind: "new-chat"; runtime?: ThreadRuntime };
 
 /** A chat's runtime is immutable, so a draft from another runtime opens in a
  *  new chat: switching a coding chat onto a CMS draft would stamp it `sandbox`.
- *  The CMS chat takes the project default, never an explicit `cms`, which the
- *  server honors even where the project can no longer serve one; a project
- *  that can't serve CMS keeps the coding chat. */
+ *  On v8, content drafts always open in CMS. Elsewhere the CMS chat takes the
+ *  project default, never an explicit `cms`, which the server honors even
+ *  where the project can no longer serve one; a project that can't serve CMS
+ *  keeps the coding chat. */
 export function branchPickAction(input: {
   locked: boolean;
   /** `null` while unresolved: may still be a CMS chat. */
@@ -51,9 +52,16 @@ export function branchPickAction(input: {
   draftRuntime?: ThreadRuntime;
   /** The chat is already on this draft. */
   current?: boolean;
+  /** The v8 flag: content pointers must open in CMS, not as Git branches. */
+  contentOnly?: boolean;
 }): BranchPickAction {
   const { locked, sessionRuntime, projectRuntime, draftRuntime, current } =
     input;
+  if (input.contentOnly && draftRuntime === "cms") {
+    return sessionRuntime === "cms" && !locked
+      ? { kind: "switch" }
+      : { kind: "new-chat", runtime: "cms" };
+  }
   if (draftRuntime === "sandbox" && sessionRuntime !== "sandbox")
     return { kind: "new-chat", runtime: "sandbox" };
   if (
@@ -125,6 +133,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       // A draft without a stamp predates it, so it was made in the default.
       draftRuntime: draft && (draft.runtime ?? projectRuntime),
       current: next === currentBranch,
+      contentOnly: v8,
     });
     if (action.kind === "new-chat" && createTask) {
       createTask({

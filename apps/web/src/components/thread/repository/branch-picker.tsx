@@ -48,6 +48,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Code01,
+  CpuChip01,
   DotsVertical,
   Edit01,
   GitBranch01,
@@ -77,6 +78,13 @@ import {
 } from "./use-releases";
 import { groupReleasesByRuntime } from "./release-edits";
 import { useStartDraft } from "./use-start-draft";
+import {
+  type StoreDraft,
+  storeDraftVia,
+  unlistedStoreDrafts,
+  useDiscardStoreDraft,
+  useStoreDrafts,
+} from "./cms-store-drafts";
 
 /** A coding draft's icon in place of its dot; the negative margin keeps the
  *  dot's 8px footprint so names stay aligned with every other row. */
@@ -161,11 +169,21 @@ export function BranchPicker({
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
+  // A CMS draft (`deco push --draft`) to discard, after a confirm.
+  const [pendingDiscard, setPendingDiscard] = useState<StoreDraft | null>(null);
   // Scroll the selected row into view when the popover opens.
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
   const startDraft = useStartDraft({ virtualMcpId, userLabel, userId });
+  // Hosted v8: the drafts the CMS holds that no release names — the ones
+  // `deco push --draft` made. Read again on every open.
+  const storeDraftsQuery = useStoreDrafts(virtualMcpId, isV8);
+  const storeDrafts = isV8
+    ? unlistedStoreDrafts(releases, storeDraftsQuery.data)
+    : [];
+  const refetchStoreDrafts = storeDraftsQuery.refetch;
+  const discardStoreDraft = useDiscardStoreDraft(virtualMcpId);
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
    * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
@@ -204,16 +222,19 @@ export function BranchPicker({
     max: RELEASES_MAX,
   });
 
-  const { isBase, current, unlisted } = pickerCurrent({
+  const { isBase, current, storeDraft, unlisted } = pickerCurrent({
     value,
     baseBranch,
     releases,
     baseIsDraft,
+    storeDrafts,
   });
 
   const currentLabel = isBase
     ? t("thread.branchPicker.live")
-    : (current?.name ?? t("thread.branchPicker.defaultVersionName"));
+    : (current?.name ??
+      storeDraft?.name ??
+      t("thread.branchPicker.defaultVersionName"));
   const label = localhostActive
     ? t("thread.branchPicker.localhost.label")
     : localActive
@@ -228,7 +249,9 @@ export function BranchPicker({
       ? "bg-special"
       : isBase
         ? "bg-success"
-        : releaseDotClass(current?.color ?? "orange");
+        : storeDraft
+          ? releaseDotClass(undefined)
+          : releaseDotClass(current?.color ?? "orange");
   const currentIsCode =
     !localhostActive &&
     !localActive &&
@@ -238,7 +261,9 @@ export function BranchPicker({
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
     clearLocal();
-    const draft = releases.find((r) => r.branch === branch);
+    const draft = storeDrafts.some((d) => d.name === branch)
+      ? { runtime: "cms" as const }
+      : releases.find((r) => r.branch === branch);
     onChange(branch, draft && { runtime: draft.runtime });
     setOpen(false);
   };
@@ -317,10 +342,11 @@ export function BranchPicker({
     setEditName("");
   };
 
-  // Naming the current unlisted branch adopts it as a release (a named version).
-  const saveUnlistedName = () => {
+  // Naming the current unlisted branch adopts it as a release (a named
+  // version); so does naming a CMS draft (`branch`, its name).
+  const saveUnlistedName = (branch: string | null | undefined = value) => {
     const next = editName.trim();
-    if (next && value) {
+    if (next && branch) {
       if (atReleaseCap) {
         toast.error(capReachedMessage);
         setEditing(null);
@@ -328,7 +354,7 @@ export function BranchPicker({
         return;
       }
       createRelease({
-        branch: value,
+        branch,
         name: next,
         color: nextReleaseColor(releases.length),
         createdBy: userId,
@@ -365,7 +391,8 @@ export function BranchPicker({
   const releaseGroups = groupReleasesByRuntime(releases);
   // Headers only when both kinds exist; a single kind stays a plain list.
   const groupByRuntime =
-    releaseGroups.content.length > 0 && releaseGroups.code.length > 0;
+    (releaseGroups.content.length > 0 || storeDrafts.length > 0) &&
+    releaseGroups.code.length > 0;
   const releaseRow = (r: Release) =>
     editing === r.branch ? (
       <RenameInput
@@ -385,7 +412,8 @@ export function BranchPicker({
         }
         label={r.name}
         creator={creatorName(r.createdBy)}
-        branch={r.branch}
+        originTooltip={isV8 ? t("thread.branchPicker.viaStudioUi") : undefined}
+        branch={!isV8 || r.runtime === "sandbox" ? r.branch : undefined}
         selected={!localActive && r.branch === value}
         onSelect={() => pick(r.branch)}
         onRename={() => startRename(r)}
@@ -393,6 +421,56 @@ export function BranchPicker({
         deleteBlocked={!canDeleteRelease}
       />
     );
+  // Discarding a CMS draft drops its row and its unpublished changes, as
+  // `deco drafts discard` does — published or abandoned ones otherwise stay
+  // listed forever. Off the active one first, never to production.
+  const confirmDiscard = () => {
+    const d = pendingDiscard;
+    setPendingDiscard(null);
+    if (!d || (d.name === value && releases.length === 0)) return;
+    if (d.name === value) {
+      const sibling = releases[0];
+      if (sibling) pick(sibling.branch);
+      else setOpen(false);
+    }
+    discardStoreDraft.mutateAsync(d.name).catch((err: unknown) => {
+      toast.error(t("thread.branchPicker.discardStoreDraftError"), {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    });
+  };
+
+  const storeDraftRows = storeDrafts.map((d, index) =>
+    editing === d.name ? (
+      <RenameInput
+        key={`store:${d.name}`}
+        value={editName}
+        onChange={setEditName}
+        onSave={() => saveUnlistedName(d.name)}
+        onCancel={cancelRename}
+      />
+    ) : (
+      <ReleaseRow
+        key={`store:${d.name}`}
+        rowRef={!localActive && d.name === value ? selectedRowRef : undefined}
+        dot={releaseDotClass(undefined)}
+        label={d.name}
+        creator={creatorName(d.createdBy)}
+        agentIcon={releaseIconClass(nextReleaseColor(index))}
+        originTooltip={t("thread.branchPicker.storeDraftVia", {
+          via: storeDraftVia(d.via),
+        })}
+        selected={!localActive && d.name === value}
+        onSelect={() => pick(d.name)}
+        onRename={() => {
+          setEditing(d.name);
+          setEditName(d.name);
+        }}
+        onDelete={() => setPendingDiscard(d)}
+        deleteBlocked={d.name === value && releases.length === 0}
+      />
+    ),
+  );
 
   const popover = (
     <Popover
@@ -402,6 +480,7 @@ export function BranchPicker({
           ? undefined
           : (next) => {
               if (!next) resetTransient();
+              else if (isV8) void refetchStoreDrafts();
               setOpen(next);
             }
       }
@@ -434,6 +513,15 @@ export function BranchPicker({
                     className={cn(
                       CODE_ICON_CLASS,
                       releaseIconClass(current?.color),
+                    )}
+                  />
+                ) : storeDraft && !localActive ? (
+                  <CpuChip01
+                    className={cn(
+                      CODE_ICON_CLASS,
+                      releaseIconClass(
+                        nextReleaseColor(storeDrafts.indexOf(storeDraft)),
+                      ),
                     )}
                   />
                 ) : (
@@ -513,7 +601,7 @@ export function BranchPicker({
                   <RenameInput
                     value={editName}
                     onChange={setEditName}
-                    onSave={saveUnlistedName}
+                    onSave={() => saveUnlistedName()}
                     onCancel={cancelRename}
                   />
                 ) : (
@@ -521,7 +609,10 @@ export function BranchPicker({
                     rowRef={localActive ? undefined : selectedRowRef}
                     dot={releaseDotClass("orange")}
                     label={t("thread.branchPicker.defaultVersionName")}
-                    branch={value}
+                    branch={isV8 ? undefined : value}
+                    originTooltip={
+                      isV8 ? t("thread.branchPicker.viaStudioUi") : undefined
+                    }
                     selected={!localActive}
                     onSelect={() => pick(value)}
                     onRename={() => {
@@ -541,13 +632,17 @@ export function BranchPicker({
                     {t("thread.branchPicker.groupContent")}
                   </ReleaseGroupHeader>
                   {releaseGroups.content.map(releaseRow)}
+                  {storeDraftRows}
                   <ReleaseGroupHeader divided>
                     {t("thread.branchPicker.groupCode")}
                   </ReleaseGroupHeader>
                   {releaseGroups.code.map(releaseRow)}
                 </>
               ) : (
-                releases.map(releaseRow)
+                <>
+                  {releases.map(releaseRow)}
+                  {storeDraftRows}
+                </>
               )}
               {isV8 && (
                 <V8LocalhostRow
@@ -559,9 +654,10 @@ export function BranchPicker({
                 />
               )}
             </div>
-            {(unlisted || releases.length > 0 || isV8) && (
-              <div className="my-1 border-t" />
-            )}
+            {(unlisted ||
+              releases.length > 0 ||
+              storeDrafts.length > 0 ||
+              isV8) && <div className="my-1 border-t" />}
             <button
               type="button"
               onClick={() => void create()}
@@ -619,6 +715,34 @@ export function BranchPicker({
               {t("thread.branchPicker.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} variant="destructive">
+              {t("thread.branchPicker.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={pendingDiscard !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDiscard(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("thread.branchPicker.deleteTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDiscard &&
+                t("thread.branchPicker.discardStoreDraftConfirm", {
+                  name: pendingDiscard.name,
+                })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("thread.branchPicker.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDiscard} variant="destructive">
               {t("thread.branchPicker.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -692,6 +816,8 @@ function ReleaseRow({
   rowRef,
   dot,
   codeIcon,
+  agentIcon,
+  originTooltip,
   label,
   creator,
   branch,
@@ -705,10 +831,13 @@ function ReleaseRow({
   dot: string;
   /** A coding draft's icon color; the icon replaces the dot. */
   codeIcon?: string;
+  /** An externally created CMS draft uses an agent icon instead of a dot. */
+  agentIcon?: string;
+  originTooltip?: string;
   label: string;
   /** Display name of who created the draft, shown after the label. */
   creator?: string;
-  branch: string;
+  branch?: string;
   selected: boolean;
   onSelect: () => void;
   onRename: () => void;
@@ -717,6 +846,30 @@ function ReleaseRow({
   deleteBlocked?: boolean;
 }) {
   const t = useT();
+  const selectButton = (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
+    >
+      {codeIcon ? (
+        <Code01 className={cn(CODE_ICON_CLASS, codeIcon)} />
+      ) : agentIcon ? (
+        <CpuChip01 className={cn(CODE_ICON_CLASS, agentIcon)} />
+      ) : (
+        <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
+      )}
+      <span className="min-w-0 flex-1 truncate">
+        {label}
+        {creator && (
+          <span className="ml-1.5 text-xs font-normal text-muted-foreground/70">
+            {creator}
+          </span>
+        )}
+      </span>
+    </button>
+  );
   return (
     <div
       ref={rowRef}
@@ -725,40 +878,26 @@ function ReleaseRow({
         selected ? "bg-accent" : "hover:bg-accent",
       )}
     >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-pressed={selected}
-            onClick={onSelect}
-            className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
-          >
-            {codeIcon ? (
-              <Code01 className={cn(CODE_ICON_CLASS, codeIcon)} />
-            ) : (
-              <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
+      {branch || originTooltip ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{selectButton}</TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            {codeIcon && (
+              <p className="font-medium">
+                {t("thread.branchPicker.codeDraftTooltip")}
+              </p>
             )}
-            <span className="min-w-0 flex-1 truncate">
-              {label}
-              {creator && (
-                <span className="ml-1.5 text-xs font-normal text-muted-foreground/70">
-                  {creator}
-                </span>
-              )}
-            </span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs">
-          {codeIcon && (
-            <p className="font-medium">
-              {t("thread.branchPicker.codeDraftTooltip")}
-            </p>
-          )}
-          <p className="font-mono">
-            {t("thread.branchPicker.branchTooltip", { branch })}
-          </p>
-        </TooltipContent>
-      </Tooltip>
+            {originTooltip && <p>{originTooltip}</p>}
+            {branch && (
+              <p className="font-mono">
+                {t("thread.branchPicker.branchTooltip", { branch })}
+              </p>
+            )}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        selectButton
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

@@ -233,3 +233,41 @@ describe("branchPickAction", () => {
     ).toEqual({ kind: "new-chat" });
   });
 });
+
+describe("branchPickAction for v8 content drafts", () => {
+  it("opens CMS from coding or unresolved sessions", () => {
+    for (const sessionRuntime of ["sandbox", null] as const) {
+      for (const locked of [true, false]) {
+        expect(
+          branchPickAction({
+            projectRuntime: "cms",
+            locked,
+            sessionRuntime,
+            draftRuntime: "cms",
+            contentOnly: true,
+          }),
+        ).toEqual({ kind: "new-chat", runtime: "cms" });
+      }
+    }
+  });
+  it("switches an empty CMS chat and opens a new locked CMS chat", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: "cms",
+        draftRuntime: "cms",
+        contentOnly: true,
+      }),
+    ).toEqual({ kind: "switch" });
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: true,
+        sessionRuntime: "cms",
+        draftRuntime: "cms",
+        contentOnly: true,
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "cms" });
+  });
+});
