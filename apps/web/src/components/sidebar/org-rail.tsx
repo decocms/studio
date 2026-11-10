@@ -16,7 +16,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { EyeOff, Pin01, Plus, Settings01, XClose } from "@untitledui/icons";
+import {
+  EyeOff,
+  Pin01,
+  Plus,
+  SearchLg,
+  Settings01,
+  XClose,
+} from "@untitledui/icons";
 import {
   Link,
   useMatchRoute,
@@ -46,6 +53,7 @@ import { useOpenApp, useRememberOpenApp } from "@/hooks/use-recent-apps";
 import { useRecentProjects } from "@/hooks/use-recent-projects";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { useRecentOrgs } from "@/hooks/use-recent-orgs";
+import { useTravelToOrg } from "@/hooks/use-travel-to-org";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { railOrgLimit, railOrgs, withCurrentOrg } from "@/lib/recent-orgs";
@@ -55,11 +63,12 @@ import {
   hideRailOrg,
   moveRailOrg,
   readRailOrgPrefs,
-  showRailOrg,
   toggleRailOrgPin,
   type RailOrgPrefs,
 } from "@/lib/rail-org-prefs";
-import { OrgSearch } from "./org-search";
+import { OrgSearchDialog } from "./org-search";
+import { openCommandPalette } from "@/components/command-palette-store";
+import { KEYBOARD_SHORTCUTS } from "@/lib/keyboard-shortcuts";
 import { RailItem } from "./rail-item";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
@@ -317,6 +326,9 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
   const activeSlug = travelling ? travelling.org : currentOrg.slug;
   const { data: organizations } = useActiveOrganizations();
   const [creatingOrg, setCreatingOrg] = useState(false);
+  /** Outside any org the palette is not mounted, so search falls back to
+   *  the org-only dialog. */
+  const [searchingOrgs, setSearchingOrgs] = useState(false);
   /** The border separates the rail from the sidebar; collapsed, there is none. */
   const collapsed = useSidebarCollapsed();
   /** The projects you opened here, under the org's mark, newest first. */
@@ -331,7 +343,8 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
     : recentIds.flatMap((id) => projects.filter((p) => p.id === id));
 
   const orgs = withCurrentOrg((organizations ?? []) as RailOrg[], currentOrg);
-  const { recent: recentOrgs, remember } = useRecentOrgs();
+  const { recent: recentOrgs } = useRecentOrgs();
+  const travel = useTravelToOrg();
   /** Hidden, pinned and dragged order. Hidden orgs stay in search, and
    *  opening one from there puts it back. */
   const [storedPrefs, setPrefs] = useLocalStorage<RailOrgPrefs>(
@@ -375,126 +388,169 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
 
   const travelTo = (slug: string) => {
     track("org_rail_travel");
-    /** An org already on the rail keeps the rail as it is; one picked from
-     *  search rolls the oldest off by recency, as before. */
-    const onRail = shown.some((it) => it.slug === slug);
-    setPrefs((prev) => showRailOrg(readRailOrgPrefs(prev), slug));
-    remember(slug, onRail ? shown.map((it) => it.slug) : undefined);
-    goHome(slug);
+    onNavigate?.();
+    travel(
+      slug,
+      shown.map((it) => it.slug),
+    );
+  };
+
+  const openSearch = () => {
+    track("org_rail_search_opened");
+    if (!currentOrg.id) {
+      setSearchingOrgs(true);
+      return;
+    }
+    onNavigate?.();
+    openCommandPalette();
   };
 
   return (
     <>
       <div
-        /* The Figma rail: 68px wide, 10px between marks; `pt-3` keeps the first mark on the line the org name and breadcrumb share. */
         className={cn(
-          "flex w-[68px] shrink-0 flex-col items-center gap-2.5 overflow-y-auto bg-sidebar px-2.5 pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "flex w-[68px] shrink-0 flex-col bg-sidebar",
           !collapsed && "border-r border-sidebar-border",
         )}
-        aria-label={t("sidebar.rail.ariaLabel")}
       >
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
+        <div
+          /* The Figma rail: 68px wide, 10px between marks; `pt-3` keeps the first mark on the line the org name and breadcrumb share. */
+          className="flex min-h-0 flex-1 flex-col items-center gap-2.5 overflow-y-auto px-2.5 pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          aria-label={t("sidebar.rail.ariaLabel")}
         >
-          <SortableContext
-            items={shown.map((it) => it.slug)}
-            strategy={verticalListSortingStrategy}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            {shown.map((candidate) => (
-              <Fragment key={candidate.id}>
-                <RailOrgButton
-                  org={candidate}
-                  active={candidate.slug === activeSlug}
-                  pinned={prefs.pinned.includes(candidate.slug)}
-                  onSelect={
-                    candidate.slug !== currentOrg.slug
-                      ? () => travelTo(candidate.slug)
-                      : scopeId
-                        ? () => goHome(candidate.slug)
-                        : undefined
-                  }
-                  onOpenSettings={() => {
-                    onNavigate?.();
-                    navigate({
-                      to: "/$org/settings",
-                      params: { org: candidate.slug },
-                    });
-                  }}
-                  onTogglePin={() =>
-                    setPrefs((prev) =>
-                      toggleRailOrgPin(readRailOrgPrefs(prev), candidate.slug),
-                    )
-                  }
-                  onHide={
-                    candidate.slug === currentOrg.slug
-                      ? undefined
-                      : () =>
-                          setPrefs((prev) =>
-                            hideRailOrg(readRailOrgPrefs(prev), candidate.slug),
-                          )
-                  }
-                />
-                {candidate.slug === currentOrg.slug &&
-                  recentProjects.length > 0 && (
-                    <div
-                      style={{ viewTransitionName: "rail-projects" }}
-                      className="-mx-1.5 flex w-[calc(100%+0.75rem)] flex-col items-center gap-3 rounded-[12px] bg-foreground/4 px-1 py-3"
-                    >
-                      {recentProjects.map((project) => (
-                        <RailProjectButton
-                          key={project.id}
-                          project={project}
-                          orgSlug={currentOrg.slug}
-                          active={scopeId === project.id}
-                          onClose={() => forget(project.id)}
-                          onNavigate={onNavigate}
-                        />
-                      ))}
-                    </div>
-                  )}
-              </Fragment>
-            ))}
-          </SortableContext>
-        </DndContext>
-        {orgs.length > shown.length && (
-          <OrgSearch
-            orgs={orgs}
-            currentSlug={currentOrg.slug}
-            hiddenCount={orgs.length - shown.length}
-            onSelect={travelTo}
-          />
-        )}
-        <RailItem active={false}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={t("sidebar.picker.newOrganization")}
-                onClick={() => setCreatingOrg(true)}
-                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
-              >
-                <Plus size={18} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              {t("sidebar.picker.newOrganization")}
-            </TooltipContent>
-          </Tooltip>
-        </RailItem>
-        {localApp && (
-          <>
-            {/* A rule and not a gap: below it the mark stops meaning "an org
+            <SortableContext
+              items={shown.map((it) => it.slug)}
+              strategy={verticalListSortingStrategy}
+            >
+              {shown.map((candidate) => (
+                <Fragment key={candidate.id}>
+                  <RailOrgButton
+                    org={candidate}
+                    active={candidate.slug === activeSlug}
+                    pinned={prefs.pinned.includes(candidate.slug)}
+                    onSelect={
+                      candidate.slug !== currentOrg.slug
+                        ? () => travelTo(candidate.slug)
+                        : scopeId
+                          ? () => goHome(candidate.slug)
+                          : undefined
+                    }
+                    onOpenSettings={() => {
+                      onNavigate?.();
+                      navigate({
+                        to: "/$org/settings",
+                        params: { org: candidate.slug },
+                      });
+                    }}
+                    onTogglePin={() =>
+                      setPrefs((prev) =>
+                        toggleRailOrgPin(
+                          readRailOrgPrefs(prev),
+                          candidate.slug,
+                        ),
+                      )
+                    }
+                    onHide={
+                      candidate.slug === currentOrg.slug
+                        ? undefined
+                        : () =>
+                            setPrefs((prev) =>
+                              hideRailOrg(
+                                readRailOrgPrefs(prev),
+                                candidate.slug,
+                              ),
+                            )
+                    }
+                  />
+                  {candidate.slug === currentOrg.slug &&
+                    recentProjects.length > 0 && (
+                      <div
+                        style={{ viewTransitionName: "rail-projects" }}
+                        className="-mx-1.5 flex w-[calc(100%+0.75rem)] flex-col items-center gap-3 rounded-[12px] bg-foreground/4 px-1 py-3"
+                      >
+                        {recentProjects.map((project) => (
+                          <RailProjectButton
+                            key={project.id}
+                            project={project}
+                            orgSlug={currentOrg.slug}
+                            active={scopeId === project.id}
+                            onClose={() => forget(project.id)}
+                            onNavigate={onNavigate}
+                          />
+                        ))}
+                      </div>
+                    )}
+                </Fragment>
+              ))}
+            </SortableContext>
+          </DndContext>
+          {localApp && (
+            <>
+              {/* A rule and not a gap: below it the mark stops meaning "an org
                 you belong to" and starts meaning "a thing you had open". */}
-            <span
-              className="my-2 h-px w-6 shrink-0 bg-sidebar-border"
-              aria-hidden
-            />
-            <RailLocalAppButton app={localApp} />
-          </>
-        )}
+              <span
+                className="my-2 h-px w-6 shrink-0 bg-sidebar-border"
+                aria-hidden
+              />
+              <RailLocalAppButton app={localApp} />
+            </>
+          )}
+        </div>
+        {/* Pinned under the scrolling marks, so they stay put however many orgs
+          the rail draws. */}
+        <div className="flex shrink-0 flex-col items-center gap-1 px-2.5 pt-2 pb-3">
+          <RailItem active={false}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t("sidebar.rail.search")}
+                  aria-keyshortcuts="Meta+K Control+K"
+                  onClick={openSearch}
+                  className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
+                >
+                  <SearchLg size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {t("sidebar.rail.search")}
+                <span className="ml-2 text-muted-foreground">
+                  {KEYBOARD_SHORTCUTS.commandPalette.keys.join("")}
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          </RailItem>
+          <RailItem active={false}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t("sidebar.picker.newOrganization")}
+                  onClick={() => setCreatingOrg(true)}
+                  className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-ring"
+                >
+                  <Plus size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {t("sidebar.picker.newOrganization")}
+              </TooltipContent>
+            </Tooltip>
+          </RailItem>
+        </div>
       </div>
+      <OrgSearchDialog
+        open={searchingOrgs}
+        onOpenChange={setSearchingOrgs}
+        orgs={orgs}
+        currentSlug={currentOrg.slug}
+        onSelect={travelTo}
+      />
       <CreateOrganizationDialog
         open={creatingOrg}
         onOpenChange={setCreatingOrg}
