@@ -111,7 +111,11 @@ export async function runAutomationOnJira(
       ? await openPrForIssue(ctx, orgId, client, first.key)
       : null;
     // Two agents on one issue would each comment and open their own pull request.
-    await supersedeLiveRuns(ctx, item);
+    await supersedeLiveRuns(
+      ctx,
+      item,
+      `Stopped: "${automation.name}" started on this issue`,
+    );
     run = {
       issueKeys: [first.key],
       title: `Jira ${first.key}: ${first.summary}`,

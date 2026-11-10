@@ -16,6 +16,7 @@ import {
   GITHUB_READS_QUEUE,
   HOSTED_HARNESS_QUEUE,
   HOSTED_HARNESS_SANDBOXED_QUEUE,
+  LIVE_RUN_WAITS_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { buildDbosConfig } from "./dbos/config";
@@ -88,6 +89,8 @@ const RUN_QUEUES = [
   GITHUB_READS_QUEUE,
   // A board settle wait ends by dispatching an automation run.
   BOARD_TRANSITIONS_QUEUE,
+  // So does a fire held until a card's live run ends.
+  LIVE_RUN_WAITS_QUEUE,
   // Board→Jira comment pushes are outbound I/O, i.e. worker load.
 ];
 const listenQueues: string[] | undefined =
