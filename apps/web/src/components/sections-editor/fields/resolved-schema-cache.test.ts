@@ -1,7 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import {
   cachedResolveSchema,
   expandRecursiveSchema,
+  fillDepthCappedBranches,
 } from "./resolved-schema-cache";
 import type { LiveMeta, SchemaProperty } from "../resolve-schema";
 
@@ -173,5 +174,90 @@ describe("a self-referencing menu, six levels deep (A9: main's behaviour)", () =
       expect(item?.properties?.[key]).toBeDefined();
     }
     expect(item?.titleBy).toBe("{{{label}}}");
+  });
+});
+
+describe("fillDepthCappedBranches", () => {
+  const branch = (resolveType: string, schema?: SchemaProperty) => ({
+    resolveType,
+    title: resolveType,
+    discriminatorValue: resolveType,
+    schema,
+  });
+  const imageSchema: SchemaProperty = {
+    type: "object",
+    properties: { image: { type: "string", format: "image-uri" } },
+  };
+  const videoSchema: SchemaProperty = {
+    type: "object",
+    properties: { video: { type: "string", format: "video-uri" } },
+  };
+  const media = (withSchemas: boolean): SchemaProperty => ({
+    type: "block-ref",
+    discriminatorKey: "type",
+    anyOfRefs: [
+      branch("image", withSchemas ? imageSchema : undefined),
+      branch("video", withSchemas ? videoSchema : undefined),
+    ],
+  });
+
+  test("fills discriminated branches the depth cap emptied", () => {
+    const capped: SchemaProperty = {
+      type: "object",
+      properties: { media: media(false) },
+    };
+    const shallow: SchemaProperty = {
+      type: "object",
+      properties: { media: media(true) },
+    };
+    const filled = fillDepthCappedBranches(capped, shallow);
+    const refs = filled.properties?.media?.anyOfRefs ?? [];
+    expect(refs.map((r) => r.schema)).toEqual([imageSchema, videoSchema]);
+    // Same inputs, same object: the form re-renders without churn.
+    expect(fillDepthCappedBranches(capped, shallow)).toBe(filled);
+  });
+
+  test("keeps what the schema already resolved", () => {
+    // `Product[]` built as a loader picker in one definition and as an inline
+    // list in the other: the picker stays.
+    const picker: SchemaProperty = {
+      type: "block-ref",
+      anyOfRefs: [{ resolveType: "site/loaders/products.ts", title: "List" }],
+    };
+    const resolved: SchemaProperty = {
+      type: "object",
+      properties: { media: media(true), shelf: picker },
+    };
+    const other: SchemaProperty = {
+      type: "object",
+      properties: {
+        media: media(true),
+        shelf: { type: "array", items: { type: "object" } },
+      },
+    };
+    expect(fillDepthCappedBranches(resolved, other)).toBe(resolved);
+  });
+
+  test("leaves empty branches of a module union to lazy resolution", () => {
+    const moduleUnion: SchemaProperty = {
+      type: "block-ref",
+      anyOfRefs: [{ resolveType: "site/sections/Hero.tsx", title: "Hero" }],
+    };
+    const shallow: SchemaProperty = {
+      type: "block-ref",
+      anyOfRefs: [
+        {
+          resolveType: "site/sections/Hero.tsx",
+          title: "Hero",
+          schema: imageSchema,
+        },
+      ],
+    };
+    expect(fillDepthCappedBranches(moduleUnion, shallow)).toBe(moduleUnion);
+  });
+
+  test("without a fallback returns the schema", () => {
+    const schema = media(false);
+    expect(fillDepthCappedBranches(schema, undefined)).toBe(schema);
   });
 });
