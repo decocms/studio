@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { ChevronDown, Edit05, SearchSm } from "@untitledui/icons";
+import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import {
   Popover,
   PopoverContent,
@@ -40,14 +41,30 @@ export function ThreadsMenu() {
     panel.threads.find((thread) => thread.id === panel.activeTaskId)?.title ||
     t("tasksPanel.taskRow.untitledTask");
 
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const list = needle
+    ? {
+        ...panel,
+        threads: panel.threads.filter((thread) =>
+          (thread.title ?? "").toLowerCase().includes(needle),
+        ),
+      }
+    : panel;
+
   const openSearch = () => {
     setOpen(false);
-    panel.openSearch();
+    panel.openSearch(query.trim());
+  };
+
+  const changeOpen = (next: boolean) => {
+    if (!next) setQuery("");
+    setOpen(next);
   };
 
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={changeOpen}>
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
@@ -76,32 +93,50 @@ export function ThreadsMenu() {
         <PopoverContent
           align="start"
           side="bottom"
-          // Autofocusing the filter button pops its tooltip over the list.
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          className="flex w-80 flex-col gap-2 p-2"
+          className="flex w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-2 p-2"
         >
-          <div className="flex shrink-0 items-center justify-between">
+          <div className="flex shrink-0 items-center gap-1">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder={t("chat.threadsMenu.searchPlaceholder")}
+              className="flex-1"
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  needle &&
+                  list.threads.length === 0
+                )
+                  openSearch();
+              }}
+            />
             <ThreadFiltersPopover panel={panel} className="size-8" />
-            <div className="flex items-center gap-0.5">
-              <ToolbarIconButton
-                aria-label={t("sidebar.taskGroupsList.searchChats")}
-                onClick={openSearch}
-                className="size-8"
-              >
-                <SearchSm size={16} />
-              </ToolbarIconButton>
-              <ToolbarIconButton
-                aria-label={t("sidebar.taskGroupsList.newChat")}
-                onClick={panel.newThread}
-                className="size-8"
-              >
-                <Edit05 size={16} />
-              </ToolbarIconButton>
-            </div>
+            <ToolbarIconButton
+              aria-label={t("sidebar.taskGroupsList.newChat")}
+              onClick={panel.newThread}
+              className="size-8"
+            >
+              <Edit05 size={16} />
+            </ToolbarIconButton>
           </div>
-          <div className="flex max-h-[60vh] min-h-0 flex-col gap-0.5 overflow-y-auto overscroll-contain">
-            <ThreadsPanelList panel={panel} />
+          <div className="flex max-h-[70vh] min-h-0 flex-col gap-0.5 overflow-y-auto overscroll-contain">
+            <ThreadsPanelList panel={list} />
           </div>
+          {/* The list holds what's loaded; older chats come from the org-wide search. */}
+          {needle && (
+            <button
+              type="button"
+              onClick={openSearch}
+              className="flex shrink-0 items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <SearchSm size={14} className="shrink-0" />
+              <span className="truncate">
+                {t("chat.threadsMenu.searchEverywhere", {
+                  query: query.trim(),
+                })}
+              </span>
+            </button>
+          )}
         </PopoverContent>
       </Popover>
       {panel.searchDialog}

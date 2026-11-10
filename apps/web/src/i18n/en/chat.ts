@@ -418,6 +418,8 @@ export const chat = {
   "chat.tierTrigger.tierSmart": "Smart",
   "chat.tierTrigger.tierThinking": "Thinking",
   "chat.threadsMenu.chats": "Chats",
+  "chat.threadsMenu.searchPlaceholder": "Search chats",
+  "chat.threadsMenu.searchEverywhere": "Search all chats for “{query}”",
   "chat.toolsPopover.addFile": "Add file",
   "chat.toolsPopover.approval": "Approval",
   "chat.toolsPopover.connections": "Connections",

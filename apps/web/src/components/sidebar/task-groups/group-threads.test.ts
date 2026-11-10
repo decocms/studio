@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "@/components/chat/task/types";
 import {
+  groupThreadsByDate,
   groupThreadsByVirtualMcp,
   groupThreadsByStatus,
 } from "./group-threads";
@@ -245,5 +246,43 @@ describe("groupThreadsByStatus", () => {
     expect(
       result.find((g) => g.status === "completed")?.threads.map((th) => th.id),
     ).toEqual(["a"]);
+  });
+});
+
+describe("groupThreadsByDate", () => {
+  // Local noon, so the calendar-day math holds in any test timezone.
+  const now = new Date(2026, 4, 20, 12);
+  const at = (daysAgo: number) =>
+    new Date(2026, 4, 20 - daysAgo, 9).toISOString();
+
+  it("buckets by calendar day and keeps the list order", () => {
+    const result = groupThreadsByDate(
+      [
+        t({ id: "a", updated_at: at(0) }),
+        t({ id: "b", updated_at: at(0) }),
+        t({ id: "c", updated_at: at(1) }),
+        t({ id: "d", updated_at: at(3) }),
+        t({ id: "e", updated_at: at(12) }),
+        t({ id: "f", updated_at: at(90) }),
+      ],
+      now,
+    );
+    expect(result.map((g) => [g.bucket, g.threads.map((th) => th.id)])).toEqual(
+      [
+        ["today", ["a", "b"]],
+        ["yesterday", ["c"]],
+        ["week", ["d"]],
+        ["month", ["e"]],
+        ["older", ["f"]],
+      ],
+    );
+  });
+
+  it("drops empty buckets", () => {
+    expect(
+      groupThreadsByDate([t({ id: "a", updated_at: at(40) })], now).map(
+        (g) => g.bucket,
+      ),
+    ).toEqual(["older"]);
   });
 });

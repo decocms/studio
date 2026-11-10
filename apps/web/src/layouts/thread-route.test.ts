@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  resolveActiveAgentId,
   resolveDestinationThreadSearch,
   resolveRouteAgentId,
   resolveRouteThreadId,
@@ -124,35 +123,5 @@ describe("resolveDestinationThreadSearch", () => {
         threadId: "thread-3",
       }),
     ).toEqual({ sidepanel: true, thread: "thread-3" });
-  });
-});
-
-describe("resolveActiveAgentId", () => {
-  /**
-   * THE BUG, second site: the thread list's "New chat" read only
-   * `?virtualmcpid=`, so on `/$org/projects/<project>` it found nothing and handed
-   * the new chat to the Super Agent. The route answers first.
-   */
-  test("the route's agent wins", () => {
-    expect(
-      resolveActiveAgentId({
-        routeAgentId: "project-1",
-        threadVirtualMcpId: "agent-9",
-      }),
-    ).toBe("project-1");
-  });
-
-  /** Home, Reports and Library name no agent, so the open thread's own is the
-   *  only source left. */
-  test("falls back to the open thread's agent", () => {
-    expect(resolveActiveAgentId({ threadVirtualMcpId: "agent-9" })).toBe(
-      "agent-9",
-    );
-  });
-
-  /** `null`, never the Super Agent: the caller decides what "no agent" means. */
-  test("a route and a thread that name none answer null", () => {
-    expect(resolveActiveAgentId({})).toBeNull();
-    expect(resolveActiveAgentId({ threadVirtualMcpId: null })).toBeNull();
   });
 });

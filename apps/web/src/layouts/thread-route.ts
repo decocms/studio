@@ -113,22 +113,6 @@ export function resolveDestinationThreadSearch(input: {
 }
 
 /**
- * The agent a surface should act on, where "no agent named anywhere" is a real
- * answer (`null`) rather than the Super Agent — the thread list, whose new-chat
- * button and active-agent highlight both read it.
- *
- * The route answers first (see {@link resolveRouteAgentId}), with the open
- * thread's own agent behind it, which is the only source left on an org-level
- * destination.
- */
-export function resolveActiveAgentId(input: {
-  routeAgentId?: string;
-  threadVirtualMcpId?: string | null;
-}): string | null {
-  return input.routeAgentId ?? input.threadVirtualMcpId ?? null;
-}
-
-/**
  * Navigate to another thread. A same-agent switch preserves the current
  * route-owned page; a cross-agent switch moves to that agent's canonical root.
  *

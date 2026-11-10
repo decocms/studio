@@ -1,65 +1,38 @@
-/**
- * The thread list's View / Type / Scope filter popover, shared by the sidebar
- * list and the chat panel's threads menu. Reads and writes the state owned by
- * `useThreadsPanel`.
- */
+/** The chat list's menu for grouping and whose chats it shows. */
 
-import type { ReactNode } from "react";
-import { Activity, FilterLines, Rows01 } from "@untitledui/icons";
+import { Check, FilterLines } from "@untitledui/icons";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@decocms/ui/components/popover.tsx";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@decocms/ui/components/toggle-group.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
-import type { ThreadsPanel } from "./use-threads-panel";
+import type { ThreadGroupBy, ThreadsPanel } from "./use-threads-panel";
 
-/** One labelled segmented control (View / Type / Scope) in the popover. */
-function FilterRow<T extends string>({
+function Choice({
   label,
-  value,
-  onChange,
-  options,
+  selected,
+  onSelect,
 }: {
   label: string;
-  value: T;
-  onChange: (value: T) => void;
-  options: { value: T; label: string; icon?: ReactNode }[];
+  selected: boolean;
+  onSelect: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <ToggleGroup
-        type="single"
-        size="sm"
-        value={value}
-        onValueChange={(v) => v && onChange(v as T)}
-        aria-label={label}
-        className="gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
-      >
-        {options.map((opt) => (
-          <ToggleGroupItem
-            key={opt.value}
-            value={opt.value}
-            className="h-6 gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground hover:bg-transparent data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-edge"
-          >
-            {opt.icon}
-            {opt.label}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
-    </div>
+    <DropdownMenuItem onSelect={onSelect}>
+      <span className="flex-1 truncate">{label}</span>
+      {selected && <Check size={14} className="shrink-0" />}
+    </DropdownMenuItem>
   );
 }
 
@@ -71,11 +44,15 @@ export function ThreadFiltersPopover({
   className?: string;
 }) {
   const t = useT();
+  const groupBy = (value: ThreadGroupBy) => {
+    track("tasks_panel_group_by_changed", { to_value: value });
+    panel.setGroupBy(value);
+  };
   return (
-    <Popover>
+    <DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
+          <DropdownMenuTrigger asChild>
             <ToolbarIconButton
               aria-label={t("sidebar.taskGroupsList.filterChats")}
               active={panel.filtersActive}
@@ -86,59 +63,41 @@ export function ThreadFiltersPopover({
                 <span className="absolute right-1 top-1 size-1.5 rounded-full bg-primary ring-2 ring-sidebar" />
               )}
             </ToolbarIconButton>
-          </PopoverTrigger>
+          </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t("sidebar.taskGroupsList.filterChats")}
         </TooltipContent>
       </Tooltip>
-      <PopoverContent align="start" className="w-64 flex flex-col gap-3 p-3">
-        <FilterRow
-          label={t("sidebar.taskGroupsList.filterView")}
-          value={panel.groupBy}
-          onChange={(v) => {
-            track("tasks_panel_group_by_changed", { to_value: v });
-            panel.setGroupBy(v);
-          }}
-          options={[
-            {
-              value: "flat",
-              label: t("sidebar.taskGroupsList.viewList"),
-              icon: <Rows01 size={13} />,
-            },
-            {
-              value: "status",
-              label: t("sidebar.taskGroupsList.viewStatus"),
-              icon: <Activity size={13} />,
-            },
-          ]}
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+          {t("sidebar.taskGroupsList.filterView")}
+        </DropdownMenuLabel>
+        <Choice
+          label={t("sidebar.taskGroupsList.viewList")}
+          selected={panel.groupBy === "flat"}
+          onSelect={() => groupBy("flat")}
         />
-        <FilterRow
-          label={t("sidebar.taskGroupsList.filterType")}
-          value={panel.typeFilter}
-          onChange={(v) => {
-            track("tasks_panel_filter_changed", { to_value: v });
-            panel.setTypeFilter(v);
-          }}
-          options={[
-            { value: "all", label: t("sidebar.taskGroupsList.typeAll") },
-            { value: "manual", label: t("sidebar.taskGroupsList.typeChats") },
-            {
-              value: "automation",
-              label: t("sidebar.taskGroupsList.typeAuto"),
-            },
-          ]}
+        <Choice
+          label={t("sidebar.taskGroupsList.viewStatus")}
+          selected={panel.groupBy === "status"}
+          onSelect={() => groupBy("status")}
         />
-        <FilterRow
-          label={t("sidebar.taskGroupsList.filterScope")}
-          value={panel.showAll ? "team" : "mine"}
-          onChange={(v) => panel.setShowAll(v === "team")}
-          options={[
-            { value: "mine", label: t("sidebar.taskGroupsList.scopeMine") },
-            { value: "team", label: t("sidebar.taskGroupsList.scopeTeam") },
-          ]}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+          {t("sidebar.taskGroupsList.filterScope")}
+        </DropdownMenuLabel>
+        <Choice
+          label={t("sidebar.taskGroupsList.scopeMine")}
+          selected={!panel.showAll}
+          onSelect={() => panel.setShowAll(false)}
         />
-      </PopoverContent>
-    </Popover>
+        <Choice
+          label={t("sidebar.taskGroupsList.scopeTeam")}
+          selected={panel.showAll}
+          onSelect={() => panel.setShowAll(true)}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
