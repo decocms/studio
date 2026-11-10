@@ -159,17 +159,45 @@ describe("alignSections", () => {
 
     it("keeps repeated keys in order when another section moves past them", () => {
       expect(
-        alignSections([[SHELF], [HEADER], [SHELF]], [HEADER, SHELF, SHELF]),
-      ).toEqual([1, 0, 2]);
-      expect(
-        alignSections([[SHELF], [BANNER], [SHELF]], [BANNER, SHELF, SHELF]),
-      ).toEqual([1, 0, 2]);
-      expect(
         alignSections(
           [[SHELF], [SHELF], [HEADER], [SHELF]],
           [HEADER, SHELF, SHELF, SHELF],
         ),
       ).toEqual([1, 2, 0, 3]);
+      expect(
+        alignSections(
+          [[BANNER], [SHELF], [HEADER], [SHELF]],
+          [HEADER, BANNER, SHELF, SHELF],
+        ),
+      ).toEqual([1, 2, 0, 3]);
+    });
+
+    it("never changes a section the in-order pass mapped", () => {
+      // In order, the header and the second shelf win the tie; the first shelf
+      // keeps no node rather than reshuffling the shelves.
+      expect(
+        alignSections([[SHELF], [HEADER], [SHELF]], [HEADER, SHELF, SHELF]),
+      ).toEqual([null, 0, 1]);
+      // A trailing shelf that rendered nothing must not take a leading
+      // framework shelf and push the mapped shelves onto the wrong nodes.
+      expect(
+        alignSections(
+          [[HERO], [SHELF], [SHELF], [LAZY], [SHELF]],
+          [SHELF, HERO, SHELF, SHELF],
+        ),
+      ).toEqual([1, 2, 3, null, null]);
+    });
+
+    it("only takes a node of a repeated key that keeps that key's order", () => {
+      expect(
+        alignSections(
+          [[SHELF], [HEADER], [SHELF], [BANNER]],
+          [HEADER, BANNER, SHELF, SHELF],
+        ),
+      ).toEqual([null, 0, 2, 1]);
+      expect(
+        alignSections([[SHELF], [SHELF], [HEADER]], [SHELF, HEADER]),
+      ).toEqual([0, null, 1]);
     });
 
     it("matches a Lazy out of order by its inner key", () => {

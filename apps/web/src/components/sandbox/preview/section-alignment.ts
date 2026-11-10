@@ -17,8 +17,10 @@
  *    section where the array doesn't put it (a header the layout draws first,
  *    after a SEO section saved ahead of it in the array). Only exact keys move
  *    out of order; a wildcard there could grab a framework node.
- * Repeated keys keep their order: the k-th section of a key takes the k-th node
- * of that key.
+ * The second pass never changes what the first mapped, and a repeated key keeps
+ * its order: a section only takes a node of a key if every section mapped to an
+ * earlier node of that key comes before it in the array, and every one mapped
+ * to a later node comes after it.
  *
  * `candidates[i] === null` = renders nothing by construction; stays null so
  * positions still index the decofile array.
@@ -111,35 +113,26 @@ export function alignSections(
       !!keys && keys.length > 0 && keys.indexOf(domKeys[nodeIdx] ?? "") >= 0
     );
   };
+  // Pass 1 results are final. A node of a key may only go to a section that
+  // keeps that key's order: no section mapped to an earlier node of the key
+  // may come later in the array, and none mapped to a later node earlier.
+  const keepsOrder = (v: number, j: number): boolean => {
+    for (const u of visible) {
+      const ju = result[u];
+      if (ju === null || ju === undefined || domKeys[ju] !== domKeys[j])
+        continue;
+      if (u < v !== ju < j) return false;
+    }
+    return true;
+  };
   for (const v of visible) {
     if (result[v] !== null) continue;
     for (let j = 0; j < m; j++) {
-      if (!taken[j] && lists(v, j)) {
+      if (!taken[j] && lists(v, j) && keepsOrder(v, j)) {
         result[v] = j;
         taken[j] = true;
         assigned++;
         break;
-      }
-    }
-  }
-
-  // Same key, same order: pass 2 can hand a later node of a key to an earlier
-  // section than pass 1 did. Swap such pairs back (only exact keys, both ways).
-  for (let swapped = true; swapped; ) {
-    swapped = false;
-    for (let p = 0; p < n; p++) {
-      for (let q = p + 1; q < n; q++) {
-        const vp = visible[p] ?? 0;
-        const vq = visible[q] ?? 0;
-        const jp = result[vp];
-        const jq = result[vq];
-        if (jp === null || jq === null || jp === undefined || jq === undefined)
-          continue;
-        if (jp < jq || domKeys[jp] !== domKeys[jq]) continue;
-        if (!lists(vp, jq) || !lists(vq, jp)) continue;
-        result[vp] = jq;
-        result[vq] = jp;
-        swapped = true;
       }
     }
   }
