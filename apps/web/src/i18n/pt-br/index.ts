@@ -50,6 +50,7 @@ import { sandbox } from "./sandbox.ts";
 import { settings } from "./settings.ts";
 import { announcements } from "./announcements.ts";
 import { assets } from "./assets.ts";
+import { plan } from "./plan.ts";
 import type { TranslationKey } from "../en/index.ts";
 
 export const ptBR = {
@@ -103,6 +104,7 @@ export const ptBR = {
   ...settings,
   ...announcements,
   ...assets,
+  ...plan,
   ...projects,
   ...page,
 } satisfies Record<TranslationKey, string>;

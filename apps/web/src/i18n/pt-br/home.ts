@@ -25,13 +25,6 @@ export const home = {
   "home.needsYou.reasonAnswer": "Esperando resposta",
   "home.needsYou.reasonReview": "Precisa de revis\u00e3o",
   "home.needsYou.reasonAssigned": "Atribu\u00edda a voc\u00ea",
-  "home.comingSoon.badge": "Em breve",
-  "home.comingSoon.planHeading": "Metas para os seus agentes perseguirem",
-  "home.comingSoon.planDescription":
-    "Defina um resultado e como ele é medido. Os agentes transformam isso em tarefas e reportam o progresso.",
-  "home.comingSoon.planGoals": "Metas com métrica e alvo",
-  "home.comingSoon.planTasks": "Tarefas propostas a partir de cada meta",
-  "home.comingSoon.planProgress": "Progresso que se lê de relance",
   "home.brief.changeOne": "1 mudança",
   "home.brief.changeMany": "{count} mudanças",
   "home.brief.waitingOne": "1 coisa espera por você.",
