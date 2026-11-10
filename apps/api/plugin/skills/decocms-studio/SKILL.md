@@ -1,6 +1,6 @@
 ---
 name: decocms-studio
-description: Operate the user's deco Studio (decocms) organization from the terminal with their own login. Use when the user asks to read or change something in Studio, such as chats/threads, agents, the task board, connections, monitoring, or org files, or to send a message to a Studio agent.
+description: Operate the user's deco Studio (decocms) organization from the terminal with their own login. Use when the user asks to read or change something in Studio, such as chats/threads, agents, the task board, connections, monitoring, or org files, to send a message to a Studio agent, or to boot a sandbox on one of the org's repositories and run commands in it.
 ---
 
 # Operate deco Studio
@@ -109,6 +109,28 @@ before telling the user it is there. Then link it, with `<target>` from
 Share a file only when the user asks, and confirm the mode first: `public`
 lets anyone with the link read it, `password` asks for a password you set and
 hand back to the user. See `POST fs/<vol>/public` in [rest.md](rest.md).
+
+## 6. Sandboxes
+
+A sandbox belongs to a chat: the chat id is the sandbox id, and the same chat
+shows up in Studio. Create one, then run commands in it or message its agent:
+
+```bash
+decocms sandbox new --org <slug> --repo <owner/name>   # prints the chat id; the boot continues in the background
+decocms sandbox exec <chat-id> --org <slug> -- git status
+decocms sandbox chat <chat-id> "run the tests and fix what fails" --org <slug>
+```
+
+- `new`: `--repo` clones one of the org's linked repositories (`owner/name`
+  or its id). An unknown name fails and lists the linked ones. Leave out
+  `--repo` for an empty sandbox. `--agent <id>` uses that agent's own
+  repository instead and cannot be combined with `--repo`.
+- `exec`: exits with the command's exit code, prints its stdout and stderr,
+  and has no stdin or TTY. Pass one quoted argument to run it as a shell script
+  (`-- 'cd app && bun test'`). It times out at 30s, or `--timeout <s>` up to
+  120; a timeout exits 124. The first `exec` waits for the boot.
+- `chat`: streams the agent's reply to stdout, and tool names to stderr, until
+  the turn finishes.
 
 ## Vocabulary
 
