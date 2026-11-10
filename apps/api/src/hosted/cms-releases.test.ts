@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import { clearRevisionCache, serializeIndex } from "./cms-release";
 import {
   decodeCursor,
@@ -160,6 +161,38 @@ describe("listCmsReleases", () => {
       { id: r2, status: "unreadable" },
       expect.objectContaining({ id: r1, status: "listed" }),
     ]);
+  });
+
+  it("skips the first v8 format's flat revisions/<sha>.json files: the first page has the folders", async () => {
+    const delivery = memoryDeliveryStore();
+    // 150 legacy files, plus one that sorts above every current id.
+    const shas = Array.from({ length: 150 }, (_, i) =>
+      createHash("sha1").update(String(i)).digest("hex"),
+    );
+    shas.push(`ff${"0".repeat(38)}`);
+    for (const sha of shas)
+      await delivery.store.putJson(
+        `${deliveryKeys.revisions(SITE)}${sha}.json`,
+        { revision: sha, blocks: {} },
+        "",
+      );
+    const ids = Array.from({ length: 3 }, () => newRevisionId(clock++));
+    for (const [i, id] of ids.entries())
+      await seedRelease(delivery.store, SITE, id, { n: { i } });
+
+    const page = await listCmsReleases(delivery.store, SITE, null);
+    expect(page.revisions.map((r) => r.id)).toEqual([...ids].reverse());
+    expect(page.revisions[0]?.status).toBe("current");
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it("lists a revision minted up to a day ahead of this instance's clock", async () => {
+    const delivery = memoryDeliveryStore();
+    const now = Date.parse("2026-11-10T00:00:00.000Z");
+    const ahead = newRevisionId(now + 23 * 60 * 60 * 1000);
+    await seedRelease(delivery.store, SITE, ahead, { n: {} });
+    const page = await listCmsReleases(delivery.store, SITE, null, now);
+    expect(page.revisions.map((r) => r.id)).toEqual([ahead]);
   });
 
   it("rejects a cursor this Studio didn't write", async () => {

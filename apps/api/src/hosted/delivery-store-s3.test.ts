@@ -19,6 +19,7 @@ let answer: { status: number; code: string } = { status: 200, code: "" };
 const seen: Array<{
   method: string;
   path: string;
+  query: URLSearchParams;
   ifMatch: string | null;
   ifNoneMatch: string | null;
 }> = [];
@@ -29,6 +30,7 @@ const server = Bun.serve({
     seen.push({
       method: req.method,
       path: url.pathname,
+      query: url.searchParams,
       ifMatch: req.headers.get("if-match"),
       ifNoneMatch: req.headers.get("if-none-match"),
     });
@@ -114,6 +116,28 @@ describe("createS3DeliveryStore conditional PUTs", () => {
       expect(listed).toBeInstanceOf(DeliveryUnavailableError);
     }
     answer = { status: 200, code: "" };
+  });
+
+  it("listPage sends startAfter on a first page, the continuation token on the next", async () => {
+    answer = { status: 200, code: "" };
+    const list = (continuationToken: string | null) => {
+      seen.length = 0;
+      return store
+        .listPage("sites/acme/revisions/", {
+          delimiter: "/",
+          maxKeys: 50,
+          continuationToken,
+          startAfter: "sites/acme/revisions/fe5e",
+        })
+        .catch(() => undefined)
+        .then(() => seen[0]?.query);
+    };
+    const first = await list(null);
+    expect(first?.get("start-after")).toBe("sites/acme/revisions/fe5e");
+    expect(first?.get("continuation-token")).toBeNull();
+    const next = await list("tok");
+    expect(next?.get("continuation-token")).toBe("tok");
+    expect(next?.get("start-after")).toBeNull();
   });
 
   it("an unconditional write keeps the SDK's retries", async () => {
