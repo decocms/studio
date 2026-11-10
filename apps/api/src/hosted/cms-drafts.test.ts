@@ -152,6 +152,42 @@ describe("cms drafts", () => {
     expect(seen).toEqual([[], []]);
   });
 
+  it("a failed file delete puts the names it didn't delete back into the index, and a retried discard deletes them", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createCmsDrafts({
+      table: memoryDraftTable(),
+      store: delivery.store,
+    });
+    const { row } = await drafts.ensure(SITE, "x", {
+      userId: "u1",
+      via: "token",
+    });
+    await seedDraftFile(delivery.store, SITE, row.slug, "a", setFile({ a: 1 }));
+    await seedDraftFile(delivery.store, SITE, row.slug, "b", setFile({ b: 1 }));
+    await seedDraftFile(delivery.store, SITE, row.slug, "c", setFile({ c: 1 }));
+    const remove = delivery.store.delete.bind(delivery.store);
+    const bKey = deliveryKeys.draftFile(SITE, row.slug, "b");
+    delivery.store.delete = async (key: string) => {
+      if (key === bKey) throw new DeliveryUnavailableError(key, "503");
+      return remove(key);
+    };
+    await expect(drafts.discard(SITE, "x")).rejects.toThrow(
+      DeliveryUnavailableError,
+    );
+    // a went; b and c are still there, and listed again, so a save guards
+    // against them instead of tripping over a hidden file.
+    expect(
+      (await readDraftIndex(delivery.store, SITE, row.slug)).names,
+    ).toEqual(["b", "c"]);
+    expect(
+      delivery.objects.has(deliveryKeys.draftFile(SITE, row.slug, "a")),
+    ).toBe(false);
+    expect((await drafts.resolve(SITE, "x"))?.row.slug).toBe(row.slug);
+    delivery.store.delete = remove;
+    expect(await drafts.discard(SITE, "x")).toBe(true);
+    expect(delivery.objects.size).toBe(0);
+  });
+
   it("discard deletes a name a save listed while the index was being emptied", async () => {
     const delivery = memoryDeliveryStore();
     const drafts = createCmsDrafts({

@@ -14,8 +14,8 @@
  * `published` marker, is not in the draft. A name new to the draft goes into
  * the index first, then its file is written, so nothing written is ever
  * invisible. A discard runs the other way: it empties the index first, then
- * deletes the files it listed, so a reader never meets a listed name whose
- * file is gone. Every write is conditional on the object as read
+ * deletes the files it listed (putting back the names it couldn't delete),
+ * so a reader never meets a listed name whose file is gone. Every write is conditional on the object as read
  * (`If-None-Match: *` to create, `If-Match` on its ETag otherwise); only the
  * index's read-modify-write is retried here (on 412, up to 3 attempts).
  * Draft folders are never listed: every reader goes index → name → key.
@@ -406,8 +406,9 @@ export interface CmsDrafts {
    * Empties the index (`{ names: [] }`), then deletes every file it listed,
    * then the index, then the row; false when there was no row. Readers see
    * the draft hold nothing before any file goes, never a listed name whose
-   * file is gone. A failed delete keeps the row, so it can be retried (a
-   * file whose delete failed is then unlisted: an orphan nobody reads).
+   * file is gone. A failed delete keeps the row, so it can be retried, and
+   * puts the names not yet deleted back into the index (best effort), so
+   * the files left behind stay listed rather than hidden.
    */
   discard(site: string, name: string): Promise<boolean>;
 }
@@ -476,8 +477,21 @@ export function createCmsDrafts(deps: {
           index,
         );
       }
-      for (const listed of names) {
-        await store.delete(deliveryKeys.draftFile(site, row.slug, listed));
+      for (const [i, listed] of names.entries()) {
+        try {
+          await store.delete(deliveryKeys.draftFile(site, row.slug, listed));
+        } catch (error) {
+          // The names not yet deleted go back into the index, so the files
+          // that are left stay listed (a save then guards against them, and
+          // a retried discard deletes them) instead of hiding as unlisted
+          // files a later save's `ifMatch: null` trips over.
+          const left = names.slice(i);
+          await updateDraftIndex(store, site, row.slug, (current) => [
+            ...current,
+            ...left,
+          ]).catch(() => {});
+          throw error;
+        }
       }
       await store.delete(deliveryKeys.draftIndex(site, row.slug));
       await table.delete(site, name);
