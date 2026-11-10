@@ -208,7 +208,7 @@ describe("renderField – multivariate widget keeps the prop description", () =>
   });
 });
 
-describe("renderField – multivariate object uses the shallower plainSchema", () => {
+describe("renderField – multivariate object fills depth-capped union branches", () => {
   // `Flag<{ media: Video | Image }>` nested deep (a loader array of flags): the
   // variant value is built 3 levels deeper than `plainSchema`, so the depth cap
   // leaves the `type`-discriminated branches of `media` without a schema.
