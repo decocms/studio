@@ -333,6 +333,7 @@ export const CORE_TOOLS = [
   // VM tools (app-only)
   SandboxTools.SANDBOX_START,
   SandboxTools.SANDBOX_DELETE,
+  SandboxTools.THREAD_SANDBOX_START,
 
   // GitHub App installations (app-only) — the one surface that is GitHub's own
   GitHubTools.GITHUB_LIST_USER_ORGS,
