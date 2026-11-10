@@ -82,9 +82,9 @@ export function TaskBoardAnalyticsButton({
   return (
     <FoldedLabelTooltip label={t("taskBoard.analytics.openAnalytics")}>
       <Button
-        size="sm"
+        size="icon-sm"
         variant="outline"
-        className="hidden w-7 px-0 sm:inline-flex"
+        className="hidden sm:inline-flex"
         asChild
       >
         {project ? (

@@ -458,15 +458,15 @@ export function LibraryPage({
       <IconButton
         label={t("library.library.refresh")}
         tooltipSide="bottom"
-        /* `secondary`, like the controls either side of it. */
-        variant="secondary"
+        /* `outline`, like the controls either side of it. */
+        variant="outline"
         onClick={refresh}
       >
         <RefreshCw01 />
       </IconButton>
       {browseVolume && (
         <Button
-          variant="secondary"
+          variant="outline"
           size="sm"
           onClick={() => setNewFolderOpen(true)}
           aria-label={t("library.library.newFolder")}
@@ -636,7 +636,7 @@ export function LibraryPage({
         <Page.Actions>
           {browseVolume && (
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               onClick={() => setNewFolderOpen(true)}
             >

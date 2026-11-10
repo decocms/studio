@@ -463,8 +463,6 @@ export const taskBoard = {
   "taskBoard.feed.composerSubmit": "Add",
   "taskBoard.sprints.label": "Sprint",
   "taskBoard.sprints.backlog": "Backlog",
-  "taskBoard.sprints.manage": "Sprints",
-  "taskBoard.sprints.all": "All sprints",
   "taskBoard.sprints.manageItem": "Manage sprints…",
   "taskBoard.sprints.title": "Sprints",
   "taskBoard.sprints.description":

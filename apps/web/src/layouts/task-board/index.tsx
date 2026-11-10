@@ -116,7 +116,7 @@ import {
   useTaskBoardSprintsLive,
 } from "@/hooks/use-task-board-sprints";
 import { currentSprintId } from "@decocms/shared/sprints";
-import { SprintSwitcher } from "./sprint-controls";
+import { SprintsDialog } from "./sprint-controls";
 import { sprintLabel } from "./sprint-label";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
@@ -1029,6 +1029,7 @@ function TaskBoardBody() {
   const hasRepo = usableRepos.length > 0;
   const repos = usableRepos.map((repository) => repository.path);
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
+  const [managingSprints, setManagingSprints] = useState(false);
   // Returns true if the assignment was blocked (connect prompt opened) so the
   // caller stops before dispatching.
   const blockSuperAgentWithoutRepository = (
@@ -1565,13 +1566,6 @@ function TaskBoardBody() {
           <Page.Actions
             secondary={
               <>
-                <SprintSwitcher
-                  sprints={sprints}
-                  value={filters.sprint}
-                  onChange={(sprint) =>
-                    handleFiltersChange({ ...filters, sprint })
-                  }
-                />
                 {/* Epics lists every epic; the board's filters don't apply to it. */}
                 {items.length > 0 && layout !== "epics" && (
                   <>
@@ -1599,6 +1593,7 @@ function TaskBoardBody() {
                         index={projectIndex}
                         scoped={scopeId !== null}
                         onChange={handleFiltersChange}
+                        onManageSprints={() => setManagingSprints(true)}
                       />
                       {/* A phone's header fits search, filter and settings; view tuning stays on wider screens. */}
                       {layout === "list" && (
@@ -1614,6 +1609,12 @@ function TaskBoardBody() {
                   onClick={openBoardSettings}
                   label={boardSettingsLabel}
                 />
+                {managingSprints && (
+                  <SprintsDialog
+                    sprints={sprints}
+                    onClose={() => setManagingSprints(false)}
+                  />
+                )}
               </>
             }
           >

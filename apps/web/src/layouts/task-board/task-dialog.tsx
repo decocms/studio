@@ -785,7 +785,7 @@ function TaskBoardItemEditor({
              prompt — it is a link for a person, so it lives here. */
         <IconButton
           asChild
-          variant="secondary"
+          variant="outline"
           label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
         >
           <a href={item.externalUrl} target="_blank" rel="noreferrer">
@@ -796,7 +796,7 @@ function TaskBoardItemEditor({
       {item && (
         <>
           <IconButton
-            variant="secondary"
+            variant="outline"
             label={t("taskBoard.taskDialog.shareAriaLabel")}
             onClick={() => {
               copyLink(
@@ -817,7 +817,7 @@ function TaskBoardItemEditor({
                   button itself, and IconButton would put a Tooltip root in
                   between, which silently swallows the trigger props. */}
               <Button
-                variant="secondary"
+                variant="outline"
                 size="icon-sm"
                 aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
               >

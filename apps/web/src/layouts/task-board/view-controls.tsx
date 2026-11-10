@@ -87,7 +87,7 @@ import {
 } from "./filter-fields";
 import { GROUP_BY_OPTIONS, type GroupBy } from "./list-groups";
 import { SORT_BY_OPTIONS, type SortBy, type SortDirection } from "./list-sort";
-import { currentSprintId, type Sprint } from "@decocms/shared/sprints";
+import type { Sprint } from "@decocms/shared/sprints";
 import { sprintLabel } from "./sprint-label";
 import {
   BACKLOG_SPRINT_FILTER,
@@ -119,6 +119,8 @@ interface FilterField {
   valueGlyph: (filters: TaskFilters) => ReactNode;
   /** Tags match ANY of several, so its chip reads "is any of". */
   multi?: boolean;
+  /** A row after the values that leaves the menu, such as managing sprints. */
+  action?: { label: string; onSelect: () => void };
 }
 
 function PriorityDot({ priority }: { priority: keyof typeof PRIORITY_CONFIG }) {
@@ -154,6 +156,7 @@ function useFilterFields({
   sprints,
   index,
   scoped = false,
+  onManageSprints,
 }: {
   members: Member[];
   tags: OrgTag[];
@@ -161,6 +164,7 @@ function useFilterFields({
   index: ProjectIndex;
   /** The board is one project's, so there is no project left to pick. */
   scoped?: boolean;
+  onManageSprints?: () => void;
 }): FilterField[] {
   const t = useT();
 
@@ -387,6 +391,10 @@ function useFilterFields({
       ) : (
         <Zap size={14} className="shrink-0" />
       ),
+    action: onManageSprints && {
+      label: t("taskBoard.sprints.manageItem"),
+      onSelect: onManageSprints,
+    },
   };
 
   return scoped
@@ -418,11 +426,13 @@ function FieldSubmenu({
   open,
   countFor,
   onSelect,
+  onAction,
 }: {
   field: FilterField;
   open: boolean;
   countFor: (option: FilterOption) => number;
   onSelect: (option: FilterOption) => void;
+  onAction: () => void;
 }) {
   return (
     <Popover open={open}>
@@ -453,6 +463,21 @@ function FieldSubmenu({
             onSelect={() => onSelect(option)}
           />
         ))}
+        {field.action && (
+          <>
+            {field.options.length > 0 && <Separator className="my-1" />}
+            <button
+              type="button"
+              className={cn(commandItemVariants({ highlight: "hover" }))}
+              onClick={onAction}
+            >
+              <Glyph>
+                <Settings02 size={14} className="text-muted-foreground" />
+              </Glyph>
+              <span className="truncate">{field.action.label}</span>
+            </button>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -541,9 +566,8 @@ function FilterMenu({
     ).length;
 
   // An org with no tags has no tag filter: the field would open onto nothing.
-  // The sprint is picked from the view row's switcher, not from here.
   const offered = fields.filter(
-    (field) => field.options.length > 0 && field.id !== "sprint",
+    (field) => field.options.length > 0 || field.action !== undefined,
   );
 
   return (
@@ -573,6 +597,10 @@ function FilterMenu({
                 open={browsing && active === field.label}
                 countFor={countFor}
                 onSelect={(option) => select(field, option)}
+                onAction={() => {
+                  onClose();
+                  field.action?.onSelect();
+                }}
               />
             ))}
           </CommandGroup>
@@ -629,6 +657,7 @@ export function TaskFilterButton({
   index,
   scoped,
   onChange,
+  onManageSprints,
 }: {
   filters: TaskFilters;
   items: TaskBoardItem[];
@@ -639,11 +668,18 @@ export function TaskFilterButton({
   /** A project's own board offers no Project filter. */
   scoped: boolean;
   onChange: (next: TaskFilters) => void;
+  onManageSprints: () => void;
 }) {
   const t = useT();
-  const fields = useFilterFields({ members, tags, sprints, index, scoped });
-  const active =
-    activeFilterFieldIds(filters, index, currentSprintId(sprints)).length > 0;
+  const fields = useFilterFields({
+    members,
+    tags,
+    sprints,
+    index,
+    scoped,
+    onManageSprints,
+  });
+  const active = activeFilterFieldIds(filters, index).length > 0;
 
   return (
     <FilterMenuPopover
@@ -1130,8 +1166,7 @@ export function AppliedFiltersBar({
 }) {
   const t = useT();
   const fields = useFilterFields({ members, tags, sprints, index });
-  const currentSprint = currentSprintId(sprints);
-  const activeIds = activeFilterFieldIds(filters, index, currentSprint);
+  const activeIds = activeFilterFieldIds(filters, index);
   const arranged =
     view !== undefined &&
     (view.grouping.groupBy !== null || view.sorting.sortBy !== null);
@@ -1173,9 +1208,7 @@ export function AppliedFiltersBar({
                 field: field.label,
               })}
               size="icon-sm"
-              onClick={() =>
-                onChange(withFieldCleared(filters, id, currentSprint))
-              }
+              onClick={() => onChange(withFieldCleared(filters, id))}
             >
               <X />
             </IconButton>
@@ -1203,7 +1236,6 @@ export function AppliedFiltersBar({
               onChange({
                 ...EMPTY_FILTERS,
                 search: filters.search,
-                sprint: currentSprint,
               })
             }
           >
