@@ -1,8 +1,12 @@
 import {
   extractPathParams,
   fillPathTemplate,
+  normalizePagePath,
 } from "@/components/sections-editor/page-path-utils.ts";
-import { previewPageForBlock } from "@/components/sections-editor/page-list.tsx";
+import {
+  pagesShowingBlock,
+  previewPageForBlock,
+} from "@/components/sections-editor/page-list.tsx";
 import { isSectionResolveType } from "@/components/sections-editor/section-array-field.ts";
 import { DEFAULT_LIVE_PAGE_RESOLVE_TYPE } from "@/components/sections-editor/section-catalog.ts";
 import {
@@ -61,12 +65,15 @@ export function compareSectionUrl(
 }
 
 /**
- * The page a saved block's change compares on, on a Blocks v8 site (which
- * has no isolated-section route): {@link previewPageForBlock}, the home page
- * first; a dynamic one filled with the values last typed for it in the
- * preview, else left as its pattern to fill in. `null` when no page shows
- * the block: there is nothing to preview, only the code. `undefined` while
- * the site's blocks aren't known yet.
+ * The page a saved block's change compares on (a Blocks v8 site has no
+ * isolated-section route; a v7 site, when its blocks are known): the home
+ * page when it shows the block; else the page last previewed, when it shows
+ * the block (the edit was made there, and a block whose content depends on
+ * the page, e.g. matched by URL, shows that edit only there); else
+ * {@link previewPageForBlock}. A dynamic one is filled with the values last
+ * typed for it in the preview, else left as its pattern to fill in. `null`
+ * when no page shows the block: there is nothing to preview, only the code.
+ * `undefined` while the site's blocks aren't known yet.
  */
 export function blockComparePath(
   blockKey: string,
@@ -74,8 +81,15 @@ export function blockComparePath(
   lastPage: LastPreviewPage | null,
 ): string | null | undefined {
   if (!blocks) return undefined;
-  const page = previewPageForBlock(blocks, blockKey);
-  if (!page) return null;
+  const first = previewPageForBlock(blocks, blockKey);
+  if (!first) return null;
+  const page =
+    normalizePagePath(first.path) === "/" || !lastPage
+      ? first
+      : (pagesShowingBlock(blocks, blockKey).find(
+          (shown) =>
+            shown.key === lastPage.pageKey || shown.path === lastPage.path,
+        ) ?? first);
   if (extractPathParams(page.path).length === 0) return page.path;
   if (lastPage?.path !== page.path) return page.path;
   const filled = fillPathTemplate(page.path, lastPage.params);
@@ -83,13 +97,14 @@ export function blockComparePath(
 }
 
 /**
- * The site URL a change compares on. A saved section renders on its own
- * (v7's `/live/previews`), except on a Blocks v8 site, where it — like every
- * other change — renders on the page `path` (see {@link blockComparePath}).
+ * The site URL a change compares on: the page `path`, or a saved section on
+ * its own (v7's `/live/previews`) when `sectionKey` is set. A Blocks v8 site
+ * has no such route: there every change renders on the page `path` (see
+ * {@link blockComparePath}).
  */
 export function compareUrl(input: {
   previewServerUrl: string;
-  /** {@link isolatedSectionKey} of the change. */
+  /** {@link isolatedSectionKey} of a v7 change that renders on its own. */
   sectionKey: string | null;
   path: string;
   /** A Blocks v8 site (the content protocol). */

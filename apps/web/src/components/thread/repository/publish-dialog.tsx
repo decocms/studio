@@ -83,6 +83,7 @@ import { useCmsPublishState } from "./use-cms-publish-state.ts";
 import {
   type ContentPublishState,
   useContentPublishState,
+  useCurrentBlocks,
 } from "./use-content-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
@@ -435,6 +436,9 @@ interface PublishSource {
   /** A Blocks v8 site, with its current blocks: the compare never uses v7's
    *  isolated-section route there. Absent on v7. */
   v8?: { blocks: Record<string, unknown> | null };
+  /** v7: the editor's current blocks, when it has read them: a saved
+   *  section compares on a page that shows it. */
+  blocks?: Record<string, unknown> | null;
 }
 
 type CmsPublishContentProps = PublishDialogProps & {
@@ -466,11 +470,14 @@ function CmsPublishContent(props: CmsPublishContentProps) {
       />
     );
   }
-  return <GitPublish {...props} />;
+  return <GitPublish {...props} cacheKey={cacheKey} />;
 }
 
 /** A v7 site: the changes, the gate and the discards are git's. */
-function GitPublish(props: CmsPublishContentProps) {
+function GitPublish({
+  cacheKey,
+  ...props
+}: CmsPublishContentProps & { cacheKey: string }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const state = useCmsPublishState({
     orgSlug: props.orgSlug,
@@ -494,6 +501,7 @@ function GitPublish(props: CmsPublishContentProps) {
     policy: props.publishPolicy,
     judgeEnabled: props.mode !== "review",
   });
+  const blocks = useCurrentBlocks(cacheKey);
   const discardable = state.discardablePaths;
   const canDiscardPaths = (paths: readonly string[]) =>
     discardable === null || paths.every((p) => discardable.has(p));
@@ -522,6 +530,7 @@ function GitPublish(props: CmsPublishContentProps) {
           : {}),
         hosted: false,
         otherWork: false,
+        blocks: blocks ?? null,
       }}
     />
   );
@@ -1045,6 +1054,7 @@ function CmsPublishView({
               draft={compareDraft}
               lastPage={lastPreviewPage}
               v8={source.v8}
+              blocks={source.blocks}
               onReady={
                 smoothPanes ? () => markReady(changeId(change)) : undefined
               }
