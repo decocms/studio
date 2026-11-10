@@ -247,23 +247,31 @@ function isUnavailable(error: unknown): boolean {
 }
 
 /**
- * How long one conditional PUT may wait for R2's answer before it is given
- * up as Unavailable. R2 answers a draft-sized PUT in well under a second
- * (p99 a few hundred ms); the largest body a save can send is one block of
- * a request capped at 8 MiB, which needs ~13 s at a poor 5 Mbit/s uplink,
- * so 15 s never cuts off a healthy write. A stalled PUT (one sat ~25 s
- * before landing) then fails fast, as a `DeliveryUnavailableError`, the
- * Unavailable answer the editor already retries, instead of holding the
- * save (and every write queued behind it) open.
+ * How long one conditional PUT of a draft object (a draft's index or one of
+ * its files) may wait for R2's answer before it is given up as Unavailable.
+ * R2 answers a draft-sized PUT in well under a second (p99 a few hundred
+ * ms); the largest draft body is one block of a save request capped at
+ * 8 MiB, which needs ~13 s at a poor 5 Mbit/s uplink, so 15 s never cuts
+ * off a healthy draft write. A stalled PUT (one sat ~25 s before landing)
+ * then fails fast, as a `DeliveryUnavailableError`, the Unavailable answer
+ * the editor already retries, instead of holding the save open.
+ *
+ * Only draft keys get it. A publish writes bodies up to 16 MiB (block
+ * objects, a revision's index, `latest.json`), which a poor link can take
+ * longer than 15 s to send, and a publish that gave up on a `latest.json`
+ * PUT that then landed would leave the site live but unpurged; those PUTs
+ * keep the SDK's defaults (no timeout), as before, and are only logged.
  */
 export const CONDITIONAL_PUT_TIMEOUT_MS = 15_000;
 
 /** A conditional PUT this slow is logged even when it lands. */
 const SLOW_PUT_MS = 2_000;
 
+const DRAFT_KEY_RE = /\/drafts\/[A-Za-z0-9_-]{22}\//;
+
 /** A delivery key fit for logs: a draft's slug is its read grant, so it's hidden. */
 function loggableKey(key: string): string {
-  return key.replace(/\/drafts\/[A-Za-z0-9_-]{22}\//, "/drafts/<slug>/");
+  return key.replace(DRAFT_KEY_RE, "/drafts/<slug>/");
 }
 
 function isNotModified(error: unknown): boolean {
@@ -281,7 +289,7 @@ export function createS3DeliveryStore(config: {
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
-  /** {@link CONDITIONAL_PUT_TIMEOUT_MS} unless set (tests). */
+  /** {@link CONDITIONAL_PUT_TIMEOUT_MS} unless set (tests); draft keys only. */
   conditionalTimeoutMs?: number;
   /** {@link SLOW_PUT_MS} unless set (tests). */
   slowMs?: number;
@@ -333,19 +341,22 @@ export function createS3DeliveryStore(config: {
       return { etag: res.ETag ?? null };
     }
     const started = performance.now();
-    const signal = AbortSignal.timeout(timeoutMs);
+    // Only a draft write is cut off ({@link CONDITIONAL_PUT_TIMEOUT_MS}).
+    const timed = DRAFT_KEY_RE.test(key);
+    const signal = timed ? AbortSignal.timeout(timeoutMs) : undefined;
     let outcome = "ok";
     try {
-      const res = await conditionalClient.send(command, {
-        abortSignal: signal,
-      });
+      const res = await conditionalClient.send(
+        command,
+        signal ? { abortSignal: signal } : {},
+      );
       return { etag: res.ETag ?? null };
     } catch (error) {
       if (isConditionFailed(error)) {
         outcome = "changed";
         throw new ObjectChangedError(key);
       }
-      if (signal.aborted) {
+      if (signal?.aborted) {
         // A PUT given up on may still land: like any Unavailable answer,
         // it is neither a lost race nor a success (contract §2.6).
         outcome = "timeout";
@@ -372,7 +383,7 @@ export function createS3DeliveryStore(config: {
           outcome,
           durationMs,
           bytes: bytes.byteLength,
-          timeoutMs,
+          timeoutMs: timed ? timeoutMs : null,
         });
       }
     }

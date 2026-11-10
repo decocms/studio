@@ -214,6 +214,27 @@ describe("createS3DeliveryStore conditional PUT timeout", () => {
     expect(warned[0]!.fields.durationMs as number).toBeGreaterThanOrEqual(100);
   });
 
+  it("a publish PUT (not a draft key) is never cut off, only logged when slow", async () => {
+    answer = { status: 200, code: "" };
+    delayMs = 500;
+    seen.length = 0;
+    warned.length = 0;
+    try {
+      expect(
+        await store.putJson("sites/acme/latest.json", { a: 1 }, "", {
+          ifMatch: '"e0"',
+        }),
+      ).toEqual({ etag: '"e1"' });
+    } finally {
+      delayMs = 0;
+    }
+    expect(seen.length).toBe(1);
+    expect(warned).toHaveLength(1);
+    expect(warned[0]!.fields.outcome).toBe("ok");
+    expect(warned[0]!.fields.timeoutMs).toBeNull();
+    expect(warned[0]!.fields.durationMs as number).toBeGreaterThanOrEqual(300);
+  });
+
   it("a 503 is logged as unavailable; a lost race isn't logged", async () => {
     warned.length = 0;
     expect(await putWith(412, "PreconditionFailed", true)).toBeInstanceOf(
