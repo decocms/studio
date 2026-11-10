@@ -248,6 +248,46 @@ describe("sandboxCommand", () => {
     expect(logSpy).toHaveBeenCalledWith("thrd_9");
   });
 
+  it("new --repo binds the repository when it boots the sandbox", async () => {
+    const fetch = fakeFetch({
+      "GET /api/_me/organizations": () =>
+        Response.json({ organizations: [{ id: "org_1", slug: "acme" }] }),
+      "POST /api/acme/tools/COLLECTION_THREADS_CREATE": () =>
+        Response.json({ item: { id: "thrd_9" } }),
+      "POST /api/acme/tools/THREAD_SANDBOX_START": () => Response.json(target),
+    });
+    const code = await sandboxCommand({
+      dataDir: dir,
+      fetch,
+      write,
+      subcommand: "new",
+      args: [],
+      org: "acme",
+      repo: "acme/site",
+    });
+    expect(code).toBe(0);
+    expect(JSON.parse(calls[2]!.body!)).toEqual({
+      threadId: "thrd_9",
+      wait: false,
+      repository: "acme/site",
+    });
+  });
+
+  it("new refuses --repo with --agent", async () => {
+    const code = await sandboxCommand({
+      dataDir: dir,
+      fetch: fakeFetch({}),
+      write,
+      subcommand: "new",
+      args: [],
+      org: "acme",
+      repo: "acme/site",
+      agent: "vmcp_1",
+    });
+    expect(code).toBe(1);
+    expect(calls).toHaveLength(0);
+  });
+
   it("surfaces a tool error and exits 1", async () => {
     const fetch = fakeFetch({
       "POST /api/acme/tools/THREAD_SANDBOX_START": () =>

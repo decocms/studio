@@ -8912,7 +8912,11 @@ export interface StudioToolIO {
     output: { success: boolean };
   };
   THREAD_SANDBOX_START: {
-    input: { threadId: string; wait?: boolean | undefined };
+    input: {
+      threadId: string;
+      wait?: boolean | undefined;
+      repository?: string | undefined;
+    };
     output: {
       virtualMcpId: string;
       branch: string;
