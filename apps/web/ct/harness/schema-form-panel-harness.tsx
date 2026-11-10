@@ -15,6 +15,8 @@ import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb"
  * It records `onRequestAddSection` invocations into a testid'd <pre> so a spec
  * can assert whether a section-array "Add section" click reached the picker
  * (prop threaded through) or was swallowed by the `!previewBaseUrl` guard.
+ * With `pickResolveType`, it also stands in for the picker: the request is
+ * answered with that section, so a spec can assert where it landed.
  */
 export function SchemaFormPanelHarness({
   meta,
@@ -22,12 +24,14 @@ export function SchemaFormPanelHarness({
   initialValue = {},
   decofile = {},
   previewBaseUrl,
+  pickResolveType,
 }: {
   meta: LiveMeta;
   resolveType: string;
   initialValue?: Record<string, unknown>;
   decofile?: Record<string, unknown>;
   previewBaseUrl?: string | null;
+  pickResolveType?: string;
 }) {
   const resolved = resolveSchema(resolveType, meta);
   const [value, setValue] = useState<unknown>(initialValue);
@@ -47,9 +51,10 @@ export function SchemaFormPanelHarness({
         meta={meta}
         decofile={decofile}
         previewBaseUrl={previewBaseUrl}
-        onRequestAddSection={() =>
-          setEvents((prev) => [...prev, "requestAddSection"])
-        }
+        onRequestAddSection={({ append }) => {
+          setEvents((prev) => [...prev, "requestAddSection"]);
+          if (pickResolveType) append({ __resolveType: pickResolveType });
+        }}
       />
       <pre data-testid="form-value">{JSON.stringify(value)}</pre>
       <pre data-testid="events">{JSON.stringify(events)}</pre>

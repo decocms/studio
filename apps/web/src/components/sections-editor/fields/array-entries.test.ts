@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   insertEntryAfter,
+  insertEntryAt,
   isNonArrayStoredValue,
   removeEntryAt,
   type ArrayEntry,
@@ -34,6 +35,34 @@ describe("insertEntryAfter", () => {
     ];
     const next = insertEntryAfter(entries, 1);
     expect(next.map((e) => e.index)).toEqual([0, 1, 2]);
+  });
+});
+
+describe("insertEntryAt", () => {
+  const entries: ArrayEntry[] = [
+    { id: "a", index: 0 },
+    { id: "b", index: 1 },
+  ];
+  const insertedId = (next: ArrayEntry[]) =>
+    next.find((e) => e.id !== "a" && e.id !== "b")?.id;
+
+  test("inserting at the top renders the new row first", () => {
+    const next = insertEntryAt(entries, 0);
+    expect(next.map((e) => e.index)).toEqual([0, 1, 2]);
+    expect(next[0]?.id).toBe(insertedId(next));
+    expect(next.find((e) => e.id === "a")?.index).toBe(1);
+  });
+
+  test("inserting between rows shifts only the rows below", () => {
+    const next = insertEntryAt(entries, 1);
+    expect(next.map((e) => e.id)).toEqual(["a", insertedId(next) ?? "", "b"]);
+    expect(next.map((e) => e.index)).toEqual([0, 1, 2]);
+  });
+
+  test("inserting past the end appends", () => {
+    const next = insertEntryAt(entries, 2);
+    expect(next.map((e) => e.index)).toEqual([0, 1, 2]);
+    expect(next[2]?.id).toBe(insertedId(next));
   });
 });
 
