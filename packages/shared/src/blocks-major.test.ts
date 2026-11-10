@@ -255,6 +255,8 @@ describe("one v8 detector", () => {
         "isBlocksV8Project on a project in hand's metadata",
       "apps/web/src/hooks/use-blocks-v8-project.ts#useBlocksV8Project":
         "blocksV8Project for a project id",
+      "apps/web/src/components/monitor/experiments-view.tsx#useProjectsV8":
+        "blocksV8Project for each of the org's projects",
       "apps/web/src/components/sections-editor/content-version-badge.tsx#showsV8Badge":
         "UI: reads the backend the probe chose",
       "apps/web/src/components/thread/repository/localhost-row.tsx#V8LocalhostRow":
