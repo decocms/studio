@@ -71,7 +71,7 @@ export const sidebar = {
   "sidebar.rail.unpinOrganization": "Desafixar da barra lateral",
   "sidebar.rail.searchEmpty": "Nenhuma organização corresponde.",
   "sidebar.rail.searchFailed": "Não foi possível buscar organizações.",
-  "sidebar.rail.search": "Pesquisar",
+  "sidebar.rail.search": "Pesquisar tudo",
   "sidebar.rail.searchOrganizations": "Buscar organizações",
   "sidebar.rail.searchPlaceholder": "Busque por nome ou URL",
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
