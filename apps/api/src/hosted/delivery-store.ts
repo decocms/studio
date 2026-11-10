@@ -212,7 +212,9 @@ export interface DeliveryStore {
   delete(key: string): Promise<void>;
   /**
    * One page of the "folders" right under `prefix` (a delimiter listing,
-   * ascending key order), at most `maxKeys` of them.
+   * ascending key order). `maxKeys` caps folders and plain objects together,
+   * as S3 does, so a page can hold fewer than `maxKeys` folders. `startAfter`
+   * (a full key) starts the listing past it; a continuation token wins over it.
    */
   listPage(
     prefix: string,
@@ -220,6 +222,7 @@ export interface DeliveryStore {
       delimiter: "/";
       maxKeys: number;
       continuationToken?: string | null;
+      startAfter?: string | null;
     },
   ): Promise<ListPage>;
 }
@@ -353,7 +356,10 @@ export function createS3DeliveryStore(config: {
         throw error;
       }
     },
-    async listPage(prefix, { delimiter, maxKeys, continuationToken }) {
+    async listPage(
+      prefix,
+      { delimiter, maxKeys, continuationToken, startAfter },
+    ) {
       let res: ListObjectsV2CommandOutput;
       try {
         res = await client.send(
@@ -364,7 +370,9 @@ export function createS3DeliveryStore(config: {
             MaxKeys: maxKeys,
             ...(continuationToken
               ? { ContinuationToken: continuationToken }
-              : {}),
+              : startAfter
+                ? { StartAfter: startAfter }
+                : {}),
           }),
         );
       } catch (error) {

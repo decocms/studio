@@ -17,6 +17,15 @@ export function isRevisionId(value: unknown): value is string {
 
 const MAX48 = 2n ** 48n - 1n;
 
+/**
+ * A key fragment that sorts below every revision id minted before `nowMs`:
+ * the 12-hex inverted prefix of `nowMs` itself. LIST from it (`StartAfter`)
+ * and the keys that sort before any id are never paged through.
+ */
+export function revisionIdFloor(nowMs: number): string {
+  return (MAX48 - BigInt(nowMs)).toString(16).padStart(12, "0");
+}
+
 export function newRevisionId(
   nowMs: number = Date.now(),
   rand: Uint8Array = crypto.getRandomValues(new Uint8Array(10)),
