@@ -228,6 +228,10 @@ export const sectionsEditor = {
   "sectionsEditor.imageField.mobileSlot": "Imagem mobile (abaixo de 768px)",
   "sectionsEditor.imageField.mobileUrlLabel": "URL mobile",
   "sectionsEditor.imageField.urlLabel": "URL",
+  "sectionsEditor.imageField.animationTooLarge":
+    "Animação grande demais: {width}×{height} × {frames} quadros = {megapixels} MP. O CDN de imagens não entrega animações acima de 100 MP e ela quebraria no site. Reduza (ex.: 750px de largura) ou use menos quadros.",
+  "sectionsEditor.imageField.animationNotOptimized":
+    "Animação pesada: {width}×{height} × {frames} quadros = {megapixels} MP. Acima de 50 MP o CDN de imagens entrega sem otimizar. Reduza (ex.: 750px de largura) para ficar leve.",
   "sectionsEditor.imageField.onlyImageFilesAccepted":
     "Apenas arquivos de imagem são aceitos aqui.",
   "sectionsEditor.imageField.previewUnavailable": "Visualização indisponível",
