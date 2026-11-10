@@ -31,6 +31,7 @@ import {
   loadBlockBody,
   stubNames,
 } from "./hosted-content";
+import { cmsBlockVersion } from "./cms-api";
 import { pagesShowingBlock, previewPageForBlock } from "./page-list";
 import { findSiteSeoEntry } from "./seo-block";
 
@@ -822,5 +823,84 @@ describe("a refused save, then the poll (the conflict dialog is open)", () => {
     await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
     await settle();
     expect(epoch()).toBe(before + 1);
+  });
+});
+
+describe("a retry refused by the first try's own late write", () => {
+  const home = { __resolveType: "page", path: "/" };
+  const Header = { __resolveType: "site/sections/Header.tsx", title: "a" };
+  /**
+   * The first try lands Header and gives up on home (Unavailable), but home's
+   * PUT still lands, late; the retry's guard (`home: null`) then meets it.
+   */
+  const lateServer = (homeActual: () => Promise<string>) => {
+    const server = hostedServer();
+    const applied: Array<{ set?: string[]; ifMatch?: unknown }> = [];
+    server.backend.client.blocksApply = (async (patch: {
+      set?: Record<string, unknown>;
+      ifMatch?: Record<string, string | null>;
+    }) => {
+      applied.push({
+        set: Object.keys(patch.set ?? {}),
+        ifMatch: structuredClone(patch.ifMatch),
+      });
+      if (applied.length === 1) {
+        throw new ContentProtocolError(ErrorCode.Unavailable, "no answer", {
+          retryAfterMs: 250,
+          landed: { Header: "vHeader2" },
+        });
+      }
+      const actual = await homeActual();
+      if (patch.ifMatch?.home !== actual) {
+        throw new ContentProtocolError(
+          ErrorCode.Conflict,
+          "a precondition failed",
+          { entries: { home: { expected: patch.ifMatch?.home, actual } } },
+        );
+      }
+      return { revision: "s-9", versions: { home: actual } };
+    }) as unknown as ContentClient["blocksApply"];
+    return { ...server, applied };
+  };
+
+  it("counts a name holding this very body as landed and resends it guarded on that version", async () => {
+    const queryClient = new QueryClient();
+    const own = await cmsBlockVersion(home);
+    const { backend, applied } = lateServer(async () => own);
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    const result = await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { Header, home } },
+      { Header: null, home: null },
+    );
+    expect(applied).toEqual([
+      { set: ["Header", "home"], ifMatch: { Header: null, home: null } },
+      { set: ["home"], ifMatch: { home: null } },
+      { set: ["home"], ifMatch: { home: own } },
+    ]);
+    expect(result.versions).toEqual({ Header: "vHeader2", home: own });
+    expect(protocolBlockVersion(queryClient, CACHE_KEY, "home", backend)).toBe(
+      own,
+    );
+  });
+
+  it("a name holding another body is a real conflict: nothing more is sent", async () => {
+    const queryClient = new QueryClient();
+    const { backend, applied } = lateServer(async () => "vSomeoneElse");
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await expect(
+      applyProtocolPatch(
+        queryClient,
+        backend,
+        params,
+        CACHE_KEY,
+        { set: { Header, home } },
+        { Header: null, home: null },
+      ),
+    ).rejects.toThrow("a precondition failed");
+    expect(applied).toHaveLength(2);
   });
 });

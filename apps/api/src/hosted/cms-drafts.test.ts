@@ -77,7 +77,7 @@ describe("cms drafts", () => {
     expect(found?.state.files.get("ghost")).toEqual({ file: null, etag: null });
   });
 
-  it("discard deletes every listed file, then the index, then the row", async () => {
+  it("discard empties the index, then deletes every listed file, then the index, then the row", async () => {
     const delivery = memoryDeliveryStore();
     const drafts = createCmsDrafts({
       table: memoryDraftTable(),
@@ -92,6 +92,7 @@ describe("cms drafts", () => {
     delivery.log.length = 0;
     expect(await drafts.discard(SITE, "x")).toBe(true);
     expect(delivery.log).toEqual([
+      `put ${deliveryKeys.draftIndex(SITE, row.slug)}`,
       `delete ${deliveryKeys.draftFile(SITE, row.slug, "a")}`,
       `delete ${deliveryKeys.draftFile(SITE, row.slug, "b")}`,
       `delete ${deliveryKeys.draftIndex(SITE, row.slug)}`,
@@ -123,6 +124,100 @@ describe("cms drafts", () => {
     expect(delivery.objects.has(deliveryKeys.draftIndex(SITE, row.slug))).toBe(
       false,
     );
+  });
+
+  it("discard never leaves a listed name whose file is gone", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createCmsDrafts({
+      table: memoryDraftTable(),
+      store: delivery.store,
+    });
+    const { row } = await drafts.ensure(SITE, "x", {
+      userId: "u1",
+      via: "token",
+    });
+    await seedDraftFile(delivery.store, SITE, row.slug, "a", setFile({ a: 1 }));
+    await seedDraftFile(delivery.store, SITE, row.slug, "b", setFile({ b: 1 }));
+    const indexKey = deliveryKeys.draftIndex(SITE, row.slug);
+    const remove = delivery.store.delete.bind(delivery.store);
+    const seen: string[][] = [];
+    delivery.store.delete = async (key: string) => {
+      const index = delivery.objects.get(indexKey);
+      if (index && key !== indexKey) {
+        seen.push((JSON.parse(index.text) as { names: string[] }).names);
+      }
+      return remove(key);
+    };
+    expect(await drafts.discard(SITE, "x")).toBe(true);
+    expect(seen).toEqual([[], []]);
+  });
+
+  it("a failed file delete puts the names it didn't delete back into the index, and a retried discard deletes them", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createCmsDrafts({
+      table: memoryDraftTable(),
+      store: delivery.store,
+    });
+    const { row } = await drafts.ensure(SITE, "x", {
+      userId: "u1",
+      via: "token",
+    });
+    await seedDraftFile(delivery.store, SITE, row.slug, "a", setFile({ a: 1 }));
+    await seedDraftFile(delivery.store, SITE, row.slug, "b", setFile({ b: 1 }));
+    await seedDraftFile(delivery.store, SITE, row.slug, "c", setFile({ c: 1 }));
+    const remove = delivery.store.delete.bind(delivery.store);
+    const bKey = deliveryKeys.draftFile(SITE, row.slug, "b");
+    delivery.store.delete = async (key: string) => {
+      if (key === bKey) throw new DeliveryUnavailableError(key, "503");
+      return remove(key);
+    };
+    await expect(drafts.discard(SITE, "x")).rejects.toThrow(
+      DeliveryUnavailableError,
+    );
+    // a went; b and c are still there, and listed again, so a save guards
+    // against them instead of tripping over a hidden file.
+    expect(
+      (await readDraftIndex(delivery.store, SITE, row.slug)).names,
+    ).toEqual(["b", "c"]);
+    expect(
+      delivery.objects.has(deliveryKeys.draftFile(SITE, row.slug, "a")),
+    ).toBe(false);
+    expect((await drafts.resolve(SITE, "x"))?.row.slug).toBe(row.slug);
+    delivery.store.delete = remove;
+    expect(await drafts.discard(SITE, "x")).toBe(true);
+    expect(delivery.objects.size).toBe(0);
+  });
+
+  it("discard deletes a name a save listed while the index was being emptied", async () => {
+    const delivery = memoryDeliveryStore();
+    const drafts = createCmsDrafts({
+      table: memoryDraftTable(),
+      store: delivery.store,
+    });
+    const { row } = await drafts.ensure(SITE, "x", {
+      userId: "u1",
+      via: "token",
+    });
+    await seedDraftFile(delivery.store, SITE, row.slug, "a", setFile({ a: 1 }));
+    const indexKey = deliveryKeys.draftIndex(SITE, row.slug);
+    const putJson = delivery.store.putJson.bind(delivery.store);
+    let raced = false;
+    delivery.store.putJson = async (key, value, cacheControl, condition) => {
+      if (key === indexKey && !raced) {
+        raced = true;
+        await seedDraftFile(
+          delivery.store,
+          SITE,
+          row.slug,
+          "late",
+          setFile({ late: 1 }),
+        );
+      }
+      return putJson(key, value, cacheControl, condition);
+    };
+    expect(await drafts.discard(SITE, "x")).toBe(true);
+    expect(raced).toBe(true);
+    expect(delivery.objects.size).toBe(0);
   });
 
   it("names follow the branch rule, at most 255 characters", () => {

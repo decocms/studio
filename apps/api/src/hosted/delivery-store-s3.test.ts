@@ -16,6 +16,8 @@ import {
 } from "./delivery-store";
 
 let answer: { status: number; code: string } = { status: 200, code: "" };
+/** How long the fake S3 sits on a request before it answers. */
+let delayMs = 0;
 const seen: Array<{
   method: string;
   path: string;
@@ -25,7 +27,7 @@ const seen: Array<{
 }> = [];
 const server = Bun.serve({
   port: 0,
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
     seen.push({
       method: req.method,
@@ -34,6 +36,7 @@ const server = Bun.serve({
       ifMatch: req.headers.get("if-match"),
       ifNoneMatch: req.headers.get("if-none-match"),
     });
+    if (delayMs > 0) await Bun.sleep(delayMs);
     if (answer.status === 200) {
       return new Response("", { status: 200, headers: { ETag: '"e1"' } });
     }
@@ -45,11 +48,15 @@ const server = Bun.serve({
 });
 afterAll(() => server.stop(true));
 
+const warned: Array<{ message: string; fields: Record<string, unknown> }> = [];
 const store = createS3DeliveryStore({
   endpoint: `http://127.0.0.1:${server.port}`,
   bucket: "b",
   accessKeyId: "k",
   secretAccessKey: "s",
+  conditionalTimeoutMs: 300,
+  slowMs: 100,
+  warn: (message, fields) => warned.push({ message, fields }),
 });
 
 async function putWith(status: number, code: string, conditional: boolean) {
@@ -153,6 +160,92 @@ describe("createS3DeliveryStore conditional PUTs", () => {
       ifNoneMatch: "*",
     });
     expect(seen[0]?.ifNoneMatch).toBe("*");
+  });
+});
+
+describe("createS3DeliveryStore conditional PUT timeout", () => {
+  const slug = "AAAAAAAAAAAAAAAAAAAAAA";
+  const draftKey = `sites/acme/drafts/${slug}/home.json`;
+  const putDraft = () =>
+    store.putJson(draftKey, { a: 1 }, "", { ifMatch: '"e0"' }).then(
+      (res) => res,
+      (error: unknown) => error,
+    );
+
+  it("a stalled PUT is given up as Unavailable, sent once, and logged with its duration", async () => {
+    answer = { status: 200, code: "" };
+    delayMs = 2_000;
+    seen.length = 0;
+    warned.length = 0;
+    const started = performance.now();
+    try {
+      const error = await putDraft();
+      const took = performance.now() - started;
+      expect(error).toBeInstanceOf(DeliveryUnavailableError);
+      expect((error as Error).message).toContain("no answer within 300 ms");
+      expect(took).toBeLessThan(1_500);
+      expect(seen.length).toBe(1);
+      expect(warned).toHaveLength(1);
+      const fields = warned[0]!.fields;
+      expect(fields.outcome).toBe("timeout");
+      expect(fields.durationMs as number).toBeGreaterThanOrEqual(300);
+      expect(fields.bytes).toBe(7);
+      // The slug is the draft's read grant: never in a log line.
+      expect(fields.key).toBe("sites/acme/drafts/<slug>/home.json");
+      expect(JSON.stringify(warned)).not.toContain(slug);
+    } finally {
+      delayMs = 0;
+    }
+  });
+
+  it("a slow PUT that lands is logged; a quick one isn't", async () => {
+    answer = { status: 200, code: "" };
+    warned.length = 0;
+    expect(await putDraft()).toEqual({ etag: '"e1"' });
+    expect(warned).toHaveLength(0);
+    delayMs = 150;
+    try {
+      expect(await putDraft()).toEqual({ etag: '"e1"' });
+    } finally {
+      delayMs = 0;
+    }
+    expect(warned).toHaveLength(1);
+    expect(warned[0]!.fields.outcome).toBe("ok");
+    expect(warned[0]!.fields.durationMs as number).toBeGreaterThanOrEqual(100);
+  });
+
+  it("a publish PUT (not a draft key) is never cut off, only logged when slow", async () => {
+    answer = { status: 200, code: "" };
+    delayMs = 500;
+    seen.length = 0;
+    warned.length = 0;
+    try {
+      expect(
+        await store.putJson("sites/acme/latest.json", { a: 1 }, "", {
+          ifMatch: '"e0"',
+        }),
+      ).toEqual({ etag: '"e1"' });
+    } finally {
+      delayMs = 0;
+    }
+    expect(seen.length).toBe(1);
+    expect(warned).toHaveLength(1);
+    expect(warned[0]!.fields.outcome).toBe("ok");
+    expect(warned[0]!.fields.timeoutMs).toBeNull();
+    expect(warned[0]!.fields.durationMs as number).toBeGreaterThanOrEqual(300);
+  });
+
+  it("a 503 is logged as unavailable; a lost race isn't logged", async () => {
+    warned.length = 0;
+    expect(await putWith(412, "PreconditionFailed", true)).toBeInstanceOf(
+      ObjectChangedError,
+    );
+    expect(warned).toHaveLength(0);
+    expect(await putWith(503, "ServiceUnavailable", true)).toBeInstanceOf(
+      DeliveryUnavailableError,
+    );
+    expect(warned.map((w) => w.fields.outcome)).toEqual(["unavailable"]);
+    answer = { status: 200, code: "" };
   });
 });
 
