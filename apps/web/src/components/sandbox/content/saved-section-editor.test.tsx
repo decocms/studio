@@ -77,10 +77,12 @@ describe("SavedSectionEditor's header", () => {
     cleanup();
   });
 
-  test("elsewhere it shows as before", () => {
+  test("on any other backend it names the section too", () => {
     project.backend = { kind: "legacy" };
     const view = renderEditor();
-    expect(view.queryByTestId("saved-section-title")).toBeNull();
+    expect(view.getByTestId("saved-section-title").textContent).toBe(
+      "Spring Letter I",
+    );
     cleanup();
   });
 });
