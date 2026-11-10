@@ -28,6 +28,7 @@ import {
   indexStubRefs,
   isIndexStub,
   listingOf,
+  loadBlockBody,
   stubNames,
 } from "./hosted-content";
 import { pagesShowingBlock, previewPageForBlock } from "./page-list";
@@ -328,6 +329,66 @@ describe("the hosted editor reads the index, not the blocks", () => {
     );
     expect(index?.entries.about?.meta?.path).toBe("/about-us");
     expect(loadedBodies(queryClient)?.about).toBeUndefined();
+  });
+});
+
+describe("copying a page (template, duplicate, rename)", () => {
+  it("loads a listed stub's body before it is copied", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend, hosted } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    const listing = listingOf(
+      queryClient.getQueryData<ContentIndex>(KEYS.contentIndex(CACHE_KEY)),
+      loadedBodies(queryClient),
+    );
+    expect(isIndexStub(listing.home)).toBe(true);
+    const body = await loadBlockBody(
+      queryClient,
+      hosted,
+      CACHE_KEY,
+      listing,
+      "home",
+    );
+    expect(body).toEqual({
+      __resolveType: "page",
+      path: "/",
+      sections: ["Header"],
+    });
+    expect(state.blocksCalls).toEqual([["home"]]);
+    // The copy is saved as a new page: a body, never a stub.
+    const copy = { ...body, name: "Copy", path: "/copy" };
+    expect(stubNames({ "pages-copy": copy })).toEqual([]);
+    await applyProtocolPatch(
+      queryClient,
+      backend,
+      params,
+      CACHE_KEY,
+      { set: { "pages-copy": copy } },
+      { "pages-copy": null },
+    );
+    expect(state.bodies["pages-copy"]).toEqual(copy);
+  });
+
+  it("answers a loaded body as is, and nothing for a missing name", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend, hosted } = hostedServer();
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    const loaded = { home: { __resolveType: "page", path: "/" } };
+    expect(
+      await loadBlockBody(queryClient, hosted, CACHE_KEY, loaded, "home"),
+    ).toBe(loaded.home);
+    expect(
+      await loadBlockBody(queryClient, hosted, CACHE_KEY, loaded, "gone"),
+    ).toBeUndefined();
+    expect(state.blocksCalls).toEqual([]);
+  });
+
+  it("off the hosted CMS, never reads", async () => {
+    const queryClient = new QueryClient();
+    const listed = { home: { __resolveType: "page", path: "/" } };
+    expect(
+      await loadBlockBody(queryClient, undefined, CACHE_KEY, listed, "home"),
+    ).toBe(listed.home);
   });
 });
 
