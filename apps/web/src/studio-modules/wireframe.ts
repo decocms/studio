@@ -335,6 +335,14 @@ export default defineStudioModule<WireframeIn, WireframeOut>((channel) => {
       case "wireframe:clear-hover":
         hover(null);
         return;
+      case "wireframe:scroll-to": {
+        if (!Number.isInteger(message.sectionIndex)) return;
+        editableSections()[message.sectionIndex]?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+        return;
+      }
       case "wireframe:sections": {
         labels = Array.isArray(message.labels) ? message.labels : [];
         kinds = Array.isArray(message.kinds) ? message.kinds : [];
