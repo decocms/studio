@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
+import * as choices from "../../git-providers/repo-choices";
 import type { RepoChoice } from "../../git-providers/repo-choices";
 import * as chats from "../../harnesses/sandbox-only-chats";
 import { COLLECTION_THREADS_CREATE } from "../thread/create";
@@ -90,6 +91,19 @@ describe("THREAD_SANDBOX_START without a threadId", () => {
         ctx,
       ),
     ).rejects.toThrow("Only chats on the default agent can load a repository");
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unlinked repository before creating a chat", async () => {
+    const createSpy = create();
+    const listSpy = spyOn(choices, "listOrgRepoChoices").mockResolvedValue([]);
+    spies.push(createSpy, listSpy);
+    await expect(
+      THREAD_SANDBOX_START.handler(
+        { wait: false, repository: "acme/missing" },
+        ctx,
+      ),
+    ).rejects.toThrow('No repository "acme/missing"');
     expect(createSpy).not.toHaveBeenCalled();
   });
 
