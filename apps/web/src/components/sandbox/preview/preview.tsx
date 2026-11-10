@@ -1528,6 +1528,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
 
+  /** v8: the wireframe scrolls a section picked in the list into view. */
+  const scrollToSection = (sectionIndex: number) => {
+    channelRef.current?.wireframe({
+      type: "wireframe:scroll-to",
+      sectionIndex,
+    });
+  };
+
   // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
   const clearEditorHover = () => {
     channelRef.current?.wireframe({ type: "wireframe:clear-hover" });
@@ -2400,6 +2408,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <BlocksPanel
               virtualMcpId={virtualMcpId}
               externalSelection={cmsSelectedSection}
+              onSectionPicked={scrollToSection}
               onViewJsonFile={toggleJsonPanel}
             />
             {jsonPanelOpen && jsonBlockKey && (
@@ -2432,6 +2441,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 <BlocksPanel
                   virtualMcpId={virtualMcpId}
                   externalSelection={cmsSelectedSection}
+                  onSectionPicked={scrollToSection}
                   onViewJsonFile={toggleJsonPanel}
                 />
               )}

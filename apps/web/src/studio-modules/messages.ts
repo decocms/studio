@@ -64,7 +64,13 @@ export type WireframeIn =
       keys: (string[] | null)[];
     }
   /** The pointer left the frame (a cross-origin frame can't see that itself). */
-  | { type: "wireframe:clear-hover" };
+  | { type: "wireframe:clear-hover" }
+  /**
+   * A section picked in the Blocks panel: scroll it into view, smoothly, to
+   * the middle of the frame (v7's `scrollToComponent`). Indexed like
+   * `wireframe:sections`; a section the page doesn't render is ignored.
+   */
+  | { type: "wireframe:scroll-to"; sectionIndex: number };
 
 /** Wireframe → Studio. */
 export type WireframeOut =

@@ -327,6 +327,7 @@ export function SectionsEditor({
   onSelectRoot,
   onViewJsonFile,
   onFocusedBlockChange,
+  onSectionPicked,
   onVariantPreviewOverride,
 }: {
   orgSlug: string;
@@ -361,6 +362,11 @@ export function SectionsEditor({
   onViewJsonFile?: () => void;
   /** Publishes the block whose form is open, for the JSON view to follow. */
   onFocusedBlockChange?: (blockKey: string | null) => void;
+  /**
+   * A section picked in the list (not by a click in the preview, which shows
+   * it already): the preview scrolls it into view.
+   */
+  onSectionPicked?: (index: number) => void;
   /**
    * Called when the selected section variant changes so the host can force the
    * preview iframe to render that variant: `x-deco-matchers-override` params on
@@ -4626,7 +4632,10 @@ export function SectionsEditor({
         meta={meta}
         decofile={decofile}
         selectedIndex={selectedSectionIndex}
-        onSelect={handleSelectSection}
+        onSelect={(index) => {
+          handleSelectSection(index);
+          onSectionPicked?.(index);
+        }}
         onReorder={handleReorder}
         onDelete={handleDeleteSection}
         onDuplicate={handleDuplicateSection}

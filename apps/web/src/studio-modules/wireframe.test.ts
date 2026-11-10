@@ -193,4 +193,23 @@ describe("the wireframe module", () => {
       [3, "site/sections/Footer.tsx"],
     ]);
   });
+
+  it("scrolls the section picked in the editor's list smoothly into the middle of the view", async () => {
+    page();
+    const channel = await start();
+    const calls: [string | null, unknown][] = [];
+    for (const section of document.querySelectorAll("section")) {
+      section.scrollIntoView = (options?: boolean | ScrollIntoViewOptions) => {
+        calls.push([section.getAttribute("data-manifest-key"), options]);
+      };
+    }
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: 1 });
+    // Out of range, negative or not an index: nothing scrolls.
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: 7 });
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: -1 });
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: 0.5 });
+    expect(calls).toEqual([
+      ["site/sections/Footer.tsx", { behavior: "smooth", block: "center" }],
+    ]);
+  });
 });
