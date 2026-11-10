@@ -6,6 +6,7 @@ import {
 import { isV8Schema } from "@decocms/shared/blocks-major";
 import {
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+  blockSchemaTitle,
   labelFromResolveType,
 } from "./section-types";
 
@@ -1644,7 +1645,10 @@ export function resolveBlockSchemaMetadata(
     truthy(flags.hide) || truthy(flags.ignore) || truthy(flags.unlisted);
 
   return {
-    title: typeof resolved.title === "string" ? resolved.title : undefined,
+    title:
+      typeof resolved.title === "string"
+        ? blockSchemaTitle(resolved.title)
+        : undefined,
     description:
       typeof resolved.description === "string"
         ? resolved.description

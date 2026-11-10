@@ -3,6 +3,8 @@ import { type ReactNode, useEffect } from "react";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { resolveSchema } from "./resolve-schema";
+import { underlyingSectionResolveType } from "./section-catalog";
+import { blockSchemaTitle, labelFromResolveType } from "./section-types";
 import { applySchemaDefaults } from "./schema-defaults";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
@@ -630,6 +632,11 @@ function SchemaFormBody({
     properties.variants
   ) {
     const variantValueSchema = properties.variants.items?.properties?.value;
+    const label =
+      blockSchemaTitle(schema.title) ??
+      (meta
+        ? labelFromResolveType(underlyingSectionResolveType(meta, value))
+        : "");
     return (
       <MultivariateFieldWrapper
         key={basePath}
@@ -637,7 +644,7 @@ function SchemaFormBody({
         value={value}
         onChange={onChange}
         path={basePath}
-        label={schema.title ?? ""}
+        label={label}
         breadcrumbPath={breadcrumbPath}
         onBreadcrumbChange={onBreadcrumbChange}
         meta={meta}

@@ -109,3 +109,19 @@ export function labelFromResolveType(rt: string): string {
       .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
   );
 }
+
+/**
+ * A block schema's title, or `undefined` when it is only the block's module
+ * path: deco titles a block that has no `@title` with its resolve type
+ * (`site/sections/Content/Alert.tsx`), which is no label for an editor.
+ */
+export function blockSchemaTitle(
+  title: string | undefined,
+): string | undefined {
+  if (title === undefined) return undefined;
+  const isModulePath =
+    !/\s/.test(title) &&
+    title.includes("/") &&
+    /\.(tsx?|jsx?|html?)$/.test(title);
+  return isModulePath ? undefined : title;
+}
