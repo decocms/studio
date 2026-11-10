@@ -417,6 +417,9 @@ export const sectionsEditor = {
     "No page found for {currentPath}",
   "sectionsEditor.sectionsEditor.blockChangedElsewhere":
     "This block changed while you were editing and could not be saved. The latest version is loaded.",
+  "sectionsEditor.sectionsEditor.formEditNotSavedYet":
+    "Your change is not saved yet. It is still in the form; try again to save it.",
+  "sectionsEditor.sectionsEditor.retrySave": "Try again",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Not saved: {fields} changed while you were editing. The latest version is loaded.",
   "sectionsEditor.formConflict.titleOne":

@@ -218,6 +218,7 @@ import { BlocksSiteEditorProvider } from "./blocks-site-editor";
 
 /** One toast for a section form's save outcome, however many saves it took. */
 const STALE_FORM_TOAST = "section-form-stale-save";
+const UNSAVED_FORM_TOAST = "section-form-unsaved";
 
 /**
  * Side panel for editing deco.cx page sections.
@@ -1327,14 +1328,8 @@ export function SectionsEditor({
   const editingForm = () =>
     focusInside(fieldScrollRef.current, document.activeElement);
 
-  /**
-   * Last resort when a save keeps colliding with newer stored content: drop
-   * the pending edit and re-seed the form from the stored section, rather
-   * than write the form's older copy over it.
-   */
-  const reloadStaleForm = (
-    message: string = t("sectionsEditor.sectionsEditor.blockChangedElsewhere"),
-  ) => {
+  /** The form's section was replaced or lost: re-seed the form from what is stored. */
+  const reloadStaleForm = (message: string) => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
@@ -1347,6 +1342,24 @@ export function SectionsEditor({
       return;
     }
     setFormReloadRequest((n) => n + 1);
+  };
+
+  /**
+   * A form save kept being refused, yet what is stored is the form's own
+   * past (a read lagging behind its saves) or reads as no one else's change:
+   * the form keeps the user's edit rather than replace it. Their next change,
+   * or "Try again", saves it; a real change by someone else is then
+   * reconciled as usual.
+   */
+  const keepUnsavedForm = (retry: () => void) => {
+    toast.error(t("sectionsEditor.sectionsEditor.formEditNotSavedYet"), {
+      id: UNSAVED_FORM_TOAST,
+      duration: Number.POSITIVE_INFINITY,
+      action: {
+        label: t("sectionsEditor.sectionsEditor.retrySave"),
+        onClick: retry,
+      },
+    });
   };
 
   /**
@@ -1792,9 +1805,17 @@ export function SectionsEditor({
         formBase.sectionCount = latestRawSections.length;
         rememberOwnVersion(formBase, savedBase);
       }
+      /** What the form holds now, for a save rebuilt after a refusal. */
+      const latestEdit = () => {
+        const latest = formBase?.emitted;
+        return latest && typeof latest === "object"
+          ? (latest as Record<string, unknown>)
+          : nextValue;
+      };
       const saveCallbacks = {
         onSuccess: () => {
           if (formBase) choiceAppliedRef.current.delete(formBase);
+          toast.dismiss(UNSAVED_FORM_TOAST);
           onSaved?.();
         },
         onError: (err: Error) => {
@@ -1819,12 +1840,7 @@ export function SectionsEditor({
               setTimeout(() => {
                 formSaveRetryPendingRef.current = false;
                 scheduleAutoSave(
-                  () => {
-                    const latest = formBase?.emitted;
-                    return latest && typeof latest === "object"
-                      ? (latest as Record<string, unknown>)
-                      : nextValue;
-                  },
+                  latestEdit,
                   sectionIndex,
                   conflicts + 1,
                   target,
@@ -1836,7 +1852,9 @@ export function SectionsEditor({
                 runWaitingFormSaves(autosaveDelay(protocolProject));
               }, retry.delay);
             } else {
-              reloadStaleForm();
+              keepUnsavedForm(() =>
+                scheduleAutoSave(latestEdit, sectionIndex, 0, target, true),
+              );
             }
             return;
           }
@@ -1884,6 +1902,7 @@ export function SectionsEditor({
                     stored,
                     rebased: !!rebased,
                     refused: conflicts > 0,
+                    own: formBase?.own,
                   }),
                 },
               }

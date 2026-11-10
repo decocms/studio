@@ -959,6 +959,134 @@ test.describe("Site Editor stale section form", () => {
     }
   });
 
+  test("a read that keeps lagging behind the editor's own saves does not refuse its retries", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+      const opened = await (await page.request.get(url)).text();
+
+      await headline.fill("First edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"))
+        .toEqual({ ...hero, headline: "First edit" });
+
+      // One refusal, then several re-reads still serve the block as opened.
+      let refuseNext = true;
+      let oldReads = 0;
+      let refused = 0;
+      await page.route("**/decofile/**", async (route) => {
+        const method = route.request().method();
+        if (method === "PATCH" && refuseNext) {
+          refuseNext = false;
+          oldReads = 3;
+          refused++;
+          await route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: "Blocks changed since they were loaded: SharedHero",
+              code: "block-conflict",
+              blocks: ["SharedHero"],
+            }),
+          });
+          return;
+        }
+        if (
+          method === "GET" &&
+          oldReads > 0 &&
+          /\/draft$/.test(new URL(route.request().url()).pathname)
+        ) {
+          oldReads--;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: opened,
+          });
+          return;
+        }
+        if (method === "PATCH") {
+          const response = await route.fetch();
+          if (response.status() === 409) refused++;
+          await route.fulfill({ response });
+          return;
+        }
+        await route.continue();
+      });
+
+      await headline.fill("Second edit");
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...hero, headline: "Second edit" });
+      await expect(headline).toHaveValue("Second edit");
+      // Only the injected refusal: no retry named the lagging copy.
+      expect(refused).toBe(1);
+    } finally {
+      await previewSite.close();
+    }
+  });
+
+  test("a save refused until the retries run out keeps the edit in the form", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { headline, url } = await openEditor(
+        page,
+        orgSlug,
+        previewSite.url,
+        { __resolveType: "SharedHero" },
+      );
+
+      let refuse = true;
+      await page.route("**/decofile/**", async (route) => {
+        if (route.request().method() !== "PATCH" || !refuse) {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "Blocks changed since they were loaded: SharedHero",
+            code: "block-conflict",
+            blocks: ["SharedHero"],
+          }),
+        });
+      });
+
+      await headline.fill("Kept edit");
+      const notSaved = page
+        .locator("[data-sonner-toast]")
+        .filter({ hasText: "Your change is not saved yet" });
+      await expect(notSaved).toBeVisible({ timeout: 30_000 });
+      await expect(headline).toHaveValue("Kept edit");
+      expect(await storedBlock(page.request, url, "SharedHero")).toEqual(hero);
+
+      refuse = false;
+      await notSaved.getByRole("button", { name: "Try again" }).click();
+      await expect
+        .poll(() => storedBlock(page.request, url, "SharedHero"), {
+          timeout: 20_000,
+        })
+        .toEqual({ ...hero, headline: "Kept edit" });
+      await expect(headline).toHaveValue("Kept edit");
+      await expect(notSaved).toHaveCount(0);
+    } finally {
+      await previewSite.close();
+    }
+  });
+
   test("a save that landed but whose answer was lost does not refuse the form's next saves", async ({
     authedPage: { page, orgSlug },
   }) => {

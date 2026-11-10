@@ -17,6 +17,7 @@ import {
   formSaveChoice,
   waitingChoiceBase,
 } from "./form-base";
+import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
 import { draftVersionOf } from "./draft-version";
 import type { ParsedSection } from "./parse-sections";
@@ -417,6 +418,32 @@ describe("formSaveExpects", () => {
         refused: true,
       }),
     ).toBe(startedFrom);
+  });
+
+  it("keeps the form's base after a refusal when the read lags behind it", () => {
+    const own = [canonicalBlockJson(stored), canonicalBlockJson(startedFrom)];
+    expect(
+      formSaveExpects({
+        startedFrom,
+        stored,
+        rebased: false,
+        refused: true,
+        own,
+      }),
+    ).toBe(startedFrom);
+  });
+
+  it("names a newer own version after a refusal: a save whose answer was lost", () => {
+    const own = [canonicalBlockJson(startedFrom), canonicalBlockJson(stored)];
+    expect(
+      formSaveExpects({
+        startedFrom,
+        stored,
+        rebased: false,
+        refused: true,
+        own,
+      }),
+    ).toBe(stored);
   });
 
   it("keeps the form's base when nothing is stored at the position", () => {
