@@ -94,14 +94,15 @@ export function resolveSiteWindow(
  * collector, in production. A resource without an environment counts as
  * production (the attribute is optional in the OTel resource).
  */
-const SITE_SCOPE = `ServiceName = {slug:String}
+export const SITE_SCOPE = `ServiceName = {slug:String}
         AND ResourceAttributes['deco.site'] = {slug:String}
         AND ResourceAttributes['deployment.environment.name'] IN ('production', '')`;
 
 const HIST_TABLE = "default.otel_metrics_histogram";
-const LOGS_TABLE = "default.otel_logs";
+export const LOGS_TABLE = "default.otel_logs";
+export const TRACES_TABLE = "default.otel_traces";
 
-const inWindow = (col: string, from: string) =>
+export const inWindow = (col: string, from: string) =>
   `${col} >= fromUnixTimestamp64Milli({${from}:Int64}) AND ${col} < fromUnixTimestamp64Milli({end:Int64})`;
 
 /**
