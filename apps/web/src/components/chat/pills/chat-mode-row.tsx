@@ -37,17 +37,25 @@ export type BranchPickAction =
   | { kind: "switch" }
   | { kind: "new-chat"; runtime?: "sandbox" };
 
-/** Never downgrades to CMS: a `cms` stamp doesn't mean the branch has no code. */
+/** A chat's runtime is immutable, so a draft from another runtime opens in a
+ *  new chat: switching a coding chat onto a CMS draft would stamp it `sandbox`.
+ *  The CMS chat takes the project default, never an explicit `cms`, which the
+ *  server honors even where the project can no longer serve one. */
 export function branchPickAction(input: {
   locked: boolean;
   /** `null` while unresolved: may still be a CMS chat. */
   sessionRuntime: ThreadRuntime | null;
   draftRuntime?: ThreadRuntime;
+  /** The chat is already on this draft. */
+  current?: boolean;
 }): BranchPickAction {
-  const { locked, sessionRuntime, draftRuntime } = input;
-  const escalate = draftRuntime === "sandbox" && sessionRuntime !== "sandbox";
-  if (!locked && !escalate) return { kind: "switch" };
-  return draftRuntime === "sandbox" || sessionRuntime === "sandbox"
+  const { locked, sessionRuntime, draftRuntime, current } = input;
+  if (draftRuntime === "sandbox" && sessionRuntime !== "sandbox")
+    return { kind: "new-chat", runtime: "sandbox" };
+  if (draftRuntime === "cms" && sessionRuntime === "sandbox" && !current)
+    return { kind: "new-chat" };
+  if (!locked) return { kind: "switch" };
+  return sessionRuntime === "sandbox"
     ? { kind: "new-chat", runtime: "sandbox" }
     : { kind: "new-chat" };
 }
@@ -105,6 +113,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       locked,
       sessionRuntime: sessionState.resolved ? sessionRuntime : null,
       draftRuntime,
+      current: next === currentBranch,
     });
     if (action.kind === "new-chat" && createTask) {
       createTask({
