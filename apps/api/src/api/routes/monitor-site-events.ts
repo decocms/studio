@@ -28,13 +28,7 @@ import {
 const SITE_EVENT_KINDS = ["log", "span"] as const;
 export type SiteEventKind = (typeof SITE_EVENT_KINDS)[number];
 
-const SITE_EVENT_LEVELS = [
-  "error",
-  "warn",
-  "info",
-  "ok",
-  "debug",
-] as const;
+const SITE_EVENT_LEVELS = ["error", "warn", "info", "ok", "debug"] as const;
 export type SiteEventLevel = (typeof SITE_EVENT_LEVELS)[number];
 
 export const SITE_EVENTS_PAGE_SIZE = 100;
