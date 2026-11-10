@@ -339,7 +339,7 @@ export default defineStudioModule<WireframeIn, WireframeOut>((channel) => {
         if (!Number.isInteger(message.sectionIndex)) return;
         editableSections()[message.sectionIndex]?.scrollIntoView({
           behavior: "smooth",
-          block: "center",
+          block: "start",
         });
         return;
       }

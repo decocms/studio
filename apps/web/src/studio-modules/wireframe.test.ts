@@ -194,7 +194,7 @@ describe("the wireframe module", () => {
     ]);
   });
 
-  it("scrolls the section picked in the editor's list smoothly into the middle of the view", async () => {
+  it("scrolls the section picked in the editor's list smoothly to the top of the view", async () => {
     page();
     const channel = await start();
     const calls: [string | null, unknown][] = [];
@@ -209,7 +209,7 @@ describe("the wireframe module", () => {
     channel.receive({ type: "wireframe:scroll-to", sectionIndex: -1 });
     channel.receive({ type: "wireframe:scroll-to", sectionIndex: 0.5 });
     expect(calls).toEqual([
-      ["site/sections/Footer.tsx", { behavior: "smooth", block: "center" }],
+      ["site/sections/Footer.tsx", { behavior: "smooth", block: "start" }],
     ]);
   });
 });
