@@ -35,16 +35,23 @@ export function ChatModeRowPure({ branchPill }: PureProps) {
 
 export type BranchPickAction =
   | { kind: "switch" }
-  | { kind: "new-chat"; runtime?: "sandbox" };
+  | { kind: "new-chat"; runtime?: ThreadRuntime };
 
-/** Never downgrades to CMS: a `cms` stamp doesn't mean the branch has no code. */
+/** v8 content drafts open in CMS; legacy picks preserve the coding runtime. */
 export function branchPickAction(input: {
   locked: boolean;
   /** `null` while unresolved: may still be a CMS chat. */
   sessionRuntime: ThreadRuntime | null;
   draftRuntime?: ThreadRuntime;
+  /** The v8 flag: content pointers must open in CMS, not as Git branches. */
+  contentOnly?: boolean;
 }): BranchPickAction {
   const { locked, sessionRuntime, draftRuntime } = input;
+  if (input.contentOnly && draftRuntime === "cms") {
+    return sessionRuntime === "cms" && !locked
+      ? { kind: "switch" }
+      : { kind: "new-chat", runtime: "cms" };
+  }
   const escalate = draftRuntime === "sandbox" && sessionRuntime !== "sandbox";
   if (!locked && !escalate) return { kind: "switch" };
   return draftRuntime === "sandbox" || sessionRuntime === "sandbox"
@@ -105,6 +112,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       locked,
       sessionRuntime: sessionState.resolved ? sessionRuntime : null,
       draftRuntime,
+      contentOnly: v8,
     });
     if (action.kind === "new-chat" && createTask) {
       createTask({
