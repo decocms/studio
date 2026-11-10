@@ -39,7 +39,7 @@ const { values, positionals } = parseArgs({
     batch: { type: "string" },
     limit: { type: "string" },
     org: { type: "string" },
-    agent: { type: "string" },
+    project: { type: "string" },
     repo: { type: "string" },
     timeout: { type: "string" },
     method: { type: "string", short: "X" },
@@ -88,7 +88,7 @@ Tools Options:
 Sandbox Options:
   --org <slug>          Organization slug
   --repo <owner/name>   Linked repository to clone for \`sandbox new\` (or its id)
-  --agent <id>          Agent for \`sandbox new\` (default: the org's default agent, no repo)
+  --project <id>        Project for \`sandbox new\`, cloning its own repository
   --timeout <s>         \`sandbox exec\` timeout in seconds (default 30, max 120)
 
 Backfill Options (backfill-assets):
@@ -289,7 +289,7 @@ if (command === "sandbox") {
     subcommand: positionals[1],
     args: positionals.slice(2),
     org: values.org,
-    agent: values.agent,
+    project: values.project,
     repo: values.repo,
     timeout,
   });

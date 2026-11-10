@@ -8913,11 +8913,13 @@ export interface StudioToolIO {
   };
   THREAD_SANDBOX_START: {
     input: {
-      threadId: string;
+      threadId?: string | undefined;
+      virtualMcpId?: string | undefined;
       wait?: boolean | undefined;
       repository?: string | undefined;
     };
     output: {
+      threadId: string;
       virtualMcpId: string;
       branch: string;
       sandboxHandle: string | null;
