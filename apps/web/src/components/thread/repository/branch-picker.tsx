@@ -57,7 +57,6 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
-import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -114,8 +113,8 @@ interface Props {
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
-  /** `runtime` is the picked draft's own (`Release.runtime`), when it has one. */
-  onChange: (branch: string, runtime?: ThreadRuntime) => void;
+  /** `draft` is the picked stored draft; absent for any other branch. */
+  onChange: (branch: string, draft?: Pick<Release, "runtime">) => void;
   /** Called instead of `onChange` when a brand-new release is created, so CMS
    *  projects can start a fresh thread on the new branch. Falls back to
    *  `onChange`. */
@@ -262,12 +261,10 @@ export function BranchPicker({
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
     clearLocal();
-    onChange(
-      branch,
-      storeDrafts.some((d) => d.name === branch)
-        ? "cms"
-        : releases.find((r) => r.branch === branch)?.runtime,
-    );
+    const draft = storeDrafts.some((d) => d.name === branch)
+      ? { runtime: "cms" as const }
+      : releases.find((r) => r.branch === branch);
+    onChange(branch, draft && { runtime: draft.runtime });
     setOpen(false);
   };
 

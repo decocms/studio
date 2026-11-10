@@ -185,7 +185,8 @@ function VmEventsBridge({
   children: ReactNode;
 }) {
   const t = useT();
-  const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
+  const { currentBranch, activeTask, setCurrentTaskBranch, isThreadLocked } =
+    useChatTask();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
   const executionEnabled = !shouldBlockHostedRuntime(activeTask?.harness_id);
@@ -298,9 +299,12 @@ function VmEventsBridge({
     t,
   ]);
 
-  /** A CMS draft continued in a coding chat may now hold code: stamp it `sandbox`. */
+  /** A CMS draft a coding chat has run on may now hold code: stamp it
+   *  `sandbox`. Only once the chat ran (locked): merely opening a draft in a
+   *  coding chat doesn't change its branch. */
   const currentDraftNeedsSandboxStamp =
     sessionRuntime === "sandbox" &&
+    isThreadLocked &&
     isOwnDraftThread &&
     draftReleases.some(
       (r) => r.branch === currentBranch && r.runtime !== "sandbox",
