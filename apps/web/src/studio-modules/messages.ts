@@ -8,9 +8,11 @@
  * - `wireframe`: outlines the page's editable sections on hover, reports the
  *   hovered and the clicked one, and keeps the page from navigating away
  *   while the Blocks panel edits it.
- * - `html-swap`: after a save, fetches the page's new HTML and swaps the
- *   document inside a View Transition (at once where the API is missing),
- *   reporting start and end, so the preview's progress bar tracks the swap.
+ * - `html-swap`: after a save, shows the page's new content: through the
+ *   page's own router when its binding offers one (`STUDIO_PAGE_REFRESH`),
+ *   else by fetching its new HTML and swapping the document inside a View
+ *   Transition (at once where the API is missing), reporting start and end,
+ *   so the preview's progress bar tracks it.
  *
  * Every message type is the module's name, `:`, the message.
  */
@@ -84,7 +86,9 @@ export type HtmlSwapIn =
    * Show the page's current content: fetch its HTML again and swap it in.
    * With `url` (a new URL of the page: a save moved the draft pointer in it),
    * that URL's HTML, on the page's own origin only; a later refresh without
-   * one reads it again. The page's address stays as it loaded.
+   * one reads it again. The page's address stays as it loaded, unless the
+   * page refreshes itself through its router (`STUDIO_PAGE_REFRESH`), which
+   * moves it to that URL.
    */
   { type: "html-swap:refresh"; id: number; url?: string };
 
