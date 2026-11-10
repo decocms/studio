@@ -47,6 +47,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Code01,
   DotsVertical,
   Edit01,
   GitBranch01,
@@ -55,6 +56,7 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -71,9 +73,15 @@ import {
   nextDraftName,
   nextReleaseColor,
   releaseDotClass,
+  releaseIconClass,
   useReleases,
 } from "./use-releases";
+import { groupReleasesByRuntime } from "./release-edits";
 import { useStartDraft } from "./use-start-draft";
+
+/** A coding draft's icon in place of its dot; the negative margin keeps the
+ *  dot's 8px footprint so names stay aligned with every other row. */
+const CODE_ICON_CLASS = "-mx-[3px] h-3.5 w-3.5 shrink-0";
 
 interface Props {
   virtualMcpId: string;
@@ -98,7 +106,8 @@ interface Props {
   owner: string;
   repo: string;
   sandboxMap: SandboxMap | undefined;
-  onChange: (branch: string) => void;
+  /** `runtime` is the picked draft's own (`Release.runtime`), when it has one. */
+  onChange: (branch: string, runtime?: ThreadRuntime) => void;
   /** Called instead of `onChange` when a brand-new release is created, so CMS
    *  projects can start a fresh thread on the new branch. Falls back to
    *  `onChange`. */
@@ -221,11 +230,16 @@ export function BranchPicker({
       : isBase
         ? "bg-success"
         : releaseDotClass(current?.color ?? "orange");
+  const currentIsCode =
+    !localhostActive &&
+    !localActive &&
+    !isBase &&
+    current?.runtime === "sandbox";
 
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
     clearLocal();
-    onChange(branch);
+    onChange(branch, releases.find((r) => r.branch === branch)?.runtime);
     setOpen(false);
   };
 
@@ -335,15 +349,50 @@ export function BranchPicker({
     setPendingDelete(null);
     // Checked again: the other draft may have gone while the dialog was open.
     if (!r || !canDeleteRelease) return;
-    // Deleting the active draft: switch to a sibling draft — never to
-    // production, where a Fast Preview save commits to the live site.
+    // Deleting the active draft: switch to a sibling draft (non-`sandbox` first,
+    // so a CMS chat stays put) — never to production, where a Fast Preview save
+    // commits to the live site.
     if (r.branch === value) {
-      const sibling = releases.find((x) => x.branch !== r.branch);
+      const siblings = releases.filter((x) => x.branch !== r.branch);
+      const sibling =
+        siblings.find((x) => x.runtime !== "sandbox") ?? siblings[0];
       if (sibling) pick(sibling.branch);
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
   };
+
+  const releaseGroups = groupReleasesByRuntime(releases);
+  // Headers only when both kinds exist; a single kind stays a plain list.
+  const groupByRuntime =
+    releaseGroups.content.length > 0 && releaseGroups.code.length > 0;
+  const releaseRow = (r: Release) =>
+    editing === r.branch ? (
+      <RenameInput
+        key={r.branch}
+        value={editName}
+        onChange={setEditName}
+        onSave={() => saveRename(r.branch)}
+        onCancel={cancelRename}
+      />
+    ) : (
+      <ReleaseRow
+        key={r.branch}
+        rowRef={!localActive && r.branch === value ? selectedRowRef : undefined}
+        dot={releaseDotClass(r.color)}
+        codeIcon={
+          r.runtime === "sandbox" ? releaseIconClass(r.color) : undefined
+        }
+        label={r.name}
+        creator={creatorName(r.createdBy)}
+        branch={r.branch}
+        selected={!localActive && r.branch === value}
+        onSelect={() => pick(r.branch)}
+        onRename={() => startRename(r)}
+        onDelete={() => setPendingDelete(r)}
+        deleteBlocked={!canDeleteRelease}
+      />
+    );
 
   const popover = (
     <Popover
@@ -380,12 +429,21 @@ export function BranchPicker({
                   INSET_FOCUS_RING,
                 )}
               >
-                <span
-                  className={cn(
-                    "h-2 w-2 shrink-0 rounded-full",
-                    value || localActive ? currentDot : "bg-muted-foreground",
-                  )}
-                />
+                {currentIsCode ? (
+                  <Code01
+                    className={cn(
+                      CODE_ICON_CLASS,
+                      releaseIconClass(current?.color),
+                    )}
+                  />
+                ) : (
+                  <span
+                    className={cn(
+                      "h-2 w-2 shrink-0 rounded-full",
+                      value || localActive ? currentDot : "bg-muted-foreground",
+                    )}
+                  />
+                )}
                 <span className="min-w-0 truncate @max-3xl/panel-header:hidden">
                   {label}
                 </span>
@@ -477,34 +535,19 @@ export function BranchPicker({
                     }}
                   />
                 ))}
-              {releases.map((r) =>
-                editing === r.branch ? (
-                  <RenameInput
-                    key={r.branch}
-                    value={editName}
-                    onChange={setEditName}
-                    onSave={() => saveRename(r.branch)}
-                    onCancel={cancelRename}
-                  />
-                ) : (
-                  <ReleaseRow
-                    key={r.branch}
-                    rowRef={
-                      !localActive && r.branch === value
-                        ? selectedRowRef
-                        : undefined
-                    }
-                    dot={releaseDotClass(r.color)}
-                    label={r.name}
-                    creator={creatorName(r.createdBy)}
-                    branch={r.branch}
-                    selected={!localActive && r.branch === value}
-                    onSelect={() => pick(r.branch)}
-                    onRename={() => startRename(r)}
-                    onDelete={() => setPendingDelete(r)}
-                    deleteBlocked={!canDeleteRelease}
-                  />
-                ),
+              {groupByRuntime ? (
+                <>
+                  <ReleaseGroupHeader>
+                    {t("thread.branchPicker.groupContent")}
+                  </ReleaseGroupHeader>
+                  {releaseGroups.content.map(releaseRow)}
+                  <ReleaseGroupHeader divided>
+                    {t("thread.branchPicker.groupCode")}
+                  </ReleaseGroupHeader>
+                  {releaseGroups.code.map(releaseRow)}
+                </>
+              ) : (
+                releases.map(releaseRow)
               )}
               {isV8 && (
                 <V8LocalhostRow
@@ -624,11 +667,31 @@ function RenameInput({
   );
 }
 
+function ReleaseGroupHeader({
+  divided = false,
+  children,
+}: {
+  divided?: boolean;
+  children: string;
+}) {
+  return (
+    <p
+      className={cn(
+        "px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground",
+        divided && "mt-1 border-t",
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
 /** A version row: click to switch, with a ⋯ menu to rename (always) and discard
  *  (only a stored release — an unlisted branch has nothing to discard). */
 function ReleaseRow({
   rowRef,
   dot,
+  codeIcon,
   label,
   creator,
   branch,
@@ -640,6 +703,8 @@ function ReleaseRow({
 }: {
   rowRef?: Ref<HTMLDivElement>;
   dot: string;
+  /** A coding draft's icon color; the icon replaces the dot. */
+  codeIcon?: string;
   label: string;
   /** Display name of who created the draft, shown after the label. */
   creator?: string;
@@ -668,7 +733,11 @@ function ReleaseRow({
             onClick={onSelect}
             className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
           >
-            <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
+            {codeIcon ? (
+              <Code01 className={cn(CODE_ICON_CLASS, codeIcon)} />
+            ) : (
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
+            )}
             <span className="min-w-0 flex-1 truncate">
               {label}
               {creator && (
@@ -679,8 +748,15 @@ function ReleaseRow({
             </span>
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="font-mono text-xs">
-          {t("thread.branchPicker.branchTooltip", { branch })}
+        <TooltipContent side="bottom" className="text-xs">
+          {codeIcon && (
+            <p className="font-medium">
+              {t("thread.branchPicker.codeDraftTooltip")}
+            </p>
+          )}
+          <p className="font-mono">
+            {t("thread.branchPicker.branchTooltip", { branch })}
+          </p>
         </TooltipContent>
       </Tooltip>
       <DropdownMenu>

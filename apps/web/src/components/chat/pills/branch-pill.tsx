@@ -1,4 +1,5 @@
 import type { SandboxMap } from "@/sdk";
+import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { BranchPicker } from "../../thread/repository/branch-picker";
 
@@ -8,7 +9,7 @@ interface Props {
   isV8?: boolean;
   userLabel: string | null | undefined;
   value: string | null | undefined;
-  onChange: (branch: string) => void;
+  onChange: (branch: string, runtime?: ThreadRuntime) => void;
   onCreateBranch?: (branch: string) => void;
   /** Adopting a branch/PR opens a sandbox coding session on it. */
   onAdoptBranch?: (branch: string) => void;
