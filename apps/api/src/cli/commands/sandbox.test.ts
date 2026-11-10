@@ -221,59 +221,34 @@ describe("sandboxCommand", () => {
     expect(body.messages[0].parts).toEqual([{ type: "text", text: "say hi" }]);
   });
 
-  it("new creates a sandbox chat on the org's default agent and boots it", async () => {
-    const fetch = fakeFetch({
-      "GET /api/_me/organizations": () =>
-        Response.json({ organizations: [{ id: "org_1", slug: "acme" }] }),
-      "POST /api/acme/tools/COLLECTION_THREADS_CREATE": () =>
-        Response.json({ item: { id: "thrd_9" } }),
-      "POST /api/acme/tools/THREAD_SANDBOX_START": () => Response.json(target),
-    });
-    const code = await sandboxCommand({
-      dataDir: dir,
-      fetch,
-      write,
-      subcommand: "new",
-      args: [],
-      org: "acme",
-    });
-    expect(code).toBe(0);
-    expect(JSON.parse(calls[1]!.body!)).toEqual({
-      data: { virtual_mcp_id: "decopilot_org_1", runtime: "sandbox" },
-    });
-    expect(JSON.parse(calls[2]!.body!)).toEqual({
-      threadId: "thrd_9",
-      wait: false,
-    });
-    expect(logSpy).toHaveBeenCalledWith("thrd_9");
-  });
+  it.each([
+    [{}, { wait: false }],
+    [{ repo: "acme/site" }, { wait: false, repository: "acme/site" }],
+    [{ project: "vmcp_1" }, { wait: false, virtualMcpId: "vmcp_1" }],
+  ])(
+    "new creates the chat and boots it in one call (%o)",
+    async (flags, body) => {
+      const fetch = fakeFetch({
+        "POST /api/acme/tools/THREAD_SANDBOX_START": () =>
+          Response.json({ threadId: "thrd_9", ...target }),
+      });
+      const code = await sandboxCommand({
+        dataDir: dir,
+        fetch,
+        write,
+        subcommand: "new",
+        args: [],
+        org: "acme",
+        ...flags,
+      });
+      expect(code).toBe(0);
+      expect(calls).toHaveLength(1);
+      expect(JSON.parse(calls[0]!.body!)).toEqual(body);
+      expect(logSpy).toHaveBeenCalledWith("thrd_9");
+    },
+  );
 
-  it("new --repo binds the repository when it boots the sandbox", async () => {
-    const fetch = fakeFetch({
-      "GET /api/_me/organizations": () =>
-        Response.json({ organizations: [{ id: "org_1", slug: "acme" }] }),
-      "POST /api/acme/tools/COLLECTION_THREADS_CREATE": () =>
-        Response.json({ item: { id: "thrd_9" } }),
-      "POST /api/acme/tools/THREAD_SANDBOX_START": () => Response.json(target),
-    });
-    const code = await sandboxCommand({
-      dataDir: dir,
-      fetch,
-      write,
-      subcommand: "new",
-      args: [],
-      org: "acme",
-      repo: "acme/site",
-    });
-    expect(code).toBe(0);
-    expect(JSON.parse(calls[2]!.body!)).toEqual({
-      threadId: "thrd_9",
-      wait: false,
-      repository: "acme/site",
-    });
-  });
-
-  it("new refuses --repo with --agent", async () => {
+  it("new refuses --repo with --project", async () => {
     const code = await sandboxCommand({
       dataDir: dir,
       fetch: fakeFetch({}),
@@ -282,7 +257,7 @@ describe("sandboxCommand", () => {
       args: [],
       org: "acme",
       repo: "acme/site",
-      agent: "vmcp_1",
+      project: "vmcp_1",
     });
     expect(code).toBe(1);
     expect(calls).toHaveLength(0);

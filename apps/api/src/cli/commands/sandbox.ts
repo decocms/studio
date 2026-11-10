@@ -1,6 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { getDecopilotId } from "@decocms/shared/sdk";
 import { z } from "zod";
 import type { Session } from "../lib/session";
 import {
@@ -16,8 +15,8 @@ export interface SandboxOptions extends SessionOptions {
   /** Positionals after the subcommand: the chat id, then the message or command. */
   args: string[];
   org?: string;
-  /** Agent for `new`. Defaults to the org's default agent, which has no repo. */
-  agent?: string;
+  /** Project (agent) for `new`. Defaults to the org's default agent, which has no repo. */
+  project?: string;
   /** Linked repository for `new`, by id or owner/name, on the default agent. */
   repo?: string;
   /** `exec` timeout in seconds; the daemon caps it at 120. */
@@ -27,7 +26,7 @@ export interface SandboxOptions extends SessionOptions {
 }
 
 const USAGE = `Usage:
-  deco sandbox new --org <slug> [--repo <owner/name> | --agent <id>]
+  deco sandbox new --org <slug> [--repo <owner/name> | --project <id>]
   deco sandbox chat <chat-id> "<message>" --org <slug>
   deco sandbox exec <chat-id> --org <slug> [--timeout <s>] -- <command>`;
 
@@ -51,10 +50,6 @@ const BashResultSchema = z.object({
   exitCode: z.number(),
   timedOut: z.boolean(),
 });
-const OrganizationsSchema = z.object({
-  organizations: z.array(z.looseObject({ id: z.string(), slug: z.string() })),
-});
-
 /** A failed request, already reported to the user. */
 class Reported extends Error {}
 
@@ -74,9 +69,9 @@ export async function sandboxCommand(options: SandboxOptions): Promise<number> {
     console.error(USAGE);
     return 1;
   }
-  if (options.repo && options.agent) {
+  if (options.repo && options.project) {
     console.error(
-      "Pass --repo or --agent, not both: an agent uses its own repository.",
+      "Pass --repo or --project, not both: a project uses its own repository.",
     );
     return 1;
   }
@@ -96,7 +91,7 @@ export async function sandboxCommand(options: SandboxOptions): Promise<number> {
 
   try {
     if (subcommand === "new") {
-      return await newSandbox(api, options.agent, options.repo);
+      return await newSandbox(api, options.project, options.repo);
     }
     const [threadId, ...rest] = args as [string, ...string[]];
     if (subcommand === "chat") {
@@ -118,22 +113,17 @@ export async function sandboxCommand(options: SandboxOptions): Promise<number> {
 
 async function newSandbox(
   api: Api,
-  agent: string | undefined,
+  project: string | undefined,
   repository: string | undefined,
 ) {
-  const agentId = agent ?? getDecopilotId(await api.orgId());
-  const created = z.object({ item: z.object({ id: z.string() }) }).parse(
-    await api.tool("COLLECTION_THREADS_CREATE", {
-      data: { virtual_mcp_id: agentId, runtime: "sandbox" },
+  // The boot keeps going after this returns; the first exec waits for it.
+  const { threadId } = z.object({ threadId: z.string() }).parse(
+    await api.tool("THREAD_SANDBOX_START", {
+      wait: false,
+      ...(project ? { virtualMcpId: project } : {}),
+      ...(repository ? { repository } : {}),
     }),
   );
-  const threadId = created.item.id;
-  // The boot keeps going after this returns; the first exec waits for it.
-  await api.tool("THREAD_SANDBOX_START", {
-    threadId,
-    wait: false,
-    ...(repository ? { repository } : {}),
-  });
   console.error(`Sandbox booting for chat ${threadId}.`);
   console.log(threadId);
   return 0;
@@ -358,15 +348,5 @@ class Api {
     );
     if (!res.ok) return this.report(res);
     return res.json();
-  }
-
-  async orgId(): Promise<string> {
-    const res = await this.fetch("/api/_me/organizations", { method: "GET" });
-    if (!res.ok) return this.report(res);
-    const { organizations } = OrganizationsSchema.parse(await res.json());
-    const match = organizations.find((o) => o.slug === this.org);
-    if (!match)
-      throw new Error(`Not a member of an organization "${this.org}".`);
-    return match.id;
   }
 }

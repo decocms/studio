@@ -123,7 +123,7 @@ decocms sandbox chat <chat-id> "run the tests and fix what fails" --org <slug>
 
 - `new`: `--repo` clones one of the org's linked repositories (`owner/name`
   or its id). An unknown name fails and lists the linked ones. Leave out
-  `--repo` for an empty sandbox. `--agent <id>` uses that agent's own
+  `--repo` for an empty sandbox. `--project <id>` uses that project's own
   repository instead and cannot be combined with `--repo`.
 - `exec`: exits with the command's exit code, prints its stdout and stderr,
   and has no stdin or TTY. Pass one quoted argument to run it as a shell script
@@ -132,10 +132,14 @@ decocms sandbox chat <chat-id> "run the tests and fix what fails" --org <slug>
 - `chat`: streams the agent's reply to stdout, and tool names to stderr, until
   the turn finishes.
 
+Use these commands rather than calling `THREAD_SANDBOX_START` yourself: `exec`
+and `chat` reach routes that no tool covers.
+
 ## Vocabulary
 
 - **thread**: what the UI calls a *chat*. Tools and routes use `thread`.
 - **agent**: a *virtual MCP* (`COLLECTION_VIRTUAL_MCP_*`, ids like `vir_...`).
   The org's default agent is Decopilot, id `decopilot_<orgId>`.
+- **project**: an agent with its own repository; `--project` takes its agent id.
 - **connection**: an MCP server registered in the org (`COLLECTION_CONNECTIONS_*`).
 - **volume**: a top-level folder of the org filesystem (`home`, `outputs`, `uploads`).
