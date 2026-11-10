@@ -26,6 +26,7 @@ import {
 } from "./cms-test-helpers";
 import {
   CACHE_SCHEMA,
+  CONDITIONAL_PUT_TIMEOUT_MS,
   DeliveryUnavailableError,
   deliveryKeys,
   newDraftSlug,
@@ -524,6 +525,47 @@ describe("blocks.apply (the save)", () => {
       "a",
       "b",
     ]);
+  });
+
+  it("a timed-out file PUT is -32008 with what landed; the index already lists it, and the retry of the rest lands", async () => {
+    const { delivery, slug, call } = setup();
+    const second = deliveryKeys.draftFile(SITE, slug, "b");
+    let stalled = false;
+    delivery.hooks.beforePut = (key) => {
+      if (key !== second || stalled) return;
+      stalled = true;
+      // What the S3 store throws when R2 doesn't answer in time.
+      throw new DeliveryUnavailableError(
+        key,
+        new Error(`no answer within ${CONDITIONAL_PUT_TIMEOUT_MS} ms`),
+      );
+    };
+    const answer = await call("blocks.apply", {
+      set: { a: { v: 1 }, b: { v: 1 } },
+      ifMatch: { a: null, b: null },
+    });
+    expect(answer.error?.code).toBe(-32008);
+    expect(answer.error?.data).toEqual({
+      retryAfterMs: 250,
+      landed: { a: blockVersion({ v: 1 }) },
+    });
+    // Index first: b is listed though its file isn't written, so readers
+    // see it as not in the draft until the retry writes it.
+    expect((await readDraftIndex(delivery.store, SITE, slug)).names).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(
+      (await readDraftFile(delivery.store, SITE, slug, "b")).file,
+    ).toBeNull();
+    const retry = await call("blocks.apply", {
+      set: { b: { v: 1 } },
+      ifMatch: { b: null },
+    });
+    expect(retry.result?.versions).toEqual({ b: blockVersion({ v: 1 }) });
+    expect(
+      (await readDraftFile(delivery.store, SITE, slug, "b")).file,
+    ).not.toBeNull();
   });
 
   it("an R2 429 before any file landed is -32008 with landed {}", async () => {

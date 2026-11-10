@@ -246,6 +246,26 @@ function isUnavailable(error: unknown): boolean {
   return status === undefined || status === 429 || status >= 500;
 }
 
+/**
+ * How long one conditional PUT may wait for R2's answer before it is given
+ * up as Unavailable. R2 answers a draft-sized PUT in well under a second
+ * (p99 a few hundred ms); the largest body a save can send is one block of
+ * a request capped at 8 MiB, which needs ~13 s at a poor 5 Mbit/s uplink,
+ * so 15 s never cuts off a healthy write. A stalled PUT (one sat ~25 s
+ * before landing) then fails fast, as a `DeliveryUnavailableError`, the
+ * Unavailable answer the editor already retries, instead of holding the
+ * save (and every write queued behind it) open.
+ */
+export const CONDITIONAL_PUT_TIMEOUT_MS = 15_000;
+
+/** A conditional PUT this slow is logged even when it lands. */
+const SLOW_PUT_MS = 2_000;
+
+/** A delivery key fit for logs: a draft's slug is its read grant, so it's hidden. */
+function loggableKey(key: string): string {
+  return key.replace(/\/drafts\/[A-Za-z0-9_-]{22}\//, "/drafts/<slug>/");
+}
+
 function isNotModified(error: unknown): boolean {
   const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
   return e?.name === "NotModified" || e?.$metadata?.httpStatusCode === 304;
@@ -261,6 +281,12 @@ export function createS3DeliveryStore(config: {
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
+  /** {@link CONDITIONAL_PUT_TIMEOUT_MS} unless set (tests). */
+  conditionalTimeoutMs?: number;
+  /** {@link SLOW_PUT_MS} unless set (tests). */
+  slowMs?: number;
+  /** Where a slow or failed conditional PUT is reported (`console.warn`). */
+  warn?: (message: string, fields: Record<string, unknown>) => void;
 }): DeliveryStore {
   const options = {
     endpoint: config.endpoint,
@@ -278,6 +304,9 @@ export function createS3DeliveryStore(config: {
    * look like a lost race (S2). The protocol's attempts handle races.
    */
   const conditionalClient = new S3Client({ ...options, maxAttempts: 1 });
+  const timeoutMs = config.conditionalTimeoutMs ?? CONDITIONAL_PUT_TIMEOUT_MS;
+  const slowMs = config.slowMs ?? SLOW_PUT_MS;
+  const warn = config.warn ?? console.warn;
   const Bucket = config.bucket;
   const put = async (
     key: string,
@@ -285,31 +314,67 @@ export function createS3DeliveryStore(config: {
     cacheControl: string,
     condition: PutCondition | undefined,
   ) => {
+    const bytes = Buffer.from(body, "utf-8");
+    const command = new PutObjectCommand({
+      Bucket,
+      Key: key,
+      Body: bytes,
+      ContentType: "application/json; charset=utf-8",
+      CacheControl: cacheControl,
+      ...(condition && "ifMatch" in condition
+        ? { IfMatch: condition.ifMatch }
+        : {}),
+      ...(condition && "ifNoneMatch" in condition
+        ? { IfNoneMatch: condition.ifNoneMatch }
+        : {}),
+    });
+    if (!condition) {
+      const res = await client.send(command);
+      return { etag: res.ETag ?? null };
+    }
+    const started = performance.now();
+    const signal = AbortSignal.timeout(timeoutMs);
+    let outcome = "ok";
     try {
-      const res = await (condition ? conditionalClient : client).send(
-        new PutObjectCommand({
-          Bucket,
-          Key: key,
-          Body: Buffer.from(body, "utf-8"),
-          ContentType: "application/json; charset=utf-8",
-          CacheControl: cacheControl,
-          ...(condition && "ifMatch" in condition
-            ? { IfMatch: condition.ifMatch }
-            : {}),
-          ...(condition && "ifNoneMatch" in condition
-            ? { IfNoneMatch: condition.ifNoneMatch }
-            : {}),
-        }),
-      );
+      const res = await conditionalClient.send(command, {
+        abortSignal: signal,
+      });
       return { etag: res.ETag ?? null };
     } catch (error) {
-      if (condition && isConditionFailed(error)) {
+      if (isConditionFailed(error)) {
+        outcome = "changed";
         throw new ObjectChangedError(key);
       }
-      if (condition && isUnavailable(error)) {
+      if (signal.aborted) {
+        // A PUT given up on may still land: like any Unavailable answer,
+        // it is neither a lost race nor a success (contract §2.6).
+        outcome = "timeout";
+        throw new DeliveryUnavailableError(
+          key,
+          new Error(`no answer within ${timeoutMs} ms`),
+        );
+      }
+      if (isUnavailable(error)) {
+        outcome = "unavailable";
         throw new DeliveryUnavailableError(key, error);
       }
+      outcome = "error";
       throw error;
+    } finally {
+      const durationMs = Math.round(performance.now() - started);
+      if (
+        outcome === "timeout" ||
+        outcome === "unavailable" ||
+        durationMs >= slowMs
+      ) {
+        warn("hosted delivery: slow or failed conditional write", {
+          key: loggableKey(key),
+          outcome,
+          durationMs,
+          bytes: bytes.byteLength,
+          timeoutMs,
+        });
+      }
     }
   };
   function get(key: string): Promise<StoredObject | null>;
