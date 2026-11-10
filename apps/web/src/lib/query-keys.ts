@@ -940,6 +940,9 @@ export const KEYS = {
   // Hosted Deco CMS (v8): a project's releases and site tokens.
   hostedReleases: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-releases", orgSlug, virtualMcpId] as const,
+  // A hosted v8 site's drafts (`GET /api/cms/:site/drafts`), for the
+  // version switcher: the ones the CLI made too.
+  hostedDrafts: (site: string) => ["hosted-drafts", site] as const,
   hostedSiteTokens: (orgSlug: string, virtualMcpId: string) =>
     ["hosted-site-tokens", orgSlug, virtualMcpId] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
