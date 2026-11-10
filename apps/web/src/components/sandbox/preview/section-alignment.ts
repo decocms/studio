@@ -1,6 +1,6 @@
 /**
- * Maps a page's editable sections onto the top-level `<section
- * data-manifest-key>` nodes the runtime rendered, in order.
+ * Maps a page's editable sections onto the top-level `data-manifest-key`
+ * nodes the runtime rendered, by key.
  *
  * Both sides skip: the runtime injects framework sections (SEO, Theme,
  * Analytics) around and between the editable ones, and an editable section can
@@ -8,6 +8,17 @@
  * that missed). A section only takes a node whose key it could have rendered;
  * otherwise it stays unmapped, because a mismapped section edits the wrong
  * component. Exact matches outscore wildcards.
+ *
+ * Two passes:
+ * 1. In order: the longest order-preserving match (wildcards included). On a
+ *    page whose DOM follows its sections array this is the whole answer.
+ * 2. Out of order, by key: a section the first pass left unmapped takes the
+ *    first node nobody took whose key it lists. A site's layout can render a
+ *    section where the array doesn't put it (a header the layout draws first,
+ *    after a SEO section saved ahead of it in the array). Only exact keys move
+ *    out of order; a wildcard there could grab a framework node.
+ * Repeated keys keep their order: the k-th section of a key takes the k-th node
+ * of that key.
  *
  * `candidates[i] === null` = renders nothing by construction; stays null so
  * positions still index the decofile array.
@@ -85,6 +96,51 @@ export function alignSections(
       b--;
     } else {
       a--;
+    }
+  }
+
+  // Pass 2: an exact-keyed section left unmapped takes a free node by key.
+  const taken: boolean[] = new Array(m).fill(false);
+  for (const v of visible) {
+    const node = result[v];
+    if (node !== null && node !== undefined) taken[node] = true;
+  }
+  const lists = (v: number, nodeIdx: number): boolean => {
+    const keys = candidates[v];
+    return (
+      !!keys && keys.length > 0 && keys.indexOf(domKeys[nodeIdx] ?? "") >= 0
+    );
+  };
+  for (const v of visible) {
+    if (result[v] !== null) continue;
+    for (let j = 0; j < m; j++) {
+      if (!taken[j] && lists(v, j)) {
+        result[v] = j;
+        taken[j] = true;
+        assigned++;
+        break;
+      }
+    }
+  }
+
+  // Same key, same order: pass 2 can hand a later node of a key to an earlier
+  // section than pass 1 did. Swap such pairs back (only exact keys, both ways).
+  for (let swapped = true; swapped; ) {
+    swapped = false;
+    for (let p = 0; p < n; p++) {
+      for (let q = p + 1; q < n; q++) {
+        const vp = visible[p] ?? 0;
+        const vq = visible[q] ?? 0;
+        const jp = result[vp];
+        const jq = result[vq];
+        if (jp === null || jq === null || jp === undefined || jq === undefined)
+          continue;
+        if (jp < jq || domKeys[jp] !== domKeys[jq]) continue;
+        if (!lists(vp, jq) || !lists(vq, jp)) continue;
+        result[vp] = jq;
+        result[vq] = jp;
+        swapped = true;
+      }
     }
   }
 

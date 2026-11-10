@@ -9,6 +9,16 @@ const SEO = "website/sections/Seo/Seo.tsx";
 const THEME = "website/sections/Theme/Theme.tsx";
 const ANALYTICS = "website/sections/Analytics/Analytics.tsx";
 const LAZY = "website/sections/Rendering/Lazy.tsx";
+const HEADER = "site/sections/Header.tsx";
+const SEO_TITLE = "site/sections/Seo/SeoTitle.tsx";
+const VIDEO = "site/sections/ContentRetrofit/Video.tsx";
+const CONTENT = "site/sections/LandingPage/Content.tsx";
+const MOSAIC = "site/sections/MosaicParallax.tsx";
+const STICKY = "site/sections/LandingPage/StickyTextOverlay.tsx";
+const QUOTE = "site/sections/LandingPage/Quote.tsx";
+const MODAL = "site/sections/LandingPage/RichMediaModal.tsx";
+const TABBED = "site/sections/TabbedProductShelf.tsx";
+const PAGE_CHROME = "site/sections/PageChrome.tsx";
 
 describe("alignSections", () => {
   it("maps a clean 1:1 page positionally", () => {
@@ -87,5 +97,104 @@ describe("alignSections", () => {
     expect(alignSections([], [HERO])).toEqual([]);
     expect(alignSections([[HERO]], [])).toEqual([null]);
     expect(alignSections([null], [])).toEqual([null]);
+  });
+
+  describe("out of order, by key", () => {
+    // osklen's landing pages (/trkk, /pranchas-surf, /kaapuera, ...): a SEO
+    // section saved ahead of the header, which the layout renders first; the
+    // page chrome renders nothing. In order only, the header lost its node.
+    it("maps a header the layout renders before a section saved ahead of it", () => {
+      expect(
+        alignSections(
+          [[SEO_TITLE], [HEADER], [VIDEO], [CONTENT], [FOOTER], [PAGE_CHROME]],
+          [HEADER, SEO_TITLE, VIDEO, CONTENT, FOOTER],
+        ),
+      ).toEqual([1, 0, 2, 3, 4, null]);
+    });
+
+    it("maps the whole /trkk page, repeated keys included", () => {
+      const saved = [
+        SEO_TITLE,
+        HEADER,
+        VIDEO,
+        CONTENT,
+        MOSAIC,
+        CONTENT,
+        STICKY,
+        QUOTE,
+        MODAL,
+        TABBED,
+        MODAL,
+        FOOTER,
+        PAGE_CHROME,
+      ];
+      const dom = [HEADER, ...saved.slice(0, 1), ...saved.slice(2, 12)];
+      expect(
+        alignSections(
+          saved.map((key) => [key]),
+          dom,
+        ),
+      ).toEqual([1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, null]);
+    });
+
+    it("leaves a page whose DOM follows its array as it was (listing page)", () => {
+      expect(
+        alignSections(
+          [[HEADER], [VIDEO], [CONTENT], [FOOTER], [PAGE_CHROME]],
+          [HEADER, VIDEO, CONTENT, FOOTER],
+        ),
+      ).toEqual([0, 1, 2, 3, null]);
+      // ...and without header/footer markers (osklen before this change).
+      expect(
+        alignSections(
+          [[SEO_TITLE], [HEADER], [VIDEO], [CONTENT], [FOOTER], [PAGE_CHROME]],
+          [SEO_TITLE, VIDEO, CONTENT],
+        ),
+      ).toEqual([0, null, 1, 2, null, null]);
+    });
+
+    it("maps two sections rendered in swapped order", () => {
+      expect(alignSections([[HERO], [SHELF]], [SHELF, HERO])).toEqual([1, 0]);
+    });
+
+    it("keeps repeated keys in order when another section moves past them", () => {
+      expect(
+        alignSections([[SHELF], [HEADER], [SHELF]], [HEADER, SHELF, SHELF]),
+      ).toEqual([1, 0, 2]);
+      expect(
+        alignSections([[SHELF], [BANNER], [SHELF]], [BANNER, SHELF, SHELF]),
+      ).toEqual([1, 0, 2]);
+      expect(
+        alignSections(
+          [[SHELF], [SHELF], [HEADER], [SHELF]],
+          [HEADER, SHELF, SHELF, SHELF],
+        ),
+      ).toEqual([1, 2, 0, 3]);
+    });
+
+    it("matches a Lazy out of order by its inner key", () => {
+      expect(
+        alignSections([[SEO_TITLE], [LAZY, SHELF]], [SHELF, SEO_TITLE]),
+      ).toEqual([1, 0]);
+    });
+
+    it("never moves a wildcard out of order onto a framework node", () => {
+      expect(alignSections([[], [HEADER]], [HEADER, SEO])).toEqual([null, 0]);
+    });
+
+    it("still never maps a section onto a node whose key it cannot render", () => {
+      expect(
+        alignSections([[HERO], [HEADER], [SHELF]], [SHELF, ANALYTICS, HERO]),
+      ).toEqual([2, null, 0]);
+    });
+
+    it("lets a framework node the page doesn't list stay unmapped", () => {
+      expect(
+        alignSections(
+          [[SEO_TITLE], [HEADER], [FOOTER]],
+          [HEADER, THEME, SEO_TITLE, FOOTER],
+        ),
+      ).toEqual([2, 0, 3]);
+    });
   });
 });
