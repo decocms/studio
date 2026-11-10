@@ -128,12 +128,6 @@ export function probeRetryDelay(failures: number, capMs = 10_000): number {
 /** Where `deco serve` listens when it isn't given `--port`. */
 export const DEFAULT_SERVE_ENDPOINT = "http://localhost:4545/rpc";
 
-/** The command that starts `deco serve` (the `deco` bin of `@decocms/blocks`). */
-export const SERVE_COMMAND = "npx @decocms/blocks serve";
-
-/** The command that writes `.deco/schema.gen.json`. */
-export const SCHEMA_COMMAND = "npx @decocms/blocks schema";
-
 export type ParsedServeAddress =
   | { ok: true; connection: DecoServeConnection }
   | { ok: false; reason: "not-local" | "unrecognized" };
@@ -204,8 +198,6 @@ export function parseServeAddress(input: string): ParsedServeAddress {
  *   protocol has no `changes.*`, or an older one that asked for a token);
  * - `version-mismatch`: a `deco serve` of another major protocol version;
  * - `not-deco-serve`: another program answered on that port;
- * - `not-v8`: its schema isn't a Blocks v8 one (no `"blocksMajor": 8`, see
- *   `isV8Schema`), so it can't be edited here;
  * - `error`: `deco serve` answered with an error (`detail`).
  */
 export type ServeProblemReason =
@@ -213,7 +205,6 @@ export type ServeProblemReason =
   | "outdated"
   | "version-mismatch"
   | "not-deco-serve"
-  | "not-v8"
   | "error";
 
 export interface ServeProblem {

@@ -58,8 +58,8 @@ const jiraStubPort = process.env.JIRA_STUB_PORT || "4103";
 // the config isn't a spec module).
 // The hosted Deco CMS (Blocks v8) writes to the delivery bucket through the
 // S3 API; delivery-stub-server.ts stands in for both that API and the public
-// origin sites read (DELIVERY_PUBLIC_ORIGIN). The site-token signing key is
-// minted per run.
+// origin sites read (DELIVERY_PUBLIC_ORIGIN); the schema `deco schema push`
+// sends is stored there too. The site-token signing key is minted per run.
 const deliveryStubPort = process.env.DELIVERY_STUB_PORT || "4104";
 const deliveryStubOrigin = `http://127.0.0.1:${deliveryStubPort}`;
 const siteTokenSigningKey = generateKeyPairSync("ed25519")

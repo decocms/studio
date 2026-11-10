@@ -338,7 +338,6 @@ export const settings = {
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
   "settings.nav.memory": "Memory",
@@ -380,9 +379,6 @@ export const settings = {
   "settings.multiAppPreview.title": "Preview several apps of a monorepo",
   "settings.multiAppPreview.description":
     "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
-  "settings.preferences.projectFirstNav": "Project-first navigation",
-  "settings.preferences.projectFirstNavDescription":
-    "Try the org rail, project launcher and the Today/Agents home.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeLight": "Light theme",
   "settings.preferences.themeDark": "Dark theme",
@@ -417,7 +413,6 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
   "settings.skills.importing": "Importing…",
   "settings.skills.importSuccess": 'Imported "{name}"',
@@ -449,15 +444,10 @@ export const settings = {
   "settings.skills.errorDescription":
     "The skill catalog could not be loaded. You may not have access to this org's files.",
   "settings.skills.retry": "Try again",
-  "settings.memory.pageTitle": "Memory",
   "settings.memory.tabOrg": "Organization",
   "settings.memory.tabUser": "Just you",
   "settings.memory.orgHeading": "Shared with everyone in {org}",
-  "settings.memory.orgDescription":
-    "Deco reads this at the start of every chat and adds to it as it learns. Fix anything wrong or out of date.",
   "settings.memory.userHeading": "Your personal memory",
-  "settings.memory.userDescription":
-    "Loaded only into your chats. Good for how you like to work, what you own and what to skip.",
   "settings.memory.orgPlaceholder":
     "Facts everyone's chats should know. For example: we ship on Thursdays, prices are in BRL, the brand voice is informal.",
   "settings.memory.userPlaceholder":
@@ -707,11 +697,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
-  "settings.planUsage.noPlan": "No active plan",
-  "settings.planUsage.noPlanDescription":
-    "This organization has no active plan. Pick one below — Starter's first month is free.",
   "settings.planUsage.included": "Included in plan",
-  "settings.planUsage.credits": "Credits",
+  "settings.planUsage.credits": "Added credits",
   "settings.planUsage.creditsInUse": "In use",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
@@ -772,12 +759,6 @@ export const settings = {
     "This organization has used its monthly AI allowance. Chat and tasks pause until you upgrade or top up.",
 
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
-  "settings.decoNudgeCard.connectDeco": "Connect Deco",
-  "settings.decoNudgeCard.connecting": "Connecting…",
-  "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
-  "settings.decoNudgeCard.description":
-    "100+ models, one connection — pay as you go, no API keys to juggle.",
-  "settings.decoNudgeCard.recommended": "Recommended",
   "settings.deleteOrganizationSection.cancel": "Cancel",
   "settings.deleteOrganizationSection.dangerZone": "Danger zone",
   "settings.deleteOrganizationSection.deleteButton": "Delete",
@@ -1196,10 +1177,6 @@ export const settings = {
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.decoConnectSuccess":
-    "Deco AI Gateway connected successfully",
-  "settings.aiProviders.decoConnectError":
-    "Failed to connect Deco AI Gateway: {error}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",

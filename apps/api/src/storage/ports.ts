@@ -10,6 +10,7 @@ import type {
   WhereExpression,
 } from "@decocms/bindings/collections";
 import type { ConnectionEntity } from "../tools/connection/schema";
+import type { PublicConnectionEntity } from "../tools/connection/public-connection";
 import type {
   VirtualMCPEntity,
   VirtualMCPCreateData,
@@ -18,6 +19,7 @@ import type {
 import type {
   AsyncResearchJob,
   AsyncResearchJobCitation,
+  CmsDraftRow,
   DomainJoinMode,
   DomainVerificationMethod,
   DomainVerificationStatus,
@@ -322,6 +324,21 @@ export interface ConnectionStoragePort {
   create(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   findById(id: string): Promise<ConnectionEntity | null>;
+  findPublicById(
+    id: string,
+    organizationId?: string,
+  ): Promise<PublicConnectionEntity | null>;
+  listPublic(
+    organizationId: string,
+    options?: {
+      includeVirtual?: boolean;
+      slug?: string;
+      where?: WhereExpression;
+      orderBy?: OrderByExpression[];
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<{ items: PublicConnectionEntity[]; totalCount: number }>;
   list(
     organizationId: string,
     options?: {
@@ -748,6 +765,23 @@ export interface OrganizationJoinRequestStoragePort {
     status: Exclude<JoinRequestStatus, "pending">,
     decidedBy: string,
   ): Promise<OrganizationJoinRequest | null>;
+}
+
+/** The hosted CMS's named drafts (`drafts` table, migration 263). */
+export interface DraftStoragePort {
+  /** The site's drafts, newest first. */
+  list(site: string): Promise<CmsDraftRow[]>;
+  get(site: string, name: string): Promise<CmsDraftRow | null>;
+  /**
+   * Inserts the row unless (site, name) exists, then reads the row that is
+   * there: the race loser gets the winner's slug. `created` says whether
+   * this call inserted it.
+   */
+  insertIfAbsent(
+    row: Omit<CmsDraftRow, "createdAt">,
+  ): Promise<{ row: CmsDraftRow; created: boolean }>;
+  /** Deletes the row; false when there was none. */
+  delete(site: string, name: string): Promise<boolean>;
 }
 
 export interface OrgSiteStoragePort {

@@ -41,7 +41,7 @@ mock.module("@/components/repository-import-picker", () => ({
 }));
 mock.module("./use-task-metadata", () => ({ useTaskMetadata: () => null }));
 mock.module("@/sdk", () => ({
-  useVirtualMCP: () => ({ id: "vmcp", metadata: { blocksMajor: 8 } }),
+  useVirtualMCP: () => ({ id: "vmcp", metadata: { blocksV8: true } }),
 }));
 mock.module("@/lib/agent-capabilities", () => ({
   agentHasClonableSource: () => true,
@@ -155,7 +155,7 @@ describe("PreviewTab with Localhost: the empty state while it connects", () => {
   const wire = (view: ReturnType<typeof render>) =>
     view.getByTestId("connection-wire").dataset.waiting;
 
-  it("connecting: the guide with the command, looking, the dot travelling", () => {
+  it("connecting: the guide, no command, looking, the dot travelling", () => {
     refs.backend = { kind: "pending" };
     const view = render();
     expect(
@@ -164,9 +164,8 @@ describe("PreviewTab with Localhost: the empty state while it connects", () => {
         name: "Waiting for your computer",
       }),
     ).toBeInTheDocument();
-    expect(
-      view.getByRole("button", { name: "Copy command" }),
-    ).toBeInTheDocument();
+    expect(view.container.querySelector("code")).toBeNull();
+    expect(view.queryByRole("button", { name: /copy/i })).toBeNull();
     expect(
       view.getByText("Looking for deco serve on localhost:4545…"),
     ).toBeInTheDocument();
@@ -209,15 +208,13 @@ describe("PreviewTab with Localhost: the empty state while it connects", () => {
     expect(wire(view)).toBe("false");
   });
 
-  it("connected with no app: how to name it, with the command", () => {
+  it("connected with no app: says so, with no command to run", () => {
     refs.backend = { kind: "protocol", source: "local", describe: {} };
     const view = render();
-    expect(
-      view.getByText("Start your app to see the preview"),
-    ).toBeInTheDocument();
-    expect(
-      view.getByText("localhost:3000", { selector: "span" }),
-    ).toBeInTheDocument();
+    expect(view.getByText("No app to preview yet")).toBeInTheDocument();
+    expect(view.container.querySelector("code")).toBeNull();
+    expect(view.queryByText(/--preview|npx/)).toBeNull();
+    expect(view.queryByRole("listitem")).toBeNull();
     expect(wire(view)).toBe("false");
   });
 

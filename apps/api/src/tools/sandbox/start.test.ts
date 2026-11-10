@@ -734,6 +734,35 @@ describe("SANDBOX_START", () => {
     expect(entry.createdAt).toBe(1_000);
   });
 
+  it("ensureSandbox rebinds a live sandbox whose daemon rejects Studio's token", async () => {
+    const recorded = { ...CACHED_ENTRY, createdAt: 1_000 };
+    mockEnsure.mockImplementation(async () => ({
+      handle: recorded.sandboxHandle,
+      workdir: "/app",
+      previewUrl: recorded.previewUrl,
+      warmPoolAdopted: false,
+      provider: "freestyle",
+    }));
+    const virtualMcp = makeVirtualMcp(ORG_ID, {
+      ...BASE_METADATA,
+      sandboxMap: { [USER_ID]: { [BRANCH]: { "agent-sandbox": recorded } } },
+    });
+    const original = mockRunner.proxyDaemonRequest;
+    mockRunner.proxyDaemonRequest = async () =>
+      new Response("unauthorized", { status: 401 });
+    try {
+      const entry = await ensureSandbox(
+        { virtualMcpId: VMCP_ID, branch: BRANCH },
+        makeCtx({ virtualMcp }),
+      );
+      expect(mockEnsure).toHaveBeenCalledTimes(1);
+      expect(entry.sandboxHandle).toBe(recorded.sandboxHandle);
+      expect(entry.createdAt).toBe(1_000);
+    } finally {
+      mockRunner.proxyDaemonRequest = original;
+    }
+  });
+
   it("ensureSandbox hands a reused sandbox a fresh clone URL", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, {
       ...BASE_METADATA,

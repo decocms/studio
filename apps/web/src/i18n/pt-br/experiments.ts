@@ -6,8 +6,9 @@ export const experiments = {
   "experiments.noSite":
     "Este projeto não tem site vinculado, então não tem experimentos.",
   "experiments.empty.title": "Nenhum experimento ainda",
-  "experiments.empty.desc": "Crie o primeiro teste A/B deste site.",
-  "experiments.status.running": "Rodando",
+  "experiments.empty.desc":
+    "Mostre duas versões de uma página para visitantes reais e veja qual vende mais.",
+  "experiments.status.running": "Em andamento",
   "experiments.status.paused": "Pausado",
   "experiments.status.draft": "Rascunho",
   "experiments.prompt.title": "Novo experimento",
@@ -109,7 +110,7 @@ export const experiments = {
 
   // Read only by experiments-tab-legacy.tsx; both go when the flag does.
   "experiments.subtitle":
-    "Testes A/B deste site. O sorteio de tráfego vive no conteúdo do site; os resultados vêm do analytics.",
+    "Compare versões deste site com tráfego real e veja qual converte melhor.",
   "experiments.col.name": "Nome",
   "experiments.col.key": "Chave",
   "experiments.col.status": "Status",
@@ -127,12 +128,143 @@ export const experiments = {
     "Nenhum tráfego de analytics encontrado para {site}. O site pode ainda não estar enviando eventos de analytics, ou o tráfego dele é registrado sob outro site.",
   "experiments.results.empty": "Ainda sem participantes neste experimento.",
   "experiments.results.control": "Controle",
+  "experiments.results.test": "Teste",
   "experiments.results.variant": "Variante",
+  "experiments.results.weight": "{weight}% do tráfego",
+  "experiments.results.arm": "Versão",
+  "experiments.results.armsTitle": "Versões",
   "experiments.results.visitors": "Visitantes",
-  "experiments.results.participants": "Participantes",
-  "experiments.results.sampleSize": "Amostra alvo",
-  "experiments.results.probBest": "Probabilidade da variante ser melhor",
-  "experiments.results.goal": "Objetivo",
+  "experiments.results.visitorsHint":
+    "Contados uma vez por dia: quem volta em outro dia conta de novo.",
+  "experiments.results.exposed": "Expostos",
+  "experiments.results.exposedHint":
+    "Visitantes que chegaram ao ponto em que as versões se diferenciam, nas duas versões. É a base mais justa para comparar.",
+  "experiments.results.conversion": "Conversão",
+  "experiments.results.conversionHintExposed":
+    "Dos visitantes expostos, a parte que chegou à meta “{goal}”.",
+  "experiments.results.conversionHintVisitors":
+    "De todos os visitantes, a parte que chegou à meta “{goal}”.",
+  "experiments.results.difference": "Diferença",
+  "experiments.results.reference": "Referência",
+  "experiments.results.range": "{low} a {high}",
+  "experiments.results.orders": "Pedidos",
+  "experiments.results.revenue": "Receita",
+  "experiments.results.revenuePerVisitor": "Receita por visitante",
+  "experiments.results.averageOrder": "Ticket médio",
+  "experiments.results.differenceHint":
+    "Quanto o teste converte acima ou abaixo do controle, e a faixa onde a diferença real fica com 95% de confiança.",
+  "experiments.results.verdict.few": "Poucos dados até agora",
+  "experiments.results.verdict.unclear": "Ainda sem diferença clara",
+  "experiments.results.verdict.better": "“{arm}” converte mais",
+  "experiments.results.verdict.worse": "“{arm}” converte menos",
+  "experiments.results.verdict.notWorse": "“{arm}” não é pior que “{control}”",
+  "experiments.results.verdict.compareExposed":
+    "“{test}” converte {testRate} dos {exposed}, contra {controlRate} de “{control}”.",
+  "experiments.results.verdict.compareVisitors":
+    "“{test}” converte {testRate} dos visitantes, contra {controlRate} de “{control}”.",
+  "experiments.results.verdict.noBase":
+    "O controle ainda não teve conversões, então não há base para comparar.",
+  "experiments.results.verdict.fewHint":
+    "Cada versão precisa de pelo menos {total} visitantes e {successes} conversões para a comparação valer.",
+  "experiments.results.claim.lower":
+    "A diferença ainda não é {significant}, então o número menor não quer dizer que “{test}” está perdendo.",
+  "experiments.results.claim.higher":
+    "A diferença ainda não é {significant}, então o número maior não quer dizer que “{test}” está ganhando.",
+  "experiments.results.claim.even": "A diferença ainda não é {significant}.",
+  "experiments.results.claim.notWorse":
+    "A diferença ainda não é {significant}, mas uma queda maior que {bar} já está descartada.",
+  "experiments.results.claim.better":
+    "A diferença já é {significant}, então o aumento medido vale.",
+  "experiments.results.claim.worse":
+    "A queda já é {significant}, grande demais para ser acaso.",
+  "experiments.results.range.cross":
+    "O resultado real pode ir de {low} pior a {high} melhor.",
+  "experiments.results.range.above":
+    "O resultado real fica entre {near} e {far} melhor.",
+  "experiments.results.range.below":
+    "O resultado real fica entre {near} e {far} pior.",
+  "experiments.results.fact.better": "Chance de “{test}” ser melhor",
+  "experiments.results.fact.target": "Chance de ser pelo menos {target} melhor",
+  "experiments.results.fact.safety": "Não é pior que {bar}",
+  "experiments.results.safety.open": "Ainda não dá para afirmar",
+  "experiments.results.safety.openNote":
+    "Para afirmar, a diferença medida precisa chegar a {bar}.",
+  "experiments.results.safety.notWorse": "Sim, dá para aumentar o tráfego",
+  "experiments.results.safety.worse": "Não, a queda é significativa",
+  "experiments.results.chanceAbove": "Mais de 99%",
+  "experiments.results.chanceBelow": "Menos de 1%",
+  "experiments.results.forecast.left":
+    "No ritmo atual, chega a ±{margin} em mais {days} dias, com mais {exposed} expostos.",
+  "experiments.results.forecast.leftOne":
+    "No ritmo atual, chega a ±{margin} em mais 1 dia, com mais {exposed} expostos.",
+  "experiments.results.forecast.reached": "Já está abaixo de ±{margin}.",
+  "experiments.results.forecast.unknown":
+    "Ainda sem dados para estimar quando ela diminui.",
+  "experiments.results.progress.running": "No ar há {days} dias.",
+  "experiments.results.progress.runningOne": "No ar há 1 dia.",
+  "experiments.results.progress.evenSplit":
+    "Com metade do tráfego em cada versão, a margem chegaria a ±{margin} em {days} dias.",
+  "experiments.results.progress.evenSplitOne":
+    "Com metade do tráfego em cada versão, a margem chegaria a ±{margin} em 1 dia.",
+  "experiments.results.liftTrend": "Diferença acumulada",
+  "experiments.results.liftTrendHint":
+    "Cada ponto soma todos os dias até ali. A faixa larga no começo é normal, porque com poucos pedidos um dia bom ou ruim mexe muito no resultado.",
+  "experiments.results.chart.aria":
+    "Diferença de conversão de “{test}” contra “{control}”, {lift}, com faixa de 95% de {range}.",
+  "experiments.results.chart.worse": "Pior",
+  "experiments.results.chart.better": "Melhor",
+  "experiments.results.chart.measured": "Diferença medida",
+  "experiments.results.chart.measuredTotal": "Diferença somando os dias",
+  "experiments.results.chart.range": "Faixa de 95%",
+  "experiments.results.chart.bar": "Limite de {bar}",
+  "experiments.results.chart.tooltip":
+    "Medido {lift}, com faixa de 95% de {range}.",
+  "experiments.results.chart.tooltipDay": "Diferença até aqui {lift}",
+  "experiments.results.glossary.significant": "significativa",
+  "experiments.results.glossary.significantTitle": "Significativo",
+  "experiments.results.glossary.significantHint":
+    "Grande demais para ser acaso. Aqui, quando há pelo menos 95% de confiança de que a diferença real vai na direção medida.",
+  "experiments.results.glossary.exposed": "expostos",
+  "experiments.results.glossary.exposedTitle": "Exposto",
+  "experiments.results.glossary.exposedHint":
+    "Visitante que chegou à parte do site que muda entre as versões. A conversão é medida entre eles, e cada um conta uma vez por dia de visita.",
+  "experiments.results.glossary.margin": "Margem",
+  "experiments.results.glossary.marginTitle": "Margem",
+  "experiments.results.glossary.marginHint":
+    "Quanto o resultado ainda pode variar só por acaso, para mais ou para menos, com 95% de confiança. Ela diminui conforme o teste junta mais dias.",
+  "experiments.results.howTo.title": "Como ler este resultado",
+  "experiments.results.howTo.range":
+    "A barra mostra onde a diferença real provavelmente está. Enquanto ela cruzar o zero, ganhar e perder ainda são possíveis, mesmo que o ponto medido esteja de um lado.",
+  "experiments.results.howTo.early":
+    "No começo, poucos pedidos mexem muito na diferença. Um dia bom ou ruim em uma das versões muda o resultado inteiro, por isso a faixa começa larga e vai estreitando.",
+  "experiments.results.howTo.looks":
+    "A decisão sai do acumulado, nunca de um dia só. Cada olhada no resultado é mais uma chance de ver uma diferença que é só acaso, e quem decide no melhor dia acaba decidindo errado.",
+  "experiments.results.howTo.calendar":
+    "Dia da semana e efeito novidade também mexem nos primeiros dias, e a faixa não inclui esse efeito.",
+  "experiments.results.howTo.method":
+    "O cálculo segue o plano de rollout A/B da deco. A confiança é unilateral de 95% sobre a razão das conversões, sem preferência prévia por nenhum resultado, com fator de correção de {deff} porque o sorteio é por visitante e cada visitante conta uma vez por dia. O teste pode crescer quando não é pior que {bar}, e um aumento só vale quando é significativo.",
+  "experiments.results.trend": "Conversão por dia",
+  "experiments.results.behaviour": "Comportamento por visitante",
+  "experiments.results.pageviews": "Páginas vistas",
+  "experiments.results.pageviewsHint": "Média de páginas vistas por visitante.",
+  "experiments.results.activeTime": "Tempo ativo",
+  "experiments.results.activeTimeHint":
+    "Tempo médio por visitante com a página aberta e em uso.",
+  "experiments.results.clicks": "Cliques",
+  "experiments.results.clicksHint": "Média de cliques por visitante.",
+  "experiments.results.scroll": "Rolagem mediana",
+  "experiments.results.scrollHint": "Até onde a visita típica rola a página.",
+  "experiments.results.jsErrors": "Visitantes com erro JS",
+  "experiments.results.jsErrorsHint":
+    "Visitantes desta versão que tiveram pelo menos um erro de JavaScript em qualquer página do site.",
+  "experiments.results.minutes": "{m} min {s} s",
+  "experiments.results.seconds": "{s} s",
+  "experiments.results.goals": "Metas",
+  "experiments.results.goalsHint": "Visitantes que chegaram a cada meta.",
+  "experiments.results.goalName.purchase": "Compra",
+  "experiments.results.goalName.experience_impression": "Exposição",
+  "experiments.results.goal": "Meta",
+  "experiments.results.sourceDeco": "Fonte: Deco Analytics",
   "experiments.v8.intro":
     "Seus testes A/B fazem parte do conteúdo do site. Toda mudança fica salva no seu rascunho e vai ao ar quando você publica.",
   "experiments.v8.new": "Novo teste A/B",
@@ -143,8 +275,6 @@ export const experiments = {
   "experiments.v8.status.off": "Desligado",
   "experiments.v8.status.running": "Rodando",
   "experiments.v8.status.everyone": "Todos",
-  "experiments.v8.usedBy": "Usado em {count}",
-  "experiments.v8.notUsed": "Ainda não usado",
   "experiments.v8.state.new": "Ainda não publicado",
   "experiments.v8.state.changed": "Alterado no seu rascunho",
   "experiments.v8.removedTitle": "Removidos no seu rascunho",
@@ -162,13 +292,6 @@ export const experiments = {
   "experiments.v8.save": "Salvar",
   "experiments.v8.turnOff": "Desligar",
   "experiments.v8.showEveryone": "Mostrar para todos",
-  "experiments.v8.renameHint":
-    "Toda variante que usa este teste é atualizada na mesma mudança.",
-  "experiments.v8.renamed": "Teste renomeado para “{name}”",
-  "experiments.v8.renameWholeHint":
-    "Seções que leem todos os testes no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
-  "experiments.v8.nameLocked":
-    "O nome não pode mudar enquanto o teste roda: os visitantes são agrupados por ele. Desligue o teste para renomeá-lo.",
   "experiments.v8.delete": "Excluir teste",
   "experiments.v8.deleted": "Teste “{name}” excluído do seu rascunho",
   "experiments.v8.deletedHint":
@@ -191,4 +314,28 @@ export const experiments = {
   "experiments.v8.loadFailed": "Não foi possível carregar seus testes.",
   "experiments.v8.previewHint":
     "Para ver um teste ligado ou desligado antes de publicar, use “Visualizar como” na pré-visualização do editor do site.",
+  "experiments.live.title": "No ar agora",
+  "experiments.live.intro": "O que os visitantes veem no site publicado.",
+  "experiments.live.edit": "Editar em Experimentos",
+  "experiments.live.editTest": "Editar",
+  "experiments.live.viewInMonitor": "Ver no Monitor",
+  "experiments.live.unpublished":
+    "Seu rascunho tem mudanças em testes A/B que ainda não foram publicadas.",
+  "experiments.live.unpublishedTest":
+    "Seu rascunho muda este teste; ainda não foi publicado.",
+  "experiments.live.removedTest":
+    "Seu rascunho remove este teste; ele continua no ar até você publicar.",
+  "experiments.live.notLive": "“{name}” ainda não está no ar.",
+  "experiments.live.editNamed": "Editar {name} em Experimentos",
+  "experiments.live.editRow": "Editar {name}",
+  "experiments.live.unknown.title": "Não foi possível ler o que está no ar",
+  "experiments.live.unknown.desc":
+    "Seu rascunho muda os testes A/B, e a cópia publicada deles não pôde ser lida. Tente de novo em instantes.",
+  "experiments.live.empty.title": "Nenhum teste A/B no ar",
+  "experiments.live.empty.desc": "Crie um em Experimentos e publique.",
+  "experiments.live.noDraft.title":
+    "Escolha um rascunho para ver o que está no ar",
+  "experiments.live.noDraft.desc":
+    "O que está no ar é lido a partir de um rascunho. Escolha um em Experimentos para ver os testes deste site aqui.",
+  "experiments.live.noDraft.action": "Escolher um rascunho em Experimentos",
 } satisfies Record<keyof typeof enExperiments, string>;

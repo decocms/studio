@@ -259,8 +259,8 @@ describe("the rule picker's name step", () => {
 });
 
 describe("the locked row", () => {
-  test("shows the name and leads to Experiments", () => {
-    const open = mock((_kind: string) => {});
+  test("shows the name and leads to Experiments, on that test", () => {
+    const open = mock((_kind: string, _name?: string) => {});
     render(
       <NamedRuleViewsProvider value={{ open }}>
         <NamedRuleRow
@@ -276,7 +276,7 @@ describe("the locked row", () => {
     fireEvent.click(
       within(document.body).getByRole("button", { name: /Open Experiments/ }),
     );
-    expect(open).toHaveBeenCalledWith("experiments");
+    expect(open).toHaveBeenCalledWith("experiments", "hero-test");
   });
 
   test("says a missing campaign isn't there, and shows no link or Create without a way there", () => {
@@ -684,5 +684,237 @@ describe("a campaign's date inputs", () => {
     for (const input of inputs) {
       expect(input.className).toContain("dark:scheme-dark");
     }
+  });
+});
+
+describe("the rule picker on a hosted draft: the tests and campaigns load as it opens", () => {
+  /** What the editor holds before they load: the index's stub, no names. */
+  const UNLOADED: NamedRulePickerKind[] = [
+    { kind: "experiments", state: "saved", entries: [] },
+    { kind: "campaigns", state: "absent", entries: [] },
+  ];
+
+  test("asks for them on open; until they are loaded no name is listed and nothing is offered as new", () => {
+    const request = mock(() => {});
+    const { dialog } = openPicker({
+      kinds: UNLOADED,
+      selected: null,
+      onPick: () => {},
+      load: { ready: false, failed: false, retry: () => {}, request },
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByText("A/B test"));
+    typeInto(document.activeElement as HTMLElement, "hero-test");
+    expect(within(dialog).getByTestId("named-rule-names-loading")).toBeTruthy();
+    expect(within(dialog).queryByText(/Create test/)).toBeNull();
+    expect(
+      within(dialog).queryByText("No tests yet. Type a name to create one."),
+    ).toBeNull();
+  });
+
+  test("once loaded, an existing test is listed to pick, never offered as new", async () => {
+    function Harness() {
+      const [ready, setReady] = useState(false);
+      return (
+        <MatcherPicker
+          currentRt=""
+          currentLabel="Always"
+          matchers={MATCHERS}
+          onSelect={() => {}}
+          named={{
+            kinds: ready ? KINDS : UNLOADED,
+            selected: null,
+            onPick: () => {},
+            load: {
+              ready,
+              failed: false,
+              retry: () => {},
+              request: () => setReady(true),
+            },
+          }}
+        />
+      );
+    }
+    render(<Harness />);
+    const body = within(document.body);
+    fireEvent.click(body.getByRole("button", { name: /Always/ }));
+    fireEvent.click(body.getByText("A/B test"));
+    typeInto(document.activeElement as HTMLElement, "hero-test");
+    expect(await body.findByText("hero-test")).toBeTruthy();
+    expect(body.queryByText(/Create test/)).toBeNull();
+    expect(body.queryByTestId("named-rule-names-loading")).toBeNull();
+  });
+
+  test("a failed load says so and tries again on request", () => {
+    const retry = mock(() => {});
+    const { dialog } = openPicker({
+      kinds: UNLOADED,
+      selected: null,
+      onPick: () => {},
+      load: { ready: false, failed: true, retry, request: () => {} },
+    });
+    fireEvent.click(within(dialog).getByText("Campaign"));
+    expect(
+      within(dialog).getByText("Couldn't load your campaigns."),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/Create campaign/)).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  test("says it in pt-br too", () => {
+    expect(ptBR["sectionsEditor.namedRulePicker.loadFailedTests"]).toBe(
+      "Não foi possível carregar seus testes.",
+    );
+    expect(ptBR["sectionsEditor.namedRulePicker.loadFailedCampaigns"]).toBe(
+      "Não foi possível carregar suas campanhas.",
+    );
+  });
+});
+
+describe("a variant's rule on a hosted draft: a name is missing only once the tests and campaigns are loaded", () => {
+  /** What the editor holds before they load: the index's stub, no names. */
+  const STUBS: NamedRulePickerKind[] = [
+    { kind: "experiments", state: "saved", entries: [] },
+    { kind: "campaigns", state: "saved", entries: [] },
+  ];
+
+  function Harness({
+    rule,
+    loaded,
+    onRequest,
+  }: {
+    rule: Record<string, unknown>;
+    /** The kinds once the blocks are loaded. */
+    loaded: NamedRulePickerKind[];
+    onRequest?: () => void;
+  }) {
+    const [ready, setReady] = useState(false);
+    const kinds = ready ? loaded : STUBS;
+    const named = namedRuleOf(rule);
+    return (
+      <VariantRuleEditor
+        currentRt={named ? (rule.__resolveType as string) : "multi"}
+        currentLabel="Rule"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{
+          kinds,
+          selected: named,
+          onPick: () => {},
+          load: {
+            ready,
+            failed: false,
+            retry: () => {},
+            request: () => {
+              onRequest?.();
+              setReady(true);
+            },
+          },
+        }}
+        namedRow={namedRuleRowState(rule, kinds)}
+        rule={rule}
+        decofile={{}}
+      />
+    );
+  }
+
+  test("a test that exists: they are asked for, and it is never said to be missing or offered to create", async () => {
+    const request = mock(() => {});
+    render(
+      <Harness
+        rule={{ __resolveType: "experiment", name: "hero-test" }}
+        loaded={KINDS}
+        onRequest={request}
+      />,
+    );
+    const body = within(document.body);
+    expect(await body.findByText("50% of visitors")).toBeTruthy();
+    expect(request).toHaveBeenCalled();
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.queryByRole("button", { name: "Create it" })).toBeNull();
+  });
+
+  test("while they load, nothing is said to be missing and nothing is offered to create", () => {
+    const rule = { __resolveType: "experiment", name: "hero-test" };
+    render(
+      <VariantRuleEditor
+        currentRt="experiment"
+        currentLabel="A/B test"
+        matchers={MATCHERS}
+        globals={[]}
+        onSelect={() => {}}
+        onSelectGlobal={() => {}}
+        schema={null}
+        formValue={null}
+        onChange={() => {}}
+        formKey="rule"
+        formWrapperClassName=""
+        named={{
+          kinds: STUBS,
+          selected: namedRuleOf(rule),
+          onPick: () => {},
+          load: {
+            ready: false,
+            failed: false,
+            retry: () => {},
+            request: () => {},
+          },
+        }}
+        namedRow={namedRuleRowState(rule, STUBS)}
+        rule={rule}
+      />,
+    );
+    const body = within(document.body);
+    expect(body.getByTestId("named-rule-row")).toBeTruthy();
+    expect(body.queryByTestId("named-rule-missing")).toBeNull();
+    expect(body.queryByRole("button", { name: "Create it" })).toBeNull();
+  });
+
+  test("a test that isn't there is said to be missing once they are loaded", async () => {
+    render(
+      <Harness
+        rule={{ __resolveType: "experiment", name: "gone" }}
+        loaded={KINDS}
+      />,
+    );
+    const body = within(document.body);
+    expect((await body.findByTestId("named-rule-missing")).textContent).toBe(
+      "This test isn't in your A/B tests. Pick another, create it, or remove this variant.",
+    );
+  });
+
+  test("a campaign that exists inside a combined rule is never said to be missing", async () => {
+    const request = mock(() => {});
+    render(
+      <Harness
+        rule={{
+          __resolveType: "multi",
+          op: "and",
+          matchers: [{ __resolveType: "campaign", name: "black-friday" }],
+        }}
+        loaded={[
+          KINDS[0]!,
+          {
+            kind: "campaigns",
+            state: "saved",
+            entries: [{ name: "black-friday", summary: "" }],
+          },
+        ]}
+        onRequest={request}
+      />,
+    );
+    await act(async () => {});
+    expect(request).toHaveBeenCalled();
+    expect(
+      within(document.body).queryByTestId("named-rule-missing-within"),
+    ).toBeNull();
   });
 });

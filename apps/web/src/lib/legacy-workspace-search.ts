@@ -69,11 +69,12 @@ export const librarySearchShape = {
   expanded: z.coerce.boolean().optional().catch(undefined),
   skill: z.string().optional(),
   brand: z.string().optional(),
-  /** Context's menu (project-first nav), and the state of the settings pages
-   *  it hosts: Memory's scope and the Connections create dialog. */
+  /** Context's menu, and the state of the settings pages it hosts: Memory's
+   *  scope, and the Connections create dialog and tab. */
   section: z.enum(CONTEXT_SECTIONS).catch("files").optional(),
   scope: z.enum(["user"]).optional().catch(undefined),
   action: z.enum(["create"]).optional().catch(undefined),
+  tab: z.enum(["all", "connected"]).optional().catch(undefined),
 };
 
 /** Exact payload accepted by the retired `/agents/{-$panel}` route. */

@@ -1,15 +1,16 @@
 {
   "name": "@decocms/sandbox",
-  "version": "1.95.4",
+  "version": "1.99.0",
   "private": true,
   "type": "module",
   "description": "Sandbox runtime for isolated Studio tool execution",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun run build:typegen && bun run build:harness-runner",
+    "build": "bun run build:typegen && bun run build:harness-runner && bun run build:studio-cli",
     "build:typegen": "mkdir -p dist && bun run --cwd=../typegen build && bun --cwd=../typegen pm pack --filename $PWD/dist/typegen.tgz --quiet",
-    "build:harness-runner": "mkdir -p dist && bun --cwd=../harness-runner pm pack --filename $PWD/dist/harness-runner.tgz --quiet"
+    "build:harness-runner": "mkdir -p dist && bun --cwd=../harness-runner pm pack --filename $PWD/dist/harness-runner.tgz --quiet",
+    "build:studio-cli": "bun scripts/build-studio-cli.ts dist/decocms"
   },
   "exports": {
     "./shared": "./shared.ts",

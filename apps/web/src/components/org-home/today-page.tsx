@@ -1,4 +1,4 @@
-/** The org's Overview under the new navigation: the greeting with the apps
+/** The org's Overview: the greeting with the apps
  *  you last had open, what wants you today, and how each project is moving.
  *  Built from the board, the inbox, this browser's app history and the
  *  daily brief in the org filesystem. */

@@ -12,7 +12,6 @@ import { Page } from "@/components/page";
 
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useCurrentView } from "@/hooks/use-current-view";
@@ -76,18 +75,6 @@ export function SidebarToggleButton({
   const t = useT();
   const { toggleSidebar } = useSidebar();
   const collapsed = useSidebarCollapsed();
-  const projectFirstNav = useProjectFirstNav();
-  if (!projectFirstNav) {
-    return (
-      <ToolbarIconButton
-        className="md:hidden"
-        onClick={toggleSidebar}
-        aria-label={t("layouts.shellControls.toggleSidebar")}
-      >
-        <LayoutLeft size={16} />
-      </ToolbarIconButton>
-    );
-  }
   const sidebarHidden = showOnDesktop && collapsed;
   return (
     <Tooltip>

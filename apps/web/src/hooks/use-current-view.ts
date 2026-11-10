@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { useInSettings } from "@/hooks/use-in-settings";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
 import { useRouteThreadId } from "@/layouts/thread-route";
@@ -23,7 +22,6 @@ export function useCurrentView(): CurrentView {
   const scopeId = useScopeId();
   const project = useVirtualMCPNonBlocking(scopeId);
   const inSettings = useInSettings();
-  const projectFirstNav = useProjectFirstNav();
   const page = useRouterState({
     select: (state) =>
       state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
@@ -35,7 +33,7 @@ export function useCurrentView(): CurrentView {
       scopeId
       ? projectTitle
       : t("sidebar.navDestinations.home")
-    : projectFirstNav && page?.mainView === "files"
+    : page?.mainView === "files"
       ? t("sidebar.navDestinations.context")
       : t(page?.pageTitle ?? "page.view");
   return { project: scopeId ? project : null, title, isHome, inSettings };

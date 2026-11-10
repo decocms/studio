@@ -16,17 +16,50 @@ import type { UIMessageChunk } from "ai";
 import { promptForRun, type EmitFrame } from "./claude-code";
 import { CodexChunkTranslator, record } from "./codex-to-ui-chunks";
 import { liveMessageChunk, type LiveMessageInbox } from "./live-messages";
+import {
+  studioCliEnv,
+  studioCliInstruction,
+  studioCliPluginDir,
+  writeStudioCliSession,
+} from "./studio-cli";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
+
+const isReadonly = (input: HarnessStreamInputWire) =>
+  input.mode === "plan" || input.toolApprovalLevel === "readonly";
+
+/**
+ * The org slug when this run reaches Studio through the CLI. Read-only runs
+ * keep the MCP: their `read-only` sandbox has no network for shell commands,
+ * while Codex itself still reaches MCP servers for the research tools. So does
+ * a run with a tool allowlist: `enabled_tools` is what enforces it.
+ */
+export function codexStudioCliOrg(
+  input: HarnessStreamInputWire,
+): string | null {
+  return input.studioCli && !isReadonly(input) && !input.toolAllowlist
+    ? input.studioCli.org
+    : null;
+}
+
+/** Plugin dirs whose `skills/*` this run's Codex discovers. */
+export function codexPluginDirs(input: HarnessStreamInputWire): string[] {
+  const studioCliPlugin = codexStudioCliOrg(input)
+    ? studioCliPluginDir()
+    : null;
+  return [
+    ...(process.env.CLAUDE_CODE_PLUGIN_DIRS ?? "").split(":").filter(Boolean),
+    ...(studioCliPlugin ? [studioCliPlugin] : []),
+  ];
+}
 
 export function codexConfig(
   input: HarnessStreamInputWire,
 ): Record<string, unknown> {
   const servers: Record<string, unknown> = {};
-  const readonly =
-    input.mode === "plan" || input.toolApprovalLevel === "readonly";
+  const readonly = isReadonly(input);
   for (const server of [
-    { name: "studio", ...input.mcp },
+    ...(codexStudioCliOrg(input) ? [] : [{ name: "studio", ...input.mcp }]),
     ...(input.orgMcps ?? []),
   ]) {
     if (server.name in servers)
@@ -65,6 +98,32 @@ function toml(value: unknown): string {
     .join(",")}}`;
 }
 
+const MAX_TURN_FAILURE_DETAIL = 500;
+
+/**
+ * Codex's own reason for a failed turn (`TurnError`), so the user sees why
+ * the provider refused instead of a generic hint. Codex appends the request
+ * URL to HTTP failures, which may be a private provider endpoint.
+ */
+export function codexTurnFailure(error: unknown): string {
+  const raw = record(error).message;
+  if (typeof raw !== "string" || !raw.trim())
+    return "Codex turn failed. Check your provider connection or relink the ChatGPT subscription.";
+  let detail = raw.replace(/,? url: \S+/g, "").trim();
+  try {
+    const nested = record(record(JSON.parse(detail)).error).message;
+    if (typeof nested === "string" && nested.trim()) detail = nested.trim();
+  } catch {
+    // Not a JSON response body; keep Codex's text.
+  }
+  detail = detail.replace(/\b(?:Bearer\s+|sk-)[\w.-]+/gi, "[redacted]");
+  return `Codex turn failed: ${
+    detail.length > MAX_TURN_FAILURE_DETAIL
+      ? `${detail.slice(0, MAX_TURN_FAILURE_DETAIL)}…`
+      : detail
+  }`;
+}
+
 /** A separate config/auth directory per run prevents concurrent threads from changing each other's MCP credentials. */
 export async function runCodex(
   input: HarnessStreamInputWire,
@@ -72,7 +131,10 @@ export async function runCodex(
   _turnStartedAt?: number,
   inbox?: LiveMessageInbox,
 ): Promise<void> {
-  const translator = new CodexChunkTranslator();
+  const studioCliOrg = codexStudioCliOrg(input);
+  const translator = new CodexChunkTranslator({
+    studioCli: studioCliOrg !== null,
+  });
   const home =
     process.env.CODEX_HOME ?? join(process.env.HOME ?? ".", ".codex");
   const pointer = join(
@@ -102,6 +164,8 @@ export async function runCodex(
     await mkdir(join(home, "deco-sessions"), { recursive: true, mode: 0o700 });
     runtime = await mkdtemp(join(home, ".studio-runtime-"));
     await symlink(join(home, "sessions"), join(runtime, "sessions"));
+    const studioCliHome = join(runtime, "decocms");
+    if (studioCliOrg) await writeStudioCliSession(studioCliHome, input);
     const config = codexConfig(input);
     const providerUrl = process.env.OPENAI_BASE_URL;
     if (seed)
@@ -127,9 +191,7 @@ export async function runCodex(
     // plugins. Codex discovers the same files in its own user skills directory.
     const skills = join(runtime, "skills");
     await mkdir(skills, { mode: 0o700 });
-    for (const plugin of (process.env.CLAUDE_CODE_PLUGIN_DIRS ?? "")
-      .split(":")
-      .filter(Boolean)) {
+    for (const plugin of codexPluginDirs(input)) {
       const source = join(plugin, "skills");
       const entries = await readdir(source, { withFileTypes: true }).catch(
         () => [],
@@ -167,7 +229,10 @@ export async function runCodex(
         stdin: "pipe",
         stdout: "pipe",
         stderr: "ignore",
-        env: { ...env, CODEX_HOME: runtime },
+        env: {
+          ...(studioCliOrg ? studioCliEnv(env, studioCliHome) : env),
+          CODEX_HOME: runtime,
+        },
       },
     );
     const stdin = proc.stdin;
@@ -209,6 +274,7 @@ export async function runCodex(
     let threadId = "";
     let turnId = "";
     let turnEnded = false;
+    let lastTurnError: unknown;
     const liveDeliveries = new Map<string, Promise<boolean>>();
     const liveRead = new Set<string>();
     let finish: ((turn: Record<string, unknown>) => void) | undefined;
@@ -265,6 +331,8 @@ export async function runCodex(
           if (message.method === "turn/started")
             turnId = String(record(params.turn).id ?? "");
           if (params.turnId && params.turnId !== turnId) continue;
+          if (message.method === "error" && !params.willRetry)
+            lastTurnError = params.error;
           if (message.method === "turn/completed") {
             turnEnded = true;
             inbox?.close();
@@ -306,8 +374,7 @@ export async function runCodex(
         capabilities: { experimentalApi: true },
       });
       send({ method: "initialized" });
-      const readonly =
-        input.mode === "plan" || input.toolApprovalLevel === "readonly";
+      const readonly = isReadonly(input);
       const options = {
         cwd: input.workspace.cwd ?? "/repo",
         model,
@@ -316,6 +383,7 @@ export async function runCodex(
         developerInstructions: [
           input.agent.instructions,
           "The organization filesystem is mounted at /app/org/. Wait for commands to finish before ending your turn. Ask questions with request_user_input. The user's response arrives in the next turn.",
+          studioCliOrg ? studioCliInstruction(studioCliOrg) : undefined,
         ]
           .filter(Boolean)
           .join("\n\n"),
@@ -405,9 +473,7 @@ export async function runCodex(
       await writeFile(tempPointer, threadId, { mode: 0o600 });
       await rename(tempPointer, pointer);
       if (failed)
-        throw new Error(
-          "Codex turn failed. Check your provider connection or relink the ChatGPT subscription.",
-        );
+        throw new Error(codexTurnFailure(result.error ?? lastTurnError));
       emit({
         chunks: [
           ...translator.close(),

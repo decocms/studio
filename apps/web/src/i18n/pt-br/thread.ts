@@ -3,6 +3,16 @@ import type { thread as threadEn } from "../en/thread.ts";
 export const thread = {
   "thread.branchPicker.allLoaded": "Todas carregadas",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
+  "thread.branchPicker.codeDraftTooltip":
+    "Sessão de código: abre com o código desta branch",
+  "thread.branchPicker.groupCode": "Código",
+  "thread.branchPicker.groupContent": "Conteúdo",
+  "thread.branchPicker.viaStudioUi": "por pessoa via web",
+  "thread.branchPicker.storeDraftVia": "por agente via {via}",
+  "thread.branchPicker.discardStoreDraftConfirm":
+    'Descartar "{name}" do CMS? As alterações não publicadas são apagadas para todos. O conteúdo publicado não muda.',
+  "thread.branchPicker.discardStoreDraftError":
+    "Não foi possível descartar o draft",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",
@@ -14,6 +24,7 @@ export const thread = {
   "thread.branchPicker.cancel": "Cancelar",
   "thread.branchPicker.defaultVersionName": "Draft",
   "thread.branchPicker.delete": "Descartar",
+  "thread.branchPicker.keepOneDraft": "Mantenha pelo menos um draft",
   "thread.branchPicker.deleteConfirm":
     'Descartar "{name}"? Isso não pode ser desfeito.',
   "thread.branchPicker.deleteTitle": "Descartar draft?",
@@ -66,9 +77,6 @@ export const thread = {
   "thread.cmsActions.getLatestTooltip":
     "Trazer as novas alterações da produção",
   "thread.cmsActions.moreActionsAriaLabel": "Mais ações",
-  "thread.cmsActions.notLive": "Ainda não está no ar",
-  "thread.cmsActions.notLiveTooltip":
-    "Suas últimas alterações estão salvas, mas ainda não estão no ar. Publique para colocá-las no ar.",
   "thread.cmsActions.publishing": "Publicando…",
   "thread.cmsActions.gettingLatest": "Obtendo atualizações…",
   "thread.cmsActions.retry": "Tentar novamente",
@@ -109,6 +117,8 @@ export const thread = {
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} mesclado em {base}",
   "thread.headerActions.publishAnyway": "Publicar mesmo assim",
   "thread.headerActions.publishedPr": "PR #{prNumber} publicado",
+  "thread.headerActions.pushFailing":
+    "As alterações desde {since} ainda não foram salvas no GitHub. Última tentativa: {error}",
   "thread.headerActions.reconnectGithub": "Reconectar GitHub",
   "thread.headerActions.review": "Revisar",
   "thread.headerActions.saving": "Salvando…",
@@ -177,37 +187,11 @@ export const thread = {
   "thread.publishPopover.emptyHint":
     "Suas alterações mais recentes já estão no ar.",
   "thread.publishPopover.everythingLive": "Tudo publicado",
-  "thread.publishPopover.notLive": "Ainda não está no ar",
-  "thread.publishPopover.notLiveBody":
-    "Suas últimas alterações estão salvas, mas ainda não estão no ar.",
-  "thread.publishPopover.notLiveHint": "Publique para colocá-las no ar.",
   "thread.publishPopover.abTests": "Testes A/B",
   "thread.publishPopover.campaignDates": "Datas das campanhas",
   "thread.publishPopover.settings": "Configurações",
   "thread.publishPopover.settingsDetail": "Telemetria e analytics",
   "thread.publishPopover.globalSection": "Seção global",
-  "thread.publishPopover.alsoChangedOnMain":
-    "Seu desenvolvedor também alterou {name}. Publicar mantém a sua versão.",
-  "thread.publishPopover.missingTest":
-    "Usa um teste que não está nos seus testes A/B",
-  "thread.publishPopover.missingCampaign":
-    "Usa uma campanha que não está nas suas campanhas",
-  "thread.publishPopover.missingTestUsesOne":
-    "{places} usa um teste que não está nos seus testes A/B",
-  "thread.publishPopover.missingTestsUsesOne":
-    "{places} usa testes que não estão nos seus testes A/B",
-  "thread.publishPopover.missingTestUses":
-    "{places} usam um teste que não está nos seus testes A/B",
-  "thread.publishPopover.missingTestsUses":
-    "{places} usam testes que não estão nos seus testes A/B",
-  "thread.publishPopover.missingCampaignUsesOne":
-    "{places} usa uma campanha que não está nas suas campanhas",
-  "thread.publishPopover.missingCampaignsUsesOne":
-    "{places} usa campanhas que não estão nas suas campanhas",
-  "thread.publishPopover.missingCampaignUses":
-    "{places} usam uma campanha que não está nas suas campanhas",
-  "thread.publishPopover.missingCampaignsUses":
-    "{places} usam campanhas que não estão nas suas campanhas",
   "thread.publishPopover.lastPublished": "Última publicação {when}",
   "thread.publishPopover.lastPublishedBy":
     "Última publicação {when} por {name}",

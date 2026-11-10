@@ -396,7 +396,7 @@ export function ConnectionFields({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              ) : connection.connection_token && field.value === null ? (
+              ) : connection.has_connection_token && field.value === null ? (
                 <div className="relative group">
                   <div className="h-10 px-3 flex items-center rounded-lg border border-border bg-muted/50 text-muted-foreground font-mono text-sm">
                     ••••••••••••••••

@@ -31,6 +31,13 @@ export type BlocksPreviewWorkspaceAction =
     }
   | { type: "consume-edit-seo" }
   | { type: "variant-override"; params: string[] | null }
+  /**
+   * "Preview as" (a Blocks v8 site) changed: its moment and forced tests
+   * decide which variants the frame shows, so a variant pinned before is
+   * dropped (a pin would hide them). A variant picked afterwards pins again,
+   * on top of them: the latest choice wins.
+   */
+  | { type: "preview-as" }
   | { type: "focus-block"; key: string | null };
 
 export const INITIAL_BLOCKS_PREVIEW_WORKSPACE: BlocksPreviewWorkspaceState = {
@@ -67,6 +74,10 @@ export function blocksPreviewWorkspaceReducer(
       return { ...state, editSeoPageKey: null };
     case "variant-override":
       return { ...state, variantOverride: action.params };
+    case "preview-as":
+      return state.variantOverride === null
+        ? state
+        : { ...state, variantOverride: null };
     case "focus-block":
       return { ...state, focusedBlockKey: action.key };
   }

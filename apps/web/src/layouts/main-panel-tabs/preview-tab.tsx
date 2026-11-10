@@ -16,10 +16,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { resolvePreviewSource } from "./preview-source";
 import { useLocalAppReachable } from "@/hooks/use-local-app-reachable";
 import { servePreviewUrl } from "@/components/sections-editor/content-backend";
-import {
-  endpointHost,
-  SERVE_COMMAND,
-} from "@/components/sections-editor/deco-serve-connection";
+import { endpointHost } from "@/components/sections-editor/deco-serve-connection";
 import { RichCode } from "@/components/sections-editor/deco-serve-notices";
 import {
   type LocalhostStatus,
@@ -156,7 +153,7 @@ function hostOf(url: string): string {
 
 /**
  * A chosen Localhost with no app to show yet: `/site-editor`'s empty state,
- * exactly (`LocalServeEmptyState`); once connected with no app, how to name it.
+ * exactly (`LocalServeEmptyState`); once connected with no app, says so.
  */
 function LocalhostEmptyState({
   status,
@@ -173,17 +170,7 @@ function LocalhostEmptyState({
         headingLevel={2}
         waiting={false}
         title={t("mainPanelTabs.previewTab.localhostNoPreview.title")}
-        lead={
-          <RichCode
-            text={t("mainPanelTabs.previewTab.localhostNoPreview.body")}
-          />
-        }
-        steps={[
-          {
-            title: t("mainPanelTabs.previewTab.localhostNoPreview.step.title"),
-            command: `${SERVE_COMMAND} --preview localhost:3000`,
-          },
-        ]}
+        lead={t("mainPanelTabs.previewTab.localhostNoPreview.body")}
       />
     );
   }

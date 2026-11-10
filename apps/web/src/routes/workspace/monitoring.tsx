@@ -1,31 +1,45 @@
 /**
  * Monitor, at org and project scope. It reads what is wired (the order
- * monitor, the projects' sites and repositories, the org's connections). Only
- * the new navigation announces it, so anyone else lands on home.
+ * monitor, the projects' sites and repositories, the org's connections).
  */
 
-import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ChatLayout } from "@/components/chat-layout";
 import {
   MonitorPage,
   type MonitorSelection,
 } from "@/components/monitor/monitor-page";
-import { MONITOR_VIEWS } from "@/components/monitor/monitor-views";
+import { SEGMENT_SEARCH_KEYS } from "@/components/monitor/analytics/segment";
+import {
+  MONITOR_VIEWS,
+  type MonitorView,
+  useSiteProjects,
+} from "@/components/monitor/monitor-views";
 import { useLiveBoard } from "@/components/monitor/use-live-board";
 import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
 } from "@/hooks/use-destination-route";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useScopeId } from "@/hooks/use-project-scope";
+import { isScopableProject } from "@decocms/shared/sdk";
 import { useProjectContext } from "@/sdk";
 
 function useMonitorSearch(): MonitorSelection {
   const search = useSearch({ strict: false });
-  const view =
+  const requested =
     "view" in search && typeof search.view === "string"
-      ? MONITOR_VIEWS.find((v) => v === search.view)
+      ? search.view
       : undefined;
+  const section =
+    "section" in search && typeof search.section === "string"
+      ? search.section
+      : undefined;
+  const view =
+    requested === "audience" && section
+      ? movedSection(section)
+      : requested
+        ? movedView(requested)
+        : undefined;
   return {
     view,
     date:
@@ -37,23 +51,62 @@ function useMonitorSearch(): MonitorSelection {
         ? search.store
         : undefined,
     at: "at" in search && typeof search.at === "string" ? search.at : undefined,
+    project:
+      "project" in search && typeof search.project === "string"
+        ? search.project
+        : undefined,
   };
+}
+
+/** Tabs that were folded into others; ones that left the Monitor open the Overview. */
+function movedView(view: string): MonitorView | undefined {
+  // `analytics` was the CDN tab's name before it became Performance.
+  if (view === "analytics") return "performance";
+  if (view === "errors") return "logs";
+  if (view === "realtime" || view === "pages" || view === "events") {
+    return "audience";
+  }
+  return MONITOR_VIEWS.find((v) => v === view);
+}
+
+/** Analytics links from when its sections had tabs of their own. */
+function movedSection(section: string): MonitorView {
+  if (section === "heatmap") return "heatmap";
+  if (section === "errors") return "logs";
+  if (section === "vitals") return "performance";
+  return "audience";
+}
+
+/** The Analytics segment's search keys, as they are. */
+function useSegmentSearch(): Record<string, unknown> {
+  const search = useSearch({ strict: false }) as Record<string, unknown>;
+  return Object.fromEntries(
+    SEGMENT_SEARCH_KEYS.flatMap((k) =>
+      search[k] === undefined ? [] : [[k, search[k]]],
+    ),
+  );
 }
 
 function LiveMonitoring({
   orgSlug,
   scopeId,
+  orgWide,
   selection,
   onSelect,
 }: {
   orgSlug: string;
   scopeId: string | null;
+  orgWide: boolean;
   selection: MonitorSelection;
   onSelect: (selection: MonitorSelection) => void;
 }) {
+  // The filter's pick narrows the whole board, its totals included.
+  const picked = useSiteProjects().some((p) => p.id === selection.project)
+    ? selection.project
+    : undefined;
   const { board, loading, error } = useLiveBoard(
     orgSlug,
-    scopeId,
+    scopeId ?? picked ?? null,
     selection.date,
   );
   return (
@@ -63,6 +116,7 @@ function LiveMonitoring({
       error={error}
       orgSlug={orgSlug}
       scopeId={scopeId}
+      orgWide={orgWide}
       selection={selection}
       onSelect={onSelect}
     />
@@ -71,20 +125,26 @@ function LiveMonitoring({
 
 function MonitoringContent() {
   const { org } = useProjectContext();
-  const scopeId = useScopeId();
+  const routeId = useScopeId();
+  // The Super Agent's route is org-wide: it owns no store or site.
+  const scopeId =
+    routeId && isScopableProject({ id: routeId }) ? routeId : null;
   const navigate = useNavigate();
-  const projectFirstNav = useProjectFirstNav();
   const selection = useMonitorSearch();
+  const segment = useSegmentSearch();
 
-  if (!projectFirstNav) {
-    return <Navigate to="/$org/home" params={{ org: org.slug }} replace />;
-  }
-
-  const onSelect = (next: MonitorSelection) => {
-    if (scopeId) {
+  const onSelect = (selected: MonitorSelection) => {
+    // Filters only make sense within one project's Analytics sections.
+    const next =
+      selected.view === "audience" &&
+      selection.view === "audience" &&
+      selected.project === selection.project
+        ? { ...selected, ...segment }
+        : selected;
+    if (routeId) {
       void navigate({
         to: PROJECT_ROUTE.monitoring,
-        params: { org: org.slug, agentId: scopeId },
+        params: { org: org.slug, agentId: routeId },
         search: next,
       });
     } else {
@@ -100,12 +160,17 @@ function MonitoringContent() {
     <LiveMonitoring
       orgSlug={org.slug}
       scopeId={scopeId}
+      orgWide={routeId !== null && scopeId === null}
       selection={selection}
       onSelect={onSelect}
     />
   );
 }
 
+/**
+ * Monitor only reads: a Blocks (v8) site's tests are edited and published in
+ * its Experiments app, so there is no draft bar here.
+ */
 export default function MonitoringRoute() {
   return (
     <ChatLayout.Content>

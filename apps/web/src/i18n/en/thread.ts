@@ -1,6 +1,15 @@
 export const thread = {
   "thread.branchPicker.allLoaded": "All loaded",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
+  "thread.branchPicker.codeDraftTooltip":
+    "Coding session: opens with this branch's code",
+  "thread.branchPicker.groupCode": "Code",
+  "thread.branchPicker.groupContent": "Content",
+  "thread.branchPicker.viaStudioUi": "by human via web",
+  "thread.branchPicker.storeDraftVia": "by agent via {via}",
+  "thread.branchPicker.discardStoreDraftConfirm":
+    'Discard "{name}" from the CMS? Its unpublished changes are deleted for everyone. Published content is not affected.',
+  "thread.branchPicker.discardStoreDraftError": "Couldn't discard the draft",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Couldn't load branches from GitHub. You can still pick from your branches.",
@@ -12,6 +21,7 @@ export const thread = {
   "thread.branchPicker.cancel": "Cancel",
   "thread.branchPicker.defaultVersionName": "Draft",
   "thread.branchPicker.delete": "Delete",
+  "thread.branchPicker.keepOneDraft": "Keep at least one draft",
   "thread.branchPicker.deleteConfirm":
     'Delete "{name}"? This can\'t be undone.',
   "thread.branchPicker.deleteTitle": "Discard draft?",
@@ -62,9 +72,6 @@ export const thread = {
   "thread.cmsActions.getLatest": "Get latest",
   "thread.cmsActions.getLatestTooltip": "Bring in new changes from production",
   "thread.cmsActions.moreActionsAriaLabel": "More actions",
-  "thread.cmsActions.notLive": "Not live yet",
-  "thread.cmsActions.notLiveTooltip":
-    "Your last changes are saved but not live yet. Publish to make them live.",
   "thread.cmsActions.publishing": "Publishing…",
   "thread.cmsActions.gettingLatest": "Getting latest…",
   "thread.cmsActions.retry": "Retry",
@@ -104,6 +111,8 @@ export const thread = {
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
   "thread.headerActions.publishAnyway": "Publish anyway",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
+  "thread.headerActions.pushFailing":
+    "Changes since {since} are not saved to GitHub yet. Last attempt: {error}",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.review": "Review",
   "thread.headerActions.saving": "Saving…",
@@ -168,37 +177,11 @@ export const thread = {
   "thread.publishPopover.chipRemoved": "Removed",
   "thread.publishPopover.emptyHint": "Your latest changes are already live.",
   "thread.publishPopover.everythingLive": "Everything is published",
-  "thread.publishPopover.notLive": "Not live yet",
-  "thread.publishPopover.notLiveBody":
-    "Your last changes are saved but not live yet.",
-  "thread.publishPopover.notLiveHint": "Publish to make them live.",
   "thread.publishPopover.abTests": "A/B tests",
   "thread.publishPopover.campaignDates": "Campaign dates",
   "thread.publishPopover.settings": "Settings",
   "thread.publishPopover.settingsDetail": "Telemetry and analytics",
   "thread.publishPopover.globalSection": "Global section",
-  "thread.publishPopover.alsoChangedOnMain":
-    "Your developer also changed {name}. Publishing keeps your version.",
-  "thread.publishPopover.missingTest":
-    "Uses a test that isn't in your A/B tests",
-  "thread.publishPopover.missingCampaign":
-    "Uses a campaign that isn't in your campaigns",
-  "thread.publishPopover.missingTestUsesOne":
-    "{places} uses a test that isn't in your A/B tests",
-  "thread.publishPopover.missingTestsUsesOne":
-    "{places} uses tests that aren't in your A/B tests",
-  "thread.publishPopover.missingTestUses":
-    "{places} use a test that isn't in your A/B tests",
-  "thread.publishPopover.missingTestsUses":
-    "{places} use tests that aren't in your A/B tests",
-  "thread.publishPopover.missingCampaignUsesOne":
-    "{places} uses a campaign that isn't in your campaigns",
-  "thread.publishPopover.missingCampaignsUsesOne":
-    "{places} uses campaigns that aren't in your campaigns",
-  "thread.publishPopover.missingCampaignUses":
-    "{places} use a campaign that isn't in your campaigns",
-  "thread.publishPopover.missingCampaignsUses":
-    "{places} use campaigns that aren't in your campaigns",
   "thread.publishPopover.lastPublished": "Last published {when}",
   "thread.publishPopover.lastPublishedBy": "Last published {when} by {name}",
   "thread.publishPopover.needsReviewGeneric":

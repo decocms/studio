@@ -2,30 +2,40 @@
  * The hosted Deco CMS delivery bucket: an R2 bucket served read-only at
  * `https://delivery.decocms.com`, written by Studio through R2's S3 API.
  *
- *   sites/<site>/latest.json             { revision, schemaHash, publishedAt }
- *   sites/<site>/revisions/<sha>.json    { revision, schemaHash, blocks }
- *   sites/<site>/drafts/<slug>.json      { set, delete }
+ *   sites/<site>/blocks/<hash>.json              one block body (immutable)
+ *   sites/<site>/revisions/<id>/index.json       { revision, sequence, blocks }
+ *   sites/<site>/revisions/<id>/meta.json        { previous, draft?, reapplyOf?, author, via, message, publishedAt }
+ *   sites/<site>/latest.json                     the live index + previewHosts
+ *   sites/<site>/drafts/<slug>/index.json        { names }
+ *   sites/<site>/drafts/<slug>/<name>.json       one draft file per block name
+ *   sites/<site>/schema.json                     the schema the last `deco schema push` sent
  *
- * Keys are only ever built here, from a validated site slug, commit sha or
- * draft slug, so no caller can address anything outside its site's prefix.
+ * Keys are only ever built here, from a validated site slug, block hash,
+ * revision id, draft slug or block name, so no caller can address anything
+ * outside its site's prefix. Every key starts with the `DELIVERY_KEY_PREFIX`
+ * setting (test-only, empty in production).
  */
 
 import {
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
+  type ListObjectsV2CommandOutput,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { blockFileName, isBlockFileName } from "@decocms/blocks/protocol";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import { getSettings } from "@/settings";
+import { isRevisionId } from "./revision-id";
 
 export const DELIVERY_ORIGIN = "https://delivery.decocms.com";
 
-/** A git commit sha (SHA-1): a revision id. */
-const COMMIT_SHA_RE = /^[0-9a-f]{40}$/;
 /** 16 random bytes, base64url without padding. */
 const DRAFT_SLUG_RE = /^[A-Za-z0-9_-]{22}$/;
+
+/** A block hash: `blockVersion`, 22 base64url characters. */
+const BLOCK_HASH_RE = /^[A-Za-z0-9_-]{22}$/;
 
 /**
  * The edge holds latest.json up to 1 h (purged after every write); browsers
@@ -33,28 +43,70 @@ const DRAFT_SLUG_RE = /^[A-Za-z0-9_-]{22}$/;
  */
 export const CACHE_LATEST = "public, max-age=0, s-maxage=3600, must-revalidate";
 export const CACHE_REVISION = "public, max-age=31536000, immutable";
+/** A block object never changes: its key is its content's hash. */
+export const CACHE_BLOCK = "public, max-age=31536000, immutable";
 export const CACHE_DRAFT = "no-cache, max-age=0, must-revalidate";
+/**
+ * The schema is replaced by every deploy's `deco schema push`; Studio reads
+ * it from the bucket with a conditional GET, and any other reader revalidates.
+ */
+export const CACHE_SCHEMA = "no-cache, max-age=0, must-revalidate";
 
-export function isCommitSha(value: string): boolean {
-  return COMMIT_SHA_RE.test(value);
+/** The test-only key prefix (`DELIVERY_KEY_PREFIX`), `""` in production. */
+function keyPrefix(): string {
+  return getSettings().deliveryKeyPrefix ?? "";
 }
 
 function siteKey(site: string): string {
   if (!isValidSiteSlug(site)) throw new Error(`invalid site id: ${site}`);
-  return `sites/${site}`;
+  return `${keyPrefix()}sites/${site}`;
+}
+
+function revisionFolder(site: string, id: string): string {
+  if (!isRevisionId(id)) throw new Error(`invalid revision: ${id}`);
+  return `${siteKey(site)}/revisions/${id}/`;
+}
+
+function draftFolder(site: string, slug: string): string {
+  if (!DRAFT_SLUG_RE.test(slug)) throw new Error("invalid draft slug");
+  return `${siteKey(site)}/drafts/${slug}/`;
+}
+
+/**
+ * A block's draft file name: `blockFileName(name)`, except that the block
+ * named `index` is `%69ndex.json`, so it can't be the draft index.
+ * `blockNameFromFile` (one decode) gives the name back either way.
+ */
+export function draftFileName(name: string): string {
+  const file = name === "index" ? "%69ndex.json" : blockFileName(name);
+  if (name.length === 0 || !isBlockFileName(file)) {
+    throw new Error(`invalid block name: ${JSON.stringify(name)}`);
+  }
+  return file;
 }
 
 export const deliveryKeys = {
   latest: (site: string) => `${siteKey(site)}/latest.json`,
+  /** The schema the last `deco schema push` sent: `schema.json`. */
+  schema: (site: string) => `${siteKey(site)}/schema.json`,
+  /** A block body by its hash (immutable): `blocks/<hash>.json`. */
+  block: (site: string, hash: string) => {
+    if (!BLOCK_HASH_RE.test(hash)) throw new Error("invalid block hash");
+    return `${siteKey(site)}/blocks/${hash}.json`;
+  },
   revisions: (site: string) => `${siteKey(site)}/revisions/`,
-  revision: (site: string, sha: string) => {
-    if (!isCommitSha(sha)) throw new Error(`invalid revision: ${sha}`);
-    return `${siteKey(site)}/revisions/${sha}.json`;
-  },
-  draft: (site: string, slug: string) => {
-    if (!DRAFT_SLUG_RE.test(slug)) throw new Error("invalid draft slug");
-    return `${siteKey(site)}/drafts/${slug}.json`;
-  },
+  /** A revision's index (immutable): `revisions/<id>/index.json`. */
+  revisionIndex: (site: string, id: string) =>
+    `${revisionFolder(site, id)}index.json`,
+  /** A revision's meta (immutable): `revisions/<id>/meta.json`. */
+  revisionMeta: (site: string, id: string) =>
+    `${revisionFolder(site, id)}meta.json`,
+  /** The names a draft holds: `drafts/<slug>/index.json`. */
+  draftIndex: (site: string, slug: string) =>
+    `${draftFolder(site, slug)}index.json`,
+  /** One block's draft file: `drafts/<slug>/<draftFileName(name)>`. */
+  draftFile: (site: string, slug: string, name: string) =>
+    `${draftFolder(site, slug)}${draftFileName(name)}`,
 };
 
 /** A new draft slug: unguessable, since holding its URL is the read grant. */
@@ -73,8 +125,25 @@ export function bareEtag(etag: string | null | undefined): string | null {
 export interface StoredObject {
   text: string;
   etag: string | null;
-  /** User-defined metadata (`x-amz-meta-*`), keys lowercased; absent when none. */
-  metadata?: Record<string, string>;
+}
+
+/** A conditional read's answer when the object still has the ETag sent. */
+export interface NotModified {
+  notModified: true;
+}
+
+export interface GetOptions {
+  /** Answer {@link NotModified} while the object's ETag is this one. */
+  ifNoneMatch?: string | null;
+}
+
+/** {@link DeliveryStore.get}, with its conditional form. */
+export interface DeliveryGet {
+  (key: string): Promise<StoredObject | null>;
+  (
+    key: string,
+    options: GetOptions,
+  ): Promise<StoredObject | NotModified | null>;
 }
 
 /**
@@ -95,45 +164,67 @@ export class ObjectChangedError extends Error {
   }
 }
 
-/** The four object operations the hosted features need. */
+/**
+ * R2 couldn't answer a write or read now: a 429, a 5xx, a network error or
+ * a timeout. On a conditional PUT this is never a lost race and never a
+ * success (contract §2.6): the caller answers Unavailable and nothing is
+ * retried here.
+ */
+export class DeliveryUnavailableError extends Error {
+  constructor(key: string, cause: unknown) {
+    super(
+      `${key}: the delivery bucket is unavailable (${
+        cause instanceof Error ? cause.message : String(cause)
+      })`,
+    );
+    this.name = "DeliveryUnavailableError";
+  }
+}
+
+/** One page of a delimiter listing: the common prefixes ("folders"). */
+export interface ListPage {
+  prefixes: string[];
+  /** The continuation token of the next page, or null on the last one. */
+  nextToken: string | null;
+}
+
+/** The object operations the hosted features need. */
 export interface DeliveryStore {
   putJson(
     key: string,
     value: unknown,
     cacheControl: string,
-    /** User-defined metadata (`x-amz-meta-*`): ASCII values, 2 KB in all. */
-    metadata?: Record<string, string>,
     /** Write only if the object is still as read; else {@link ObjectChangedError}. */
     condition?: PutCondition,
   ): Promise<{ etag: string | null }>;
-  /** The object, or null when there is none. */
-  get(key: string): Promise<StoredObject | null>;
+  /** Writes an already serialized JSON text as is (an index, a block body). */
+  putText(
+    key: string,
+    text: string,
+    cacheControl: string,
+    condition?: PutCondition,
+  ): Promise<{ etag: string | null }>;
+  /**
+   * The object, or null when there is none; with `ifNoneMatch`, `{
+   * notModified: true }` while the object still has that ETag.
+   */
+  get: DeliveryGet;
   delete(key: string): Promise<void>;
-  /** Every key under `prefix`, paging through the whole listing. */
-  listKeys(prefix: string): Promise<string[]>;
-}
-
-/** The commit shas that have a revision object for `site`: one paged listing. */
-export async function listRevisionShas(
-  store: DeliveryStore,
-  site: string,
-): Promise<Set<string>> {
-  const prefix = deliveryKeys.revisions(site);
-  const shas = new Set<string>();
-  for (const key of await store.listKeys(prefix)) {
-    const sha = key.slice(prefix.length).replace(/\.json$/, "");
-    if (isCommitSha(sha)) shas.add(sha);
-  }
-  return shas;
-}
-
-export async function getJson(
-  store: DeliveryStore,
-  key: string,
-): Promise<{ value: unknown; etag: string | null } | null> {
-  const object = await store.get(key);
-  if (!object) return null;
-  return { value: JSON.parse(object.text) as unknown, etag: object.etag };
+  /**
+   * One page of the "folders" right under `prefix` (a delimiter listing,
+   * ascending key order). `maxKeys` caps folders and plain objects together,
+   * as S3 does, so a page can hold fewer than `maxKeys` folders. `startAfter`
+   * (a full key) starts the listing past it; a continuation token wins over it.
+   */
+  listPage(
+    prefix: string,
+    options: {
+      delimiter: "/";
+      maxKeys: number;
+      continuationToken?: string | null;
+      startAfter?: string | null;
+    },
+  ): Promise<ListPage>;
 }
 
 function isConditionFailed(error: unknown): boolean {
@@ -143,6 +234,21 @@ function isConditionFailed(error: unknown): boolean {
     e?.name === "ConditionalRequestConflict" ||
     e?.$metadata?.httpStatusCode === 412
   );
+}
+
+/**
+ * What makes a conditional PUT Unavailable rather than a lost race: a 429,
+ * any 5xx, or no HTTP answer at all (network error, timeout).
+ */
+function isUnavailable(error: unknown): boolean {
+  const status = (error as { $metadata?: { httpStatusCode?: number } })
+    ?.$metadata?.httpStatusCode;
+  return status === undefined || status === 429 || status >= 500;
+}
+
+function isNotModified(error: unknown): boolean {
+  const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return e?.name === "NotModified" || e?.$metadata?.httpStatusCode === 304;
 }
 
 function isNotFound(error: unknown): boolean {
@@ -156,7 +262,7 @@ export function createS3DeliveryStore(config: {
   accessKeyId: string;
   secretAccessKey: string;
 }): DeliveryStore {
-  const client = new S3Client({
+  const options = {
     endpoint: config.endpoint,
     region: "auto",
     credentials: {
@@ -164,73 +270,122 @@ export function createS3DeliveryStore(config: {
       secretAccessKey: config.secretAccessKey,
     },
     forcePathStyle: true,
-  });
+  };
+  const client = new S3Client(options);
+  /**
+   * Conditional PUTs go through a client with the SDK's own retries off: a
+   * retried PUT whose first try landed would get 412 from its own write, and
+   * look like a lost race (S2). The protocol's attempts handle races.
+   */
+  const conditionalClient = new S3Client({ ...options, maxAttempts: 1 });
   const Bucket = config.bucket;
+  const put = async (
+    key: string,
+    body: string,
+    cacheControl: string,
+    condition: PutCondition | undefined,
+  ) => {
+    try {
+      const res = await (condition ? conditionalClient : client).send(
+        new PutObjectCommand({
+          Bucket,
+          Key: key,
+          Body: Buffer.from(body, "utf-8"),
+          ContentType: "application/json; charset=utf-8",
+          CacheControl: cacheControl,
+          ...(condition && "ifMatch" in condition
+            ? { IfMatch: condition.ifMatch }
+            : {}),
+          ...(condition && "ifNoneMatch" in condition
+            ? { IfNoneMatch: condition.ifNoneMatch }
+            : {}),
+        }),
+      );
+      return { etag: res.ETag ?? null };
+    } catch (error) {
+      if (condition && isConditionFailed(error)) {
+        throw new ObjectChangedError(key);
+      }
+      if (condition && isUnavailable(error)) {
+        throw new DeliveryUnavailableError(key, error);
+      }
+      throw error;
+    }
+  };
+  function get(key: string): Promise<StoredObject | null>;
+  function get(
+    key: string,
+    options: GetOptions,
+  ): Promise<StoredObject | NotModified | null>;
+  async function get(
+    key: string,
+    options?: GetOptions,
+  ): Promise<StoredObject | NotModified | null> {
+    try {
+      const res = await client.send(
+        new GetObjectCommand({
+          Bucket,
+          Key: key,
+          ...(options?.ifNoneMatch ? { IfNoneMatch: options.ifNoneMatch } : {}),
+        }),
+      );
+      const text = (await res.Body?.transformToString("utf-8")) ?? "";
+      return { text, etag: res.ETag ?? null };
+    } catch (error) {
+      if (options?.ifNoneMatch && isNotModified(error)) {
+        return { notModified: true };
+      }
+      if (isNotFound(error)) return null;
+      if (isUnavailable(error)) throw new DeliveryUnavailableError(key, error);
+      throw error;
+    }
+  }
   return {
-    async putJson(key, value, cacheControl, metadata, condition) {
-      try {
-        const res = await client.send(
-          new PutObjectCommand({
-            Bucket,
-            Key: key,
-            Body: Buffer.from(JSON.stringify(value), "utf-8"),
-            ContentType: "application/json; charset=utf-8",
-            CacheControl: cacheControl,
-            ...(metadata && Object.keys(metadata).length > 0
-              ? { Metadata: metadata }
-              : {}),
-            ...(condition && "ifMatch" in condition
-              ? { IfMatch: condition.ifMatch }
-              : {}),
-            ...(condition && "ifNoneMatch" in condition
-              ? { IfNoneMatch: condition.ifNoneMatch }
-              : {}),
-          }),
-        );
-        return { etag: res.ETag ?? null };
-      } catch (error) {
-        if (condition && isConditionFailed(error)) {
-          throw new ObjectChangedError(key);
-        }
-        throw error;
-      }
-    },
-    async get(key) {
-      try {
-        const res = await client.send(
-          new GetObjectCommand({ Bucket, Key: key }),
-        );
-        const text = (await res.Body?.transformToString("utf-8")) ?? "";
-        return {
-          text,
-          etag: res.ETag ?? null,
-          ...(res.Metadata ? { metadata: res.Metadata } : {}),
-        };
-      } catch (error) {
-        if (isNotFound(error)) return null;
-        throw error;
-      }
-    },
+    putJson: (key, value, cacheControl, condition) =>
+      put(key, JSON.stringify(value), cacheControl, condition),
+    putText: (key, text, cacheControl, condition) =>
+      put(key, text, cacheControl, condition),
+    get,
     async delete(key) {
-      await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
+      try {
+        await client.send(new DeleteObjectCommand({ Bucket, Key: key }));
+      } catch (error) {
+        if (isNotFound(error)) return;
+        if (isUnavailable(error))
+          throw new DeliveryUnavailableError(key, error);
+        throw error;
+      }
     },
-    async listKeys(prefix) {
-      const keys: string[] = [];
-      let token: string | undefined;
-      do {
-        const res = await client.send(
+    async listPage(
+      prefix,
+      { delimiter, maxKeys, continuationToken, startAfter },
+    ) {
+      let res: ListObjectsV2CommandOutput;
+      try {
+        res = await client.send(
           new ListObjectsV2Command({
             Bucket,
             Prefix: prefix,
-            ContinuationToken: token,
+            Delimiter: delimiter,
+            MaxKeys: maxKeys,
+            ...(continuationToken
+              ? { ContinuationToken: continuationToken }
+              : startAfter
+                ? { StartAfter: startAfter }
+                : {}),
           }),
         );
-        for (const object of res.Contents ?? []) {
-          if (object.Key) keys.push(object.Key);
-        }
-        token = res.IsTruncated ? res.NextContinuationToken : undefined;
-      } while (token);
-      return keys;
+      } catch (error) {
+        if (isUnavailable(error))
+          throw new DeliveryUnavailableError(prefix, error);
+        throw error;
+      }
+      return {
+        prefixes: (res.CommonPrefixes ?? [])
+          .map((p) => p.Prefix)
+          .filter((p): p is string => typeof p === "string"),
+        nextToken: res.IsTruncated ? (res.NextContinuationToken ?? null) : null,
+      };
     },
   };
 }
@@ -263,10 +418,10 @@ export function deliveryStore(): DeliveryStore | null {
 
 /**
  * A draft's pointer target without scheme or version
- * (`delivery.decocms.com/sites/<site>/drafts/<slug>.json`), the form the SDK's
- * `?__draft=<pointer>@<version>` carries.
+ * (`delivery.decocms.com/sites/<site>/drafts/<slug>/index.json`), the form
+ * the SDK's `?__draft=<pointer>@<version>` carries.
  */
 export function draftPointerTarget(site: string, slug: string): string {
   const origin = new URL(getSettings().deliveryPublicOrigin ?? DELIVERY_ORIGIN);
-  return `${origin.host}/${deliveryKeys.draft(site, slug)}`;
+  return `${origin.host}/${deliveryKeys.draftIndex(site, slug)}`;
 }

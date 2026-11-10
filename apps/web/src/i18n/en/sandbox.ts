@@ -1043,6 +1043,7 @@ export const sandbox = {
   "sandbox.preview.loaderNoLongerExists": "This loader no longer exists.",
   "sandbox.preview.noPagesFound": "No pages found in this site.",
   "sandbox.preview.noSearchResults": "No results match your search.",
+  "sandbox.preview.siteRoutes": "Site routes",
   "sandbox.preview.noServerRunning": "No server running",
   "sandbox.preview.openInNewTab": "Open in new tab",
   "sandbox.preview.pageAlreadyExists":
@@ -1287,13 +1288,19 @@ export const sandbox = {
     "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
+  "sandbox.schemaless.agentPrompt":
+    "This site's content is edited in deco Studio, but Studio hasn't received the site's schema yet, so its content forms show raw fields. Please set that up in this repository:\n\n1. Make sure @decocms/blocks is 8.11.0 or newer (upgrade it if not), then run `npx deco skills install` to add the deco framework skills to this repository.\n2. Load the deco-site-workflow skill and follow its references/schema.md: generate the schema with `npx deco schema` and commit .deco/schema.gen.json; make DECO_SITE resolve to the Studio site {site}; send the schema to Studio with `npx deco schema push`; and wire `npx deco schema push` into the production deploy (after the deploy succeeds, with a Studio API key in the DECO_TOKEN secret) so every deploy sends it.\n3. Run `npx deco check` and report back: what you changed, and what each command printed.",
+  "sandbox.schemaless.agentPromptSiteUnknown":
+    "this project uses (ask me for its name if you can't find it)",
   "sandbox.schemaless.back": "All blocks",
   "sandbox.schemaless.bannerBody":
-    "Until then, each block opens with plain fields built from its saved values, and saving keeps every other value as it is. Generate the schema in your site's folder; this page picks it up on its own.",
-  "sandbox.schemaless.bannerTitle":
-    "Forms get proper fields once the schema exists",
-  "sandbox.schemaless.docsLink": "About deco schema",
+    "This site hasn't sent Studio its schema yet (the description of each form's fields), so every block opens with plain fields built from its saved values. Saving still keeps everything else as it is. Ask the coding agent working on your site to set it up: copy the prompt and paste it into the agent. It takes one deploy, and the forms here update on their own.",
+  "sandbox.schemaless.bannerTitle": "Content forms are showing raw fields",
+  "sandbox.schemaless.copyPrompt": "Copy prompt for your agent",
+  "sandbox.schemaless.copyPromptFailed":
+    "Couldn't copy the prompt. Check that this page may use the clipboard, then try again.",
   "sandbox.schemaless.empty": "Empty",
+  "sandbox.schemaless.installSkill": "Install skill",
   "sandbox.schemaless.item": "Item {n}",
   "sandbox.schemaless.itemCount": "{count} items",
   "sandbox.schemaless.listLabel": "Saved blocks",
@@ -1304,7 +1311,11 @@ export const sandbox = {
     "Enter a number. The saved value stays until you do.",
   "sandbox.schemaless.notSet": "Not set",
   "sandbox.schemaless.pickBlock": "Pick a block to see its content.",
+  "sandbox.schemaless.promptCopied": "Copied",
+  "sandbox.schemaless.promptCopiedAnnouncement":
+    "Prompt copied to the clipboard",
   "sandbox.schemaless.searchPlaceholder": "Search blocks",
+  "sandbox.schemaless.usesSkill": "Uses the deco-site-workflow skill",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
   "sandbox.sectionRenameDialog.description":
     "Updates the display name. The internal key stays the same so pages referencing this section keep working.",
@@ -1386,8 +1397,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.status.ended": "Ended",
   "sandbox.dateCampaigns.status.always": "Always on",
   "sandbox.dateCampaigns.status.unreadable": "Dates can't be read",
-  "sandbox.dateCampaigns.usedBy": "Used by {count}",
-  "sandbox.dateCampaigns.notUsed": "Not used yet",
   "sandbox.dateCampaigns.state.new": "Not published yet",
   "sandbox.dateCampaigns.state.changed": "Changed in your draft",
   "sandbox.dateCampaigns.removedTitle": "Removed in your draft",
@@ -1397,15 +1406,10 @@ export const sandbox = {
     "One of its dates can't be read, so its variants don't show. Pick new dates and save.",
   "sandbox.dateCampaigns.publishedWindow": "Published: {window}",
   "sandbox.dateCampaigns.saveDates": "Save dates",
-  "sandbox.dateCampaigns.renameHint":
-    "Every variant that uses this campaign is updated in the same change.",
-  "sandbox.dateCampaigns.renameWholeHint":
-    "Sections that read every campaign in their own code still look for the old name. Update them in the site editor.",
   "sandbox.dateCampaigns.delete": "Delete campaign",
   "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
   "sandbox.dateCampaigns.deletedHint":
     "It leaves the site when you publish. Undo brings it back.",
-  "sandbox.dateCampaigns.renamed": "Campaign renamed to “{name}”",
   "sandbox.dateCampaigns.allCampaigns": "All campaigns",
   "sandbox.dateCampaigns.today": "Today",
   "sandbox.dateCampaigns.previous": "Earlier",
@@ -1436,6 +1440,8 @@ export const sandbox = {
   "sandbox.previewAs.testsHint":
     "Not set: you see the side your own visit got.",
   "sandbox.previewAs.noTests": "No A/B tests yet.",
+  "sandbox.previewAs.testsLoadFailed": "Couldn't load your tests.",
+  "sandbox.previewAs.tryAgain": "Try again",
   "sandbox.previewAs.off": "Off",
   "sandbox.previewAs.on": "On",
   "sandbox.previewAs.reset": "Show as it is now",

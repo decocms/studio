@@ -32,6 +32,7 @@ import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { connectDevDb } from "../fixtures/db";
 import {
+  commitStubFiles,
   createFastPreviewProject,
   type FastPreviewProject,
   inspectStubRepo,
@@ -786,10 +787,10 @@ test.describe("decofile API", () => {
         owner,
         repo,
         defaultBranch: "main",
-        branches: { main: { files: {} } },
+        branches: { main: { files: {} }, draft: { files: {} } },
       });
       const project = await createFastPreviewProject(ctx, org, { owner, repo });
-      const url = decofileUrl(project, "main");
+      const url = decofileUrl(project, "draft");
 
       // Deco keys a slash-named page as `pages-Joias%2Fcolecao-<id>`, like `%20` for a space.
       const key = "pages-Joias%2Fcolecao%2Freligiosos%2Fcruz-862158";
@@ -805,7 +806,7 @@ test.describe("decofile API", () => {
       const stem = "pages-Joias%252Fcolecao%252Freligiosos%252Fcruz-862158";
       const inspected = await inspectStubRepo(ctx, owner, repo);
       expect(
-        inspected.branches["main"]?.files[`.deco/blocks/${stem}.json`],
+        inspected.branches["draft"]?.files[`.deco/blocks/${stem}.json`],
       ).toBe(blockFileContent(page));
 
       // The key round-trips back through GET exactly as sent.
@@ -1029,7 +1030,9 @@ test.describe("decofile API", () => {
         expect(res.ok()).toBe(true);
       };
       await writeBlock("draft", "editor");
-      await writeBlock("main", "live");
+      await commitStubFiles(ctx, owner, repo, "main", {
+        ".deco/blocks/Hero.json": blockFileContent({ title: "live" }),
+      });
 
       const publishRes = await ctx.post(
         `${decofileUrl(project, "draft")}/publish`,

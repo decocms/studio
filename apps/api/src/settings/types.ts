@@ -65,6 +65,8 @@ export interface Settings {
    *  does NOT implicitly get cross-org kanban, and a member of an admin org
    *  does NOT get /api/_admin. Never union the two. */
   taskBoardAdminOrgIds: string[];
+  feedbackOrgId: string | undefined;
+  feedbackProjectId: string | undefined;
   /** Shared secret for server-to-server calls to /api/_admin (DEPLOYMENT_ADMIN_TOKEN),
    *  sent as `x-deployment-admin-token`. Read-only routes and member-add only —
    *  no impersonation. Unset = header ignored entirely. */
@@ -354,6 +356,8 @@ export interface Settings {
   deliveryR2Endpoint: string | undefined;
   /** test-only: overrides `https://delivery.decocms.com` in draft pointers. */
   deliveryPublicOrigin: string | undefined;
+  /** test-only: a prefix for every delivery key (E2E writes under `spikes/e2e/`). */
+  deliveryKeyPrefix: string | undefined;
   /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
   siteTokenSigningKey: string | undefined;
   /**

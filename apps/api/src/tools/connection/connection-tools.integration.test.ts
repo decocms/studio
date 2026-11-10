@@ -114,6 +114,7 @@ describe("Connection Tools", () => {
         secrets: null as never,
         orgFileConfigs: null as never,
         orgSites: null as never,
+        cmsDrafts: null as never,
         orgRepoSyncs: null as never,
         gitProviderAccounts: null as never,
         gitProviderAccountCredentials: null as never,
@@ -150,6 +151,7 @@ describe("Connection Tools", () => {
         check: async () => {},
         grant: () => {},
         setToolName: () => {},
+        getRole: () => "owner",
       } as never,
       db: database.db,
       tracer: {

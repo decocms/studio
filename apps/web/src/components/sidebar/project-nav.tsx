@@ -8,12 +8,10 @@
 
 import type { ReactNode } from "react";
 import {
-  ClockRewind,
-  BarChartSquare02,
   Beaker02,
+  ClockRewind,
   Calendar,
   CheckDone01,
-  Globe02,
   Image01,
   Lightning01,
   Lock01,
@@ -29,7 +27,6 @@ import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { lastFoundV8 } from "@/hooks/use-main-schema-v8";
 import {
   keepAttachedPinnedViews,
   pinnedViewsOf,
@@ -71,14 +68,7 @@ interface ProjectView {
   dataTour?: string;
 }
 
-export function ProjectNav({
-  onNavigate,
-  heading,
-}: {
-  onNavigate?: () => void;
-  /** Titles the rows as their own section, under the new navigation. */
-  heading?: string;
-}) {
+export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { project } = useProjectScope();
   const navigateToAgent = useNavigateToAgent();
@@ -91,15 +81,7 @@ export function ProjectNav({
   if (!project) return null;
 
   const hasClonableSource = agentHasClonableSource(project.metadata);
-  /** While main's schema is read (a GitHub round trip), a site the server last
-   *  found v8 already shows its Calendar and Experiments rows, so they don't
-   *  pop in late. The views themselves still wait for the answer. */
-  const v8WhileReading = nativeViews.calendarPending && lastFoundV8(project);
-  const presence = {
-    ...nativeViews.presence,
-    calendar: nativeViews.presence.calendar || v8WhileReading,
-    experiments: nativeViews.presence.experiments || v8WhileReading,
-  };
+  const presence = nativeViews.presence;
   const sidebarViews =
     optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
   const selectedViews = new Set(
@@ -156,21 +138,13 @@ export function ProjectNav({
       label: t("common.mainPanelTabs.e2e"),
       icon: <CheckDone01 size={16} />,
     },
-    analytics: {
-      label: t("common.mainPanelTabs.analytics"),
-      icon: <BarChartSquare02 size={16} />,
-    },
-    cdn: {
-      label: t("common.mainPanelTabs.cdn"),
-      icon: <Globe02 size={16} />,
-    },
-    experiments: {
-      label: t("experiments.title"),
-      icon: <Beaker02 size={16} />,
-    },
     calendar: {
       label: t("common.mainPanelTabs.calendar"),
       icon: <Calendar size={16} />,
+    },
+    experiments: {
+      label: t("common.mainPanelTabs.experiments"),
+      icon: <Beaker02 size={16} />,
     },
   };
   for (const viewId of PROJECT_NATIVE_VIEW_IDS) {
@@ -238,10 +212,9 @@ export function ProjectNav({
 
   const onProject = leafPath.startsWith(DESTINATION_ROUTE.projects);
 
-  /** Under the new navigation each app wears its catalogue tile, as on the
-   *  rail and the home; a pinned app keeps its own mark on a neutral tile. */
+  /** Each app wears its catalogue tile, as on the rail and the home; a pinned
+   *  app keeps its own mark on a neutral tile. */
   const appIcon = (view: ProjectView) => {
-    if (!heading) return view.icon;
     const app = PROJECT_APPS[view.panel as keyof typeof PROJECT_APPS];
     return (
       <span
@@ -284,14 +257,13 @@ export function ProjectNav({
       ))}
     </SidebarMenu>
   );
-  if (!heading) return rows;
   if (views.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">
       {/* Same heading as the projects tree's sections. */}
       <div className="flex h-6 items-center px-2 group-data-[state=collapsed]/sidebar:hidden">
         <span className="truncate font-medium text-xs text-muted-foreground">
-          {heading}
+          {t("sidebar.projectNav.apps")}
         </span>
       </div>
       {rows}

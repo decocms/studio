@@ -9,6 +9,10 @@ on:
       # fix there ships nothing without a rebuild. The version gate below still
       # applies: bump packages/sandbox/package.json or the tag is reused.
       - "packages/harness-runner/**"
+      # So are the `decocms` CLI and its skill.
+      - "apps/api/src/cli.ts"
+      - "apps/api/src/cli/**"
+      - "apps/api/plugin/**"
   workflow_dispatch:
 
 # One release at a time, in push order. A merge and the bot's version bump

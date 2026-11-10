@@ -2,6 +2,8 @@ import * as migration256taskboardharness from "./256-task-board-harness";
 import * as migration257taskboarditemhierarchy from "./257-task-board-item-hierarchy";
 import * as migration259repositorymonitordeploys from "./259-repository-monitor-deploys";
 import * as migration260demoboardsnapshots from "./260-demo-board-snapshots";
+import * as migration261removeuserregisteredssoproviders from "./261-remove-user-registered-sso-providers";
+import * as migration263cmsdrafts from "./263-cms-drafts";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -36,6 +38,7 @@ import * as migration250githubcopilotsubscriptions from "./250-github-copilot-su
 import * as migration251orgsharedplans from "./251-org-shared-plans";
 import * as migration252automationlinkedchattrigger from "./252-automation-linked-chat-trigger";
 import * as migration253automationprbuiltintriggers from "./253-automation-pr-builtin-triggers";
+import * as migration262automationcardmentiontrigger from "./262-automation-card-mention-trigger";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -558,6 +561,11 @@ const migrations: Record<string, Migration> = {
   "257-task-board-item-hierarchy": migration257taskboarditemhierarchy,
   "259-repository-monitor-deploys": migration259repositorymonitordeploys,
   "260-demo-board-snapshots": migration260demoboardsnapshots,
+  "261-remove-user-registered-sso-providers":
+    migration261removeuserregisteredssoproviders,
+  "262-automation-card-mention-trigger":
+    migration262automationcardmentiontrigger,
+  "263-cms-drafts": migration263cmsdrafts,
 };
 
 export default migrations;

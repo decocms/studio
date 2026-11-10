@@ -347,7 +347,6 @@ export const settings = {
   "settings.repositories.cancel": "Cancelar",
   "settings.repositories.failed": "Algo deu errado",
   "settings.nav.connections": "Conexões",
-  "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",
   "settings.nav.skills": "Skills",
   "settings.nav.memory": "Memória",
@@ -389,9 +388,6 @@ export const settings = {
   "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
   "settings.multiAppPreview.description":
     "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",
-  "settings.preferences.projectFirstNav": "Navegação centrada em projetos",
-  "settings.preferences.projectFirstNavDescription":
-    "Experimente o trilho de organizações, o launcher de projetos e a home Hoje/Agentes.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeLight": "Tema claro",
   "settings.preferences.themeDark": "Tema escuro",
@@ -427,7 +423,6 @@ export const settings = {
     "Nenhuma automa\u00e7\u00e3o encontrada",
   "settings.automations.pageTitle": "Automa\u00e7\u00f5es",
   "settings.automations.searchPlaceholder": "Pesquisar automa\u00e7\u00f5es...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Importar skill",
   "settings.skills.importing": "Importando\u2026",
   "settings.skills.importSuccess": '"{name}" importada',
@@ -460,15 +455,10 @@ export const settings = {
   "settings.skills.errorDescription":
     "O catálogo de skills não pôde ser carregado. Você pode não ter acesso aos arquivos desta organização.",
   "settings.skills.retry": "Tentar novamente",
-  "settings.memory.pageTitle": "Memória",
   "settings.memory.tabOrg": "Organização",
   "settings.memory.tabUser": "Só você",
   "settings.memory.orgHeading": "Compartilhada com todo mundo em {org}",
-  "settings.memory.orgDescription":
-    "O Deco lê isto no começo de cada chat e acrescenta o que aprende. Corrija o que estiver errado ou desatualizado.",
   "settings.memory.userHeading": "Sua memória pessoal",
-  "settings.memory.userDescription":
-    "Carregada só nos seus chats. Boa para como você gosta de trabalhar, o que é seu e o que pular.",
   "settings.memory.orgPlaceholder":
     "Fatos que todos os chats devem saber. Por exemplo: a gente sobe na quinta, preços em BRL, o tom da marca é informal.",
   "settings.memory.userPlaceholder":
@@ -725,11 +715,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
   "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
-  "settings.planUsage.noPlan": "Nenhum plano ativo",
-  "settings.planUsage.noPlanDescription":
-    "Esta organização não tem um plano ativo. Escolha um abaixo — o primeiro mês do Starter é grátis.",
   "settings.planUsage.included": "Incluído no plano",
-  "settings.planUsage.credits": "Créditos",
+  "settings.planUsage.credits": "Créditos adicionados",
   "settings.planUsage.creditsInUse": "Em uso",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
   "settings.planUsage.portalFailed":
@@ -790,12 +777,6 @@ export const settings = {
     "Esta organização usou todo o limite mensal de IA. O chat e as tarefas ficam pausados até fazer upgrade ou adicionar créditos.",
 
   "settings.decoCreditsHero.topUpFailed": "Recarga falhou: {message}",
-  "settings.decoNudgeCard.connectDeco": "Conectar Deco",
-  "settings.decoNudgeCard.connecting": "Conectando\u2026",
-  "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
-  "settings.decoNudgeCard.description":
-    "100+ modelos, uma conex\u00e3o \u2014 pague conforme usa, sem APIs para gerenciar.",
-  "settings.decoNudgeCard.recommended": "Recomendado",
   "settings.deleteOrganizationSection.cancel": "Cancelar",
   "settings.deleteOrganizationSection.dangerZone": "Zona de risco",
   "settings.deleteOrganizationSection.deleteButton": "Deletar",
@@ -1249,10 +1230,6 @@ export const settings = {
     "OpenAI-compat\u00edvel personalizado",
   "settings.aiProviders.customOpenAiDescription":
     "Traga seu pr\u00f3prio servidor de modelos (avan\u00e7ado)",
-  "settings.aiProviders.decoConnectSuccess":
-    "Deco AI Gateway conectado com sucesso",
-  "settings.aiProviders.decoConnectError":
-    "Falha ao conectar o Deco AI Gateway: {error}",
 
   "settings.infraBilling.noSites":
     "Esta organização ainda não é dona de nenhum site deco.cx.",

@@ -310,16 +310,6 @@ export function isLegacySettingsTab(tabId: string | undefined): boolean {
 }
 
 /**
- * The view a link to this agent should land on, or `undefined` when it names
- * none. `undefined` is meaningful: the caller sends those to Home rather than
- * to a bare agent URL with no view.
- *
- * `resolveDefaultTabId` cannot answer this — it falls back to `settings` for an
- * agent that named nothing, which is a sensible tab to RENDER but a wrong place
- * to SEND someone from a card they clicked.
- */
-
-/**
  * Org-level destinations an agent may name as its main view. They are not
  * `FIXED_SYSTEM_TABS` — they never appear on the tab bar — but the panel
  * machinery renders them, so they are legal places to land.
@@ -329,15 +319,6 @@ export const DESTINATION_MAIN_VIEWS: ReadonlySet<string> = new Set([
   "board",
   "reports",
 ]);
-
-export function landingTabIdFor(
-  metadata: EntityLayoutMetadata | null | undefined,
-): string | undefined {
-  const def = metadata?.defaultMainView ?? null;
-  /** `chat` is the retired "no main view" state; treat it as naming none. */
-  if (!def || def.type === "chat") return undefined;
-  return resolveDefaultTabId(metadata ?? null);
-}
 
 export function resolveDefaultTabId(
   metadata: EntityLayoutMetadata | null,
@@ -377,6 +358,20 @@ export function resolveDefaultTabId(
   return firstDeclaredTabId
     ? formatAgentViewTabId(firstDeclaredTabId)
     : "settings";
+}
+
+/**
+ * Where entering a project lands: the view its settings name as the main
+ * view, or `null` to stay on the Overview. Unlike {@link resolveDefaultTabId},
+ * an unset or retired `chat` default means the Overview, not Settings.
+ */
+export function resolveProjectLandingTabId(
+  metadata: EntityLayoutMetadata | null,
+): string | null {
+  const type = metadata?.defaultMainView?.type;
+  if (!type || type === "chat") return null;
+  const tabId = resolveDefaultTabId(metadata);
+  return tabId === "overview" ? null : tabId;
 }
 
 /**

@@ -1,4 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type Freestyle, FreestyleApiError } from "freestyle";
 import { sleep } from "@decocms/shared/std";
 import { FreestyleSandboxProvider } from "./freestyle";
@@ -96,6 +107,118 @@ describe("FreestyleSandboxProvider", () => {
     await provider.ensure(ID, { orgFsConfigJson: "{}" });
     expect(relays).toBe(1);
     provider.close();
+  });
+
+  describe("commit signing", () => {
+    const KEY = "synthetic-signing-key";
+    const EMAIL = "bot@example.com";
+    const baseSlug = (material: string) =>
+      `studio-sandbox-${createHash("sha256").update(material).digest("hex").slice(0, 16)}`;
+    const IMAGES = "example/sandbox:1\nexample/orgfs:1\nrunning";
+
+    async function warm(commitSigning?: { email: string; privateKey: string }) {
+      const execs: { command: string; env?: Record<string, string> }[] = [];
+      const snapshots: string[] = [];
+      const vm = {
+        exec: async (call: {
+          command: string;
+          env?: Record<string, string>;
+        }) => {
+          execs.push(call);
+          return { statusCode: 0, stdout: "" };
+        },
+        snapshot: async ({ slug }: { slug: string }) => {
+          snapshots.push(slug);
+        },
+        delete: async () => {},
+      };
+      const client = {
+        vms: {
+          snapshots: {
+            get: async () => {
+              throw new FreestyleApiError(404, { code: "NOT_FOUND" });
+            },
+          },
+          create: async () => ({ vm }),
+        },
+      } as unknown as Freestyle;
+      const provider = new FreestyleSandboxProvider({
+        apiKey: "k",
+        client,
+        image: "example/sandbox:1",
+        orgFsSidecarImage: "example/orgfs:1",
+        commitSigning,
+      });
+      await provider.warm();
+      provider.close();
+      const run = execs.find((e) =>
+        e.command.startsWith("docker run -d --name sandbox"),
+      );
+      return { execs, run, slug: snapshots[0] };
+    }
+
+    test("hands the daemon the key without it reaching a shell line", async () => {
+      const { execs, run } = await warm({ email: EMAIL, privateKey: KEY });
+      expect(execs.some((e) => e.command.includes(KEY))).toBe(false);
+      const install = execs.findIndex((e) => e.env?.GIT_SIGNING_KEY === KEY);
+      expect(install).toBeGreaterThanOrEqual(0);
+      expect(install).toBeLessThan(execs.indexOf(run!));
+      expect(run!.command).toContain(
+        "-v /srv/sandbox/git-signing-key:/run/git-signing/key:ro",
+      );
+      expect(run!.env?.GIT_SIGNING_KEY_FILE).toBe("/run/git-signing/key");
+      expect(run!.env?.GIT_SIGNING_KEY_EMAIL).toBe(EMAIL);
+      expect(run!.env?.GIT_SIGNING_KEY).toBeUndefined();
+    });
+
+    // Run for real: a fresh VM has no /srv/sandbox until the sidecar step, which comes later.
+    test("the install command writes an owner-only key on a fresh VM", async () => {
+      const { execs } = await warm({ email: EMAIL, privateKey: KEY });
+      const install = execs.find((e) => e.env?.GIT_SIGNING_KEY === KEY)!;
+      const root = mkdtempSync(join(tmpdir(), "freestyle-signing-"));
+      try {
+        const bin = join(root, "bin");
+        mkdirSync(bin);
+        writeFileSync(join(bin, "sudo"), '#!/bin/sh\nexec "$@"\n', {
+          mode: 0o755,
+        });
+        writeFileSync(join(bin, "chown"), "#!/bin/sh\nexit 0\n", {
+          mode: 0o755,
+        });
+        const proc = Bun.spawnSync(
+          ["sh", "-c", install.command.replaceAll("/srv/", `${root}/srv/`)],
+          {
+            env: {
+              PATH: `${bin}:${process.env.PATH}`,
+              GIT_SIGNING_KEY: KEY,
+            },
+          },
+        );
+        expect(proc.stderr.toString()).toBe("");
+        expect(proc.exitCode).toBe(0);
+        const file = join(root, "srv/sandbox/git-signing-key");
+        expect(readFileSync(file, "utf8")).toBe(KEY);
+        expect(statSync(file).mode & 0o777).toBe(0o400);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    test("a rotated key builds its own base snapshot", async () => {
+      const first = await warm({ email: EMAIL, privateKey: KEY });
+      const rotated = await warm({ email: EMAIL, privateKey: `${KEY}-2` });
+      expect(first.slug).toBe(baseSlug(`${IMAGES}\nsigning\n${EMAIL}\n${KEY}`));
+      expect(rotated.slug).not.toBe(first.slug);
+    });
+
+    test("unset keeps today's snapshot and leaves the VM keyless", async () => {
+      const { execs, run, slug } = await warm();
+      expect(slug).toBe(baseSlug(IMAGES));
+      expect(execs.some((e) => e.command.includes("git-signing"))).toBe(false);
+      expect(execs.some((e) => e.env?.GIT_SIGNING_KEY)).toBe(false);
+      expect(run!.env?.GIT_SIGNING_KEY_FILE).toBeUndefined();
+      expect(run!.env?.GIT_SIGNING_KEY_EMAIL).toBeUndefined();
+    });
   });
 
   test("warm caches each namespace mode in a separate base snapshot", async () => {
@@ -407,6 +530,94 @@ describe("resume reclaims a daemon that lost its claim", () => {
   });
 });
 
+describe("a resumed daemon that never answers", () => {
+  test("is rebooted, then claimed", async () => {
+    let rebooted = false;
+    const execs: string[] = [];
+    const client = {
+      vms: {
+        get: async (slug: string) => ({
+          id: `id-${slug}`,
+          metadata: { "studio-daemon-token": "vm-token" },
+        }),
+        ref: () => ({
+          data: async () => ({
+            state: "paused",
+            sourceSnapshotSlugAtCreate: "studio-sandbox-abc",
+            metadata: {},
+          }),
+          start: async () => ({}),
+          exec: async ({ command }: { command: string }) => {
+            execs.push(command);
+            if (command === "reboot -f") rebooted = true;
+            return { statusCode: 0, stdout: "" };
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL) =>
+        String(input).endsWith("/health") && !rebooted
+          ? new Response("", { status: 502 })
+          : Response.json({}),
+      { preconnect: realFetch.preconnect },
+    );
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      daemonBootTimeoutMs: 50,
+    });
+    await provider.ensure(ID);
+    expect(execs).toEqual(["reboot -f"]);
+    provider.close();
+  });
+});
+
+describe("delete", () => {
+  function vmWithShutdown(statusCode: number) {
+    const log: string[] = [];
+    const vm = {
+      id: "vm-1",
+      data: async () => ({ state: "running" }),
+      exec: async () => ({ statusCode, stdout: "" }),
+      delete: async () => void log.push("delete"),
+      update: async (o: { slug: string }) => void log.push(`slug=${o.slug}`),
+    };
+    const client = {
+      vms: {
+        get: async () => ({
+          id: "vm-1",
+          metadata: { "studio-daemon-token": "t" },
+        }),
+        ref: () => vm,
+      },
+      tls: {
+        rules: {
+          list: async () => ({ rules: [{ id: "r1", domain: "h.style.dev" }] }),
+          delete: async (id: string) => void log.push(`rule ${id}`),
+        },
+      },
+    } as unknown as Freestyle;
+    return { client, log };
+  }
+
+  test("deletes a VM whose shutdown sync went through", async () => {
+    const { client, log } = vmWithShutdown(0);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.delete("h");
+    expect(log).toEqual(["delete"]);
+    provider.close();
+  });
+
+  test("detaches a VM whose shutdown sync is not confirmed", async () => {
+    const { client, log } = vmWithShutdown(1);
+    const provider = new FreestyleSandboxProvider({ apiKey: "k", client });
+    await provider.delete("h");
+    expect(log).toEqual(["rule r1", "slug="]);
+    provider.close();
+  });
+});
+
 describe("repo snapshots", () => {
   const TOKEN = "ghs_secret";
   const CLONE_URL = `https://x-access-token:${TOKEN}@github.com/acme/site.git`;
@@ -578,6 +789,43 @@ describe("repo snapshots", () => {
     provider.close();
   });
 
+  test("a repo snapshot Freestyle deleted is forgotten, and the sandbox forks the base", async () => {
+    const { fake, snapshots, creates } = client();
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client: fake,
+    });
+    const opts = { tenant: TENANT, repo: REPO, repoSnapshot: true };
+    const forked = () => creates.filter((c) => c.slug).at(-1)?.snapshotId;
+    await provider.ensure(ref("a"), opts);
+    await settled(() => snapshots.length === 1);
+    const [gone] = snapshots;
+    await provider.ensure(ref("b"), opts);
+    expect(forked()).toBe(gone);
+
+    snapshots.length = 0;
+    const create = fake.vms.create.bind(fake.vms);
+    fake.vms.create = (async (options: Record<string, unknown>) => {
+      if (options.snapshotId === gone && !snapshots.includes(gone)) {
+        creates.push(options);
+        throw new FreestyleApiError(400, {
+          code: "BAD_REQUEST",
+          message: `snapshot ${gone} does not exist`,
+        });
+      }
+      return create(options);
+    }) as typeof fake.vms.create;
+
+    const sb = await provider.ensure(ref("c"), opts);
+    expect(String(forked())).toStartWith("studio-sandbox-");
+    expect(sb.warmPoolAdopted).toBe(false);
+    // It is rebuilt right away, and the next sandbox forks the new one.
+    await settled(() => snapshots.length === 1);
+    await provider.ensure(ref("d"), opts);
+    expect(forked()).toBe(snapshots[0]);
+    provider.close();
+  });
+
   test("builds nothing unless asked, nor for a run with no dev server", async () => {
     const { fake, snapshots } = client();
     const provider = new FreestyleSandboxProvider({
@@ -611,5 +859,155 @@ describe("repo snapshots", () => {
     expect(snapshots).toHaveLength(0);
     expect(creates.filter((c) => !c.slug).length).toBe(builds);
     provider.close();
+  });
+});
+
+describe("retireIdle", () => {
+  const DAY = 24 * 60 * 60;
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const vm = (slug: string, extra: Record<string, unknown> = {}) => ({
+    id: `id-${slug}`,
+    slug,
+    state: "paused",
+    metadata: { "studio-daemon-token": "t" },
+    autoDeleteSeconds: DAY,
+    createdAt: ago(3 * DAY * 1000),
+    updatedAt: ago(23 * 60 * 60_000),
+    lastNetworkActivity: ago(23 * 60 * 60_000),
+    ...extra,
+  });
+
+  function fleet(vms: ReturnType<typeof vm>[], unsaved: Set<string>) {
+    const log: string[] = [];
+    const client = {
+      vms: {
+        list: async () => ({ vms }),
+        ref: (id: string) => ({
+          start: async () => void log.push(`start ${id}`),
+          pause: async () => void log.push(`pause ${id}`),
+          delete: async () => void log.push(`delete ${id}`),
+          exec: async () => ({ statusCode: unsaved.has(id) ? 1 : 0 }),
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      idlePauseMs: 0,
+      retireSweep: false,
+    });
+    return { provider, log };
+  }
+
+  test("deletes a VM about to be auto-deleted only when nothing on it is unsaved", async () => {
+    globalThis.fetch = Object.assign(
+      async () => Response.json({ idleMs: DAY * 1000 }),
+      { preconnect: realFetch.preconnect },
+    );
+    const { provider, log } = fleet(
+      [vm("clean"), vm("unsaved")],
+      new Set(["id-unsaved"]),
+    );
+    expect(await provider.retireIdle()).toEqual(["clean"]);
+    expect(log).toEqual([
+      "start id-clean",
+      "delete id-clean",
+      "start id-unsaved",
+      "pause id-unsaved",
+    ]);
+    provider.close();
+  });
+
+  test("leaves VMs that aren't due, aren't ours, never auto-delete, or are past keeping", async () => {
+    const { provider, log } = fleet(
+      [
+        vm("recent", { lastNetworkActivity: ago(60 * 60_000) }),
+        vm("foreign", { metadata: {} }),
+        vm("detached", { slug: "" }),
+        vm("forever", { autoDeleteSeconds: null }),
+        vm("ancient", { createdAt: ago(40 * DAY * 1000) }),
+      ],
+      new Set(),
+    );
+    expect(await provider.retireIdle()).toEqual([]);
+    expect(log).toEqual([]);
+    provider.close();
+  });
+
+  test("keeps running a VM whose user came back mid-check", async () => {
+    globalThis.fetch = Object.assign(async () => Response.json({ idleMs: 0 }), {
+      preconnect: realFetch.preconnect,
+    });
+    const { provider, log } = fleet([vm("back")], new Set(["id-back"]));
+    expect(await provider.retireIdle()).toEqual([]);
+    expect(log).toEqual(["start id-back"]);
+    provider.close();
+  });
+
+  test("the check reads the repo locally: unsaved means a changed file or an unpushed commit", async () => {
+    let command = "";
+    const client = {
+      vms: {
+        list: async () => ({ vms: [vm("v")] }),
+        ref: () => ({
+          start: async () => {},
+          delete: async () => {},
+          exec: async (o: { command: string }) => {
+            command = o.command;
+            return { statusCode: 0 };
+          },
+        }),
+      },
+    } as unknown as Freestyle;
+    const provider = new FreestyleSandboxProvider({
+      apiKey: "k",
+      client,
+      retireSweep: false,
+    });
+    await provider.retireIdle();
+    provider.close();
+    expect(command.startsWith("docker exec sandbox ")).toBe(true);
+
+    const root = mkdtempSync(join(tmpdir(), "retire-check-"));
+    const git = (cwd: string, ...args: string[]) => {
+      const r = Bun.spawnSync(["git", ...args], { cwd });
+      if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+    };
+    const check = (repo: string) =>
+      Bun.spawnSync([
+        "sh",
+        "-c",
+        command
+          .slice("docker exec sandbox ".length)
+          .replaceAll("/app/repo", repo),
+      ]).exitCode;
+    try {
+      const remote = join(root, "remote.git");
+      const repo = join(root, "repo");
+      git(root, "init", "-q", "--bare", remote);
+      git(root, "clone", "-q", remote, repo);
+      git(repo, "config", "user.email", "t@example.com");
+      git(repo, "config", "user.name", "t");
+      writeFileSync(join(repo, "a.txt"), "a\n");
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", "a");
+      git(repo, "push", "-q", "origin", "HEAD:feature");
+      git(repo, "fetch", "-q", "origin");
+      expect(check(repo)).toBe(0);
+      expect(check(join(root, "never-cloned"))).toBe(0);
+
+      writeFileSync(join(repo, "b.txt"), "b\n");
+      expect(check(repo)).not.toBe(0);
+
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", "b");
+      expect(check(repo)).not.toBe(0);
+
+      git(repo, "push", "-q", "origin", "HEAD:feature");
+      git(repo, "fetch", "-q", "origin");
+      expect(check(repo)).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -16,17 +16,13 @@ import {
   matchesLibraryFileView,
   matchesLibraryModified,
 } from "./file-view";
-import { Grid01, List, Palette, Zap } from "@untitledui/icons";
+import { Palette, Zap } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useChatNavigation } from "@/components/chat/hooks/use-chat-navigation";
 import { FolderIcon } from "@/components/folder-icon";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@decocms/ui/components/toggle-group.tsx";
 import { describeFileType } from "@/components/file-type-icon";
 import { timeAgo } from "@/lib/format-time";
 import {
@@ -97,11 +93,6 @@ function publicStateOf(e: {
   if (e.effectivePublic) return "inherited";
   return undefined;
 }
-
-/** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts) —
- *  what the refresh button revalidates. The Library presents `home` as the top
- *  of the tree and the rest as system folders inside it. */
-export const LIBRARY_VOLUMES = [HOME_MOUNT_PATH, "uploads", "outputs"] as const;
 
 /** Volumes filled by chat and by agent work rather than by hand, presented as
  *  places of their own. Their mounts are unchanged — only the presentation
@@ -203,35 +194,6 @@ function matchesView(
   return (
     matchesLibraryFileView(entry.path, view.fileView) &&
     matchesLibraryModified(entry.updatedAt, view.modified)
-  );
-}
-
-/** Table or thumbnails: two states, so a toggle rather than a menu. */
-export function LayoutToggle({
-  layout,
-  onChange,
-}: {
-  layout: LibraryLayout;
-  onChange: (layout: LibraryLayout) => void;
-}) {
-  const t = useT();
-  return (
-    <ToggleGroup
-      type="single"
-      variant="segmented"
-      size="sm"
-      value={layout}
-      onValueChange={(next) => {
-        if (next === "list" || next === "grid") onChange(next);
-      }}
-    >
-      <ToggleGroupItem value="list" tooltip={t("library.entries.listView")}>
-        <List />
-      </ToggleGroupItem>
-      <ToggleGroupItem value="grid" tooltip={t("library.entries.gridView")}>
-        <Grid01 />
-      </ToggleGroupItem>
-    </ToggleGroup>
   );
 }
 

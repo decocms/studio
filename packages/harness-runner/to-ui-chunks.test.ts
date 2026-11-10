@@ -1008,3 +1008,107 @@ describe("studioToolOutput", () => {
     expect(studioToolOutput([{ type: "text", text: "shown" }])).toBe("shown");
   });
 });
+
+describe("UiChunkTranslator with studioCli", () => {
+  const bash = (command: string, extra: Record<string, unknown> = {}) =>
+    assistant([
+      {
+        type: "tool_use",
+        id: "t1",
+        name: "Bash",
+        input: { command, description: "Search the web", ...extra },
+      },
+    ]);
+  const result = (content: unknown, isError = false) => ({
+    type: "user" as const,
+    message: {
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "t1",
+          content,
+          ...(isError ? { is_error: true } : {}),
+        },
+      ],
+    },
+  });
+  const call = `decocms tools call web_search --org example-org -d '{"query":"x"}'`;
+
+  test("one plain call renders as the tool, with its JSON result", () => {
+    const t = new UiChunkTranslator({ studioCli: true });
+    expect(t.translate(bash(call))).toEqual([
+      {
+        type: "tool-input-available",
+        toolCallId: "t1",
+        toolName: "web_search",
+        input: { query: "x" },
+      },
+    ]);
+    expect(
+      t.translate(result('{"results":[{"url":"https://a.test"}]}')),
+    ).toEqual([
+      {
+        type: "tool-output-available",
+        toolCallId: "t1",
+        output: { results: [{ url: "https://a.test" }] },
+      },
+      {
+        type: "data-tool-metadata",
+        id: "t1",
+        data: { latencyMs: expect.any(Number) },
+      },
+    ]);
+  });
+
+  test("a failed call is the tool's error, as on the MCP path", () => {
+    const t = new UiChunkTranslator({ studioCli: true });
+    t.translate(bash(call));
+    expect(
+      t.translate(
+        result(
+          'Exit code 1\nHTTP 400 Bad Request\n{"error":"Invalid input"}',
+          true,
+        ),
+      )[0],
+    ).toEqual({
+      type: "tool-output-error",
+      toolCallId: "t1",
+      errorText: 'HTTP 400 Bad Request\n{"error":"Invalid input"}',
+    });
+  });
+
+  test("output that is not JSON is kept as text", () => {
+    const t = new UiChunkTranslator({ studioCli: true });
+    t.translate(bash(call));
+    expect(t.translate(result("not json"))[0]).toMatchObject({
+      type: "tool-output-available",
+      output: "not json",
+    });
+  });
+
+  test("anything else stays bash", () => {
+    for (const command of [
+      `${call} | jq .`,
+      `${call} && echo ok`,
+      `decocms tools call web_search --org example-org -d @args.json`,
+      `decocms tools call web_search --org example-org -d '{bad'`,
+      `decocms tools call web_search --org example-org -d "{\\"q\\":\\"$Q\\"}"`,
+    ]) {
+      const t = new UiChunkTranslator({ studioCli: true });
+      expect(t.translate(bash(command))[0]).toMatchObject({ toolName: "bash" });
+      expect(t.translate(result("x"))[0]).toMatchObject({ output: "x" });
+    }
+    const background = new UiChunkTranslator({ studioCli: true });
+    expect(
+      background.translate(bash(call, { run_in_background: true }))[0],
+    ).toMatchObject({ toolName: "bash" });
+  });
+
+  test("without studioCli the call stays bash", () => {
+    const t = new UiChunkTranslator();
+    expect(t.translate(bash(call))[0]).toMatchObject({
+      toolName: "bash",
+      input: { command: call },
+    });
+  });
+});

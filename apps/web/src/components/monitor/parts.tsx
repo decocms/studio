@@ -13,6 +13,7 @@ import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
 } from "@/hooks/use-destination-route";
+import { type SiteValue, spread } from "./aggregate";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { changeTone } from "@/layouts/main-panel-tabs/monitor-v8";
 import type { DeployVerdict, MonitorStatus } from "./board";
@@ -45,23 +46,6 @@ export function MonitorStatusMark({ status }: { status: MonitorStatus }) {
     }
   }
 }
-
-/** The dot alone, for rows and toggles. */
-export function StatusDot({ status }: { status: MonitorStatus }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("size-1.5 shrink-0 rounded-full", STATUS_DOT[status])}
-    />
-  );
-}
-
-const STATUS_DOT: Record<MonitorStatus, string> = {
-  ok: "bg-success",
-  warning: "bg-warning",
-  alert: "bg-destructive",
-  "low-volume": "bg-muted-foreground/50",
-};
 
 const TONE_TEXT = {
   good: "text-success",
@@ -99,7 +83,7 @@ export type ProjectScreen =
   | "monitoring"
   | "releases"
   | "experiments"
-  | "analytics"
+  | "experimentsApp"
   | "connectSources";
 
 export function projectLink(
@@ -114,9 +98,14 @@ export function projectLink(
     case "releases":
       return { to: PROJECT_ROUTE.releases, params };
     case "experiments":
+      return {
+        to: PROJECT_ROUTE.monitoring,
+        params,
+        search: { view: "experiments" },
+      };
+    // A Blocks v8 project's tests are edited in its Experiments app.
+    case "experimentsApp":
       return { to: PROJECT_ROUTE.experiments, params };
-    case "analytics":
-      return { to: PROJECT_ROUTE.analytics, params };
     case "connectSources":
       return { to: PROJECT_ROUTE.connectSources, params };
     default: {
@@ -139,18 +128,6 @@ export function connectLink(
     ? projectLink(orgSlug, scopeId, "connectSources")
     : { to: DESTINATION_ROUTE.library, params: { org: orgSlug } };
 }
-
-export const fmtTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-export const minutesSince = (iso: string) =>
-  Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
-
-export const minutesUntil = (iso: string) =>
-  Math.round((Date.parse(iso) - Date.now()) / 60_000);
 
 /**
  * Up or down against a reference, the board analytics way: an arrow and the
@@ -191,6 +168,28 @@ export function Trend({
   );
 }
 
+/** How a weighted total's sites differ, under its figure (see `aggregate.ts`). */
+export function Spread({
+  values,
+  format,
+  lowerIsBetter,
+}: {
+  values: readonly SiteValue[];
+  format: (value: number) => string;
+  lowerIsBetter: boolean;
+}) {
+  const t = useT();
+  const s = spread(values, format, lowerIsBetter);
+  if (!s) return null;
+  return (
+    <span className="text-meta truncate">
+      {s.kind === "all"
+        ? s.items.join(" · ")
+        : t("monitor.spread.range", { best: s.best, worst: s.worst })}
+    </span>
+  );
+}
+
 export function verdictName(verdict: DeployVerdict, t: TFunction): string {
   switch (verdict) {
     case "improvement":
@@ -209,3 +208,15 @@ export function verdictName(verdict: DeployVerdict, t: TFunction): string {
     }
   }
 }
+
+export const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+export const minutesSince = (iso: string) =>
+  Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+
+export const minutesUntil = (iso: string) =>
+  Math.round((Date.parse(iso) - Date.now()) / 60_000);

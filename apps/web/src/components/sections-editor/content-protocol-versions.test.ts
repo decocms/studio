@@ -315,7 +315,8 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
       state.deleted.has(name)
         ? "tombstone"
         : (state.draft[name]?.version ?? null);
-    const revision = () => `${state.main}~${state.etag}`;
+    // The hosted CMS: the revision is the draft's bare ETag.
+    const revision = () => state.etag;
     const changes = () => ({
       notModified: false as const,
       revision: `c-${revision()}`,
@@ -372,8 +373,8 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
           delete state.draft[name];
           state.deleted.add(name);
         }
-        // A save never reads main: no main part.
-        return { revision: `~${state.etag}`, versions };
+        // A save answers the draft's new ETag.
+        return { revision: state.etag, versions };
       },
       batch: async (calls: BatchCall[]) => {
         state.reads++;
@@ -708,7 +709,7 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
     // revision it had before the save: the same content, the same ETag.
     const queryClient = new QueryClient();
     const { state, backend } = hostedBackend();
-    const changesRevision = () => `c-${state.main}~${state.etag}`;
+    const changesRevision = () => `c-${state.etag}`;
     const changesList = (params?: { ifNoneMatch?: string }) =>
       params?.ifNoneMatch === changesRevision()
         ? {
@@ -789,7 +790,7 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
     expect(listedNames()).toEqual([]);
   });
 
-  it("a save keeps the main part of the revision read, so the next poll is not modified", async () => {
+  it("a save adopts the draft's new ETag, so the next poll is not modified", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = hostedBackend();
     await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
@@ -804,12 +805,12 @@ describe("hosted draft guards (Studio's GitHub backend)", () => {
     );
     // Saving read nothing.
     expect(state.reads).toBe(reads);
-    expect(result.revision).toBe("m1~e2");
+    expect(result.revision).toBe("e2");
     expect(
       queryClient.getQueryData<{ revision?: string }>(
         KEYS.contentRevision(CACHE_KEY),
       )?.revision,
-    ).toBe("m1~e2");
+    ).toBe("e2");
     const before = cachedBlocks(queryClient);
     await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
     // "Not modified": the blocks the editor holds stay as they are.

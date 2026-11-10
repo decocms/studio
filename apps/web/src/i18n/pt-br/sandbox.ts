@@ -1068,6 +1068,7 @@ export const sandbox = {
   "sandbox.preview.noPagesFound": "Nenhuma página encontrada neste site.",
   "sandbox.preview.noSearchResults":
     "Nenhum resultado corresponde à sua pesquisa.",
+  "sandbox.preview.siteRoutes": "Rotas do site",
   "sandbox.preview.noServerRunning": "Nenhum servidor em execução",
   "sandbox.preview.openInNewTab": "Abrir em nova aba",
   "sandbox.preview.pageAlreadyExists":
@@ -1319,13 +1320,20 @@ export const sandbox = {
     "JSON inválido — as alterações não serão salvas até que seja processado.",
   "sandbox.savedSectionEditor.noEditableFields":
     "Nenhum campo editável para esta seção.",
+  "sandbox.schemaless.agentPrompt":
+    "O conteúdo deste site é editado no deco Studio, mas o Studio ainda não recebeu o schema do site, então os formulários de conteúdo mostram campos crus. Configure isso neste repositório:\n\n1. Garanta que o @decocms/blocks está na versão 8.11.0 ou mais nova (atualize se não estiver) e rode `npx deco skills install` para adicionar as skills do framework deco a este repositório.\n2. Carregue a skill deco-site-workflow e siga o references/schema.md dela: gere o schema com `npx deco schema` e faça commit de .deco/schema.gen.json; faça o DECO_SITE apontar para o site {site} do Studio; envie o schema ao Studio com `npx deco schema push`; e inclua `npx deco schema push` no deploy de produção (depois que o deploy der certo, com uma chave de API do Studio no secret DECO_TOKEN) para que todo deploy o envie.\n3. Rode `npx deco check` e me conte o que você mudou e o que cada comando imprimiu.",
+  "sandbox.schemaless.agentPromptSiteUnknown":
+    "que este projeto usa (me pergunte o nome se não encontrar)",
   "sandbox.schemaless.back": "Todos os blocos",
   "sandbox.schemaless.bannerBody":
-    "Até lá, cada bloco abre com campos simples criados a partir dos valores salvos, e salvar mantém todos os outros valores como estão. Gere o schema na pasta do seu site; esta página o detecta sozinha.",
+    "Este site ainda não enviou ao Studio o schema dele (a descrição dos campos de cada formulário), então cada bloco abre com campos simples criados a partir dos valores salvos. Salvar continua mantendo todo o resto como está. Peça ao agente de código que trabalha no seu site para configurar isso: copie o prompt e cole no agente. Leva um deploy, e os formulários aqui se atualizam sozinhos.",
   "sandbox.schemaless.bannerTitle":
-    "Os formulários ganham os campos certos assim que o schema existir",
-  "sandbox.schemaless.docsLink": "Sobre o deco schema",
+    "Os formulários de conteúdo estão mostrando campos crus",
+  "sandbox.schemaless.copyPrompt": "Copiar prompt para o seu agente",
+  "sandbox.schemaless.copyPromptFailed":
+    "Não foi possível copiar o prompt. Verifique se esta página pode usar a área de transferência e tente de novo.",
   "sandbox.schemaless.empty": "Vazio",
+  "sandbox.schemaless.installSkill": "Instalar a skill",
   "sandbox.schemaless.item": "Item {n}",
   "sandbox.schemaless.itemCount": "{count} itens",
   "sandbox.schemaless.listLabel": "Blocos salvos",
@@ -1336,7 +1344,11 @@ export const sandbox = {
     "Digite um número. O valor salvo continua até você digitar.",
   "sandbox.schemaless.notSet": "Sem valor",
   "sandbox.schemaless.pickBlock": "Escolha um bloco para ver o conteúdo.",
+  "sandbox.schemaless.promptCopied": "Copiado",
+  "sandbox.schemaless.promptCopiedAnnouncement":
+    "Prompt copiado para a área de transferência",
   "sandbox.schemaless.searchPlaceholder": "Buscar blocos",
+  "sandbox.schemaless.usesSkill": "Usa a skill deco-site-workflow",
   "sandbox.sectionRenameDialog.cancel": "Cancelar",
   "sandbox.sectionRenameDialog.description":
     "Atualiza o nome de exibição. A chave interna permanece a mesma para que as páginas que referem esta seção continuem funcionando.",
@@ -1422,8 +1434,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.status.ended": "Encerrada",
   "sandbox.dateCampaigns.status.always": "Sempre ativa",
   "sandbox.dateCampaigns.status.unreadable": "Datas ilegíveis",
-  "sandbox.dateCampaigns.usedBy": "Usada em {count}",
-  "sandbox.dateCampaigns.notUsed": "Ainda não usada",
   "sandbox.dateCampaigns.state.new": "Ainda não publicada",
   "sandbox.dateCampaigns.state.changed": "Alterada no seu rascunho",
   "sandbox.dateCampaigns.removedTitle": "Removidas no seu rascunho",
@@ -1433,15 +1443,10 @@ export const sandbox = {
     "Uma das datas não pode ser lida, então as variantes dela não aparecem. Escolha novas datas e salve.",
   "sandbox.dateCampaigns.publishedWindow": "Publicado: {window}",
   "sandbox.dateCampaigns.saveDates": "Salvar datas",
-  "sandbox.dateCampaigns.renameHint":
-    "Toda variante que usa esta campanha é atualizada na mesma mudança.",
-  "sandbox.dateCampaigns.renameWholeHint":
-    "Seções que leem todas as campanhas no próprio código continuam procurando o nome antigo. Atualize-as no editor do site.",
   "sandbox.dateCampaigns.delete": "Excluir campanha",
   "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
   "sandbox.dateCampaigns.deletedHint":
     "Ela sai do site quando você publicar. Desfazer traz ela de volta.",
-  "sandbox.dateCampaigns.renamed": "Campanha renomeada para “{name}”",
   "sandbox.dateCampaigns.allCampaigns": "Todas as campanhas",
   "sandbox.dateCampaigns.today": "Hoje",
   "sandbox.dateCampaigns.previous": "Antes",
@@ -1472,6 +1477,8 @@ export const sandbox = {
   "sandbox.previewAs.testsHint":
     "Sem escolha: você vê o lado que a sua própria visita recebeu.",
   "sandbox.previewAs.noTests": "Nenhum teste A/B ainda.",
+  "sandbox.previewAs.testsLoadFailed": "Não foi possível carregar seus testes.",
+  "sandbox.previewAs.tryAgain": "Tentar de novo",
   "sandbox.previewAs.off": "Desligado",
   "sandbox.previewAs.on": "Ligado",
   "sandbox.previewAs.reset": "Mostrar como está agora",

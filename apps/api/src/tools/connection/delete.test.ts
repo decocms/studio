@@ -26,7 +26,7 @@ function makeCtx(options: {
     access: { check: mock(async () => {}) },
     storage: {
       connections: {
-        findById: mock(async () => connection),
+        findPublicById: mock(async () => connection),
         delete: deleteConnection,
         isReferencedByThread,
       },

@@ -1,0 +1,4 @@
+#!/bin/sh
+# The checkout's .env and bunfig.toml (Bun reads both from the cwd) must not
+# reach the CLI: a DATA_DIR there would hide the run's session.
+exec bun --no-env-file --config=/dev/null /opt/decocms/bin/decocms.js "$@"

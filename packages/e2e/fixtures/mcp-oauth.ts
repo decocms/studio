@@ -7,8 +7,10 @@
  * (`POST /api/auth/mcp/register`) → authorize
  * (`GET /api/auth/mcp/authorize`, presenting the request context's already-
  * established Better Auth session cookie — e.g. from `signUpViaApi` —
- * instead of opening a browser) → token exchange (`POST /api/auth/mcp/token`). `request` must
- * already carry a session cookie.
+ * instead of opening a browser), which sends a new client to the consent
+ * page → approve as that page does (`POST /api/auth/custom/mcp-consent`) →
+ * authorize again → token exchange (`POST /api/auth/mcp/token`). `request`
+ * must already carry a session cookie.
  *
  * Inlined here (not imported from `apps/api/src/cli/lib/pkce.ts` or
  * similar) per this package's isolation rule — `packages/e2e` never imports
@@ -73,28 +75,50 @@ export async function mintMcpAccessToken(
     client_id: string;
   };
 
-  const authorizeRes = await request.get("/api/auth/mcp/authorize", {
-    params: {
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      state,
-      scope: SCOPES,
-      code_challenge: pkce.challenge,
-      code_challenge_method: "S256",
-    },
-    maxRedirects: 0,
-  });
-  if (authorizeRes.status() < 300 || authorizeRes.status() >= 400) {
+  const authorize = async (): Promise<URL> => {
+    const res = await request.get("/api/auth/mcp/authorize", {
+      params: {
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        state,
+        scope: SCOPES,
+        code_challenge: pkce.challenge,
+        code_challenge_method: "S256",
+      },
+      maxRedirects: 0,
+    });
+    if (res.status() < 300 || res.status() >= 400) {
+      throw new Error(
+        `mintMcpAccessToken: authorize did not redirect — HTTP ${res.status()} — ${await res.text().catch(() => "")}`,
+      );
+    }
+    const location = res.headers()["location"];
+    if (!location) {
+      throw new Error("mintMcpAccessToken: authorize redirect had no Location");
+    }
+    return new URL(location, redirectUri);
+  };
+
+  const consentPage = await authorize();
+  if (
+    consentPage.pathname !== "/oauth/consent" ||
+    consentPage.searchParams.has("code")
+  ) {
     throw new Error(
-      `mintMcpAccessToken: authorize did not redirect — HTTP ${authorizeRes.status()} — ${await authorizeRes.text().catch(() => "")}`,
+      `mintMcpAccessToken: a new client was not sent to consent — ${consentPage.toString()}`,
     );
   }
-  const location = authorizeRes.headers()["location"];
-  if (!location) {
-    throw new Error("mintMcpAccessToken: authorize redirect had no Location");
+  const consentRes = await request.post("/api/auth/custom/mcp-consent", {
+    data: { client_id: clientId, scope: SCOPES },
+  });
+  if (!consentRes.ok()) {
+    throw new Error(
+      `mintMcpAccessToken: consent failed HTTP ${consentRes.status()} — ${await consentRes.text().catch(() => "")}`,
+    );
   }
-  const landed = new URL(location, redirectUri);
+
+  const landed = await authorize();
   const code = landed.searchParams.get("code");
   const returnedState = landed.searchParams.get("state");
   if (returnedState !== state) {

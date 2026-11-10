@@ -2,81 +2,33 @@ import { AccountPopover } from "@/components/account-popover";
 import {
   SidebarFooter,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
 } from "@decocms/ui/components/sidebar.tsx";
-import { UserPlus01 } from "@untitledui/icons";
-import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { SidebarTopActions } from "@/components/sidebar/top-actions";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
-import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
-import { useT } from "@/i18n/use-t";
-import { InboxFullButton, InboxIconButton } from "./inbox";
-import { SettingsFullButton, SettingsIconButton } from "./settings-button";
-import { SidebarFooterIcon, SIDEBAR_FOOTER_ICON_SIZE } from "./icon-slot";
+import { InboxIconButton } from "./inbox";
+import { SettingsIconButton } from "./settings-button";
 import { SidebarLinkClaude } from "./link-claude";
+import { SidebarFeedback } from "./feedback";
 
-/** Quick actions above the account row: linking your own Claude plan (until
- *  it is linked, and not in reports-only orgs) and inviting members. */
+/** Quick actions above the account row. */
 function SidebarExtraActions({ showLinkClaude }: { showLinkClaude: boolean }) {
-  const t = useT();
   return (
     <SidebarMenu className="gap-0.5">
       {showLinkClaude && <SidebarLinkClaude />}
-      <SidebarMenuItem>
-        <InviteMemberDialog
-          trigger={
-            <SidebarMenuButton
-              tooltip={t("sidebar.sidebarFooter.inviteMembers")}
-            >
-              <SidebarFooterIcon>
-                <UserPlus01 className={SIDEBAR_FOOTER_ICON_SIZE} />
-              </SidebarFooterIcon>
-              <span>{t("sidebar.sidebarFooter.inviteMembers")}</span>
-            </SidebarMenuButton>
-          }
-        />
-      </SidebarMenuItem>
+      <SidebarFeedback />
     </SidebarMenu>
   );
 }
 
-/** Account footer — the invite action, the account row, and the controls that
- *  sit beside it: notifications and, with project-first navigation, Settings.
- *  Classic keeps Settings as a destination row in the spine above (the org
- *  rail there names the org instead of a picker), so repeating it here would
- *  be two doors to the same place. Neither control is a destination — you open
- *  it, change something and come back — which is why it is an icon on the
- *  account row rather than a row in the spine. The usage chip only shows
+/** Account footer — the quick actions, the account row, and the controls that
+ *  sit beside it: Settings and notifications. Neither control is a destination
+ *  — you open it, change something and come back — which is why it is an icon
+ *  on the account row rather than a row in the spine. The usage chip only shows
  *  outside reports-only orgs. */
 export function SidebarAccountFooter() {
-  const isCollapsed = useSidebarCollapsed();
   const reportsOnly = useReportsOnly();
   const showCredits = !reportsOnly;
-  const projectFirstNav = useProjectFirstNav();
-
-  if (isCollapsed) {
-    return (
-      <SidebarFooter className="px-2 pb-3 gap-1">
-        {showCredits && <SidebarTopActions />}
-        <SidebarExtraActions showLinkClaude={!reportsOnly} />
-        <SidebarMenu>
-          {projectFirstNav && (
-            <SidebarMenuItem>
-              <SettingsFullButton />
-            </SidebarMenuItem>
-          )}
-          <SidebarMenuItem>
-            <InboxFullButton />
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <AccountPopover />
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    );
-  }
 
   return (
     <SidebarFooter className="px-2 pb-3 gap-0.5">
@@ -88,7 +40,7 @@ export function SidebarAccountFooter() {
             <div className="flex-1 min-w-0">
               <AccountPopover />
             </div>
-            {projectFirstNav && <SettingsIconButton />}
+            <SettingsIconButton />
             <InboxIconButton />
           </div>
         </SidebarMenuItem>

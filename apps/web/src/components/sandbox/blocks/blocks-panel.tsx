@@ -41,6 +41,7 @@ const SectionsEditor = lazy(() =>
 export function BlocksPanel({
   virtualMcpId,
   externalSelection = null,
+  onSectionPicked,
   onViewJsonFile,
 }: {
   virtualMcpId: string;
@@ -50,6 +51,8 @@ export function BlocksPanel({
    * distinct selections, so re-clicking one reopens its form.
    */
   externalSelection?: { index: number; seq: number } | null;
+  /** A section picked in the list: the preview scrolls it into view. */
+  onSectionPicked?: (index: number) => void;
   /**
    * Open the page's raw JSON in a side panel (Preview owns the slot). When
    * omitted the editor falls back to its local modal.
@@ -206,6 +209,7 @@ export function BlocksPanel({
         activePageBlockKey={activePageBlockKey}
         activeGlobalBlockKey={activeGlobalBlockKey}
         externalSelection={activeGlobalBlockKey ? null : externalSelection}
+        onSectionPicked={activeGlobalBlockKey ? undefined : onSectionPicked}
         initialEditSeo={
           !!activePageBlockKey &&
           workspace.state.editSeoPageKey === activePageBlockKey

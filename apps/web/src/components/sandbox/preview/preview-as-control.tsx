@@ -2,6 +2,7 @@ import { Clock } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Popover,
   PopoverContent,
@@ -22,6 +23,7 @@ import {
   isoToLocalInput,
   localInputToIso,
 } from "@/components/sections-editor/named-rule-picker";
+import type { HostedBlocksLoad } from "@/components/sections-editor/hosted-content";
 import {
   hasPreviewOptions,
   type PreviewOptions,
@@ -34,15 +36,26 @@ import { useT } from "@/i18n/use-t.ts";
  * the preview link only (preview-link.ts): the published site and its
  * visitors never change. Clicking a test's active side again lets the visit
  * decide once more.
+ *
+ * On a hosted draft the editor holds only the index's stub of the
+ * `experiments` block until a view loads it, so the control asks for it when
+ * it opens (`onOpen`) and lists the tests only once it is loaded (`load`), as
+ * the rule picker does: never "No A/B tests yet" for a site that has some.
  */
 export function PreviewAsControl({
   tests,
+  load,
+  onOpen,
   options,
   onChange,
   available,
 }: {
   /** The site's A/B tests, by name. */
   tests: string[];
+  /** The load of the `experiments` block; absent when it is always there. */
+  load?: HostedBlocksLoad;
+  /** The popover opened: load what it lists. */
+  onOpen?: () => void;
   options: PreviewOptions;
   onChange: (next: PreviewOptions) => void;
   /** Whether the preview can carry them now (a draft or a release to show). */
@@ -67,7 +80,11 @@ export function PreviewAsControl({
   };
 
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open) => {
+        if (open) onOpen?.();
+      }}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -128,7 +145,30 @@ export function PreviewAsControl({
           <span className="text-sm font-medium">
             {t("sandbox.previewAs.testsLabel")}
           </span>
-          {tests.length === 0 ? (
+          {load && !load.ready ? (
+            load.failed ? (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {t("sandbox.previewAs.testsLoadFailed")}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={load.retry}
+                >
+                  {t("sandbox.previewAs.tryAgain")}
+                </Button>
+              </div>
+            ) : (
+              <div
+                className="flex justify-center py-2"
+                data-testid="preview-as-tests-loading"
+              >
+                <Spinner className="size-4 text-muted-foreground" />
+              </div>
+            )
+          ) : tests.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               {t("sandbox.previewAs.noTests")}
             </p>

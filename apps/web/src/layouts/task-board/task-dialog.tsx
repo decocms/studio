@@ -1,3 +1,4 @@
+import { FEEDBACK_TAG_NAME } from "@decocms/shared/feedback";
 import type { ReactNode } from "react";
 import {
   ChildrenSection,
@@ -74,7 +75,6 @@ import {
   LinkExternal01,
   Lightning01,
   Loading02,
-  Lock01,
   Plus,
   RefreshCw01,
   Link03,
@@ -160,7 +160,11 @@ import { extractDescriptionLinks } from "./description-links";
 import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
-import { CommentThreadCard } from "./task-comments";
+import {
+  CommentThreadCard,
+  isContinuation,
+  type CommentRun,
+} from "./task-comments";
 import {
   humanFacing,
   type TaskBoardCommentThread,
@@ -750,12 +754,12 @@ function TaskBoardItemEditor({
   const creator = item
     ? members.find((m) => m.userId === item.createdBy)
     : undefined;
+  const systemAuthorLabel = item?.tags.some(
+    (tag) => tag.name === FEEDBACK_TAG_NAME,
+  )
+    ? t("taskBoard.taskDialog.createdByFeedbackLabel")
+    : t("taskBoard.taskDialog.createdBySystemLabel");
   const StatusIcon = laneVisual(status).icon;
-  // Reports-generated tasks: content (title/description/priority) is owned by
-  // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
-  // rejects a write that touches any of those fields. Board interactions
-  // (status/drag, assignee/delegating, due date, tags) stay free.
-  const contentLocked = !!item && isReportsTask(item);
 
   /** Header row: what the task is on the left, its actions on the right. */
   /** The task's own actions. A page hands them to the page header beside
@@ -999,30 +1003,28 @@ function TaskBoardItemEditor({
                   />
                   <span className="font-medium text-foreground">
                     {isReportsTask(item)
-                      ? t("taskBoard.taskDialog.createdBySystemLabel")
+                      ? systemAuthorLabel
                       : (creator?.user?.name ??
                         t("taskBoard.taskDialog.unknownCreatorLabel"))}
                   </span>
                   <time dateTime={item.createdAt}>
                     {formatTimeAgo(new Date(item.createdAt))}
                   </time>
-                  {!contentLocked && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() => {
-                        flush();
-                        setEditingPost((value) => !value);
-                      }}
-                    >
-                      {t(
-                        editingPost
-                          ? "taskBoard.conversation.doneEditing"
-                          : "taskBoard.conversation.edit",
-                      )}
-                    </Button>
-                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => {
+                      flush();
+                      setEditingPost((value) => !value);
+                    }}
+                  >
+                    {t(
+                      editingPost
+                        ? "taskBoard.conversation.doneEditing"
+                        : "taskBoard.conversation.edit",
+                    )}
+                  </Button>
                 </div>
               )}
               <div>
@@ -1039,7 +1041,6 @@ function TaskBoardItemEditor({
                     }}
                     value={title}
                     onChange={(e) => {
-                      if (contentLocked) return;
                       patch({ title: e.target.value }, true);
                       e.target.style.height = "auto";
                       e.target.style.height = `${e.target.scrollHeight}px`;
@@ -1051,10 +1052,8 @@ function TaskBoardItemEditor({
                     placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
                     autoFocus={!item}
                     rows={1}
-                    readOnly={contentLocked}
                     className={cn(
                       "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
-                      contentLocked && "cursor-default",
                     )}
                   />
                 )}
@@ -1074,12 +1073,6 @@ function TaskBoardItemEditor({
                       ) : null;
                     })}
                   </div>
-                )}
-                {contentLocked && (
-                  <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Lock01 size={12} />
-                    {t("taskBoard.taskDialog.reportsContentLocked")}
-                  </p>
                 )}
               </div>
 
@@ -1132,7 +1125,6 @@ function TaskBoardItemEditor({
                           placeholder={t(
                             "taskBoard.taskDialog.descriptionPlaceholder",
                           )}
-                          editable={!contentLocked}
                         />
                       )}
                     </div>
@@ -1239,19 +1231,7 @@ function TaskBoardItemEditor({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={contentLocked}
-                    title={
-                      contentLocked
-                        ? t("taskBoard.taskDialog.reportsContentLocked")
-                        : undefined
-                    }
-                    className={cn(
-                      PROPERTY_BUTTON,
-                      contentLocked && "cursor-default opacity-60",
-                    )}
-                  >
+                  <button type="button" className={cn(PROPERTY_BUTTON)}>
                     {(() => {
                       const Icon = TASK_TYPE_CONFIG[taskType].icon;
                       return <Icon size={16} />;
@@ -1279,16 +1259,9 @@ function TaskBoardItemEditor({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    disabled={contentLocked}
-                    title={
-                      contentLocked
-                        ? t("taskBoard.taskDialog.reportsContentLocked")
-                        : undefined
-                    }
                     className={cn(
                       PROPERTY_BUTTON,
                       priority === "none" && EMPTY_PROPERTY,
-                      contentLocked && "cursor-default opacity-60",
                     )}
                   >
                     {priority === "none" ? (
@@ -1338,7 +1311,7 @@ function TaskBoardItemEditor({
                         size={16}
                         className="text-muted-foreground"
                       />
-                      {t("taskBoard.taskDialog.createdBySystemLabel")}
+                      {systemAuthorLabel}
                     </>
                   ) : creator ? (
                     <>
@@ -1883,47 +1856,47 @@ function ThreadActivityItem({
   const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
 
   return (
-    <div className="border-b border-border/50 pb-4">
-      <TaskMessage
-        id={`run-${thread.threadId}`}
-        author={t(
-          isReviewerThread
-            ? "taskBoard.conversation.reviewer"
-            : "taskBoard.taskDialog.superAgentLabel",
-        )}
-        avatar={
-          isReviewerThread ? (
-            <ReviewerIcon size={24} />
-          ) : (
-            <SuperAgentIcon size={24} />
-          )
-        }
-        createdAt={thread.createdAt}
-        body={message || thread.title || ""}
-        // Only a run waiting on a person shows outside behind the scenes.
-        muted={thread.status !== "requires_action"}
-        onOpenThread={onOpen ? () => onOpen(thread) : undefined}
-        metadata={
-          state && (
-            <span
-              className={cn(
-                "flex shrink-0 items-center gap-1.5",
-                state.className,
-              )}
-            >
-              {/* A spinning status glyph is a loading indicator, so it is the
+    <TaskMessage
+      id={`run-${thread.threadId}`}
+      threadId={thread.threadId}
+      author={t(
+        isReviewerThread
+          ? "taskBoard.conversation.reviewer"
+          : "taskBoard.taskDialog.superAgentLabel",
+      )}
+      avatar={
+        isReviewerThread ? (
+          <ReviewerIcon size={32} />
+        ) : (
+          <SuperAgentIcon size={32} />
+        )
+      }
+      createdAt={thread.createdAt}
+      body={message || thread.title || ""}
+      // Only a run waiting on a person shows outside behind the scenes.
+      muted={thread.status !== "requires_action"}
+      onOpenThread={onOpen ? () => onOpen(thread) : undefined}
+      onOpen={onOpen ? () => onOpen(thread) : undefined}
+      metadata={
+        state && (
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1.5",
+              state.className,
+            )}
+          >
+            {/* A spinning status glyph is a loading indicator, so it is the
                 shared Spinner; the settled states keep their own icon. */}
-              {state.spin ? (
-                <Spinner className="size-[15px]" label={state.label} />
-              ) : (
-                <state.icon size={15} />
-              )}
-              <span className="text-xs">{state.label}</span>
-            </span>
-          )
-        }
-      />
-    </div>
+            {state.spin ? (
+              <Spinner className="size-[15px]" label={state.label} />
+            ) : (
+              <state.icon size={15} />
+            )}
+            <span className="text-xs">{state.label}</span>
+          </span>
+        )
+      }
+    />
   );
 }
 
@@ -2458,6 +2431,7 @@ function ActivitySection({
   const t = useT();
 
   const { data: activity } = useTaskBoardActivity(item.id);
+  const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
@@ -2468,6 +2442,7 @@ function ActivitySection({
   };
   const comments = useTaskBoardComments(item.id);
   const [behindTheScenes, setBehindTheScenes] = useBehindTheScenes();
+  const [replyingThreadId, setReplyingThreadId] = useState<string | null>(null);
   const humanThreads = humanFacing(comments.threads);
   const liveRuns = item.threads.filter(isLiveAttempt);
   // A run waiting on a person is talking to them; any other run is the agents'
@@ -2477,11 +2452,17 @@ function ActivitySection({
   );
   const messageCount = (threads: TaskBoardCommentThread[]) =>
     threads.reduce((sum, thread) => sum + 1 + thread.replies.length, 0);
+  // A run its comment thread shows is never listed on its own.
+  const unthreaded = (runs: TaskBoardItemThread[]) =>
+    runs.filter(
+      (run) =>
+        !comments.threads.some((thread) => thread.threadId === run.threadId),
+    ).length;
   const behindTheScenesCount =
     messageCount(comments.threads) -
     messageCount(humanThreads) +
-    liveRuns.length -
-    waitingRuns.length;
+    unthreaded(liveRuns) -
+    unthreaded(waitingRuns);
 
   /** A comment's author, resolved from the org's members; falls back to the id
    *  so a comment from a since-removed member still renders. The Super Agent
@@ -2520,16 +2501,58 @@ function ActivitySection({
     };
   };
   const shownThreads = behindTheScenes ? comments.threads : humanThreads;
+  /** The chat's own Stop: only the run's owner may, and a refusal says so. */
+  const stopRun = async (threadId: string) => {
+    const res = await fetch(`/api/${org.slug}/decopilot/cancel/${threadId}`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (res.ok) return;
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    toast.error(data.message ?? t("taskBoard.agentThread.stopFailed"));
+    throw new Error(data.message ?? "stop failed");
+  };
+  // One run works a card at a time; this is it, if any.
+  const runningRun = liveRuns.find(
+    (run) => run.status === "in_progress" || run.status === "requires_action",
+  );
+  /** The run a thread's root comment started or was written by. */
+  const commentRun = (
+    threadId: string | null | undefined,
+  ): CommentRun | undefined => {
+    const run = sourceRun(threadId);
+    if (!run) return undefined;
+    return {
+      status:
+        run.status === "in_progress"
+          ? "running"
+          : run.status === "requires_action"
+            ? "waiting"
+            : run.failureKind === "cancelled"
+              ? "stopped"
+              : run.status === "failed" || run.status === "expired"
+                ? "failed"
+                : "done",
+      onOpen: openSourceRun(threadId),
+      onStop: () => stopRun(run.threadId),
+    };
+  };
   const threads: TaskComment[] = shownThreads.map((thread) => ({
     id: thread.id,
+    threadId: thread.threadId,
     author: authorOf(thread.authorId, thread.threadId),
-    onOpenThread: openSourceRun(thread.threadId),
+    run: commentRun(thread.threadId),
+    // The run's status opens it; no second button for the same thing.
+    onOpenThread: commentRun(thread.threadId)
+      ? undefined
+      : openSourceRun(thread.threadId),
     internal: thread.audience === "internal",
     body: thread.body,
     createdAt: thread.createdAt,
     resolved: thread.resolved,
     replies: thread.replies.map((reply) => ({
       id: reply.id,
+      threadId: reply.threadId,
       author: authorOf(reply.authorId, reply.threadId),
       onOpenThread: openSourceRun(reply.threadId),
       internal: reply.audience === "internal",
@@ -2551,13 +2574,19 @@ function ActivitySection({
         activity: a,
       }),
     ),
-    ...(behindTheScenes ? liveRuns : waitingRuns).map(
-      (thread): Ev => ({
-        kind: "thread",
-        at: new Date(thread.createdAt).getTime(),
-        thread,
-      }),
-    ),
+    // A run its comment thread already shows isn't listed again.
+    ...(behindTheScenes ? liveRuns : waitingRuns)
+      .filter(
+        (run) =>
+          !shownThreads.some((thread) => thread.threadId === run.threadId),
+      )
+      .map(
+        (thread): Ev => ({
+          kind: "thread",
+          at: new Date(thread.createdAt).getTime(),
+          thread,
+        }),
+      ),
     ...threads.map(
       (comment): Ev => ({
         kind: "comment",
@@ -2625,7 +2654,7 @@ function ActivitySection({
           <SubscribeToggle itemId={item.id} members={members} />
         </div>
       </div>
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
         {blocks.map((block, i) => {
           const date = blockDate(block);
           const previous = blocks[i - 1];
@@ -2636,6 +2665,7 @@ function ActivitySection({
             if (block.type === "timeline") {
               return (
                 <TimelineBlock
+                  className="py-2"
                   items={block.items}
                   memberByUserId={memberByUserId}
                 />
@@ -2661,6 +2691,42 @@ function ActivitySection({
                     }
                   }}
                   onDelete={(commentId) => comments.remove.mutate(commentId)}
+                  onReply={async (body) => {
+                    try {
+                      await comments.post.mutateAsync({
+                        body,
+                        parentId: block.comment.id,
+                      });
+                      return true;
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : t("taskBoard.conversation.sendFailed"),
+                      );
+                      return false;
+                    }
+                  }}
+                  continuation={
+                    !showDate &&
+                    previous?.type === "comment" &&
+                    isContinuation(previous.comment, block.comment)
+                  }
+                  replying={replyingThreadId === block.comment.id}
+                  onReplyingChange={(open) =>
+                    setReplyingThreadId((current) =>
+                      open
+                        ? block.comment.id
+                        : current === block.comment.id
+                          ? null
+                          : current,
+                    )
+                  }
+                  liveRunElsewhere={
+                    !!runningRun &&
+                    block.comment.run?.status !== "running" &&
+                    block.comment.run?.status !== "waiting"
+                  }
                 />
               );
             }
@@ -2682,7 +2748,7 @@ function ActivitySection({
           return (
             <Fragment key={`${block.type}-${blockKey}`}>
               {showDate && (
-                <div className="flex items-center gap-3 py-2 text-xs font-medium text-muted-foreground">
+                <div className="text-meta flex items-center gap-3 pt-4 pb-1">
                   <span className="h-px flex-1 bg-border" />
                   <time dateTime={date.toISOString()}>
                     {date.toLocaleDateString(undefined, {
@@ -3067,9 +3133,11 @@ function isDecoScoreEntry(a: TaskBoardActivity): boolean {
 function TimelineBlock({
   items,
   memberByUserId,
+  className,
 }: {
   items: TaskBoardActivity[];
   memberByUserId: Map<string, Member>;
+  className?: string;
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
@@ -3120,11 +3188,11 @@ function TimelineBlock({
   const visible = folded ? items.slice(0, TIMELINE_FOLD_TO) : items;
 
   return (
-    <div className="relative flex flex-col gap-4">
+    <div className={cn("relative flex flex-col gap-4", className)}>
       {visible.length > 1 && (
         <span
           aria-hidden
-          className="absolute bottom-3 left-2 top-3 w-px bg-border"
+          className="absolute bottom-5 left-2 top-5 w-px bg-border"
         />
       )}
       {visible.map((a) => (

@@ -12,22 +12,15 @@
 import { useRef, useState } from "react";
 import { PAGE_INSET, Page } from "@/components/page";
 import { Panel } from "@/components/panel";
-import {
-  LIBRARY_MODIFIED,
-  type LibraryFileView,
-  type LibraryModified,
-} from "./file-view";
+import { type LibraryFileView, type LibraryModified } from "./file-view";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import { Eye, Plus, RefreshCw01, Upload01 } from "@untitledui/icons";
+import { Eye, Plus, Upload01 } from "@untitledui/icons";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
-import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,11 +45,9 @@ import {
   HOME_MOUNT_PATH,
   homeDisplayName,
 } from "@decocms/shared/organization/home-mount";
-import { KEYS } from "@/lib/query-keys";
 import { clearOpenFileDismissal } from "@/hooks/use-open-library-file";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { useOrgFsMutations } from "@/hooks/use-org-fs";
-import { FilterMenu } from "./filter-menu";
 import { useLibraryPlaces } from "./places";
 import {
   basename,
@@ -72,8 +63,6 @@ import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { SkillPreviewDialog } from "./skill-preview";
 import {
-  LIBRARY_VOLUMES,
-  LayoutToggle,
   type LibraryLayout,
   type ListingView,
   type PendingDelete,
@@ -91,7 +80,6 @@ export function LibraryPage({
   onOpenFile: onOpenFileOverride,
   onOpenSkill: onOpenSkillOverride,
   onOpenBrand: onOpenBrandOverride,
-  context = false,
 }: {
   /** Top of the tree this page shows. Defaults to the org's drive. */
   root?: string;
@@ -102,12 +90,9 @@ export function LibraryPage({
   onOpenFile?: (previewPath: string) => void;
   onOpenSkill?: (skillPath: string) => void;
   onOpenBrand?: (brandPath: string) => void;
-  /** Drawn inside Context: places as tabs, search inline, one flat table. */
-  context?: boolean;
 } = {}) {
   const t = useT();
   const { org } = useProjectContext();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const search = useSearch({ strict: false }) as {
@@ -122,8 +107,6 @@ export function LibraryPage({
   };
   const fileView = search.fileView ?? "all";
   const modified = search.modified ?? "any";
-  const layout: LibraryLayout =
-    !context && search.layout === "grid" ? "grid" : "list";
   /** Files a chat dropped in read best newest first; a member's own by name. */
   const startLocation = parseLibraryPath(search.path || root);
   const defaultSort: LibrarySort =
@@ -151,18 +134,16 @@ export function LibraryPage({
         [key]: value || undefined,
       }),
     });
-  const setFileView = (view: LibraryFileView) =>
-    setSearchParam("fileView", view === "all" ? null : view);
   /** This page shows the previews it opens; an override sends them elsewhere. */
   const ownsPreview = !onOpenFileOverride;
   const view: ListingView = {
-    layout,
+    layout: "list",
     sort,
     fileView,
     modified,
     previewPath: ownsPreview ? search.preview : undefined,
-    flat: context,
-    onLayout: (next) => setSearchParam("layout", next === "list" ? null : next),
+    flat: true,
+    onLayout: () => {},
     onSort: (next) =>
       setSearchParam("sort", next === defaultSort ? null : next),
   };
@@ -421,22 +402,6 @@ export function LibraryPage({
     }
   }
 
-  function refresh() {
-    for (const volume of LIBRARY_VOLUMES) {
-      queryClient.invalidateQueries({
-        queryKey: KEYS.orgFsVolume(org.id, volume),
-      });
-    }
-    if (location.volume) {
-      queryClient.invalidateQueries({
-        queryKey: KEYS.orgFsVolume(org.id, location.volume),
-      });
-    }
-    queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
-    queryClient.invalidateQueries({ queryKey: KEYS.orgFsSearchRoot(org.id) });
-    queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
-  }
-
   /** Right-click on empty space makes a folder. Listens page-wide, so anything
    *  with its own menu opts out with `preventDefault`. */
   function handleContextMenuEmpty(e: React.MouseEvent) {
@@ -451,34 +416,6 @@ export function LibraryPage({
     e.preventDefault();
     setNewFolderOpen(true);
   }
-
-  /** The controls both chromes show, in one place so they cannot drift. */
-  const controls = (
-    <>
-      <IconButton
-        label={t("library.library.refresh")}
-        tooltipSide="bottom"
-        /* `outline`, like the controls either side of it. */
-        variant="outline"
-        onClick={refresh}
-      >
-        <RefreshCw01 />
-      </IconButton>
-      {browseVolume && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setNewFolderOpen(true)}
-          aria-label={t("library.library.newFolder")}
-        >
-          <Plus size={14} />
-          <span className="hidden @lg/panel-header:inline">
-            {t("library.library.newFolder")}
-          </span>
-        </Button>
-      )}
-    </>
-  );
 
   const primaryAction = location.readOnly ? (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -529,26 +466,8 @@ export function LibraryPage({
   const isChatVolumeRoot = isChatVolume(location.volume) && !location.dirPath;
 
   /** Context gives the public skill sets their own section. */
-  const places = useLibraryPlaces(root).filter(
-    (p) => !context || p.key !== "public",
-  );
+  const places = useLibraryPlaces(root).filter((p) => p.key !== "public");
   const place = libraryPlaceOf(location);
-
-  const modifiedOptions = LIBRARY_MODIFIED.map((value) => ({
-    value,
-    label: {
-      any: t("library.library.modifiedAny"),
-      today: t("library.library.modifiedToday"),
-      week: t("library.library.modifiedWeek"),
-      month: t("library.library.modifiedMonth"),
-    }[value],
-  }));
-  const typeOptions = (["all", "documents", "media"] as const).map((value) => ({
-    value,
-    label: t(
-      value === "all" ? "library.library.anyType" : `library.library.${value}`,
-    ),
-  }));
 
   /** One bar: where to look, then what to keep. Drive's order. */
   const filters = (
@@ -559,40 +478,9 @@ export function LibraryPage({
           active={place === p.key}
           onClick={() => onOpenDir(p.path)}
         >
-          {context && p.key === "all" ? t("library.context.all") : p.label}
+          {p.key === "all" ? t("library.context.all") : p.label}
         </Page.Tab>
       ))}
-      {!context && places.length > 0 && (
-        <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
-      )}
-      {!context && (
-        <>
-          <FilterMenu
-            label={
-              fileView === "all"
-                ? t("library.library.typeFilter")
-                : typeOptions.find((o) => o.value === fileView)?.label
-            }
-            value={fileView}
-            options={typeOptions}
-            active={fileView !== "all"}
-            onChange={setFileView}
-          />
-          <FilterMenu
-            label={
-              modified === "any"
-                ? t("library.library.modified")
-                : modifiedOptions.find((o) => o.value === modified)?.label
-            }
-            value={modified}
-            options={modifiedOptions}
-            active={modified !== "any"}
-            onChange={(next) =>
-              void setSearchParam("modified", next === "any" ? null : next)
-            }
-          />
-        </>
-      )}
     </Page.Tabs>
   );
 
@@ -632,57 +520,33 @@ export function LibraryPage({
         }}
         items={breadcrumbs}
       />
-      {context ? (
-        <Page.Actions>
-          {browseVolume && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setNewFolderOpen(true)}
-            >
-              {t("library.library.newFolder")}
-            </Button>
-          )}
-          {primaryAction}
-        </Page.Actions>
-      ) : (
-        <Page.Actions
-          secondary={
-            <>
-              <SearchToggle
-                value={searchText}
-                onChange={setSearchText}
-                label={t("library.library.searchPlaceholder")}
-                placeholder={searchPlaceholder}
-                clearLabel={t("library.library.clearSearch")}
-              />
-              {controls}
-            </>
-          }
-        >
-          {primaryAction}
-        </Page.Actions>
-      )}
+      <Page.Actions>
+        {browseVolume && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setNewFolderOpen(true)}
+          >
+            {t("library.library.newFolder")}
+          </Button>
+        )}
+        {primaryAction}
+      </Page.Actions>
       <Panel.Toolbar.Left.Portal>{filters}</Panel.Toolbar.Left.Portal>
       <Panel.Toolbar.Right.Portal>
-        {context ? (
-          <SearchInput
-            value={searchText}
-            onChange={setSearchText}
-            placeholder={searchPlaceholder}
-            className="w-full min-w-48 md:w-56"
-          />
-        ) : (
-          <LayoutToggle layout={layout} onChange={view.onLayout} />
-        )}
+        <SearchInput
+          value={searchText}
+          onChange={setSearchText}
+          placeholder={searchPlaceholder}
+          className="w-full min-w-48 md:w-56"
+        />
       </Panel.Toolbar.Right.Portal>
       <div className="h-full overflow-y-auto">
         <div
           className={cn(
             "mx-auto flex w-full flex-col gap-8",
-            context
-              ? cn(PAGE_INSET, "pt-4 pb-8")
-              : "max-w-[1200px] px-4 py-6 md:px-8",
+            PAGE_INSET,
+            "pt-4 pb-8",
           )}
         >
           {searchQuery ? (
@@ -738,7 +602,7 @@ export function LibraryPage({
           Precedence — preview, then skill, then brand — mirrors the panel
           selection in the outer Library. */}
       {isMobile &&
-        (search.preview ? (
+        (ownsPreview && search.preview ? (
           <LibraryPreviewDialog
             previewPath={search.preview}
             onClose={() => setSearchParam("preview", null)}

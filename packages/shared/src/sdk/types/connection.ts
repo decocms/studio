@@ -161,7 +161,14 @@ export const ConnectionEntitySchema = z.object({
   connection_token: z
     .string()
     .nullable()
-    .describe("Authentication token (for HTTP connections)"),
+    .optional()
+    .describe(
+      "Authentication token (for HTTP connections). Write-only: tool responses never include it.",
+    ),
+  has_connection_token: z
+    .boolean()
+    .optional()
+    .describe("Whether a connection_token is stored. Set on tool responses."),
   connection_headers: z
     .union([StdioConnectionParametersSchema, HttpConnectionParametersSchema])
     .nullable()
@@ -210,6 +217,7 @@ export const ConnectionCreateDataSchema = ConnectionEntitySchema.omit({
   tools: true,
   bindings: true,
   status: true,
+  has_connection_token: true,
 })
   .partial({
     id: true,
@@ -235,8 +243,11 @@ export type ConnectionCreateData = z.infer<typeof ConnectionCreateDataSchema>;
 /**
  * Input schema for updating connections
  */
-export const ConnectionUpdateDataSchema =
-  ConnectionEntitySchema.partial().extend({
+export const ConnectionUpdateDataSchema = ConnectionEntitySchema.omit({
+  has_connection_token: true,
+})
+  .partial()
+  .extend({
     // null keeps the current slug, so a fetched entity can be sent back as is.
     url_slug: UrlSlugSchema.nullish(),
     connection_token: z.string().max(MAX_CONNECTION_TOKEN_LENGTH).nullish(),

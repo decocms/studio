@@ -9,6 +9,7 @@ import {
   isMultivariateArrayWrapper,
   isSectionMultivariateWrapperValue,
   parsePageVariants,
+  shouldDeleteOrphanMatcherBlock,
   unwrapMultivariateArrayValue,
   variantHasRule,
   wrapMultivariateArrayValue,
@@ -725,5 +726,50 @@ describe("countSavedMatcherBlockReferences", () => {
 
     expect(countSavedMatcherBlockReferences(decofile, "MobilePromo")).toBe(0);
     expect(countSavedMatcherBlockReferences(decofile, "DesktopPromo")).toBe(2);
+  });
+});
+
+describe("shouldDeleteOrphanMatcherBlock", () => {
+  const savedMatcher = {
+    __resolveType: "website/matchers/device.ts",
+    mobile: true,
+    name: "Mobile Promo",
+  };
+  const pageWith = (rule: unknown) => ({
+    __resolveType: "website/pages/Page.tsx",
+    path: "/",
+    sections: {
+      __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+      variants: [{ rule, value: [] }],
+    },
+  });
+  const orphaned = {
+    MobilePromo: savedMatcher,
+    home: pageWith({ __resolveType: "website/matchers/always.ts" }),
+  };
+  const used = {
+    MobilePromo: savedMatcher,
+    home: pageWith({ __resolveType: "MobilePromo" }),
+  };
+
+  it("deletes a v7 site's saved rule once nothing references it", () => {
+    expect(
+      shouldDeleteOrphanMatcherBlock(orphaned, "MobilePromo", null, false),
+    ).toBe(true);
+  });
+
+  it("keeps a v7 site's saved rule that is still referenced", () => {
+    expect(
+      shouldDeleteOrphanMatcherBlock(used, "MobilePromo", null, false),
+    ).toBe(false);
+  });
+
+  it("keeps a v8 site's saved rule, used or not", () => {
+    expect(
+      shouldDeleteOrphanMatcherBlock(orphaned, "MobilePromo", null, true),
+    ).toBe(false);
+    expect(
+      shouldDeleteOrphanMatcherBlock(used, "MobilePromo", null, true),
+    ).toBe(false);
   });
 });

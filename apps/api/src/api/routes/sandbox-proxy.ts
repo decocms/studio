@@ -60,6 +60,8 @@ import {
 } from "@/git-providers";
 import { GitProviderError } from "../../git-providers/types";
 import {
+  DEFAULT_BRANCH_READ_ONLY,
+  DefaultBranchWriteError,
   repoGitDiff,
   repoGitDiscard,
   repoGitRebase,
@@ -73,6 +75,7 @@ import {
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { sandboxContentHandler } from "../../sandbox/content-storage";
 import { projectPackagePath } from "../../hosted/blocks-major";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import {
   GitPushAuthError,
   parseRepositoryBinding,
@@ -416,6 +419,13 @@ function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
         ? {}
         : { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) }),
     });
+  }
+  if (err instanceof DefaultBranchWriteError) {
+    return c.json(
+      { error: message, code: DEFAULT_BRANCH_READ_ONLY },
+      409,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
   }
   if (err instanceof RepoWriteConflict) {
     return c.json({ error: message }, 409, SANDBOX_PROXY_CACHE_HEADERS);
@@ -794,6 +804,27 @@ function isSetupStep(value: string): value is SetupStep {
   return (SETUP_STEPS as readonly string[]).includes(value);
 }
 
+/**
+ * A sandbox-less session of a Blocks v8 site (its "Blocks v8 site" switch) has
+ * no git-shaped popover: its content lives on the hosted CMS
+ * (`/api/cms/:site`), so its `/git/*` routes answer 404 without reaching
+ * GitHub. A sandbox's own git (the daemon) and v7 sessions keep theirs.
+ */
+export const hostedV8GitGone = createMiddleware<VmEnv>(async (c, next) => {
+  const claim = c.get("vmClaim");
+  if (claim.runtime === "cms" && isBlocksV8Project(claim.virtualMcpMetadata)) {
+    return c.json(
+      {
+        error: "A Blocks v8 site's content is on the hosted CMS, not git",
+        code: "hosted_cms",
+      },
+      404,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
+  }
+  return next();
+});
+
 // ---- Route factory ----------------------------------------------------------
 
 export const createSandboxRoutes = () => {
@@ -801,6 +832,7 @@ export const createSandboxRoutes = () => {
 
   // Apply middleware to all sub-routes
   app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
+  app.use("/:virtualMcpId/:branch/git/*", hostedV8GitGone);
 
   // -- File write/read (base64-encoded body) --------------------------------
   app.post("/:virtualMcpId/:branch/write", (c) =>
@@ -843,6 +875,14 @@ export const createSandboxRoutes = () => {
     proxyDaemon(c, "/_sandbox/grep", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
+    }),
+  );
+
+  // One shell command, awaited: no stdin, no TTY, the daemon caps it at 120s.
+  app.post("/:virtualMcpId/:branch/bash", (c) =>
+    proxyDaemon(c, "/_sandbox/bash", {
+      forwardJsonBody: true,
+      signal: c.req.raw.signal,
     }),
   );
 
@@ -1135,6 +1175,9 @@ export const createSandboxRoutes = () => {
           await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
+          if (err instanceof DefaultBranchWriteError) {
+            return fastPreviewGitError(c, err);
+          }
           const status =
             repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
               ? 409

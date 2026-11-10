@@ -14,14 +14,18 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { createContext, type ReactNode } from "react";
 import { formatLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { useProjectContext } from "@/sdk";
 import { useRouteThreadId } from "@/layouts/thread-route";
 
 export interface OrgFileOpenValue {
+  orgId?: string;
   /** Current org slug, for resolving `/app/org/<slug>/…` references. */
   orgSlug: string | undefined;
   /** Current thread id (`?thread=` on canonical routes), for resolving `/app/org/output|upload/…`
    *  references into their `<threadId>/` subtree of the shared volume. */
   threadId: string | undefined;
+  /** Confirmed filenames in the source chat output directory. */
+  outputFiles?: ReadonlySet<string>;
   /** Open a Library browse path ("<volume>/<path…>"). */
   open: (browsePath: string) => void;
 }
@@ -29,6 +33,7 @@ export interface OrgFileOpenValue {
 export const OrgFileOpenContext = createContext<OrgFileOpenValue | null>(null);
 
 export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
+  const { org: organization } = useProjectContext();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { openPanel } = usePanelNavigate();
@@ -61,7 +66,9 @@ export function OrgFileOpenProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <OrgFileOpenContext.Provider value={{ orgSlug: org, threadId, open }}>
+    <OrgFileOpenContext.Provider
+      value={{ orgId: organization.id, orgSlug: org, threadId, open }}
+    >
       {children}
     </OrgFileOpenContext.Provider>
   );

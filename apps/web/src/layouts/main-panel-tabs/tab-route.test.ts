@@ -139,10 +139,37 @@ describe("tabRouteLocation", () => {
         section: "settings",
       });
     }
-    expect(tabRouteLocation("cdn")).toEqual({
-      kind: "agent-section",
-      section: "monitor",
-    });
+  });
+
+  test("opens each retired app in the Monitor view that took it over", () => {
+    const rows = [
+      ["analytics", "audience"],
+      ["cdn", "performance"],
+    ] as const;
+    for (const [tabId, view] of rows) {
+      expect(tabRouteLocation(tabId)).toEqual({
+        kind: "project-destination",
+        destination: "monitoring",
+        monitorView: view,
+      });
+      expect(tabRouteTarget({ org: "acme", agentId: "vir_1", tabId })).toEqual({
+        to: "/$org/projects/$agentId/monitoring",
+        params: { org: "acme", agentId: "vir_1" },
+        search: { view },
+      });
+      expect(
+        tabRouteTarget({
+          org: "acme",
+          agentId: "vir_1",
+          tabId,
+          destinationScope: "organization",
+        }),
+      ).toEqual({
+        to: "/$org/monitoring",
+        params: { org: "acme" },
+        search: { view },
+      });
+    }
   });
 
   test("routes every built-in explicitly instead of treating it as metadata", () => {
@@ -442,5 +469,34 @@ describe("the Calendar view", () => {
       params: { org: "acme", agentId: "agent-1" },
       search: {},
     });
+  });
+});
+
+describe("the Experiments app", () => {
+  test("is its own project section with its own route", () => {
+    expect(tabRouteLocation("experiments")).toEqual({
+      kind: "agent-section",
+      section: "experiments",
+    });
+    expect(
+      tabRouteTarget({ tabId: "experiments", org: "acme", agentId: "agent-1" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/experiments",
+      params: { org: "acme", agentId: "agent-1" },
+      search: {},
+    });
+  });
+
+  test("a saved Experiments tab reads back as the same tab id", () => {
+    expect(tabIdForRoute({ mainView: "experiments" })).toBe("experiments");
+  });
+
+  test("the other retired apps still open in Monitor", () => {
+    expect(
+      tabRouteTarget({ tabId: "analytics", org: "acme", agentId: "agent-1" }),
+    ).toMatchObject({ to: "/$org/projects/$agentId/monitoring" });
+    expect(
+      tabRouteTarget({ tabId: "cdn", org: "acme", agentId: "agent-1" }),
+    ).toMatchObject({ to: "/$org/projects/$agentId/monitoring" });
   });
 });

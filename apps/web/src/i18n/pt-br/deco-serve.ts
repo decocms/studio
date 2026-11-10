@@ -9,21 +9,13 @@ export const decoServe = {
   "decoServe.waiting.title": "Aguardando seu computador",
   "decoServe.waiting.lead":
     "Seu preview e seu conteúdo abrem aqui assim que o Studio se conectar ao deco serve neste computador.",
-  "decoServe.waiting.step2.title": "O Studio se conecta sozinho",
-  "decoServe.waiting.step2.body":
+  "decoServe.waiting.connect.title": "O Studio se conecta sozinho",
+  "decoServe.waiting.connect.body":
     "Deixe esta aba aberta. Seu preview abre aqui assim que o deco serve iniciar.",
-  "decoServe.guide.step1.title": "Inicie o deco serve na pasta do seu site",
-  "decoServe.guide.step1.body":
-    "Em um terminal, na pasta do seu site (a que tem a pasta `.deco`), rode:",
-  "decoServe.guide.copy": "Copiar comando",
-  "decoServe.guide.copyShort": "Copiar",
-  "decoServe.guide.copied": "Copiado",
-  "decoServe.guide.copiedAnnouncement":
-    "Comando copiado para a área de transferência",
-  "decoServe.guide.step2.looking": "Procurando o deco serve em {hosts}…",
-  "decoServe.guide.step2.paused":
+  "decoServe.guide.looking": "Procurando o deco serve em {hosts}…",
+  "decoServe.guide.paused":
     "Pausado enquanto esta aba está em segundo plano. A busca recomeça quando você voltar.",
-  "decoServe.guide.step2.start": "Procurar o deco serve neste computador",
+  "decoServe.guide.start": "Procurar o deco serve neste computador",
 
   "decoServe.docs.heading": "Saiba mais",
   "decoServe.docs.quickstart": "Primeiros passos",
@@ -36,7 +28,7 @@ export const decoServe = {
   "decoServe.link.invalidTitle":
     "Este link não aponta para o deco serve no seu computador",
   "decoServe.link.invalidBody":
-    "Links do editor do site só abrem um deco serve rodando neste computador (localhost). Copie de novo o link do Site editor no terminal, ou siga os passos abaixo.",
+    "Links do editor do site só abrem um deco serve rodando neste computador (localhost). O Studio continua procurando o deco serve neste computador.",
   "decoServe.lna.deniedTitle":
     "O Chrome está impedindo o Studio de acessar seu computador",
   "decoServe.lna.deniedBody":
@@ -54,10 +46,7 @@ export const decoServe = {
     "O deco serve em {host} é de uma versão principal do Blocks diferente da deste Studio, então os dois não conseguem editar o conteúdo juntos. Atualize o @decocms/blocks do seu site e reinicie o deco serve.",
   "decoServe.state.notDecoServe.title": "Outro programa está usando {host}",
   "decoServe.state.notDecoServe.body":
-    "Algo que não é o deco serve respondeu em {host}. Inicie o deco serve em outra porta com `--port 4546` e abra o link do Site editor que ele mostra.",
-  "decoServe.state.notV8.title": "O schema deste site não é do Blocks v8",
-  "decoServe.state.notV8.body":
-    'O schema que o deco serve em {host} serve não tem "blocksMajor": 8, então o Studio não consegue editá-lo. Atualize o @decocms/blocks do seu site, rode deco schema e o Studio abre o editor sozinho.',
+    "Algo que não é o deco serve respondeu em {host}. Libere essa porta para o deco serve, ou abra o link do Site editor que o deco serve mostrou para a porta dele.",
   "decoServe.state.error.title":
     "O deco serve não conseguiu abrir seu conteúdo",
   "decoServe.state.error.body":
