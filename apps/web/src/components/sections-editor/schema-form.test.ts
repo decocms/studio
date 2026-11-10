@@ -8,7 +8,7 @@ import { ImageField } from "./fields/image-field";
 import { BooleanField } from "./fields/boolean-field";
 import { NumberField } from "./fields/number-field";
 import { StringField } from "./fields/string-field";
-import type { LiveMeta } from "./resolve-schema";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 
 describe("inferBlockRefArrayItemSchema", () => {
   test("infers string, number, boolean from first item", () => {
@@ -205,6 +205,94 @@ describe("renderField – multivariate widget keeps the prop description", () =>
     }) as { props: { schema: { description?: string } } } | null;
     expect(typeOf(inner)).toBe(ImageField);
     expect(inner?.props.schema.description).toBe("Shown behind the CTA");
+  });
+});
+
+describe("renderField – multivariate object uses the shallower plainSchema", () => {
+  // `Flag<{ media: Video | Image }>` nested deep (a loader array of flags): the
+  // variant value is built 3 levels deeper than `plainSchema`, so the depth cap
+  // leaves the `type`-discriminated branches of `media` without a schema.
+  const mediaUnion = (withBranchSchemas: boolean): SchemaProperty => ({
+    type: "block-ref",
+    discriminatorKey: "type",
+    anyOfRefs: [
+      {
+        resolveType: "video",
+        title: "Video",
+        discriminatorValue: "video",
+        schema: withBranchSchemas
+          ? {
+              type: "object",
+              properties: { video: { type: "string", format: "video-uri" } },
+            }
+          : undefined,
+      },
+      {
+        resolveType: "image",
+        title: "Image",
+        discriminatorValue: "image",
+        schema: withBranchSchemas
+          ? {
+              type: "object",
+              properties: {
+                image: { type: "string", format: "image-uri" },
+                alt: { type: "string" },
+              },
+            }
+          : undefined,
+      },
+    ],
+  });
+  const kit = (withBranchSchemas: boolean): SchemaProperty => ({
+    type: "object",
+    properties: { media: mediaUnion(withBranchSchemas) },
+  });
+
+  test("the inner form gets the union branches the variant value lost", () => {
+    const el = renderField({
+      onChange: () => {},
+      path: "content",
+      label: "Content",
+      value: { media: { type: "image" } },
+      schema: {
+        type: "block-ref",
+        plainSchema: kit(true),
+        anyOfRefs: [
+          {
+            resolveType: "site/flags/multivariate/cardContent.ts",
+            title: "Card Content Variants",
+            schema: {
+              type: "object",
+              properties: {
+                variants: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: { value: kit(false) },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    }) as {
+      props: { renderInnerField: (p: unknown) => unknown };
+    } | null;
+    const inner = el?.props.renderInnerField({
+      onChange: () => {},
+      path: "content",
+      label: "Content",
+      value: { media: { type: "image" } },
+      schema: {},
+    }) as { props: { schema: SchemaProperty } } | null;
+    const image = inner?.props.schema.properties?.media?.anyOfRefs?.find(
+      (r) => r.resolveType === "image",
+    );
+    expect(Object.keys(image?.schema?.properties ?? {})).toEqual([
+      "image",
+      "alt",
+    ]);
   });
 });
 

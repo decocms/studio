@@ -312,15 +312,16 @@ function renderFieldBody(fieldProps: FieldProps): ReactNode {
       const variantValueSchema =
         ref.schema?.properties?.variants?.items?.properties?.value;
       // Determine the schema for the inner (plain) field. Priority:
-      // 1. variant value schema (when fully resolved and non-circular)
-      // 2. plainSchema on the outer block-ref (non-loader branch preserved
-      //    during resolution, e.g. { type: "string", format: "image-uri" })
+      // 1. plainSchema on the outer block-ref: the same `T` as the variant
+      //    value, built shallower and outside the depth cap. Deep in a form,
+      //    the variant value can lose the branch schemas of a union in `T`.
+      // 2. variant value schema (when fully resolved and non-circular)
       // 3. plainSchema on the variant value schema (circular block-ref)
       const innerSchema =
-        variantValueSchema && variantValueSchema.type !== "block-ref"
+        schema.plainSchema ??
+        (variantValueSchema && variantValueSchema.type !== "block-ref"
           ? variantValueSchema
-          : (schema.plainSchema ??
-            variantValueSchema?.plainSchema ?? { type: "string" });
+          : (variantValueSchema?.plainSchema ?? { type: "string" }));
       // The prop's own @description lives on the outer union, not the widget branch.
       const innerFieldSchema: SchemaProperty = {
         ...innerSchema,
