@@ -103,9 +103,16 @@ export function labelFromResolveType(rt: string): string {
   const segments = rt.split("/");
   const filename = segments[segments.length - 1] ?? rt;
   return (
-    filename
-      .replace(/\.(tsx?|jsx?|html?)$/, "")
-      .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
+    capitalizeWords(
+      filename.replace(/\.(tsx?|jsx?|html?)$/, "").replace(/[-_]/g, " "),
+    ) || rt
   );
+}
+
+/**
+ * Capitalize each word. Unicode-aware: `\b\w` is ASCII-only, so an accented
+ * letter read as a word boundary and "benefícios" became "BenefíCios".
+ */
+export function capitalizeWords(s: string): string {
+  return s.replace(/(?<![\p{L}\p{M}\p{N}])\p{L}/gu, (c) => c.toUpperCase());
 }
