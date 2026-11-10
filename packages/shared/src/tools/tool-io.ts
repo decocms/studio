@@ -8911,6 +8911,15 @@ export interface StudioToolIO {
     };
     output: { success: boolean };
   };
+  THREAD_SANDBOX_START: {
+    input: { threadId: string; wait?: boolean | undefined };
+    output: {
+      virtualMcpId: string;
+      branch: string;
+      sandboxHandle: string | null;
+      previewUrl: string | null;
+    };
+  };
   GITHUB_LIST_USER_ORGS: {
     input: { connectionId: string };
     output: {
