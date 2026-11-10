@@ -15,4 +15,11 @@ export const siteTokens = {
   "siteTokens.copy": "Copy site token",
   "siteTokens.copied": "Site token copied to the clipboard",
   "siteTokens.done": "Done",
+  "siteTokens.revoke": "Revoke",
+  "siteTokens.revokeLabel": "Revoke site token {kid}",
+  "siteTokens.revokeTitle": "Revoke this site token?",
+  "siteTokens.revokeDescription":
+    "Token {kid} stops working for deco schema push right away. Telemetry the site sends with it is still accepted. This can't be undone.",
+  "siteTokens.revoked": "Site token revoked",
+  "siteTokens.cancel": "Cancel",
 };

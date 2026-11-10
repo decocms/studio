@@ -3,14 +3,25 @@
  * `createCMS({ site, token })` to send telemetry, next to the site id (the
  * only place settings show it; hover the row to copy it). A token is shown
  * once, in a dialog with its copy button; issuing always works, and the list
- * shows every token issued (their key ids, never the tokens). Keyed by the
- * site on the hosted CMS (`/api/cms/:site/site-tokens`).
+ * shows every live token (their key ids, never the tokens), each with a
+ * revoke button. Keyed by the site on the hosted CMS
+ * (`/api/cms/:site/site-tokens`).
  */
 
 import { useId, useState } from "react";
-import { Key01, Plus } from "@untitledui/icons";
+import { Key01, Plus, Trash01 } from "@untitledui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -59,6 +70,7 @@ export function SiteTokenSection({
   const base = cmsUrl(projectSite, "site-tokens");
   const key = KEYS.hostedSiteTokens(orgSlug, virtualMcpId);
   const [created, setCreated] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const siteIdField = useId();
 
   const list = useQuery({
@@ -70,6 +82,20 @@ export function SiteTokenSection({
     mutationFn: async () =>
       readJson<{ token: string }>(await fetch(base, { method: "POST" })),
     onSuccess: ({ token }) => setCreated(token),
+    onError: (error) => toast.error(error.message),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+  const revoke = useMutation({
+    mutationFn: async (kid: string) =>
+      readJson<{ revoked: true }>(
+        await fetch(`${base}/${encodeURIComponent(kid)}`, {
+          method: "DELETE",
+        }),
+      ),
+    onSuccess: () => {
+      setRevoking(null);
+      toast.success(t("siteTokens.revoked"));
+    },
     onError: (error) => toast.error(error.message),
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
   });
@@ -128,7 +154,7 @@ export function SiteTokenSection({
           <SettingsCardRow key={token.kid}>
             <div className="flex min-w-0 items-center gap-3">
               <Key01 size={16} className="shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate font-mono text-xs">{token.kid}</p>
                 <p className="text-xs text-muted-foreground">
                   {t("siteTokens.issuedAgo", {
@@ -136,10 +162,50 @@ export function SiteTokenSection({
                   })}
                 </p>
               </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                aria-label={t("siteTokens.revokeLabel", { kid: token.kid })}
+                onClick={() => setRevoking(token.kid)}
+              >
+                <Trash01 size={14} />
+              </Button>
             </div>
           </SettingsCardRow>
         ))}
       </SettingsCard>
+
+      <AlertDialog
+        open={revoking !== null}
+        onOpenChange={(o) => !o && !revoke.isPending && setRevoking(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("siteTokens.revokeTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("siteTokens.revokeDescription", { kid: revoking ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={revoke.isPending}>
+              {t("siteTokens.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={revoke.isPending}
+              onClick={(event) => {
+                // Stay open until the revoke answers.
+                event.preventDefault();
+                if (revoking) revoke.mutate(revoking);
+              }}
+            >
+              {revoke.isPending ? <Spinner className="size-3.5" /> : null}
+              {t("siteTokens.revoke")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog
         open={created !== null}
