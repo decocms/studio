@@ -1005,6 +1005,7 @@ function TaskBoardBody() {
     scopeId,
     project: scopedProject,
     projects: orgProjects,
+    setScope,
   } = useProjectScope();
   const { items, isLoading } = scopedBoardItems({
     items: orgItems,
@@ -1645,6 +1646,11 @@ function TaskBoardBody() {
         index={projectIndex}
         onChange={handleFiltersChange}
         view={layout === "list" ? { grouping, sorting } : undefined}
+        scope={
+          scopedProject
+            ? { project: scopedProject, onClear: () => setScope(null) }
+            : undefined
+        }
       />
 
       {items.length === 0 ? (
