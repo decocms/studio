@@ -50,6 +50,11 @@ import {
   nextReleaseColor,
   useReleases,
 } from "@/components/thread/repository/use-releases";
+import {
+  isForeignStoreDraft,
+  useStoreDrafts,
+} from "@/components/thread/repository/cms-store-drafts";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 
@@ -240,12 +245,24 @@ function VmEventsBridge({
   const draftsBase = useBaseBranch(draftsVm, currentBranch);
   const { releases: draftReleases, createRelease: createDraftRelease } =
     useReleases(virtualMcpId);
+  // A draft made outside Studio (`deco push --draft`) already has a name: it
+  // stays a CMS draft in the switcher, not a fresh "Rascunho N". Wait for the
+  // hosted list on a v8 site; a failed read falls back to naming it.
+  const storeDraftsQuery = useStoreDrafts(
+    virtualMcpId,
+    blocksV8Project(draftsVm),
+  );
+  const currentIsForeignDraft = currentBranch
+    ? isForeignStoreDraft(currentBranch, storeDraftsQuery.data)
+    : false;
   const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
   const currentIsUnnamedDraft =
     isOwnDraftThread &&
     !!currentBranch &&
     currentBranch !== draftsBase &&
-    !draftReleases.some((r) => r.branch === currentBranch);
+    !draftReleases.some((r) => r.branch === currentBranch) &&
+    !storeDraftsQuery.isLoading &&
+    currentIsForeignDraft !== true;
   const namedDraftForBranchRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
   useEffect(() => {

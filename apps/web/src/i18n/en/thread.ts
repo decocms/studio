@@ -2,6 +2,9 @@ export const thread = {
   "thread.branchPicker.allLoaded": "All loaded",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
   "thread.branchPicker.storeDraftVia": "via {via}",
+  "thread.branchPicker.discardStoreDraftConfirm":
+    'Discard "{name}" from the CMS? Its unpublished changes are deleted for everyone. Published content is not affected.',
+  "thread.branchPicker.discardStoreDraftError": "Couldn't discard the draft",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Couldn't load branches from GitHub. You can still pick from your branches.",

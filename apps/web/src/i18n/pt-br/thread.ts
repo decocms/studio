@@ -4,6 +4,10 @@ export const thread = {
   "thread.branchPicker.allLoaded": "Todas carregadas",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
   "thread.branchPicker.storeDraftVia": "via {via}",
+  "thread.branchPicker.discardStoreDraftConfirm":
+    'Descartar "{name}" do CMS? As alterações não publicadas são apagadas para todos. O conteúdo publicado não muda.',
+  "thread.branchPicker.discardStoreDraftError":
+    "Não foi possível descartar o draft",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",

@@ -15,7 +15,7 @@
  * back every draft someone discarded.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Release } from "@decocms/shared/sdk/types";
 import {
   cmsJson,
@@ -93,4 +93,51 @@ export function useStoreDrafts(virtualMcpId: string, enabled: boolean) {
     },
   });
   return query;
+}
+
+/** Discards one of the project's site drafts, then reads the list again. */
+export function useDiscardStoreDraft(virtualMcpId: string) {
+  const site = cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      if (!site) throw new Error("This project has no hosted CMS site");
+      await discardStoreDraft(site, name);
+    },
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: KEYS.hostedDrafts(site ?? ""),
+      }),
+  });
+}
+
+/**
+ * Whether `branch` is a CMS draft made outside Studio (`deco push --draft`, a
+ * site token, an agent): it already has a name, so Studio must not give it a
+ * "Draft N" release. `undefined` while the list isn't read yet, so a caller
+ * waits instead of guessing.
+ */
+export function isForeignStoreDraft(
+  branch: string,
+  drafts: readonly StoreDraft[] | undefined,
+): boolean | undefined {
+  if (drafts === undefined) return undefined;
+  return drafts.some((d) => d.name === branch && d.via !== "studio");
+}
+
+/**
+ * Discards a CMS draft (`DELETE /api/cms/:site/drafts/:name`): its row and its
+ * unpublished changes, as `deco drafts discard` does. Published content is
+ * untouched.
+ */
+export async function discardStoreDraft(
+  site: string,
+  name: string,
+): Promise<void> {
+  await cmsJson<{ discarded?: boolean }>(
+    await fetch(cmsUrl(site, `drafts/${encodeURIComponent(name)}`), {
+      method: "DELETE",
+      cache: "no-store",
+    }),
+  );
 }

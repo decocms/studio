@@ -75,8 +75,10 @@ import {
 } from "./use-releases";
 import { useStartDraft } from "./use-start-draft";
 import {
+  type StoreDraft,
   storeDraftVia,
   unlistedStoreDrafts,
+  useDiscardStoreDraft,
   useStoreDrafts,
 } from "./cms-store-drafts";
 
@@ -158,6 +160,8 @@ export function BranchPicker({
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
+  // A CMS draft (`deco push --draft`) to discard, after a confirm.
+  const [pendingDiscard, setPendingDiscard] = useState<StoreDraft | null>(null);
   // Scroll the selected row into view when the popover opens.
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
@@ -168,6 +172,7 @@ export function BranchPicker({
   const storeDraftsQuery = useStoreDrafts(virtualMcpId, isV8);
   const storeDrafts = unlistedStoreDrafts(releases, storeDraftsQuery.data);
   const refetchStoreDrafts = storeDraftsQuery.refetch;
+  const discardStoreDraft = useDiscardStoreDraft(virtualMcpId);
   /**
    * "Local" mode, per-browser and orthogonal to the branch `value` — picking
    * any branch/draft clears it (see `pick`/`create`/`adoptBranch`). v7: a
@@ -359,6 +364,25 @@ export function BranchPicker({
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
+  };
+
+  // Discarding a CMS draft drops its row and its unpublished changes, as
+  // `deco drafts discard` does — published or abandoned ones otherwise stay
+  // listed forever. Off the active one first, never to production.
+  const confirmDiscard = () => {
+    const d = pendingDiscard;
+    setPendingDiscard(null);
+    if (!d) return;
+    if (d.name === value) {
+      const sibling = releases[0];
+      if (sibling) pick(sibling.branch);
+      else setOpen(false);
+    }
+    discardStoreDraft.mutateAsync(d.name).catch((err: unknown) => {
+      toast.error(t("thread.branchPicker.discardStoreDraftError"), {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    });
   };
 
   const popover = (
@@ -557,6 +581,8 @@ export function BranchPicker({
                       setEditing(d.name);
                       setEditName(d.name);
                     }}
+                    onDelete={() => setPendingDiscard(d)}
+                    deleteBlocked={d.name === value && releases.length === 0}
                   />
                 ),
               )}
@@ -631,6 +657,34 @@ export function BranchPicker({
               {t("thread.branchPicker.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} variant="destructive">
+              {t("thread.branchPicker.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={pendingDiscard !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDiscard(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("thread.branchPicker.deleteTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDiscard &&
+                t("thread.branchPicker.discardStoreDraftConfirm", {
+                  name: pendingDiscard.name,
+                })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("thread.branchPicker.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDiscard} variant="destructive">
               {t("thread.branchPicker.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>

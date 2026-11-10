@@ -1,6 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import type { Release } from "@decocms/shared/sdk/types";
 import {
+  discardStoreDraft,
+  isForeignStoreDraft,
   type StoreDraft,
   storeDraftVia,
   unlistedStoreDrafts,
@@ -69,5 +71,61 @@ describe("storeDraftVia", () => {
     expect(storeDraftVia("cli")).toBe("CLI");
     expect(storeDraftVia("token")).toBe("API");
     expect(storeDraftVia("studio-agent")).toBe("agent");
+  });
+});
+
+describe("isForeignStoreDraft", () => {
+  const drafts = [
+    draft("gimenes-qqaedawm", "studio"),
+    draft("fix-footer-refs", "cli"),
+    draft("agent-draft", "studio-agent"),
+  ];
+
+  it("is unknown until the list is read, so the caller waits", () => {
+    expect(isForeignStoreDraft("fix-footer-refs", undefined)).toBeUndefined();
+  });
+
+  it("holds for a draft made outside Studio", () => {
+    expect(isForeignStoreDraft("fix-footer-refs", drafts)).toBe(true);
+    expect(isForeignStoreDraft("agent-draft", drafts)).toBe(true);
+  });
+
+  it("does not hold for Studio's own draft or a fresh branch", () => {
+    expect(isForeignStoreDraft("gimenes-qqaedawm", drafts)).toBe(false);
+    expect(isForeignStoreDraft("gimenes-new-thread", drafts)).toBe(false);
+    expect(isForeignStoreDraft("gimenes-new-thread", [])).toBe(false);
+  });
+});
+
+describe("discardStoreDraft", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it("sends DELETE /api/cms/:site/drafts/:name with the name encoded", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      calls.push([url, init]);
+      return Response.json({ discarded: true });
+    }) as typeof fetch;
+    await discardStoreDraft("osklenbr-faststore-studio", "fix/footer refs");
+    expect(calls).toEqual([
+      [
+        "/api/cms/osklenbr-faststore-studio/drafts/fix%2Ffooter%20refs",
+        { method: "DELETE", cache: "no-store" },
+      ],
+    ]);
+  });
+
+  it("throws the server's error", async () => {
+    globalThis.fetch = (async () =>
+      Response.json(
+        { error: "Draft not found", code: "draft_not_found" },
+        { status: 404 },
+      )) as unknown as typeof fetch;
+    await expect(discardStoreDraft("s", "gone")).rejects.toThrow(
+      "Draft not found",
+    );
   });
 });
