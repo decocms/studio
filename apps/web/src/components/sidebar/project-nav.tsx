@@ -8,6 +8,7 @@
 
 import type { ReactNode } from "react";
 import {
+  Beaker02,
   ClockRewind,
   Calendar,
   CheckDone01,
@@ -140,6 +141,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     calendar: {
       label: t("common.mainPanelTabs.calendar"),
       icon: <Calendar size={16} />,
+    },
+    experiments: {
+      label: t("common.mainPanelTabs.experiments"),
+      icon: <Beaker02 size={16} />,
     },
   };
   for (const viewId of PROJECT_NATIVE_VIEW_IDS) {

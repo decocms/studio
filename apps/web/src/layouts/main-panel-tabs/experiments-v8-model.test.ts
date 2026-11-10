@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { publishedDecofile } from "@/components/sections-editor/use-published-content";
-import { experimentRows, removedExperiments } from "./experiments-v8-model";
+import {
+  draftHasUnpublishedTests,
+  experimentRows,
+  liveExperimentRows,
+  removedExperiments,
+} from "./experiments-v8-model";
 
 const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
 const pageUsing = (name: string) => ({
@@ -108,5 +113,51 @@ describe("experimentRows", () => {
       null,
     );
     expect(rows.map((r) => r.name)).toEqual(["ok"]);
+  });
+});
+
+describe("liveExperimentRows", () => {
+  it("lists the published tests, all published, running first", () => {
+    const published = {
+      experiments: { __resolveType: "split-traffic", off: 0, hero: 40 },
+    };
+    expect(liveExperimentRows(published)).toEqual([
+      { name: "hero", share: 40, status: "running", entryState: "published" },
+      { name: "off", share: 0, status: "off", entryState: "published" },
+    ]);
+  });
+
+  it("is empty when nothing is published", () => {
+    expect(liveExperimentRows({})).toEqual([]);
+  });
+});
+
+describe("draftHasUnpublishedTests", () => {
+  const tests = (values: Record<string, number>) => ({
+    experiments: { __resolveType: "split-traffic", ...values },
+  });
+  const published = tests({ hero: 40, menu: 10 });
+
+  it("is false when the draft has the published tests", () => {
+    expect(
+      draftHasUnpublishedTests(tests({ menu: 10, hero: 40 }), published),
+    ).toBe(false);
+  });
+
+  it("is true when the draft adds, changes or removes a test", () => {
+    expect(
+      draftHasUnpublishedTests(
+        tests({ hero: 40, menu: 10, new: 5 }),
+        published,
+      ),
+    ).toBe(true);
+    expect(
+      draftHasUnpublishedTests(tests({ hero: 50, menu: 10 }), published),
+    ).toBe(true);
+    expect(draftHasUnpublishedTests(tests({ hero: 40 }), published)).toBe(true);
+  });
+
+  it("is false while the published content isn't known", () => {
+    expect(draftHasUnpublishedTests(tests({ hero: 1 }), null)).toBe(false);
   });
 });

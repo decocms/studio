@@ -245,6 +245,8 @@ export const monitor = {
   "monitor.select.current": "{label}: {value}",
   "monitor.performance.org.blocks8":
     "Blocks v8 site: open it to see its telemetry",
-  "monitor.org.blocks8Experiments":
-    "{names} keep their experiments in their own project",
+  "monitor.org.blocks8ExperimentsTitle":
+    "These sites manage their A/B tests in their own Experiments app",
+  "monitor.org.openExperiments": "Open Experiments",
+  "monitor.org.openExperimentsNamed": "Open {project} Experiments",
 } as const;

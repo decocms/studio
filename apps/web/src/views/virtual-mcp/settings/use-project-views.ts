@@ -443,6 +443,7 @@ export function useProjectViews({
     e2e: t("common.mainPanelTabs.e2e"),
     automations: t("virtualMcp.layoutTabContent.automations"),
     calendar: t("common.mainPanelTabs.calendar"),
+    experiments: t("common.mainPanelTabs.experiments"),
   };
 
   /**

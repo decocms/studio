@@ -29,6 +29,7 @@ import type { NamedRulePick } from "./named-rule-picker";
 import { nameProblemMessage, NamedRuleCreateForm } from "./named-rule-step";
 import {
   type NamedRuleKind,
+  namedRuleKindInfo,
   namedRuleSupport,
   readNamedRuleBlock,
 } from "./named-rules";
@@ -39,7 +40,7 @@ import {
   type NamedRuleChange,
   useApplyNamedRule,
 } from "./use-apply-named-rule";
-import { usePublishedContent } from "./use-published-content";
+import { usePublishedContent, usePublishedRead } from "./use-published-content";
 
 /**
  * The copy that names the kind. In pt-br a test is masculine and a campaign
@@ -102,6 +103,8 @@ export function useNamedRuleView(
     branch: string;
     decofile: Record<string, unknown>;
     meta: LiveMeta | null | undefined;
+    /** The open name, when the caller keeps it (a URL); else kept here. */
+    open?: { name: string | null; set: (name: string | null) => void };
   },
 ) {
   const t = useT();
@@ -112,12 +115,23 @@ export function useNamedRuleView(
     branch,
     decofile,
   });
+  // The kind's block as it is live, never the draft's copy in its place:
+  // what the Experiments app's "Live now" shows.
+  const live = usePublishedRead({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    decofile,
+    blockKey: namedRuleKindInfo(kind).blockKey,
+  });
   const { apply, reread, isPending, holdsCopy } = useApplyNamedRule({
     orgSlug,
     virtualMcpId,
     branch,
   });
-  const [openName, setOpenName] = useState<string | null>(null);
+  const [ownOpenName, setOwnOpenName] = useState<string | null>(null);
+  const openName = input.open ? input.open.name : ownOpenName;
+  const setOpenName = input.open ? input.open.set : setOwnOpenName;
   const [creating, setCreating] = useState(false);
 
   const save: NamedRuleSave = async (
@@ -168,6 +182,8 @@ export function useNamedRuleView(
   return {
     /** The published content; `null` while it isn't known. */
     published,
+    /** The kind's block as it is live, strictly (no draft fallback). */
+    live,
     apply,
     reread,
     isPending,
