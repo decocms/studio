@@ -388,6 +388,32 @@ export async function ensureHostedBlocks(
   await Promise.all(waits);
 }
 
+/**
+ * A block's whole body, to copy it into another block. The hosted listing
+ * holds an index stub for every block not opened yet, and a stub is never
+ * saved, so its body is loaded first. Undefined when the block doesn't
+ * exist (or the index no longer has it).
+ */
+export async function loadBlockBody(
+  queryClient: QueryClient,
+  rpc: HostedRpc | null | undefined,
+  cacheKey: string,
+  listed: Record<string, unknown> | undefined,
+  name: string,
+): Promise<Record<string, unknown> | undefined> {
+  const value = listed?.[name];
+  if (!rpc || !isIndexStub(value)) return isBody(value) ? value : undefined;
+  await ensureHostedBlocks(queryClient, rpc, cacheKey, [name]);
+  const body = queryClient.getQueryData<Record<string, unknown>>(
+    KEYS.decofile(cacheKey),
+  )?.[name];
+  return isBody(body) ? body : undefined;
+}
+
+function isBody(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && !isIndexStub(value);
+}
+
 async function loadBlocks(
   queryClient: QueryClient,
   rpc: HostedRpc,

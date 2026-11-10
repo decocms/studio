@@ -61,6 +61,7 @@ import {
   useDecofile,
   useDecofileCacheKey,
   useEnsureDecofileBlocks,
+  useLoadDecofileBlock,
 } from "@/components/sections-editor/use-decofile";
 import {
   inlinePageOverrideParams,
@@ -619,6 +620,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
+  const loadBlock = useLoadDecofileBlock(createPageParams);
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
@@ -1919,16 +1921,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       );
       return;
     }
-    let template: Record<string, unknown> | undefined;
-    if (templateKey) {
-      template = decofile?.[templateKey] as Record<string, unknown> | undefined;
-      if (!template) {
+    setCreatePageError(undefined);
+    try {
+      // On the hosted CMS a page not opened yet is listed without its body.
+      const template = templateKey
+        ? await loadBlock(decofile, templateKey)
+        : undefined;
+      if (templateKey && !template) {
         setCreatePageError(t("sandbox.preview.templateNoLongerExists"));
         return;
       }
-    }
-    setCreatePageError(undefined);
-    try {
       const result = await createPage.mutateAsync({
         name,
         path: trimmedPath,
