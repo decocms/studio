@@ -9,7 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { Browser, Maximize01, Minimize01, XClose } from "@untitledui/icons";
+import { Maximize01, Minimize01, XClose } from "@untitledui/icons";
 import { Panel } from "@/components/panel";
 import { Page } from "@/components/page";
 import { SidebarThreadButtonPortal } from "@/components/sidebar/thread-button";
@@ -262,6 +262,8 @@ function MainPanelControls() {
   const expanded = !layout.threadOpen;
   return (
     <div className="flex items-center gap-0.5">
+      {/* Window controls sit apart from the page's own actions. */}
+      <span aria-hidden className="mr-1.5 h-4 w-px shrink-0 bg-border" />
       {/* Labeled once expanded: it is the only way back to the chat. */}
       {expanded ? (
         <Button
@@ -301,12 +303,38 @@ export function OpenMainPanelButton() {
     return null;
   }
   return (
-    <LayoutButton
-      label={t("page.openMainPanel")}
-      onClick={layout.toggleContent}
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1.5 px-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        onClick={layout.toggleContent}
+      >
+        <PanelOpenIcon />
+        {t("page.openMainPanel")}
+      </Button>
+      <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+    </>
+  );
+}
+
+/** A bar with an arrow leaving it: the panel slides out from the left. */
+function PanelOpenIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className="shrink-0"
     >
-      <Browser size={16} />
-    </LayoutButton>
+      <path d="M4 5v14M8 12h12m0 0-6-6m6 6-6 6" />
+    </svg>
   );
 }
 

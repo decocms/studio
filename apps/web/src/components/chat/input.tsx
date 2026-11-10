@@ -3,7 +3,7 @@ import {
   navigateToTabRouteTarget,
 } from "@/layouts/main-panel-tabs/tab-route";
 import { withTaskIntake } from "./task-intake";
-import { OpenFileChip } from "./open-file-chip";
+import { ContextChips } from "./context-chips";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { isModKey } from "@/lib/keyboard-shortcuts";
@@ -55,7 +55,6 @@ import { useThreadActions } from "./store/hooks";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import { ChatHighlight } from "./highlight";
 import { QueueTray } from "./queue-tray";
-import { PendingDraftStrip } from "./drafts/draft-card";
 import { getSupportedFileTypesLabel, modelSupportsFiles } from "./select-model";
 import { TierTrigger } from "./tier-trigger";
 import type { AiProviderModel } from "@/hooks/collections/use-ai-providers";
@@ -307,7 +306,7 @@ function ModeDismissPill({
       {icon}
       <span
         className={cn(
-          "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:opacity-100",
+          "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[480px]/chat-bottom:opacity-100",
           maxWidthClass,
         )}
       >
@@ -771,7 +770,6 @@ export function ChatInput({
           {stream && taskCtx && <ChatHighlight />}
 
           {stream && taskCtx && taskId ? <QueueTray taskId={taskId} /> : null}
-          {taskCtx && taskId ? <PendingDraftStrip /> : null}
 
           <TiptapProvider
             key={taskId}
@@ -799,7 +797,7 @@ export function ChatInput({
                 disabled={voice.status === "recording"}
               />
 
-              <OpenFileChip />
+              <ContextChips />
               <div className="group/input relative flex flex-col gap-2 flex-1">
                 <TiptapInput
                   ref={tiptapRef}
@@ -876,7 +874,7 @@ export function ChatInput({
                           label={t("chat.input.planMode")}
                           icon={<BookOpen01 size={14} className="shrink-0" />}
                           colorClass="text-brand-purple-dark dark:text-brand-purple hover:bg-brand-purple/10"
-                          maxWidthClass="@[320px]/chat-bottom:max-w-32"
+                          maxWidthClass="@[480px]/chat-bottom:max-w-32"
                         />
                       )}
                       {chatMode === "gen-image" && imageModel && (
@@ -885,7 +883,7 @@ export function ChatInput({
                           label={t("chat.input.createImage")}
                           icon={<Image01 size={14} className="shrink-0" />}
                           colorClass="text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                          maxWidthClass="@[480px]/chat-bottom:max-w-[120px]"
                         />
                       )}
                       {chatMode === "web-search" && webSearchModel && (
@@ -894,7 +892,7 @@ export function ChatInput({
                           label={t("chat.input.webSearch")}
                           icon={<Globe02 size={14} className="shrink-0" />}
                           colorClass="text-brand-blue-dark dark:text-brand-blue hover:bg-brand-blue/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                          maxWidthClass="@[480px]/chat-bottom:max-w-[120px]"
                         />
                       )}
                       {chatMode === "deep-research" && deepResearchModel && (
@@ -903,7 +901,7 @@ export function ChatInput({
                           label={t("chat.input.deepResearch")}
                           icon={<Telescope size={14} className="shrink-0" />}
                           colorClass="text-brand-blue-dark dark:text-brand-blue hover:bg-brand-blue/10 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                          maxWidthClass="@[320px]/chat-bottom:max-w-[120px]"
+                          maxWidthClass="@[480px]/chat-bottom:max-w-[120px]"
                         />
                       )}
                       {contextWindow && lastTotalTokens > 0 && (

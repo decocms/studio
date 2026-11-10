@@ -105,7 +105,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.tasksTitle": "Tarefas",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
-  "taskBoard.taskBoard.columnsLabel": "Colunas",
   "taskBoard.taskBoard.hideColumn": "Ocultar",
   "taskBoard.taskBoard.collapseColumn": "Recolher",
   "taskBoard.taskBoard.collapseColumnAriaLabel": "Recolher {lane}",

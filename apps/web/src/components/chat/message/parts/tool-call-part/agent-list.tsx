@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { UserCircle } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
+import { isScopableProject } from "@decocms/shared/sdk";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
@@ -72,7 +73,10 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
   const { org } = useProjectContext();
   const state = getEffectiveState(part.state);
   const result = unwrapResult<{ items?: VirtualMCPEntity[] }>(part.output);
-  const items = Array.isArray(result?.items) ? result.items : [];
+  // The tool also returns Decopilot and the Studio Pack managers; only real projects are shown.
+  const items = Array.isArray(result?.items)
+    ? result.items.filter(isScopableProject)
+    : [];
 
   if (state === "loading") {
     return (

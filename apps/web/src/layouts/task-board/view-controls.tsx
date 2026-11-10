@@ -26,7 +26,6 @@ import {
 } from "@decocms/ui/components/command.tsx";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSub,
@@ -47,7 +46,6 @@ import {
   ArrowNarrowDown,
   ArrowNarrowUp,
   ChevronRight,
-  Columns03,
   FilterLines,
   Flag01,
   Inbox01,
@@ -74,7 +72,6 @@ import {
   type ProjectIndex,
 } from "@/lib/project-index";
 import {
-  laneHeader,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -852,52 +849,6 @@ export function GroupByButton(props: GroupingProps) {
         </IconButton>
       </DropdownMenuTrigger>
       <GroupByMenuContent {...props} align="end" />
-    </DropdownMenu>
-  );
-}
-
-/** The board's "Columns" button: which lanes are drawn. The last visible lane
- *  can't be unchecked, so the board never ends up empty. */
-export function ColumnsButton({
-  all,
-  hidden,
-  onToggle,
-}: {
-  /** Every lane, in board order. */
-  all: readonly string[];
-  hidden: readonly string[];
-  onToggle: (status: string, shown: boolean) => void;
-}) {
-  const t = useT();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <IconButton
-          label={t("taskBoard.taskBoard.columnsLabel")}
-          tooltipSide="bottom"
-          variant="secondary"
-          aria-pressed={hidden.length > 0}
-        >
-          <Columns03 />
-        </IconButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {all.map((status) => {
-          const shown = !hidden.includes(status);
-          return (
-            <DropdownMenuCheckboxItem
-              key={status}
-              checked={shown}
-              disabled={shown && all.length - hidden.length <= 1}
-              // Keep the menu open so several columns can be toggled at once.
-              onSelect={(e) => e.preventDefault()}
-              onCheckedChange={(next) => onToggle(status, next)}
-            >
-              {laneHeader(status, t).label}
-            </DropdownMenuCheckboxItem>
-          );
-        })}
-      </DropdownMenuContent>
     </DropdownMenu>
   );
 }

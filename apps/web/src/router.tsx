@@ -438,11 +438,9 @@ const threadSessionRoute = createRoute({
   getParentRoute: () => threadRoute,
   id: "agent-shell",
   validateSearch: chatLayoutSearchSchema,
-  /** Chat visibility follows the person across workspace destinations. Agent
-   *  identity never does: canonical agent routes own it in `$agentId`, while
-   *  `virtualmcpid` remains an input/filter only on the legacy and org-level
-   *  routes that explicitly declare it. */
-  search: { middlewares: [retainSearchParams(["sidepanel"])] },
+  /** The chat, and whether it shows, follow the person across workspace
+   *  destinations; the page's project is context for it, not its owner. */
+  search: { middlewares: [retainSearchParams(["sidepanel", "thread"])] },
   // Render the centered panel-area loader (matches the shell's own Suspense
   // fallbacks) while this route loads, instead of the full-screen SplashScreen.
   // The sidebar is already mounted by orgRoute, so the pending state

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   resolveActiveAgentId,
   resolveDestinationThreadSearch,
-  routeThreadMatchesAgent,
   resolveRouteAgentId,
   resolveRouteThreadId,
 } from "./thread-route";
@@ -90,33 +89,6 @@ describe("resolveRouteAgentId", () => {
 
   test("a route naming no agent anywhere answers undefined", () => {
     expect(resolveRouteAgentId({})).toBeUndefined();
-  });
-});
-
-describe("routeThreadMatchesAgent", () => {
-  test("accepts a thread owned by the route agent", () => {
-    expect(
-      routeThreadMatchesAgent({
-        routeAgentId: "agent-a",
-        threadAgentId: "agent-a",
-      }),
-    ).toBe(true);
-  });
-
-  test("rejects a concrete cross-agent mismatch", () => {
-    expect(
-      routeThreadMatchesAgent({
-        routeAgentId: "agent-a",
-        threadAgentId: "agent-b",
-      }),
-    ).toBe(false);
-  });
-
-  test("tolerates legacy rows whose ownership is not yet available", () => {
-    expect(
-      routeThreadMatchesAgent({ routeAgentId: "agent-a", threadAgentId: null }),
-    ).toBe(true);
-    expect(routeThreadMatchesAgent({ routeAgentId: "agent-a" })).toBe(true);
   });
 });
 

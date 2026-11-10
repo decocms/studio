@@ -7,7 +7,7 @@ import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
 
 import { Chat } from "./index";
-import { ChatDraftCard } from "./drafts/draft-card";
+import { ChatEmptyState } from "./empty-state";
 import { useChatStream } from "./context";
 import { useOptionalChatTask } from "./chat-context";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -104,11 +104,7 @@ function ChatSidePanelBody() {
         >
           {isChatEmpty && runtime !== "cms" ? (
             <>
-              <div className="flex min-h-0 flex-1 flex-col justify-end">
-                <div className="mx-auto w-full max-w-2xl">
-                  <ChatDraftCard />
-                </div>
-              </div>
+              <ChatEmptyState />
               <Chat.Footer>
                 <Chat.Input
                   onOpenContextPanel={() => setActivePanel("context")}

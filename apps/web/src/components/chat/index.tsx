@@ -25,6 +25,7 @@ import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
 import { ChatDraftCard } from "./drafts/draft-card";
+import { usedTool } from "./drafts/used-tool";
 import { selectHiddenFromBody } from "./queue-items.ts";
 import { LiveMessagesContext, placeLiveMessages } from "./live-messages.ts";
 import { useMessageQueue } from "./use-message-queue.ts";
@@ -167,15 +168,10 @@ function ChatMessages() {
   const visibleMessages = liveMessages.visible;
   const messagePairs = useMessagePairs(visibleMessages);
   const lastMessagePair = messagePairs.at(-1);
-  // The draft card sits after the first answer that used a tool, where the
-  // work began; with none, after the last answer.
-  const firstWorkIndex = messagePairs.findIndex((pair) =>
-    pair.assistant?.parts.some(
-      (part) => part.type === "dynamic-tool" || part.type.startsWith("tool-"),
-    ),
+  // The draft card sits where the agent's work began; no work, no card.
+  const draftAnchor = messagePairs.findIndex(
+    (pair) => !!pair.assistant && usedTool(pair.assistant),
   );
-  const draftAnchor =
-    firstWorkIndex === -1 ? messagePairs.length - 1 : firstWorkIndex;
   const highlightCount = useHighlightCount();
 
   // Reserve `n × h + 16px` of bottom padding so that, when every highlight

@@ -18,21 +18,16 @@ export interface ChatDraft {
 /** Re-read while the chat is open, so the card follows edits made elsewhere. */
 const POLL_MS = 15_000;
 
-/**
- * The draft this chat changed, when it changed one: the thread's branch on a
- * site project, with at least one change against main. Reads the hosted
- * (Blocks v8) draft directly, so it doesn't wait on the editor's runtime.
- */
-export function useChatDraft(): ChatDraft | null {
+/** A thread draft's pending changes, read from the hosted draft (not the editor's runtime). */
+export function useDraftChanges(
+  virtualMcpId: string | null | undefined,
+  branch: string | null | undefined,
+  options: { poll?: boolean } = {},
+) {
   const { org } = useProjectContext();
-  const task = useOptionalChatTask();
-  const stream = useOptionalChatStream();
-  const virtualMcpId = task?.virtualMcpId ?? null;
-  const branch = task?.currentBranch ?? null;
   const project = useVirtualMCPNonBlocking(virtualMcpId);
   const enabled =
     !!virtualMcpId && !!branch && agentHasClonableSource(project?.metadata);
-
   const { data: changeCount = 0 } = useQuery({
     queryKey: KEYS.chatDraftChanges(org.slug, virtualMcpId ?? "", branch ?? ""),
     queryFn: async () => {
@@ -46,17 +41,27 @@ export function useChatDraft(): ChatDraft | null {
       return result.notModified ? 0 : Object.keys(result.changes).length;
     },
     enabled,
-    refetchInterval: POLL_MS,
+    refetchInterval: options.poll === false ? false : POLL_MS,
     // A site that isn't v8, or not hosted, simply has no draft to show.
     retry: false,
   });
+  return { project: enabled ? project : null, changeCount };
+}
 
-  if (!enabled || !project || changeCount === 0) return null;
+/** The draft this chat changed, when it changed one. */
+export function useChatDraft(): ChatDraft | null {
+  const task = useOptionalChatTask();
+  const stream = useOptionalChatStream();
+  const virtualMcpId = task?.virtualMcpId ?? null;
+  const branch = task?.currentBranch ?? null;
+  const { project, changeCount } = useDraftChanges(virtualMcpId, branch);
+
+  if (!project || !virtualMcpId || !branch || changeCount === 0) return null;
   return {
-    virtualMcpId: virtualMcpId!,
+    virtualMcpId,
     projectTitle: project.title,
     projectIcon: (project.icon as string | null | undefined) ?? null,
-    branch: branch!,
+    branch,
     changeCount,
     editing:
       !!stream &&

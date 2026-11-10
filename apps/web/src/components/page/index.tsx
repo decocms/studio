@@ -122,6 +122,10 @@ function PageActions({
   );
 }
 
+/** Outline and secondary actions drop their outline in the header; hover, pressed and open states stay. */
+const QUIET_HEADER_ACTIONS =
+  "[&_:is([data-variant=outline],[data-variant=secondary])]:bg-transparent [&_:is([data-variant=outline],[data-variant=secondary])]:shadow-none [&_:is([data-variant=outline],[data-variant=secondary]):hover]:bg-accent [&_:is([data-variant=outline],[data-variant=secondary])[aria-pressed=true]]:bg-accent [&_:is([data-variant=outline],[data-variant=secondary])[data-state=open]]:bg-accent";
+
 /** Routes supply identity; feature pages contribute controls through the panel's slots. */
 function PageHeader({
   breadcrumbs,
@@ -154,7 +158,10 @@ function PageHeader({
           <PageHeaderBreadcrumbs items={breadcrumbs} scope={scope} />
           <Panel.Topbar.Left.Target />
         </Panel.Topbar.Left>
-        <Panel.Topbar.Right className="shrink-0 gap-2">
+        {/* One filled action per header; every other action is a quiet glyph or label, so the row reads at a glance. */}
+        <Panel.Topbar.Right
+          className={cn("shrink-0 gap-2", QUIET_HEADER_ACTIONS)}
+        >
           <div className="peer flex min-w-0 items-center gap-2 empty:hidden">
             {actions}
           </div>

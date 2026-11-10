@@ -9,7 +9,7 @@
 
 import { type ReactNode, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Activity, GitBranch01, Plus } from "@untitledui/icons";
+import { Activity, GitBranch01, Plus, Rocket02 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
@@ -18,7 +18,6 @@ import {
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
   DayInput,
   localInstant,
@@ -95,6 +94,18 @@ function Actions({
   const t = useT();
   return (
     <Page.Actions>
+      {controls?.hasChanges && (
+        <Button
+          variant="outline"
+          size="sm"
+          aria-pressed={controls.showChanges}
+          className="gap-1 aria-[pressed=false]:text-muted-foreground"
+          onClick={() => controls.onShowChanges(!controls.showChanges)}
+        >
+          <Rocket02 size={14} />
+          {t("monitor.chart.changes")}
+        </Button>
+      )}
       {repos && (
         <Popover>
           <PopoverTrigger asChild>
@@ -109,22 +120,11 @@ function Actions({
         </Popover>
       )}
       {controls && (
-        <>
-          <DayInput
-            value={controls.date}
-            max={localDay(new Date())}
-            onChange={controls.onDate}
-          />
-          {controls.hasChanges && (
-            <label className="text-meta flex cursor-pointer items-center gap-2 px-1">
-              <Switch
-                checked={controls.showChanges}
-                onCheckedChange={controls.onShowChanges}
-              />
-              {t("monitor.chart.changes")}
-            </label>
-          )}
-        </>
+        <DayInput
+          value={controls.date}
+          max={localDay(new Date())}
+          onChange={controls.onDate}
+        />
       )}
       <Button asChild variant="outline" size="sm" className="gap-1">
         <Link {...connectLink(orgSlug, scopeId)}>

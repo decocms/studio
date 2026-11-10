@@ -13,6 +13,7 @@ import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import { MessageTimestamp } from "./timestamp.tsx";
+import { createdTaskOf, TaskCreatedCard } from "./parts/task-created-card.tsx";
 import {
   type ReasoningPart,
   GeneratingFooter,
@@ -411,6 +412,10 @@ function MessagePart({
             latency={getMeta(fallback.toolCallId)?.latencySeconds}
           />
         );
+      }
+      if (fallback.type === "tool-TASK_BOARD_ITEM_CREATE") {
+        const createdTask = createdTaskOf(fallback);
+        if (createdTask) return <TaskCreatedCard task={createdTask} />;
       }
       if (fallback.type === "tool-COLLECTION_VIRTUAL_MCP_LIST") {
         return (

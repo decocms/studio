@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
-import { useRouterState } from "@tanstack/react-router";
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import {
@@ -13,12 +12,12 @@ import { Page } from "@/components/page";
 
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useInSettings } from "@/hooks/use-in-settings";
 import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 import { useScopeId } from "@/hooks/use-project-scope";
+import { useCurrentView } from "@/hooks/use-current-view";
 import { useT } from "@/i18n/use-t";
-import { useProjectContext, useVirtualMCPNonBlocking } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 
 /** Router adapter for Page.Header. Settings stays independent of thread/runtime providers. */
 export function RoutePageHeader({
@@ -33,26 +32,8 @@ export function RoutePageHeader({
   const t = useT();
   const { org } = useProjectContext();
   const scopeId = useScopeId();
-  const project = useVirtualMCPNonBlocking(scopeId);
-  const inSettings = useInSettings();
-  const projectFirstNav = useProjectFirstNav();
-  const page = useRouterState({
-    select: (state) =>
-      state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
-  });
-  const isHome = page?.mainView === "overview";
+  const { project, title, isHome, inSettings } = useCurrentView();
   const projectTitle = project?.title ?? t("common.loading");
-  const title = isHome
-    ? // A project's home names the PROJECT, since nothing else on the page
-      // does. The org's home is just Home: the org is named in the sidebar's
-      // picker, and repeating it as the page title says it twice.
-      scopeId
-      ? projectTitle
-      : t("sidebar.navDestinations.home")
-    : // Project-first nav calls the Library Context.
-      projectFirstNav && page?.mainView === "files"
-      ? t("sidebar.navDestinations.context")
-      : t(page?.pageTitle ?? "page.view");
   /** The crumb leaves an app for the project's Overview. */
   const projectLink = {
     to: "/$org/projects/$agentId" as const,

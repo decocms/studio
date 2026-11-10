@@ -19,18 +19,15 @@ import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   useThreadActions,
   useThreadManager,
 } from "@/components/chat/store/hooks";
-import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import {
   Navigate,
   Outlet,
   useNavigate,
   useParams,
-  useSearch,
 } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { authClient } from "@/lib/auth-client";
@@ -69,20 +66,12 @@ import {
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
-import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
-import type { Task } from "@/components/chat/task/types";
-import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
+import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
-import { canonicalThreadRouteTarget } from "@/layouts/main-panel-tabs/tab-route";
 import { getWellKnownDecopilotVirtualMCP } from "@/sdk";
-import {
-  LegacyCanonicalNavigate,
-  LegacyMainRedirect,
-} from "@/layouts/legacy-main-redirect";
+import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
 import {
-  routeThreadMatchesAgent,
-  useRouteAgentId,
   useRouteThreadId,
   useRouteVirtualMcpId,
   useThreadNavigate,
@@ -465,28 +454,15 @@ function ThreadSessionProvider() {
 
   const params = useParams({ strict: false });
   const orgSlug = params.org ?? "";
-  const sessionSearch = useSearch({ strict: false });
 
   const routeThreadId = useRouteThreadId();
-  /** The canonical project path owns agent identity; organization routes use the Super Agent. */
+  /** The page's project: it sets the layout and is context for the chat, never the chat's owner. */
   const virtualMcpId = useRouteVirtualMcpId();
-  /** Truthy only when the route names a SCOPED agent; `undefined` at org level
-   *  (where `virtualMcpId` falls back to the Super Agent). Gates the threadless
-   *  entry-thread resolver so the org home keeps its fresh composer. */
-  const routeAgentId = useRouteAgentId();
-  /** A stable thread id to mint when a repo-backed editor arrives with none and
-   *  the user has no idle empty chat to reuse, so a re-render before the URL
-   *  catches up reuses it instead of looping through fresh ones. Generated once
-   *  per mount; only used by the redirect below. */
+  /** One chat follows the person across pages and projects, run by the org's assistant. */
+  const superAgentId = getWellKnownDecopilotVirtualMCP(org.id).id;
+  /** A stable id for the composer's next chat; generated once per mount. */
   const [generatedThreadId] = useState(() => crypto.randomUUID());
   const { data: session } = authClient.useSession();
-  /** Drafts-mode entry lands a fresh thread on an editable draft, never on
-   *  read-only production. Generated once per mount, like the thread id above. */
-  const [generatedDraftBranch] = useState(() =>
-    generateBranchName(
-      session?.user?.name || session?.user?.email?.split("@")[0],
-    ),
-  );
   const threadManager = useThreadManager();
   const threads = useSyncExternalStore(
     threadManager.threads.subscribe,
@@ -497,65 +473,29 @@ function ThreadSessionProvider() {
     threadManager.threadsStatus.get,
   );
 
-  // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
 
-  const hasActiveRepository = !!(entity && getActiveRepository(entity));
-  const baseBranch = useBaseBranch(entity, null);
-
-  /** Set once an arrival lands on the empty composer. A thread minted from that
-   *  composer reaches the store before the URL names it; resolving the entry
-   *  again then swapped the open app and the chat for a redirect. */
-  const [composerSettledFor, setComposerSettledFor] = useState<string | null>(
-    null,
-  );
-  if (routeThreadId !== null && composerSettledFor !== null) {
-    setComposerSettledFor(null);
+  /** Set once an arrival lands on the empty composer, so a chat minted from it
+   *  doesn't send the person back to their previous one. */
+  const [composerSettled, setComposerSettled] = useState(false);
+  if (routeThreadId !== null && composerSettled) {
+    setComposerSettled(false);
   }
-  const resolvingEntry =
-    routeThreadId === null &&
-    !!routeAgentId &&
-    !!entity &&
-    composerSettledFor !== virtualMcpId;
-  const findEntry = (candidates: Task[]) =>
-    findAgentEntryThread(
-      candidates,
-      virtualMcpId,
-      session?.user?.id,
-      defaultThreadRuntime(entity?.metadata),
-      hasActiveRepository,
-      { baseBranch },
-    );
-  const localEntry =
-    resolvingEntry && threadsStatus.kind !== "loading"
-      ? findEntry(threads)
-      : undefined;
-  // The shared feed is the user's latest page across the org, so this agent's
-  // last draft can be missing from it; read the agent's own threads before
-  // minting a duplicate draft.
-  const scopedEntryThreads = useAgentEntryThreads(
-    virtualMcpId,
-    resolvingEntry && threadsStatus.kind !== "loading" && !localEntry,
-  );
 
-  // Ensure the thread row exists for this URL before rendering the chat. On
-  // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
-  // "Creating task…" state until the row is persisted. Without this the
-  // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(
-    routeThreadId,
-    virtualMcpId,
-    // A freshly minted thread lands on an editable draft, never production.
-    generatedDraftBranch,
-  );
+  // Ensure the thread row exists for this URL before rendering the chat.
+  const ensureState = useEnsureTask(routeThreadId, superAgentId);
 
-  // Read-only teammate threads: pull the current metadata (repository /
-  // sandboxMap bound by load_repo after the panel snapshot) so the preview
-  // doesn't render "no source" / miss the owner's sandbox. No-op for own
-  // threads. Must run before the early returns (Rules of Hooks).
+  // Read-only teammate threads: pull the current metadata before the early returns.
   useRefreshViewedThreadMetadata(
     ensureState.status === "ready" ? ensureState.task : null,
   );
+
+  /** The chat keeps the agent it started with; older project chats still open as that project. */
+  const chatAgentId =
+    (ensureState.status === "ready"
+      ? ensureState.task?.virtual_mcp_id
+      : undefined) ?? superAgentId;
+  const chatEntity = useVirtualMCP(chatAgentId);
 
   const layoutMetadata = entity?.metadata?.ui?.layout ?? null;
   const entityMetadata = layoutMetadata
@@ -573,14 +513,8 @@ function ThreadSessionProvider() {
 
   const createNewTask = async () => {
     const newTaskId = crypto.randomUUID();
-    const branch =
-      threads.find((thread) => thread.id === threadId)?.branch ?? null;
     try {
-      await create({
-        id: newTaskId,
-        virtual_mcp_id: virtualMcpId,
-        ...(branch ? { branch } : {}),
-      });
+      await create({ id: newTaskId, virtual_mcp_id: superAgentId });
     } catch {
       // The collection action reports errors; the route retries a missing row.
     }
@@ -601,73 +535,34 @@ function ThreadSessionProvider() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
-  const ensuredTaskAgentId = ensuredTask?.virtual_mcp_id;
+  // Every page resumes the person's latest chat; a new chat has its own id.
   if (
-    ensuredTask &&
-    ensuredTaskAgentId &&
-    !routeThreadMatchesAgent({
-      routeAgentId: virtualMcpId,
-      threadAgentId: ensuredTaskAgentId,
-    })
+    routeThreadId === null &&
+    !composerSettled &&
+    threadsStatus.kind !== "loading"
   ) {
-    const route = canonicalThreadRouteTarget({
-      org: orgSlug,
-      agentId: ensuredTaskAgentId,
-      superAgentId: getWellKnownDecopilotVirtualMCP(org.id).id,
-    });
-    return (
-      <LegacyCanonicalNavigate
-        target={{
-          route,
-          search: {
-            thread: ensuredTask.id,
-            sidepanel: sessionSearch.sidepanel,
-            mainpanel: sessionSearch.mainpanel,
-            autosend: sessionSearch.autosend,
-          },
-        }}
-      />
-    );
-  }
-
-  // Resolve a scoped agent's entry thread HERE, in project scope once loaded — useNavigateToAgent's cross-project manager can't see these threads (#6667); repo agents mint one if none resolves, branchless fall through to the lazy composer, org home (no routeAgentId) stays fresh.
-  if (resolvingEntry) {
-    // Wait for the thread lists: resolving against an empty list would mint a fresh thread and drop the user off their last version/conversation.
-    if (
-      threadsStatus.kind === "loading" ||
-      scopedEntryThreads.status === "loading"
-    ) {
-      // Reading, not creating: the panel's one loader, not "Creating task…".
-      return (
-        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div className="flex h-full bg-background shadow-edge rounded-[0.75rem]">
-            <PanelLoading />
-          </div>
-        </div>
-      );
-    }
-    // Resume the last version/conversation for this agent; a repo editor mints a fresh thread when none resolves, a branchless agent falls through to its lazy composer.
-    const entry =
-      localEntry ??
-      (scopedEntryThreads.status === "ready"
-        ? findEntry(scopedEntryThreads.threads)
-        : undefined);
-    const threadId =
-      entry?.id ?? (hasActiveRepository ? generatedThreadId : null);
-    if (threadId) {
+    const latest = threads
+      .filter(
+        (thread) =>
+          !thread.hidden &&
+          thread.virtual_mcp_id === superAgentId &&
+          thread.created_by === session?.user?.id,
+      )
+      .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
+      .at(0);
+    if (latest) {
       return (
         <Navigate
           to="."
           replace
           search={(prev: Record<string, unknown>) => ({
             ...prev,
-            thread: threadId,
+            thread: latest.id,
           })}
         />
       );
     }
-    setComposerSettledFor(virtualMcpId);
+    setComposerSettled(true);
   }
 
   if (ensureState.status === "creating" || ensureState.status === "loading") {
@@ -712,7 +607,9 @@ function ThreadSessionProvider() {
             title={t("agentShellLayout.agentShellLayout.agentNotFound")}
             description={t(
               "agentShellLayout.agentShellLayout.agentNotFoundDescription",
-              { virtualMcpId },
+              {
+                virtualMcpId,
+              },
             )}
             actions={
               <Button
@@ -733,15 +630,17 @@ function ThreadSessionProvider() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <Chat.Provider
-        key={virtualMcpId}
-        virtualMcpId={virtualMcpId}
+        key={chatAgentId}
+        virtualMcpId={chatAgentId}
         task={ensureState.status === "ready" ? ensureState.task : null}
       >
         <ChatVoiceProvider layout={layout}>
           <VmEventsBridge
-            virtualMcpId={virtualMcpId}
-            hasActiveRepository={hasActiveRepository}
-            sandboxMap={entity.metadata?.sandboxMap}
+            virtualMcpId={chatAgentId}
+            hasActiveRepository={
+              !!(chatEntity && getActiveRepository(chatEntity))
+            }
+            sandboxMap={chatEntity?.metadata?.sandboxMap}
           >
             <ActiveTaskRuntimeProvider
               threadId={threadId}

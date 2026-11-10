@@ -36,18 +36,6 @@ export function resolveRouteThreadId(input: {
   return input.taskIdParam ?? input.threadSearch ?? null;
 }
 
-/** A canonical agent URL may only mount a thread owned by that same agent.
- *  Missing ownership is tolerated for legacy/partial records; a concrete
- *  mismatch must be removed before chat or runtime providers see the row. */
-export function routeThreadMatchesAgent(input: {
-  routeAgentId: string;
-  threadAgentId?: string | null;
-}): boolean {
-  return (
-    input.threadAgentId == null || input.threadAgentId === input.routeAgentId
-  );
-}
-
 /** The thread id for the matched route, from either the path param or `?thread=`. */
 export function useRouteThreadId(): string | null {
   const params = useParams({ strict: false });
