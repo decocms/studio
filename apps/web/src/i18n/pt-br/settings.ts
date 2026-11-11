@@ -7,16 +7,7 @@ export const settings = {
   "settings.subscriptionUsage.secondary": "Limite secundário",
   "settings.subscriptionUsage.resets": "Renova em {date}",
   "settings.subscriptionUsage.limitReached": "Limite atingido",
-  "settings.subscriptionUsage.permission":
-    "Este token não permite consultar limites. Veja o uso no site do provedor.",
-  "settings.subscriptionUsage.authorization":
-    "O provedor não autorizou a consulta. Vincule seu plano novamente para atualizar as credenciais.",
-  "settings.subscriptionUsage.rateLimited":
-    "O provedor está limitando as consultas. Tente novamente após o horário abaixo.",
-  "settings.subscriptionUsage.disconnected":
-    "Vincule seu plano para consultar os limites.",
-  "settings.subscriptionUsage.unavailable":
-    "Os limites estão indisponíveis agora. Consulte o provedor para ver o status atual.",
+  "settings.subscriptionUsage.viewUsage": "Ver uso",
   "settings.subscriptionUsage.openProvider": "Ver no provedor",
 
   "settings.voice.title": "Modo voz",
@@ -678,7 +669,6 @@ export const settings = {
     "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
-  "settings.subscriptionUsage.unavailableShort": "Uso indisponível",
   "settings.ownAccounts.more": "Mais ações",
   "settings.providerKeyRow.edit": "Editar",
   "settings.ownAccounts.title": "Suas contas",

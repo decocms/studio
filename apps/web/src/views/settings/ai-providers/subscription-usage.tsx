@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, LinkExternal01, RefreshCw01 } from "@untitledui/icons";
+import { LinkExternal01, RefreshCw01 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { DropdownMenuItem } from "@decocms/ui/components/dropdown-menu.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
@@ -69,10 +70,12 @@ export function useSubscriptionUsage({
   });
 }
 
-/** The subscription's limits as compact bars, or one quiet line saying why not. */
+/** The subscription's limits as compact bars, or a link to the provider's own usage page. */
 export function SubscriptionUsageSummary({
+  provider,
   query,
 }: {
+  provider: Provider;
   query: ReturnType<typeof useSubscriptionUsage>;
 }) {
   const t = useT();
@@ -82,27 +85,17 @@ export function SubscriptionUsageSummary({
   if (query.isPending) return <Skeleton className="h-4 w-32" />;
 
   if (query.isError || usage?.status !== "available") {
-    const issue = usage?.reason;
-    const message =
-      issue === "permission"
-        ? t("settings.subscriptionUsage.permission")
-        : issue === "authorization"
-          ? t("settings.subscriptionUsage.authorization")
-          : issue === "rate_limited"
-            ? t("settings.subscriptionUsage.rateLimited")
-            : usage?.status === "disconnected"
-              ? t("settings.subscriptionUsage.disconnected")
-              : t("settings.subscriptionUsage.unavailable");
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="flex shrink-0 items-center gap-1 text-meta">
-            <AlertCircle size={12} />
-            {t("settings.subscriptionUsage.unavailableShort")}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-64">{message}</TooltipContent>
-      </Tooltip>
+      <Button variant="outline" size="sm" asChild>
+        <a
+          href={PROVIDER_USAGE_URL[provider]}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <LinkExternal01 />
+          {t("settings.subscriptionUsage.viewUsage")}
+        </a>
+      </Button>
     );
   }
 
