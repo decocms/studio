@@ -93,6 +93,16 @@ export const sidebar = {
   "sidebar.feedback.sent": "Valeu! Seu feedback foi enviado.",
   "sidebar.feedback.failed":
     "Não foi possível enviar seu feedback. Tente de novo.",
+  "sidebar.help.button": "Ajuda",
+  "sidebar.help.guides": "Guias",
+  "sidebar.help.discord": "Entrar no Discord",
+  "sidebar.help.reportProblem": "Reportar um problema",
+  "sidebar.problem.title": "Reportar um problema",
+  "sidebar.problem.placeholder":
+    "O que deu errado? O que você esperava que acontecesse?",
+  "sidebar.problem.sent": "Valeu! Nosso time de suporte vai analisar.",
+  "sidebar.problem.failed":
+    "Não foi possível enviar seu relato. Tente de novo.",
   "sidebar.linkClaude.button": "Conectar Claude",
   "sidebar.linkClaude.relink": "Reconectar Claude",
   "sidebar.sidebarResizeHandle.ariaLabel": "Redimensionar barra lateral",

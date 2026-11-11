@@ -96,7 +96,11 @@ export function CodexSubscriptionRow() {
       }
       title={t("settings.codexSubscription.title")}
       status={connected ? "linked" : null}
-      summary={connected ? <SubscriptionUsageSummary query={usage} /> : null}
+      summary={
+        connected ? (
+          <SubscriptionUsageSummary provider="codex" query={usage} />
+        ) : null
+      }
       action={
         connected ? (
           <AccountMenu>

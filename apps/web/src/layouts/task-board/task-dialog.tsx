@@ -1,4 +1,7 @@
-import { FEEDBACK_TAG_NAME } from "@decocms/shared/feedback";
+import {
+  FEEDBACK_TAG_NAME,
+  PROBLEM_REPORT_TAG_NAME,
+} from "@decocms/shared/feedback";
 import type { ReactNode } from "react";
 import {
   ChildrenSection,
@@ -755,10 +758,12 @@ function TaskBoardItemEditor({
     ? members.find((m) => m.userId === item.createdBy)
     : undefined;
   const systemAuthorLabel = item?.tags.some(
-    (tag) => tag.name === FEEDBACK_TAG_NAME,
+    (tag) => tag.name === PROBLEM_REPORT_TAG_NAME,
   )
-    ? t("taskBoard.taskDialog.createdByFeedbackLabel")
-    : t("taskBoard.taskDialog.createdBySystemLabel");
+    ? t("taskBoard.taskDialog.createdByProblemReportLabel")
+    : item?.tags.some((tag) => tag.name === FEEDBACK_TAG_NAME)
+      ? t("taskBoard.taskDialog.createdByFeedbackLabel")
+      : t("taskBoard.taskDialog.createdBySystemLabel");
   const StatusIcon = laneVisual(status).icon;
 
   /** Header row: what the task is on the left, its actions on the right. */

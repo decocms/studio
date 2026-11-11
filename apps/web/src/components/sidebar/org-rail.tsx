@@ -67,6 +67,7 @@ import {
   type RailOrgPrefs,
 } from "@/lib/rail-org-prefs";
 import { OrgSearchDialog } from "./org-search";
+import { HelpMenu } from "./help-menu";
 import { openCommandPalette } from "@/components/command-palette-store";
 import { KEYBOARD_SHORTCUTS } from "@/lib/keyboard-shortcuts";
 import { RailItem } from "./rail-item";
@@ -542,6 +543,7 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
               </TooltipContent>
             </Tooltip>
           </RailItem>
+          <HelpMenu />
         </div>
       </div>
       <OrgSearchDialog

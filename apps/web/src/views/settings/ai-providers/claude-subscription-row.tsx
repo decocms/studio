@@ -51,7 +51,11 @@ export function ClaudeSubscriptionRow() {
       }
       title={t("settings.claudeSubscription.title")}
       status={connected ? "linked" : expired ? "expired" : null}
-      summary={connected ? <SubscriptionUsageSummary query={usage} /> : null}
+      summary={
+        connected ? (
+          <SubscriptionUsageSummary provider="claude" query={usage} />
+        ) : null
+      }
       action={
         connected ? (
           <AccountMenu>

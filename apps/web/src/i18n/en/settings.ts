@@ -5,16 +5,7 @@ export const settings = {
   "settings.subscriptionUsage.secondary": "Secondary limit",
   "settings.subscriptionUsage.resets": "Resets {date}",
   "settings.subscriptionUsage.limitReached": "Limit reached",
-  "settings.subscriptionUsage.permission":
-    "This token cannot read usage limits. Check usage on the provider’s website.",
-  "settings.subscriptionUsage.authorization":
-    "The provider could not authorize this usage request. Relink your subscription to refresh its credentials.",
-  "settings.subscriptionUsage.rateLimited":
-    "The provider is limiting usage checks. Try again after the time below.",
-  "settings.subscriptionUsage.disconnected":
-    "Link your subscription to view usage limits.",
-  "settings.subscriptionUsage.unavailable":
-    "Usage limits are unavailable right now. Check the provider for the latest status.",
+  "settings.subscriptionUsage.viewUsage": "View usage",
   "settings.subscriptionUsage.openProvider": "View on provider",
 
   "settings.voice.title": "Voice mode",
@@ -662,7 +653,6 @@ export const settings = {
     "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
-  "settings.subscriptionUsage.unavailableShort": "Usage unavailable",
   "settings.ownAccounts.more": "More actions",
   "settings.providerKeyRow.edit": "Edit",
   "settings.ownAccounts.title": "Your own accounts",

@@ -9,14 +9,12 @@ import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { InboxIconButton } from "./inbox";
 import { SettingsIconButton } from "./settings-button";
 import { SidebarLinkClaude } from "./link-claude";
-import { SidebarFeedback } from "./feedback";
 
 /** Quick actions above the account row. */
 function SidebarExtraActions({ showLinkClaude }: { showLinkClaude: boolean }) {
   return (
     <SidebarMenu className="gap-0.5">
       {showLinkClaude && <SidebarLinkClaude />}
-      <SidebarFeedback />
     </SidebarMenu>
   );
 }
