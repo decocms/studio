@@ -101,7 +101,7 @@ function WelcomeBody({
           src="/legacy-admin-welcome.webp"
           alt=""
           aria-hidden="true"
-          className="absolute top-8 left-8 w-[34rem] max-w-none rounded-tl-xl shadow-xl md:top-10 md:left-10"
+          className="absolute top-8 left-8 w-[24rem] max-w-none rounded-tl-xl shadow-xl md:top-10 md:left-10 md:w-[34rem]"
         />
       </div>
       <div className="flex flex-col p-6 md:p-7">
