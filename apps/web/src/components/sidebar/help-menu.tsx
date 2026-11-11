@@ -7,7 +7,6 @@ import {
   BookOpen01,
   HelpCircle,
   MessageChatSquare,
-  MessageSmileCircle,
 } from "@untitledui/icons";
 import type { FeedbackKind } from "@decocms/shared/feedback";
 import {
@@ -22,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import { DiscordIcon } from "@/components/icons/discord-icon";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { useProjectContext } from "@/sdk";
@@ -83,7 +83,7 @@ export function HelpMenu() {
                 rel="noopener noreferrer"
                 onClick={() => track("help_menu_discord_opened")}
               >
-                <MessageSmileCircle />
+                <DiscordIcon />
                 {t("sidebar.help.discord")}
               </a>
             </DropdownMenuItem>
