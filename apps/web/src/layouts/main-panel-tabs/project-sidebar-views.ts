@@ -3,6 +3,9 @@ import type { VirtualMcpSidebarView } from "@decocms/shared/sdk/types";
 /** Every project-controlled sidebar row, in the order the sidebar renders it. */
 export const PROJECT_SIDEBAR_VIEW_IDS = [
   "overview",
+  "context",
+  "monitor",
+  "plan",
   "reports",
   "board",
   "site-editor",
@@ -29,6 +32,17 @@ export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
  * rows were not configurable and therefore remained implicitly enabled. */
 export const PROJECT_SIDEBAR_VIEWS_VERSION = 1 as const;
 
+/** A project's top rows (`nav-destinations.tsx`), offered once to every saved list since they predate hiding. */
+export const PROJECT_NAV_VIEW_IDS = [
+  "overview",
+  "context",
+  "monitor",
+  "plan",
+  "board",
+] as const satisfies readonly ProjectSidebarViewId[];
+
+export type ProjectNavViewId = (typeof PROJECT_NAV_VIEW_IDS)[number];
+
 /**
  * Views a Blocks (v8) site gets once on top of a list saved before they were
  * defaults (PO decision): its campaigns and A/B tests are content its
@@ -42,36 +56,53 @@ const BLOCKS_SITE_SIDEBAR_VIEWS = [
   "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
-/**
- * The views to add once to this project's saved list: the Blocks site views
- * it hasn't seen yet, on a Blocks site; none elsewhere. Pass the result to
- * {@link effectiveProjectSidebarViews} and friends.
- */
+function offerableProjectSidebarViews(
+  blocksSite: boolean,
+): readonly ProjectSidebarViewId[] {
+  return blocksSite
+    ? [...PROJECT_NAV_VIEW_IDS, ...BLOCKS_SITE_SIDEBAR_VIEWS]
+    : PROJECT_NAV_VIEW_IDS;
+}
+
+/** Offerable views this project hasn't seen yet; pass to {@link effectiveProjectSidebarViews}. */
 export function offeredProjectSidebarViews(
   seen: readonly VirtualMcpSidebarView[] | null | undefined,
   blocksSite: boolean,
 ): ProjectSidebarViewId[] {
-  if (!blocksSite) return [];
   const already = new Set(seen ?? []);
-  return BLOCKS_SITE_SIDEBAR_VIEWS.filter((view) => !already.has(view));
+  return offerableProjectSidebarViews(blocksSite).filter(
+    (view) => !already.has(view),
+  );
 }
 
-/**
- * `sidebarViewsSeen` to save with a sidebar change: on a Blocks site, the
- * offered views are seen now (the list the change was made on had them), so
- * the saved list decides from then on. Elsewhere it stays as it was, so a
- * site that becomes a Blocks site still gets them once.
- */
+/** `sidebarViewsSeen` after a save; Blocks views stay unseen until the site is a Blocks site. */
 export function seenProjectSidebarViewsAfterSave(
   seen: readonly VirtualMcpSidebarView[] | null | undefined,
   blocksSite: boolean,
-): VirtualMcpSidebarView[] | null | undefined {
-  if (!blocksSite) return seen === null ? null : seen ? [...seen] : seen;
+): VirtualMcpSidebarView[] {
   const next = new Set<VirtualMcpSidebarView>([
     ...(seen ?? []),
-    ...BLOCKS_SITE_SIDEBAR_VIEWS,
+    ...offerableProjectSidebarViews(blocksSite),
   ]);
   return PROJECT_SIDEBAR_VIEW_IDS.filter((view) => next.has(view));
+}
+
+/** The top rows a project shows; every row until the project loads. */
+export function selectedProjectNavViews(
+  metadata: ProjectSidebarViewsMetadata | null | undefined,
+  pending: readonly VirtualMcpSidebarView[] | undefined,
+): ReadonlySet<ProjectNavViewId> {
+  if (!metadata && pending === undefined) return new Set(PROJECT_NAV_VIEW_IDS);
+  const selected = new Set(
+    pending !== undefined
+      ? effectiveProjectSidebarViews(pending, PROJECT_SIDEBAR_VIEWS_VERSION)
+      : effectiveProjectSidebarViews(
+          resolveProjectSidebarViews(metadata),
+          metadata?.sidebarViewsVersion,
+          offeredProjectSidebarViews(metadata?.sidebarViewsSeen, false),
+        ),
+  );
+  return new Set(PROJECT_NAV_VIEW_IDS.filter((view) => selected.has(view)));
 }
 
 export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
@@ -191,6 +222,10 @@ export function projectSidebarViewPresence(
 ): ProjectSidebarViewPresence {
   return {
     overview: hasClonableSource,
+    // Overview and Board stay source-gated above: they are also main views.
+    context: true,
+    monitor: true,
+    plan: true,
     reports: hasClonableSource,
     board: hasClonableSource,
     "site-editor": hasClonableSource,

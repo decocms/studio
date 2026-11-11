@@ -22,12 +22,17 @@ import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
 import { useTabLocked } from "./use-tab-locked";
 import { useProjectContext } from "@/sdk";
-import { useScopeId } from "@/hooks/use-project-scope";
+import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
+import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import {
+  selectedProjectNavViews,
+  type ProjectNavViewId,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -69,12 +74,40 @@ type NavDestinationKey =
   | (typeof NAV_DESTINATION_KEYS)[number]
   | typeof SETTINGS_DESTINATION;
 
+/** The project view that hides each row; Settings has none, it is the way back. */
+export const NAV_DESTINATION_VIEW: Record<
+  (typeof NAV_DESTINATION_KEYS)[number],
+  ProjectNavViewId
+> = {
+  overview: "overview",
+  files: "context",
+  monitor: "monitor",
+  plan: "plan",
+  tasks: "board",
+};
+
+/** A project's rows, minus the ones it hides; the org's are all shown. */
+export function visibleNavDestinationKeys(
+  inProject: boolean,
+  shown: ReadonlySet<ProjectNavViewId>,
+): NavDestinationKey[] {
+  return navDestinationKeys(inProject).filter(
+    (key) =>
+      !inProject ||
+      key === SETTINGS_DESTINATION ||
+      shown.has(NAV_DESTINATION_VIEW[key]),
+  );
+}
+
 /** The destinations, in display order. */
 function useNavDestinations(): NavDestination[] {
   const t = useT();
   const { org } = useProjectContext();
   const leafPath = useLeafRoutePath();
   const scopeId = useScopeId();
+  const { project } = useProjectScope();
+  const pendingSidebarViews = useOptimisticProjectSidebarViews(project?.id);
+  const shown = selectedProjectNavViews(project?.metadata, pendingSidebarViews);
 
   /** Keyed, not ordered — `NAV_DESTINATION_KEYS` fixes the order below. */
   const rows: Record<NavDestinationKey, NavDestination> = {
@@ -174,7 +207,7 @@ function useNavDestinations(): NavDestination[] {
     },
   };
 
-  return navDestinationKeys(!!scopeId).map((key) => rows[key]);
+  return visibleNavDestinationKeys(!!scopeId, shown).map((key) => rows[key]);
 }
 
 /** The destination list; chat opens from the sidebar header instead.

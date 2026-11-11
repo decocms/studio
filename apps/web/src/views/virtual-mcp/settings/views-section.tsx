@@ -1,4 +1,5 @@
 import type { ProjectViews } from "./use-project-views";
+import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sidebar-views";
 /**
  * Project layout: default layout preferences and the available sidebar views.
  *
@@ -53,6 +54,43 @@ function AppHeaderRow({ icon, title }: { icon: string | null; title: string }) {
       />
       <span className="text-xs text-muted-foreground">{title}</span>
     </div>
+  );
+}
+
+/** A row for a view Studio ships, from the top rows down to Automations. */
+function NativeViewRow({
+  views,
+  viewId,
+}: {
+  views: ProjectViews;
+  viewId: ProjectSidebarViewId;
+}) {
+  const pinned = views.pinned(viewId);
+  return (
+    <SettingsCardItem
+      icon={<SidebarViewIcon viewId={viewId} />}
+      title={views.labels[viewId]}
+      onClick={() => views.openView(viewId)}
+      action={
+        <div className="flex items-center gap-1">
+          <ViewRowActions
+            pinned={pinned}
+            canSetMainView={
+              pinned && views.canBeMainView(viewId) && !views.isMainView(viewId)
+            }
+            onOpen={() => views.openView(viewId)}
+            onTogglePin={() => views.togglePin(viewId, !pinned)}
+            onSetMainView={() => views.setMainView(viewId)}
+          />
+          <span
+            onClick={() => views.openView(viewId)}
+            className="flex cursor-pointer items-center text-muted-foreground"
+          >
+            <ChevronRight size={16} />
+          </span>
+        </div>
+      }
+    />
   );
 }
 
@@ -118,34 +156,9 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
       </SettingsSection>
       <SettingsSection title={t("virtualMcp.settings.views.sidebar")}>
         <SettingsCard>
-          {views.projectViews.map((viewId) => {
-            const pinned = views.pinned(viewId);
-            return (
-              <SettingsCardItem
-                key={viewId}
-                icon={<SidebarViewIcon viewId={viewId} />}
-                title={views.labels[viewId]}
-                onClick={() => views.openView(viewId)}
-                action={
-                  <div className="flex items-center gap-1">
-                    <ViewRowActions
-                      pinned={pinned}
-                      canSetMainView={pinned && !views.isMainView(viewId)}
-                      onOpen={() => views.openView(viewId)}
-                      onTogglePin={() => views.togglePin(viewId, !pinned)}
-                      onSetMainView={() => views.setMainView(viewId)}
-                    />
-                    <span
-                      onClick={() => views.openView(viewId)}
-                      className="flex cursor-pointer items-center text-muted-foreground"
-                    >
-                      <ChevronRight size={16} />
-                    </span>
-                  </div>
-                }
-              />
-            );
-          })}
+          {[...views.navViews, ...views.projectViews].map((viewId) => (
+            <NativeViewRow key={viewId} views={views} viewId={viewId} />
+          ))}
 
           {/** App views, each group behind the divider that names its app. */}
           {views.connectionsData.flatMap((conn) => [
