@@ -989,6 +989,10 @@ export const sandbox = {
     "Ele pode ter sido excluído, ou o link aponta para um id que este site não tem.",
   "sandbox.postEditScreen.edit": "Editar",
   "sandbox.postEditScreen.preview": "Visualizar",
+  "sandbox.postEditScreen.resizeSplit":
+    "Redimensionar o editor e a visualização",
+  "sandbox.postEditScreen.resizeSplitHint":
+    "Arraste para redimensionar. Clique duas vezes para voltar ao padrão.",
   "sandbox.postPreview.desktop": "Desktop",
   "sandbox.postPreview.frameTitle": "Visualização do post",
   "sandbox.postPreview.missingParams": "Falta dado para montar a URL",

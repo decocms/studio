@@ -153,6 +153,11 @@ export function isDirectDaemonEventsGoneStatus(status: number): boolean {
   return status === 404;
 }
 
+/** A dev task the daemon runs with Deno (`… && deno task dev`). */
+export function isDenoTaskCommand(command: string): boolean {
+  return /(?:^|[\s;&|(])deno\s+task\b/.test(command);
+}
+
 async function probeDirectDaemonEventsGone(url: string): Promise<boolean> {
   try {
     const response = await fetch(url, {
@@ -242,7 +247,10 @@ function useSandboxEventsValue({
   /**
    * Deno/Fresh dev servers don't watch `.deco/blocks/*`, so unlike the Vite
    * runtime they never reload the preview on a Blocks save (#6430 handed that
-   * refresh to the dev server). We drive the iframe reload ourselves for Deno.
+   * refresh to the dev server). We drive the iframe reload ourselves for Deno:
+   * a project set to Deno, or a dev server the sandbox runs with `deno task`
+   * (its `tasks` event, read in the stream below), which is how a repo
+   * imported without a runtime picked shows it.
    * A dep of the SSE effect below; stable per project (reconnects at most once
    * if the VM metadata resolves after mount).
    */
@@ -293,6 +301,8 @@ function useSandboxEventsValue({
     // it comes up (switching them from the committed `.deco/*.gen.json` snapshot
     // to the live `/.decofile` + `/live/_meta` routes).
     let prevLifecyclePhase: LifecycleState["phase"] | null = null;
+    // The dev server runs on Deno, by its task's command (see `isDenoRuntime`).
+    let devServerOnDeno = false;
 
     /**
      * Re-read the schema, after a pause: the dev server needs a moment to
@@ -443,6 +453,9 @@ function useSandboxEventsValue({
             return;
           case "tasks": {
             const tp = payload as DaemonEventPayload<"tasks">;
+            devServerOnDeno = tp.active.some((j) =>
+              isDenoTaskCommand(j.command),
+            );
             // Map active task `logName`s to the activeProcesses array so the
             // UI's Run/Restart button can render against running script tabs.
             const active = tp.active
@@ -518,7 +531,7 @@ function useSandboxEventsValue({
                   queryKey: KEYS.decofile(cacheKey),
                 });
                 // Deno-only: the dev server won't refresh the preview itself.
-                if (isDenoRuntime) {
+                if (isDenoRuntime || devServerOnDeno) {
                   for (const fn of reloadHandlers.current) {
                     try {
                       fn();

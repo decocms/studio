@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   type HeldFrameNavigation,
   frameNavigationLoaded,
+  heldForChange,
   nextFrameNavigation,
   nextFrameSwap,
 } from "./frame-navigation";
@@ -110,5 +111,28 @@ describe("nextFrameSwap", () => {
         wanted: `${other}/`,
       }),
     ).toBeNull();
+  });
+});
+
+describe("heldForChange", () => {
+  const post = "https://site.example/blog/old-slug?__draft=v1";
+
+  it("holds a move to another page while the change saves", () => {
+    const renamed = "https://site.example/blog/new-slug?__draft=v1";
+    expect(heldForChange(post, renamed, true)).toBe(post);
+  });
+
+  it("lets a new draft pointer for the same page in at once", () => {
+    const moved = "https://site.example/blog/old-slug?__draft=v2";
+    expect(heldForChange(post, moved, true)).toBe(moved);
+  });
+
+  it("takes the new page once the change has landed", () => {
+    const renamed = "https://site.example/blog/new-slug?__draft=v2";
+    expect(heldForChange(post, renamed, false)).toBe(renamed);
+  });
+
+  it("has nothing to hold before the frame shows a page", () => {
+    expect(heldForChange(undefined, post, true)).toBe(post);
   });
 });

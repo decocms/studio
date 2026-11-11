@@ -221,8 +221,9 @@ between its planning and live forms, and a key in the URL would break on it.
 That screen measures its own container with `useElementWidth` and keeps both
 panes mounted at every width, so toggling them, and resizing the conversation
 across the breakpoint, never reload the preview. `post-split-layout.ts` owns
-the rule; `?blogView=` carries it, so a link reads as a split on a wide panel
-and as one pane on a narrow one.
+the rule and `?blogView=` carries it: without it a wide panel shows the split
+and a narrow one the editor, and `edit` or `preview` shows that pane alone at
+any width. The split's width is dragged on its divider and kept per browser.
 
 Blog works on drafts of its own: `blog-draft-` branches, named "Blog Draft N",
 in the project's runtime (a sandbox or Fast Preview, like the site's drafts),

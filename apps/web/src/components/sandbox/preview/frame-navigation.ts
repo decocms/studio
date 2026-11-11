@@ -38,6 +38,22 @@ export function nextFrameNavigation(
   return { src: wanted, loading: true };
 }
 
+/**
+ * The src a frame should take while a content change is saving. A move to
+ * another page waits for the save to land: until then the server can't answer
+ * the new path (a post's new slug is "not found"), and on a site whose dev
+ * server doesn't reload, nothing would load it again. A move of the query
+ * alone — a new draft pointer — goes in at once.
+ */
+export function heldForChange(
+  shown: string | undefined,
+  wanted: string | undefined,
+  changePending: boolean,
+): string | undefined {
+  if (!changePending || !shown || !wanted) return wanted;
+  return samePage(shown, wanted) ? wanted : shown;
+}
+
 /** The frame fired load: the next src may go in. */
 export function frameNavigationLoaded(
   current: HeldFrameNavigation,

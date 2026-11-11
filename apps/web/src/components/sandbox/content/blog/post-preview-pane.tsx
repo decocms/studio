@@ -16,6 +16,8 @@ import {
 } from "@/components/sandbox/preview/site-preview-frame.tsx";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { useContentSyncBusy } from "@/components/sections-editor/content-sync";
+import { useSandboxReloadHandler } from "@/components/sandbox/hooks/use-sandbox-events";
 import { buildBlogPostPreviewUrl, findBlogPageSlug } from "./blog-preview-url";
 import { isPlanningPostKey } from "./blog-post-id";
 
@@ -70,10 +72,15 @@ const BLOCK_HINT: Record<PostPreviewBlock, TranslationKey> = {
  *
  * Reload policy lives in {@link SitePreviewFrame}: a sandbox session's saves
  * are reloaded by the dev server's own HMR, and Fast Preview moves the
- * `?__draft=` version so the URL changes on its own. This pane never forces a
- * reload — doing so was what killed the dev server.
+ * `?__draft=` version so the URL changes on its own. This pane forces a reload
+ * only where nothing else would: when the sandbox asks for one (a Deno dev
+ * server, which doesn't reload on content changes, or a moved or restarted
+ * one), and from the refresh button. Doing it on every save was what killed
+ * the dev server.
  */
 export function PostPreviewPane({
+  orgSlug,
+  virtualMcpId,
   decofile,
   post,
   blockKey,
@@ -83,6 +90,9 @@ export function PostPreviewPane({
   draftPointer,
   visible,
 }: {
+  /** The project, whose content saves the frame shows (content-sync.ts). */
+  orgSlug: string;
+  virtualMcpId: string;
   decofile: Record<string, unknown>;
   post: Record<string, unknown>;
   blockKey: string;
@@ -125,6 +135,23 @@ export function PostPreviewPane({
     awaitingDraft: fastPreviewActive && !draftPointer,
   });
 
+  /** Every Blog save runs through the project's content-sync store, so this is
+   *  the editor's write on its way to the page. */
+  const changePending = useContentSyncBusy(orgSlug, virtualMcpId);
+  /** Reloads this pane asked for: the frame shows the bar until each loads. */
+  const [reloads, setReloads] = useState(0);
+  const reload = () => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    // To the newest URL: a Deno dev server's reload comes once it has the
+    // saved content, which a new slug's page needs, whether or not the frame
+    // went to that page yet.
+    reloadIframeOrFallback(iframe, url);
+    setReloads((n) => n + 1);
+  };
+  // Inert in Fast Preview, which mounts no sandbox to ask.
+  useSandboxReloadHandler(reload);
+
   return (
     <div className="flex h-full min-w-0 flex-col border-l bg-muted/30">
       <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-2">
@@ -152,10 +179,7 @@ export function PostPreviewPane({
             disabled={!!blocked}
             aria-label={t("sandbox.postPreview.refresh")}
             title={t("sandbox.postPreview.refresh")}
-            onClick={() => {
-              const iframe = iframeRef.current;
-              if (iframe) reloadIframeOrFallback(iframe, url);
-            }}
+            onClick={reload}
           >
             <RefreshCw01 size={16} />
           </Button>
@@ -204,6 +228,8 @@ export function PostPreviewPane({
             recoveryActive={!fastPreviewActive}
             draftUrl={fastPreviewActive ? url : null}
             holdNavigation={fastPreviewActive}
+            changePending={changePending}
+            expectLoad={reloads}
           />
         )}
       </div>

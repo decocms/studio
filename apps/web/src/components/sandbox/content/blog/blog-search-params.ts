@@ -44,8 +44,8 @@ export function visibleBlogCollection(
   return active === "context" && !blogAi ? "posts" : active;
 }
 
-/** Which pane of the post editor is showing. Only decides anything on a panel
- *  too narrow for both; above the breakpoint it collapses the preview. */
+/** The post editor's pane shown alone, at any width; absent, the width decides
+ *  (both panes when wide, the editor when narrow). See `post-split-layout.ts`. */
 const blogPostViewSchema = z.enum(["edit", "preview"]);
 
 export type BlogPostView = z.infer<typeof blogPostViewSchema>;
