@@ -67,6 +67,7 @@ import {
   type RailOrgPrefs,
 } from "@/lib/rail-org-prefs";
 import { OrgSearchDialog } from "./org-search";
+import { HelpMenu } from "./help-menu";
 import { openCommandPalette } from "@/components/command-palette-store";
 import { KEYBOARD_SHORTCUTS } from "@/lib/keyboard-shortcuts";
 import { RailItem } from "./rail-item";
@@ -504,6 +505,7 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
         {/* Pinned under the scrolling marks, so they stay put however many orgs
           the rail draws. */}
         <div className="flex shrink-0 flex-col items-center gap-1 px-2.5 pt-2 pb-3">
+          <HelpMenu />
           <RailItem active={false}>
             <Tooltip>
               <TooltipTrigger asChild>
