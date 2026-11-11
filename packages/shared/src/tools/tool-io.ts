@@ -3745,6 +3745,9 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "overview"
+                            | "context"
+                            | "monitor"
+                            | "plan"
                             | "reports"
                             | "board"
                             | "site-editor"
@@ -3806,6 +3809,9 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -3825,6 +3831,9 @@ export interface StudioToolIO {
           sidebarViewsSeen?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -4036,6 +4045,9 @@ export interface StudioToolIO {
                           sidebarViews?:
                             | (
                                 | "overview"
+                                | "context"
+                                | "monitor"
+                                | "plan"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
@@ -4097,6 +4109,9 @@ export interface StudioToolIO {
               sidebarViews?:
                 | (
                     | "overview"
+                    | "context"
+                    | "monitor"
+                    | "plan"
                     | "reports"
                     | "board"
                     | "site-editor"
@@ -4116,6 +4131,9 @@ export interface StudioToolIO {
               sidebarViewsSeen?:
                 | (
                     | "overview"
+                    | "context"
+                    | "monitor"
+                    | "plan"
                     | "reports"
                     | "board"
                     | "site-editor"
@@ -4249,6 +4267,9 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "overview"
+                            | "context"
+                            | "monitor"
+                            | "plan"
                             | "reports"
                             | "board"
                             | "site-editor"
@@ -4310,6 +4331,9 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -4329,6 +4353,9 @@ export interface StudioToolIO {
           sidebarViewsSeen?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -4501,6 +4528,9 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "overview"
+                            | "context"
+                            | "monitor"
+                            | "plan"
                             | "reports"
                             | "board"
                             | "site-editor"
@@ -4562,6 +4592,9 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -4581,6 +4614,9 @@ export interface StudioToolIO {
           sidebarViewsSeen?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -4744,6 +4780,9 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "overview"
+                            | "context"
+                            | "monitor"
+                            | "plan"
                             | "reports"
                             | "board"
                             | "site-editor"
@@ -4805,6 +4844,9 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -4824,6 +4866,9 @@ export interface StudioToolIO {
           sidebarViewsSeen?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -4989,6 +5034,9 @@ export interface StudioToolIO {
                           sidebarViews?:
                             | (
                                 | "overview"
+                                | "context"
+                                | "monitor"
+                                | "plan"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
@@ -5050,6 +5098,9 @@ export interface StudioToolIO {
               sidebarViews?:
                 | (
                     | "overview"
+                    | "context"
+                    | "monitor"
+                    | "plan"
                     | "reports"
                     | "board"
                     | "site-editor"
@@ -5069,6 +5120,9 @@ export interface StudioToolIO {
               sidebarViewsSeen?:
                 | (
                     | "overview"
+                    | "context"
+                    | "monitor"
+                    | "plan"
                     | "reports"
                     | "board"
                     | "site-editor"
@@ -5210,6 +5264,9 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "overview"
+                            | "context"
+                            | "monitor"
+                            | "plan"
                             | "reports"
                             | "board"
                             | "site-editor"
@@ -5271,6 +5328,9 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -5290,6 +5350,9 @@ export interface StudioToolIO {
           sidebarViewsSeen?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -5451,6 +5514,9 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "overview"
+                            | "context"
+                            | "monitor"
+                            | "plan"
                             | "reports"
                             | "board"
                             | "site-editor"
@@ -5512,6 +5578,9 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -5531,6 +5600,9 @@ export interface StudioToolIO {
           sidebarViewsSeen?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -7139,6 +7211,9 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "overview"
+                            | "context"
+                            | "monitor"
+                            | "plan"
                             | "reports"
                             | "board"
                             | "site-editor"
@@ -7200,6 +7275,9 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"
@@ -7219,6 +7297,9 @@ export interface StudioToolIO {
           sidebarViewsSeen?:
             | (
                 | "overview"
+                | "context"
+                | "monitor"
+                | "plan"
                 | "reports"
                 | "board"
                 | "site-editor"

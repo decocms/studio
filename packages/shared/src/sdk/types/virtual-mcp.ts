@@ -143,6 +143,9 @@ export type VirtualMcpUILayoutTab = z.infer<typeof VirtualMcpUILayoutTabSchema>;
  * config); this persisted list only records the project's chosen entries. */
 export const VirtualMcpSidebarViewSchema = z.enum([
   "overview",
+  "context",
+  "monitor",
+  "plan",
   "reports",
   "board",
   "site-editor",
@@ -870,7 +873,7 @@ const VirtualMcpMetadataFields = {
     .nullable()
     .optional()
     .describe(
-      "Views Studio offered this project once on top of an exact sidebarViews list (Experiments and Calendar on a Blocks site). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
+      "Views Studio offered this project once on top of an exact sidebarViews list (the top rows, plus Experiments and Calendar on a Blocks site). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
     ),
   repository: RepositoryBindingSchema.nullable()
     .optional()
