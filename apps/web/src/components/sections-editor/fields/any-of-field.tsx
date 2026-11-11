@@ -715,13 +715,11 @@ function LoadedAnyOfField({
 
 /** Saved references can be selected without their parent page referencing them yet. */
 export function AnyOfField(props: FieldProps) {
-  const t = useT();
   const reference =
     props.decofile && props.value
       ? unwrapBlockReference(props.value, props.decofile)
       : null;
-  if (reference && isIndexStub(reference.data)) {
-    if (!props.sandbox) return <span>{t("common.loading")}</span>;
+  if (props.sandbox && reference && isIndexStub(reference.data)) {
     return (
       <CmsBlockBoundary
         listing={props.decofile ?? {}}

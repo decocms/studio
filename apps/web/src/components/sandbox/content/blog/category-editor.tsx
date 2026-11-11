@@ -173,8 +173,9 @@ function CategoryEditorForm({
   // decofile entry, not to this record.
   const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => referenceSave.mutate(write),
+    (write) => (save.v8 ? referenceSave : save).mutate(write),
     decofile,
+    save.v8,
   );
 
   // Only offer a preview when the blog app has a `categorySlug` route
@@ -446,9 +447,15 @@ function CategoryEditorForm({
           <div className="flex shrink-0 items-center gap-3">
             <SaveStatus
               isPending={
-                save.isPending || referenceSave.isPending || move.isPending
+                save.isPending ||
+                (save.v8 && referenceSave.isPending) ||
+                move.isPending
               }
-              isError={save.isError || referenceSave.isError || move.isError}
+              isError={
+                save.isError ||
+                (save.v8 && referenceSave.isError) ||
+                move.isError
+              }
             />
             {missing.length > 0 && (
               <Tooltip>

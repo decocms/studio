@@ -206,10 +206,8 @@ function LoadedVariantRuleEditor({
 export function VariantRuleEditor(
   props: Parameters<typeof LoadedVariantRuleEditor>[0],
 ) {
-  const t = useT();
   const key = props.currentGlobalKey;
-  if (key && isIndexStub(props.decofile?.[key])) {
-    if (!props.sandbox) return <span>{t("common.loading")}</span>;
+  if (props.sandbox && key && isIndexStub(props.decofile?.[key])) {
     return (
       <CmsBlockBoundary
         listing={props.decofile ?? {}}

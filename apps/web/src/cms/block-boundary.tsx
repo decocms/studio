@@ -41,6 +41,7 @@ export function CmsBlockBoundary({
   const showing = view.key === key && view.opened;
   const next = nextEditorView(view, key, load.ready);
   if (next !== view) setView(next);
+  if (!load.v8) return children;
   // A refresh must not unmount an open form and its pending keystrokes.
   if (!showing && load.failed) {
     return (

@@ -50,6 +50,25 @@ Pending or unavailable backends cannot fall through save/move/delete to a
 legacy writer. The account-less local site editor retains its explicit protocol
 connection.
 
+## V8 rollout boundary
+
+For project-backed editors, the existing Blocks v8 project setting remains the
+only generation gate. With it off, `useContentBackend` selects `legacy` and the
+new CMS probes and hosted body requests stay disabled. The account-less
+`/site-editor` keeps its existing explicit v8 protocol connection.
+
+An additional scope audit found shared editor improvements that initially also
+ran on v7. Those behavior changes are now gated: v7 uses the original Page JSON
+renderer and editor keys, original referenced-save mutation observer and payload,
+implicit cached save bases, redirect rule resolution at confirmation, and original
+SEO cache key. V8 retains the new body-loading, source guards, scoped lifetimes
+and JSON buffer protection. Regression coverage checks the legacy referenced-save
+payload and its original shallow block-copy validation.
+
+Shared files and import paths still change, so this is not a claim of zero
+regression risk. The PR does not change the API server, storefront runtime,
+database schema, or dependencies. Browser E2E remains an explicit validation gap.
+
 ## Communication bypass inventory
 
 The review searched the web source for `/api/cms/`, CMS URL/JSON helpers,
@@ -134,7 +153,7 @@ normal Playwright services; unit tests cannot establish browser wiring.
 
 Final local results:
 
-- `bun run verify`: formatting, lint, unused-code checks and **13,483 tests passed**.
+- `bun run verify`: formatting, lint, unused-code checks and **13,498 tests passed**.
 - Web and Playwright workspace TypeScript checks passed.
 - Playwright discovered both new hosted Settings regressions.
 - Browser execution was not run: local PostgreSQL/NATS were unavailable, their

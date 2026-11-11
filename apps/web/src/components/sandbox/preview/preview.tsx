@@ -2416,7 +2416,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {jsonPanelOpen && jsonBlockKey && (
               <div className="absolute inset-0 z-10">
                 <PageJsonPanel
-                  key={JSON.stringify([contentCacheKey, v8])}
+                  key={
+                    contentBackend.kind === "legacy"
+                      ? undefined
+                      : JSON.stringify([contentCacheKey, v8])
+                  }
                   ref={jsonPanelHandleRef}
                   virtualMcpId={virtualMcpId}
                   pageKey={jsonBlockKey}
@@ -2690,7 +2694,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       className="min-w-0 overflow-hidden"
                     >
                       <PageJsonPanel
-                        key={JSON.stringify([contentCacheKey, v8])}
+                        key={
+                          contentBackend.kind === "legacy"
+                            ? undefined
+                            : JSON.stringify([contentCacheKey, v8])
+                        }
                         ref={jsonPanelHandleRef}
                         virtualMcpId={virtualMcpId}
                         pageKey={jsonBlockKey}

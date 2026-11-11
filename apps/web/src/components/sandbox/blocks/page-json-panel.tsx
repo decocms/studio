@@ -1,3 +1,5 @@
+import { useContentBackend } from "@/cms/use-content-backend";
+import { LegacyPageJsonPanel } from "./page-json-panel-legacy";
 import { isBlockBody } from "@/cms/block-body";
 import { type Ref, useImperativeHandle, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -35,7 +37,18 @@ export interface PageJsonPanelHandle {
   flush: () => void;
 }
 
-export function PageJsonPanel({
+/** The project generation chooses a separate editor, keeping the legacy lifecycle intact. */
+export function PageJsonPanel(props: Parameters<typeof V8PageJsonPanel>[0]) {
+  const { currentBranch } = useChatTask();
+  const backend = useContentBackend(props.virtualMcpId, currentBranch);
+  return backend.kind === "legacy" ? (
+    <LegacyPageJsonPanel {...props} />
+  ) : (
+    <V8PageJsonPanel {...props} />
+  );
+}
+
+function V8PageJsonPanel({
   virtualMcpId,
   pageKey,
   onClose,

@@ -40,7 +40,7 @@ export function useCmsBlocks(
   scope: DecofileScopeParams | null,
   names: readonly string[],
   options?: { withRefs?: boolean; listing?: Record<string, unknown> },
-): HostedBlocksLoad & { scopeKey: string } {
+): HostedBlocksLoad & { scopeKey: string; v8: boolean } {
   const queryClient = useQueryClient();
   const backend = useContentBackend(scope?.virtualMcpId, scope?.branch);
   const hostedBackend =
@@ -56,6 +56,7 @@ export function useCmsBlocks(
   const state = cmsBlocksLoadState(scope !== null, backend.kind, load);
   return {
     ...state,
+    v8: backend.kind !== "legacy",
     scopeKey: cmsBlocksScopeKey(scope, backend),
     retry: () => {
       load.retry();

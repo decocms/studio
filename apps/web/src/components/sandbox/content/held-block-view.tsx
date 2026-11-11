@@ -68,6 +68,8 @@ export function HeldBlockView({
       />
     );
   }
+  if (backend.kind === "legacy")
+    return <Fragment key={remounts}>{children}</Fragment>;
   return (
     <CmsBlockBoundary
       listing={listing}

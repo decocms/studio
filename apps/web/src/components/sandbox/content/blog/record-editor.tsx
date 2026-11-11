@@ -125,8 +125,9 @@ function RecordEditorForm({
   // decofile entry, not to this record.
   const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => referenceSave.mutate(write),
+    (write) => (save.v8 ? referenceSave : save).mutate(write),
     decofile,
+    save.v8,
   );
 
   const [payload, setPayload] = useAutosave(
@@ -145,8 +146,8 @@ function RecordEditorForm({
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
         <span className="text-sm font-medium">{t(TITLE[kind])}</span>
         <SaveStatus
-          isPending={save.isPending || referenceSave.isPending}
-          isError={save.isError || referenceSave.isError}
+          isPending={save.isPending || (save.v8 && referenceSave.isPending)}
+          isError={save.isError || (save.v8 && referenceSave.isError)}
         />
       </div>
       <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">

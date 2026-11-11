@@ -367,7 +367,7 @@ type DeleteTarget =
       kind: "redirect";
       key: string;
       label: string;
-      rule: {
+      rule?: {
         block: string;
         index: number;
         body: Record<string, unknown>;
@@ -428,12 +428,16 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
 
   return (
     <ContentBrowserReady
-      key={JSON.stringify([
-        org.slug,
-        virtualMcpId,
-        branch,
-        contentBackendScopeKey(contentBackend),
-      ])}
+      key={
+        contentBackend.kind === "legacy"
+          ? undefined
+          : JSON.stringify([
+              org.slug,
+              virtualMcpId,
+              branch,
+              contentBackendScopeKey(contentBackend),
+            ])
+      }
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
       branch={branch}
@@ -487,6 +491,7 @@ function ContentBrowserReady({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const contentBackend = useContentBackend(virtualMcpId, branch);
+  const v8 = contentBackend.kind !== "legacy";
   // The protocol never runs site code: no app install, no Run.
   const runsSiteCode = !isProtocolProject(contentBackend);
   /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
@@ -829,6 +834,10 @@ function ContentBrowserReady({
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const requestRedirectDeletion = (key: string, label: string) => {
+    if (!v8) {
+      setDeleteTarget({ kind: "redirect", key, label });
+      return;
+    }
     const rule = redirectRuleOf(key, decofile ?? {});
     const body = rule ? decofile?.[rule.block] : undefined;
     if (rule && !isBlockBody(body)) {
@@ -1182,9 +1191,11 @@ function ContentBrowserReady({
   // ------------------ Variant ------------------
   const handleAddPageVariant = async (page: PageEntry) => {
     try {
-      const fullPageData = await loadBlock(decofile, page.key);
+      const fullPageData = v8
+        ? await loadBlock(decofile, page.key)
+        : (decofile[page.key] as Record<string, unknown> | undefined);
       if (!fullPageData) return;
-      const loaded = { ...decofile, [page.key]: fullPageData };
+      const loaded = v8 ? { ...decofile, [page.key]: fullPageData } : decofile;
       const variantCount = getPageVariantCount(loaded, page.key);
       const seedSections = getPageVariantSectionsAt(
         loaded,
@@ -1201,7 +1212,7 @@ function ContentBrowserReady({
       const saved = await saveBlock.mutateAsync({
         blockKey: page.key,
         data: { ...fullPageData, sections: added.sections },
-        base: { value: fullPageData, fromCache: true },
+        ...(v8 ? { base: { value: fullPageData, fromCache: true } } : {}),
       });
       // Kept as the draft holds it (hosted v8): its own toast said so.
       if (!keptTheirVersion(saved)) {
@@ -1271,7 +1282,7 @@ function ContentBrowserReady({
         const created = await saveBlock.mutateAsync({
           blockKey: key,
           data,
-          create: true,
+          ...(v8 ? { create: true } : {}),
         });
         // Kept as the draft holds it (hosted v8): its own toast said so.
         if (!keptTheirVersion(created)) {
@@ -1290,7 +1301,7 @@ function ContentBrowserReady({
         const duplicated = await saveBlock.mutateAsync({
           blockKey: key,
           data,
-          create: true,
+          ...(v8 ? { create: true } : {}),
         });
         if (!keptTheirVersion(duplicated)) {
           toast.success(`Duplicated as "${values.name}"`);
@@ -1307,7 +1318,7 @@ function ContentBrowserReady({
         const updated = await saveBlock.mutateAsync({
           blockKey: sourceKey,
           data,
-          base: { value: source, fromCache: true },
+          ...(v8 ? { base: { value: source, fromCache: true } } : {}),
         });
         if (!keptTheirVersion(updated)) toast.success("Page updated");
         if (selection?.collection === "pages" && selection.key === sourceKey) {
@@ -1369,11 +1380,14 @@ function ContentBrowserReady({
   const saveReferencedBlock = createReferencedBlockSaver(
     (write) => saveBlock.mutate(write),
     decofile,
+    saveBlock.v8,
   );
 
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     try {
-      const source = await loadBlock(decofile, section.key);
+      const source = v8
+        ? await loadBlock(decofile, section.key)
+        : (decofile[section.key] as Record<string, unknown> | undefined);
       if (!source) {
         toast.error(t("sandbox.contentBrowser.sectionNotFound"));
         return;
@@ -1404,7 +1418,9 @@ function ContentBrowserReady({
   const handleRenameSection = async (newName: string) => {
     if (!renameSectionKey) return;
     try {
-      const source = await loadBlock(decofile, renameSectionKey);
+      const source = v8
+        ? await loadBlock(decofile, renameSectionKey)
+        : (decofile[renameSectionKey] as Record<string, unknown> | undefined);
       if (!source) {
         toast.error(t("sandbox.contentBrowser.sectionNotFound"));
         return;
@@ -1412,7 +1428,7 @@ function ContentBrowserReady({
       const renamed = await saveBlock.mutateAsync({
         blockKey: renameSectionKey,
         data: { ...source, name: newName },
-        base: { value: source, fromCache: true },
+        ...(v8 ? { base: { value: source, fromCache: true } } : {}),
       });
       // Left as the draft holds it (hosted v8): its own toast said so.
       if (!keptTheirVersion(renamed)) {
@@ -1463,8 +1479,8 @@ function ContentBrowserReady({
       const created = await saveBlock.mutateAsync({
         blockKey: key,
         data,
-        base: { value: body, fromCache: true },
-        create: body === undefined,
+        ...(v8 ? { base: { value: body, fromCache: true } } : {}),
+        ...(v8 ? { create: body === undefined } : {}),
       });
       if (!keptTheirVersion(created)) toast.success("Created redirect");
       setRedirectDialogOpen(false);
@@ -1487,7 +1503,7 @@ function ContentBrowserReady({
       const created = await saveBlock.mutateAsync({
         blockKey: key,
         data,
-        create: true,
+        ...(v8 ? { create: true } : {}),
       });
       if (!keptTheirVersion(created)) {
         toast.success(`Created ${BLOG_SINGULAR[kind]}`);
@@ -1506,7 +1522,7 @@ function ContentBrowserReady({
       const created = await saveBlock.mutateAsync({
         blockKey: key,
         data,
-        create: true,
+        ...(v8 ? { create: true } : {}),
       });
       if (!keptTheirVersion(created)) {
         toast.success(t("sandbox.postCalendar.createdScheduledPost"));
@@ -1527,7 +1543,9 @@ function ContentBrowserReady({
   /** Calendar drag: move an already-scheduled post to another day. */
   const handleReschedulePost = async (key: string, day: Date) => {
     try {
-      const source = await loadBlock(decofile, key);
+      const source = v8
+        ? await loadBlock(decofile, key)
+        : (decofile[key] as Record<string, unknown> | undefined);
       const payload = source
         ? rescheduleToDay(getBlogPayload(source, "posts"), day)
         : null;
@@ -1538,7 +1556,7 @@ function ContentBrowserReady({
       await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, "posts", payload),
-        base: { value: source, fromCache: true },
+        ...(v8 ? { base: { value: source, fromCache: true } } : {}),
       });
     } catch (err) {
       toast.error(
@@ -1551,7 +1569,9 @@ function ContentBrowserReady({
 
   const handleDuplicateBlog = async (entry: BlogEntry) => {
     try {
-      const source = await loadBlock(decofile, entry.key);
+      const source = v8
+        ? await loadBlock(decofile, entry.key)
+        : (decofile[entry.key] as Record<string, unknown> | undefined);
       if (!source) {
         toast.error("Record not found.");
         return;
@@ -1573,7 +1593,7 @@ function ContentBrowserReady({
       const duplicated = await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
-        create: true,
+        ...(v8 ? { create: true } : {}),
       });
       if (!keptTheirVersion(duplicated)) {
         toast.success(`Duplicated "${entry.label}"`);
@@ -1600,8 +1620,10 @@ function ContentBrowserReady({
     try {
       const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
-        const source = await loadBlock(decofile, key);
-        if (!source)
+        const source = v8
+          ? await loadBlock(decofile, key)
+          : (decofile[key] as Record<string, unknown> | undefined);
+        if (v8 && !source)
           throw new Error(t("sectionsEditor.hosted.blockLoadFailed"));
         // Deleting a category cascades to posts: they carry a denormalized
         // copy of the category slug, so drop it everywhere first — otherwise
@@ -1613,16 +1635,18 @@ function ContentBrowserReady({
           if (slug) {
             // Both forms: a draft denormalizes the category too, and
             // writing it back as a live block would publish it.
-            const loaded = { ...decofile };
-            const bodies = await Promise.all(
-              typeListNames.map(
-                async (name) =>
-                  [name, await loadBlock(decofile, name)] as const,
-              ),
-            );
-            for (const [name, body] of bodies) {
-              if (body) loaded[name] = body;
-              else delete loaded[name];
+            const loaded = v8 ? { ...decofile } : decofile;
+            if (v8) {
+              const bodies = await Promise.all(
+                typeListNames.map(
+                  async (name) =>
+                    [name, await loadBlock(decofile, name)] as const,
+                ),
+              );
+              for (const [name, body] of bodies) {
+                if (body) loaded[name] = body;
+                else delete loaded[name];
+              }
             }
             for (const { key: postKey, payload } of listAllPostPayloads(
               loaded,
@@ -1632,25 +1656,33 @@ function ContentBrowserReady({
               await saveBlock.mutateAsync({
                 blockKey: postKey,
                 data: buildPostBlock(postKey, stampPostModified(next)),
-                base: { value: loaded[postKey], fromCache: true },
+                ...(v8
+                  ? { base: { value: loaded[postKey], fromCache: true } }
+                  : {}),
               });
             }
           }
         }
         deleted = await deleteBlock.mutateAsync({
           blockKey: key,
-          base: { value: source },
-        });
-      } else if (deleteTarget.kind === "redirect" && deleteTarget.rule) {
-        // A rule's index is meaningful only in the copy the user confirmed.
-        const { body, ...rule } = deleteTarget.rule;
-        deleted = await saveBlock.mutateAsync({
-          blockKey: rule.block,
-          data: removeRedirectRule(body, rule.index),
-          base: { value: body, fromCache: true },
+          ...(v8 ? { base: { value: source } } : {}),
         });
       } else {
-        deleted = await deleteBlock.mutateAsync({ blockKey: key });
+        const rule = v8
+          ? deleteTarget.kind === "redirect"
+            ? deleteTarget.rule
+            : null
+          : redirectRuleOf(key, decofile);
+        if (rule) {
+          const body = "body" in rule ? rule.body : decofile[rule.block];
+          deleted = await saveBlock.mutateAsync({
+            blockKey: rule.block,
+            data: removeRedirectRule(body, rule.index),
+            ...(v8 ? { base: { value: body, fromCache: true } } : {}),
+          });
+        } else {
+          deleted = await deleteBlock.mutateAsync({ blockKey: key });
+        }
       }
       setDeleteTarget(null);
       // The user kept their version (the hook said so in its own toast).

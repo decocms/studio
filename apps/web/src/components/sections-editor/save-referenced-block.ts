@@ -8,22 +8,27 @@ export type ReferencedBlockSaveFn = (
 interface ReferencedBlockWrite {
   blockKey: string;
   data: Record<string, unknown>;
-  base: { value: unknown; fromCache: true };
-  create: boolean;
+  base?: { value: unknown; fromCache: true };
+  create?: boolean;
 }
 
-/** Guard nested edits by the listing copy their form used, not a later cache value. */
+/** V8 guards the displayed copy; legacy keeps its existing call-time cache base. */
 export function createReferencedBlockSaver(
   save: (write: ReferencedBlockWrite) => void,
   blocks: Readonly<Record<string, unknown>>,
+  v8: boolean,
 ): ReferencedBlockSaveFn {
   return (blockKey, data) => {
     assertSafeDecoBlockKey(blockKey);
     save({
       blockKey,
       data,
-      base: { value: blocks[blockKey], fromCache: true },
-      create: !Object.hasOwn(blocks, blockKey),
+      ...(v8
+        ? {
+            base: { value: blocks[blockKey], fromCache: true as const },
+            create: !Object.hasOwn(blocks, blockKey),
+          }
+        : {}),
     });
   };
 }

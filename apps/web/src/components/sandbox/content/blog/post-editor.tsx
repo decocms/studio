@@ -215,8 +215,9 @@ function PostEditorForm({
   // decofile entry, not to this post.
   const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => referenceSave.mutate(write),
+    (write) => (save.v8 ? referenceSave : save).mutate(write),
     decofile,
+    save.v8,
   );
 
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
@@ -285,9 +286,11 @@ function PostEditorForm({
           <div className="flex items-center gap-3">
             <SaveStatus
               isPending={
-                save.isPending || referenceSave.isPending || saveScheduled
+                save.isPending ||
+                (save.v8 && referenceSave.isPending) ||
+                saveScheduled
               }
-              isError={save.isError || referenceSave.isError}
+              isError={save.isError || (save.v8 && referenceSave.isError)}
             />
             {hasErrors && (
               <Tooltip>

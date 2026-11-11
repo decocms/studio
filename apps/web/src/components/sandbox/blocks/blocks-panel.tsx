@@ -123,7 +123,11 @@ export function BlocksPanel({
       target?.kind === "page" || target?.kind === "section" ? target.key : null;
     return panel(
       <SchemalessEditor
-        key={`${editorScope}:${initialKey ?? ""}`}
+        key={
+          contentBackend.kind === "legacy"
+            ? (initialKey ?? "")
+            : `${editorScope}:${initialKey ?? ""}`
+        }
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}
@@ -157,7 +161,7 @@ export function BlocksPanel({
   if (target?.kind === "loader" && decofile.data && meta.data) {
     return editorPanel(
       <GlobalLoaderEditor
-        key={editorScope}
+        key={contentBackend.kind === "legacy" ? undefined : editorScope}
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}
@@ -204,7 +208,11 @@ export function BlocksPanel({
       }
     >
       <SectionsEditor
-        key={`${editorScope}:${editorKey}`}
+        key={
+          contentBackend.kind === "legacy"
+            ? editorKey
+            : `${editorScope}:${editorKey}`
+        }
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}

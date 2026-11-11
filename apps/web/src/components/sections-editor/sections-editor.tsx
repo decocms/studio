@@ -575,12 +575,16 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver((write) => {
-    saveBlock.mutate(write, {
-      onSuccess: () => onSaved?.(),
-      onError: saveBlock.reportError,
-    });
-  }, decofile ?? {});
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => {
+      saveBlock.mutate(write, {
+        onSuccess: () => onSaved?.(),
+        onError: saveBlock.reportError,
+      });
+    },
+    decofile ?? {},
+    saveBlock.v8,
+  );
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const applyNamedRule = useApplyNamedRule({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);

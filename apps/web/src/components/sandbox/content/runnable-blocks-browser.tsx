@@ -150,6 +150,7 @@ export function RunnableBlocksBrowser({
   const saveReferencedBlock = createReferencedBlockSaver(
     (write) => saveBlock.mutate(write),
     decofile,
+    saveBlock.v8,
   );
 
   const singular = runnableSingular(kind);

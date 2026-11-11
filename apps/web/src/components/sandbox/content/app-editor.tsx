@@ -156,6 +156,7 @@ function AppEditorForm({
           ),
       }),
     decofile,
+    saveBlock.v8,
   );
 
   const [prevBlockKey, setPrevBlockKey] = useState(blockKey);

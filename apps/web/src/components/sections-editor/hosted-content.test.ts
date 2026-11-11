@@ -384,6 +384,18 @@ describe("copying a page (template, duplicate, rename)", () => {
     expect(state.blocksCalls).toEqual([["home"]]);
   });
 
+  it("legacy copies retain the original shallow body check", async () => {
+    const body = { __resolveType: "page", props: { __indexStub: "user data" } };
+    const result = await loadBlockBody(
+      new QueryClient(),
+      null,
+      "legacy",
+      { home: body },
+      "home",
+    );
+    expect(result).toBe(body);
+  });
+
   it("off the hosted CMS, never reads", async () => {
     const queryClient = new QueryClient();
     const listed = { home: { __resolveType: "page", path: "/" } };

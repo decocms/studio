@@ -25,7 +25,12 @@ import {
  *   references instead of its (absent) body.
  */
 
-import { INDEX_STUB, INDEX_STUB_REFS, isBlockBody } from "./block-body";
+import {
+  INDEX_STUB,
+  INDEX_STUB_REFS,
+  isIndexStub,
+  isBlockBody,
+} from "./block-body";
 export { isIndexStub, indexStubRefs, stubNames } from "./block-body";
 
 import type { QueryClient } from "@tanstack/react-query";
@@ -401,7 +406,10 @@ export async function loadBlockBody(
   listed: Record<string, unknown> | undefined,
   name: string,
 ): Promise<Record<string, unknown> | undefined> {
-  if (!rpc) return isBlockBody(listed?.[name]) ? listed[name] : undefined;
+  if (!rpc) {
+    const value = listed?.[name];
+    return isRecord(value) && !isIndexStub(value) ? value : undefined;
+  }
   await ensureHostedBlocks(queryClient, rpc, cacheKey, [name]);
   const held = blockLoadSnapshot(queryClient, cacheKey);
   return held.index?.entries[name] && blockIsLoaded(held, name)

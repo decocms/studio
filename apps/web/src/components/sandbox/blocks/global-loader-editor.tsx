@@ -35,6 +35,7 @@ export function GlobalLoaderEditor({
   const saveReferencedBlock = createReferencedBlockSaver(
     (write) => saveBlock.mutate(write),
     decofile,
+    saveBlock.v8,
   );
 
   const { resolveType, props, title } = readSavedRunnableBlock(

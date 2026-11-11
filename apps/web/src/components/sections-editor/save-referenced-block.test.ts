@@ -10,6 +10,7 @@ describe("save-referenced-block", () => {
     const save = createReferencedBlockSaver(
       (write) => saved.push(write),
       current,
+      true,
     );
     // Another read replaced the cache; the form still edits its opened copy.
     current = { Header: { text: "Hello", color: "red" } };
@@ -31,7 +32,11 @@ describe("save-referenced-block", () => {
 
   it("creates a new referenced block with a must-not-exist guard", () => {
     const saved: unknown[] = [];
-    const save = createReferencedBlockSaver((write) => saved.push(write), {});
+    const save = createReferencedBlockSaver(
+      (write) => saved.push(write),
+      {},
+      true,
+    );
     save("Header", { text: "Hello" });
     expect(saved).toEqual([
       {
@@ -43,9 +48,28 @@ describe("save-referenced-block", () => {
     ]);
   });
 
+  it("legacy references keep the original payload without explicit source guards", () => {
+    const saved: unknown[] = [];
+    const save = createReferencedBlockSaver(
+      (write) => saved.push(write),
+      { Header: { text: "old" } },
+      false,
+    );
+    save("Header", { text: "edited" });
+    save("New", { text: "new" });
+    expect(saved).toEqual([
+      { blockKey: "Header", data: { text: "edited" } },
+      { blockKey: "New", data: { text: "new" } },
+    ]);
+  });
+
   it("rejects encoded path traversal before persistence", () => {
     const saved: unknown[] = [];
-    const save = createReferencedBlockSaver((write) => saved.push(write), {});
+    const save = createReferencedBlockSaver(
+      (write) => saved.push(write),
+      {},
+      true,
+    );
     expect(() => save("%2e%2e%2fHeader", {})).toThrow(/Invalid block key/);
     expect(saved).toEqual([]);
   });

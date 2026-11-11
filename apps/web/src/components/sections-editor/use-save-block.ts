@@ -862,6 +862,8 @@ export function useSaveBlock(
 
   return {
     ...mutation,
+    /** The existing backend selector returns legacy whenever the v8 project gate is off. */
+    v8: backend.kind !== "legacy",
     mutate: (
       variables: SaveBlockVariables,
       options?: Parameters<typeof mutation.mutate>[1],
@@ -1033,6 +1035,7 @@ export function useDebouncedSaveBlock(
     flush,
     isPending: saveBlock.isPending,
     hold: saveBlock.hold,
+    v8: saveBlock.v8,
   };
 }
 
