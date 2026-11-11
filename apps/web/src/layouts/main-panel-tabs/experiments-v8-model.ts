@@ -81,3 +81,27 @@ export function removedExperiments(
 ): string[] {
   return namedRulesRemovedInDraft(decofile, published, "experiments");
 }
+
+/** The tests live now: the published content's, as the list shows them. */
+export function liveExperimentRows(
+  published: Record<string, unknown>,
+): ExperimentRowModel[] {
+  return experimentRows(published, published);
+}
+
+/**
+ * Whether the draft adds, changes or removes a test the published site
+ * doesn't have that way: what Publish would change. `false` while the
+ * published content isn't known.
+ */
+export function draftHasUnpublishedTests(
+  draft: Record<string, unknown>,
+  published: Record<string, unknown> | null,
+): boolean {
+  if (!published) return false;
+  return (
+    experimentRows(draft, published).some(
+      (row) => row.entryState !== "published",
+    ) || removedExperiments(draft, published).length > 0
+  );
+}

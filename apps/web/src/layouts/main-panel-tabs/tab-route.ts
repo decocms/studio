@@ -45,7 +45,8 @@ export type TabRouteLocation =
         | "releases"
         | "hosting"
         | "e2e"
-        | "calendar";
+        | "calendar"
+        | "experiments";
     }
   | { kind: "automations"; automationId?: string }
   /** The Blog view: its browser, or one post's editor. */
@@ -65,7 +66,7 @@ export type TabRouteLocation =
 
 export type ProjectTabDestination = "tasks" | "reports" | "plan" | "monitoring";
 /** The Monitor view that took over a retired app. */
-type RetiredAppMonitorView = "audience" | "performance" | "experiments";
+type RetiredAppMonitorView = "audience" | "performance";
 export type OrgTabDestination = "home" | "library" | "discover";
 
 type AgentParams = { org: string; agentId: string };
@@ -120,7 +121,8 @@ export type TabRouteTarget =
         | typeof PROJECT_ROUTE.releases
         | typeof PROJECT_ROUTE.hosting
         | typeof PROJECT_ROUTE.e2e
-        | typeof PROJECT_ROUTE.calendar;
+        | typeof PROJECT_ROUTE.calendar
+        | typeof PROJECT_ROUTE.experiments;
       params: AgentParams;
       search: {};
     }
@@ -256,14 +258,12 @@ const PROJECT_DESTINATION_BY_TAB: Readonly<
   // The retired apps below, still in saved per-thread layouts.
   analytics: "monitoring",
   cdn: "monitoring",
-  experiments: "monitoring",
 };
 
 /** The Monitor view each retired app opens, as its old URL redirects. */
 const MONITOR_VIEW_BY_TAB: Readonly<Record<string, RetiredAppMonitorView>> = {
   analytics: "audience",
   cdn: "performance",
-  experiments: "experiments",
 };
 
 const AGENT_SECTION_BY_TAB: Readonly<
@@ -278,6 +278,9 @@ const AGENT_SECTION_BY_TAB: Readonly<
   hosting: "hosting",
   e2e: "e2e",
   calendar: "calendar",
+  // A Blocks v8 project's app; any other project's route sends it to
+  // Monitor's Experiments view.
+  experiments: "experiments",
 };
 
 /**
@@ -758,6 +761,7 @@ export function navigateToTabRouteTarget(
     case PROJECT_ROUTE.hosting:
     case PROJECT_ROUTE.e2e:
     case PROJECT_ROUTE.calendar:
+    case PROJECT_ROUTE.experiments:
       navigate({
         to: target.to,
         params: target.params,

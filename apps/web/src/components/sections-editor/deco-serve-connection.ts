@@ -128,12 +128,6 @@ export function probeRetryDelay(failures: number, capMs = 10_000): number {
 /** Where `deco serve` listens when it isn't given `--port`. */
 export const DEFAULT_SERVE_ENDPOINT = "http://localhost:4545/rpc";
 
-/** The command that starts `deco serve` (the `deco` bin of `@decocms/blocks`). */
-export const SERVE_COMMAND = "npx @decocms/blocks serve";
-
-/** The command that writes `.deco/schema.gen.json`. */
-export const SCHEMA_COMMAND = "npx @decocms/blocks schema";
-
 export type ParsedServeAddress =
   | { ok: true; connection: DecoServeConnection }
   | { ok: false; reason: "not-local" | "unrecognized" };

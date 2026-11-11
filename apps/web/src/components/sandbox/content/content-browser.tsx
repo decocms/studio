@@ -45,6 +45,7 @@ import {
   useDecofile,
   useEnsureDecofileBlocks,
   useIndexNamesOfType,
+  useLoadDecofileBlock,
 } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
@@ -459,9 +460,15 @@ function ContentBrowserReady({
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
   // Calendar views. Both keep the open thread, so they work in this same draft.
+  // A test opens on itself in the Experiments app (`?test=`).
   const namedRuleViews: NamedRuleViews = {
-    open: (kind) => {
-      openPanel(kind === "campaigns" ? "calendar" : "experiments");
+    open: (kind, name) => {
+      if (kind === "campaigns") openPanel("calendar");
+      else {
+        openPanel("experiments", {
+          search: name ? (prev) => ({ ...prev, test: name }) : undefined,
+        });
+      }
     },
   };
   const [selection, setSelection] = useState<Selection>(() =>
@@ -671,6 +678,7 @@ function ContentBrowserReady({
   };
 
   const saveBlock = useSaveBlock(fetchParams);
+  const loadBlock = useLoadDecofileBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
 
   // Dialog state
@@ -1082,9 +1090,7 @@ function ContentBrowserReady({
         // A template clones an existing page's content; only name/path change.
         let data: Record<string, unknown>;
         if (values.templateKey) {
-          const template = decofile[values.templateKey] as
-            | Record<string, unknown>
-            | undefined;
+          const template = await loadBlock(decofile, values.templateKey);
           if (!template) throw new Error("Selected template no longer exists.");
           data = { ...template, name: values.name, path: values.path };
         } else {
@@ -1103,9 +1109,7 @@ function ContentBrowserReady({
         }
         setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "duplicate" && sourceKey) {
-        const source = decofile[sourceKey] as
-          | Record<string, unknown>
-          | undefined;
+        const source = await loadBlock(decofile, sourceKey);
         if (!source) throw new Error("Source page not found");
         const { key, data } = buildDuplicatePage({
           source,
@@ -1119,9 +1123,7 @@ function ContentBrowserReady({
         }
         setSelection({ collection: "pages", key, path: values.path });
       } else if (mode === "rename" && sourceKey) {
-        const source = decofile[sourceKey] as
-          | Record<string, unknown>
-          | undefined;
+        const source = await loadBlock(decofile, sourceKey);
         if (!source) throw new Error("Page not found");
         const data: Record<string, unknown> = {
           ...source,

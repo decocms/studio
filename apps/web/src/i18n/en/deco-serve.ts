@@ -12,20 +12,13 @@ export const decoServe = {
   "decoServe.waiting.title": "Waiting for your computer",
   "decoServe.waiting.lead":
     "Your preview and content open here as soon as Studio connects to deco serve on this computer.",
-  "decoServe.waiting.step2.title": "Studio connects on its own",
-  "decoServe.waiting.step2.body":
+  "decoServe.waiting.connect.title": "Studio connects on its own",
+  "decoServe.waiting.connect.body":
     "Keep this tab open. Your preview opens here as soon as deco serve starts.",
-  "decoServe.guide.step1.title": "Start deco serve in your site's folder",
-  "decoServe.guide.step1.body":
-    "In a terminal, in your site's folder (the one that has the `.deco` folder), run:",
-  "decoServe.guide.copy": "Copy command",
-  "decoServe.guide.copyShort": "Copy",
-  "decoServe.guide.copied": "Copied",
-  "decoServe.guide.copiedAnnouncement": "Command copied to the clipboard",
-  "decoServe.guide.step2.looking": "Looking for deco serve on {hosts}…",
-  "decoServe.guide.step2.paused":
+  "decoServe.guide.looking": "Looking for deco serve on {hosts}…",
+  "decoServe.guide.paused":
     "Paused while this tab is in the background. It looks again when you come back.",
-  "decoServe.guide.step2.start": "Look for deco serve on this computer",
+  "decoServe.guide.start": "Look for deco serve on this computer",
 
   "decoServe.docs.heading": "Learn more",
   "decoServe.docs.quickstart": "Quickstart",
@@ -38,7 +31,7 @@ export const decoServe = {
   "decoServe.link.invalidTitle":
     "This link doesn't point to deco serve on your computer",
   "decoServe.link.invalidBody":
-    "Site editor links only open a deco serve running on this computer (localhost). Copy the Site editor link again from your terminal, or follow the steps below.",
+    "Site editor links only open a deco serve running on this computer (localhost). Studio keeps looking for deco serve on this computer.",
   "decoServe.lna.deniedTitle":
     "Chrome is blocking Studio from reaching your computer",
   "decoServe.lna.deniedBody":
@@ -56,7 +49,7 @@ export const decoServe = {
     "deco serve on {host} comes from a different major version of Blocks than this Studio, so they can't edit content together. Update @decocms/blocks in your site and restart deco serve.",
   "decoServe.state.notDecoServe.title": "Another program is using {host}",
   "decoServe.state.notDecoServe.body":
-    "Something other than deco serve answered on {host}. Start deco serve on another port with `--port 4546` and open the Site editor link it prints.",
+    "Something other than deco serve answered on {host}. Free that port for deco serve, or open the Site editor link deco serve printed for its own port.",
   "decoServe.state.error.title": "deco serve couldn't open your content",
   "decoServe.state.error.body":
     'It answered, but with an error: "{detail}". Check the terminal where deco serve runs for details, then try again.',

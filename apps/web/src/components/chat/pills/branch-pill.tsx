@@ -1,4 +1,5 @@
 import type { SandboxMap } from "@/sdk";
+import type { Release } from "@decocms/shared/sdk/types";
 import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { BranchPicker } from "../../thread/repository/branch-picker";
 import type { DraftKind } from "@/lib/draft-kind";
@@ -9,7 +10,7 @@ interface Props {
   isV8?: boolean;
   userLabel: string | null | undefined;
   value: string | null | undefined;
-  onChange: (branch: string) => void;
+  onChange: (branch: string, draft?: Pick<Release, "runtime">) => void;
   onCreateBranch?: (branch: string) => void;
   /** Adopting a branch/PR opens a sandbox coding session on it. */
   onAdoptBranch?: (branch: string) => void;

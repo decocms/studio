@@ -10,10 +10,9 @@ import { join } from "node:path";
  */
 describe("the site's draft bar", () => {
   const routes = join(import.meta.dir, "../../routes/workspace");
-  // Experiments lives in Monitor's Experiments view (`monitoring.tsx`).
   for (const file of [
     "agent-site-editor.tsx",
-    "monitoring.tsx",
+    "agent-experiments.tsx",
     "agent-calendar.tsx",
   ]) {
     test(`${file} mounts the shared SiteDraftActions`, () => {
@@ -33,8 +32,8 @@ describe("the site's draft bar", () => {
     });
   }
 
-  /** Blog runs only in a sandbox, on its own drafts, under the same bar: it
-   *  shows where the writer is (draft, branch) and Publishes their Blog draft. */
+  /** Blog edits its own drafts under the same bar: it shows where the writer
+   *  is (draft, branch) and Publishes their Blog draft. */
   for (const file of ["agent-blog.tsx", "agent-blog-post.tsx"]) {
     test(`${file} mounts the bar on every site`, () => {
       const source = readFileSync(join(routes, file), "utf8");
@@ -43,6 +42,13 @@ describe("the site's draft bar", () => {
       expect(source).not.toContain("<ChatModeRow");
     });
   }
+
+  test("Monitor reads only: no draft bar, Experiments view included", () => {
+    // A Blocks v8 site's tests are edited and published in the Experiments
+    // app; Monitor's Experiments view shows what is live.
+    const source = readFileSync(join(routes, "monitoring.tsx"), "utf8");
+    expect(source).not.toContain("SiteDraftActions");
+  });
 
   test("the site editor mounts the bar on every site, with no v7/v8 switch", () => {
     // `siteDraftBarParts` holds main's rules (site-draft-bar-parts.test.ts),

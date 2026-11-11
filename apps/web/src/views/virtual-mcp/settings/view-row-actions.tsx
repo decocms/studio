@@ -4,6 +4,7 @@
  */
 
 import {
+  Beaker02,
   ClockRewind,
   ArrowUpRight,
   BarChartSquare02,
@@ -44,6 +45,7 @@ export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
   if (viewId === "hosting") return <Server01 size={16} />;
   if (viewId === "e2e") return <CheckDone01 size={16} />;
   if (viewId === "calendar") return <Calendar size={16} />;
+  if (viewId === "experiments") return <Beaker02 size={16} />;
   return <Lightning01 size={16} />;
 }
 

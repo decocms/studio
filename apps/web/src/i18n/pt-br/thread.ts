@@ -3,6 +3,16 @@ import type { thread as threadEn } from "../en/thread.ts";
 export const thread = {
   "thread.branchPicker.allLoaded": "Todas carregadas",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
+  "thread.branchPicker.codeDraftTooltip":
+    "Sessão de código: abre com o código desta branch",
+  "thread.branchPicker.groupCode": "Código",
+  "thread.branchPicker.groupContent": "Conteúdo",
+  "thread.branchPicker.viaStudioUi": "por pessoa via web",
+  "thread.branchPicker.storeDraftVia": "por agente via {via}",
+  "thread.branchPicker.discardStoreDraftConfirm":
+    'Descartar "{name}" do CMS? As alterações não publicadas são apagadas para todos. O conteúdo publicado não muda.',
+  "thread.branchPicker.discardStoreDraftError":
+    "Não foi possível descartar o draft",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Não foi possível carregar branches do GitHub. Você ainda pode escolher entre suas branches.",
@@ -108,6 +118,8 @@ export const thread = {
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} mesclado em {base}",
   "thread.headerActions.publishAnyway": "Publicar mesmo assim",
   "thread.headerActions.publishedPr": "PR #{prNumber} publicado",
+  "thread.headerActions.pushFailing":
+    "As alterações desde {since} ainda não foram salvas no GitHub. Última tentativa: {error}",
   "thread.headerActions.reconnectGithub": "Reconectar GitHub",
   "thread.headerActions.review": "Revisar",
   "thread.headerActions.saving": "Salvando…",

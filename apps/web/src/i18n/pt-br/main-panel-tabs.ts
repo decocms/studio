@@ -723,11 +723,9 @@ export const mainPanelTabs = {
     "Conecte um repositório do GitHub para construir e visualizar seu site aqui.",
   "mainPanelTabs.previewTab.noSourceToPreview": "Nenhuma fonte para visualizar",
   "mainPanelTabs.previewTab.localhostNoPreview.title":
-    "Inicie seu app para ver o preview",
+    "Ainda não há app para o preview",
   "mainPanelTabs.previewTab.localhostNoPreview.body":
-    "O deco serve não encontrou seu app. Inicie-o e reinicie o deco serve com `--preview` e o endereço dele, como `--preview localhost:3000`. Enquanto isso, você já pode editar o conteúdo.",
-  "mainPanelTabs.previewTab.localhostNoPreview.step.title":
-    "Reinicie o deco serve com o endereço do seu app",
+    "O Studio está conectado ao deco serve no seu computador, mas o deco serve não informou um app para o preview. Enquanto isso, você já pode editar o conteúdo.",
   "mainPanelTabs.previewTab.localAppWaiting.title": "Esperando seu app",
   "mainPanelTabs.previewTab.localAppWaiting.body":
     "Seu app em `{host}` ainda não está respondendo. Se ele não estiver rodando, inicie-o no seu computador. Enquanto isso, você pode editar seu conteúdo na aba Conteúdo.",

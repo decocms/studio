@@ -1,6 +1,7 @@
 /** The apps a project can launch, and the tile marks the rail and home draw. */
 
 import {
+  Beaker02,
   ClockRewind,
   BookOpen01,
   Calendar,
@@ -86,6 +87,12 @@ const APPS: Record<
     Icon: Calendar,
     to: PROJECT_ROUTE.calendar,
     tone: "bg-app-calendar/15 text-app-calendar",
+  },
+  experiments: {
+    labelKey: "projects.apps.experiments",
+    Icon: Beaker02,
+    to: PROJECT_ROUTE.experiments,
+    tone: "bg-app-experiments/15 text-app-experiments",
   },
 };
 

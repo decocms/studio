@@ -3,6 +3,7 @@ import { findLastThreadForAgent } from "@/lib/find-last-thread-for-agent";
 import { threadRuntimeMatches } from "@/lib/thread-runtime-match";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { isBlogDraftBranch } from "@decocms/shared/branch-name";
+import type { Release } from "@decocms/shared/sdk/types";
 
 /**
  * The current user's existing empty "New chat" thread for this agent, or
@@ -52,12 +53,17 @@ export function findReusableNewChat(
 export interface AgentEntryOpts {
   /** Production branch, excluded from drafts resume so entry never lands there. */
   baseBranch?: string;
+  /** The project's drafts, to skip a CMS thread left on a `sandbox` draft. */
+  releases?: readonly Pick<Release, "branch" | "runtime">[];
 }
 
 /**
  * Thread to land on when *entering* an agent.
  *
  * With a branch (repo agent): resume the last draft, never `baseBranch` (production), else `undefined` — the caller mints a fresh draft.
+ * A CMS entry skips drafts stamped `sandbox`: Fast Preview renders production's
+ * code, so it would hide the branch's code. The version list opens those in a
+ * coding chat.
  * Branchless: resume the last thread (empty or not), never piling up empty chats.
  */
 export function findAgentEntryThread(
@@ -74,9 +80,20 @@ export function findAgentEntryThread(
       undefined
     );
   }
+  const codeDrafts =
+    expectedRuntime === "cms"
+      ? new Set(
+          (opts?.releases ?? [])
+            .filter((r) => r.runtime === "sandbox")
+            .map((r) => r.branch),
+        )
+      : null;
+  const candidates = codeDrafts?.size
+    ? threads.filter((t) => !t.branch || !codeDrafts.has(t.branch))
+    : threads;
   return (
     findLastThreadForAgent(
-      threads,
+      candidates,
       agentId,
       userId,
       expectedRuntime,

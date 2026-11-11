@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type HostedBlocksLoad,
   listingOf,
+  loadBlockBody,
   useContentIndex,
   useEnsureHostedBlocks,
 } from "./hosted-content";
@@ -320,6 +321,22 @@ export function useEnsureDecofileBlocks(
   const key = useDecofileCacheKey(params);
   const rpc = backend.kind === "protocol" ? backend.hosted : undefined;
   return useEnsureHostedBlocks(rpc, key, names, options);
+}
+
+/**
+ * Reads the whole body of a block a page is copied from (a template, a
+ * duplicate, a rename), loading it first on Studio's hosted CMS (see
+ * {@link loadBlockBody}).
+ */
+export function useLoadDecofileBlock(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+) {
+  const queryClient = useQueryClient();
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const key = useDecofileCacheKey(params);
+  const rpc = backend.kind === "protocol" ? backend.hosted : undefined;
+  return (listed: Record<string, unknown> | undefined, name: string) =>
+    loadBlockBody(queryClient, rpc, key, listed, name);
 }
 
 /**

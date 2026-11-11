@@ -18,10 +18,34 @@ export function removeRelease(current: Release[], branch: string): Release[] {
   return current.filter((r) => r.branch !== branch);
 }
 
+/** One-way: a branch that had a coding session may hold code, whatever runtime
+ *  it was named in. Returns `current` when nothing changes. */
+export function markReleaseSandbox(
+  current: Release[],
+  branch: string,
+): Release[] {
+  const target = current.find((r) => r.branch === branch);
+  if (!target || target.runtime === "sandbox") return current;
+  return current.map((r) =>
+    r === target ? { ...r, runtime: "sandbox" as const } : r,
+  );
+}
+
 export function renameReleaseIn(
   current: Release[],
   branch: string,
   name: string,
 ): Release[] {
   return current.map((r) => (r.branch === branch ? { ...r, name } : r));
+}
+
+/** Content drafts first, then coding (`sandbox`) drafts, each in list order. */
+export function groupReleasesByRuntime(releases: Release[]): {
+  content: Release[];
+  code: Release[];
+} {
+  return {
+    content: releases.filter((r) => r.runtime !== "sandbox"),
+    code: releases.filter((r) => r.runtime === "sandbox"),
+  };
 }

@@ -1,6 +1,15 @@
 export const thread = {
   "thread.branchPicker.allLoaded": "All loaded",
   "thread.branchPicker.branchTooltip": "branch: {branch}",
+  "thread.branchPicker.codeDraftTooltip":
+    "Coding session: opens with this branch's code",
+  "thread.branchPicker.groupCode": "Code",
+  "thread.branchPicker.groupContent": "Content",
+  "thread.branchPicker.viaStudioUi": "by human via web",
+  "thread.branchPicker.storeDraftVia": "by agent via {via}",
+  "thread.branchPicker.discardStoreDraftConfirm":
+    'Discard "{name}" from the CMS? Its unpublished changes are deleted for everyone. Published content is not affected.',
+  "thread.branchPicker.discardStoreDraftError": "Couldn't discard the draft",
   "thread.branchPicker.branchesTab": "Branches",
   "thread.branchPicker.couldntLoadBranches":
     "Couldn't load branches from GitHub. You can still pick from your branches.",
@@ -103,6 +112,8 @@ export const thread = {
   "thread.headerActions.prMergedTooltip": "PR #{prNumber} merged into {base}",
   "thread.headerActions.publishAnyway": "Publish anyway",
   "thread.headerActions.publishedPr": "Published PR #{prNumber}",
+  "thread.headerActions.pushFailing":
+    "Changes since {since} are not saved to GitHub yet. Last attempt: {error}",
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.review": "Review",
   "thread.headerActions.saving": "Saving…",

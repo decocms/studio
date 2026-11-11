@@ -3,9 +3,9 @@
  *
  * Blog works on its own drafts (`blog-draft-` branches,
  * `@decocms/shared/branch-name`), in the project's runtime like the site's
- * drafts. The views under the site's draft bar (the Site Editor, Monitor's
- * Experiments and Calendar) never run on a Blog draft, and Blog never runs on
- * a site draft in Fast Preview. Any other view takes whatever thread it is
+ * drafts. The site's views (the Site Editor, Calendar, the Experiments app and
+ * Monitor's Experiments view) never run on a Blog draft, and Blog never runs
+ * on a site draft in Fast Preview. Any other view takes whatever thread it is
  * given.
  */
 
@@ -31,12 +31,14 @@ const SITE_VIEWS: ReadonlySet<string> = new Set([
   "content",
   "code",
   "calendar",
+  "experiments",
 ]);
 
 /**
  * The draft kind of a route's `mainView`, or `null` for a view that has none.
- * Monitor is one route: only its Experiments view (`?view=experiments`) edits
- * the site's draft, under the site's draft bar.
+ * Monitor is one route: only its Experiments view (`?view=experiments`) works
+ * on the site's draft — a v7 site edits its tests there, and a Blocks v8 site
+ * reads what its draft holds.
  */
 export function viewDraftKind(
   mainView: string | undefined,
@@ -70,15 +72,15 @@ export function draftsForView<T extends { branch: string }>(
 }
 
 /** The draft to move to when `deleted` (the current one) goes: another of the
- *  same kind, or `undefined`. */
-export function siblingDraft<T extends { branch: string }>(
-  releases: readonly T[],
-  deleted: string,
-  kind: DraftKind,
-): T | undefined {
-  return releases.find(
+ *  same kind, a non-`sandbox` one first so a CMS chat stays put, or
+ *  `undefined`. */
+export function siblingDraft<
+  T extends { branch: string; runtime?: ThreadRuntime },
+>(releases: readonly T[], deleted: string, kind: DraftKind): T | undefined {
+  const siblings = releases.filter(
     (r) => r.branch !== deleted && branchDraftKind(r.branch) === kind,
   );
+  return siblings.find((r) => r.runtime !== "sandbox") ?? siblings[0];
 }
 
 /** The default name of a draft on `branch`: "Blog Draft N" or "Draft N". */

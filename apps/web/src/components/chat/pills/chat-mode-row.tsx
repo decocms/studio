@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
 import { useBaseBranch } from "../../thread/repository/use-version-gate";
@@ -12,8 +12,9 @@ import {
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
-  readThreadRuntime,
+  type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { authClient } from "@/lib/auth-client";
 import { branchUserLabel } from "@decocms/shared/branch-name";
@@ -32,6 +33,50 @@ interface PureProps {
 export function ChatModeRowPure({ branchPill }: PureProps) {
   if (!branchPill) return null;
   return <>{branchPill}</>;
+}
+
+export type BranchPickAction =
+  | { kind: "switch" }
+  | { kind: "new-chat"; runtime?: ThreadRuntime };
+
+/** A chat's runtime is immutable, so a draft from another runtime opens in a
+ *  new chat: switching a coding chat onto a CMS draft would stamp it `sandbox`.
+ *  On v8, content drafts always open in CMS. Elsewhere the CMS chat takes the
+ *  project default, never an explicit `cms`, which the server honors even
+ *  where the project can no longer serve one; a project that can't serve CMS
+ *  keeps the coding chat. */
+export function branchPickAction(input: {
+  locked: boolean;
+  /** `null` while unresolved: may still be a CMS chat. */
+  sessionRuntime: ThreadRuntime | null;
+  /** Runtime a new chat on this project is stamped with. */
+  projectRuntime: ThreadRuntime;
+  draftRuntime?: ThreadRuntime;
+  /** The chat is already on this draft. */
+  current?: boolean;
+  /** The v8 flag: content pointers must open in CMS, not as Git branches. */
+  contentOnly?: boolean;
+}): BranchPickAction {
+  const { locked, sessionRuntime, projectRuntime, draftRuntime, current } =
+    input;
+  if (input.contentOnly && draftRuntime === "cms") {
+    return sessionRuntime === "cms" && !locked
+      ? { kind: "switch" }
+      : { kind: "new-chat", runtime: "cms" };
+  }
+  if (draftRuntime === "sandbox" && sessionRuntime !== "sandbox")
+    return { kind: "new-chat", runtime: "sandbox" };
+  if (
+    draftRuntime === "cms" &&
+    sessionRuntime === "sandbox" &&
+    projectRuntime === "cms" &&
+    !current
+  )
+    return { kind: "new-chat" };
+  if (!locked) return { kind: "switch" };
+  return sessionRuntime === "sandbox"
+    ? { kind: "new-chat", runtime: "sandbox" }
+    : { kind: "new-chat" };
 }
 
 interface SmartProps {
@@ -57,13 +102,14 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   const createTask = taskCtx?.createTask;
   /** The view's drafts: Blog's own Blog drafts, else the site's. */
   const draftKind: DraftKind = useViewDraftKind() === "blog" ? "blog" : "site";
+  const sessionState = useSessionRuntime(virtualMcp?.id);
+  const sessionRuntime = sessionState.runtime;
   /** A new branch only lands in CMS through a NEW (unstamped) thread: the
    *  runtime is per-thread and immutable, so a coding session on a CMS-default
    *  project has to start one rather than switch in place. */
+  const projectRuntime = defaultThreadRuntime(virtualMcp?.metadata);
   const createBranchAsCms =
-    defaultThreadRuntime(virtualMcp?.metadata) === "cms" &&
-    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
-      "sandbox";
+    projectRuntime === "cms" && sessionRuntime === "sandbox";
 
   const repository = getActiveRepository(virtualMcp);
   const repoTarget = repoToolTarget(repository);
@@ -81,15 +127,26 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
   // A CMS session on a Blocks v8 project edits a hosted draft even on the base
   // branch: the switcher shows it as that draft, not as "Production". v7 (and
   // a coding session) keeps main's labels.
-  const baseIsDraft =
-    v8 &&
-    readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
-      "cms";
+  const baseIsDraft = v8 && sessionRuntime === "cms";
 
-  // Locked chat's branch is fixed: open a new chat on the picked branch.
-  const onChange = (next: string) => {
-    if (locked && createTask) createTask({ branch: next });
-    else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
+  const onChange = (next: string, draft?: Pick<Release, "runtime">) => {
+    const action = branchPickAction({
+      locked,
+      sessionRuntime: sessionState.resolved ? sessionRuntime : null,
+      projectRuntime,
+      // A draft without a stamp predates it, so it was made in the default.
+      draftRuntime: draft && (draft.runtime ?? projectRuntime),
+      current: next === currentBranch,
+      contentOnly: v8,
+    });
+    if (action.kind === "new-chat" && createTask) {
+      createTask({
+        branch: next,
+        ...(action.runtime ? { runtime: action.runtime } : {}),
+      });
+    } else if (setCurrentTaskBranch) {
+      void setCurrentTaskBranch(next);
+    }
   };
   // Locked or CMS→sandbox: branch off into a fresh thread, don't re-point.
   const onCreateBranch = (next: string) => {

@@ -41,7 +41,7 @@ import {
   readSandboxMap,
 } from "@/tools/sandbox/sandbox-map";
 import { ensureSandbox } from "@/tools/sandbox/start";
-import { threadBranch } from "@/tools/sandbox/thread-repo";
+import { bindThreadRepository } from "@/tools/sandbox/thread-repo";
 import { buildAgentSandboxFs } from "./agent-sandbox-fs";
 
 type RepoOption = {
@@ -192,37 +192,13 @@ export async function createLoadRepoTool(opts: {
         };
       }
 
-      /**
-       * Branch is repo-specific (it carries the repo's id) so switching repos
-       * yields a distinct sandbox + previewUrl — that's what makes the preview
-       * UI react to a switch, and it sidesteps stale-checkout entirely (each
-       * repo gets its own sandbox; re-loading one adopts its existing sandbox).
-       */
-      const branch = threadBranch(threadId, repo.id);
-      /**
-       * What every later consumer reads. `SANDBOX_START` resolves the clone
-       * credential from `repositoryId` when it is there and from the legacy
-       * connection otherwise, so nothing is minted here.
-       */
-      const repository = {
-        url: repo.webUrl,
-        owner: repo.owner,
-        name: repo.name,
-        ...(repo.installationId !== undefined
-          ? { installationId: repo.installationId }
-          : {}),
-        ...(repo.connectionId ? { connectionId: repo.connectionId } : {}),
-        ...(repo.repository ? { repositoryId: repo.repository.id } : {}),
-      };
-
       // 1. Bind the repo to the thread (the only place it persists for the
-      //    synthetic Decopilot agent). Merge into existing metadata.
-      const thread = await ctx.storage.threads.get(threadId);
-      await ctx.storage.threads.update(threadId, {
-        metadata: { ...(thread?.metadata ?? {}), repository },
+      //    synthetic Decopilot agent).
+      const {
         branch,
-        updated_by: userId,
-      });
+        repository,
+        previous: thread,
+      } = await bindThreadRepository(ctx, threadId, repo, userId);
 
       // 2. Eagerly provision the repo sandbox on the repo-specific branch.
       //    `ensureSandbox` reads the thread repo we just wrote (it prefers

@@ -5,7 +5,7 @@
  * writes the switch. Buckets and the drafts table are in memory.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { clearRevisionCache } from "@/hosted/cms-release";
 import { clearSchemaCache } from "@/hosted/cms-storage";
 import { seedRelease } from "@/hosted/cms-test-helpers";
@@ -358,15 +358,21 @@ describe("schema push", () => {
 describe("codes for the other failures (§4.3)", () => {
   it("500 malformed for a delivery object this Studio didn't write", async () => {
     const t = cmsTestApp();
-    t.delivery.objects.set("sites/acme/latest.json", {
+    const [r1, r2] = [1, 2].map((n) =>
+      newRevisionId(Date.parse("2026-11-01T00:00:00.000Z") + n),
+    ) as [string, string];
+    for (const id of [r1, r2])
+      await seedRelease(t.delivery.store, "acme", id, { a: { id } });
+    // An index the valid latest.json's history names: real corruption.
+    t.delivery.objects.set(deliveryKeys.revisionIndex("acme", r1), {
       text: "{not json",
       etag: '"x"',
       cacheControl: "",
     });
-    const res = await t.call("GET", "acme/releases");
+    const res = await t.call("POST", `acme/releases/${r1}/rollback`, {});
     expect(res.status).toBe(500);
     expect(res.body).toEqual({
-      error: "sites/acme/latest.json is malformed",
+      error: `sites/acme/revisions/${r1}/index.json is malformed`,
       code: "malformed",
     });
   });
@@ -378,6 +384,142 @@ describe("codes for the other failures (§4.3)", () => {
       expect(res.status).toBe(503);
       expect(res.body.code).toBe("hosted_delivery_unconfigured");
     }
+  });
+});
+
+describe("a malformed latest.json is no release yet", () => {
+  /** latest.json from before content-addressed revisions (a 40-hex SHA). */
+  function malformed(t: ReturnType<typeof cmsTestApp>) {
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    t.delivery.objects.set(`sites/acme/revisions/${sha}.json`, {
+      text: '{"home":{}}',
+      etag: '"sha"',
+      cacheControl: "",
+    });
+    t.delivery.objects.set(deliveryKeys.latest("acme"), {
+      text: JSON.stringify({ revision: sha, sequence: 3, blocks: {} }),
+      etag: '"old"',
+      cacheControl: "",
+    });
+  }
+
+  /** A save, then cms.index and the draft's pointer token. */
+  async function saveAndRead(t: ReturnType<typeof cmsTestApp>) {
+    await t.call("POST", "acme/drafts", { name: "d" });
+    const saved = await t.rpc("acme", "d", "blocks.apply", {
+      set: { home: { __resolveType: "website/pages/Page.tsx", path: "/" } },
+      ifMatch: { home: null },
+    });
+    expect(saved.body.error).toBeUndefined();
+    const index = await t.rpc("acme", "d", "cms.index", {});
+    const draft = await t.call("GET", "acme/drafts/d");
+    return { index: index.body.result, pointer: draft.body.pointer };
+  }
+
+  let warn: ReturnType<typeof spyOn>;
+  beforeEach(() => {
+    warn = spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => warn.mockRestore());
+
+  it("drafts, saves, the index and the token answer as on a fresh site", async () => {
+    const t = cmsTestApp();
+    malformed(t);
+    const fresh = cmsTestApp();
+    const over = await saveAndRead(t);
+    const clean = await saveAndRead(fresh);
+    expect(Object.keys(over.index.entries)).toEqual(["home"]);
+    expect(over.index.revision).toBe(clean.index.revision);
+    expect(over.pointer.endsWith(`@${over.index.revision}`)).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      "cms: latest.json is malformed; read as no release yet",
+      expect.objectContaining({ site: "acme", why: "revision is not an id" }),
+    );
+  });
+
+  it("releases list none; a publish replaces it as the site's first release", async () => {
+    const t = cmsTestApp();
+    malformed(t);
+    const before = await t.call("GET", "acme/releases");
+    expect(before.status).toBe(200);
+    expect(before.body).toEqual({
+      live: null,
+      revisions: [],
+      nextCursor: null,
+    });
+    await saveAndRead(t);
+    const published = await t.call("POST", "acme/drafts/d/publish", {});
+    expect(published.status).toBe(200);
+    expect(published.body).toMatchObject({
+      result: "published",
+      previous: null,
+    });
+    const after = await t.call("GET", "acme/releases");
+    expect(after.body.live).toBe(published.body.revision);
+    expect(after.body.revisions).toEqual([
+      expect.objectContaining({
+        id: published.body.revision,
+        status: "current",
+      }),
+    ]);
+    const latest = JSON.parse(
+      t.delivery.objects.get(deliveryKeys.latest("acme"))!.text,
+    );
+    // Past the malformed object's own sequence (3).
+    expect(latest).toMatchObject({
+      revision: published.body.revision,
+      sequence: 4,
+    });
+  });
+  it("a rollback replaces it: the target is live, recorded as made current", async () => {
+    const t = cmsTestApp();
+    const target = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));
+    await seedRelease(
+      t.delivery.store,
+      "acme",
+      target,
+      { a: { id: "a" } },
+      { message: "Summer sale" },
+    );
+    malformed(t);
+    const res = await t.call("POST", `acme/releases/${target}/rollback`, {});
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ result: "published", previous: null });
+    const id = res.body.revision as string;
+    const latest = JSON.parse(
+      t.delivery.objects.get(deliveryKeys.latest("acme"))!.text,
+    );
+    // Past both the target's sequence (1) and the malformed object's (3).
+    expect(latest).toMatchObject({ revision: id, sequence: 4 });
+    const after = await t.call("GET", "acme/releases");
+    expect(after.body.live).toBe(id);
+    expect(after.body.revisions[0]).toMatchObject({
+      id,
+      status: "current",
+      meta: expect.objectContaining({
+        reapplyOf: target,
+        previous: null,
+        message: "Made current: Summer sale",
+      }),
+    });
+  });
+
+  it("a rollback over it to a malformed target index is still 500 malformed", async () => {
+    const t = cmsTestApp();
+    const target = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));
+    await seedRelease(t.delivery.store, "acme", target, { a: { id: "a" } });
+    malformed(t);
+    t.delivery.objects.set(deliveryKeys.revisionIndex("acme", target), {
+      text: "{not json",
+      etag: '"x"',
+      cacheControl: "",
+    });
+    const res = await t.call("POST", `acme/releases/${target}/rollback`, {});
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({
+      error: `sites/acme/revisions/${target}/index.json is malformed`,
+      code: "malformed",
+    });
   });
 });
 

@@ -18,13 +18,21 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import type { SiteProject } from "./org-insights";
 
-function hostingBase(orgSlug: string, project: Pick<SiteProject, "site">) {
-  return `/api/${orgSlug}/hosting/${encodeURIComponent(project.site)}`;
+// Keyed by the traffic site, not the code site: a migrated project reports
+// under the site that serves its production domains (`analyticsSiteSlug`).
+function hostingBase(
+  orgSlug: string,
+  project: Pick<SiteProject, "analyticsSite">,
+) {
+  return `/api/${orgSlug}/hosting/${encodeURIComponent(project.analyticsSite)}`;
 }
 
-function statusQuery(orgSlug: string, project: Pick<SiteProject, "site">) {
+function statusQuery(
+  orgSlug: string,
+  project: Pick<SiteProject, "analyticsSite">,
+) {
   return {
-    queryKey: KEYS.analyticsStatus(orgSlug, project.site),
+    queryKey: KEYS.analyticsStatus(orgSlug, project.analyticsSite),
     queryFn: async () =>
       (await fetchJson(
         `${hostingBase(orgSlug, project)}/analytics/status`,
@@ -36,7 +44,7 @@ function statusQuery(orgSlug: string, project: Pick<SiteProject, "site">) {
 
 export function useAnalyticsStatus(
   orgSlug: string,
-  project: Pick<SiteProject, "site">,
+  project: Pick<SiteProject, "analyticsSite">,
   enabled = true,
 ) {
   return useQuery({ ...statusQuery(orgSlug, project), enabled });
@@ -68,7 +76,7 @@ export function ConfigureDialog({
         <ConfigurationPanel
           base={hostingBase(orgSlug, project)}
           orgSlug={orgSlug}
-          site={project.site}
+          site={project.analyticsSite}
           status={status}
         />
       </DialogContent>

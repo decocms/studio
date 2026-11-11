@@ -36,11 +36,17 @@ describe("viewDraftKind", () => {
     expect(viewDraftKind("blog-post")).toBe("blog");
   });
 
-  test("the views under the site's draft bar are the site's", () => {
-    for (const view of ["site-editor", "content", "code", "calendar"]) {
+  test("the site's views are the site's", () => {
+    for (const view of [
+      "site-editor",
+      "content",
+      "code",
+      "calendar",
+      "experiments",
+    ]) {
       expect(viewDraftKind(view)).toBe("site");
     }
-    // Monitor's Experiments view, the only one of its views with the bar.
+    // Monitor's Experiments view, the only one of its views on the draft.
     expect(viewDraftKind("monitoring", "experiments")).toBe("site");
   });
 
@@ -311,6 +317,19 @@ describe("the draft select's list", () => {
     expect(
       siblingDraft(releases, "blog-draft-sacci-b", "blog"),
     ).toBeUndefined();
+  });
+
+  test("a content draft first, so a CMS chat stays put", () => {
+    const mixed = [
+      { branch: "sacci-a", runtime: "cms" as const },
+      { branch: "sacci-code", runtime: "sandbox" as const },
+      { branch: "blog-draft-sacci-b", runtime: "cms" as const },
+      { branch: "sacci-c" },
+    ];
+    expect(siblingDraft(mixed, "sacci-a", "site")?.branch).toBe("sacci-c");
+    expect(siblingDraft(mixed.slice(0, 3), "sacci-a", "site")?.branch).toBe(
+      "sacci-code",
+    );
   });
 });
 

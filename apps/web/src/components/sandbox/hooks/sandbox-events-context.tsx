@@ -418,10 +418,8 @@ function useSandboxEventsValue({
               void queryClient.invalidateQueries({
                 queryKey: KEYS.decofile(cacheKeyForBranch),
               });
-              // Prefix key — the entry also carries preview/production URL suffixes.
-              void queryClient.invalidateQueries({
-                queryKey: KEYS.liveMeta(org.slug, virtualMcpId, branch),
-              });
+              // After a render: an immediate refetch runs the pre-`running` queryFn.
+              scheduleLiveMetaInvalidate();
             }
             prevLifecyclePhase = lp.state.phase;
             // Detect dev server port change (running phase carries port);

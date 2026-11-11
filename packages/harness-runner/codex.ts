@@ -98,6 +98,32 @@ function toml(value: unknown): string {
     .join(",")}}`;
 }
 
+const MAX_TURN_FAILURE_DETAIL = 500;
+
+/**
+ * Codex's own reason for a failed turn (`TurnError`), so the user sees why
+ * the provider refused instead of a generic hint. Codex appends the request
+ * URL to HTTP failures, which may be a private provider endpoint.
+ */
+export function codexTurnFailure(error: unknown): string {
+  const raw = record(error).message;
+  if (typeof raw !== "string" || !raw.trim())
+    return "Codex turn failed. Check your provider connection or relink the ChatGPT subscription.";
+  let detail = raw.replace(/,? url: \S+/g, "").trim();
+  try {
+    const nested = record(record(JSON.parse(detail)).error).message;
+    if (typeof nested === "string" && nested.trim()) detail = nested.trim();
+  } catch {
+    // Not a JSON response body; keep Codex's text.
+  }
+  detail = detail.replace(/\b(?:Bearer\s+|sk-)[\w.-]+/gi, "[redacted]");
+  return `Codex turn failed: ${
+    detail.length > MAX_TURN_FAILURE_DETAIL
+      ? `${detail.slice(0, MAX_TURN_FAILURE_DETAIL)}…`
+      : detail
+  }`;
+}
+
 /** A separate config/auth directory per run prevents concurrent threads from changing each other's MCP credentials. */
 export async function runCodex(
   input: HarnessStreamInputWire,
@@ -248,6 +274,7 @@ export async function runCodex(
     let threadId = "";
     let turnId = "";
     let turnEnded = false;
+    let lastTurnError: unknown;
     const liveDeliveries = new Map<string, Promise<boolean>>();
     const liveRead = new Set<string>();
     let finish: ((turn: Record<string, unknown>) => void) | undefined;
@@ -304,6 +331,8 @@ export async function runCodex(
           if (message.method === "turn/started")
             turnId = String(record(params.turn).id ?? "");
           if (params.turnId && params.turnId !== turnId) continue;
+          if (message.method === "error" && !params.willRetry)
+            lastTurnError = params.error;
           if (message.method === "turn/completed") {
             turnEnded = true;
             inbox?.close();
@@ -444,9 +473,7 @@ export async function runCodex(
       await writeFile(tempPointer, threadId, { mode: 0o600 });
       await rename(tempPointer, pointer);
       if (failed)
-        throw new Error(
-          "Codex turn failed. Check your provider connection or relink the ChatGPT subscription.",
-        );
+        throw new Error(codexTurnFailure(result.error ?? lastTurnError));
       emit({
         chunks: [
           ...translator.close(),

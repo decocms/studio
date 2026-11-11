@@ -150,4 +150,66 @@ describe("the wireframe module", () => {
     expect(outline()?.style.display).toBe("block");
     expect(sent.at(-1)).toEqual({ type: "wireframe:hover", sectionIndex: 1 });
   });
+
+  // osklen's shape: the layout's own <header>/<footer> roots carry the key,
+  // the header renders before a SEO section saved ahead of it in the array.
+  it("selects marked non-<section> roots, aligned by key out of order", async () => {
+    document.body.innerHTML = `
+      <header data-manifest-key="site/sections/Header.tsx"><nav id="nav">Menu</nav></header>
+      <main>
+        <section data-manifest-key="site/sections/Seo/SeoTitle.tsx"><h1 id="title">T</h1></section>
+        <section data-manifest-key="site/sections/Hero.tsx"><div id="hero" data-manifest-key="site/sections/Inner.tsx">Hi</div></section>
+      </main>
+      <div data-manifest-key="site/sections/Footer.tsx"><footer id="footer">Bye</footer></div>
+    `;
+    const channel = await startModule(wireframe);
+    channel.receive({
+      type: "wireframe:sections",
+      labels: [],
+      kinds: [],
+      keys: [
+        ["site/sections/Seo/SeoTitle.tsx"],
+        ["site/sections/Header.tsx"],
+        ["site/sections/Hero.tsx"],
+        ["site/sections/Footer.tsx"],
+        ["site/sections/PageChrome.tsx"],
+      ],
+    });
+    channel.receive({ type: "wireframe:activate" });
+    const click = (id: string) => document.getElementById(id)!.click();
+    click("nav");
+    click("title");
+    click("hero");
+    click("footer");
+    expect(
+      selects(channel.sent).map((m) =>
+        m.type === "wireframe:select" ? [m.sectionIndex, m.manifestKey] : null,
+      ),
+    ).toEqual([
+      [1, "site/sections/Header.tsx"],
+      [0, "site/sections/Seo/SeoTitle.tsx"],
+      // The marker inside Hero is Hero's own, not a page section.
+      [2, "site/sections/Hero.tsx"],
+      [3, "site/sections/Footer.tsx"],
+    ]);
+  });
+
+  it("scrolls the section picked in the editor's list smoothly to the top of the view", async () => {
+    page();
+    const channel = await start();
+    const calls: [string | null, unknown][] = [];
+    for (const section of document.querySelectorAll("section")) {
+      section.scrollIntoView = (options?: boolean | ScrollIntoViewOptions) => {
+        calls.push([section.getAttribute("data-manifest-key"), options]);
+      };
+    }
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: 1 });
+    // Out of range, negative or not an index: nothing scrolls.
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: 7 });
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: -1 });
+    channel.receive({ type: "wireframe:scroll-to", sectionIndex: 0.5 });
+    expect(calls).toEqual([
+      ["site/sections/Footer.tsx", { behavior: "smooth", block: "start" }],
+    ]);
+  });
 });

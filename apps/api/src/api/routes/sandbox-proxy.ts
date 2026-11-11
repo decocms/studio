@@ -878,6 +878,14 @@ export const createSandboxRoutes = () => {
     }),
   );
 
+  // One shell command, awaited: no stdin, no TTY, the daemon caps it at 120s.
+  app.post("/:virtualMcpId/:branch/bash", (c) =>
+    proxyDaemon(c, "/_sandbox/bash", {
+      forwardJsonBody: true,
+      signal: c.req.raw.signal,
+    }),
+  );
+
   // -- Script exec/kill -----------------------------------------------------
   app.post("/:virtualMcpId/:branch/exec/:script", async (c) => {
     const script = c.req.param("script");

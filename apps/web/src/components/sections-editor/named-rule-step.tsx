@@ -47,7 +47,8 @@ export function namedRuleIconName(kind: NamedRuleKind): string {
  * surface) the rows show no link.
  */
 export interface NamedRuleViews {
-  open: (kind: NamedRuleKind) => void;
+  /** Opens the kind's view, on `name` when given. */
+  open: (kind: NamedRuleKind, name?: string) => void;
 }
 
 const NamedRuleViewsContext = createContext<NamedRuleViews | null>(null);
@@ -647,20 +648,27 @@ export function NamedRuleRow({
           {t("sectionsEditor.namedRulePicker.createMissing")}
         </Button>
       )}
-      {!inlineDate && <NamedRuleViewsLink kind={kind} />}
+      {!inlineDate && <NamedRuleViewsLink kind={kind} name={name} />}
     </div>
   );
 }
 
 /** "Open Experiments" / "Open Calendar", where the surface can go there. */
-export function NamedRuleViewsLink({ kind }: { kind: NamedRuleKind }) {
+export function NamedRuleViewsLink({
+  kind,
+  name,
+}: {
+  kind: NamedRuleKind;
+  /** The rule's test or campaign, which the view opens on. */
+  name?: string;
+}) {
   const t = useT();
   const views = useNamedRuleViews();
   if (!views) return null;
   return (
     <button
       type="button"
-      onClick={() => views.open(kind)}
+      onClick={() => views.open(kind, name)}
       className="inline-flex w-fit items-center gap-1 text-xs font-medium text-foreground underline-offset-2 hover:underline cursor-pointer"
     >
       {kind === "experiments"

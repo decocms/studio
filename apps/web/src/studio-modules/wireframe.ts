@@ -11,7 +11,13 @@
  * The page's runtime renders framework sections (SEO, Theme, Analytics)
  * around and between the editable ones; Studio sends the keys each editable
  * section may render (`wireframe:sections`) and the wireframe aligns them
- * within the DOM (`alignSections`), so those drop out on their own.
+ * within the DOM by key (`alignSections`), so those drop out on their own.
+ *
+ * A section is any element carrying `data-manifest-key` with no such element
+ * above it, not only a `<section>`: a site can mark the root of a section its
+ * layout renders (a `<header>`, a `<footer>`) without changing its tag. Markers
+ * inside a section are its own (a Lazy's inner section, a block rendering
+ * another block's markup), so they never count as sections of the page.
  *
  * It moved here from the script Studio injected into the page
  * (`cms-editor-script.ts`, which v7 sites keep).
@@ -26,7 +32,8 @@ import {
   type WireframeSectionKind,
 } from "./messages";
 
-const SECTION_SELECTOR = "section[data-manifest-key]";
+/** Any marked element; a page section is the outermost one (`isTopLevel`). */
+const SECTION_SELECTOR = "[data-manifest-key]";
 
 /** A Lazy wrapper's key is only the loader's: the label shows the inner section's. */
 const LAZY_KEYS = [
@@ -328,6 +335,14 @@ export default defineStudioModule<WireframeIn, WireframeOut>((channel) => {
       case "wireframe:clear-hover":
         hover(null);
         return;
+      case "wireframe:scroll-to": {
+        if (!Number.isInteger(message.sectionIndex)) return;
+        editableSections()[message.sectionIndex]?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+        return;
+      }
       case "wireframe:sections": {
         labels = Array.isArray(message.labels) ? message.labels : [];
         kinds = Array.isArray(message.kinds) ? message.kinds : [];

@@ -296,7 +296,8 @@ describe("translateLegacyThreadRoute", () => {
       ["e2e", "/$org/projects/$agentId/e2e"],
       ["analytics", "/$org/projects/$agentId/monitoring"],
       ["cdn", "/$org/projects/$agentId/monitoring"],
-      ["experiments", "/$org/projects/$agentId/monitoring"],
+      // The Experiments app: a v7 project's route sends it on to Monitor.
+      ["experiments", "/$org/projects/$agentId/experiments"],
       ["connect-sources", "/$org/projects/$agentId/connect-sources"],
     ] as const;
 

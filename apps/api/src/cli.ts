@@ -39,6 +39,9 @@ const { values, positionals } = parseArgs({
     batch: { type: "string" },
     limit: { type: "string" },
     org: { type: "string" },
+    project: { type: "string" },
+    repo: { type: "string" },
+    timeout: { type: "string" },
     method: { type: "string", short: "X" },
     data: { type: "string", short: "d" },
     header: { type: "string", short: "H", multiple: true },
@@ -58,6 +61,7 @@ Usage:
   deco api <path>                    Authenticated request to the studio
   deco tools <list|describe|call>    List, inspect, and call builtin tools
   deco orgs                          List the organizations you belong to
+  deco sandbox <new|chat|exec>       Boot a chat's sandbox, talk to its agent, run commands
   deco backfill-assets               Hoist legacy inline media out of threads + connections + org logos
   deco completion [shell]            Install shell completions
 
@@ -81,6 +85,12 @@ Tools Options:
   -d, --data <json>     Tool arguments: literal JSON, @<file>, or @- for stdin
   --json                Print full objects from tools list, tools describe and orgs
 
+Sandbox Options:
+  --org <slug>          Organization slug
+  --repo <owner/name>   Linked repository to clone for \`sandbox new\` (or its id)
+  --project <id>        Project for \`sandbox new\`, cloning its own repository
+  --timeout <s>         \`sandbox exec\` timeout in seconds (default 30, max 120)
+
 Backfill Options (backfill-assets):
   --target <t>          all | threads | connections | organizations (default: all)
   --org <slug|id>       Restrict to a single organization
@@ -96,6 +106,9 @@ Examples:
   deco orgs
   deco tools list --org my-org thread
   deco tools call ORGANIZATION_LIST --org my-org
+  deco sandbox new --org my-org --repo my-org/my-site
+  deco sandbox chat <chat-id> "run the tests" --org my-org
+  deco sandbox exec <chat-id> --org my-org -- git status
   deco api "/api/my-org/fs/<volume>/list?path=/"
 
 Documentation:
@@ -256,6 +269,29 @@ if (command === "tools") {
     org: values.org,
     data: values.data,
     json: values.json === true,
+  });
+  process.exit(code);
+}
+
+// ── Sandbox command ────────────────────────────────────────────────────
+if (command === "sandbox") {
+  const { sandboxCommand } = await import("./cli/commands/sandbox");
+  let timeout: number | undefined;
+  try {
+    timeout = parsePositiveIntFlag("timeout", values.timeout);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+  const code = await sandboxCommand({
+    dataDir: resolveDataDir(),
+    target: values.target,
+    subcommand: positionals[1],
+    args: positionals.slice(2),
+    org: values.org,
+    project: values.project,
+    repo: values.repo,
+    timeout,
   });
   process.exit(code);
 }

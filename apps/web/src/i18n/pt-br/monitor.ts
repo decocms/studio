@@ -251,6 +251,8 @@ export const monitor = {
   "monitor.select.current": "{label}: {value}",
   "monitor.performance.org.blocks8":
     "Site Blocks v8: abra para ver a telemetria",
-  "monitor.org.blocks8Experiments":
-    "{names} mantêm os experimentos no próprio projeto",
+  "monitor.org.blocks8ExperimentsTitle":
+    "Estes sites gerenciam os testes A/B no próprio app Experimentos",
+  "monitor.org.openExperiments": "Abrir Experimentos",
+  "monitor.org.openExperimentsNamed": "Abrir Experimentos de {project}",
 } satisfies Record<keyof typeof monitorEn, string>;

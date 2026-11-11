@@ -9,6 +9,14 @@
  * (`current`). `meta.previous` isn't walked: the list says nothing about
  * which revisions went live.
  *
+ * The first page LISTs from `StartAfter` = the id floor of a day from now.
+ * `revisions/` may still hold the first v8 format's flat `<commit-sha>.json`
+ * files (#8062); S3's MaxKeys counts those with the folders, so listing
+ * from the start returned pages of nothing but them. Every revision id
+ * minted so far sorts above the floor (the day absorbs clock skew between
+ * Studio instances), and a SHA sorts below it unless it starts higher
+ * (~1 in 150, e.g. `ff…`): those few still take a slot, never a page.
+ *
  * A `meta.json` that doesn't parse never fails the page: the folder is an
  * `unreadable` row with its id only. A failed GET (R2 429/5xx/network)
  * fails it like any other read (503 `unavailable`).
@@ -21,9 +29,12 @@ import {
   type RevisionMeta,
 } from "./cms-release";
 import { type DeliveryStore, deliveryKeys } from "./delivery-store";
-import { isRevisionId } from "./revision-id";
+import { isRevisionId, revisionIdFloor } from "./revision-id";
 
 export const RELEASES_PAGE_SIZE = 50;
+
+/** How far past now the listing floor sits, for clock skew between instances. */
+const FLOOR_SKEW_MS = 24 * 60 * 60 * 1000;
 
 /** `current`: the one latest.json names; `listed`: any other. */
 export type ReleaseStatus = "current" | "listed";
@@ -87,6 +98,7 @@ export async function listCmsReleases(
   store: DeliveryStore,
   site: string,
   cursor: string | null,
+  nowMs: number = Date.now(),
 ): Promise<ReleasesPage> {
   const from = cursor ? decodeCursor(cursor) : null;
   if (cursor && !from) throw new InvalidCursorError();
@@ -97,6 +109,7 @@ export async function listCmsReleases(
     delimiter: "/",
     maxKeys: RELEASES_PAGE_SIZE,
     continuationToken: from?.token ?? null,
+    startAfter: prefix + revisionIdFloor(nowMs + FLOOR_SKEW_MS),
   });
   const ids = page.prefixes
     .map((p) => p.slice(prefix.length).replace(/\/$/, ""))

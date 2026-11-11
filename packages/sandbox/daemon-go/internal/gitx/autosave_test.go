@@ -198,3 +198,21 @@ func TestDefaultIntervalIsApplied(t *testing.T) {
 		t.Fatalf("want default %v, got %v", AutosaveInterval, a.deps.Interval)
 	}
 }
+
+func TestTickReportsEveryOutcome(t *testing.T) {
+	rec := &recorder{err: errors.New("remote: Invalid username or token")}
+	var got []error
+	a := NewAutosaver(AutosaveDeps{
+		Configured: func() bool { return true },
+		RunActive:  func() bool { return true },
+		Dirty:      func() bool { return true },
+		OnResult:   func(err error) { got = append(got, err) },
+		publishFn:  rec.publish,
+	})
+	a.Tick()
+	rec.err = nil
+	a.Tick()
+	if len(got) != 2 || got[0] == nil || got[1] != nil {
+		t.Fatalf("want the failure then the success reported, got %v", got)
+	}
+}

@@ -1302,13 +1302,19 @@ export const sandbox = {
     "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
+  "sandbox.schemaless.agentPrompt":
+    "This site's content is edited in deco Studio, but Studio hasn't received the site's schema yet, so its content forms show raw fields. Please set that up in this repository:\n\n1. Make sure @decocms/blocks is 8.11.0 or newer (upgrade it if not), then run `npx deco skills install` to add the deco framework skills to this repository.\n2. Load the deco-site-workflow skill and follow its references/schema.md: generate the schema with `npx deco schema` and commit .deco/schema.gen.json; make DECO_SITE resolve to the Studio site {site}; send the schema to Studio with `npx deco schema push`; and wire `npx deco schema push` into the production deploy (after the deploy succeeds, with a Studio API key in the DECO_TOKEN secret) so every deploy sends it.\n3. Run `npx deco check` and report back: what you changed, and what each command printed.",
+  "sandbox.schemaless.agentPromptSiteUnknown":
+    "this project uses (ask me for its name if you can't find it)",
   "sandbox.schemaless.back": "All blocks",
   "sandbox.schemaless.bannerBody":
-    "Until then, each block opens with plain fields built from its saved values, and saving keeps every other value as it is. Generate the schema in your site's folder; this page picks it up on its own.",
-  "sandbox.schemaless.bannerTitle":
-    "Forms get proper fields once the schema exists",
-  "sandbox.schemaless.docsLink": "About deco schema",
+    "This site hasn't sent Studio its schema yet (the description of each form's fields), so every block opens with plain fields built from its saved values. Saving still keeps everything else as it is. Ask the coding agent working on your site to set it up: copy the prompt and paste it into the agent. It takes one deploy, and the forms here update on their own.",
+  "sandbox.schemaless.bannerTitle": "Content forms are showing raw fields",
+  "sandbox.schemaless.copyPrompt": "Copy prompt for your agent",
+  "sandbox.schemaless.copyPromptFailed":
+    "Couldn't copy the prompt. Check that this page may use the clipboard, then try again.",
   "sandbox.schemaless.empty": "Empty",
+  "sandbox.schemaless.installSkill": "Install skill",
   "sandbox.schemaless.item": "Item {n}",
   "sandbox.schemaless.itemCount": "{count} items",
   "sandbox.schemaless.listLabel": "Saved blocks",
@@ -1319,7 +1325,11 @@ export const sandbox = {
     "Enter a number. The saved value stays until you do.",
   "sandbox.schemaless.notSet": "Not set",
   "sandbox.schemaless.pickBlock": "Pick a block to see its content.",
+  "sandbox.schemaless.promptCopied": "Copied",
+  "sandbox.schemaless.promptCopiedAnnouncement":
+    "Prompt copied to the clipboard",
   "sandbox.schemaless.searchPlaceholder": "Search blocks",
+  "sandbox.schemaless.usesSkill": "Uses the deco-site-workflow skill",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
   "sandbox.sectionRenameDialog.description":
     "Updates the display name. The internal key stays the same so pages referencing this section keep working.",

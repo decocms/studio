@@ -259,6 +259,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.noTagsFound": "No tags yet. Type a name to create one.",
   "taskBoard.taskDialog.assignButton": "Assign",
   "taskBoard.taskDialog.createdByLabel": "Created by",
+  "taskBoard.taskDialog.createdByFeedbackLabel": "Feedback",
   "taskBoard.taskDialog.createdBySystemLabel": "Deco Score",
   "taskBoard.taskDialog.unknownCreatorLabel": "Unknown",
   "taskBoard.taskDialog.projectButton": "Select project",
@@ -336,8 +337,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.labelsLabel": "Labels",
   "taskBoard.taskDialog.projectLabel": "Project",
   "taskBoard.taskDialog.reviewsLabel": "Reviews",
-  "taskBoard.taskDialog.reportsContentLocked":
-    "Generated from your Deco Score — title, description, and priority are managed automatically",
   "taskBoard.taskDialog.savingLabel": "Saving...",
   "taskBoard.taskDialog.showMore": "Show more",
   "taskBoard.taskDialog.timelineFoldMore": "{count} more updates",

@@ -11,13 +11,10 @@ function tabDraftKind(tabId: string | undefined): DraftKind | null {
   const location = tabRouteLocation(tabId);
   if (location.kind === "blog") return "blog";
   if (location.kind === "site-editor") return "site";
-  if (location.kind === "agent-section" && location.section === "calendar") {
-    return "site";
-  }
-  // The Experiments tab opens Monitor's Experiments view.
+  // The Experiments app, or Monitor's Experiments view on a v7 site.
   if (
-    location.kind === "project-destination" &&
-    location.monitorView === "experiments"
+    location.kind === "agent-section" &&
+    (location.section === "calendar" || location.section === "experiments")
   ) {
     return "site";
   }

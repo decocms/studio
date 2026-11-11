@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { FeedbackFields } from "./feedback-input";
 import {
+  FEEDBACK_TAG_NAME,
   FEEDBACK_MAX_SCREENSHOT_BYTES,
   FEEDBACK_MAX_SCREENSHOTS,
   FEEDBACK_SCREENSHOT_TYPES,
@@ -136,6 +137,10 @@ export const createFeedbackRoutes = () => {
           const url = `/api/${encodeURIComponent(target.slug)}/fs/${VOLUME}/read?path=${encodeURIComponent(path)}`;
           links.push(`![Screenshot ${index + 1}](${url})`);
         }
+        const tag = await ctx.storage.tags.createTag(
+          target.id,
+          FEEDBACK_TAG_NAME,
+        );
         const item = await ctx.storage.taskBoard.create({
           organizationId: target.id,
           virtualMcpId: project.id,
@@ -143,15 +148,28 @@ export const createFeedbackRoutes = () => {
           description: [
             fields.data.message,
             `Sender: ${user.id}`,
+            `Sender name: ${user.name}`,
             `Organization: ${ctx.organization.id}`,
             `Page: ${fields.data.pageUrl}`,
             ...links,
           ].join("\n\n"),
           status: "triage",
           by: "system",
+          tagIds: [tag.id],
         });
         committed = true;
-        emitTaskBoardUpdated(target.id, item);
+        emitTaskBoardUpdated(target.id, {
+          ...item,
+          tags: [
+            {
+              id: tag.id,
+              name: tag.name,
+              color: tag.color,
+              createdBy: "system",
+              createdAt: item.createdAt,
+            },
+          ],
+        });
         await notifyOrgFsChangeFromServer(target.id, VOLUME).catch(() => {});
         return c.json({ ok: true }, 201);
       } catch (error) {

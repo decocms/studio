@@ -1,6 +1,7 @@
 import { setupComponentTest } from "../../test/setup";
 setupComponentTest();
 import { afterEach, describe, expect, it } from "bun:test";
+import { STUDIO_PAGE_REFRESH } from "./channel";
 import htmlSwap from "./html-swap";
 import { HTML_SWAP_EVENT, type HtmlSwapOut } from "./messages";
 import { startModule } from "./test-channel";
@@ -21,6 +22,7 @@ function viewTransitions(
 }
 
 afterEach(() => {
+  Reflect.deleteProperty(window, STUDIO_PAGE_REFRESH);
   globalThis.fetch = realFetch;
   viewTransitions(null);
   document.documentElement.removeAttribute("data-theme");
@@ -170,5 +172,63 @@ describe("the HTML swap module", () => {
     expect(sent.filter((m) => m.type !== "html-swap:start")).toEqual([
       { type: "html-swap:end", id: 2 },
     ]);
+  });
+
+  describe("a page that refreshes itself (its binding set STUDIO_PAGE_REFRESH)", () => {
+    it("hands it the URL instead of swapping the document, reporting start then end", async () => {
+      document.body.innerHTML = "<h1>Kept</h1>";
+      const kept = document.querySelector("h1");
+      const fetched = serve(NEXT);
+      const asked: string[] = [];
+      Reflect.set(window, STUDIO_PAGE_REFRESH, async (url: string) => {
+        asked.push(url);
+      });
+      const phases: string[] = [];
+      const onSwap = (e: Event) => phases.push((e as CustomEvent).detail.phase);
+      addEventListener(HTML_SWAP_EVENT, onSwap);
+      const { sent, receive } = await startModule(htmlSwap);
+      const next = new URL("?__draft=b", location.href).href;
+      receive({ type: "html-swap:refresh", id: 4, url: next });
+      await until(sent, "html-swap:end", 4);
+      removeEventListener(HTML_SWAP_EVENT, onSwap);
+      expect(asked).toEqual([next]);
+      expect(fetched).toEqual([]);
+      expect(phases).toEqual(["start", "end"]);
+      // React's nodes stay where they are.
+      expect(document.querySelector("h1")).toBe(kept);
+      expect(sent).toEqual([
+        { type: "html-swap:start", id: 4 },
+        { type: "html-swap:end", id: 4 },
+      ]);
+    });
+
+    it("reports an error when it fails, so Studio reloads the frame", async () => {
+      Reflect.set(window, STUDIO_PAGE_REFRESH, async () => {
+        throw new Error("The page answered 500");
+      });
+      const { sent, receive } = await startModule(htmlSwap);
+      receive({ type: "html-swap:refresh", id: 6 });
+      await until(sent, "html-swap:error", 6);
+      expect(sent.at(-1)).toEqual({
+        type: "html-swap:error",
+        id: 6,
+        message: "The page answered 500",
+      });
+    });
+
+    it("never hands it another origin's URL", async () => {
+      let called = false;
+      Reflect.set(window, STUDIO_PAGE_REFRESH, async () => {
+        called = true;
+      });
+      const { sent, receive } = await startModule(htmlSwap);
+      receive({
+        type: "html-swap:refresh",
+        id: 8,
+        url: "https://elsewhere.example/",
+      });
+      await until(sent, "html-swap:error", 8);
+      expect(called).toBe(false);
+    });
   });
 });

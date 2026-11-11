@@ -55,7 +55,7 @@ import {
 } from "@decocms/shared/branch-name";
 import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
 import {
-  prewarmThreadSandbox,
+  startThreadSandbox,
   sandboxOnlyChatsEnabled,
 } from "../../harnesses/sandbox-only-chats";
 import { getSettings } from "../../settings";
@@ -177,7 +177,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       sandboxOnlyChats &&
       getSettings().sandboxPrewarmOnThreadCreateEnabled
     ) {
-      void prewarmThreadSandbox(ctx, result).catch((err) =>
+      void startThreadSandbox(ctx, result).catch((err) =>
         console.warn("[thread-create] sandbox prewarm failed", err),
       );
     }

@@ -34,7 +34,7 @@ import {
 } from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
-import { cmsSiteOf, ensureCmsDraft } from "./cms-api";
+import { cmsBlockVersion, cmsSiteOf, ensureCmsDraft } from "./cms-api";
 import { rememberConflictEditor } from "./conflict-editor";
 import { keepContentBookkeeping } from "./content-bookkeeping";
 import {
@@ -902,6 +902,39 @@ function landedOf(error: unknown): Record<string, string> | undefined {
   );
 }
 
+/**
+ * The names a hosted Conflict refused only because the draft already holds
+ * this very write: each refused name's actual version is the version of the
+ * body `part` sets for it (a tombstone, for a delete). Undefined when the
+ * error isn't a Conflict, or any refused name holds something else.
+ */
+async function ownLateWrites(
+  error: unknown,
+  part: DecofilePatchBody,
+): Promise<Record<string, string> | undefined> {
+  if (!(error instanceof ContentProtocolError)) return undefined;
+  if (error.code !== ErrorCode.Conflict) return undefined;
+  const entries = (error.data as { entries?: unknown } | null)?.entries;
+  if (!entries || typeof entries !== "object") return undefined;
+  const refused = Object.entries(entries as Record<string, unknown>);
+  if (refused.length === 0) return undefined;
+  const set = (part.set ?? {}) as Record<string, unknown>;
+  const deletes = new Set(part.delete ?? []);
+  const own: Record<string, string> = {};
+  for (const [name, mismatch] of refused) {
+    const actual = (mismatch as { actual?: unknown } | null)?.actual;
+    if (typeof actual !== "string") return undefined;
+    const mine = Object.hasOwn(set, name)
+      ? await cmsBlockVersion(set[name])
+      : deletes.has(name)
+        ? DRAFT_TOMBSTONE_VERSION
+        : undefined;
+    if (mine !== actual) return undefined;
+    own[name] = actual;
+  }
+  return own;
+}
+
 /** `patch` without the names that already landed. */
 function withoutNames(
   patch: DecofilePatchBody,
@@ -1003,14 +1036,17 @@ export async function applyProtocolPatch(
       kind: "edit",
       adopted: backend.source === "github",
       write: async () => {
-        const send = (part: DecofilePatchBody) =>
+        const send = (
+          part: DecofilePatchBody,
+          guards: Record<string, string | null> | undefined = ifMatch,
+        ) =>
           guarded(queryClient, backend, params, () =>
             backend.client.blocksApply({
               set: part.set as
                 | Record<string, Record<string, unknown>>
                 | undefined,
               delete: part.delete,
-              ...(ifMatch ? { ifMatch: guardsOf(ifMatch, part) } : {}),
+              ...(guards ? { ifMatch: guardsOf(guards, part) } : {}),
             }),
           );
         let result: BlocksApplyResult;
@@ -1038,7 +1074,22 @@ export async function applyProtocolPatch(
             if (landedAgain && Object.keys(landedAgain).length > 0) {
               adoptLanded(queryClient, params, cacheKey, rest, landedAgain);
             }
-            throw again;
+            // The retry was refused only because blocks already hold the
+            // very bodies it sends: the first try's write was given up on
+            // but landed late. Those count as landed; the rest is sent
+            // once more, guarded on them as they now are.
+            const own = await ownLateWrites(again, rest);
+            if (!own) throw again;
+            adoptLanded(queryClient, params, cacheKey, rest, own);
+            try {
+              retried = await send(rest, { ...ifMatch, ...own });
+            } catch (last) {
+              const landedLast = landedOf(last);
+              if (landedLast && Object.keys(landedLast).length > 0) {
+                adoptLanded(queryClient, params, cacheKey, rest, landedLast);
+              }
+              throw last;
+            }
           }
           result = {
             ...retried,

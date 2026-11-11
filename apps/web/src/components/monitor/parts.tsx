@@ -83,6 +83,7 @@ export type ProjectScreen =
   | "monitoring"
   | "releases"
   | "experiments"
+  | "experimentsApp"
   | "connectSources";
 
 export function projectLink(
@@ -102,6 +103,9 @@ export function projectLink(
         params,
         search: { view: "experiments" },
       };
+    // A Blocks v8 project's tests are edited in its Experiments app.
+    case "experimentsApp":
+      return { to: PROJECT_ROUTE.experiments, params };
     case "connectSources":
       return { to: PROJECT_ROUTE.connectSources, params };
     default: {

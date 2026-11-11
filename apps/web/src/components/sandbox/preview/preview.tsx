@@ -61,6 +61,7 @@ import {
   useDecofile,
   useDecofileCacheKey,
   useEnsureDecofileBlocks,
+  useLoadDecofileBlock,
 } from "@/components/sections-editor/use-decofile";
 import {
   inlinePageOverrideParams,
@@ -619,6 +620,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const createPageParams =
     virtualMcpId && branch ? { orgSlug: org.slug, virtualMcpId, branch } : null;
   const createPage = useCreatePage(createPageParams);
+  const loadBlock = useLoadDecofileBlock(createPageParams);
   const globalSections =
     decofile && meta ? extractGlobalSections(decofile, meta) : [];
   const globalLoaders =
@@ -1528,6 +1530,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
 
+  /** v8: the wireframe scrolls a section picked in the list into view. */
+  const scrollToSection = (sectionIndex: number) => {
+    channelRef.current?.wireframe({
+      type: "wireframe:scroll-to",
+      sectionIndex,
+    });
+  };
+
   // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
   const clearEditorHover = () => {
     channelRef.current?.wireframe({ type: "wireframe:clear-hover" });
@@ -1919,16 +1929,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       );
       return;
     }
-    let template: Record<string, unknown> | undefined;
-    if (templateKey) {
-      template = decofile?.[templateKey] as Record<string, unknown> | undefined;
-      if (!template) {
+    setCreatePageError(undefined);
+    try {
+      // On the hosted CMS a page not opened yet is listed without its body.
+      const template = templateKey
+        ? await loadBlock(decofile, templateKey)
+        : undefined;
+      if (templateKey && !template) {
         setCreatePageError(t("sandbox.preview.templateNoLongerExists"));
         return;
       }
-    }
-    setCreatePageError(undefined);
-    try {
       const result = await createPage.mutateAsync({
         name,
         path: trimmedPath,
@@ -2400,6 +2410,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <BlocksPanel
               virtualMcpId={virtualMcpId}
               externalSelection={cmsSelectedSection}
+              onSectionPicked={scrollToSection}
               onViewJsonFile={toggleJsonPanel}
             />
             {jsonPanelOpen && jsonBlockKey && (
@@ -2432,6 +2443,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 <BlocksPanel
                   virtualMcpId={virtualMcpId}
                   externalSelection={cmsSelectedSection}
+                  onSectionPicked={scrollToSection}
                   onViewJsonFile={toggleJsonPanel}
                 />
               )}

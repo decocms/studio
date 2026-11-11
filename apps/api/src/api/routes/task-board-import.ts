@@ -45,10 +45,9 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   `{deduped: true}`. A FAILED import aborts the claim with it, so the
  *   run_id isn't burned. Absent run_id ⇒ no claim (backward compatible).
  * - `item.externalKey` identifies the FINDING: a key matching an OPEN item
- *   refreshes that item (description/priority — never title/status/assignee,
- *   a human may have touched those) instead of creating a duplicate, so
+ *   reuses that item without changing its content instead of creating a duplicate, so
  *   recurring diagnostic runs converge on the same card. A done item is NOT
- *   matched — a regression creates a fresh card. Refreshes never re-trigger
+ *   matched — a regression creates a fresh card. Repeated imports never re-trigger
  *   the Super Agent delegation. A key no card holds yet is matched like a
  *   keyless item (title, then the semantic pass), and a card without a key
  *   that it lands on adopts it: cards filed before the sender sent keys
@@ -67,12 +66,13 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *
  * The reply carries counts and `items`. The counts are `created`, `updated`
  * and `delegated`, plus `dismissed` and `semantic_matches` when they are not
- * zero. `items` has one `{ index, outcome, id, key_seq }` entry per request
+ * zero. `updated` is retained for wire compatibility: it counts reused cards,
+ * whose tags or external key may be reconciled, not content rewrites.
+ * `items` has one `{ index, outcome, id, key_seq }` entry per request
  * item, in request order, and `id` and `key_seq` name the card the item
- * created, refreshed or matched. `outcome` is the most specific label, so
+ * created or matched. `outcome` is the most specific label, so
  * every `semantic_match` is also counted in `updated`. A `semantic_match`
- * reads the same whether the import refreshed a reports card, left a human's
- * card alone, or folded the item into the card an earlier item of the same
+ * covers both an existing card and an item folded into a card an earlier item of the same
  * request landed on. A replayed run_id wrote nothing and replies without
  * `items`.
  *
@@ -337,7 +337,7 @@ export const createTaskBoardImportRoutes = () => {
         if ((claim.numInsertedOrUpdatedRows ?? 0n) === 0n) return null;
       }
 
-      // Open cards get refreshed, done ones don't match, dismissed ones
+      // Open cards are reused, done ones don't match, dismissed ones
       // suppress the finding.
       const keys = items.flatMap((i) => i.externalKey ?? []);
       const openByKey = new Map<string, string>();
@@ -479,25 +479,9 @@ export const createTaskBoardImportRoutes = () => {
             await storage.adoptExternalKey(existingId, organizationId, adopt);
             openByKey.set(adopt, existingId);
           }
-          // Refresh the finding's card: new evidence + severity. Title,
-          // status and assignee stay — a human may have touched them, and a
-          // refresh must never re-queue a delegation.
-          const row = await storage.update(
-            existingId,
-            organizationId,
-            {
-              description: item.description ?? null,
-              priority: item.priority,
-              // Refreshed like the evidence, not preserved like the title: a
-              // card created before the sender knew the repository has to pick
-              // it up, and a re-diagnosis that moved to a different repository
-              // is the sender correcting itself, not a human's edit.
-              ...(item.repositoryId !== undefined
-                ? { repositoryId: item.repositoryId }
-                : {}),
-            },
-            "system",
-          );
+          // Reimports identify an existing card without rewriting its content.
+          const row = await storage.getById(existingId, organizationId);
+          if (!row) throw new Error("Matched task no longer exists");
           touched.push(await withTags(row, item.tags));
           results.push({
             index,
@@ -544,23 +528,7 @@ export const createTaskBoardImportRoutes = () => {
             ? match.item
             : earlier && (await storage.getById(earlier.id, organizationId));
         if (match && matched) {
-          // Only a reports-owned card is refreshed; a human's keeps its
-          // content, and so does the card an earlier item just wrote.
-          const row =
-            "item" in match && isReportsTask(matched)
-              ? await storage.update(
-                  matched.id,
-                  organizationId,
-                  {
-                    description: item.description ?? null,
-                    priority: item.priority,
-                    ...(item.repositoryId !== undefined
-                      ? { repositoryId: item.repositoryId }
-                      : {}),
-                  },
-                  "system",
-                )
-              : matched;
+          const row = matched;
           await storage.recordActivity({
             taskBoardItemId: matched.id,
             action: "duplicate_reported",

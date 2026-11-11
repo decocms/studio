@@ -312,4 +312,27 @@ export const experiments = {
   "experiments.v8.loadFailed": "Couldn't load your tests.",
   "experiments.v8.previewHint":
     "To see a test on or off before publishing, use “Preview as” in the site editor's preview.",
+  "experiments.live.title": "Live now",
+  "experiments.live.intro": "What visitors get on the published site.",
+  "experiments.live.edit": "Edit in Experiments",
+  "experiments.live.editTest": "Edit",
+  "experiments.live.viewInMonitor": "View in Monitor",
+  "experiments.live.unpublished":
+    "Your draft has A/B test changes that aren't published yet.",
+  "experiments.live.unpublishedTest":
+    "Your draft changes this test; it isn't published yet.",
+  "experiments.live.removedTest":
+    "Your draft removes this test; it stays live until you publish.",
+  "experiments.live.notLive": "“{name}” isn't live yet.",
+  "experiments.live.editNamed": "Edit {name} in Experiments",
+  "experiments.live.editRow": "Edit {name}",
+  "experiments.live.unknown.title": "Couldn't read what's live",
+  "experiments.live.unknown.desc":
+    "Your draft changes the A/B tests, and their published copy couldn't be read. Try again in a moment.",
+  "experiments.live.empty.title": "No A/B tests live",
+  "experiments.live.empty.desc": "Create one in Experiments and publish it.",
+  "experiments.live.noDraft.title": "Pick a draft to see what's live",
+  "experiments.live.noDraft.desc":
+    "What's live is read through a draft. Pick one in Experiments to see this site's tests here.",
+  "experiments.live.noDraft.action": "Pick a draft in Experiments",
 } as const;

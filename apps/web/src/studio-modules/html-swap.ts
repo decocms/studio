@@ -12,11 +12,19 @@
  * reports nothing. The other modules in the page hear the swap through
  * {@link HTML_SWAP_EVENT} on `window` (the wireframe re-attaches its outline).
  *
- * The window, its listeners and the modules survive the swap; the new HTML's
+ * A page whose binding sets its own refresh (`window[STUDIO_PAGE_REFRESH]`:
+ * Next.js and TanStack re-render through their router) gets that instead, so
+ * React stays attached and its client components keep working. Otherwise the
+ * window, its listeners and the modules survive the swap, but the new HTML's
  * scripts don't run (as with the in-place render v7 sites get), so what the
- * page's scripts made interactive stays as it was until the next load.
+ * page's scripts made interactive stays at its server markup until the next
+ * load.
  */
-import { defineStudioModule } from "./channel";
+import {
+  defineStudioModule,
+  STUDIO_PAGE_REFRESH,
+  type StudioPageRefresh,
+} from "./channel";
 import {
   HTML_SWAP_EVENT,
   type HtmlSwapEventDetail,
@@ -83,6 +91,12 @@ function replaceDocument(doc: Document, html: string) {
   root.innerHTML = next.documentElement.innerHTML;
 }
 
+/** The page's own refresh, when its binding set one. */
+function pageRefreshOf(win: Window): StudioPageRefresh | null {
+  const value: unknown = Reflect.get(win, STUDIO_PAGE_REFRESH);
+  return typeof value === "function" ? (value as StudioPageRefresh) : null;
+}
+
 export default defineStudioModule<HtmlSwapIn, HtmlSwapOut>((channel) => {
   let current: AbortController | null = null;
   /**
@@ -105,6 +119,16 @@ export default defineStudioModule<HtmlSwapIn, HtmlSwapOut>((channel) => {
       const target = new URL(url ?? shown, location.href);
       if (target.origin !== location.origin) {
         throw new Error(`Not this page's origin: ${target.origin}`);
+      }
+      const pageRefresh = pageRefreshOf(window);
+      if (pageRefresh) {
+        await pageRefresh(target.href);
+        if (!live()) return;
+        shown = target.href;
+        current = null;
+        announce("end");
+        channel.send({ type: "html-swap:end", id });
+        return;
       }
       const res = await fetch(target.href, {
         headers: { accept: "text/html" },

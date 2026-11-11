@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { UrlSlugSchema } from "../../url-slug";
+import { THREAD_RUNTIMES } from "../../thread/session-runtime";
 
 /**
  * Virtual MCP connection schema - defines which connection and tools/resources/prompts are included
@@ -809,6 +810,12 @@ export const ReleaseSchema = z.object({
   color: z.string().describe("Dot color token shown in the version switcher"),
   createdBy: z.string().optional().describe("User ID who created the release"),
   createdAt: z.string().optional().describe("ISO 8601 creation timestamp"),
+  runtime: z
+    .enum(THREAD_RUNTIMES)
+    .optional()
+    .describe(
+      "Session runtime the release was created in. Picking a 'sandbox' release opens a coding session on its branch, since a CMS session renders production's code and would hide the branch's code changes. Absent ⇒ the project's default.",
+    ),
 });
 
 export type Release = z.infer<typeof ReleaseSchema>;

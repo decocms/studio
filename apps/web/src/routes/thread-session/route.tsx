@@ -54,6 +54,11 @@ import {
   nextReleaseColor,
   useReleases,
 } from "@/components/thread/repository/use-releases";
+import {
+  isForeignStoreDraft,
+  useStoreDrafts,
+} from "@/components/thread/repository/cms-store-drafts";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 
@@ -191,7 +196,8 @@ function VmEventsBridge({
   children: ReactNode;
 }) {
   const t = useT();
-  const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
+  const { currentBranch, activeTask, setCurrentTaskBranch, isThreadLocked } =
+    useChatTask();
   const draftKind = useViewDraftKind();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
@@ -253,23 +259,42 @@ function VmEventsBridge({
   ]);
 
   const sessionState = useSessionRuntime(virtualMcpId);
+  /** `null` until the answer is real — never act on the project default. */
+  const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
 
   // Auto-name a fresh draft "Draft N" (a Blog draft "Blog Draft N", by its
   // branch); one write per branch per tab, like the guards above.
   const draftsVm = useVirtualMCP(virtualMcpId);
   const draftsBase = useBaseBranch(draftsVm, currentBranch);
-  const { releases: draftReleases, createRelease: createDraftRelease } =
-    useReleases(virtualMcpId);
+  const {
+    releases: draftReleases,
+    createRelease: createDraftRelease,
+    markSandbox: markDraftSandbox,
+  } = useReleases(virtualMcpId);
+  // A draft made outside Studio (`deco push --draft`) already has a name: it
+  // stays a CMS draft in the switcher, not a fresh "Rascunho N". Wait for the
+  // hosted list on a v8 site; a failed read falls back to naming it.
+  const storeDraftsQuery = useStoreDrafts(
+    virtualMcpId,
+    blocksV8Project(draftsVm),
+  );
+  const currentIsForeignDraft =
+    blocksV8Project(draftsVm) && currentBranch
+      ? isForeignStoreDraft(currentBranch, storeDraftsQuery.data)
+      : false;
   const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
   const currentIsUnnamedDraft =
+    !!sessionRuntime &&
     isOwnDraftThread &&
     !!currentBranch &&
     currentBranch !== draftsBase &&
-    !draftReleases.some((r) => r.branch === currentBranch);
+    !draftReleases.some((r) => r.branch === currentBranch) &&
+    !storeDraftsQuery.isLoading &&
+    currentIsForeignDraft !== true;
   const namedDraftForBranchRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
   useEffect(() => {
-    if (!currentIsUnnamedDraft || !currentBranch) return;
+    if (!currentIsUnnamedDraft || !currentBranch || !sessionRuntime) return;
     if (namedDraftForBranchRef.current === currentBranch) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't create twice
     namedDraftForBranchRef.current = currentBranch;
@@ -279,15 +304,42 @@ function VmEventsBridge({
       color: nextReleaseColor(draftReleases.length),
       createdBy: userId,
       createdAt: new Date().toISOString(),
+      runtime: sessionRuntime,
     }).catch(() => {});
   }, [
     currentIsUnnamedDraft,
     currentBranch,
+    sessionRuntime,
     draftReleases,
     createDraftRelease,
     userId,
     t,
   ]);
+
+  /** A CMS draft a coding chat has run on may now hold code: stamp it
+   *  `sandbox`. Only once the chat ran (locked): merely opening a draft in a
+   *  coding chat doesn't change its branch. */
+  const currentDraftNeedsSandboxStamp =
+    sessionRuntime === "sandbox" &&
+    isThreadLocked &&
+    isOwnDraftThread &&
+    draftReleases.some(
+      (r) => r.branch === currentBranch && r.runtime !== "sandbox",
+    );
+  const [stampedSandboxBranch, setStampedSandboxBranch] = useState<
+    string | null
+  >(null);
+  if (
+    currentDraftNeedsSandboxStamp &&
+    currentBranch &&
+    stampedSandboxBranch !== currentBranch
+  ) {
+    setStampedSandboxBranch(currentBranch);
+    const branch = currentBranch;
+    queueMicrotask(() => {
+      markDraftSandbox(branch).catch(() => {});
+    });
+  }
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -295,8 +347,6 @@ function VmEventsBridge({
   // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
   // auto-start shares this mutation key, so `useIsSandboxStartPending`
   // observes it).
-  /** `null` until the answer is real — never act on the project default. */
-  const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
   const isStartPending = useIsSandboxStartPending(
     virtualMcpId,
     currentBranch ?? undefined,
@@ -575,7 +625,7 @@ function ThreadSessionProvider() {
       session?.user?.id,
       defaultThreadRuntime(entity?.metadata),
       hasActiveRepository,
-      { baseBranch },
+      { baseBranch, releases: entity?.metadata?.releases ?? undefined },
     );
   const localEntry =
     resolvingEntry && threadsStatus.kind !== "loading"

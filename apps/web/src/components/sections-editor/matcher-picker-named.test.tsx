@@ -259,8 +259,8 @@ describe("the rule picker's name step", () => {
 });
 
 describe("the locked row", () => {
-  test("shows the name and leads to Experiments", () => {
-    const open = mock((_kind: string) => {});
+  test("shows the name and leads to Experiments, on that test", () => {
+    const open = mock((_kind: string, _name?: string) => {});
     render(
       <NamedRuleViewsProvider value={{ open }}>
         <NamedRuleRow
@@ -276,7 +276,7 @@ describe("the locked row", () => {
     fireEvent.click(
       within(document.body).getByRole("button", { name: /Open Experiments/ }),
     );
-    expect(open).toHaveBeenCalledWith("experiments");
+    expect(open).toHaveBeenCalledWith("experiments", "hero-test");
   });
 
   test("says a missing campaign isn't there, and shows no link or Create without a way there", () => {

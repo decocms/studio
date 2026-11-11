@@ -8,6 +8,7 @@
 
 import type { ReactNode } from "react";
 import {
+  Beaker02,
   ClockRewind,
   BookOpen01,
   Calendar,
@@ -150,6 +151,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     calendar: {
       label: t("common.mainPanelTabs.calendar"),
       icon: <Calendar size={16} />,
+    },
+    experiments: {
+      label: t("common.mainPanelTabs.experiments"),
+      icon: <Beaker02 size={16} />,
     },
   };
   /** In sidebar order, so Blog follows the Site Editor's v8 peers. */

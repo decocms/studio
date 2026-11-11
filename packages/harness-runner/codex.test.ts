@@ -3,7 +3,12 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { codexConfig, codexPluginDirs, codexStudioCliOrg } from "./codex";
+import {
+  codexConfig,
+  codexPluginDirs,
+  codexStudioCliOrg,
+  codexTurnFailure,
+} from "./codex";
 
 const input: HarnessStreamInputWire = {
   threadId: "thread_example",
@@ -132,5 +137,44 @@ describe("Codex MCP policy", () => {
         else process.env[name] = value;
       }
     }
+  });
+});
+
+describe("Codex turn failures", () => {
+  // Shapes recorded from `codex app-server` 0.163.0 against a refusing endpoint.
+  test("unwraps a JSON response body to the provider's message", () => {
+    expect(
+      codexTurnFailure({
+        message:
+          '{"error":{"message":"The model `gpt-example` is not supported when using Codex with a ChatGPT account.","type":"invalid_request_error"}}',
+        codexErrorInfo: "other",
+      }),
+    ).toBe(
+      "Codex turn failed: The model `gpt-example` is not supported when using Codex with a ChatGPT account.",
+    );
+  });
+
+  test("drops the request URL and redacts credentials", () => {
+    const message = codexTurnFailure({
+      message:
+        "unexpected status 401 Unauthorized: invalid key sk-example123 or Bearer token_example, url: https://provider.example.com/v1/responses?key=secret",
+      codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 401 } },
+    });
+    expect(message).toBe(
+      "Codex turn failed: unexpected status 401 Unauthorized: invalid key [redacted] or [redacted]",
+    );
+  });
+
+  test("caps an oversized reason", () => {
+    const message = codexTurnFailure({ message: "x".repeat(2000) });
+    expect(message.length).toBeLessThan(600);
+    expect(message.endsWith("…")).toBe(true);
+  });
+
+  test("falls back to the generic hint without a reason", () => {
+    for (const error of [undefined, null, {}, { message: "  " }])
+      expect(codexTurnFailure(error)).toContain(
+        "Check your provider connection or relink the ChatGPT subscription.",
+      );
   });
 });

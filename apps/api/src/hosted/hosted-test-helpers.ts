@@ -74,22 +74,30 @@ export function memoryDeliveryStore() {
     async putText(key, text, cacheControl, condition) {
       return put(key, text, cacheControl, condition);
     },
-    async listPage(prefix, { maxKeys, continuationToken }) {
-      const folders = [
+    /**
+     * Like S3: folders and plain objects right under `prefix`, in key order,
+     * share `maxKeys`; only the folders come back.
+     */
+    async listPage(prefix, { maxKeys, continuationToken, startAfter }) {
+      const entries = [
         ...new Set(
           [...objects.keys()]
-            .filter(
-              (k) => k.startsWith(prefix) && k.indexOf("/", prefix.length) > 0,
-            )
-            .map((k) => k.slice(0, k.indexOf("/", prefix.length) + 1)),
+            .filter((k) => k.startsWith(prefix))
+            .map((k) => {
+              const slash = k.indexOf("/", prefix.length);
+              return slash > 0 ? k.slice(0, slash + 1) : k;
+            }),
         ),
       ].sort();
-      const start = continuationToken ? Number(continuationToken) : 0;
-      const prefixes = folders.slice(start, start + maxKeys);
+      const start = continuationToken
+        ? Number(continuationToken)
+        : startAfter
+          ? entries.filter((e) => e <= startAfter).length
+          : 0;
       const next = start + maxKeys;
       return {
-        prefixes,
-        nextToken: next < folders.length ? String(next) : null,
+        prefixes: entries.slice(start, next).filter((e) => e.endsWith("/")),
+        nextToken: next < entries.length ? String(next) : null,
       };
     },
     async putJson(key, value, cacheControl, condition) {
