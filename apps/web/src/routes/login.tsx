@@ -1,5 +1,6 @@
 import { AuthEntry, AuthWait } from "@/components/auth-entry";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
+import { LegacyAdminWelcomeDialog } from "@/components/legacy-admin-welcome-dialog";
 import { authClient } from "@/lib/auth-client";
 import { captureSignupAttribution } from "@/lib/signup-attribution";
 import { Navigate, useSearch } from "@tanstack/react-router";
@@ -91,6 +92,7 @@ export default function LoginRoute() {
   return (
     <AuthSplitLayout>
       <AuthEntry callbackUrl={next} redirectUrl={oauthAuthorizeUrl} />
+      <LegacyAdminWelcomeDialog />
     </AuthSplitLayout>
   );
 }
