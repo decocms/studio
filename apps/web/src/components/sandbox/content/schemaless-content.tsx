@@ -509,6 +509,7 @@ export function SchemalessContent({
   onLeaveBlock,
   onOpenBlock,
   wrapEditor,
+  v8 = false,
   copyEpochOf,
   site = null,
   initialKey = null,
@@ -525,6 +526,8 @@ export function SchemalessContent({
   onOpenBlock?: (blockKey: string) => void;
   /** The connected editor waits for the selected body's storage read. */
   wrapEditor?: (blockKey: string, editor: ReactNode) => ReactNode;
+  /** V8 holds the form's copy when its complete body mounts. */
+  v8?: boolean;
   /**
    * How many times a block's copy was replaced under the form (a reconcile):
    * the open block's form is seeded again from `decofile` when it changes.
@@ -541,8 +544,16 @@ export function SchemalessContent({
   const select = (key: string | null) => {
     if (key === selected) return;
     onLeaveBlock?.();
+    if (!v8 && key !== null) onOpenBlock?.(key);
     setSelected(key);
   };
+  // Legacy captures the copy on selection/reconcile, before the form mounts.
+  const selectedEpoch = selected ? (copyEpochOf?.(selected) ?? 0) : 0;
+  const [seededEpoch, setSeededEpoch] = useState(selectedEpoch);
+  if (seededEpoch !== selectedEpoch) {
+    setSeededEpoch(selectedEpoch);
+    if (!v8 && selected !== null) onOpenBlock?.(selected);
+  }
   const block = selected ? decofile[selected] : undefined;
   const q = query.trim().toLowerCase();
   const groups = groupBlocksByType(decofile)
@@ -644,7 +655,7 @@ export function SchemalessContent({
         key={`${selected}:${copyEpochOf?.(selected) ?? 0}`}
         blockKey={selected}
         block={block}
-        onOpenBlock={onOpenBlock}
+        onOpenBlock={v8 ? onOpenBlock : undefined}
         onChange={onChange}
         onBack={compact ? () => select(null) : undefined}
       />
@@ -657,7 +668,9 @@ export function SchemalessContent({
     );
 
   const editor =
-    selected && wrapEditor ? wrapEditor(selected, editorBody) : editorBody;
+    v8 && selected && wrapEditor
+      ? wrapEditor(selected, editorBody)
+      : editorBody;
   return (
     <div
       data-testid="schemaless-content"

@@ -65,6 +65,12 @@ SEO cache key. V8 retains the new body-loading, source guards, scoped lifetimes
 and JSON buffer protection. Regression coverage checks the legacy referenced-save
 payload and its original shallow block-copy validation.
 
+The follow-up [v7 isolation evidence](v7-cms-isolation-proof.md) records the
+baseline, a repeatable compiler-output comparison, mutation controls, the full
+gate trace and the remaining browser validation limit. A stricter edge-case
+audit also preserves legacy action error boundaries, nested-reference ancestry
+and schema-free callback timing.
+
 Shared files and import paths still change, so this is not a claim of zero
 regression risk. The PR does not change the API server, storefront runtime,
 database schema, or dependencies. Browser E2E remains an explicit validation gap.
@@ -153,12 +159,18 @@ normal Playwright services; unit tests cannot establish browser wiring.
 
 Final local results:
 
-- `bun run verify`: formatting, lint, unused-code checks and **13,498 tests passed**.
+- `bun run verify`: formatting, lint, unused-code checks and **13,509 tests passed**
+  using the repository's CI-pinned Bun 1.3.14.
 - Web and Playwright workspace TypeScript checks passed.
 - Playwright discovered both new hosted Settings regressions.
 - Browser execution was not run: local PostgreSQL/NATS were unavailable, their
   environment URLs were unset, and Docker was not installed. The browser
   assertions still need execution in the normal E2E environment.
+
+Local Bun 1.4.0 full-suite attempts encountered `EBADF` while spawning oxlint
+subprocesses; the isolated plugin smoke test passed. The final complete run
+used CI's Bun version through a temporary PATH, with the verification command
+and all tests unchanged. No global runtime setting or test exclusion changed.
 
 ## Adversarial review
 

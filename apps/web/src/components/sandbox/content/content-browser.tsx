@@ -1190,11 +1190,8 @@ function ContentBrowserReady({
 
   // ------------------ Variant ------------------
   const handleAddPageVariant = async (page: PageEntry) => {
-    try {
-      const fullPageData = v8
-        ? await loadBlock(decofile, page.key)
-        : (decofile[page.key] as Record<string, unknown> | undefined);
-      if (!fullPageData) return;
+    const prepare = (fullPageData: Record<string, unknown> | undefined) => {
+      if (!fullPageData) return null;
       const loaded = v8 ? { ...decofile, [page.key]: fullPageData } : decofile;
       const variantCount = getPageVariantCount(loaded, page.key);
       const seedSections = getPageVariantSectionsAt(
@@ -1208,7 +1205,17 @@ function ContentBrowserReady({
         meta,
         !runsSiteCode,
       );
-      if (!added) return;
+      return added ? { fullPageData, added } : null;
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[page.key] as Record<string, unknown> | undefined);
+    try {
+      const prepared = v8
+        ? prepare(await loadBlock(decofile, page.key))
+        : legacy;
+      if (!prepared) return;
+      const { fullPageData, added } = prepared;
       const saved = await saveBlock.mutateAsync({
         blockKey: page.key,
         data: { ...fullPageData, sections: added.sections },
@@ -1384,17 +1391,25 @@ function ContentBrowserReady({
   );
 
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
-    try {
-      const source = v8
-        ? await loadBlock(decofile, section.key)
-        : (decofile[section.key] as Record<string, unknown> | undefined);
+    const prepare = (source: Record<string, unknown> | undefined) => {
       if (!source) {
         toast.error(t("sandbox.contentBrowser.sectionNotFound"));
-        return;
+        return null;
       }
       const newKey = nextUniqueBlockKey(decofile, section.key);
       const newName = nextUniqueName(takenSectionNames, section.name);
       const data: Record<string, unknown> = { ...source, name: newName };
+      return { newKey, data };
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[section.key] as Record<string, unknown> | undefined);
+    try {
+      const prepared = v8
+        ? prepare(await loadBlock(decofile, section.key))
+        : legacy;
+      if (!prepared) return;
+      const { newKey, data } = prepared;
       const copied = await saveBlock.mutateAsync({
         blockKey: newKey,
         data,
@@ -1417,10 +1432,17 @@ function ContentBrowserReady({
 
   const handleRenameSection = async (newName: string) => {
     if (!renameSectionKey) return;
+    const legacySource = v8
+      ? undefined
+      : (decofile[renameSectionKey] as Record<string, unknown> | undefined);
+    if (!v8 && !legacySource) {
+      toast.error(t("sandbox.contentBrowser.sectionNotFound"));
+      return;
+    }
     try {
       const source = v8
         ? await loadBlock(decofile, renameSectionKey)
-        : (decofile[renameSectionKey] as Record<string, unknown> | undefined);
+        : legacySource;
       if (!source) {
         toast.error(t("sandbox.contentBrowser.sectionNotFound"));
         return;
@@ -1454,15 +1476,10 @@ function ContentBrowserReady({
   };
 
   const submitRedirectDialog = async (values: RedirectPayload) => {
-    try {
-      // Hosted v8 routes only the redirects block: a new rule is appended to
-      // it (created when absent).
-      const holder = hostedDraft ? redirectsBlockName(decofile) : null;
-      const body =
-        holder === null ? undefined : await loadBlock(decofile, holder);
-      if (holder !== null && decofile[holder] !== undefined && !body) {
-        throw new Error(t("sectionsEditor.hosted.blockLoadFailed"));
-      }
+    const prepare = (
+      holder: string | null,
+      body: Record<string, unknown> | undefined,
+    ) => {
       const rules =
         holder === null
           ? null
@@ -1476,6 +1493,24 @@ function ContentBrowserReady({
         holder === null
           ? buildRedirectBlock(values)
           : appendRedirectRule(body, values);
+      return { key, data, rules, body };
+    };
+    const legacy = v8 ? null : prepare(null, undefined);
+    try {
+      // Hosted v8 routes only the redirects block: a new rule is appended to
+      // it (created when absent).
+      let prepared = legacy;
+      if (v8) {
+        const holder = hostedDraft ? redirectsBlockName(decofile) : null;
+        const body =
+          holder === null ? undefined : await loadBlock(decofile, holder);
+        if (holder !== null && decofile[holder] !== undefined && !body) {
+          throw new Error(t("sectionsEditor.hosted.blockLoadFailed"));
+        }
+        prepared = prepare(holder, body);
+      }
+      if (!prepared) return;
+      const { key, data, rules, body } = prepared;
       const created = await saveBlock.mutateAsync({
         blockKey: key,
         data,
@@ -1542,17 +1577,23 @@ function ContentBrowserReady({
 
   /** Calendar drag: move an already-scheduled post to another day. */
   const handleReschedulePost = async (key: string, day: Date) => {
-    try {
-      const source = v8
-        ? await loadBlock(decofile, key)
-        : (decofile[key] as Record<string, unknown> | undefined);
+    const prepare = (source: Record<string, unknown> | undefined) => {
       const payload = source
         ? rescheduleToDay(getBlogPayload(source, "posts"), day)
         : null;
       if (!payload) {
         toast.error(t("sandbox.postCalendar.onlyScheduledCanMove"));
-        return;
+        return null;
       }
+      return { source, payload };
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[key] as Record<string, unknown> | undefined);
+    try {
+      const prepared = v8 ? prepare(await loadBlock(decofile, key)) : legacy;
+      if (!prepared) return;
+      const { source, payload } = prepared;
       await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, "posts", payload),
@@ -1568,13 +1609,10 @@ function ContentBrowserReady({
   };
 
   const handleDuplicateBlog = async (entry: BlogEntry) => {
-    try {
-      const source = v8
-        ? await loadBlock(decofile, entry.key)
-        : (decofile[entry.key] as Record<string, unknown> | undefined);
+    const prepare = (source: Record<string, unknown> | undefined) => {
       if (!source) {
         toast.error("Record not found.");
-        return;
+        return null;
       }
       const key = generateBlogKey(decofile, entry.kind);
       const labelKey = entry.kind === "posts" ? "title" : "name";
@@ -1590,6 +1628,17 @@ function ContentBrowserReady({
           .filter(Boolean);
         payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
       }
+      return { key, payload };
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[entry.key] as Record<string, unknown> | undefined);
+    try {
+      const prepared = v8
+        ? prepare(await loadBlock(decofile, entry.key))
+        : legacy;
+      if (!prepared) return;
+      const { key, payload } = prepared;
       const duplicated = await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
@@ -1622,7 +1671,9 @@ function ContentBrowserReady({
       if (kind === "blog") {
         const source = v8
           ? await loadBlock(decofile, key)
-          : (decofile[key] as Record<string, unknown> | undefined);
+          : deleteTarget.blogKind === "categories"
+            ? (decofile[key] as Record<string, unknown> | undefined)
+            : undefined;
         if (v8 && !source)
           throw new Error(t("sectionsEditor.hosted.blockLoadFailed"));
         // Deleting a category cascades to posts: they carry a denormalized
@@ -1667,14 +1718,17 @@ function ContentBrowserReady({
           blockKey: key,
           ...(v8 ? { base: { value: source } } : {}),
         });
+      } else if (!v8 && redirectRuleOf(key, decofile)) {
+        const rule = redirectRuleOf(key, decofile)!;
+        deleted = await saveBlock.mutateAsync({
+          blockKey: rule.block,
+          data: removeRedirectRule(decofile[rule.block], rule.index),
+        });
       } else {
-        const rule = v8
-          ? deleteTarget.kind === "redirect"
-            ? deleteTarget.rule
-            : null
-          : redirectRuleOf(key, decofile);
+        const rule =
+          v8 && deleteTarget.kind === "redirect" ? deleteTarget.rule : null;
         if (rule) {
-          const body = "body" in rule ? rule.body : decofile[rule.block];
+          const body = rule.body;
           deleted = await saveBlock.mutateAsync({
             blockKey: rule.block,
             data: removeRedirectRule(body, rule.index),

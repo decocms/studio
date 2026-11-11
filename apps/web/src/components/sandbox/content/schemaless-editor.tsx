@@ -33,7 +33,7 @@ export function SchemalessEditor({
   // The Studio site the banner's agent prompt names (`DECO_SITE`).
   const site = cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
   // Each block's form keeps its own copy: hosted saves are guarded by it.
-  const { save, flush, hold } = useDebouncedSaveBlock(
+  const { save, flush, hold, v8 } = useDebouncedSaveBlock(
     { orgSlug, virtualMcpId, branch },
     { holdsCopy: true },
   );
@@ -52,15 +52,20 @@ export function SchemalessEditor({
       onChange={(blockKey, next) => save(blockKey, next)}
       onLeaveBlock={flush}
       onOpenBlock={hold}
-      wrapEditor={(blockKey, editor) => (
-        <CmsBlockBoundary
-          listing={decofile}
-          scope={{ orgSlug, virtualMcpId, branch }}
-          names={[blockKey]}
-        >
-          {editor}
-        </CmsBlockBoundary>
-      )}
+      v8={v8}
+      wrapEditor={
+        v8
+          ? (blockKey, editor) => (
+              <CmsBlockBoundary
+                listing={decofile}
+                scope={{ orgSlug, virtualMcpId, branch }}
+                names={[blockKey]}
+              >
+                {editor}
+              </CmsBlockBoundary>
+            )
+          : undefined
+      }
       copyEpochOf={copyEpochOf}
       initialKey={initialKey}
       compact={compact}

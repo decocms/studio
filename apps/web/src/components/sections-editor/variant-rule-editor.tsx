@@ -1,5 +1,6 @@
 import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { isIndexStub } from "@/cms/block-body";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   MatcherPicker,
   type MatcherEntry,
@@ -203,11 +204,17 @@ function LoadedVariantRuleEditor({
   );
 }
 
-export function VariantRuleEditor(
-  props: Parameters<typeof LoadedVariantRuleEditor>[0],
+function ConnectedVariantRuleEditor(
+  props: Parameters<typeof LoadedVariantRuleEditor>[0] & {
+    sandbox: SandboxConfig;
+  },
 ) {
+  const backend = useContentBackend(
+    props.sandbox.virtualMcpId,
+    props.sandbox.branch,
+  );
   const key = props.currentGlobalKey;
-  if (props.sandbox && key && isIndexStub(props.decofile?.[key])) {
+  if (backend.kind !== "legacy" && key && isIndexStub(props.decofile?.[key])) {
     return (
       <CmsBlockBoundary
         listing={props.decofile ?? {}}
@@ -219,4 +226,14 @@ export function VariantRuleEditor(
     );
   }
   return <LoadedVariantRuleEditor {...props} />;
+}
+
+export function VariantRuleEditor(
+  props: Parameters<typeof LoadedVariantRuleEditor>[0],
+) {
+  return props.sandbox ? (
+    <ConnectedVariantRuleEditor {...props} sandbox={props.sandbox} />
+  ) : (
+    <LoadedVariantRuleEditor {...props} />
+  );
 }
