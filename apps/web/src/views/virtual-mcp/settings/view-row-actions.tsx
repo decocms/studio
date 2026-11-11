@@ -4,6 +4,7 @@
  */
 
 import {
+  Activity,
   Beaker02,
   ClockRewind,
   ArrowUpRight,
@@ -12,12 +13,14 @@ import {
   CheckDone01,
   Columns03,
   DotsVertical,
+  Folder,
   Home02,
   Image01,
   Lightning01,
   Monitor01,
   Pin01,
   Server01,
+  Target04,
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -37,6 +40,9 @@ import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sid
 
 export function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
   if (viewId === "overview") return <Home02 size={16} />;
+  if (viewId === "context") return <Folder size={16} />;
+  if (viewId === "monitor") return <Activity size={16} />;
+  if (viewId === "plan") return <Target04 size={16} />;
   if (viewId === "reports") return <BarChartSquare02 size={16} />;
   if (viewId === "board") return <Columns03 size={16} />;
   if (viewId === "site-editor") return <Monitor01 size={16} />;

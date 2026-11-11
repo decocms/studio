@@ -15,11 +15,13 @@ import type { ComponentType, ReactNode } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sidebar-views";
+import type {
+  ProjectNavViewId,
+  ProjectSidebarViewId,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
 
-/** Board and Overview are places, not apps. Reports is a separate
- *  destination and stays launchable. */
-type LaunchableViewId = Exclude<ProjectSidebarViewId, "overview" | "board">;
+/** The top rows are places, not apps; Reports stays launchable. */
+type LaunchableViewId = Exclude<ProjectSidebarViewId, ProjectNavViewId>;
 
 /** `to` values are `PROJECT_ROUTE` literals, so a router rename fails to
  *  compile here. */

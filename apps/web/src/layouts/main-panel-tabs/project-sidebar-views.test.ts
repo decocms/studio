@@ -3,6 +3,7 @@ import { VirtualMcpSidebarViewSchema } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import {
   DEFAULT_PROJECT_SIDEBAR_VIEWS,
+  PROJECT_NAV_VIEW_IDS,
   PROJECT_SIDEBAR_VIEW_IDS,
   availableProjectSidebarViews,
   defaultMainViewAfterSidebarToggle,
@@ -17,6 +18,7 @@ import {
   projectSidebarViewUnavailable,
   resolveProjectMainViewContext,
   resolveProjectSidebarViews,
+  selectedProjectNavViews,
   selectedProjectSidebarViews,
   toggleProjectSidebarView,
   type ProjectNativeViewPresence,
@@ -32,6 +34,10 @@ const nativePresence = (
   calendar: present.includes("calendar"),
   experiments: present.includes("experiments"),
 });
+
+/** The Blocks site views a project that already saw the top rows is offered. */
+const blocksOffers = (seen: Array<"calendar" | "experiments"> = []) =>
+  offeredProjectSidebarViews([...PROJECT_NAV_VIEW_IDS, ...seen], true);
 
 describe("project sidebar views", () => {
   test("covers every persisted sidebar id but the retired apps, once", () => {
@@ -62,6 +68,9 @@ describe("project sidebar views", () => {
 
     expect(availableProjectSidebarViews(presence)).toEqual([
       "overview",
+      "context",
+      "monitor",
+      "plan",
       "reports",
       "board",
       "site-editor",
@@ -72,12 +81,12 @@ describe("project sidebar views", () => {
     ]);
   });
 
-  test("keeps only automations when a project has no source or native views", () => {
+  test("keeps the sourceless top rows and automations when a project has no source or native views", () => {
     expect(
       availableProjectSidebarViews(
         projectSidebarViewPresence(false, nativePresence([])),
       ),
-    ).toEqual(["automations"]);
+    ).toEqual(["context", "monitor", "plan", "automations"]);
   });
 
   test("keeps org destinations present while gating their project-scoped form", () => {
@@ -86,12 +95,20 @@ describe("project sidebar views", () => {
       availableProjectSidebarViews(
         projectMainViewPresence(null, false, native),
       ),
-    ).toEqual(["overview", "reports", "board", "automations"]);
+    ).toEqual([
+      "overview",
+      "context",
+      "monitor",
+      "plan",
+      "reports",
+      "board",
+      "automations",
+    ]);
     expect(
       availableProjectSidebarViews(
         projectMainViewPresence("vir_1", false, native),
       ),
-    ).toEqual(["automations"]);
+    ).toEqual(["context", "monitor", "plan", "automations"]);
   });
 
   test("uses the scoped project instead of the org shell for destination main views", () => {
@@ -114,7 +131,16 @@ describe("project sidebar views", () => {
           nativePresence([]),
         ),
       ),
-    ).toEqual(["overview", "reports", "board", "site-editor", "automations"]);
+    ).toEqual([
+      "overview",
+      "context",
+      "monitor",
+      "plan",
+      "reports",
+      "board",
+      "site-editor",
+      "automations",
+    ]);
   });
 
   test("reuses an agent-route shell and fails open while a destination scope resolves", () => {
@@ -160,7 +186,16 @@ describe("project sidebar views", () => {
         undefined,
         offeredProjectSidebarViews(undefined, true),
       ),
-    ).toEqual(["overview", "reports", "board", "site-editor", "calendar"]);
+    ).toEqual([
+      "overview",
+      "context",
+      "monitor",
+      "plan",
+      "reports",
+      "board",
+      "site-editor",
+      "calendar",
+    ]);
   });
 
   test("treats versioned null and empty selections as an explicit all-off", () => {
@@ -375,7 +410,16 @@ describe("Calendar on a Blocks (v8) site", () => {
         undefined,
         offeredProjectSidebarViews(undefined, true),
       ),
-    ).toEqual(["overview", "reports", "board", "site-editor", "calendar"]);
+    ).toEqual([
+      "overview",
+      "context",
+      "monitor",
+      "plan",
+      "reports",
+      "board",
+      "site-editor",
+      "calendar",
+    ]);
   });
 
   test("Calendar is absent where the site isn't v8, and needs a source", () => {
@@ -403,7 +447,7 @@ describe("Calendar added once to a Blocks site's saved list", () => {
   const saved = ["site-editor", "releases"] as const;
 
   test("a list saved before it was a default gets it on a Blocks site", () => {
-    const offered = offeredProjectSidebarViews(undefined, true);
+    const offered = blocksOffers();
     expect(offered).toEqual(["calendar", "experiments"]);
     expect(selectedProjectSidebarViews(saved, v8, 1, offered)).toEqual([
       "site-editor",
@@ -412,28 +456,24 @@ describe("Calendar added once to a Blocks site's saved list", () => {
   });
 
   test("never on a v7 site", () => {
-    expect(offeredProjectSidebarViews(undefined, false)).toEqual([]);
+    expect(offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, false)).toEqual([]);
     const v7 = projectSidebarViewPresence(true, nativePresence([]));
     expect(
       selectedProjectSidebarViews(
         saved,
         v7,
         1,
-        offeredProjectSidebarViews(undefined, false),
+        offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, false),
       ),
     ).toEqual(["site-editor"]);
   });
 
   test("once: after a save, hiding it sticks", () => {
     // The editor sees Calendar offered, and hides it.
-    const shown = effectiveProjectSidebarViews(
-      saved,
-      1,
-      offeredProjectSidebarViews(undefined, true),
-    );
+    const shown = effectiveProjectSidebarViews(saved, 1, blocksOffers());
     const next = toggleProjectSidebarView(shown, "calendar", false, 1);
-    const seen = seenProjectSidebarViewsAfterSave(undefined, true);
-    expect(seen).toEqual(["calendar", "experiments"]);
+    const seen = seenProjectSidebarViewsAfterSave(PROJECT_NAV_VIEW_IDS, true);
+    expect(seen).toEqual([...PROJECT_NAV_VIEW_IDS, "calendar", "experiments"]);
     // Read back: nothing is offered again, the saved list decides.
     const offered = offeredProjectSidebarViews(seen, true);
     expect(offered).toEqual([]);
@@ -443,12 +483,10 @@ describe("Calendar added once to a Blocks site's saved list", () => {
   });
 
   test("a save on a v7 site leaves it to offer once it becomes a Blocks site", () => {
-    expect(seenProjectSidebarViewsAfterSave(undefined, false)).toBeUndefined();
-    expect(seenProjectSidebarViewsAfterSave(null, false)).toBeNull();
-    expect(seenProjectSidebarViewsAfterSave(["calendar"], false)).toEqual([
-      "calendar",
-    ]);
-    expect(offeredProjectSidebarViews(["site-editor"], true)).toEqual([
+    const seen = seenProjectSidebarViewsAfterSave(undefined, false);
+    expect(seen).toEqual([...PROJECT_NAV_VIEW_IDS]);
+    expect(seenProjectSidebarViewsAfterSave(null, false)).toEqual(seen);
+    expect(offeredProjectSidebarViews(seen, true)).toEqual([
       "calendar",
       "experiments",
     ]);
@@ -494,6 +532,9 @@ describe("Experiments on a Blocks (v8) site", () => {
       ),
     ).toEqual([
       "overview",
+      "context",
+      "monitor",
+      "plan",
       "reports",
       "board",
       "site-editor",
@@ -510,7 +551,7 @@ describe("Experiments on a Blocks (v8) site", () => {
         ["site-editor", "experiments"],
         v7,
         1,
-        offeredProjectSidebarViews(undefined, false),
+        offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, false),
       ),
     ).toEqual(["site-editor"]);
     expect(
@@ -520,7 +561,7 @@ describe("Experiments on a Blocks (v8) site", () => {
   });
 
   test("offered once to a list that already saw Calendar", () => {
-    const offered = offeredProjectSidebarViews(["calendar"], true);
+    const offered = blocksOffers(["calendar"]);
     expect(offered).toEqual(["experiments"]);
     expect(
       selectedProjectSidebarViews(["site-editor"], v8, 1, offered),
@@ -528,8 +569,11 @@ describe("Experiments on a Blocks (v8) site", () => {
   });
 
   test("once: hidden after a save, it stays hidden", () => {
-    const seen = seenProjectSidebarViewsAfterSave(["calendar"], true);
-    expect(seen).toEqual(["calendar", "experiments"]);
+    const seen = seenProjectSidebarViewsAfterSave(
+      [...PROJECT_NAV_VIEW_IDS, "calendar"],
+      true,
+    );
+    expect(seen).toEqual([...PROJECT_NAV_VIEW_IDS, "calendar", "experiments"]);
     const offered = offeredProjectSidebarViews(seen, true);
     expect(offered).toEqual([]);
     expect(
@@ -551,5 +595,67 @@ describe("Experiments on a Blocks (v8) site", () => {
         siteAccess: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("a project's top rows", () => {
+  /** A list saved before the top rows could be hidden. */
+  const saved = ["site-editor", "automations"] as const;
+
+  test("every project is offered them once on top of its saved list", () => {
+    expect(offeredProjectSidebarViews(undefined, false)).toEqual([
+      ...PROJECT_NAV_VIEW_IDS,
+    ]);
+    expect([
+      ...selectedProjectNavViews(
+        { sidebarViews: [...saved], sidebarViewsVersion: 1 },
+        undefined,
+      ),
+    ]).toEqual([...PROJECT_NAV_VIEW_IDS]);
+  });
+
+  test("once: after a save, hiding one sticks", () => {
+    const shown = effectiveProjectSidebarViews(
+      saved,
+      1,
+      offeredProjectSidebarViews(undefined, false),
+    );
+    const next = toggleProjectSidebarView(shown, "overview", false, 1);
+    const metadata = {
+      sidebarViews: next,
+      sidebarViewsVersion: 1 as const,
+      sidebarViewsSeen: seenProjectSidebarViewsAfterSave(undefined, false),
+    };
+    expect([...selectedProjectNavViews(metadata, undefined)]).toEqual([
+      "context",
+      "monitor",
+      "plan",
+      "board",
+    ]);
+  });
+
+  test("follow an edit in flight before it is saved", () => {
+    expect([
+      ...selectedProjectNavViews(
+        { sidebarViews: [...saved], sidebarViewsVersion: 1 },
+        ["context", "board"],
+      ),
+    ]).toEqual(["context", "board"]);
+  });
+
+  test("all show until the project loads", () => {
+    expect([...selectedProjectNavViews(undefined, undefined)]).toEqual([
+      ...PROJECT_NAV_VIEW_IDS,
+    ]);
+  });
+
+  test("hiding Overview while it is the main view lands on Settings", () => {
+    expect(
+      defaultMainViewAfterSidebarToggle(
+        { type: "overview" },
+        "overview",
+        false,
+      ),
+    ).toEqual({ type: "settings" });
   });
 });
