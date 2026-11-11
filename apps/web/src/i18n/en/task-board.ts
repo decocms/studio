@@ -260,6 +260,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.assignButton": "Assign",
   "taskBoard.taskDialog.createdByLabel": "Created by",
   "taskBoard.taskDialog.createdByFeedbackLabel": "Feedback",
+  "taskBoard.taskDialog.createdByProblemReportLabel": "Problem report",
   "taskBoard.taskDialog.createdBySystemLabel": "Deco Score",
   "taskBoard.taskDialog.unknownCreatorLabel": "Unknown",
   "taskBoard.taskDialog.projectButton": "Select project",

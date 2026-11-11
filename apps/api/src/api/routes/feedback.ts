@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { FeedbackFields } from "./feedback-input";
 import {
-  FEEDBACK_TAG_NAME,
+  FEEDBACK_TAG_NAMES,
   FEEDBACK_MAX_SCREENSHOT_BYTES,
   FEEDBACK_MAX_SCREENSHOTS,
   FEEDBACK_SCREENSHOT_TYPES,
@@ -71,14 +71,16 @@ export const createFeedbackRoutes = () => {
       }
       if (
         [...form.keys()].some(
-          (key) => !["message", "pageUrl", "screenshot"].includes(key),
+          (key) => !["kind", "message", "pageUrl", "screenshot"].includes(key),
         ) ||
+        form.getAll("kind").length > 1 ||
         form.getAll("message").length !== 1 ||
         form.getAll("pageUrl").length !== 1
       ) {
         return c.json({ error: "Invalid feedback fields" }, 400);
       }
       const fields = FeedbackFields.safeParse({
+        kind: form.get("kind") ?? undefined,
         message: form.get("message"),
         pageUrl: form.get("pageUrl"),
       });
@@ -139,12 +141,14 @@ export const createFeedbackRoutes = () => {
         }
         const tag = await ctx.storage.tags.createTag(
           target.id,
-          FEEDBACK_TAG_NAME,
+          FEEDBACK_TAG_NAMES[fields.data.kind],
         );
+        const titlePrefix =
+          fields.data.kind === "problem" ? "Problem" : "Feedback";
         const item = await ctx.storage.taskBoard.create({
           organizationId: target.id,
           virtualMcpId: project.id,
-          title: `Feedback: ${fields.data.message.split("\n")[0]!.slice(0, 120)}`,
+          title: `${titlePrefix}: ${fields.data.message.split("\n")[0]!.slice(0, 120)}`,
           description: [
             fields.data.message,
             `Sender: ${user.id}`,

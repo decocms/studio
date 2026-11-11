@@ -8,7 +8,20 @@ describe("feedback fields", () => {
         message: " hello ",
         pageUrl: "https://example.com/chat?token=secret#private",
       }),
-    ).toEqual({ message: "hello", pageUrl: "https://example.com/chat" });
+    ).toEqual({
+      kind: "feedback",
+      message: "hello",
+      pageUrl: "https://example.com/chat",
+    });
+  });
+  test("accepts problem reports and rejects unknown kinds", () => {
+    const base = { message: "broken", pageUrl: "https://example.com" };
+    expect(FeedbackFields.parse({ ...base, kind: "problem" }).kind).toBe(
+      "problem",
+    );
+    for (const kind of ["", "bug", "PROBLEM"]) {
+      expect(FeedbackFields.safeParse({ ...base, kind }).success).toBe(false);
+    }
   });
   test("rejects empty, oversized and credential-bearing input", () => {
     for (const message of ["", "  ", "x".repeat(10_001)]) {

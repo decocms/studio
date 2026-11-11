@@ -1,7 +1,12 @@
 import { z } from "zod";
-import { FEEDBACK_MAX_MESSAGE_CHARS } from "@decocms/shared/feedback";
+import {
+  FEEDBACK_KINDS,
+  FEEDBACK_MAX_MESSAGE_CHARS,
+} from "@decocms/shared/feedback";
 
 export const FeedbackFields = z.object({
+  // Clients from before Report a problem send no kind.
+  kind: z.enum(FEEDBACK_KINDS).default("feedback"),
   message: z.string().trim().min(1).max(FEEDBACK_MAX_MESSAGE_CHARS),
   pageUrl: z
     .string()
