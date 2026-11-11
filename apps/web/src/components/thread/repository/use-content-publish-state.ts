@@ -11,14 +11,14 @@ import { skipToken, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys.ts";
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
-import { protocolMetaQueryKey } from "@/components/sections-editor/content-protocol-api.ts";
+import { protocolMetaQueryKey } from "@/cms/content-protocol-api.ts";
 import type { DecofileScopeParams } from "@/components/sections-editor/decofile-api.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema.ts";
 import {
   type ContentChanges,
   readContentChanges,
   useContentChangeSides,
-} from "@/components/sections-editor/content-changes.ts";
+} from "@/cms/content-changes.ts";
 import {
   summarizeContentChanges,
   type PublishChangeSummary,

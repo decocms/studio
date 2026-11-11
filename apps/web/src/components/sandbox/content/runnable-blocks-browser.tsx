@@ -147,8 +147,9 @@ export function RunnableBlocksBrowser({
   };
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver((blockKey, data) =>
-    saveBlock.mutate({ blockKey, data }),
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => saveBlock.mutate(write),
+    decofile,
   );
 
   const singular = runnableSingular(kind);
@@ -278,6 +279,7 @@ export function RunnableBlocksBrowser({
     const editorKey = `${target.mode}:${target.mode === "saved" ? target.blockKey : target.resolveType}`;
     return (
       <HeldBlockView
+        listing={decofile}
         key={editorKey}
         orgSlug={orgSlug}
         virtualMcpId={virtualMcpId}

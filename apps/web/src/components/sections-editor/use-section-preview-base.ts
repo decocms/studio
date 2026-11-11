@@ -1,7 +1,7 @@
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { resolveSectionPreviewBase } from "./section-preview-url";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { isProtocolProject } from "./content-backend";
 
 /**

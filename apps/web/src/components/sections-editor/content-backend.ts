@@ -13,7 +13,7 @@
  */
 
 import type { ContentClient, DescribeResult } from "@decocms/blocks/protocol";
-import type { HostedRpc } from "./hosted-content";
+import type { HostedRpc } from "@/cms/hosted-content";
 import { isLoopbackEndpoint, type ServeProblem } from "./deco-serve-connection";
 
 export type ContentSource = "github" | "local" | "sandbox";
@@ -42,13 +42,20 @@ export type ContentBackend =
    * failed before its first answer: the editor waits with a "can't reach
    * it, trying again" note.
    */
-  | { kind: "pending"; retrying?: "sandbox" }
+  | {
+      kind: "pending";
+      retrying?: "sandbox";
+      source?: ContentSource;
+      cacheKeySuffix?: string;
+    }
   | { kind: "legacy" }
   | ProtocolBackend
   /** A protocol endpoint that can't be reached right now. */
   | {
       kind: "unavailable";
       source: ContentSource;
+      /** Destination stays the same while an endpoint reconnects. */
+      cacheKeySuffix?: string;
       /** Why a `deco serve` can't be used (local only). */
       problem?: ServeProblem;
       /**
@@ -58,6 +65,36 @@ export type ContentBackend =
        */
       siteNotOwned?: true;
     };
+
+/** A storage destination is independent of its current connection status. */
+export function contentBackendDestination(
+  source: ContentSource,
+  endpoint = "",
+): Pick<ProtocolBackend, "source" | "cacheKeySuffix"> {
+  return {
+    source,
+    cacheKeySuffix:
+      source === "github"
+        ? ""
+        : source === "sandbox"
+          ? ":sandbox"
+          : `:serve:${endpoint}`,
+  };
+}
+
+export type ContentBackendIdentity = Pick<ContentBackend, "kind"> &
+  Partial<Pick<ProtocolBackend, "source" | "cacheKeySuffix">>;
+
+/** Availability changes do not move an editor to a different destination. */
+export function contentBackendScopeKey(
+  backend: ContentBackendIdentity,
+): string {
+  return JSON.stringify([
+    backend.kind === "legacy" ? "legacy" : "protocol",
+    backend.source,
+    backend.cacheKeySuffix,
+  ]);
+}
 
 /**
  * A content-protocol project, usable right now or not. The protocol never

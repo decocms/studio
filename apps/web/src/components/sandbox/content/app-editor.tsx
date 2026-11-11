@@ -47,6 +47,7 @@ type AppEditorProps = Parameters<typeof AppEditorForm>[0];
 export function AppEditor(props: AppEditorProps) {
   return (
     <HeldBlockView
+      listing={props.decofile}
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}
@@ -144,18 +145,17 @@ function AppEditorForm({
   );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   // Not debounced: the saved block's form reads its value from the decofile cache, which a delay leaves stale.
-  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
-    saveBlock.mutate(
-      { blockKey: refKey, data },
-      {
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) =>
+      saveBlock.mutate(write, {
         onError: (err) =>
           toast.error(
             t("sectionsEditor.sectionsEditor.saveFailed", {
               error: err.message,
             }),
           ),
-      },
-    ),
+      }),
+    decofile,
   );
 
   const [prevBlockKey, setPrevBlockKey] = useState(blockKey);

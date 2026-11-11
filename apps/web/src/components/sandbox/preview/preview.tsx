@@ -181,12 +181,12 @@ import {
   isProtocolProject,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import {
   useContentRevision,
   useProtocolDraftRead,
-} from "@/components/sections-editor/content-protocol-api";
+} from "@/cms/content-protocol-api";
 import {
   publishPreviewDraft,
   useHeldPreviewRevision,
@@ -2416,6 +2416,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {jsonPanelOpen && jsonBlockKey && (
               <div className="absolute inset-0 z-10">
                 <PageJsonPanel
+                  key={JSON.stringify([contentCacheKey, v8])}
                   ref={jsonPanelHandleRef}
                   virtualMcpId={virtualMcpId}
                   pageKey={jsonBlockKey}
@@ -2689,6 +2690,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       className="min-w-0 overflow-hidden"
                     >
                       <PageJsonPanel
+                        key={JSON.stringify([contentCacheKey, v8])}
                         ref={jsonPanelHandleRef}
                         virtualMcpId={virtualMcpId}
                         pageKey={jsonBlockKey}

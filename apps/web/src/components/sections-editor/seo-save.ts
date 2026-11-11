@@ -1,3 +1,4 @@
+import { useDecofileCacheKey } from "./use-decofile";
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import type { LiveMeta } from "./resolve-schema";
@@ -82,7 +83,7 @@ export function useSeoFormSave({
   onSaved,
 }: UseSeoFormSaveParams) {
   const queryClient = useQueryClient();
-  const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+  const cacheKey = useDecofileCacheKey({ orgSlug, virtualMcpId, branch });
   // The form keeps its own copy of the SEO values: hosted saves are
   // guarded by the copy the editor shows.
   const { save, flush, isPending, hold } = useDebouncedSaveBlock(

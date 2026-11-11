@@ -11,7 +11,7 @@
  * editor takes over (see `isNoSchemaMeta`).
  */
 
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   Check,
@@ -345,16 +345,21 @@ function SchemalessBlockEditor({
   block,
   onChange,
   onBack,
+  onOpenBlock,
 }: {
   blockKey: string;
   block: JsonRecord;
+  onOpenBlock?: (blockKey: string) => void;
   onChange: (blockKey: string, next: JsonRecord) => void;
   /** Shown as "All blocks" when the list isn't beside the editor. */
   onBack?: () => void;
 }) {
   const t = useT();
   // Seeded once: the editor is remounted (by `key`) for another block.
-  const [value, setValue] = useState<JsonRecord>(block);
+  const [value, setValue] = useState<JsonRecord>(() => {
+    onOpenBlock?.(blockKey);
+    return block;
+  });
   const [formKey, setFormKey] = useState(0);
   // `null`: the JSON view is closed. Monaco owns the text while it's open.
   const [jsonCode, setJsonCode] = useState<string | null>(null);
@@ -503,6 +508,7 @@ export function SchemalessContent({
   onChange,
   onLeaveBlock,
   onOpenBlock,
+  wrapEditor,
   copyEpochOf,
   site = null,
   initialKey = null,
@@ -517,6 +523,8 @@ export function SchemalessContent({
   onLeaveBlock?: () => void;
   /** Opening another block: its form is seeded from `decofile` now. */
   onOpenBlock?: (blockKey: string) => void;
+  /** The connected editor waits for the selected body's storage read. */
+  wrapEditor?: (blockKey: string, editor: ReactNode) => ReactNode;
   /**
    * How many times a block's copy was replaced under the form (a reconcile):
    * the open block's form is seeded again from `decofile` when it changes.
@@ -533,17 +541,8 @@ export function SchemalessContent({
   const select = (key: string | null) => {
     if (key === selected) return;
     onLeaveBlock?.();
-    if (key !== null) onOpenBlock?.(key);
     setSelected(key);
   };
-  // A reconcile replaced the open block's copy: its form is seeded again
-  // (keyed by the epoch below), from `decofile` now.
-  const selectedEpoch = selected ? (copyEpochOf?.(selected) ?? 0) : 0;
-  const [seededEpoch, setSeededEpoch] = useState(selectedEpoch);
-  if (seededEpoch !== selectedEpoch) {
-    setSeededEpoch(selectedEpoch);
-    if (selected !== null) onOpenBlock?.(selected);
-  }
   const block = selected ? decofile[selected] : undefined;
   const q = query.trim().toLowerCase();
   const groups = groupBlocksByType(decofile)
@@ -639,12 +638,13 @@ export function SchemalessContent({
     </nav>
   );
 
-  const editor =
+  const editorBody =
     selected && isRecord(block) ? (
       <SchemalessBlockEditor
         key={`${selected}:${copyEpochOf?.(selected) ?? 0}`}
         blockKey={selected}
         block={block}
+        onOpenBlock={onOpenBlock}
         onChange={onChange}
         onBack={compact ? () => select(null) : undefined}
       />
@@ -656,6 +656,8 @@ export function SchemalessContent({
       </div>
     );
 
+  const editor =
+    selected && wrapEditor ? wrapEditor(selected, editorBody) : editorBody;
   return (
     <div
       data-testid="schemaless-content"

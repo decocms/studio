@@ -1,10 +1,11 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { useEffect, useEffectEvent } from "react";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
 import {
   copyScope,
   useCopyEpochs,
 } from "@/components/sections-editor/held-copy";
-import { cmsSiteOf } from "@/components/sections-editor/cms-api";
+import { cmsSiteOf } from "@/cms/cms-api";
 import { useVirtualMCP } from "@/sdk";
 import { SchemalessContent } from "./schemaless-content";
 
@@ -51,6 +52,15 @@ export function SchemalessEditor({
       onChange={(blockKey, next) => save(blockKey, next)}
       onLeaveBlock={flush}
       onOpenBlock={hold}
+      wrapEditor={(blockKey, editor) => (
+        <CmsBlockBoundary
+          listing={decofile}
+          scope={{ orgSlug, virtualMcpId, branch }}
+          names={[blockKey]}
+        >
+          {editor}
+        </CmsBlockBoundary>
+      )}
       copyEpochOf={copyEpochOf}
       initialKey={initialKey}
       compact={compact}

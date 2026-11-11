@@ -6,7 +6,10 @@ import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { hasEditableDecoContent } from "@/components/sections-editor/page-list";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useDecofileCacheKey,
+} from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   lastPreviewPageKey,
@@ -25,7 +28,7 @@ import {
   isSiteNotOwned,
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { isNoSchemaMeta } from "@/components/sections-editor/schemaless";
@@ -80,6 +83,7 @@ export function BlocksPanel({
     : null;
   const contentBackend = useContentBackend(virtualMcpId, currentBranch);
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
+  const editorScope = useDecofileCacheKey(fetchParams);
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   const state = resolveBlocksTabState({
     lifecyclePhase: sandboxEvents.lifecycle.phase,
@@ -119,7 +123,7 @@ export function BlocksPanel({
       target?.kind === "page" || target?.kind === "section" ? target.key : null;
     return panel(
       <SchemalessEditor
-        key={initialKey ?? ""}
+        key={`${editorScope}:${initialKey ?? ""}`}
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}
@@ -153,6 +157,7 @@ export function BlocksPanel({
   if (target?.kind === "loader" && decofile.data && meta.data) {
     return editorPanel(
       <GlobalLoaderEditor
+        key={editorScope}
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}
@@ -199,7 +204,7 @@ export function BlocksPanel({
       }
     >
       <SectionsEditor
-        key={editorKey}
+        key={`${editorScope}:${editorKey}`}
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}

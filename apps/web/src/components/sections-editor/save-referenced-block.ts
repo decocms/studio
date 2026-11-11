@@ -5,12 +5,25 @@ export type ReferencedBlockSaveFn = (
   data: Record<string, unknown>,
 ) => void;
 
-/** Validates block keys before persisting nested saved-block references. */
+interface ReferencedBlockWrite {
+  blockKey: string;
+  data: Record<string, unknown>;
+  base: { value: unknown; fromCache: true };
+  create: boolean;
+}
+
+/** Guard nested edits by the listing copy their form used, not a later cache value. */
 export function createReferencedBlockSaver(
-  save: (blockKey: string, data: Record<string, unknown>) => void,
+  save: (write: ReferencedBlockWrite) => void,
+  blocks: Readonly<Record<string, unknown>>,
 ): ReferencedBlockSaveFn {
   return (blockKey, data) => {
     assertSafeDecoBlockKey(blockKey);
-    save(blockKey, data);
+    save({
+      blockKey,
+      data,
+      base: { value: blocks[blockKey], fromCache: true },
+      create: !Object.hasOwn(blocks, blockKey),
+    });
   };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
-import { neverPublishedBlock } from "./content-protocol-api";
+import { neverPublishedBlock } from "@/cms/content-protocol-api";
 
 const cacheKey = "acme:vm:draft";
 

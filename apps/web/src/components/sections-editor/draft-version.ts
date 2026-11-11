@@ -1,6 +1,8 @@
-import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
-import { cmsBlockVersion } from "./cms-api";
-import { isIndexStub } from "./hosted-content";
+import type { QueryClient } from "@tanstack/react-query";
+import type { ContentIndex } from "@/cms/hosted-content";
+import { KEYS } from "@/lib/query-keys";
+import { cmsBlockVersion } from "@/cms/cms-api";
+import { isBlockBody } from "@/cms/block-body";
 
 /**
  * A block's version in Studio's hosted draft, computed from the block
@@ -21,9 +23,10 @@ export function draftVersionOf(block: unknown): Promise<string> {
  * The `ifMatch` of a hosted save built on `copy`, a copy of a block whose
  * version the draft lists as `listed` (the index, or the draft's changes):
  * the copy's own content hash when the draft holds the block and there is a
- * loaded copy; otherwise `listed` as it is (unknown, `null` for "not in the
- * draft", the tombstone for a block the draft deletes, or the listed
- * version when there is no copy or only an index stub).
+ * loaded copy, including when the draft now deletes it. A copy absent from
+ * the draft can use `null` only when it still matches production (or the
+ * backend supplied no production index). A discarded draft copy or a copy
+ * of older production must be reconciled instead of guarded by current absence.
  *
  * Never the listed version for a copy: a poll puts someone else's version
  * in the index before their copy of the block is loaded (and never reloads a
@@ -34,9 +37,25 @@ export function draftVersionOf(block: unknown): Promise<string> {
 export async function copyDraftVersion(
   listed: string | null | undefined,
   copy: unknown,
+  productionVersion?: string | null,
 ): Promise<string | null | undefined> {
-  if (listed === undefined || listed === null) return listed;
-  if (listed === DRAFT_TOMBSTONE_VERSION) return listed;
-  if (copy === undefined || isIndexStub(copy)) return listed;
-  return draftVersionOf(copy);
+  if (listed === undefined || !isBlockBody(copy)) return listed;
+  if (listed === null && productionVersion === undefined) return null;
+  const version = await draftVersionOf(copy);
+  return listed === null && version === productionVersion ? null : version;
+}
+
+/** Production is the overlaid index only for names the draft does not hold.
+ * null means known absent; undefined means this read has no production version.
+ */
+export function cachedProductionVersion(
+  queryClient: QueryClient,
+  cacheKey: string,
+  blockKey: string,
+): string | null | undefined {
+  const index = queryClient.getQueryData<ContentIndex>(
+    KEYS.contentIndex(cacheKey),
+  );
+  if (!index || Object.hasOwn(index.draft, blockKey)) return undefined;
+  return index.entries[blockKey]?.version ?? null;
 }

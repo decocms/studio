@@ -1,3 +1,5 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
+import { isIndexStub } from "@/cms/block-body";
 import {
   MatcherPicker,
   type MatcherEntry,
@@ -22,7 +24,7 @@ import type { SandboxConfig } from "./fields/field-props";
  * section-variant rule editors. Caller owns the resolveType/formValue state
  * and any surrounding chrome (label, collapse toggle, disabled overlay).
  */
-export function VariantRuleEditor({
+function LoadedVariantRuleEditor({
   currentRt,
   currentLabel,
   currentGlobalKey,
@@ -199,4 +201,24 @@ export function VariantRuleEditor({
       )}
     </>
   );
+}
+
+export function VariantRuleEditor(
+  props: Parameters<typeof LoadedVariantRuleEditor>[0],
+) {
+  const t = useT();
+  const key = props.currentGlobalKey;
+  if (key && isIndexStub(props.decofile?.[key])) {
+    if (!props.sandbox) return <span>{t("common.loading")}</span>;
+    return (
+      <CmsBlockBoundary
+        listing={props.decofile ?? {}}
+        scope={props.sandbox}
+        names={[key]}
+      >
+        <LoadedVariantRuleEditor {...props} />
+      </CmsBlockBoundary>
+    );
+  }
+  return <LoadedVariantRuleEditor {...props} />;
 }

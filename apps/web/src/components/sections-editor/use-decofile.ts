@@ -1,11 +1,12 @@
+import { decofileCacheKey } from "@/cms/cache-key";
+import { useCmsBlocks } from "@/cms/use-blocks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type HostedBlocksLoad,
   listingOf,
   loadBlockBody,
   useContentIndex,
-  useEnsureHostedBlocks,
-} from "./hosted-content";
+} from "@/cms/hosted-content";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -26,12 +27,12 @@ import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 import { decofileErrorStatus } from "./decofile-read-status";
 import { usePackagePath } from "./use-package-path";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   pollProtocolContent,
   protocolUnavailableError,
   useRereadOnWriteElsewhere,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 
 interface UseDecofileParams {
   orgSlug: string;
@@ -42,42 +43,7 @@ interface UseDecofileParams {
   previewUrl?: string | null;
 }
 
-/**
- * The `KEYS.decofile` cache key. Local mode reads a different source (the
- * tunnel) than the branch's git/sandbox, so it gets its own key suffix —
- * shared with `useSaveBlock` so its optimistic writes land where the read
- * looks. Same string ⇒ shared cache; a Local edit never bleeds into the real
- * branch's decofile and vice-versa.
- */
-function decofileCacheKey(input: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  localPreviewUrl?: string | null;
-  /** A content-protocol backend's suffix (a `deco serve` endpoint), if any. */
-  protocolSuffix?: string | null;
-}): string {
-  const base = `${input.orgSlug}/${input.virtualMcpId}/${input.branch}`;
-  if (input.protocolSuffix) return `${base}${input.protocolSuffix}`;
-  return input.localPreviewUrl
-    ? `${base}:local:${input.localPreviewUrl}`
-    : base;
-}
-
-/**
- * The decofile cache key of a content-protocol backend's project (what
- * {@link useDecofileCacheKey} answers for it), for a reader that already
- * holds the backend.
- */
-export function protocolDecofileCacheKey(
-  params: { orgSlug: string; virtualMcpId: string; branch: string },
-  backend: { cacheKeySuffix: string },
-): string {
-  return decofileCacheKey({
-    ...params,
-    protocolSuffix: backend.cacheKeySuffix,
-  });
-}
+export { protocolDecofileCacheKey } from "@/cms/cache-key";
 
 /**
  * The decofile cache key for a project, given its content backend. Pass
@@ -90,7 +56,7 @@ export function useDecofileCacheKey(
   const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
   if (!params) return "";
-  return backend.kind === "protocol"
+  return backend.kind !== "legacy" && backend.cacheKeySuffix !== undefined
     ? decofileCacheKey({ ...params, protocolSuffix: backend.cacheKeySuffix })
     : decofileCacheKey({
         ...params,
@@ -315,12 +281,9 @@ export function useDecofile(
 export function useEnsureDecofileBlocks(
   params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
   names: readonly string[],
-  options?: { withRefs?: boolean },
+  options?: { withRefs?: boolean; listing?: Record<string, unknown> },
 ): HostedBlocksLoad {
-  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
-  const key = useDecofileCacheKey(params);
-  const rpc = backend.kind === "protocol" ? backend.hosted : undefined;
-  return useEnsureHostedBlocks(rpc, key, names, options);
+  return useCmsBlocks(params, names, options);
 }
 
 /**

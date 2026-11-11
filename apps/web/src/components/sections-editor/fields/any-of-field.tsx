@@ -1,3 +1,5 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
+import { isIndexStub } from "@/cms/block-body";
 import { useState, type ReactNode } from "react";
 import {
   ChevronDown,
@@ -195,7 +197,7 @@ function CollapsibleLoaderConfig({
   );
 }
 
-export function AnyOfField({
+function LoadedAnyOfField({
   schema,
   value,
   onChange,
@@ -709,4 +711,26 @@ export function AnyOfField({
       />
     </div>
   );
+}
+
+/** Saved references can be selected without their parent page referencing them yet. */
+export function AnyOfField(props: FieldProps) {
+  const t = useT();
+  const reference =
+    props.decofile && props.value
+      ? unwrapBlockReference(props.value, props.decofile)
+      : null;
+  if (reference && isIndexStub(reference.data)) {
+    if (!props.sandbox) return <span>{t("common.loading")}</span>;
+    return (
+      <CmsBlockBoundary
+        listing={props.decofile ?? {}}
+        scope={props.sandbox}
+        names={[reference.blockKey]}
+      >
+        <LoadedAnyOfField {...props} />
+      </CmsBlockBoundary>
+    );
+  }
+  return <LoadedAnyOfField {...props} />;
 }

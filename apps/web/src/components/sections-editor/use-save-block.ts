@@ -1,3 +1,4 @@
+import { cachedProductionVersion } from "./draft-version";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   notifyManager,
@@ -7,16 +8,17 @@ import {
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecofileCacheKey } from "./use-decofile";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   applyProtocolPatch,
+  protocolUnavailableError,
   draftCopiesNow,
   neverPublishedBlock,
   protocolMetaQueryKey,
   protocolBlockVersion,
   reloadProtocolBlock,
   rereadProtocolContent,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import {
   conflictFields,
   planFormConflict,
@@ -456,7 +458,12 @@ export function useSaveBlock(
     let ifMatch: Record<string, string | null> = create
       ? { [blockKey]: null }
       : shown
-        ? { [blockKey]: await heldCopyVersion(shown) }
+        ? {
+            [blockKey]: await heldCopyVersion(
+              shown,
+              cachedProductionVersion(queryClient, cacheKey, blockKey),
+            ),
+          }
         : await hostedIfMatch(
             ctx,
             [blockKey],
@@ -635,6 +642,9 @@ export function useSaveBlock(
       create = false,
       edit,
     }: SaveBlockVariables) => {
+      if (backend.kind === "pending" || backend.kind === "unavailable") {
+        throw protocolUnavailableError("CMS storage");
+      }
       // Fail closed before any write path: a raw secret must never be
       // persisted. A hosted save checks nothing (the site's CI runs `deco
       // check`); secrets live in the deploy platform there.

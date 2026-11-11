@@ -123,8 +123,10 @@ function RecordEditorForm({
   const customFields = blogCustomFieldsSchema(kind, meta, KNOWN_FIELDS[kind]);
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this record.
-  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
-    save.mutate({ blockKey: refKey, data }),
+  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => referenceSave.mutate(write),
+    decofile,
   );
 
   const [payload, setPayload] = useAutosave(
@@ -142,7 +144,10 @@ function RecordEditorForm({
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
         <span className="text-sm font-medium">{t(TITLE[kind])}</span>
-        <SaveStatus isPending={save.isPending} isError={save.isError} />
+        <SaveStatus
+          isPending={save.isPending || referenceSave.isPending}
+          isError={save.isError || referenceSave.isError}
+        />
       </div>
       <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
         <div className="mx-auto max-w-xl space-y-6">
@@ -229,6 +234,7 @@ function RecordEditorForm({
 export function RecordEditor(props: Parameters<typeof RecordEditorForm>[0]) {
   return (
     <HeldBlockView
+      listing={props.decofile}
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}

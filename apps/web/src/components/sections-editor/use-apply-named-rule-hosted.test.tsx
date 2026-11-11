@@ -11,9 +11,9 @@ import type {
 } from "@decocms/blocks/protocol";
 import type { ProtocolBackend } from "./content-backend";
 import { resetContentSync } from "./content-sync";
-import type { HostedCall } from "./hosted-content";
-import { isIndexStub } from "./hosted-content";
-import * as realBackend from "./use-content-backend";
+import type { HostedCall } from "@/cms/hosted-content";
+import { isIndexStub } from "@/cms/hosted-content";
+import * as realBackend from "@/cms/use-content-backend";
 import * as realDecofile from "./use-decofile";
 import * as realSessionRuntime from "@/hooks/use-session-runtime";
 import * as realLocalPreview from "@/hooks/use-local-preview-url";
@@ -145,7 +145,7 @@ const backend: ProtocolBackend = {
 };
 
 const restore = [
-  ["./use-content-backend", { ...realBackend }],
+  ["@/cms/use-content-backend", { ...realBackend }],
   ["./use-decofile", { ...realDecofile }],
   ["@/hooks/use-session-runtime", { ...realSessionRuntime }],
   ["@/hooks/use-local-preview-url", { ...realLocalPreview }],
@@ -153,7 +153,7 @@ const restore = [
 afterAll(() => {
   for (const [path, real] of restore) mock.module(path, () => real);
 });
-mock.module("./use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   ...realBackend,
   useContentBackend: () => backend,
 }));
