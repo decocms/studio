@@ -2902,3 +2902,94 @@ describe("resolveSchema – plain Section vs Section<T>", () => {
     ]);
   });
 });
+
+describe("resolveSchema – a loader that accepts its own return type", () => {
+  // `loader({ kits }: { kits: Kit[] }): Kit[]` lists itself as a source for `kits`.
+  const KITS = "site/loaders/Kits.tsx";
+  const OTHER = "site/loaders/OtherKits.tsx";
+  const loaderBranch = (rt: string, props: string) => ({
+    title: rt,
+    type: "object",
+    allOf: [{ $ref: `#/definitions/${props}` }],
+    required: ["__resolveType"],
+    properties: { __resolveType: { type: "string", enum: [rt], default: rt } },
+  });
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        loaders: {
+          [KITS]: { $ref: "#/definitions/KitsProps" },
+          [OTHER]: { $ref: "#/definitions/OtherProps" },
+        },
+        sections: {
+          "site/sections/Test.tsx": { $ref: "#/definitions/TestProps" },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        TestProps: {
+          type: "object",
+          properties: { kits: { $ref: "#/definitions/KitsSource" } },
+        },
+        KitsSource: {
+          title: "Kits",
+          anyOf: [
+            { $ref: "#/definitions/KitArray" },
+            loaderBranch(KITS, "KitsProps"),
+            loaderBranch(OTHER, "OtherProps"),
+          ],
+        },
+        KitsProps: {
+          type: "object",
+          properties: {
+            kits: {
+              title: "Kits",
+              anyOf: [
+                { $ref: "#/definitions/KitArray" },
+                loaderBranch(KITS, "KitsProps"),
+                loaderBranch(OTHER, "OtherProps"),
+              ],
+            },
+          },
+        },
+        OtherProps: {
+          type: "object",
+          properties: { count: { type: "number", title: "Count" } },
+        },
+        KitArray: { type: "array", items: { $ref: "#/definitions/Kit" } },
+        Kit: {
+          type: "object",
+          properties: { name: { type: "string", title: "Name" } },
+        },
+      },
+    },
+  };
+  const sources = (schema: SchemaProperty | null | undefined) =>
+    Object.fromEntries(
+      (schema?.properties?.kits?.loaderRef?.anyOfRefs ?? []).map((ref) => [
+        ref.resolveType,
+        ref.schema,
+      ]),
+    );
+
+  test("leaves its own branch to resolve on selection", () => {
+    const own = sources(resolveSchema(KITS, meta));
+    expect(Object.keys(own)).toEqual([KITS, OTHER]);
+    expect(own[KITS]).toBeUndefined();
+    expect(own[OTHER]?.properties?.count?.title).toBe("Count");
+  });
+
+  test("builds it once when another block lists it", () => {
+    const kits = sources(resolveSchema("site/sections/Test.tsx", meta))[KITS];
+    expect(kits?.properties?.kits?.items?.properties?.name?.title).toBe("Name");
+    expect(sources(kits)[KITS]).toBeUndefined();
+  });
+
+  test("selecting the lazy branch resolves the loader's full schema", () => {
+    const selected = resolveSchema(KITS, meta);
+    expect(selected?.properties?.kits?.items?.properties?.name?.title).toBe(
+      "Name",
+    );
+  });
+});

@@ -72,17 +72,16 @@ import {
 } from "./array-row";
 import { hasMissingRequiredField } from "../section-required-status";
 import { MissingRequiredMarker } from "../missing-required-marker";
-import { SchemaForm, renderField } from "../schema-form";
+import { SchemaField, SchemaForm } from "../schema-form";
 import {
   RequiredFieldProvider,
   useRequiredField,
 } from "./required-field-context";
-import { expandRecursiveSchema } from "./resolved-schema-cache";
 import {
-  resolveSchema,
-  type LiveMeta,
-  type SchemaProperty,
-} from "../resolve-schema";
+  cachedResolveSchema,
+  expandRecursiveSchema,
+} from "./resolved-schema-cache";
+import type { LiveMeta, SchemaProperty } from "../resolve-schema";
 
 /**
  * A default of `[]` is a NEW array on every render, so anything derived from
@@ -111,14 +110,14 @@ function itemEditorSchema(
   if (item != null && typeof item === "object" && !Array.isArray(item)) {
     const resolveType = (item as Record<string, unknown>).__resolveType;
     if (typeof resolveType === "string" && meta) {
-      const resolved = resolveSchema(resolveType, meta);
+      const resolved = cachedResolveSchema(resolveType, meta);
       if (resolved?.properties && Object.keys(resolved.properties).length > 0) {
         return resolved;
       }
     }
   }
   if (meta && containerResolveType && arrayFieldKey) {
-    const container = resolveSchema(containerResolveType, meta);
+    const container = cachedResolveSchema(containerResolveType, meta);
     const itemsSchema = container?.properties?.[arrayFieldKey]?.items;
     if (
       itemsSchema?.properties &&
@@ -497,15 +496,59 @@ export function ArrayField({
       : undefined;
 
   /**
-   * The editor for one item. `innerPath` is the trail below the item's own
-   * crumb, and `itemPrefix` the trail through it, which nested fields prepend
-   * their breadcrumb changes onto.
+   * Trail prefix through the open item's own crumb — the base that nested
+   * fields prepend their breadcrumb changes onto.
+   *
+   * Locate that crumb by INDEX (`selection.crumbIndex`), never by a label
+   * lookup: a churning or duplicate label matches the wrong crumb — a
+   * colliding sibling, or a same-labelled nested crumb — and strands the
+   * prefix, snapping the editor back to the item the open one was duplicated
+   * from. Refresh its label from `openItemLabelRef` (the fresh value stashed
+   * by `updateItem` this same edit, before the new value re-renders here) so
+   * the crumb tracks the item instead of freezing at its drill-in label.
    */
+  const openItemPrefix = (index: number): Crumb[] => {
+    if (!selection) {
+      return buildArrayDrillDownBreadcrumb(
+        breadcrumbPath,
+        label,
+        itemLabel(arrayItemDisplayValue(items[index], v8), index),
+        index,
+        drillDownOpts,
+      );
+    }
+    const prefix = breadcrumbPath.slice(0, selection.crumbIndex + 1);
+    const stashed = openItemLabelRef.current;
+    const freshLabel =
+      stashed?.path === path && stashed.index === index
+        ? stashed.label
+        : itemLabel(arrayItemDisplayValue(items[index], v8), index);
+    prefix[selection.crumbIndex] = withItemCrumbLabel(
+      prefix[selection.crumbIndex],
+      freshLabel,
+      index,
+    );
+    return prefix;
+  };
+
+  /** Trail prefix through an inline-expanded row's own crumb. */
+  const inlineItemPrefix = (index: number): Crumb[] =>
+    buildArrayDrillDownBreadcrumb(
+      breadcrumbPath,
+      label,
+      itemLabel(items[index], index),
+      index,
+      drillDownOpts,
+    );
+
+  /** The editor for one item; `innerPath` is the trail below its own crumb. */
   const renderItemEditor = (
     index: number,
     innerPath: Crumb[],
-    itemPrefix: () => Crumb[],
+    open: boolean,
   ) => {
+    const itemPrefix = () =>
+      open ? openItemPrefix(index) : inlineItemPrefix(index);
     const item = arrayItemDisplayValue(items[index], v8);
     const editorSchema = itemEditorSchema(
       item,
@@ -537,30 +580,31 @@ export function ArrayField({
         ) : editorSchema ? (
           // Reset the marker: an item's `required` is a null-hole guard, not a fill-me requirement (see RequiredFieldProvider).
           <RequiredFieldProvider required={false} invalid={false}>
-            {renderField({
-              schema: editorSchema,
-              value: item,
-              onChange: (val) => updateItem(index, val),
-              path: `${path}.${index}`,
+            <SchemaField
+              schema={editorSchema}
+              value={item}
+              onChange={(val) => updateItem(index, val)}
+              path={`${path}.${index}`}
               // An array item is never optional; clearing would leave a null hole.
-              required: true,
+              required
               // A mustache `title` is an item-label template, not a display label — use the resolved item label.
-              label:
+              label={
                 editorSchema.title && !editorSchema.title.includes("{{")
                   ? editorSchema.title
-                  : itemLabel(item, index),
-              breadcrumbPath: innerPath,
-              onBreadcrumbChange: (nextPath) => {
+                  : itemLabel(item, index)
+              }
+              breadcrumbPath={innerPath}
+              onBreadcrumbChange={(nextPath) => {
                 onBreadcrumbChange?.([...itemPrefix(), ...nextPath]);
-              },
-              meta,
-              decofile,
-              onSaveReferencedBlock,
-              previewBaseUrl,
-              onAddSectionItem,
-              onRequestAddSection,
-              sandbox,
-            })}
+              }}
+              meta={meta}
+              decofile={decofile}
+              onSaveReferencedBlock={onSaveReferencedBlock}
+              previewBaseUrl={previewBaseUrl}
+              onAddSectionItem={onAddSectionItem}
+              onRequestAddSection={onRequestAddSection}
+              sandbox={sandbox}
+            />
           </RequiredFieldProvider>
         ) : null}
       </div>
@@ -568,48 +612,7 @@ export function ArrayField({
   };
 
   if (selectedIndex !== null && selectedIndex < items.length) {
-    const item = arrayItemDisplayValue(items[selectedIndex], v8);
-    /**
-     * Trail prefix through the open item's own crumb — the base that nested
-     * fields prepend their breadcrumb changes onto.
-     *
-     * Locate that crumb by INDEX (`selection.crumbIndex`), never by a label
-     * lookup: a churning or duplicate label matches the wrong crumb — a
-     * colliding sibling, or a same-labelled nested crumb — and strands the
-     * prefix, snapping the editor back to the item the open one was duplicated
-     * from. Refresh its label from `openItemLabelRef` (the fresh value stashed
-     * by `updateItem` this same edit, before the new value re-renders here) so
-     * the crumb tracks the item instead of freezing at its drill-in label.
-     */
-    const arrayItemPrefix = () => {
-      if (!selection) {
-        return buildArrayDrillDownBreadcrumb(
-          breadcrumbPath,
-          label,
-          itemLabel(item, selectedIndex),
-          selectedIndex,
-          drillDownOpts,
-        );
-      }
-      const prefix = breadcrumbPath.slice(0, selection.crumbIndex + 1);
-      const stashed = openItemLabelRef.current;
-      const freshLabel =
-        stashed?.path === path && stashed.index === selectedIndex
-          ? stashed.label
-          : itemLabel(item, selectedIndex);
-      prefix[selection.crumbIndex] = withItemCrumbLabel(
-        prefix[selection.crumbIndex],
-        freshLabel,
-        selectedIndex,
-      );
-      return prefix;
-    };
-
-    return renderItemEditor(
-      selectedIndex,
-      selection?.innerPath ?? [],
-      arrayItemPrefix,
-    );
+    return renderItemEditor(selectedIndex, selection?.innerPath ?? [], true);
   }
 
   if (isNonArrayStoredValue(value)) {
@@ -747,15 +750,7 @@ export function ArrayField({
                         >
                           {inline &&
                             expandedEntryIds.has(entry.id) &&
-                            renderItemEditor(entry.index, [], () =>
-                              buildArrayDrillDownBreadcrumb(
-                                breadcrumbPath,
-                                label,
-                                itemLabel(item, entry.index),
-                                entry.index,
-                                drillDownOpts,
-                              ),
-                            )}
+                            renderItemEditor(entry.index, [], false)}
                         </SortableArrayRow>
                       );
                     });

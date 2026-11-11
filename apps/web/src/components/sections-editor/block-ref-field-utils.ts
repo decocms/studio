@@ -7,11 +7,8 @@ import {
   parseSavedBlockSchemaTitle,
   unionRefMatchesValue,
 } from "./block-type-utils";
-import {
-  resolveSchema,
-  type LiveMeta,
-  type SchemaProperty,
-} from "./resolve-schema";
+import { cachedResolveSchema } from "./fields/resolved-schema-cache";
+import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
 import { V8_MULTIVARIATE_RESOLVE_TYPE } from "./variant-shape";
 
 export type BlockRefOption = {
@@ -248,7 +245,7 @@ export function resolveNestedBlockRefSchema(
     return moduleRt.includes("/") ? null : (fallback ?? null);
   }
 
-  const resolved = resolveSchema(moduleRt, meta);
+  const resolved = cachedResolveSchema(moduleRt, meta);
   if (resolved) return resolved;
 
   if (moduleRt.includes("/")) return null;

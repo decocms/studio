@@ -10,6 +10,7 @@ import {
   CommandEmpty,
 } from "@decocms/ui/components/command.tsx";
 import { useT } from "@/i18n/use-t.ts";
+import { whilePending } from "@/lib/while-pending";
 import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
 import { MatcherIcon, resolveMatcherIconName } from "./matcher-icons";
 import { labelFromResolveType } from "./section-types";
@@ -261,12 +262,7 @@ export function MatcherPicker({
 
   const handlePick = async (pick: NamedRulePick) => {
     if (!named) return;
-    setPending(true);
-    try {
-      await named.onPick(pick);
-    } finally {
-      setPending(false);
-    }
+    await whilePending(setPending, () => named.onPick(pick));
     setOpen(false);
   };
   // A saved-block reference wins the trigger icon; otherwise fall back to the

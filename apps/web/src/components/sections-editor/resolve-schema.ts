@@ -168,6 +168,17 @@ const MAX_STRUCTURE_DEPTH = 32;
 const MAX_ANYOF_EAGER_SCHEMA_BRANCHES = 40;
 
 /**
+ * `seen` entry for a module whose schema is being built. A loader can accept
+ * its own return type (a list loader whose prop is that same list), and a
+ * matcher can nest its own registry. Each nested level would copy the whole
+ * schema again, so a module already on the stack is left lazy, like the
+ * branches over the width or depth caps.
+ */
+function moduleSeenKey(resolveType: string): string {
+  return `__resolveType:${resolveType}`;
+}
+
+/**
  * Definition key for the "pick any section" union (mirrors the meta composer's
  * `SECTION_REF_DEF_KEY`). Section-typed props (`children`, `fallback`, …) `$ref`
  * this; not every meta materializes the def, so {@link resolveSchema} falls back
@@ -638,6 +649,21 @@ function buildSchema(
         ? buildProperty(branch, branchDepth, unionSeen)
         : undefined;
 
+    /** {@link eagerBranchSchema} for a module branch; lazy if it is on the stack. */
+    const eagerModuleBranchSchema = (
+      resolveType: string,
+      branch: RawSchema,
+      branchDepth: number,
+      branchCount: number,
+    ): SchemaProperty | undefined => {
+      const key = moduleSeenKey(resolveType);
+      if (cyclicRef || unionSeen.has(key)) return undefined;
+      return branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES &&
+        branchDepth < MAX_BUILD_PROPERTY_DEPTH
+        ? buildProperty(branch, branchDepth, new Set([...unionSeen, key]))
+        : undefined;
+    };
+
     // Extract enum values from anyOf/oneOf const/enum branches
     let enumFromConsts: unknown[] | undefined;
     {
@@ -819,7 +845,12 @@ function buildSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
-              schema: eagerBranchSchema(branch, depth + 1, pickerBranches.size),
+              schema: eagerModuleBranchSchema(
+                rt,
+                branch,
+                depth + 1,
+                pickerBranches.size,
+              ),
             };
           });
 
@@ -866,7 +897,12 @@ function buildSchema(
                 typeof def.description === "string"
                   ? def.description
                   : undefined,
-              schema: eagerBranchSchema(def, depth + 1, nonNull.length),
+              schema: eagerModuleBranchSchema(
+                rt,
+                def,
+                depth + 1,
+                nonNull.length,
+              ),
             });
           }
 
@@ -1429,6 +1465,8 @@ function buildSchema(
 
   if ("ref" in target) return buildProperty({ $ref: target.ref });
 
+  const rootSeen = new Set([moduleSeenKey(target.resolveType)]);
+
   // deco wraps a block's config as
   //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},
   //     required:["__resolveType"] }
@@ -1473,7 +1511,7 @@ function buildSchema(
       // (`allOf` intersections and base-object-plus-extension shapes fall
       // through to the normal merge below.)
       if (!isChoiceUnion || def.properties) continue;
-      const built = buildProperty(def, 0);
+      const built = buildProperty(def, 0, rootSeen);
       if (built.type === "inline-union" && built.inlineUnionBranches) {
         const machineTitle = isMachineGeneratedTitle(built.title);
         return {
@@ -1498,7 +1536,7 @@ function buildSchema(
   const properties: Record<string, SchemaProperty> = {};
   for (const [key, raw] of Object.entries(topRaw)) {
     if (key.startsWith("__") || key === "@type") continue;
-    properties[key] = buildProperty(raw as RawSchema, 0);
+    properties[key] = buildProperty(raw as RawSchema, 0, rootSeen);
   }
 
   if (Object.keys(properties).length === 0) return null;
