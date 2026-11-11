@@ -41,13 +41,13 @@ import {
   lazyWrappedInner,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
+  valueForBranchSwitch,
   withBranchDiscriminator,
 } from "../block-ref-field-utils";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import { labelFromResolveType } from "../section-types";
 import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
-import type { SchemaProperty } from "../resolve-schema";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 
@@ -65,26 +65,6 @@ import { useT } from "@/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
 import { unwrapBlockReference } from "../unwrap-section";
-
-function defaultsForSchema(schema?: SchemaProperty): Record<string, unknown> {
-  if (!schema?.properties) return {};
-  const out: Record<string, unknown> = {};
-  for (const [key, prop] of Object.entries(schema.properties)) {
-    if (key.startsWith("__") || key === "@type") continue;
-    if (prop.default !== undefined) {
-      out[key] = prop.default;
-    } else if (prop.type === "boolean") {
-      out[key] = false;
-    } else if (prop.type === "string") {
-      out[key] = "";
-    } else if (prop.type === "number" || prop.type === "integer") {
-      out[key] = 0;
-    } else if (prop.type === "object") {
-      out[key] = {};
-    }
-  }
-  return out;
-}
 
 function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
   const t = useT();
@@ -323,27 +303,13 @@ export function AnyOfField({
     const handleRefChange = (rt: string) => {
       setSelectedRt(rt);
       const targetRef = refs.find((r) => r.resolveType === rt);
-      const resolvedTargetSchema = resolveNestedBlockRefSchema(
+      const next = valueForBranchSwitch(
+        targetRef,
+        rt,
+        value,
         editorValue,
         meta,
-        targetRef?.schema,
       );
-      const allowed = new Set(
-        Object.keys(
-          (resolvedTargetSchema ?? targetRef?.schema)?.properties ?? {},
-        ),
-      );
-      const existing =
-        value !== null && typeof value === "object" && !Array.isArray(value)
-          ? (value as Record<string, unknown>)
-          : {};
-      const filtered = Object.fromEntries(
-        Object.entries(existing).filter(([k]) => allowed.has(k)),
-      );
-      const next = {
-        ...defaultsForSchema(targetRef?.schema),
-        ...filtered,
-      };
 
       if (discriminatorKey) {
         const discValue = targetRef?.discriminatorValue ?? rt;

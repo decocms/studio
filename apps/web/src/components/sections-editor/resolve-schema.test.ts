@@ -2986,6 +2986,56 @@ describe("resolveSchema – a loader that accepts its own return type", () => {
     expect(sources(kits)[KITS]).toBeUndefined();
   });
 
+  test("keeps a generic flag nested in another instance of it eager", () => {
+    // `Flag<A>` and `Flag<string>` share a `__resolveType` but not a definition.
+    const FLAG = "website/flags/multivariate.ts";
+    const flagMeta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": { $ref: "#/definitions/TestProps" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          TestProps: {
+            type: "object",
+            properties: {
+              a: {
+                anyOf: [
+                  { $ref: "#/definitions/A" },
+                  loaderBranch(FLAG, "FlagOfA"),
+                ],
+              },
+            },
+          },
+          FlagOfA: {
+            type: "object",
+            properties: { value: { $ref: "#/definitions/A" } },
+          },
+          A: {
+            type: "object",
+            properties: {
+              title: {
+                anyOf: [{ type: "string" }, loaderBranch(FLAG, "FlagOfString")],
+              },
+            },
+          },
+          FlagOfString: {
+            type: "object",
+            properties: { value: { type: "string", title: "Value" } },
+          },
+        },
+      },
+    };
+    const outer = resolveSchema("site/sections/Test.tsx", flagMeta)?.properties
+      ?.a?.anyOfRefs?.[0]?.schema;
+    const inner =
+      outer?.properties?.value?.properties?.title?.anyOfRefs?.[0]?.schema;
+    expect(inner?.properties?.value?.title).toBe("Value");
+  });
+
   test("selecting the lazy branch resolves the loader's full schema", () => {
     const selected = resolveSchema(KITS, meta);
     expect(selected?.properties?.kits?.items?.properties?.name?.title).toBe(

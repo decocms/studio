@@ -168,14 +168,21 @@ const MAX_STRUCTURE_DEPTH = 32;
 const MAX_ANYOF_EAGER_SCHEMA_BRANCHES = 40;
 
 /**
- * `seen` entry for a module whose schema is being built. A loader can accept
- * its own return type (a list loader whose prop is that same list), and a
- * matcher can nest its own registry. Each nested level would copy the whole
- * schema again, so a module already on the stack is left lazy, like the
- * branches over the width or depth caps.
+ * The definition a module branch builds: its own `$ref`, or the sole `allOf`
+ * member deco wraps a block's props in. A loader can accept its own return
+ * type, so its branch points back at the block being built; keying the cycle
+ * guard on this definition (not the shared `__resolveType` of a generic flag)
+ * leaves exactly that re-entry lazy.
  */
-function moduleSeenKey(resolveType: string): string {
-  return `__resolveType:${resolveType}`;
+function branchDefinitionKey(branch: RawSchema): string | undefined {
+  const allOf = branch.allOf as RawSchema[] | undefined;
+  const ref =
+    typeof branch.$ref === "string"
+      ? branch.$ref
+      : allOf?.length === 1 && typeof allOf[0]?.$ref === "string"
+        ? allOf[0].$ref
+        : undefined;
+  return ref?.split("/").pop() || undefined;
 }
 
 /**
@@ -649,18 +656,24 @@ function buildSchema(
         ? buildProperty(branch, branchDepth, unionSeen)
         : undefined;
 
-    /** {@link eagerBranchSchema} for a module branch; lazy if it is on the stack. */
+    /** {@link eagerBranchSchema} for a module branch; lazy if its definition is on the stack. */
     const eagerModuleBranchSchema = (
-      resolveType: string,
+      definitionKey: string | undefined,
       branch: RawSchema,
       branchDepth: number,
       branchCount: number,
     ): SchemaProperty | undefined => {
-      const key = moduleSeenKey(resolveType);
-      if (cyclicRef || unionSeen.has(key)) return undefined;
+      if (!definitionKey) {
+        return eagerBranchSchema(branch, branchDepth, branchCount);
+      }
+      if (cyclicRef || unionSeen.has(definitionKey)) return undefined;
       return branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES &&
         branchDepth < MAX_BUILD_PROPERTY_DEPTH
-        ? buildProperty(branch, branchDepth, new Set([...unionSeen, key]))
+        ? buildProperty(
+            branch,
+            branchDepth,
+            new Set([...unionSeen, definitionKey]),
+          )
         : undefined;
     };
 
@@ -846,7 +859,7 @@ function buildSchema(
                   ? branch.description
                   : undefined,
               schema: eagerModuleBranchSchema(
-                rt,
+                branchDefinitionKey(branch),
                 branch,
                 depth + 1,
                 pickerBranches.size,
@@ -898,7 +911,7 @@ function buildSchema(
                   ? def.description
                   : undefined,
               schema: eagerModuleBranchSchema(
-                rt,
+                branchDefinitionKey(branch),
                 def,
                 depth + 1,
                 nonNull.length,
@@ -1465,7 +1478,8 @@ function buildSchema(
 
   if ("ref" in target) return buildProperty({ $ref: target.ref });
 
-  const rootSeen = new Set([moduleSeenKey(target.resolveType)]);
+  const rootDefinitionKey = branchDefinitionKey(blockSchema);
+  const rootSeen = new Set(rootDefinitionKey ? [rootDefinitionKey] : []);
 
   // deco wraps a block's config as
   //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},

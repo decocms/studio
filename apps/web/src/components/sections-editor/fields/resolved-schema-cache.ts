@@ -16,6 +16,24 @@ import {
  */
 const schemaCache = new WeakMap<LiveMeta, Map<string, SchemaProperty | null>>();
 
+// Every consumer shares the cached objects; freezing them in dev and tests
+// turns a mutation into a TypeError instead of a leak into other fields.
+const FREEZE_CACHED =
+  import.meta.env.DEV === true || import.meta.env.NODE_ENV === "test";
+
+function freezeShared<T>(value: T): T {
+  if (FREEZE_CACHED) deepFreeze(value);
+  return value;
+}
+
+function deepFreeze(value: unknown): void {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+    return;
+  }
+  Object.freeze(value);
+  for (const child of Object.values(value)) deepFreeze(child);
+}
+
 export function cachedResolveSchema(
   resolveType: string,
   meta: LiveMeta,
@@ -27,7 +45,7 @@ export function cachedResolveSchema(
   }
   let result = byResolveType.get(resolveType);
   if (result === undefined) {
-    result = resolveSchema(resolveType, meta);
+    result = freezeShared(resolveSchema(resolveType, meta));
     byResolveType.set(resolveType, result);
   }
   return result;
@@ -59,13 +77,13 @@ export function expandRecursiveSchema(
       schema.recursiveRef,
       meta,
     );
-    expanded = {
+    expanded = freezeShared({
       ...schema,
       properties,
       required,
       items,
       recursiveRef: undefined,
-    };
+    });
     expandedCache.set(schema, expanded);
   }
   return expanded;
@@ -90,7 +108,7 @@ export function fillDepthCappedBranches(
   let byFallback = filledCache.get(schema);
   let filled = byFallback?.get(fallback);
   if (!filled) {
-    filled = fillBranches(schema, fallback, 0);
+    filled = freezeShared(fillBranches(schema, fallback, 0));
     if (!byFallback) {
       byFallback = new WeakMap();
       filledCache.set(schema, byFallback);
