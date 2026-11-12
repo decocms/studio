@@ -180,9 +180,9 @@ export function useProjectViews({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
-  // A Blocks (v8) site: Experiments and Calendar are offered once on top of
-  // a list saved before they were defaults, until the next save.
-  const blocksSite = nativeViews.presence.calendar;
+  // Site views (Blocks' Calendar and Experiments, Hosting) are offered once
+  // on top of a list saved before they were defaults, until the next save.
+  const sitePresence = nativeViews.presence;
   const formSidebarViewsSeen = form.watch("metadata.sidebarViewsSeen");
   const formSidebarViews = effectiveProjectSidebarViews(
     resolveProjectSidebarViews({
@@ -190,7 +190,7 @@ export function useProjectViews({
       ui: { layout: layoutMeta },
     }),
     form.watch("metadata.sidebarViewsVersion"),
-    offeredProjectSidebarViews(formSidebarViewsSeen, blocksSite),
+    offeredProjectSidebarViews(formSidebarViewsSeen, sitePresence),
   );
   /**
    * A Settings panel can remount while its previous instance is still saving.
@@ -205,7 +205,7 @@ export function useProjectViews({
           virtualMcp.metadata.sidebarViewsVersion,
           offeredProjectSidebarViews(
             virtualMcp.metadata.sidebarViewsSeen,
-            blocksSite,
+            sitePresence,
           ),
         )
       : formSidebarViews);
@@ -407,7 +407,7 @@ export function useProjectViews({
       "metadata.sidebarViewsSeen",
       seenProjectSidebarViewsAfterSave(
         virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
-        blocksSite,
+        sitePresence,
       ),
       { shouldDirty: true },
     );
