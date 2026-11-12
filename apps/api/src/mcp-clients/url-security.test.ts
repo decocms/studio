@@ -62,6 +62,20 @@ describe("isPrivateUrl", () => {
     expect(isPrivateUrl("http://8.8.8.8/")).toBe(false);
     expect(isPrivateUrl("http://[::8.8.8.8]/")).toBe(false);
   });
+
+  it("blocks non-http(s) schemes that would otherwise slip past the host check", () => {
+    // file:/data: carry no host, so the private-IP checks never fire for them.
+    expect(isPrivateUrl("file:///etc/passwd")).toBe(true);
+    expect(isPrivateUrl("file:///flag")).toBe(true);
+    expect(isPrivateUrl("data:text/plain,hi")).toBe(true);
+    expect(isPrivateUrl("gopher://example.com/")).toBe(true);
+    expect(isPrivateUrl("ftp://example.com/x")).toBe(true);
+  });
+
+  it("still allows http and https", () => {
+    expect(isPrivateUrl("http://example.com/")).toBe(false);
+    expect(isPrivateUrl("https://example.com/mcp")).toBe(false);
+  });
 });
 
 describe("resolvesToPrivateAddress", () => {
