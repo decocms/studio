@@ -13,7 +13,7 @@
  * and compares the same.
  */
 
-import { isOutdatedServerError } from "./content-changes";
+import { isOutdatedServerError } from "@/cms/content-changes";
 import { ContentProtocolError, ErrorCode } from "@decocms/blocks/protocol";
 import { z } from "zod";
 

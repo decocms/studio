@@ -15,8 +15,8 @@ import {
   pollProtocolContent,
   protocolBlockVersion,
   reloadProtocolBlock,
-} from "./content-protocol-api";
-import { readContentChanges } from "./content-changes";
+} from "@/cms/content-protocol-api";
+import { readContentChanges } from "@/cms/content-changes";
 import { decofileWriteMutationKey } from "./decofile-api";
 import { resetContentSync } from "./content-sync";
 

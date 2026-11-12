@@ -549,6 +549,18 @@ export const auth = betterAuth({
     enabled: !settings.disableRateLimit,
     window: 60,
     max: 10000, // Very high limit as fallback
+    // Tighten email-send + reset/OTP endpoints the default special rules (sign-in/sign-up/change-*) miss, so the high global fallback can't bomb emails or brute reset/OTP codes.
+    customRules: {
+      "/request-password-reset": { window: 60, max: 5 },
+      "/reset-password": { window: 60, max: 10 },
+      "/email-otp/send-verification-otp": { window: 60, max: 5 },
+      "/email-otp/request-password-reset": { window: 60, max: 5 },
+      "/email-otp/reset-password": { window: 60, max: 10 },
+      "/email-otp/verify-email": { window: 60, max: 10 },
+      "/sign-in/email-otp": { window: 60, max: 10 },
+      "/sign-in/magic-link": { window: 60, max: 5 },
+      "/two-factor/send-otp": { window: 60, max: 5 },
+    },
   },
 
   plugins,

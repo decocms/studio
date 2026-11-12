@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { neverPublishedBlock } from "./content-protocol-api";
-import { useContentBackend } from "./use-content-backend";
+import { neverPublishedBlock } from "@/cms/content-protocol-api";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { protocolDecofileCacheKey } from "./use-decofile";
 
 /**

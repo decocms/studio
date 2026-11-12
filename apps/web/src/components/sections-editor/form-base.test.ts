@@ -368,7 +368,20 @@ describe("formSaveGuard on a hosted v8 draft", () => {
     expect(formBase.version).toBe("own-2");
   });
 
-  it("main's copy, a block the draft deletes, an unknown version: as the draft lists it", async () => {
+  it("a frozen null form guard cannot overwrite moved production", async () => {
+    const guard = formSaveGuard({
+      formBase: { ...base(), version: null },
+      rebased: false,
+      versionOf: () => null,
+      copy: { value: shown },
+      productionVersionOf: () => "new-production-version",
+    });
+    expect(await guard.ifMatch("Hero")).toEqual({
+      Hero: await draftVersionOf(shown),
+    });
+  });
+
+  it("keeps unknown/main guards and refuses a loaded copy deleted from the draft", async () => {
     const guardFor = (listed: string | null | undefined, value: unknown) =>
       formSaveGuard({
         formBase: base(),
@@ -378,7 +391,7 @@ describe("formSaveGuard on a hosted v8 draft", () => {
       }).ifMatch("Hero");
     expect(await guardFor(null, shown)).toEqual({ Hero: null });
     expect(await guardFor(DRAFT_TOMBSTONE_VERSION, shown)).toEqual({
-      Hero: DRAFT_TOMBSTONE_VERSION,
+      Hero: await draftVersionOf(shown),
     });
     expect(await guardFor(undefined, shown)).toBeUndefined();
     // No copy held (gone from the cache): the draft's version as listed.

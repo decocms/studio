@@ -14,8 +14,11 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { useContentBackend } from "./use-content-backend";
-import { applyProtocolPatch } from "./content-protocol-api";
+import { useContentBackend } from "@/cms/use-content-backend";
+import {
+  applyProtocolPatch,
+  protocolUnavailableError,
+} from "@/cms/content-protocol-api";
 import { applyHostedChange, HostedKeptTheirsError } from "./hosted-reconcile";
 import { toastKeptTheirs } from "./site-editor-toast";
 import { type KeptTheirVersion, keptTheirVersion } from "./use-save-block";
@@ -116,6 +119,9 @@ export function useDeleteBlock({
     }: DeleteBlockVariables): Promise<
       { ok: true; existed: boolean } | KeptTheirVersion
     > => {
+      if (backend.kind === "pending" || backend.kind === "unavailable") {
+        throw protocolUnavailableError("CMS storage");
+      }
       // Hosted v8: guarded by the draft's version of the block; someone
       // else's change meanwhile asks "Delete anyway" / "Keep their version"
       // (hosted-reconcile.ts). A block the draft already deletes is done.

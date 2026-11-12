@@ -1,4 +1,4 @@
-import { useContentBackend } from "../use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useT } from "@/i18n/use-t.ts";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";

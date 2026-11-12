@@ -1,3 +1,4 @@
+import { hostedChangeBase } from "./hosted-change-base";
 /**
  * The editor's reads and writes over the content protocol. The data hooks
  * (`useDecofile`, `useLiveMeta`, the write hooks) call these when the project
@@ -17,7 +18,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { ServeLostError } from "./serve-save-error";
+import { ServeLostError } from "@/components/sections-editor/serve-save-error";
 import {
   ContentProtocolError,
   ErrorCode,
@@ -34,29 +35,35 @@ import {
 } from "@decocms/shared/blocks-major";
 import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
-import { cmsBlockVersion, cmsSiteOf, ensureCmsDraft } from "./cms-api";
-import { rememberConflictEditor } from "./conflict-editor";
-import { keepContentBookkeeping } from "./content-bookkeeping";
+import { cmsBlockVersion, cmsSiteOf, ensureCmsDraft } from "@/cms/cms-api";
+import { rememberConflictEditor } from "@/components/sections-editor/conflict-editor";
+import { keepContentBookkeeping } from "@/components/sections-editor/content-bookkeeping";
 import {
   adoptChangesList,
   type ContentChanges,
   changesListParams,
   isOutdatedServerError,
-} from "./content-changes";
-import { externalContentChange, runContentChange } from "./content-sync";
-import { onContentWrittenElsewhere } from "./content-writes-channel";
+} from "@/cms/content-changes";
+import {
+  externalContentChange,
+  runContentChange,
+} from "@/components/sections-editor/content-sync";
+import { onContentWrittenElsewhere } from "@/components/sections-editor/content-writes-channel";
 import {
   blockKeysOfWrite,
   mergePolledBlocks,
   type ProtocolBackend,
-} from "./content-backend";
+} from "@/components/sections-editor/content-backend";
 import {
   type DecofilePatchBody,
   type DecofileScopeParams,
   decofileWriteMutationKey,
-} from "./content-write-keys";
-import type { LiveMeta } from "./resolve-schema";
-import { isSchemaAbsent, noSchemaMeta } from "./schemaless";
+} from "@/components/sections-editor/content-write-keys";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import {
+  isSchemaAbsent,
+  noSchemaMeta,
+} from "@/components/sections-editor/schemaless";
 import {
   adoptDraftCopyIntoIndex,
   adoptSaveIntoIndex,
@@ -66,7 +73,7 @@ import {
   ensureHostedBlocks,
   type HostedRpc,
   stubNames,
-} from "./hosted-content";
+} from "@/cms/hosted-content";
 
 /**
  * The read error while a protocol backend can't be used; the 502 keeps the
@@ -293,11 +300,13 @@ function adoptHostedSave(
   const listedBefore = queryClient.getQueryData<ContentChanges>(
     KEYS.contentChanges(cacheKey),
   );
+  const index = queryClient.getQueryData<ContentIndex>(
+    KEYS.contentIndex(cacheKey),
+  );
   /** Names the save answers whose "before" is no block (main lacks them). */
   const mainLess = new Set(
     answered.flatMap(([name]) => {
-      const had = listedBefore ? draftChangeOf(listedBefore, name) : undefined;
-      const baseVersion = had ? had.baseVersion : (versions?.[name] ?? null);
+      const baseVersion = hostedChangeBase(name, index, listedBefore, versions);
       return baseVersion === null ? [name] : [];
     }),
   );
@@ -313,8 +322,7 @@ function adoptHostedSave(
       if (!listed) return listed;
       const changes = { ...listed.changes };
       for (const [name, version] of answered) {
-        const had = draftChangeOf(listed, name);
-        const baseVersion = had ? had.baseVersion : (versions?.[name] ?? null);
+        const baseVersion = hostedChangeBase(name, index, listed, versions);
         if (version !== null) {
           changes[name] = { kind: "set", version, baseVersion };
         } else if (baseVersion !== null) {
@@ -430,7 +438,22 @@ export interface ProtocolContent {
   meta: LiveMeta | ContentProtocolError;
 }
 
-const inFlight = new Map<string, Promise<ProtocolContent>>();
+const readsByClient = new WeakMap<
+  QueryClient,
+  {
+    inFlight: Map<string, Promise<ProtocolContent>>;
+    rereading: Set<string>;
+  }
+>();
+
+function readsFor(queryClient: QueryClient) {
+  let reads = readsByClient.get(queryClient);
+  if (!reads) {
+    reads = { inFlight: new Map(), rereading: new Set() };
+    readsByClient.set(queryClient, reads);
+  }
+  return reads;
+}
 
 /**
  * One poll: `blocks.list` and `schema.get` in one request. Updates both the
@@ -443,14 +466,15 @@ export function pollProtocolContent(
   params: DecofileScopeParams,
   cacheKey: string,
 ): Promise<ProtocolContent> {
+  const { inFlight } = readsFor(queryClient);
   const running = inFlight.get(cacheKey);
   if (running) return running;
   const poll = readContent(queryClient, backend, params, cacheKey, true);
   inFlight.set(cacheKey, poll);
-  return poll.finally(() => inFlight.delete(cacheKey));
+  return poll.finally(() => {
+    if (inFlight.get(cacheKey) === poll) inFlight.delete(cacheKey);
+  });
 }
-
-const rereading = new Set<string>();
 
 /**
  * Reads the content again as soon as another view of this draft in the
@@ -470,6 +494,7 @@ export function useRereadOnWriteElsewhere(
   useEffect(() => {
     if (!backend || !orgSlug || !virtualMcpId || !branch) return;
     const scope = { orgSlug, virtualMcpId, branch };
+    const { rereading } = readsFor(queryClient);
     return onContentWrittenElsewhere((written) => {
       if (written !== cacheKey) return;
       // Every view of the draft in this page shares one read.
@@ -495,7 +520,7 @@ export async function rereadProtocolContent(
   params: DecofileScopeParams,
   cacheKey: string,
 ): Promise<ProtocolContent> {
-  const running = inFlight.get(cacheKey);
+  const running = readsFor(queryClient).inFlight.get(cacheKey);
   if (running) await running.catch(() => {});
   return pollProtocolContent(queryClient, backend, params, cacheKey);
 }
@@ -1179,8 +1204,12 @@ function adoptRefusedDraftBlock(
   const listed = queryClient.getQueryData<ContentChanges>(
     KEYS.contentChanges(cacheKey),
   );
-  const had = listed ? draftChangeOf(listed, blockKey) : undefined;
-  const baseVersion = had ? had.baseVersion : (versions?.[blockKey] ?? null);
+  const baseVersion = hostedChangeBase(
+    blockKey,
+    queryClient.getQueryData<ContentIndex>(KEYS.contentIndex(cacheKey)),
+    listed,
+    versions,
+  );
   if (listed) {
     const key = spellingKey(blockKey);
     const changes = Object.fromEntries(

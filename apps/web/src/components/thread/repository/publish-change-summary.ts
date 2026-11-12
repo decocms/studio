@@ -20,7 +20,7 @@ import { isLazyWrapper } from "@/components/sections-editor/lazy-value";
 import { isLazyResolveType } from "@/components/sections-editor/section-lazy";
 import { labelFromResolveType } from "@/components/sections-editor/section-types";
 import { isMultivariateResolveType } from "@/components/sections-editor/variant-shape";
-import type { ContentChangeSides } from "@/components/sections-editor/content-changes";
+import type { ContentChangeSides } from "@/cms/content-changes";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   type NamedRuleKind,

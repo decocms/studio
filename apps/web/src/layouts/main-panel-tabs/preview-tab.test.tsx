@@ -49,7 +49,7 @@ mock.module("@/lib/agent-capabilities", () => ({
 mock.module("@/hooks/use-deco-serve-connection", () => ({
   useDecoServeConnection: () => ({ connection: refs.connection }),
 }));
-mock.module("@/components/sections-editor/use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   useContentBackend: () => refs.backend,
 }));
 mock.module("@/hooks/use-local-app-reachable", () => ({

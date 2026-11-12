@@ -24,8 +24,8 @@
 
 import { useSyncExternalStore } from "react";
 import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
-import type { DraftCopies } from "./content-protocol-api";
-import { draftVersionOf } from "./draft-version";
+import type { DraftCopies } from "@/cms/content-protocol-api";
+import { copyDraftVersion, draftVersionOf } from "./draft-version";
 
 /** A block's copy as an editor shows it. */
 export interface HeldCopy {
@@ -33,18 +33,27 @@ export interface HeldCopy {
   value: unknown;
   /**
    * Whether the draft held this copy when the editor took it. False: the
-   * copy is main's, guarded "must not exist in the draft" (`null`).
+   * copy is main's; its absence guard is valid while production still
+   * matches that copy.
    */
   inDraft: boolean;
 }
 
 /**
  * The `ifMatch` of a save built on `copy`: the draft's version of exactly
- * that copy (its content hash), `null` for main's copy, the tombstone's for
+ * that copy (its content hash), `null` for a main copy still matching
+ * production, the tombstone's for
  * a block the draft deleted before the editor held any copy of it.
  */
-export async function heldCopyVersion(copy: HeldCopy): Promise<string | null> {
-  if (!copy.inDraft) return null;
+export async function heldCopyVersion(
+  copy: HeldCopy,
+  productionVersion?: string | null,
+): Promise<string | null> {
+  if (!copy.inDraft) {
+    return (
+      (await copyDraftVersion(null, copy.value, productionVersion)) ?? null
+    );
+  }
   if (copy.value === undefined) return DRAFT_TOMBSTONE_VERSION;
   return draftVersionOf(copy.value);
 }

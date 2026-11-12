@@ -20,9 +20,9 @@ import { activeSeoResolveType, useSeoFormSave } from "./seo-save";
 import { copyScope, useCopyEpochs } from "./held-copy";
 import { SeoPreview } from "./seo-preview";
 import { isProtocolProject } from "./content-backend";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useEnsureDecofileBlocks } from "./use-decofile";
-import type { HostedBlocksLoad } from "./hosted-content";
+import type { HostedBlocksLoad } from "@/cms/hosted-content";
 
 export type { SeoTarget } from "./seo-block";
 

@@ -94,7 +94,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { HeldBlockView } from "../held-block-view";
 import { deleteConfirmKey } from "../delete-copy";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 
 type ExtraProp = { key: string; value: string };
 
@@ -213,8 +213,11 @@ function PostEditorForm({
 
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this post.
-  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
-    save.mutate({ blockKey: refKey, data }),
+  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => (save.v8 ? referenceSave : save).mutate(write),
+    decofile,
+    save.v8,
   );
 
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
@@ -282,8 +285,12 @@ function PostEditorForm({
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-8 py-3">
           <div className="flex items-center gap-3">
             <SaveStatus
-              isPending={save.isPending || saveScheduled}
-              isError={save.isError}
+              isPending={
+                save.isPending ||
+                (save.v8 && referenceSave.isPending) ||
+                saveScheduled
+              }
+              isError={save.isError || (save.v8 && referenceSave.isError)}
             />
             {hasErrors && (
               <Tooltip>
@@ -967,6 +974,7 @@ function RelationSelect({
 export function PostEditor(props: Parameters<typeof PostEditorForm>[0]) {
   return (
     <HeldBlockView
+      listing={props.decofile}
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}
