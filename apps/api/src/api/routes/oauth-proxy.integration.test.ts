@@ -89,6 +89,43 @@ async function skipIfUpstreamUnreachable(
   return false;
 }
 
+/**
+ * Issue a proxy request, but treat a hung upstream as "unreachable" (skip)
+ * rather than letting the request exceed the per-test timeout and hard-fail.
+ * The proxy retries metadata fetches (3 attempts x 4s), so two sequential
+ * discovery fetches against a stalled provider can outlast E2E_TIMEOUT before
+ * the handler can return its own 502. Returns "skip" when the request exceeds
+ * the budget or the proxy reports the upstream unreachable; otherwise the
+ * Response.
+ */
+async function requestOrSkip(
+  path: string,
+  serverName: string,
+  init?: RequestInit,
+): Promise<Response | "skip"> {
+  const budgetMs = E2E_TIMEOUT - 3_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), budgetMs);
+  });
+  let res: Response | "timeout";
+  try {
+    res = await Promise.race([app.request(path, init), budget]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  if (res === "timeout") {
+    console.warn(
+      `[oauth-proxy.e2e] ${serverName}: no response within ${budgetMs}ms — skipping contract assertions for this server`,
+    );
+    return "skip";
+  }
+  if (await skipIfUpstreamUnreachable(res, serverName)) {
+    return "skip";
+  }
+  return res;
+}
+
 /** MCP servers that support OAuth - all should pass OAuth discovery tests */
 const MCP_SERVERS = [
   { url: "https://mcp.stripe.com/", name: "Stripe" },
@@ -215,10 +252,11 @@ describe("MCP OAuth Proxy E2E", () => {
         `${server.name} - discovery and URL rewriting`,
         async () => {
           const connectionId = connectionMap.get(server.url)!;
-          const res = await app.request(
+          const res = await requestOrSkip(
             `/.well-known/oauth-protected-resource/mcp/${connectionId}`,
+            server.name,
           );
-          if (await skipIfUpstreamUnreachable(res, server.name)) return;
+          if (res === "skip") return;
 
           expect(res.status).toBe(200);
 
@@ -246,10 +284,11 @@ describe("MCP OAuth Proxy E2E", () => {
         `${server.name} - discovery and endpoint rewriting`,
         async () => {
           const connectionId = connectionMap.get(server.url)!;
-          const res = await app.request(
+          const res = await requestOrSkip(
             `/.well-known/oauth-authorization-server/oauth-proxy/${connectionId}`,
+            server.name,
           );
-          if (await skipIfUpstreamUnreachable(res, server.name)) return;
+          if (res === "skip") return;
 
           expect(res.status).toBe(200);
 
@@ -282,11 +321,12 @@ describe("MCP OAuth Proxy E2E", () => {
         `${server.name} - must redirect, not proxy HTML`,
         async () => {
           const connectionId = connectionMap.get(server.url)!;
-          const res = await app.request(
+          const res = await requestOrSkip(
             `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test`,
+            server.name,
             { redirect: "manual" },
           );
-          if (await skipIfUpstreamUnreachable(res, server.name)) return;
+          if (res === "skip") return;
 
           // Must be a redirect (302)
           expect(res.status).toBe(302);
@@ -311,11 +351,12 @@ describe("MCP OAuth Proxy E2E", () => {
           const connectionId = connectionMap.get(server.url)!;
           // Pass a proxy resource URL - this is what clients send
           const proxyResourceUrl = `http://localhost/mcp/${connectionId}`;
-          const res = await app.request(
+          const res = await requestOrSkip(
             `/oauth-proxy/${connectionId}/authorize?response_type=code&client_id=test&state=test&resource=${encodeURIComponent(proxyResourceUrl)}`,
+            server.name,
             { redirect: "manual" },
           );
-          if (await skipIfUpstreamUnreachable(res, server.name)) return;
+          if (res === "skip") return;
 
           expect(res.status).toBe(302);
 
