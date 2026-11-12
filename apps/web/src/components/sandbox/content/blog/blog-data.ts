@@ -66,6 +66,10 @@ export const BLOG_SINGULAR: Record<BlogKind, string> = {
   categories: "category",
 };
 
+export function isBlogKind(id: string): id is BlogKind {
+  return (BLOG_KINDS as readonly string[]).includes(id);
+}
+
 /** Wrapper field that holds the editable payload for each loader block. */
 export const WRAPPER_KEY: Record<BlogKind, "post" | "author" | "category"> = {
   posts: "post",

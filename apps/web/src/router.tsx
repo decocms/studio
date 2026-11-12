@@ -34,7 +34,6 @@ import {
   taskBoardSearchShape,
 } from "@/lib/legacy-workspace-search";
 import {
-  blogDeepLinkTarget,
   blogPostSearchShape,
   blogSearchShape,
 } from "@/components/sandbox/content/blog/blog-search-params";
@@ -696,42 +695,6 @@ const agentSiteEditorRoute = createRoute({
     autosend: z.string().optional(),
     ...siteEditorContentSearchShape,
   }),
-  /** Blog left the Site Editor for its own view, but the Blog Manager's
-   *  "Editar no Studio" link still points here. The params stay declared above
-   *  so zod cannot strip them before this runs. */
-  beforeLoad: ({ params, search }) => {
-    const target = blogDeepLinkTarget(search);
-    if (!target) return;
-    const clearContentDeepLink = (prev: Record<string, unknown>) => ({
-      ...prev,
-      contentCollection: undefined,
-      contentItem: undefined,
-    });
-    if (target.postId) {
-      throw redirect({
-        to: "/$org/projects/$agentId/blog/posts/$postId",
-        params: {
-          org: params.org,
-          agentId: params.agentId,
-          postId: target.postId,
-        },
-        search: clearContentDeepLink,
-        hash: true,
-        replace: true,
-      });
-    }
-    throw redirect({
-      to: "/$org/projects/$agentId/blog",
-      params: { org: params.org, agentId: params.agentId },
-      search: (prev: Record<string, unknown>) => ({
-        ...clearContentDeepLink(prev),
-        blogCollection: target.collection,
-        blogItem: target.item,
-      }),
-      hash: true,
-      replace: true,
-    });
-  },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-site-editor.tsx"),
   ),

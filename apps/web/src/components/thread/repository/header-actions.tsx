@@ -5,6 +5,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
+import { useBlogView } from "@/hooks/use-blog-view";
 import { useContentSyncBusy } from "@/components/sections-editor/content-sync";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef } from "react";
@@ -221,6 +222,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { previewUrl } = useSandboxLifecycle();
   const { previewServerUrl, projectDefault } = useSessionRuntime(virtualMcpId);
   const draftKind = useViewDraftKind();
+  const blogView = useBlogView();
 
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {
@@ -311,6 +313,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
       branch,
       projectDefault,
       userLabel: branchUserLabel(session?.user),
+      blogView,
     });
     if (next.kind === "new-thread") {
       createTask({ runtime: next.runtime, branch: next.branch });

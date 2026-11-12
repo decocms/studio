@@ -68,6 +68,7 @@ import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { useBlogView } from "@/hooks/use-blog-view";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
@@ -169,9 +170,13 @@ export function BranchPicker({
   disabled = false,
   spawnsNewChat = false,
   placement = "chat",
-  draftKind = "site",
+  draftKind: viewKind = "site",
 }: Props) {
   const t = useT();
+  // Drafts have kinds only while the org has the Blog view on; otherwise a
+  // `blog-draft-` branch is listed and picked like any other, as before.
+  const blogView = useBlogView();
+  const draftKind = blogView ? viewKind : null;
   const isHeader = placement === "header";
   const [open, setOpen] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -191,7 +196,7 @@ export function BranchPicker({
     virtualMcpId,
     userLabel,
     userId,
-    kind: draftKind,
+    kind: draftKind ?? undefined,
   });
   const { projectDefault } = useSessionRuntime(virtualMcpId);
   const isCodeDraft = (r: Release) =>
@@ -257,7 +262,10 @@ export function BranchPicker({
   const shownReleases = draftsForView(releases, draftKind, value);
   /** Likewise the CMS's own drafts, which are the site's. */
   const shownStoreDrafts = storeDrafts.filter(
-    (d) => branchDraftKind(d.name) === draftKind || d.name === value,
+    (d) =>
+      draftKind === null ||
+      branchDraftKind(d.name) === draftKind ||
+      d.name === value,
   );
 
   const currentLabel = isBase
@@ -1077,7 +1085,7 @@ function AdvancedPicker({
   onAdopt: (branch: string, name: string) => void;
   /** The site's views don't offer Blog drafts: adopting one there would be
    *  sent straight back to the site's own draft. */
-  draftKind: DraftKind;
+  draftKind: DraftKind | null;
 }) {
   const t = useT();
   const [search, setSearch] = useState("");
@@ -1118,7 +1126,7 @@ function AdvancedPicker({
   const branches = [...recent, ...yours, ...others].filter((b) => {
     if (seen.has(b.name)) return false;
     seen.add(b.name);
-    return draftKind === "blog" || branchDraftKind(b.name) === "site";
+    return draftKind !== "site" || branchDraftKind(b.name) === "site";
   });
 
   return (

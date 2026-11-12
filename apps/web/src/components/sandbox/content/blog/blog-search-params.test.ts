@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   blogDeepLinkTarget,
+  blogViewFallbackSearch,
   visibleBlogCollection,
 } from "./blog-search-params";
 
@@ -76,5 +77,35 @@ describe("blogDeepLinkTarget", () => {
       collection: "categories",
       item: "collections/blog/categories/news",
     });
+  });
+});
+
+describe("blogViewFallbackSearch", () => {
+  test("authors and categories keep their record, the Content tab's key too", () => {
+    expect(
+      blogViewFallbackSearch({
+        blogCollection: "categories",
+        blogItem: "collections/blog/categories/news",
+      }),
+    ).toEqual({
+      contentCollection: "categories",
+      contentItem: "collections/blog/categories/news",
+    });
+    expect(blogViewFallbackSearch({ blogCollection: "authors" })).toEqual({
+      contentCollection: "authors",
+    });
+  });
+
+  test("the rest opens the posts list", () => {
+    expect(blogViewFallbackSearch({})).toEqual({ contentCollection: "posts" });
+    expect(blogViewFallbackSearch({ blogCollection: "context" })).toEqual({
+      contentCollection: "posts",
+    });
+    expect(
+      blogViewFallbackSearch({
+        blogCollection: "post-schedule",
+        blogItem: "x",
+      }),
+    ).toEqual({ contentCollection: "posts" });
   });
 });

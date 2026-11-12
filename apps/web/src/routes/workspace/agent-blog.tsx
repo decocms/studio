@@ -4,15 +4,18 @@ import { FeatureGate } from "@/components/paywall/feature-gate";
 import { BlogTab } from "@/layouts/main-panel-tabs/blog-tab";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { AgentViewGuard } from "./agent-view-guard";
+import { BlogViewGate } from "./blog-view-gate";
 
 function AgentBlogContent() {
   const virtualMcpId = useRouteVirtualMcpId();
   return (
-    <AgentViewGuard tabId="blog">
-      <FeatureGate feature="cms">
-        <BlogTab virtualMcpId={virtualMcpId} />
-      </FeatureGate>
-    </AgentViewGuard>
+    <BlogViewGate>
+      <AgentViewGuard tabId="blog">
+        <FeatureGate feature="cms">
+          <BlogTab virtualMcpId={virtualMcpId} />
+        </FeatureGate>
+      </AgentViewGuard>
+    </BlogViewGate>
   );
 }
 

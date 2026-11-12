@@ -83,6 +83,7 @@ import { usePrReviews } from "./use-pr-reviews.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 import { nextDraftBranch } from "@/lib/draft-kind";
+import { useBlogView } from "@/hooks/use-blog-view";
 
 interface Props {
   virtualMcpId: string;
@@ -106,6 +107,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const queryClient = useQueryClient();
   const vm = useVirtualMCP(virtualMcpId);
   const { data: session } = authClient.useSession();
+  const blogView = useBlogView();
   const { deleteRelease } = useReleases(virtualMcpId);
   const {
     currentBranch: branch,
@@ -285,7 +287,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         baseBranch,
         // The same kind of draft: a Blog draft stays Blog's.
         nextBranch: () =>
-          nextDraftBranch(branch, branchUserLabel(session?.user)),
+          nextDraftBranch(branch, branchUserLabel(session?.user), blogView),
         setCurrentTaskBranch,
         deleteRelease,
       }),

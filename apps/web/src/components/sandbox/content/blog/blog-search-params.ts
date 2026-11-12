@@ -71,3 +71,23 @@ export function blogDeepLinkTarget(search: {
   }
   return item ? { collection, item } : { collection };
 }
+
+/**
+ * The Content tab's deep link for a Blog location, for an org without the Blog
+ * view: the Site Editor holds the blog there, as before the view existed. A
+ * post is addressed by id here, while the Content tab takes a block key that
+ * moves with the post's status, so a post opens the posts list. Context and
+ * the schedule have no deep link there either.
+ */
+export function blogViewFallbackSearch(search: {
+  blogCollection?: BlogCollectionId;
+  blogItem?: string;
+}): { contentCollection: string; contentItem?: string } {
+  const collection = search.blogCollection;
+  if (collection === "authors" || collection === "categories") {
+    return search.blogItem
+      ? { contentCollection: collection, contentItem: search.blogItem }
+      : { contentCollection: collection };
+  }
+  return { contentCollection: "posts" };
+}

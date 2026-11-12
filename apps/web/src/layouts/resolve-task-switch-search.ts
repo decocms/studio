@@ -64,6 +64,8 @@ export interface ResolveTaskSwitchInput {
    *  (Blog and a Fast Preview thread, a site view and a Blog draft) gives way
    *  to one that can. */
   target?: DraftThread;
+  /** The org's Blog view is on, so views have draft kinds. */
+  blogView: boolean;
 }
 
 /** Where the switch lands: the view, and the search that describes the rest. */
@@ -127,5 +129,8 @@ export function resolveTaskSwitchSearch(
 
   if (sidepanel !== undefined) next.sidepanel = sidepanel;
   if (opts?.autosend) next.autosend = autosendValue;
-  return { tabId: tabForThread(tabId, input.target), search: next };
+  return {
+    tabId: tabForThread(tabId, input.target, input.blogView),
+    search: next,
+  };
 }

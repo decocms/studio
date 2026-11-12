@@ -14,8 +14,7 @@ import { z } from "zod";
  * `contentPageId`/`contentPath`/`contentPathTemplate`: storefront "." deep-link
  * (set by `/choose-editor`) — the CMS page id, the concrete URL and its route
  * template. `contentCollection`/`contentItem`: Blog Manager "Editar no Studio"
- * — a blog collection plus the decofile block key of the record to open,
- * which the router hands to Blog.
+ * — a blog collection plus the decofile block key of the record to open.
  */
 
 export const contentSearchParams = {

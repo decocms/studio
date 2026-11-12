@@ -234,6 +234,15 @@ Fast Preview, a site view on a Blog draft) is sent to the view's own. Threads
 created from Blog are Blog drafts too; Blog shows another branch only in a
 sandbox, which is what Advanced → Branches opens.
 
+All of this is the org's `blog_view_enabled` flag (`hooks/use-blog-view.ts`),
+off by default. Off, the blog stays in the Site Editor's Content tab
+(`content-browser.tsx`, with the post editor in a panel beside the list), the
+Blog routes send their links there (`BlogViewGate`), and no view has a draft
+kind, so a `blog-draft-` branch is a draft like any other. On, the Content tab
+lists no blog, and the Blog Manager's "Editar no Studio" link, which points at
+the Content tab, is handed to Blog (`BlogDeepLinkHandoff`). Both gates wait for
+the flag rather than open one place and then leave it.
+
 The drawer stays outside the body's error boundary. `aside` is a second surface
 beside the content on desktop, such as the Library's file preview; the route
 composes it, and with the conversation open the Library shows the file in the

@@ -364,6 +364,9 @@ export const settings = {
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "View Blog",
+  "settings.blogView.description":
+    "O Blog como uma view própria do projeto, com cada post ao lado de como o site o mostra. Desligado, o blog é editado na aba Conteúdo do Site Editor.",
   "settings.blog.aiTitle": "Blog com IA",
   "settings.blog.aiDescription":
     "Contexto da marca, campanhas e geração de posts. Desligado, os posts são escritos à mão.",

@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 /**
- * One row of a content sidebar: an icon, the collection's name and how many
- * it holds. The Content tab's two sidebars use it (v7's fixed collections and
- * a v8 site's content types), and so does Blog's.
+ * One row of the Content tab's sidebar: an icon, the collection's name and
+ * how many it holds. Both sidebars use it: v7's fixed collections and a v8
+ * site's content types.
  */
 export function CollectionRow({
   icon: Icon,
@@ -53,5 +53,21 @@ export function CollectionRow({
         </span>
       )}
     </button>
+  );
+}
+
+/** A heading over a group of sidebar rows (Blog; Collections, Singletons). */
+export function CollectionGroupLabel({
+  icon: Icon,
+  label,
+}: {
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+}) {
+  return (
+    <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
+      {Icon && <Icon size={13} className="shrink-0" />}
+      {label}
+    </div>
   );
 }

@@ -2,7 +2,16 @@ import type { HeldCopy } from "@/components/sections-editor/held-copy";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { AlertCircle, Pilcrow01, Settings01, Trash01 } from "@untitledui/icons";
+import {
+  AlertCircle,
+  Expand01,
+  LinkExternal01,
+  Minimize01,
+  Pilcrow01,
+  Settings01,
+  Trash01,
+  XClose,
+} from "@untitledui/icons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,6 +71,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { SuggestLinksButton } from "./link-suggestions";
 import { useBlogAi } from "@/hooks/use-blog-ai";
 import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
@@ -72,6 +82,7 @@ import {
   keptTheirVersion,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
+import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
@@ -114,6 +125,9 @@ function PostEditorForm({
   meta,
   previewBaseUrl,
   move,
+  onClose,
+  expanded,
+  onToggleExpand,
   onDeleted,
 }: {
   orgSlug: string;
@@ -124,6 +138,14 @@ function PostEditorForm({
   decofile: Record<string, unknown>;
   meta: LiveMeta;
   previewBaseUrl?: string | null;
+  /** Whether the editor is in its full-page form (vs the floating panel). */
+  expanded?: boolean;
+  /** When set, renders a control that toggles panel ↔ full page. */
+  onToggleExpand?: () => void;
+  /** When set (the Content tab's panel), renders a close control in the top
+   *  cluster and a link to the post's page; Blog's screen shows the page
+   *  beside the editor instead. */
+  onClose?: () => void;
   /** The one status transition, shared with the board — see `usePostStatusMove`. */
   move: PostStatusMove;
   /** The post is gone, so its screen has nothing left to show. */
@@ -146,6 +168,13 @@ function PostEditorForm({
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
   const legacyFormat = useLegacyBlogPostFormat(virtualMcpId);
+  // The preview frame's `__draft` (a hosted draft's carries its forced
+  // variants and "Preview as" options), so this link opens what it shows.
+  const draftPointer = usePreviewLinkDraftPointer({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
   const initial = getBlogPayload(block, "posts");
   /** The form's own copy of `key` (hosted v8), for a write built from it. */
   const shownCopy = (key: string): Record<string, HeldCopy> => {
@@ -202,6 +231,14 @@ function PostEditorForm({
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
   const [contentRevision, setContentRevision] = useState(0);
 
+  const previewUrl = buildBlogPostPreviewUrl({
+    decofile,
+    post,
+    previewBaseUrl,
+    draftPointer,
+    meta,
+  });
+
   // Two posts sharing a title is legal but bad for search; warn, never block.
   const hasDuplicateTitle = hasDuplicateName(
     decofile,
@@ -230,6 +267,7 @@ function PostEditorForm({
         t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
       );
       onDeleted?.();
+      onClose?.();
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -278,6 +316,38 @@ function PostEditorForm({
               </Tooltip>
             )}
           </div>
+          {(onToggleExpand || onClose) && (
+            <div className="-mr-2 flex items-center gap-0.5">
+              {onToggleExpand && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-2 text-muted-foreground"
+                  onClick={onToggleExpand}
+                  title={
+                    expanded
+                      ? t("sandbox.postBoard.collapse")
+                      : t("sandbox.postBoard.expand")
+                  }
+                >
+                  {expanded ? <Minimize01 size={16} /> : <Expand01 size={16} />}
+                </Button>
+              )}
+              {onClose && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-2 text-muted-foreground"
+                  onClick={onClose}
+                  title={t("sandbox.postBoard.close")}
+                >
+                  <XClose size={16} />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <div className="min-w-0 flex-1 overflow-y-auto">
@@ -344,6 +414,31 @@ function PostEditorForm({
                       setContentRevision((r) => r + 1);
                     }}
                   />
+                )}
+                {onClose && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!previewUrl}
+                    title={
+                      previewUrl
+                        ? t("sandbox.postEditor.previewTooltip")
+                        : t("sandbox.postEditor.previewRequiresSlugAndCategory")
+                    }
+                    onClick={() => {
+                      if (previewUrl) {
+                        window.open(
+                          previewUrl,
+                          "_blank",
+                          "noopener,noreferrer",
+                        );
+                      }
+                    }}
+                  >
+                    <LinkExternal01 size={14} />
+                    {t("sandbox.postEditor.seePreview")}
+                  </Button>
                 )}
               </div>
             </div>

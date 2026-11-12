@@ -32,8 +32,8 @@ const thread = (
 
 describe("viewDraftKind", () => {
   test("Blog's list and post screen are Blog", () => {
-    expect(viewDraftKind("blog")).toBe("blog");
-    expect(viewDraftKind("blog-post")).toBe("blog");
+    expect(viewDraftKind("blog", undefined, true)).toBe("blog");
+    expect(viewDraftKind("blog-post", undefined, true)).toBe("blog");
   });
 
   test("the site's views are the site's", () => {
@@ -44,18 +44,25 @@ describe("viewDraftKind", () => {
       "calendar",
       "experiments",
     ]) {
-      expect(viewDraftKind(view)).toBe("site");
+      expect(viewDraftKind(view, undefined, true)).toBe("site");
     }
     // Monitor's Experiments view, the only one of its views on the draft.
-    expect(viewDraftKind("monitoring", "experiments")).toBe("site");
+    expect(viewDraftKind("monitoring", "experiments", true)).toBe("site");
   });
 
   test("any other view has no draft kind", () => {
-    expect(viewDraftKind("settings")).toBeNull();
-    expect(viewDraftKind("overview")).toBeNull();
-    expect(viewDraftKind("monitoring")).toBeNull();
-    expect(viewDraftKind("monitoring", "audience")).toBeNull();
-    expect(viewDraftKind(undefined)).toBeNull();
+    expect(viewDraftKind("settings", undefined, true)).toBeNull();
+    expect(viewDraftKind("overview", undefined, true)).toBeNull();
+    expect(viewDraftKind("monitoring", undefined, true)).toBeNull();
+    expect(viewDraftKind("monitoring", "audience", true)).toBeNull();
+    expect(viewDraftKind(undefined, undefined, true)).toBeNull();
+  });
+
+  test("without the org's Blog view, no view has one", () => {
+    for (const view of ["blog", "blog-post", "site-editor", "content"]) {
+      expect(viewDraftKind(view, undefined, false)).toBeNull();
+    }
+    expect(viewDraftKind("monitoring", "experiments", false)).toBeNull();
   });
 });
 
@@ -346,6 +353,15 @@ describe("the draft select's list", () => {
       "sacci-code",
     );
   });
+
+  test("without kinds (no Blog view), every draft is listed and a sibling", () => {
+    expect(draftsForView(releases, null, "sacci-a").map((r) => r.name)).toEqual(
+      ["Draft 1", "Blog Draft 1", "Draft 2"],
+    );
+    expect(
+      siblingDraft(releases, "blog-draft-sacci-b", null, "cms")?.branch,
+    ).toBe("sacci-a");
+  });
 });
 
 describe("after publishing", () => {
@@ -355,6 +371,7 @@ describe("after publishing", () => {
       branch: "blog-draft-sacci-a",
       projectDefault: "cms",
       userLabel: "Sacci",
+      blogView: true,
     });
     expect(next).toMatchObject({ kind: "new-thread", runtime: "cms" });
     expect(next.branch).toMatch(/^blog-draft-sacci-/);
@@ -366,6 +383,7 @@ describe("after publishing", () => {
       branch: "blog-draft-sacci-a",
       projectDefault: "sandbox",
       userLabel: "Sacci",
+      blogView: true,
     });
     expect(next.kind).toBe("repoint");
     expect(next.branch).toMatch(/^blog-draft-sacci-/);
@@ -378,6 +396,7 @@ describe("after publishing", () => {
         branch: "feature/x",
         projectDefault: "cms",
         userLabel: "Sacci",
+        blogView: true,
       }).branch,
     ).toMatch(/^blog-draft-/);
   });
@@ -388,6 +407,7 @@ describe("after publishing", () => {
       branch: "sacci-a",
       projectDefault: "cms",
       userLabel: "Sacci",
+      blogView: true,
     });
     expect(next).toMatchObject({ kind: "new-thread", runtime: "cms" });
     expect(next.branch).not.toMatch(/^blog-draft-/);
@@ -399,15 +419,30 @@ describe("after publishing", () => {
       branch: "sacci-a",
       projectDefault: "sandbox",
       userLabel: "Sacci",
+      blogView: true,
     });
     expect(next.kind).toBe("repoint");
     expect(next.branch).toMatch(/^sacci-/);
   });
 
   test("the next draft keeps the published one's kind", () => {
-    expect(nextDraftBranch("blog-draft-sacci-a", "Sacci")).toMatch(
+    expect(nextDraftBranch("blog-draft-sacci-a", "Sacci", true)).toMatch(
       /^blog-draft-sacci-/,
     );
-    expect(nextDraftBranch("sacci-a", "Sacci")).toMatch(/^sacci-/);
+    expect(nextDraftBranch("sacci-a", "Sacci", true)).toMatch(/^sacci-/);
+  });
+
+  test("without the org's Blog view, a published Blog draft is followed by a site draft", () => {
+    expect(nextDraftBranch("blog-draft-sacci-a", "Sacci", false)).toMatch(
+      /^sacci-/,
+    );
+    const next = draftAfterPublish({
+      viewKind: null,
+      branch: "blog-draft-sacci-a",
+      projectDefault: "sandbox",
+      userLabel: "Sacci",
+      blogView: false,
+    });
+    expect(next.branch).toMatch(/^sacci-/);
   });
 });

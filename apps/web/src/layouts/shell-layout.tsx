@@ -50,6 +50,7 @@ import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { resolveTaskSwitchSearch } from "@/layouts/resolve-task-switch-search";
 import { branchUserLabel } from "@decocms/shared/branch-name";
 import { blogThreadDefaults } from "@/lib/draft-kind";
+import { useBlogView } from "@/hooks/use-blog-view";
 import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
 import {
   useActivePanelTabId,
@@ -126,6 +127,7 @@ export function usePanelActions() {
   const routeVirtualMcpId = useRouteVirtualMcpId();
   const navigateThread = useThreadNavigate();
   const draftKind = useViewDraftKind();
+  const blogView = useBlogView();
   const { data: session } = authClient.useSession();
 
   /**
@@ -175,6 +177,7 @@ export function usePanelActions() {
       opts,
       autosendValue: AUTOSEND_QUERY_VALUE,
       target: manager?.threads.get().find((thread) => thread.id === id),
+      blogView,
     });
 
     return navigateThread(

@@ -1,9 +1,12 @@
-/** The Posts area: one workspace with two views of the same lifecycle — a
- * Kanban Board (lanes by status, drag to advance) and a grouped List (by status
- * by default). Opening a post leaves for its own screen, `/blog/posts/<id>`.
- * Statuses are the blog app's own `PostStatus` vocabulary; deleting a post is a
- * soft delete into Archived. */
-import { Fragment, useRef, useState } from "react";
+/**
+ * The Posts area: one workspace with two views of the same lifecycle — a Kanban
+ * Board (lanes by status, drag to advance) and a grouped List (by status by
+ * default). In the Content tab an open post shows beside the list or in the
+ * board's drawer (`renderDetail`); Blog leaves for the post's own screen,
+ * `/blog/posts/<id>`, and lists posts full width. Statuses are the blog app's
+ * own `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
+ */
+import { Fragment, type ReactNode, Suspense, useRef, useState } from "react";
 import {
   AlertCircle,
   Copy01,
@@ -123,23 +126,41 @@ export function PostsWorkspace({
   branch,
   decofile,
   view,
+  selectedKey,
   onViewChange,
   onOpen,
+  onClose,
   move,
   meta,
+  renderDetail,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
   view: PostsView;
+  /** The open post — a highlighted row in list mode, an open drawer in board mode. */
+  selectedKey?: string | null;
   onViewChange: (view: PostsView) => void;
-  /** Leave for the post's own screen, by decofile block key. */
+  /** Open a post by decofile block key: select it (with `renderDetail`) or
+   *  leave for its screen. */
   onOpen: (key: string) => void;
+  /** Close the board's post drawer. */
+  onClose?: () => void;
   /** The shared status transition — the same one the editor's control uses. */
   move: PostStatusMove;
   /** Live schema — which section kinds generation may write. */
   meta: LiveMeta;
+  /** Renders the open post — the list's right pane or the board's floating
+   *  panel. Without it, the list takes the whole width. */
+  renderDetail?: (
+    key: string,
+    controls?: {
+      expanded?: boolean;
+      onToggleExpand?: () => void;
+      onClose?: () => void;
+    },
+  ) => ReactNode;
 }) {
   const t = useT();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
@@ -151,6 +172,7 @@ export function PostsWorkspace({
   const canGenerate = blogAi && !legacyFormat;
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -186,6 +208,12 @@ export function PostsWorkspace({
       decofile[key] as Record<string, unknown> | undefined,
       "posts",
     );
+  // List mode shows the first post by default, so the detail pane is never empty.
+  const detailKey =
+    selectedKey && posts.some((p) => p.key === selectedKey)
+      ? selectedKey
+      : (posts[0]?.key ?? null);
+
   /**
    * Delete is a soft delete: the post moves to Archived, off every working
    * lane but still recoverable by dragging it back out.
@@ -581,47 +609,127 @@ export function PostsWorkspace({
           })}
         </div>
       ) : (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <PostSearchInput value={query} onChange={setQuery} />
-          {selectionActive ? (
-            <PostSelectionToolbar
-              count={selectedKeys.size}
-              allSelected={
-                listedPosts.length > 0 &&
-                listedPosts.every((p) => selectedKeys.has(p.key))
-              }
-              onToggleSelectAll={toggleSelectAll}
-              onArchive={() => void archiveSelected()}
-              onExit={() => setSelectedKeys(new Set())}
-            />
-          ) : (
-            <PostFilterBar
-              categories={categoryOptions}
-              authors={authorOptions}
-              statusCounts={statusCounts}
-              categoryFilter={categoryFilter}
-              authorFilter={authorFilter}
-              statusFilter={statusFilter}
-              sort={sort}
-              onCategoryFilterChange={setCategoryFilter}
-              onAuthorFilterChange={setAuthorFilter}
-              onStatusFilterChange={setStatusFilter}
-              onSortChange={setSort}
-            />
-          )}
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <PostList
-              posts={listedPosts}
-              selectionActive={selectionActive}
-              selectedKeys={selectedKeys}
-              onToggleSelect={toggleSelect}
-              onOpen={onOpen}
-              isMoving={move.isMoving}
-              onArchive={(post) => void archivePost(post)}
-            />
+        <div className="flex min-h-0 flex-1">
+          <div
+            className={cn(
+              "flex flex-col",
+              renderDetail ? "w-80 shrink-0 border-r" : "min-w-0 flex-1",
+            )}
+          >
+            <PostSearchInput value={query} onChange={setQuery} />
+            {selectionActive ? (
+              <PostSelectionToolbar
+                count={selectedKeys.size}
+                allSelected={
+                  listedPosts.length > 0 &&
+                  listedPosts.every((p) => selectedKeys.has(p.key))
+                }
+                onToggleSelectAll={toggleSelectAll}
+                onArchive={() => void archiveSelected()}
+                onExit={() => setSelectedKeys(new Set())}
+              />
+            ) : (
+              <PostFilterBar
+                categories={categoryOptions}
+                authors={authorOptions}
+                statusCounts={statusCounts}
+                categoryFilter={categoryFilter}
+                authorFilter={authorFilter}
+                statusFilter={statusFilter}
+                sort={sort}
+                onCategoryFilterChange={setCategoryFilter}
+                onAuthorFilterChange={setAuthorFilter}
+                onStatusFilterChange={setStatusFilter}
+                onSortChange={setSort}
+              />
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <PostList
+                posts={listedPosts}
+                selectedKey={renderDetail ? detailKey : null}
+                selectionActive={selectionActive}
+                selectedKeys={selectedKeys}
+                onToggleSelect={toggleSelect}
+                onOpen={onOpen}
+                isMoving={move.isMoving}
+                onArchive={(post) => void archivePost(post)}
+              />
+            </div>
           </div>
+          {renderDetail && (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              {detailKey ? (
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center">
+                      <Loading02
+                        size={20}
+                        className="animate-spin text-muted-foreground"
+                      />
+                    </div>
+                  }
+                >
+                  {renderDetail(detailKey)}
+                </Suspense>
+              ) : (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                  {t("sandbox.postBoard.selectPrompt")}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      {view === "board" && selectedKey && expanded && renderDetail && (
+        <div className="absolute inset-0 z-30 flex flex-col bg-background">
+          {renderDetail(selectedKey, {
+            expanded: true,
+            onToggleExpand: () => setExpanded(false),
+            onClose: () => {
+              setExpanded(false);
+              onClose?.();
+            },
+          })}
+        </div>
+      )}
+
+      <Dialog
+        open={view === "board" && !!selectedKey && !expanded}
+        onOpenChange={(open) => {
+          if (!open) {
+            setExpanded(false);
+            onClose?.();
+          }
+        }}
+      >
+        <DialogContent
+          closeButtonClassName="hidden"
+          className="left-auto right-4 top-4 bottom-4 flex h-auto translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        >
+          <DialogTitle className="sr-only">
+            {t("sandbox.collectionsSidebar.posts")}
+          </DialogTitle>
+          {selectedKey && renderDetail ? (
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center">
+                  <Loading02
+                    size={20}
+                    className="animate-spin text-muted-foreground"
+                  />
+                </div>
+              }
+            >
+              {renderDetail(selectedKey, {
+                expanded: false,
+                onToggleExpand: () => setExpanded(true),
+                onClose: () => onClose?.(),
+              })}
+            </Suspense>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -656,6 +764,7 @@ function ToggleButton({
 
 function PostList({
   posts,
+  selectedKey,
   selectionActive,
   selectedKeys,
   onToggleSelect,
@@ -665,6 +774,7 @@ function PostList({
 }: {
   /** Already filtered and sorted by the toolbar — rendered in order. */
   posts: PostMeta[];
+  selectedKey?: string | null;
   selectionActive: boolean;
   selectedKeys: Set<string>;
   onToggleSelect: (key: string) => void;
@@ -686,6 +796,7 @@ function PostList({
         <PostRow
           key={post.key}
           post={post}
+          selected={post.key === selectedKey}
           selectionActive={selectionActive}
           checked={selectedKeys.has(post.key)}
           onToggleSelect={() => onToggleSelect(post.key)}
@@ -702,6 +813,7 @@ function PostList({
 
 function PostRow({
   post,
+  selected,
   selectionActive,
   checked,
   onToggleSelect,
@@ -710,6 +822,7 @@ function PostRow({
   onArchive,
 }: {
   post: PostMeta;
+  selected: boolean;
   /** Any post is selected, so a row click picks instead of opening. */
   selectionActive: boolean;
   checked: boolean;
@@ -751,7 +864,13 @@ function PostRow({
       <button
         type="button"
         onClick={() => (selectionActive ? onToggleSelect() : onOpen())}
-        className="flex w-full cursor-pointer flex-col gap-1.5 bg-card py-2.5 pl-10 pr-3 text-left text-sm transition-colors hover:bg-accent"
+        aria-current={selected}
+        className={cn(
+          "flex w-full cursor-pointer flex-col gap-1.5 py-2.5 pl-10 pr-3 text-left text-sm transition-colors",
+          selected
+            ? "bg-accent text-accent-foreground"
+            : "bg-card hover:bg-accent",
+        )}
       >
         <span className="min-w-0 truncate pr-6 font-medium">
           {post.title || t("sandbox.postBoard.untitled")}

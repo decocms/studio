@@ -108,7 +108,7 @@ function CategoryEditorForm({
   onManagePosts,
   onOpenPost,
   previewBaseUrl,
-  fastPreviewActive,
+  fastPreviewActive = true,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -125,8 +125,10 @@ function CategoryEditorForm({
   onOpenPost: (key: string) => void;
   previewBaseUrl?: string | null;
   /** `previewBaseUrl` is Fast Preview's preview server, which takes the
-   *  `?__draft=` pointer; Localhost or a Local tunnel renders local code. */
-  fastPreviewActive: boolean;
+   *  `?__draft=` pointer; Localhost or a Local tunnel renders local code.
+   *  The pointer is `null` outside Fast Preview anyway, so the Content tab
+   *  leaves this out. */
+  fastPreviewActive?: boolean;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;

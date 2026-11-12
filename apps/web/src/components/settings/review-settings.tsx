@@ -5,6 +5,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import {
+  BookOpen01,
   Coins01,
   Columns02,
   Cube01,
@@ -411,8 +412,9 @@ export function ChatSettings() {
 }
 
 /**
- * What the blog is, for this org: whether writers reach for the built-in post
- * blocks or only the site's own, and whether the agentic half exists at all.
+ * What the blog is, for this org: where it is edited, whether writers reach for
+ * the built-in post blocks or only the site's own, and whether the agentic half
+ * exists at all.
  *
  * One section rather than two. They are both answers to "how does this org
  * blog", and a heading per toggle makes the page read like a changelog.
@@ -422,6 +424,12 @@ export function BlogSettings() {
   return (
     <SettingsSection title={t("settings.blog.sectionTitle")}>
       <SettingsCard>
+        <FlagToggle
+          flag="blog_view_enabled"
+          icon={<BookOpen01 size={16} />}
+          titleKey="settings.blogView.title"
+          descriptionKey="settings.blogView.description"
+        />
         <FlagToggle
           flag="blog_ai_enabled"
           icon={<Stars02 size={16} />}

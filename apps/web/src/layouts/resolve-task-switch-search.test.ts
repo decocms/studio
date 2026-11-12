@@ -19,6 +19,7 @@ test("new chat keeps the open project app", () => {
     savedLayout: null,
     opts: { newThread: true },
     autosendValue: AUTOSEND,
+    blogView: true,
   });
   expect(
     canonicalThreadRouteTarget({
@@ -45,6 +46,7 @@ function resolve(
     decopilotId: DECOPILOT,
     savedLayout: null,
     autosendValue: AUTOSEND,
+    blogView: true,
     ...over,
   });
 }
@@ -263,6 +265,7 @@ describe("a carried view that can't show the target thread", () => {
   const switchFrom = (
     tabId: string,
     target: { branch: string; metadata: { runtime: "cms" | "sandbox" } },
+    blogView = true,
   ) =>
     resolveTaskSwitchSearch({
       prev: { virtualmcpid: "project-example", tabId },
@@ -270,6 +273,7 @@ describe("a carried view that can't show the target thread", () => {
       savedLayout: null,
       autosendValue: AUTOSEND,
       target,
+      blogView,
     }).tabId;
 
   test("Blog gives way to the Site Editor for a site draft in Fast Preview", () => {
@@ -316,5 +320,22 @@ describe("a carried view that can't show the target thread", () => {
         metadata: { runtime: "sandbox" },
       }),
     ).toBe("settings");
+  });
+
+  test("without the org's Blog view, every view stays: drafts have no kinds", () => {
+    expect(
+      switchFrom(
+        "site-editor",
+        { branch: "blog-draft-sacci-a", metadata: { runtime: "sandbox" } },
+        false,
+      ),
+    ).toBe("site-editor");
+    expect(
+      switchFrom(
+        "blog",
+        { branch: "sacci-a", metadata: { runtime: "cms" } },
+        false,
+      ),
+    ).toBe("blog");
   });
 });
