@@ -99,6 +99,7 @@ export default defineConfig({
     "**/github-connect.spec.ts",
     "**/create-site.spec.ts",
     "**/github-cli.spec.ts",
+    "**/auth-token-isolation.spec.ts",
   ],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
