@@ -36,6 +36,11 @@ export async function seedStubRepo(
     branches?: Record<string, { files?: Record<string, string> } | null>;
     mergeMode?: "merge" | "conflict" | "blocked";
     truncateRecursive?: boolean;
+    rateLimit?: {
+      status: 403 | 429;
+      retryAfterSeconds?: number;
+      resetAfterSeconds?: number;
+    };
   },
 ): Promise<void> {
   const res = await ctx.post(`${GITHUB_STUB_ORIGIN}/__admin/repos`, {
