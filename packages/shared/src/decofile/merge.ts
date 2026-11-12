@@ -59,40 +59,62 @@ export function mergeBlocks(files: BlockFile[]): MergeResult {
   const sorted = files
     .map((file) => ({ file, name: `${file.stem}.json` }))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const merger = createBlockMerger();
+  let out = "";
+  for (const { file } of sorted) out += merger.add(file)?.text ?? "";
+  return { decofile: out + merger.close(), skipped: merger.skipped };
+}
 
+/** One block accepted into a merge. */
+export interface MergedBlock {
+  key: string;
+  /** The parsed block (parsed anyway to validate it). */
+  value: unknown;
+  /** Text to append to the merged document. */
+  text: string;
+}
+
+/**
+ * Incremental {@link mergeBlocks}: feed blocks already in filename order, append
+ * each returned `text`, then `close()`. Lets a caller write a document of any
+ * size without holding it whole.
+ */
+export function createBlockMerger() {
   const skipped: SkippedBlock[] = [];
   const seenKeys = new Set<string>();
-  let out = "{";
-  let first = true;
-  for (const { file } of sorted) {
-    const content = file.content.trim();
-    // Skip empty files — `"key":` with no value would break the merged JSON.
-    if (content.length === 0) continue;
-    const key = decoBlockKeyFromFileStem(file.stem);
-    // Two distinct filenames can decode to the same key; splicing both would silently drop one via JSON.parse's last-key-wins.
-    if (seenKeys.has(key)) {
-      skipped.push({
-        key,
-        stem: file.stem,
-        error: `duplicate block key "${key}" (another file already maps to it)`,
-      });
-      continue;
-    }
-    // Parse only to validate; the raw text (not a re-stringify) is spliced.
-    try {
-      JSON.parse(content);
-    } catch (err) {
-      skipped.push({
-        key,
-        stem: file.stem,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      continue;
-    }
-    seenKeys.add(key);
-    if (!first) out += ",";
-    first = false;
-    out += `${JSON.stringify(key)}:${content}`;
-  }
-  return { decofile: `${out}}`, skipped };
+  return {
+    skipped,
+    /** The block's text to append, or null when it is dropped. */
+    add(file: BlockFile): MergedBlock | null {
+      const content = file.content.trim();
+      // Skip empty files — `"key":` with no value would break the merged JSON.
+      if (content.length === 0) return null;
+      const key = decoBlockKeyFromFileStem(file.stem);
+      // Two distinct filenames can decode to the same key; splicing both would silently drop one via JSON.parse's last-key-wins.
+      if (seenKeys.has(key)) {
+        skipped.push({
+          key,
+          stem: file.stem,
+          error: `duplicate block key "${key}" (another file already maps to it)`,
+        });
+        return null;
+      }
+      // Parse only to validate; the raw text (not a re-stringify) is spliced.
+      let value: unknown;
+      try {
+        value = JSON.parse(content);
+      } catch (err) {
+        skipped.push({
+          key,
+          stem: file.stem,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
+      const text = `${seenKeys.size === 0 ? "{" : ","}${JSON.stringify(key)}:${content}`;
+      seenKeys.add(key);
+      return { key, value, text };
+    },
+    close: () => (seenKeys.size === 0 ? "{}" : "}"),
+  };
 }

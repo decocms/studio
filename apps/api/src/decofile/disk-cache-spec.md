@@ -17,7 +17,9 @@ Every implementation decision defers to these, in order:
    into a `tar` subprocess; only individual extracted block JSONs (small, and
    pre-validated in aggregate — see §Cold read) are ever read into strings.
    No `gunzipSync`, no `arrayBuffer()` of an archive, no accumulation of a
-   whole repo in memory, ever — including in error paths.
+   whole repo in memory, ever — including in error paths. The merged document
+   is written to disk block by block and streamed to the response; it is never
+   a string.
 2. **GitHub requests stay minimal.** No change may regress the request math
    that avoids 429s: the coalescer batches writes, the ETag layer makes
    unchanged re-reads free, blob fetches are bounded-concurrency (12), cold
@@ -62,7 +64,9 @@ Entry-count cap stays as a secondary bound.
 ```
 $FAST_PREVIEW_CACHE_DIR/
   blobs/<owner>/<repo>/<blobSha>            raw block file content (bytes)
-  merged/<owner>/<repo>/<headSha>.json      merged decofile document
+  merged/<owner>/<repo>/<docSha>.json       merged decofile document, and
+                                            (under its own key) the members
+                                            the anonymous preview pull appends
   tmp/<random>/                             per-operation scratch (tar extract,
                                             atomic-write staging)
 ```
@@ -82,9 +86,9 @@ $FAST_PREVIEW_CACHE_DIR/
 | `FAST_PREVIEW_CACHE_MAX_BYTES` | 2 GiB | Total budget across `blobs/` + `merged/`. |
 | `FAST_PREVIEW_CACHE_MERGED_MAX_BYTES` | 512 MiB | Sub-budget for `merged/` so many-tenant merged docs can't evict every blob. |
 | `FAST_PREVIEW_CACHE_MAX_BLOB_BYTES` | 1 MiB | Admission cap for a single blob entry. Larger blobs are served but not cached. |
-| `FAST_PREVIEW_CACHE_MAX_MERGED_BYTES` | 32 MiB | Admission cap for a single merged doc. |
+| `FAST_PREVIEW_CACHE_MAX_MERGED_BYTES` | 256 MiB | Admission cap for a single merged doc. A doc refused here is served from memory, so keep it at or above `FAST_PREVIEW_DECOFILE_MAX_BYTES`. |
 | `FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES` | 1 GiB | If `statfs` free space on the cache volume is below this, skip ALL cache writes (reads still served) and emit `fast_preview_cache_floor_skips`. |
-| `FAST_PREVIEW_DECOFILE_MAX_BYTES` | 64 MiB | Refuse the whole read (413 `decofile-too-large`) when the `.deco/blocks` aggregate size exceeds this: checked from the tree before any fetch, and from the fetched contents when the tree omits sizes. A read holds about 8x its block bytes at peak, so a larger one can OOM an API process. |
+| `FAST_PREVIEW_DECOFILE_MAX_BYTES` | 256 MiB | Refuse the whole read (413 `decofile-too-large`) when the `.deco/blocks` aggregate size exceeds this: checked from the tree before any fetch, and as blocks arrive when the tree omits sizes. The read streams, so this bounds the disk entry and what the editor's browser must parse, not API memory. |
 | `FAST_PREVIEW_CACHE_SWEEP_INTERVAL_MS` | 10 min | Reconciliation sweep (drift + `tmp/` orphans older than 1 h). |
 
 Fixed (not env): tarball threshold stays `> 50` missing blobs; blob fetch
@@ -114,10 +118,13 @@ with an empty index and an empty dir.
 
 ### Warm read
 
-`readDecofileSnapshot` order per (repo, head sha): merged disk hit → done
-(serve bytes; do NOT JSON-parse). Miss → tree fetch (ETag'd) → per-blob disk
-hits → only missing blobs from GitHub (concurrency 12) → write blobs + merged
-through the store → serve. Identical GitHub request counts to today's
+Per (repo, head sha): merged disk hit → open the file and stream it into the
+response (never read into a string, never JSON-parsed). Miss → tree fetch
+(ETag'd) → blocks in filename order, a window of 12 at a time, each from its
+disk blob, else GitHub (written through) → each block is validated and
+appended to a merge file in a scratch dir → the file is renamed into
+`merged/` → serve it as a hit. When it can't land (cache off, free-space
+floor, write error), that read is served from memory. Identical GitHub request counts to today's
 in-memory path, plus restart-warmness today's path lacks.
 
 ### Cold read (the tarball path)
@@ -133,12 +140,11 @@ When `missing > 50`:
    "--wildcards", "*/.deco/blocks/*.json"])` stdin. The archive exists only as
    transit buffers; the child does the gunzip. Non-zero exit or spawn failure
    (no `tar` binary) → fall back to bounded blob fetches.
-3. **Ingest**: read each extracted file (small by pre-validation), write blob
-   entries through the store keyed by the tree's sha for that path, build the
-   merged doc, write it through the store, delete `scratchDir` in `finally`.
-4. **Single-flight**: the whole snapshot read is wrapped per
-   `(owner/repo, sha)` — concurrent callers share one promise. This applies
-   to warm reads too (cheap) but exists for the herd on cold reads.
+3. **Ingest**: the warm read's merge reads each block from its extracted file
+   when the blob cache misses, writing it through the store keyed by the
+   tree's sha for that path; `scratchDir` is deleted in `finally`.
+4. **Single-flight**: the merge is wrapped per `(owner/repo, sha)` —
+   concurrent callers share it, then each opens the cached file.
 
 ### Sweeper
 

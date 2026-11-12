@@ -60,10 +60,10 @@ import {
 import {
   DecofileTooLargeError,
   readDecofileSnapshot,
+  streamDocument,
 } from "@/decofile/read-decofile";
 import { readCommittedMeta } from "@/decofile/read-meta";
 import { projectPackagePath } from "@/hosted/blocks-major";
-import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
 
@@ -385,19 +385,20 @@ export function createDecofileRoutes(
       // The editor (session) gets the wrapper with the version and a fresh
       // draft token, so the preview pointer it builds never carries a stale
       // grant.
+      headers["content-type"] = "application/json";
       if (!scope.userId) {
+        const doc = await snapshot.open();
         // Preview-only: render unscheduled planning posts (see blog-draft-projection).
-        return c.body(projectPlanningPostsForPreview(snapshot.decofile), 200, {
-          ...headers,
-          "content-type": "application/json",
-        });
+        const body = streamDocument(doc, { appendMembers: doc.previewMembers });
+        return c.body(body, 200, headers);
       }
       const token = signScopeDraftToken(scope);
-      return c.body(
-        `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":${snapshot.decofile}}`,
-        200,
-        { ...headers, "content-type": "application/json" },
-      );
+      const doc = await snapshot.open();
+      const body = streamDocument(doc, {
+        prefix: `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":`,
+        suffix: "}",
+      });
+      return c.body(body, 200, headers);
     } catch (err) {
       return errorResponse(c, err);
     }

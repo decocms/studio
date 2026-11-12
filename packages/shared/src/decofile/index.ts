@@ -9,6 +9,7 @@ export {
   BLOCK_PATH_RE,
   BLOCKS_DIRNAME,
   GEN_BASENAME,
+  createBlockMerger,
   mergeBlocks,
   type BlockFile,
 } from "./merge";
