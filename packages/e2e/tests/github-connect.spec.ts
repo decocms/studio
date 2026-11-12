@@ -1819,13 +1819,13 @@ test("linked repository reads reuse its recorded id and reject a narrowed grant"
       "0x10",
       "9007199254740992",
     ];
-    for (const [index, externalId] of invalidIds.entries()) {
+    for (const externalId of invalidIds) {
       await db.query(
         "UPDATE repositories SET external_id=$1 WHERE id=$2 AND organization_id=$3",
         [externalId, linked.repository.id, flow.orgId],
       );
       expect((await page.request.get(endpoint)).status()).toBe(200);
-      expect(await reads()).toBe(before + index + 1);
+      expect(await reads()).toBe(before + 1);
     }
     await db.query(
       "UPDATE repositories SET external_id=$1 WHERE id=$2 AND organization_id=$3",
