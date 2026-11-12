@@ -193,7 +193,8 @@ export class AccessControl {
     //     capability, not a member: no role, no basic-usage, no Better Auth.
     //   - everyone else (session / MCP OAuth / studio JWT) → membership floor +
     //     admin/owner bypass + Better Auth grants.
-    return this.boundAuth?.isApiKeyPrincipal
+    return this.boundAuth?.isCapabilityToken ||
+      this.boundAuth?.isApiKeyPrincipal
       ? this.checkApiKeyAccess(resource)
       : this.checkMemberAccess(resource);
   }

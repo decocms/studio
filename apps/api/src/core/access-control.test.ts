@@ -432,4 +432,57 @@ describe("AccessControl", () => {
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
     });
   });
+
+  describe("capability token (studio JWT) scoping", () => {
+    /** A studio-JWT principal: capability-scoped, not an API key, carrying a role. */
+    const capabilityBoundAuth = (granted: Permission): BoundAuthClient =>
+      ({
+        isApiKeyPrincipal: false,
+        isCapabilityToken: true,
+        hasPermission: vi.fn(async (requested: Permission) => {
+          for (const [res, tools] of Object.entries(requested)) {
+            const allowed = granted[res] ?? [];
+            for (const tool of tools as string[]) {
+              if (!(allowed.includes(tool) || allowed.includes("*"))) {
+                return false;
+              }
+            }
+          }
+          return true;
+        }),
+      }) as unknown as BoundAuthClient;
+
+    it("grants a tool inside the token's permissions", async () => {
+      const ac = new AccessControl(
+        "user_1",
+        "SAFE_TOOL",
+        capabilityBoundAuth({ self: ["SAFE_TOOL"] }),
+        "owner",
+      );
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+
+    it("denies a tool outside the token's permissions even when the role is owner", async () => {
+      const ac = new AccessControl(
+        "user_1",
+        "ADMIN_TOOL",
+        capabilityBoundAuth({ self: ["SAFE_TOOL"] }),
+        "owner",
+      );
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
+      expect(ac.granted()).toBe(false);
+    });
+
+    it("contrast: a non-capability member with owner role keeps the bypass", async () => {
+      const ac = new AccessControl(
+        "user_1",
+        "ADMIN_TOOL",
+        createMockBoundAuth({ self: ["SAFE_TOOL"] }),
+        "owner",
+      );
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+  });
 });

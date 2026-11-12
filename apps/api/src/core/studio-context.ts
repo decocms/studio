@@ -100,6 +100,15 @@ export interface BoundAuthClient {
    */
   isApiKeyPrincipal?: boolean;
 
+  /**
+   * True for any capability-scoped credential — an API key OR a studio JWT —
+   * whose stored `permissions` allowlist is the whole authorization decision,
+   * with no role/basic-usage/admin bypass. A studio JWT is a downstream-callback
+   * token, so a connection it is handed to must not be able to replay it for
+   * more than its scoped permissions. Superset of `isApiKeyPrincipal`.
+   */
+  isCapabilityToken?: boolean;
+
   // Organization APIs (bound with headers)
   organization: {
     create(data: {
