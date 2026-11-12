@@ -160,9 +160,73 @@ describe("getSectionDisplayTitle", () => {
     expect(getSectionDisplayTitle(raw, meta())).toBe("Department Shop  Nike");
   });
 
-  test("falls back to undefined for a plain-titled section", () => {
+  test("uses a plain @title as-is, like the section picker", () => {
     const raw = { __resolveType: PLAIN_RT };
-    expect(getSectionDisplayTitle(raw, meta())).toBeUndefined();
+    expect(getSectionDisplayTitle(raw, meta())).toBe("Hero");
+  });
+
+  // deco titles a definition with its file path; a plain @title lands on Props.
+  function generatedMeta(rt: string, propsTitle: string): LiveMeta {
+    const propsKey = `${btoa(rt)}@Props`;
+    return {
+      manifest: {
+        blocks: { sections: { [rt]: { $ref: `#/definitions/${btoa(rt)}` } } },
+      },
+      schema: {
+        definitions: {
+          [btoa(rt)]: {
+            title: rt,
+            type: "object",
+            allOf: [{ $ref: `#/definitions/${propsKey}` }],
+          },
+          [propsKey]: { title: propsTitle, type: "object" },
+        },
+      },
+    };
+  }
+
+  test("reads a plain @title from Props past the path-titled definition", () => {
+    const rt = "site/sections/ChangeLevel.tsx";
+    expect(
+      getSectionDisplayTitle(
+        { __resolveType: rt },
+        generatedMeta(rt, "Level change"),
+      ),
+    ).toBe("Level change");
+  });
+
+  test("ignores generated path titles on an untitled section", () => {
+    const rt = "site/sections/UI/VerticalCards.tsx";
+    expect(
+      getSectionDisplayTitle(
+        { __resolveType: rt },
+        generatedMeta(rt, `${rt}@Props`),
+      ),
+    ).toBeUndefined();
+  });
+
+  test("unwraps a lazy-wrapped plain-titled section", () => {
+    const raw = { __resolveType: LAZY, section: { __resolveType: PLAIN_RT } };
+    expect(getSectionDisplayTitle(raw, meta())).toBe("Hero");
+  });
+
+  test("returns undefined for an untitled section", () => {
+    const rt = "site/sections/Untitled.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { definitions: { [btoa(rt)]: { type: "object" } } },
+    };
+    expect(getSectionDisplayTitle({ __resolveType: rt }, m)).toBeUndefined();
+  });
+
+  test("ignores the site-wide schema title for an unknown section", () => {
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: { title: "Site", definitions: {} },
+    };
+    expect(
+      getSectionDisplayTitle({ __resolveType: "site/sections/Gone.tsx" }, m),
+    ).toBeUndefined();
   });
 
   test("collapses an object-valued prop to empty instead of [object Object]", () => {
