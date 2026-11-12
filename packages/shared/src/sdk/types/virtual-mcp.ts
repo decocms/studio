@@ -151,6 +151,7 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "site-editor",
   "calendar",
   "experiments",
+  "blog",
   "assets",
   "releases",
   "hosting",
@@ -873,7 +874,7 @@ const VirtualMcpMetadataFields = {
     .nullable()
     .optional()
     .describe(
-      "Views Studio offered this project once on top of an exact sidebarViews list (the top rows, plus Experiments and Calendar on a Blocks site). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
+      "Views Studio offered this project once on top of an exact sidebarViews list (the top rows and Blog, plus Experiments and Calendar on a Blocks site and Hosting beside a hosted site's Site Editor). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
     ),
   repository: RepositoryBindingSchema.nullable()
     .optional()

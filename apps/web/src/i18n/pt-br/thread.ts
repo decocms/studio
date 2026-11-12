@@ -23,6 +23,7 @@ export const thread = {
   "thread.branchPicker.advancedBack": "Voltar",
   "thread.branchPicker.cancel": "Cancelar",
   "thread.branchPicker.defaultVersionName": "Draft",
+  "thread.branchPicker.blogDraftName": "Blog Draft",
   "thread.branchPicker.delete": "Descartar",
   "thread.branchPicker.keepOneDraft": "Mantenha pelo menos um draft",
   "thread.branchPicker.deleteConfirm":

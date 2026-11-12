@@ -261,6 +261,26 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
+    case PROJECT_ROUTE.blog:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.blog}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case PROJECT_ROUTE.blogPost:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.blogPost}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
     case PROJECT_ROUTE.automation:
       return (
         <Navigate

@@ -20,6 +20,7 @@ export const sidebar = {
     "Nenhum chat corresponde aos seus filtros",
   "sidebar.projectNav.automations": "Automações",
   "sidebar.projectNav.apps": "Apps",
+  "sidebar.projectNav.blog": "Blog",
   "sidebar.projectNav.siteEditor": "Editor do site",
   "sidebar.projects.pinned": "Fixados",
   "sidebar.projects.waiting": "{count} esperando por você",

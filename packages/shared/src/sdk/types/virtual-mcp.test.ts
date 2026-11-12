@@ -191,18 +191,9 @@ describe("VirtualMcpUILayoutSchema tabs", () => {
 });
 
 describe("VirtualMcpUILayoutSchema deprecated sidebarViews fallback", () => {
-  const sidebarViews = [
-    "overview",
-    "reports",
-    "board",
-    "site-editor",
-    "automations",
-    "assets",
-    "hosting",
-    "e2e",
-    "analytics",
-    "cdn",
-  ] as const;
+  /** Derived, so a view added to the enum is covered here the same day rather
+   *  than silently falling outside "every project sidebar view". */
+  const sidebarViews = VirtualMcpSidebarViewSchema.options;
 
   it("round-trips every project sidebar view", () => {
     const parsed = VirtualMcpUILayoutSchema.parse({
@@ -235,18 +226,9 @@ describe("VirtualMcpUILayoutSchema deprecated sidebarViews fallback", () => {
 });
 
 describe("metadata.sidebarViews", () => {
-  const sidebarViews = [
-    "overview",
-    "reports",
-    "board",
-    "site-editor",
-    "automations",
-    "assets",
-    "hosting",
-    "e2e",
-    "analytics",
-    "cdn",
-  ] as const;
+  /** Derived, so a view added to the enum is covered here the same day rather
+   *  than silently falling outside "every project sidebar view". */
+  const sidebarViews = VirtualMcpSidebarViewSchema.options;
 
   it("round-trips every project sidebar view on an entity", () => {
     const parsed = VirtualMCPEntitySchema.parse({
@@ -354,10 +336,11 @@ describe("metadata.sidebarViews", () => {
     ).toBe(false);
   });
 
-  it("takes every view at once (Experiments and Calendar included), no more", () => {
+  it("takes every view at once (Experiments, Calendar and Blog included), no more", () => {
     const every = [...VirtualMcpSidebarViewSchema.options];
     expect(every).toContain("experiments");
     expect(every).toContain("calendar");
+    expect(every).toContain("blog");
     expect(
       VirtualMCPUpdateDataSchema.safeParse({
         metadata: { sidebarViews: every },

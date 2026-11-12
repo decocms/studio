@@ -57,6 +57,7 @@ export const projects = {
   "projects.identity.storeUrlDescription":
     "A loja no ar. Os relatórios rodam contra este endereço.",
   "projects.apps.reports": "Relatório",
+  "projects.apps.blog": "Blog",
   "projects.apps.siteEditor": "Editor de site",
   "projects.apps.assets": "Assets",
   "projects.apps.releases": "Releases",

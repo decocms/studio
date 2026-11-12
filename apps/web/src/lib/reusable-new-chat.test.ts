@@ -321,3 +321,44 @@ describe("findAgentEntryThread", () => {
     });
   });
 });
+
+/**
+ * A Blog draft rarely gets a message, so it stays "New chat" forever. Without
+ * this, every other view's "New chat" would land on the Blog's draft, and Blog
+ * would reuse the site's empty chats.
+ */
+describe("findReusableNewChat and Blog drafts", () => {
+  const blogDraft = task({
+    id: "blog",
+    branch: "blog-draft-sacci-a",
+    metadata: { runtime: "sandbox" },
+  });
+  const siteChat = task({
+    id: "site",
+    branch: "sacci-a",
+    metadata: { runtime: "sandbox" },
+  });
+
+  it("never reuses a Blog draft outside Blog", () => {
+    expect(
+      findReusableNewChat([blogDraft], "agent-1", USER, "sandbox"),
+    ).toBeUndefined();
+    expect(
+      findReusableNewChat([blogDraft, siteChat], "agent-1", USER, "sandbox")
+        ?.id,
+    ).toBe("site");
+  });
+
+  it("from Blog, reuses only a Blog draft", () => {
+    expect(
+      findReusableNewChat([siteChat], "agent-1", USER, "sandbox", {
+        blogDrafts: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      findReusableNewChat([siteChat, blogDraft], "agent-1", USER, "sandbox", {
+        blogDrafts: true,
+      })?.id,
+    ).toBe("blog");
+  });
+});

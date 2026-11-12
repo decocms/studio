@@ -355,6 +355,9 @@ export const settings = {
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "Blog view",
+  "settings.blogView.description":
+    "Blog as its own project view, with each post beside the site's render of it. When off, the blog is edited in the Site Editor's Content tab.",
   "settings.blog.aiTitle": "AI blog",
   "settings.blog.aiDescription":
     "Brand context, campaigns and post generation. When off, posts are written by hand.",

@@ -340,6 +340,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Hide the `deco-cms/blog` app's own blocks (`blog/*`) everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible, plus, in the inserter, the sections under the blog app's `customSectionPaths`. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
     ),
+  blog_view_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Blog as a project view of its own (a sidebar row, an app tile and `/blog`), edited on Blog drafts with each post beside the site's render of it. Off by default: the blog stays in the Site Editor's Content tab, and `blog-draft-` branches are ordinary drafts.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

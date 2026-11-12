@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import {
   Beaker02,
   ClockRewind,
+  BookOpen01,
   Calendar,
   CheckDone01,
   Image01,
@@ -34,6 +35,7 @@ import {
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
+  parseBlogPostTabId,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
 import { useTabLocked } from "./use-tab-locked";
@@ -43,7 +45,8 @@ import { track } from "@/lib/posthog-client";
 import { useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import {
-  PROJECT_NATIVE_VIEW_IDS,
+  PROJECT_SIDEBAR_VIEW_IDS,
+  isProjectNativeViewId,
   projectSidebarViewPresence,
   resolveProjectSidebarViews,
   offeredProjectSidebarViews,
@@ -119,10 +122,17 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       dataTour: LAYOUT_TOUR_ANCHORS.siteEditor,
     });
   }
-  const nativeViewRows: Record<
-    ProjectNativeViewId,
-    Pick<ProjectView, "label" | "icon">
+  const viewRows: Record<
+    ProjectNativeViewId | "blog",
+    Pick<ProjectView, "label" | "icon"> & Partial<Pick<ProjectView, "isActive">>
   > = {
+    blog: {
+      label: t("sidebar.projectNav.blog"),
+      icon: <BookOpen01 size={16} />,
+      /** The browser and one post's editor (`blog-post:<id>`) are one row. */
+      isActive: (tabId) =>
+        tabId === "blog" || parseBlogPostTabId(tabId) !== null,
+    },
     assets: {
       label: t("common.mainPanelTabs.assets"),
       icon: <Image01 size={16} />,
@@ -148,15 +158,17 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       icon: <Beaker02 size={16} />,
     },
   };
-  for (const viewId of PROJECT_NATIVE_VIEW_IDS) {
+  /** In sidebar order, so Blog follows the Site Editor's v8 peers. */
+  for (const viewId of PROJECT_SIDEBAR_VIEW_IDS) {
+    if (viewId !== "blog" && !isProjectNativeViewId(viewId)) continue;
     if (!selectedViews.has(viewId)) continue;
-    const row = nativeViewRows[viewId];
+    const row = viewRows[viewId];
     views.push({
       key: viewId,
       label: row.label,
       icon: row.icon,
       panel: viewId,
-      isActive: (tabId) => tabId === viewId,
+      isActive: row.isActive ?? ((tabId) => tabId === viewId),
     });
   }
 

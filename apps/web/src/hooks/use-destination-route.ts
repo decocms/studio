@@ -41,6 +41,8 @@ export const PROJECT_ROUTE = {
   siteEditor: "/$org/projects/$agentId/site-editor",
   siteEditorContent: "/$org/projects/$agentId/site-editor/content",
   siteEditorCode: "/$org/projects/$agentId/site-editor/code",
+  blog: "/$org/projects/$agentId/blog",
+  blogPost: "/$org/projects/$agentId/blog/posts/$postId",
   automations: "/$org/projects/$agentId/automations",
   automation: "/$org/projects/$agentId/automations/$automationId",
   app: "/$org/projects/$agentId/apps/$connectionId/$toolName",
