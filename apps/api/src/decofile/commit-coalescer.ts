@@ -4,6 +4,7 @@ import {
   decoBlockFingerprint,
 } from "@decocms/shared/decofile";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
+import { getSettings } from "@/settings";
 import {
   type FileChange,
   type RepoContentClient,
@@ -47,6 +48,16 @@ const MAX_CAS_ATTEMPTS = 3;
  * saves go out one at a time and each can reach a different pod.
  */
 export const MIN_COMMIT_INTERVAL_MS = 5_000;
+
+/** The configured gap (`DECOFILE_COMMIT_GAP_SECONDS`), or the default where
+ *  settings are not initialized (unit tests). */
+function commitGapMs(): number {
+  try {
+    return getSettings().decofileCommitGapSeconds * 1000;
+  } catch {
+    return MIN_COMMIT_INTERVAL_MS;
+  }
+}
 
 export interface DecofilePatch {
   set?: Record<string, unknown>;
@@ -153,7 +164,7 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
 }
 
 /**
- * Sleep until {@link MIN_COMMIT_INTERVAL_MS} after the branch head was
+ * Sleep until the commit gap has passed since the branch head was
  * committed. Both reads are ETag-cached and repeated by the commit right
  * after, so they add no rate-limited call. Fails open: the commit surfaces
  * any real error.
@@ -165,11 +176,9 @@ async function waitOutCommitGap({ client, branch }: CommitDeps) {
     const committedAt = Date.parse(
       (await client.readCommit(head.sha))?.date ?? "",
     );
+    const gap = commitGapMs();
     // Capped: a commit pushed from a machine whose clock runs ahead.
-    const wait = Math.min(
-      MIN_COMMIT_INTERVAL_MS,
-      committedAt + MIN_COMMIT_INTERVAL_MS - Date.now(),
-    );
+    const wait = Math.min(gap, committedAt + gap - Date.now());
     if (wait > 0) await sleep(wait);
   } catch {
     // No gap when the head can't be read; the commit reports the real error.
