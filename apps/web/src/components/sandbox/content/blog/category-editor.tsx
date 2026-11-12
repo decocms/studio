@@ -171,8 +171,11 @@ function CategoryEditorForm({
   );
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this record.
-  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
-    save.mutate({ blockKey: refKey, data }),
+  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => (save.v8 ? referenceSave : save).mutate(write),
+    decofile,
+    save.v8,
   );
 
   // Only offer a preview when the blog app has a `categorySlug` route
@@ -443,8 +446,16 @@ function CategoryEditorForm({
           </span>
           <div className="flex shrink-0 items-center gap-3">
             <SaveStatus
-              isPending={save.isPending || move.isPending}
-              isError={save.isError || move.isError}
+              isPending={
+                save.isPending ||
+                (save.v8 && referenceSave.isPending) ||
+                move.isPending
+              }
+              isError={
+                save.isError ||
+                (save.v8 && referenceSave.isError) ||
+                move.isError
+              }
             />
             {missing.length > 0 && (
               <Tooltip>
@@ -734,6 +745,7 @@ export function CategoryEditor(
 ) {
   return (
     <HeldBlockView
+      listing={props.decofile}
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}

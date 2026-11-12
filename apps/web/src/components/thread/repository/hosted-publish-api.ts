@@ -8,10 +8,10 @@
  */
 
 import {
-  cmsJson,
+  cmsRequest,
   CmsRequestError,
-  cmsUrl,
-} from "@/components/sections-editor/cms-api";
+  parseCmsPublicationResult,
+} from "@/cms/cms-api";
 
 export type HostedPublishResult =
   | { result: "merged"; sha: string }
@@ -28,10 +28,13 @@ export class HostedPublishError extends Error {
   }
 }
 
-/** The hosted CMS's publish answer (contract §4.9). */
-type CmsPublishAnswer =
-  | { result: "published"; revision: string; previous: string | null }
-  | { result: "up-to-date"; revision: string };
+/** Validate the server's success answer before acknowledging a publication. */
+export function parseHostedPublishResult(value: unknown): HostedPublishResult {
+  const answer = parseCmsPublicationResult(value);
+  return answer.result === "published"
+    ? { result: "merged", sha: answer.revision }
+    : { result: "up-to-date" };
+}
 
 export async function publishHostedDraft(
   params: { orgSlug: string; site: string | null; branch: string },
@@ -40,28 +43,21 @@ export async function publishHostedDraft(
   if (!params.site) {
     throw new HostedPublishError("this project names no site", null);
   }
-  let answer: CmsPublishAnswer;
   try {
-    answer = await cmsJson<CmsPublishAnswer>(
-      await fetch(
-        cmsUrl(
-          params.site,
-          `drafts/${encodeURIComponent(params.branch)}/publish`,
-        ),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message: note }),
-        },
-      ),
+    const answer = await cmsRequest<unknown>(
+      params.site,
+      `drafts/${encodeURIComponent(params.branch)}/publish`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: note }),
+      },
     );
+    return parseHostedPublishResult(answer);
   } catch (error) {
     if (error instanceof CmsRequestError) {
       throw new HostedPublishError(error.message, error.code);
     }
     throw error;
   }
-  return answer.result === "published"
-    ? { result: "merged", sha: answer.revision }
-    : { result: "up-to-date" };
 }

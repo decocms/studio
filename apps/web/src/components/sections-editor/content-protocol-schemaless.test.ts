@@ -12,7 +12,7 @@ import type { ProtocolBackend } from "./content-backend";
 import {
   pollProtocolContent,
   protocolMetaQueryKey,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import type { LiveMeta } from "./resolve-schema";
 import { isNoSchemaMeta } from "./schemaless";
 

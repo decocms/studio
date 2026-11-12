@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
-import { cmsJson, CmsRequestError, cmsSiteOf, ensureCmsDraft } from "./cms-api";
+import {
+  cmsJson,
+  CmsRequestError,
+  cmsSiteOf,
+  ensureCmsDraft,
+} from "@/cms/cms-api";
 import { rememberConflictEditor, versionTag } from "./conflict-editor";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { KEYS } from "@/lib/query-keys";

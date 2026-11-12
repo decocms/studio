@@ -5,7 +5,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import type { ContentBackend } from "./content-backend";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 
 /**
  * Marks a Blocks v8 site (its "Blocks v8 site" switch on): a content-protocol

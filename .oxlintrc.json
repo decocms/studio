@@ -12,9 +12,11 @@
     "./plugins/ban-web-server-imports.js",
     "./plugins/ban-git-provider-reachthrough.js",
     "./plugins/ban-cms-git-imports.js",
+    "./plugins/ban-cms-storage-bypass.js",
     "./plugins/ensure-tailwind-design-system-tokens.js"
   ],
   "rules": {
+    "ban-cms-storage-bypass/ban-cms-storage-bypass": "error",
     "unicorn/no-useless-fallback-in-spread": "off",
     "no-unused-expressions": "off",
     "no-explicit-any": "warn",

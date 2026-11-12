@@ -1,10 +1,11 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { Fragment, type ReactNode, useState } from "react";
 import { Trash01 } from "@untitledui/icons";
 import {
   copyScope,
   useCopyEpochs,
 } from "@/components/sections-editor/held-copy";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useT } from "@/i18n/use-t.ts";
 import { EmptyMessage } from "./empty-message";
 import { useNeverPublished } from "@/components/sections-editor/use-never-published";
@@ -26,6 +27,7 @@ export function HeldBlockView({
   present,
   showDeleted = true,
   children,
+  listing,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -36,6 +38,7 @@ export function HeldBlockView({
   /** False for an editor that shows a missing block itself. */
   showDeleted?: boolean;
   children: ReactNode;
+  listing: Record<string, unknown>;
 }) {
   const t = useT();
   const backend = useContentBackend(virtualMcpId, branch);
@@ -65,5 +68,15 @@ export function HeldBlockView({
       />
     );
   }
-  return <Fragment key={remounts}>{children}</Fragment>;
+  if (backend.kind === "legacy")
+    return <Fragment key={remounts}>{children}</Fragment>;
+  return (
+    <CmsBlockBoundary
+      listing={listing}
+      scope={{ orgSlug, virtualMcpId, branch }}
+      names={[blockKey]}
+    >
+      <Fragment key={remounts}>{children}</Fragment>
+    </CmsBlockBoundary>
+  );
 }

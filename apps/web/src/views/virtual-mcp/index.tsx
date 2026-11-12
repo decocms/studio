@@ -82,7 +82,7 @@ import { useProjectSettingsSection } from "./settings/use-settings-section";
 import type { ProjectSettingsSectionKey } from "./settings/sections";
 import { SiteTokenSection } from "./settings/site-token-section";
 import { BlocksV8SiteSection } from "./settings/blocks-v8-site-section";
-import { cmsSiteOf } from "@/components/sections-editor/cms-api";
+import { cmsSiteOf } from "@/cms/cms-api";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";

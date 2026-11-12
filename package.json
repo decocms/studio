@@ -27,6 +27,7 @@
     "check": "bun run check:readmes && bun run --workspaces check",
     "check:ci": "bun run check",
     "check:readmes": "bun run scripts/check-workspace-readmes.ts",
+    "check:v7-cms-isolation": "bun scripts/check-v7-cms-isolation.ts",
     "fmt:check": "biome format",
     "test": "bun test --parallel --path-ignore-patterns='{**/*.{integration,e2e}.test.*,**/*{.spec,_spec,_test}.*,**/*.test.{js,jsx,mjs,cjs,mts,cts},**/dist/**}' ./apps/api/src ./apps/api/migrations ./apps/web/src ./packages ./plugins ./scripts",
     "build:runtime": "bun run --filter=@decocms/runtime build",
