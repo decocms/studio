@@ -13,6 +13,7 @@ import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
 import { BASIC_USAGE_TOOLS } from "@decocms/shared/tools/registry-metadata";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import type { BoundAuthClient } from "./studio-context";
+import type { Permission } from "../storage/types";
 
 // ============================================================================
 // Types
@@ -104,6 +105,30 @@ export class AccessControl {
 
   getRole(): string | undefined {
     return this.role;
+  }
+
+  /**
+   * Whether the caller may GRANT `requested` into an API key. Every
+   * (resource, tool) in the map must be something the caller can already
+   * exercise, so a key can never be minted broader than its creator's own
+   * authority. Mirrors `checkResource`'s principal dispatch: an API-key
+   * principal is bounded by its own allowlist, admin/owner may grant anything,
+   * and any other member is bounded by their role's grants.
+   */
+  async canGrant(requested: Permission): Promise<boolean> {
+    if (!this.boundAuth) {
+      return false;
+    }
+    if (this.boundAuth.isApiKeyPrincipal) {
+      return this.boundAuth.hasPermission(requested);
+    }
+    if (hasAdminRole(this.role)) {
+      return true;
+    }
+    return this.boundAuth.hasPermission(requested, {
+      organizationId: this.organizationId,
+      role: this.role,
+    });
   }
 
   /**

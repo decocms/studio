@@ -32,6 +32,13 @@ export const API_KEY_CREATE = defineTool({
     // Check authorization for this tool
     await ctx.access.check();
 
+    // A key must not grant permissions beyond what its creator can exercise.
+    if (!(await ctx.access.canGrant(input.permissions))) {
+      throw new Error(
+        "Insufficient privileges: an API key cannot grant permissions beyond your own.",
+      );
+    }
+
     // Create the API key via Better Auth with organization context
     // This ensures the API key is scoped to the current organization
     const result = await ctx.boundAuth.apiKey.create({
