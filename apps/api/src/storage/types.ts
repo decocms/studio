@@ -1657,6 +1657,31 @@ export interface CmsDraftRow {
 }
 
 // ============================================================================
+// Fast Preview saves held in Studio (migration 264)
+// ============================================================================
+
+export interface DecofilePendingBlockTable {
+  organization_id: string;
+  virtual_mcp_id: string;
+  branch: string;
+  block_key: string;
+  /** The block's new content; null when the save deleted it. */
+  content: ColumnType<unknown, string | null, string | null>;
+  /** Reassigned on every write; bigint comes back as a string. */
+  revision: ColumnType<string, never, string>;
+  updated_by: string | null;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One block saved on a branch and not committed yet. */
+export interface DecofilePendingBlock {
+  blockKey: string;
+  /** The block's new content, or null when it was deleted. */
+  content: Record<string, unknown> | null;
+  revision: string;
+}
+
+// ============================================================================
 // Organization Notices (deployment-admin billing warning / block)
 // ============================================================================
 
@@ -2588,6 +2613,7 @@ export interface Database {
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
   drafts: CmsDraftTable;
+  decofile_pending_blocks: DecofilePendingBlockTable;
   experiments: ExperimentTable;
 
   // Deployment-admin billing warning / block pinned on an org

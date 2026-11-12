@@ -10,6 +10,7 @@ import {
   Cube01,
   FileSearch02,
   GitBranch01,
+  GitCommit,
   GitMerge,
   Microphone01,
   LayoutAlt01,
@@ -492,6 +493,12 @@ export function BlocksEditorSettings({
               icon={<Columns02 size={16} />}
               titleKey="settings.multiAppPreview.title"
               descriptionKey="settings.multiAppPreview.description"
+            />
+            <FlagToggle
+              flag="cms_auto_commit"
+              icon={<GitCommit size={16} />}
+              titleKey="settings.cmsAutoCommit.title"
+              descriptionKey="settings.cmsAutoCommit.description"
             />
           </>
         )}

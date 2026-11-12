@@ -326,6 +326,7 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import type { DraftStorage } from "@/storage/cms-drafts";
+import type { DecofilePendingBlockStorage } from "@/storage/decofile-pending-blocks";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import type { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import type { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
@@ -384,6 +385,8 @@ export interface StudioStorage {
   orgSites: OrgSiteStorage;
   /** The hosted CMS's named drafts (`drafts` table). */
   cmsDrafts: DraftStorage;
+  /** Fast Preview saves held in Studio (`decofile_pending_blocks` table). */
+  decofilePendingBlocks: DecofilePendingBlockStorage;
   orgRepoSyncs: OrgRepoSyncStorage;
   gitProviderAccounts: GitProviderAccountStorage;
   gitProviderAccountCredentials: GitProviderAccountCredentialStorage;
