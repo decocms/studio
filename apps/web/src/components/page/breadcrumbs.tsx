@@ -133,7 +133,7 @@ function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
   const [width, ref] = useElementWidth();
   const entries = collapseBreadcrumbs(
     items,
-    width >= 0 && width < 320,
+    width >= 0 && width < 200,
     MAX_UNCOLLAPSED_ITEMS,
   );
   return (

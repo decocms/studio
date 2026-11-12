@@ -21,16 +21,12 @@ const SITE_INDEX = buildProjectIndex([], ["acme/site"]);
 
 describe("activeFilterFieldIds", () => {
   test("no filters set means no chips", () => {
-    expect(activeFilterFieldIds(EMPTY_FILTERS, EMPTY_INDEX, null)).toEqual([]);
+    expect(activeFilterFieldIds(EMPTY_FILTERS, EMPTY_INDEX)).toEqual([]);
   });
 
   test("free-text search is not a chip — it has its own control", () => {
     expect(
-      activeFilterFieldIds(
-        { ...EMPTY_FILTERS, search: "login" },
-        EMPTY_INDEX,
-        null,
-      ),
+      activeFilterFieldIds({ ...EMPTY_FILTERS, search: "login" }, EMPTY_INDEX),
     ).toEqual([]);
   });
 
@@ -39,14 +35,13 @@ describe("activeFilterFieldIds", () => {
       activeFilterFieldIds(
         { ...EMPTY_FILTERS, tags: ["t1"], priority: "high" },
         EMPTY_INDEX,
-        null,
       ),
     ).toEqual(["priority", "tags"]);
   });
 
   test("an empty tag list is not active", () => {
     expect(
-      activeFilterFieldIds({ ...EMPTY_FILTERS, tags: [] }, EMPTY_INDEX, null),
+      activeFilterFieldIds({ ...EMPTY_FILTERS, tags: [] }, EMPTY_INDEX),
     ).toEqual([]);
   });
 
@@ -57,7 +52,6 @@ describe("activeFilterFieldIds", () => {
       activeFilterFieldIds(
         { ...EMPTY_FILTERS, project: "vir_gone" },
         EMPTY_INDEX,
-        null,
       ),
     ).toEqual([]);
   });
@@ -67,7 +61,6 @@ describe("activeFilterFieldIds", () => {
       activeFilterFieldIds(
         { ...EMPTY_FILTERS, project: "acme/site" },
         SITE_INDEX,
-        null,
       ),
     ).toEqual(["project"]);
   });
@@ -77,7 +70,6 @@ describe("activeFilterFieldIds", () => {
       activeFilterFieldIds(
         { ...EMPTY_FILTERS, project: NO_PROJECT_FILTER },
         EMPTY_INDEX,
-        null,
       ),
     ).toEqual(["project"]);
   });
@@ -93,11 +85,11 @@ describe("withFieldCleared", () => {
       search: "login",
     };
 
-    expect(withFieldCleared(filters, "priority", null)).toEqual({
+    expect(withFieldCleared(filters, "priority")).toEqual({
       ...filters,
       priority: null,
     });
-    expect(withFieldCleared(filters, "tags", null)).toEqual({
+    expect(withFieldCleared(filters, "tags")).toEqual({
       ...filters,
       tags: [],
     });
@@ -105,7 +97,7 @@ describe("withFieldCleared", () => {
 
   test("leaves the free-text search alone", () => {
     expect(
-      withFieldCleared({ ...EMPTY_FILTERS, search: "login" }, "assignee", null)
+      withFieldCleared({ ...EMPTY_FILTERS, search: "login" }, "assignee")
         .search,
     ).toBe("login");
   });
@@ -114,38 +106,25 @@ describe("withFieldCleared", () => {
 describe("the sprint chip", () => {
   const withSprint = (sprint: string | null) => ({ ...EMPTY_FILTERS, sprint });
 
-  test("the running sprint is the board's scope, not a chip", () => {
+  test("any sprint, the running one included, or the backlog is a chip", () => {
+    expect(activeFilterFieldIds(withSprint("sprint_now"), EMPTY_INDEX)).toEqual(
+      ["sprint"],
+    );
     expect(
-      activeFilterFieldIds(withSprint("sprint_now"), EMPTY_INDEX, "sprint_now"),
-    ).toEqual([]);
-  });
-
-  test("another sprint, or the backlog, narrows the board", () => {
-    expect(
-      activeFilterFieldIds(withSprint("sprint_old"), EMPTY_INDEX, "sprint_now"),
-    ).toEqual(["sprint"]);
-    expect(
-      activeFilterFieldIds(
-        withSprint(BACKLOG_SPRINT_FILTER),
-        EMPTY_INDEX,
-        "sprint_now",
-      ),
+      activeFilterFieldIds(withSprint(BACKLOG_SPRINT_FILTER), EMPTY_INDEX),
     ).toEqual(["sprint"]);
   });
 
-  test("with nothing running, any sprint is a chip", () => {
-    expect(
-      activeFilterFieldIds(withSprint("sprint_old"), EMPTY_INDEX, null),
-    ).toEqual(["sprint"]);
+  test("every sprint is no chip", () => {
+    expect(activeFilterFieldIds(withSprint(null), EMPTY_INDEX)).toEqual([]);
   });
 
-  test("clearing it goes back to the running sprint", () => {
+  test("clearing it shows every sprint", () => {
     expect(
-      withFieldCleared(withSprint("sprint_old"), "sprint", "sprint_now").sprint,
-    ).toBe("sprint_now");
+      withFieldCleared(withSprint("sprint_old"), "sprint").sprint,
+    ).toBeNull();
     expect(
-      withFieldCleared(withSprint(BACKLOG_SPRINT_FILTER), "sprint", null)
-        .sprint,
+      withFieldCleared(withSprint(BACKLOG_SPRINT_FILTER), "sprint").sprint,
     ).toBeNull();
   });
 });

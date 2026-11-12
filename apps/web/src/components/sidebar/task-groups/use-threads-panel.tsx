@@ -13,11 +13,7 @@ import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { useThreadActions, useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
-import {
-  resolveActiveAgentId,
-  useRouteAgentId,
-  useRouteThreadId,
-} from "@/layouts/thread-route";
+import { useRouteThreadId } from "@/layouts/thread-route";
 import { track } from "@/lib/posthog-client";
 import type { Task } from "@/components/chat/task/types";
 import { findReusableNewChat } from "@/lib/reusable-new-chat";
@@ -28,12 +24,12 @@ import { forgetThreadLayout } from "@/lib/thread-layout-memory";
 import { GlobalSearchDialog } from "@/layouts/tasks-panel/global-search-dialog";
 import { findArchiveFallback } from "./archive-fallback";
 import { MyThreadsSection } from "./my-threads-section";
-import type { SidebarFilters, SidebarTypeFilter } from "./next-page-offset";
+import type { SidebarFilters } from "./next-page-offset";
 
 export type ThreadGroupBy = "flat" | "status";
 
 export interface ThreadsPanel {
-  /** Threads to render, already scope- and type-filtered, newest first. */
+  /** Threads to render, already scope-filtered, newest first. Automation runs are left out. */
   threads: Task[];
   activeTaskId: string | null;
   filters: SidebarFilters;
@@ -42,8 +38,6 @@ export interface ThreadsPanel {
   loadMore: () => void;
   groupBy: ThreadGroupBy;
   setGroupBy: (value: ThreadGroupBy) => void;
-  typeFilter: SidebarTypeFilter;
-  setTypeFilter: (value: SidebarTypeFilter) => void;
   showAll: boolean;
   setShowAll: (value: boolean) => void;
   /** True when any filter is off its default — drives the filter button's dot. */
@@ -51,7 +45,8 @@ export interface ThreadsPanel {
   selectTask: (task: Task) => void;
   archiveTask: (task: Task) => void;
   newThread: () => void;
-  openSearch: () => void;
+  /** Opens the org-wide search, starting from `query` when given. */
+  openSearch: (query?: string) => void;
   /** The global search dialog, mounted once `openSearch` has fired at least once. */
   searchDialog: React.ReactNode;
 }
@@ -98,20 +93,8 @@ export function useThreadsPanel({
 
   const navigate = useNavigate();
   const { setTaskId, createNewTask } = usePanelActions();
-  const routeAgentId = useRouteAgentId();
   /** Route-aware: `$taskId` on the legacy route, `?thread=` on a destination. */
   const activeTaskId = useRouteThreadId();
-  /**
-   * The recipient is the agent the ROUTE names — its `{-$project}` segment —
-   * falling back to the open thread's own agent on an org-level destination,
-   * which names none. Reading `?virtualmcpid=` made this control hand a new
-   * chat to the Super Agent on every `/$org/agents/<project>`.
-   */
-  const activeAgentId = resolveActiveAgentId({
-    routeAgentId,
-    threadVirtualMcpId: allThreads.find((thread) => thread.id === activeTaskId)
-      ?.virtual_mcp_id,
-  });
   const closeAfterNavigation = () => {
     onNavigate?.();
   };
@@ -120,7 +103,6 @@ export function useThreadsPanel({
     (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
   );
 
-  const [typeFilter, setTypeFilter] = useState<SidebarTypeFilter>("all");
   const [groupBy, setGroupBy] = useState<ThreadGroupBy>("flat");
   const [showAll, setShowAll] = useLocalStorage<boolean>(
     "sidebar-threads-scope-all",
@@ -128,8 +110,10 @@ export function useThreadsPanel({
   );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
-  const openSearch = () => {
+  const [searchSeed, setSearchSeed] = useState({ query: "", count: 0 });
+  const openSearch = (query = "") => {
     track("tasks_panel_search_opened");
+    setSearchSeed((seed) => ({ query, count: seed.count + 1 }));
     setSearchEverOpened(true);
     setSearchOpen(true);
   };
@@ -138,7 +122,8 @@ export function useThreadsPanel({
    * `member: "mine"` scopes the query to the current user.
    */
   const filters: SidebarFilters = {
-    type: typeFilter,
+    // Automation runs live with their automations; the chat list is people's own conversations.
+    type: "manual",
     member: "mine",
     currentUserId: currentUserId ?? null,
   };
@@ -166,15 +151,8 @@ export function useThreadsPanel({
       ? threads.filter((thread) => thread.created_by === currentUserId)
       : [];
 
-  const typeFiltered = (threads: Task[]) => {
-    if (typeFilter === "automation") {
-      return threads.filter((thread) => Boolean(thread.trigger_id));
-    }
-    if (typeFilter === "manual") {
-      return threads.filter((thread) => !thread.trigger_id);
-    }
-    return threads;
-  };
+  const conversations = (threads: Task[]) =>
+    threads.filter((thread) => !thread.trigger_id);
 
   /**
    * Every agent's threads, mixed — an agent's own list lives on its home view.
@@ -183,8 +161,8 @@ export function useThreadsPanel({
    */
   const visibleScopedThreads = hideAbandonedNewChats(
     showAll
-      ? typeFiltered(sortedThreads)
-      : typeFiltered(mineFiltered(sortedThreads)),
+      ? conversations(sortedThreads)
+      : conversations(mineFiltered(sortedThreads)),
     activeTaskId,
   );
 
@@ -219,9 +197,9 @@ export function useThreadsPanel({
     setTaskId(task.id, task.virtual_mcp_id);
   };
 
-  /** New chat on the current agent — reuse its empty one if any, else create. */
+  /** New chat with the org's assistant — reuse its empty one if any, else create. */
   const newThread = () => {
-    const currentAgentId = activeAgentId ?? decopilotId;
+    const currentAgentId = decopilotId;
     track("sidebar_new_thread_clicked", { virtual_mcp_id: currentAgentId });
     closeAfterNavigation();
     const existing = findReusableNewChat(
@@ -251,17 +229,21 @@ export function useThreadsPanel({
     loadMore: () => void fetchNextPage(),
     groupBy,
     setGroupBy,
-    typeFilter,
-    setTypeFilter,
     showAll,
     setShowAll,
-    filtersActive: groupBy !== "flat" || typeFilter !== "all" || showAll,
+    filtersActive: groupBy !== "flat" || showAll,
     selectTask,
     archiveTask,
     newThread,
     openSearch,
     searchDialog: searchEverOpened ? (
-      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      // Remounts per opening, so each search starts from what was typed.
+      <GlobalSearchDialog
+        key={searchSeed.count}
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        initialQuery={searchSeed.query}
+      />
     ) : null,
   };
 }

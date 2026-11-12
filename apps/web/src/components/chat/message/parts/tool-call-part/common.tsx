@@ -103,8 +103,7 @@ export function ToolCallShell({
       <CollapsibleTrigger
         disabled={!isExpandable}
         className={cn(
-          "group/tool flex items-center gap-2 w-full py-2.5 text-left transition-colors",
-          isExpandable && "[@media(hover:hover)]:hover:bg-accent",
+          "group/tool flex items-center gap-2 w-full py-1.5 text-left transition-colors",
           !isExpandable && "cursor-default",
         )}
         aria-disabled={!isExpandable}
@@ -162,21 +161,27 @@ export function ToolCallShell({
         {/* Label */}
         <span
           className={cn(
-            "shrink-0 text-sm font-normal",
-            isError ? "text-warning/80" : "text-foreground",
+            "shrink-0 text-sm font-normal transition-colors",
+            isError
+              ? "text-warning/80"
+              : effectiveOpen
+                ? "text-foreground"
+                : "text-muted-foreground [@media(hover:hover)]:group-hover/tool:text-foreground",
             isLoading && "shimmer",
           )}
         >
           {title}
         </span>
 
-        {/* Inline summary — pill with subtle bg */}
-        {summary ? (
-          <span className="min-w-0 flex-1 truncate">
-            <span className="text-xs text-muted-foreground/60 bg-muted/50 rounded-[3px] px-1 py-px leading-none">
-              {/* Its own span: the shimmer clips its background to text, which would take the pill's fill with it. */}
-              <span className={cn(isLoading && "shimmer")}>{summary}</span>
-            </span>
+        {/* Inline summary, hidden once open: the detail below says it in full. */}
+        {summary && !(effectiveOpen && hasDetailString) ? (
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-sm text-muted-foreground/60",
+              isLoading && "shimmer",
+            )}
+          >
+            {summary}
           </span>
         ) : (
           <div className="flex-1" />
@@ -196,14 +201,14 @@ export function ToolCallShell({
           {children ? (
             children
           ) : detailVariant === "prose" ? (
-            <div className="mt-1 mb-1">
+            <div className="ml-[7px] mb-1 border-l border-border pl-[17px]">
               <div
                 ref={detailStick.scrollRef}
-                className="max-h-[150px] overflow-y-auto rounded-md bg-muted/30 px-3 py-2"
+                className="max-h-60 overflow-y-auto"
               >
                 <p
                   ref={detailStick.contentRef}
-                  className="text-xs text-muted-foreground/70 whitespace-pre-wrap leading-relaxed wrap-break-word"
+                  className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed wrap-break-word"
                 >
                   {detail}
                 </p>

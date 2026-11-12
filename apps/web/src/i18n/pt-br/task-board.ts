@@ -128,7 +128,6 @@ export const taskBoard = {
     "Nenhuma tarefa ainda. Comece uma com Nova tarefa.",
   "taskBoard.taskBoard.laneMenuAriaLabel": "Mais ações para {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Selecionar todos",
-  "taskBoard.taskBoard.columnsLabel": "Colunas",
   "taskBoard.taskBoard.hideColumn": "Ocultar",
   "taskBoard.taskBoard.collapseColumn": "Recolher",
   "taskBoard.taskBoard.collapseColumnAriaLabel": "Recolher {lane}",
@@ -491,8 +490,6 @@ export const taskBoard = {
   "taskBoard.feed.composerSubmit": "Adicionar",
   "taskBoard.sprints.label": "Sprint",
   "taskBoard.sprints.backlog": "Backlog",
-  "taskBoard.sprints.manage": "Sprints",
-  "taskBoard.sprints.all": "Todas as sprints",
   "taskBoard.sprints.manageItem": "Gerenciar sprints…",
   "taskBoard.sprints.title": "Sprints",
   "taskBoard.sprints.description":

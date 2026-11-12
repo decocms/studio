@@ -2,6 +2,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ArrowDown } from "@untitledui/icons";
 import {
+  Fragment,
   useEffect,
   useRef,
   type PropsWithChildren,
@@ -19,11 +20,12 @@ import {
 } from "./context";
 
 export { useChatTask } from "./context";
-import { IceBreakers } from "./ice-breakers";
 import { HIGHLIGHT_COLLAPSED_HEIGHT_PX } from "./highlight/collapsible-highlight";
 import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
+import { ChatDraftCard } from "./drafts/draft-card";
+import { usedTool } from "./drafts/used-tool";
 import { selectHiddenFromBody } from "./queue-items.ts";
 import { LiveMessagesContext, placeLiveMessages } from "./live-messages.ts";
 import { useMessageQueue } from "./use-message-queue.ts";
@@ -166,6 +168,10 @@ function ChatMessages() {
   const visibleMessages = liveMessages.visible;
   const messagePairs = useMessagePairs(visibleMessages);
   const lastMessagePair = messagePairs.at(-1);
+  // The draft card sits where the agent's work began; no work, no card.
+  const draftAnchor = messagePairs.findIndex(
+    (pair) => !!pair.assistant && usedTool(pair.assistant),
+  );
   const highlightCount = useHighlightCount();
 
   // Reserve `n × h + 16px` of bottom padding so that, when every highlight
@@ -237,13 +243,9 @@ function ChatMessages() {
           `overflow-x-clip` carries the horizontal-clipping defense moved
           off the scroller above (see its comment). It MUST be `clip`, not
           `hidden`: any overflow value other than visible/clip makes this
-          wrapper a scroll container, and `position: sticky` latches onto
-          its NEAREST scroll-container ancestor — with `hidden` here, the
-          sticky user bubble (pair.tsx) sticks to this never-scrolling
-          wrapper instead of the real scroller and stops pinning entirely.
-          `clip` clips identically without creating a scroll container, and
-          stays invisible to the lib's wheel-escape ancestor walk (computed
-          shorthand is not "auto"/"scroll").
+          wrapper a scroll container. `clip` clips identically without one,
+          and stays invisible to the lib's wheel-escape ancestor walk
+          (computed shorthand is not "auto"/"scroll").
 
           `[container-type:size]` above (on the scroller) + `min-h-[100cqh]`
           below (on the last-pair wrapper) replace the old `min-h-full`:
@@ -268,14 +270,16 @@ function ChatMessages() {
                   </div>
                 )}
                 {messagePairs.slice(0, -1).map((pair, index) => (
-                  <MessagePair
-                    key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
-                    pair={pair}
-                    isLastPair={false}
-                    status={
-                      index === messagePairs.length - 1 ? status : undefined
-                    }
-                  />
+                  <Fragment key={`pair-${pair.user?.id ?? pair.assistant?.id}`}>
+                    <MessagePair
+                      pair={pair}
+                      isLastPair={false}
+                      status={
+                        index === messagePairs.length - 1 ? status : undefined
+                      }
+                    />
+                    {index === draftAnchor && <ChatDraftCard />}
+                  </Fragment>
                 ))}
               </div>
               {lastMessagePair && (
@@ -286,6 +290,7 @@ function ChatMessages() {
                     isLastPair={true}
                     status={status}
                   />
+                  {draftAnchor === messagePairs.length - 1 && <ChatDraftCard />}
                 </div>
               )}
             </div>
@@ -347,7 +352,6 @@ export const Chat = Object.assign(ChatRoot, {
   StreamHost: ChatStreamHost,
   ActiveTaskStreamSource: ActiveTaskStreamSource,
   ThreadlessStreamSource: ThreadlessStreamSource,
-  IceBreakers: IceBreakers,
   NoAiProviderEmptyState: NoAiProviderEmptyState,
   CreditsEmptyState: CreditsEmptyState,
   CreditsEyebrow: CreditsEyebrow,

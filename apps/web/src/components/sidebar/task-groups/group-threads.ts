@@ -106,3 +106,51 @@ export function groupThreadsByVirtualMcp(
   }
   return result;
 }
+
+export type DateBucket = "today" | "yesterday" | "week" | "month" | "older";
+
+const DATE_BUCKETS: DateBucket[] = [
+  "today",
+  "yesterday",
+  "week",
+  "month",
+  "older",
+];
+
+/** Calendar days between two local dates; 0 is the same day. */
+function daysBetween(earlier: Date, later: Date): number {
+  const start = new Date(
+    earlier.getFullYear(),
+    earlier.getMonth(),
+    earlier.getDate(),
+  );
+  const end = new Date(later.getFullYear(), later.getMonth(), later.getDate());
+  return Math.round((end.getTime() - start.getTime()) / 86_400_000);
+}
+
+function dateBucket(updatedAt: string | undefined, now: Date): DateBucket {
+  if (!updatedAt) return "older";
+  const days = daysBetween(new Date(updatedAt), now);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return "week";
+  if (days < 30) return "month";
+  return "older";
+}
+
+/** Threads under date headings, keeping their order; empty buckets are dropped. */
+export function groupThreadsByDate(
+  threads: Task[],
+  now: Date,
+): { bucket: DateBucket; threads: Task[] }[] {
+  const byBucket = new Map<DateBucket, Task[]>(
+    DATE_BUCKETS.map((bucket) => [bucket, []]),
+  );
+  for (const thread of threads) {
+    byBucket.get(dateBucket(thread.updated_at, now))?.push(thread);
+  }
+  return DATE_BUCKETS.map((bucket) => ({
+    bucket,
+    threads: byBucket.get(bucket) ?? [],
+  })).filter((group) => group.threads.length > 0);
+}

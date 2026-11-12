@@ -21,6 +21,8 @@ interface Preferences {
   /** Task-board lanes this person collapsed to a narrow strip. Statuses, for
    *  the same reason as `taskBoardLaneVisibility`. */
   collapsedTaskBoardLanes: string[];
+  /** The main panel stays expanded over the chat. */
+  contentFullscreen: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -31,6 +33,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   language: detectLocale(),
   taskBoardLaneVisibility: {},
   collapsedTaskBoardLanes: [],
+  contentFullscreen: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -135,6 +138,9 @@ export function usePreferences() {
       }
       if (!Array.isArray(merged.collapsedTaskBoardLanes)) {
         merged.collapsedTaskBoardLanes = [];
+      }
+      if (typeof merged.contentFullscreen !== "boolean") {
+        merged.contentFullscreen = false;
       }
       return merged;
     },

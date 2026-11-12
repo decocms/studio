@@ -124,7 +124,6 @@ export const taskBoard = {
   "taskBoard.taskBoard.noTasksYet": "No tasks yet. Start one with New task.",
   "taskBoard.taskBoard.laneMenuAriaLabel": "More actions for {lane}",
   "taskBoard.taskBoard.selectAllInLane": "Select all",
-  "taskBoard.taskBoard.columnsLabel": "Columns",
   "taskBoard.taskBoard.hideColumn": "Hide",
   "taskBoard.taskBoard.collapseColumn": "Collapse",
   "taskBoard.taskBoard.collapseColumnAriaLabel": "Collapse {lane}",
@@ -482,8 +481,6 @@ export const taskBoard = {
   "taskBoard.feed.composerSubmit": "Add",
   "taskBoard.sprints.label": "Sprint",
   "taskBoard.sprints.backlog": "Backlog",
-  "taskBoard.sprints.manage": "Sprints",
-  "taskBoard.sprints.all": "All sprints",
   "taskBoard.sprints.manageItem": "Manage sprints…",
   "taskBoard.sprints.title": "Sprints",
   "taskBoard.sprints.description":

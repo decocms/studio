@@ -5,14 +5,12 @@
  * in `input.tsx` whenever the active thread has queued items; renders
  * nothing otherwise.
  *
- * Layout (V1, settled via visual companion 2026-07-08): quiet header —
- * "N queued" left, an outlined "Send next" button right — above a flat
- * numbered list. Rows are uniform (`number chip · text · ✕ on hover`);
- * numbers make the FIFO order legible, and the single header button makes
- * it honest that only the HEAD can be promoted.
+ * Layout: each queued message is a dashed bubble on the right, where it
+ * will land once sent, with its time and actions under it. Only the HEAD
+ * offers "Send now", since only it can be promoted.
  *
  * Actions:
- *   - Send next (header): cancels the current turn so the gate FIFO
+ *   - Send now (head only): cancels the current turn so the gate FIFO
  *     promotes the first queued message — same stop() as the composer's
  *     stop button.
  *   - Remove (per row): cancels the queued gate workflow, then drops the
@@ -28,11 +26,6 @@
  * (`editQueuedMessage` in chat-context still implements the composition).
  */
 import { Button } from "@decocms/ui/components/button.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
 import { ArrowUp, XClose } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 import { useChatStream } from "./context";
@@ -50,52 +43,39 @@ export function QueueTray({ taskId }: { taskId: string }) {
   if (queued.length === 0) return null;
 
   return (
-    <div className="mb-1 overflow-hidden surface dark:bg-muted">
-      <div className="flex items-center justify-between gap-2 border-b border-border py-1.5 pr-2 pl-3 text-xs text-muted-foreground">
-        <span>
-          {t(
-            queued.length === 1
-              ? "chat.queueTray.queuedMessage"
-              : "chat.queueTray.queuedMessages",
-            { count: queued.length },
-          )}
-        </span>
-        <Tooltip delayDuration={400}>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("chat.queueTray.sendNow")}
-              onClick={() => void stop()}
-            >
-              <ArrowUp size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <p className="text-xs">{t("chat.queueTray.sendNow")}</p>
-          </TooltipContent>
-        </Tooltip>
-      </div>
+    <div className="mb-2 flex flex-col items-end gap-3 px-2.5">
       {queued.map((item, index) => (
         <div
           key={item.messageId}
-          className="group/queuerow flex items-center gap-2 px-3 py-1.5"
+          className="flex max-w-[85%] flex-col items-end"
         >
-          {/* Chip surface must differ from the tray surface in BOTH modes —
-              the tray is bg-card light / bg-muted dark, so bg-muted would
-              vanish in dark mode. */}
-          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-muted text-2xs font-semibold text-muted-foreground dark:bg-background">
-            {index + 1}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+          <div className="min-w-0 rounded-2xl border border-dashed border-border px-4 py-2.5 text-sm wrap-break-word text-muted-foreground">
             {item.text}
-          </span>
-          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/queuerow:opacity-100">
+          </div>
+          <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+            <span className="mr-1 select-none">
+              {new Date(item.enqueuedAt).toLocaleTimeString(undefined, {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </span>
+            {index === 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-1.5 text-xs text-muted-foreground"
+                onClick={() => void stop()}
+              >
+                <ArrowUp size={12} />
+                {t("chat.queueTray.sendNow")}
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
+              className="size-6 text-muted-foreground"
               title={t("chat.queueTray.removeFromQueue")}
               aria-label={t("chat.queueTray.removeFromQueue")}
               onClick={() =>

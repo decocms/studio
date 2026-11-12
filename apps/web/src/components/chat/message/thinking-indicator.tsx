@@ -217,7 +217,7 @@ export function ThoughtSummary({
       : undefined;
 
   const fullText = parts.map((p) => p.text ?? "").join("\n\n");
-  const detail = !allPartsRedacted && fullText.trim() ? fullText : null;
+  const detail = !allPartsRedacted && fullText.trim() ? fullText.trim() : null;
 
   return (
     <ThoughtSummaryShell

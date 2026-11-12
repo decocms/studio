@@ -36,18 +36,6 @@ export function resolveRouteThreadId(input: {
   return input.taskIdParam ?? input.threadSearch ?? null;
 }
 
-/** A canonical agent URL may only mount a thread owned by that same agent.
- *  Missing ownership is tolerated for legacy/partial records; a concrete
- *  mismatch must be removed before chat or runtime providers see the row. */
-export function routeThreadMatchesAgent(input: {
-  routeAgentId: string;
-  threadAgentId?: string | null;
-}): boolean {
-  return (
-    input.threadAgentId == null || input.threadAgentId === input.routeAgentId
-  );
-}
-
 /** The thread id for the matched route, from either the path param or `?thread=`. */
 export function useRouteThreadId(): string | null {
   const params = useParams({ strict: false });
@@ -122,22 +110,6 @@ export function resolveDestinationThreadSearch(input: {
     ...changes
   } = input.changes;
   return { ...previous, ...changes, thread: input.threadId };
-}
-
-/**
- * The agent a surface should act on, where "no agent named anywhere" is a real
- * answer (`null`) rather than the Super Agent — the thread list, whose new-chat
- * button and active-agent highlight both read it.
- *
- * The route answers first (see {@link resolveRouteAgentId}), with the open
- * thread's own agent behind it, which is the only source left on an org-level
- * destination.
- */
-export function resolveActiveAgentId(input: {
-  routeAgentId?: string;
-  threadVirtualMcpId?: string | null;
-}): string | null {
-  return input.routeAgentId ?? input.threadVirtualMcpId ?? null;
 }
 
 /**

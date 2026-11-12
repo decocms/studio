@@ -16,6 +16,9 @@ import { ArrowRight } from "@untitledui/icons";
 import type { ReactNode } from "react";
 import { ClaudeCodeIcon, CodexIcon } from "@/components/chat/agent-icons";
 import { CursorIcon } from "@/components/connect/client-icons";
+import { CONNECT_KEY_PREFIX } from "@/components/connect/connect-key";
+import { useApiKeysList } from "@/hooks/use-api-keys";
+import { useCapability } from "@/hooks/use-capability";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
@@ -87,6 +90,43 @@ export function ConnectPill({ dense = true }: { dense?: boolean }) {
           "shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5",
         )}
       />
+    </Link>
+  );
+}
+
+/** The home's version: a slim row over the page that leaves once a key minted
+ *  from Settings › Connect exists. */
+export function ConnectBanner() {
+  const t = useT();
+  const { org } = useProjectContext();
+  const { granted } = useCapability("api-keys:manage");
+  const { data: keys } = useApiKeysList({ enabled: granted });
+  // Wait for the list, so a connected org never flashes the banner.
+  if (granted && !keys) return null;
+  if (keys?.some((k) => k.name.startsWith(CONNECT_KEY_PREFIX))) return null;
+
+  return (
+    <Link
+      to="/$org/settings/connect"
+      params={{ org: org.slug }}
+      onClick={() => track("connect_clients_opened", { source: "org_home" })}
+      className="group hidden items-center gap-3 rounded-xl bg-card px-4 py-2.5 text-sm shadow-edge transition-colors hover:bg-accent md:flex"
+    >
+      <span aria-hidden="true" className="flex items-center gap-1">
+        {CLIENTS.map(({ name, Icon, size, bg, fg }) => (
+          <span
+            key={name}
+            className="flex size-5 items-center justify-center rounded-full"
+            style={{ backgroundColor: bg, color: fg }}
+          >
+            <Icon size={size[0]} />
+          </span>
+        ))}
+      </span>
+      <span className="font-medium text-foreground">
+        {t("home.orgHome.connectPill")}
+      </span>
+      <ArrowRight className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }

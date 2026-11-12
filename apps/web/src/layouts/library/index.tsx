@@ -523,7 +523,7 @@ export function LibraryPage({
       <Page.Actions>
         {browseVolume && (
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             onClick={() => setNewFolderOpen(true)}
           >

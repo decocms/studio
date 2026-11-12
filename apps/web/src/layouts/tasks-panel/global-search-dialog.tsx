@@ -45,11 +45,14 @@ type SearchResponse = {
 export function GlobalSearchDialog({
   open,
   onOpenChange,
+  initialQuery = "",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** What the person already typed in the chat list, so the search picks up from there. */
+  initialQuery?: string;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const { org } = useProjectContext();
   const { setTaskId } = usePanelActions();
   const studio = useStudioTools();

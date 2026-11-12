@@ -38,6 +38,7 @@ import {
 import { DemoBoardResetButton } from "./demo-reset-button";
 import { BoardOrgProvider } from "./board-org";
 import { authClient } from "@/lib/auth-client";
+import { FoldedLabelTooltip } from "./folded-label-tooltip";
 import { ColumnRulesSheet, useEntryAutomations } from "./column-rules";
 import { columnSentence } from "./column-guide";
 import { useTaskBoardRulesLive } from "@/hooks/use-task-board-prompts";
@@ -114,7 +115,7 @@ import {
   useTaskBoardSprintsLive,
 } from "@/hooks/use-task-board-sprints";
 import { currentSprintId } from "@decocms/shared/sprints";
-import { SprintSwitcher } from "./sprint-controls";
+import { SprintsDialog } from "./sprint-controls";
 import { sprintLabel } from "./sprint-label";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
@@ -204,7 +205,6 @@ import {
 import {
   AppliedFiltersBar,
   BoardSettingsButton,
-  ColumnsButton,
   GroupByButton,
   SortByButton,
   TaskFilterButton,
@@ -1024,6 +1024,7 @@ function TaskBoardBody() {
   const hasRepo = usableRepos.length > 0;
   const repos = usableRepos.map((repository) => repository.path);
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
+  const [managingSprints, setManagingSprints] = useState(false);
   // Returns true if the assignment was blocked (connect prompt opened) so the
   // caller stops before dispatching.
   const blockSuperAgentWithoutRepository = (
@@ -1155,7 +1156,6 @@ function TaskBoardBody() {
           : null,
       );
   const [preferences] = usePreferences();
-  const columnVisibility = useLaneVisibility();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
     setSelection((prev) => {
@@ -1549,13 +1549,6 @@ function TaskBoardBody() {
           <Page.Actions
             secondary={
               <>
-                <SprintSwitcher
-                  sprints={sprints}
-                  value={filters.sprint}
-                  onChange={(sprint) =>
-                    handleFiltersChange({ ...filters, sprint })
-                  }
-                />
                 {/* Epics lists every epic; the board's filters don't apply to it. */}
                 {items.length > 0 && layout !== "epics" && (
                   <>
@@ -1583,22 +1576,15 @@ function TaskBoardBody() {
                         index={projectIndex}
                         scoped={scopeId !== null}
                         onChange={handleFiltersChange}
+                        onManageSprints={() => setManagingSprints(true)}
                       />
                       {/* A phone's header fits search, filter and settings; view tuning stays on wider screens. */}
-                      <div className="contents max-md:hidden">
-                        {layout === "list" ? (
-                          <>
-                            <GroupByButton {...grouping} />
-                            <SortByButton {...sorting} />
-                          </>
-                        ) : (
-                          <ColumnsButton
-                            all={CANONICAL_COLUMN_KEYS}
-                            hidden={columnVisibility.hidden}
-                            onToggle={columnVisibility.setLaneShown}
-                          />
-                        )}
-                      </div>
+                      {layout === "list" && (
+                        <div className="contents max-md:hidden">
+                          <GroupByButton {...grouping} />
+                          <SortByButton {...sorting} />
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -1606,6 +1592,12 @@ function TaskBoardBody() {
                   onClick={openBoardSettings}
                   label={boardSettingsLabel}
                 />
+                {managingSprints && (
+                  <SprintsDialog
+                    sprints={sprints}
+                    onClose={() => setManagingSprints(false)}
+                  />
+                )}
               </>
             }
           >
@@ -1618,12 +1610,21 @@ function TaskBoardBody() {
                 {t("taskBoard.epics.newEpic")}
               </Button>
             ) : (
-              <Button size="sm" onClick={openCreate}>
-                <Plus size={16} />
-                <span className="max-md:sr-only">
-                  {t("taskBoard.taskBoard.newTask")}
-                </span>
-              </Button>
+              <FoldedLabelTooltip label={t("taskBoard.taskBoard.newTask")}>
+                <Button
+                  size="sm"
+                  className="max-md:w-7 max-md:px-0 @max-xl/panel-header:w-7 @max-xl/panel-header:px-0"
+                  onClick={openCreate}
+                >
+                  <Plus size={16} />
+                  <span
+                    data-folding-label
+                    className="max-md:sr-only @max-xl/panel-header:sr-only"
+                  >
+                    {t("taskBoard.taskBoard.newTask")}
+                  </span>
+                </Button>
+              </FoldedLabelTooltip>
             )}
           </Page.Actions>
           <Panel.Toolbar.Left.Portal>{layoutTabs}</Panel.Toolbar.Left.Portal>
@@ -2263,8 +2264,7 @@ function bySortOrder(a: TaskBoardItem, b: TaskBoardItem) {
   return a.sortOrder - b.sortOrder;
 }
 
-/** Lane visibility persists per person, so the choice survives a reload. The
- *  toolbar menu and the board read the same preference. */
+/** Lane visibility persists per person, so the choice survives a reload. */
 function useLaneVisibility() {
   const [preferences, setPreferences] = usePreferences();
   const { lanes, hidden } = laneVisibility(preferences.taskBoardLaneVisibility);
