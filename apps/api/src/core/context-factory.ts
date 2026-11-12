@@ -321,6 +321,9 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   // way; browser sessions, MCP OAuth, and studio JWTs keep the role-based path.
   const isApiKeyPrincipal = !!apiKeyId;
 
+  // A studio JWT is a scoped downstream-callback credential: authorize it by its own permissions, never the acting user's role.
+  const isCapabilityToken = isApiKeyPrincipal || authMethod === "studioJwt";
+
   // Better Auth holds no session for these credentials, so its session-gated
   // organization endpoints reject them; read through its adapter instead.
   const readsOrgsViaAdapter =
@@ -332,14 +335,13 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
   return {
     isApiKeyPrincipal,
+    isCapabilityToken,
     hasPermission: async (
       requestedPermission: Permission,
       options?: { organizationId?: string; role?: string },
     ): Promise<boolean> => {
-      // API key → its allowlist IS the authorization. Checked before the role
-      // bypass so the owner's role can never widen it. No allowlist → grants
-      // nothing (fail-closed).
-      if (isApiKeyPrincipal) {
+      // Capability token (API key or studio JWT): its allowlist IS the authorization, checked before the role bypass so the owner's role can never widen it (no allowlist grants nothing).
+      if (isCapabilityToken) {
         return checkApiKeyPermission(permissions ?? {}, requestedPermission);
       }
 
