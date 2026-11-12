@@ -96,7 +96,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
         ? []
         : offeredProjectSidebarViews(
             project.metadata.sidebarViewsSeen,
-            presence.calendar,
+            presence,
           ),
     ),
   );
