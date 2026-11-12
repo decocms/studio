@@ -67,6 +67,9 @@ function cachedDefaultBranch(url: string): string | null {
   return hit.value;
 }
 
+/** Largest file `commitFiles` sends inline in the tree write. */
+const MAX_INLINE_CONTENT_BYTES = 1024 * 1024;
+
 /**
  * Conditional-request cache: url -> { etag, body }. GitHub serves 304s for
  * matching `If-None-Match` and those do NOT count against the primary rate
@@ -857,17 +860,21 @@ export class GithubContentClient implements RepoContentClient {
     const copySources = await this.resolveCopySources(changes);
     const blobShas = new Map<string, string>();
     // Inline: the tree write carries each file's text and GitHub writes its
-    // blob, one call for every file instead of one upload per file.
-    if (!params.inlineContent) {
-      for (const change of changes) {
-        if ("content" in change) {
-          blobShas.set(change.path, await this.createBlob(change.content));
-        }
+    // blob, one call for every file instead of one upload per file. A file
+    // over the cap is still uploaded on its own, so the tree write stays small.
+    for (const change of changes) {
+      if (
+        "content" in change &&
+        !(
+          params.inlineContent &&
+          Buffer.byteLength(change.content) <= MAX_INLINE_CONTENT_BYTES
+        )
+      ) {
+        blobShas.set(change.path, await this.createBlob(change.content));
       }
     }
     const entries = treeWriteEntries(changes, {
-      blobSha: (change) =>
-        params.inlineContent ? null : (blobShas.get(change.path) as string),
+      blobSha: (change) => blobShas.get(change.path) ?? null,
       copySource: (ref, path) => copySources.get(ref)?.get(path) ?? null,
     });
 

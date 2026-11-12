@@ -39,6 +39,18 @@ import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
 
 const MAX_CAS_ATTEMPTS = 3;
 
+/**
+ * Least time between the starts of two commits to one branch. The first save
+ * after a pause commits at once; saves made while typing wait out the gap and
+ * land together, instead of one commit (about five GitHub calls) per autosave.
+ * Per process: replicas still commit independently.
+ */
+export const MIN_COMMIT_INTERVAL_MS = 5_000;
+
+/** queueKey -> when its last commit started. Outlives the queue, which is
+ *  dropped as soon as it drains — between two autosaves. */
+const lastCommitAt = new Map<string, number>();
+
 export interface DecofilePatch {
   set?: Record<string, unknown>;
   delete?: string[];
@@ -102,6 +114,10 @@ export function enqueueDecofilePatch(
   deps: CommitDeps,
   patch: DecofilePatch,
 ): Promise<string> {
+  const now = Date.now();
+  for (const [key, at] of lastCommitAt) {
+    if (now - at >= MIN_COMMIT_INTERVAL_MS) lastCommitAt.delete(key);
+  }
   let state = queues.get(queueKey);
   if (!state) {
     state = { pending: null, running: false };
@@ -123,6 +139,10 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
   state.running = true;
   try {
     while (state.pending) {
+      const wait =
+        (lastCommitAt.get(queueKey) ?? 0) + MIN_COMMIT_INTERVAL_MS - Date.now();
+      if (wait > 0) await sleep(wait);
+      lastCommitAt.set(queueKey, Date.now());
       const batch = state.pending;
       state.pending = null;
       try {
@@ -306,6 +326,7 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
         ),
         expectedHead: headSha,
         changes: writes,
+        inlineContent: true,
       });
       return { sha, accepted, conflicts };
     } catch (err) {
