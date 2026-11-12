@@ -98,6 +98,17 @@ describe("DecofilePendingBlockStorage", () => {
     ]);
   });
 
+  it("keeps a block's key order", async () => {
+    await storage.write(
+      SCOPE,
+      { set: { home: { title: "t", __resolveType: "x" } }, delete: [] },
+      null,
+      noCheck,
+    );
+    const [row] = await storage.list(SCOPE);
+    expect(Object.keys(row?.content ?? {})).toEqual(["title", "__resolveType"]);
+  });
+
   it("gives a block a new revision on every write", async () => {
     await storage.write(
       SCOPE,

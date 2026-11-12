@@ -7,9 +7,11 @@ import { type Kysely, sql } from "kysely";
  * branch is stored here, one row per block, instead of becoming a commit. The
  * decofile read lays these rows over the branch head, so the editor and the
  * preview see them; publishing commits them to the branch and deletes them.
- * `content` NULL means the block was deleted. `revision` is reassigned on each
- * write, so a commit deletes only the rows it carried and leaves a newer save
- * pending. Rows go away with their organization or project.
+ * `content` is the block's JSON as text, not jsonb, so the committed file
+ * keeps the editor's key order; NULL means the block was deleted. `revision`
+ * is reassigned on each write, so a commit deletes only the rows it carried
+ * and leaves a newer save pending. Rows go away with their organization or
+ * project.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`CREATE SEQUENCE IF NOT EXISTS decofile_pending_blocks_revision_seq`.execute(
@@ -26,7 +28,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     )
     .addColumn("branch", "text", (col) => col.notNull())
     .addColumn("block_key", "text", (col) => col.notNull())
-    .addColumn("content", "jsonb")
+    .addColumn("content", "text")
     .addColumn("revision", "bigint", (col) =>
       col
         .notNull()

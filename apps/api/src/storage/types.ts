@@ -1665,8 +1665,8 @@ export interface DecofilePendingBlockTable {
   virtual_mcp_id: string;
   branch: string;
   block_key: string;
-  /** The block's new content; null when the save deleted it. */
-  content: ColumnType<unknown, string | null, string | null>;
+  /** The block's JSON text (key order kept); null when the save deleted it. */
+  content: string | null;
   /** Reassigned on every write; bigint comes back as a string. */
   revision: ColumnType<string, never, string>;
   updated_by: string | null;

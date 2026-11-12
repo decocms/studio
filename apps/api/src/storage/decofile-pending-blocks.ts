@@ -10,15 +10,15 @@ export interface PendingBranchScope {
 
 function toBlock(row: {
   block_key: string;
-  content: unknown;
+  content: string | null;
   revision: string;
 }): DecofilePendingBlock {
   return {
     blockKey: row.block_key,
     content:
-      row.content && typeof row.content === "object"
-        ? (row.content as Record<string, unknown>)
-        : null,
+      row.content === null
+        ? null
+        : (JSON.parse(row.content) as Record<string, unknown>),
     revision: String(row.revision),
   };
 }
