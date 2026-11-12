@@ -61,6 +61,7 @@ import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { pickerCurrent } from "./branch-picker-current.ts";
@@ -76,7 +77,7 @@ import {
   releaseIconClass,
   useReleases,
 } from "./use-releases";
-import { groupReleasesByRuntime } from "./release-edits";
+import { groupReleasesByRuntime, releaseRuntime } from "./release-edits";
 import { useStartDraft } from "./use-start-draft";
 import {
   type StoreDraft,
@@ -176,6 +177,9 @@ export function BranchPicker({
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
   const startDraft = useStartDraft({ virtualMcpId, userLabel, userId });
+  const { projectDefault } = useSessionRuntime(virtualMcpId);
+  const isCodeDraft = (r: Release) =>
+    releaseRuntime(r, projectDefault) === "sandbox";
   // Hosted v8: the drafts the CMS holds that no release names — the ones
   // `deco push --draft` made. Read again on every open.
   const storeDraftsQuery = useStoreDrafts(virtualMcpId, isV8);
@@ -256,7 +260,8 @@ export function BranchPicker({
     !localhostActive &&
     !localActive &&
     !isBase &&
-    current?.runtime === "sandbox";
+    !!current &&
+    isCodeDraft(current);
 
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
@@ -380,15 +385,14 @@ export function BranchPicker({
     // commits to the live site.
     if (r.branch === value) {
       const siblings = releases.filter((x) => x.branch !== r.branch);
-      const sibling =
-        siblings.find((x) => x.runtime !== "sandbox") ?? siblings[0];
+      const sibling = siblings.find((x) => !isCodeDraft(x)) ?? siblings[0];
       if (sibling) pick(sibling.branch);
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
   };
 
-  const releaseGroups = groupReleasesByRuntime(releases);
+  const releaseGroups = groupReleasesByRuntime(releases, projectDefault);
   // Headers only when both kinds exist; a single kind stays a plain list.
   const groupByRuntime =
     (releaseGroups.content.length > 0 || storeDrafts.length > 0) &&
@@ -407,13 +411,11 @@ export function BranchPicker({
         key={r.branch}
         rowRef={!localActive && r.branch === value ? selectedRowRef : undefined}
         dot={releaseDotClass(r.color)}
-        codeIcon={
-          r.runtime === "sandbox" ? releaseIconClass(r.color) : undefined
-        }
+        codeIcon={isCodeDraft(r) ? releaseIconClass(r.color) : undefined}
         label={r.name}
         creator={creatorName(r.createdBy)}
         originTooltip={isV8 ? t("thread.branchPicker.viaStudioUi") : undefined}
-        branch={!isV8 || r.runtime === "sandbox" ? r.branch : undefined}
+        branch={!isV8 || isCodeDraft(r) ? r.branch : undefined}
         selected={!localActive && r.branch === value}
         onSelect={() => pick(r.branch)}
         onRename={() => startRename(r)}

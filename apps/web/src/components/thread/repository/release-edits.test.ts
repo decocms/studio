@@ -3,6 +3,7 @@ import type { Release } from "@decocms/shared/sdk/types";
 import {
   addRelease,
   groupReleasesByRuntime,
+  releaseRuntime,
   markReleaseSandbox,
   removeRelease,
   renameReleaseIn,
@@ -73,13 +74,41 @@ describe("groupReleasesByRuntime", () => {
   const code = { ...rel("c"), runtime: "sandbox" as const };
 
   it("puts sandbox drafts in code and the rest in content, in list order", () => {
-    expect(groupReleasesByRuntime([code, content, unstamped])).toEqual({
+    expect(groupReleasesByRuntime([code, content, unstamped], "cms")).toEqual({
       content: [content, unstamped],
       code: [code],
     });
   });
 
+  it("puts an unstamped draft in code on a project without Fast Preview", () => {
+    expect(
+      groupReleasesByRuntime([code, content, unstamped], "sandbox"),
+    ).toEqual({
+      content: [content],
+      code: [code, unstamped],
+    });
+  });
+
   it("returns empty groups for an empty list", () => {
-    expect(groupReleasesByRuntime([])).toEqual({ content: [], code: [] });
+    expect(groupReleasesByRuntime([], "sandbox")).toEqual({
+      content: [],
+      code: [],
+    });
+  });
+});
+
+describe("releaseRuntime", () => {
+  it("keeps a draft's own stamp whatever the project default", () => {
+    expect(releaseRuntime({ ...rel("a"), runtime: "cms" }, "sandbox")).toBe(
+      "cms",
+    );
+    expect(releaseRuntime({ ...rel("a"), runtime: "sandbox" }, "cms")).toBe(
+      "sandbox",
+    );
+  });
+
+  it("reads an unstamped draft as the project default", () => {
+    expect(releaseRuntime(rel("a"), "cms")).toBe("cms");
+    expect(releaseRuntime(rel("a"), "sandbox")).toBe("sandbox");
   });
 });
