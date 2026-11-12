@@ -71,6 +71,7 @@ function matchesComparison(
     case "like":
       return (
         typeof fieldValue === "string" &&
+        String(value).length <= 100 &&
         likePatternToRegExp(String(value)).test(fieldValue)
       );
     case "contains":

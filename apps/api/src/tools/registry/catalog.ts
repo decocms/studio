@@ -189,6 +189,7 @@ function matches(item: CatalogItem, where: WhereExpression): boolean {
       return (
         typeof actual === "string" &&
         typeof expected === "string" &&
+        expected.length <= 100 &&
         likePatternToRegExp(expected).test(actual)
       );
     default: {
