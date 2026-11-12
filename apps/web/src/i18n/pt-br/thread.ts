@@ -36,7 +36,7 @@ export const thread = {
   "thread.branchPicker.localhost.label": "Localhost",
   "thread.branchPicker.localhost.connected": "Conectado",
   "thread.branchPicker.localUrlLabel": "URL do túnel local",
-  "thread.branchPicker.localUrlPlaceholder": "https://seu-tunel.exemplo.com",
+  "thread.branchPicker.localUrlPlaceholder": "http://localhost:8000",
   "thread.branchPicker.localTurnOff": "Desligar",
   "thread.branchPicker.moreActions": "Mais ações",
   "thread.branchPicker.newVersion": "Novo Draft",

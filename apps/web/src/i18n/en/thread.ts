@@ -33,7 +33,7 @@ export const thread = {
   "thread.branchPicker.localhost.label": "Localhost",
   "thread.branchPicker.localhost.connected": "Connected",
   "thread.branchPicker.localUrlLabel": "Local tunnel URL",
-  "thread.branchPicker.localUrlPlaceholder": "https://your-tunnel.example.com",
+  "thread.branchPicker.localUrlPlaceholder": "http://localhost:8000",
   "thread.branchPicker.localTurnOff": "Turn off",
   "thread.branchPicker.moreActions": "More actions",
   "thread.branchPicker.newVersion": "New draft",
