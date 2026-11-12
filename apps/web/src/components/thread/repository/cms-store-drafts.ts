@@ -17,11 +17,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Release } from "@decocms/shared/sdk/types";
-import {
-  cmsJson,
-  cmsSiteOf,
-  cmsUrl,
-} from "@/components/sections-editor/cms-api";
+import { cmsRequest, cmsSiteOf } from "@/cms/cms-api";
 import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCP } from "@/sdk";
 
@@ -86,8 +82,9 @@ export function useStoreDrafts(virtualMcpId: string, enabled: boolean) {
     // A failed read leaves the releases as they are; nothing to report.
     retry: false,
     queryFn: async () => {
-      const { drafts } = await cmsJson<{ drafts?: StoreDraft[] }>(
-        await fetch(cmsUrl(site!, "drafts"), { cache: "no-store" }),
+      const { drafts } = await cmsRequest<{ drafts?: StoreDraft[] }>(
+        site!,
+        "drafts",
       );
       return drafts ?? [];
     },
@@ -131,10 +128,11 @@ export function isForeignStoreDraft(
  * untouched.
  */
 async function discardStoreDraft(site: string, name: string): Promise<void> {
-  await cmsJson<{ discarded?: boolean }>(
-    await fetch(cmsUrl(site, `drafts/${encodeURIComponent(name)}`), {
+  await cmsRequest<{ discarded?: boolean }>(
+    site,
+    `drafts/${encodeURIComponent(name)}`,
+    {
       method: "DELETE",
-      cache: "no-store",
-    }),
+    },
   );
 }

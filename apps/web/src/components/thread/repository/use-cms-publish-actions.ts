@@ -27,7 +27,7 @@ import {
   discardContentChanges,
   isChangedMeanwhile,
   isOutdatedServerError,
-} from "@/components/sections-editor/content-changes.ts";
+} from "@/cms/content-changes.ts";
 import { KEYS } from "@/lib/query-keys.ts";
 import type { PublishChange } from "./publish-change-summary.ts";
 import {

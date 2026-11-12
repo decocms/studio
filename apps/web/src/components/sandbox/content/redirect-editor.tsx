@@ -228,6 +228,7 @@ export function RedirectEditor(
 ) {
   return (
     <HeldBlockView
+      listing={{ [props.blockKey]: props.block }}
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}

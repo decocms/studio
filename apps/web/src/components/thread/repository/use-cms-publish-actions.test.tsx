@@ -41,7 +41,7 @@ import {
 import {
   applyProtocolPatch,
   pollProtocolContent,
-} from "@/components/sections-editor/content-protocol-api";
+} from "@/cms/content-protocol-api";
 import { decofileWriteScope } from "@/components/sections-editor/decofile-api";
 import {
   blockKeyFromDiffPath,

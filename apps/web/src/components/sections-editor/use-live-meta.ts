@@ -10,13 +10,13 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { usePackagePath } from "./use-package-path";
 import type { LiveMeta } from "./resolve-schema";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useDecofileCacheKey } from "./use-decofile";
 import {
   pollProtocolContent,
   protocolMetaQueryKey,
   protocolUnavailableError,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 
 interface UseLiveMetaParams {
   orgSlug: string;

@@ -23,7 +23,7 @@ import {
   isoToLocalInput,
   localInputToIso,
 } from "@/components/sections-editor/named-rule-picker";
-import type { HostedBlocksLoad } from "@/components/sections-editor/hosted-content";
+import type { HostedBlocksLoad } from "@/cms/hosted-content";
 import {
   hasPreviewOptions,
   type PreviewOptions,

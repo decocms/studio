@@ -49,6 +49,12 @@ if (!getSettings().encryptionKey) {
 const E2E_TIMEOUT = 15_000;
 
 /**
+ * Issuer discovery and auth-server discovery run in sequence. Each can spend
+ * three 4s attempts plus 450ms retry backoff before returning an upstream error.
+ */
+const AUTH_SERVER_METADATA_TIMEOUT = 30_000;
+
+/**
  * These tests proxy metadata / authorize redirects from LIVE third-party MCP
  * servers, so a server being slow or down makes the proxy report a gateway
  * error. That's the proxy correctly handling a bad upstream — not a regression —
@@ -267,7 +273,7 @@ describe("MCP OAuth Proxy E2E", () => {
             `oauth-proxy/${connectionId}`,
           );
         },
-        E2E_TIMEOUT,
+        AUTH_SERVER_METADATA_TIMEOUT,
       );
     }
   });

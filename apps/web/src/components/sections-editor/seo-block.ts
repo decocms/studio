@@ -1,4 +1,4 @@
-import { isIndexStub } from "./hosted-content";
+import { isIndexStub } from "@/cms/hosted-content";
 import { isSiteAppBlock } from "./page-list";
 import type { LiveMeta } from "./resolve-schema";
 import { isPageResolveTypeOnBlocksSite } from "./page-types";

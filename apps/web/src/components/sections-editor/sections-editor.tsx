@@ -1,3 +1,4 @@
+import { cachedProductionVersion } from "./draft-version";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { BlockBreadcrumbs } from "./block-breadcrumbs";
@@ -42,7 +43,7 @@ import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { AddSectionButton, SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
 import { savedBlockKey, unwrapSection } from "./unwrap-section";
-import { protocolBlockVersion } from "./content-protocol-api";
+import { protocolBlockVersion } from "@/cms/content-protocol-api";
 import {
   findSectionMovedTo,
   focusInside,
@@ -125,7 +126,7 @@ import {
 import { useApplyNamedRule } from "./use-apply-named-rule";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { isProtocolProject } from "./content-backend";
 import { useContentDiscardListener, useContentSyncState } from "./content-sync";
 import type { SectionCatalogEntry } from "./section-catalog";
@@ -574,15 +575,16 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) => {
-    saveBlock.mutate(
-      { blockKey: refKey, data },
-      {
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => {
+      saveBlock.mutate(write, {
         onSuccess: () => onSaved?.(),
         onError: saveBlock.reportError,
-      },
-    );
-  });
+      });
+    },
+    decofile ?? {},
+    saveBlock.v8,
+  );
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const applyNamedRule = useApplyNamedRule({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
@@ -1900,6 +1902,8 @@ export function SectionsEditor({
             formBase,
             rebased: !!rebased,
             versionOf: protocolVersionOf,
+            productionVersionOf: (key) =>
+              cachedProductionVersion(queryClient, decofileCacheKey, key),
             // The saved block as the check above read it.
             ...(hostedDraft
               ? { copy: { value: latestDecofile[blockKey] } }
@@ -1995,6 +1999,8 @@ export function SectionsEditor({
           formBase: null,
           rebased: false,
           versionOf: protocolVersionOf,
+          productionVersionOf: (key) =>
+            cachedProductionVersion(queryClient, decofileCacheKey, key),
           // The page as it was rebuilt from.
           ...(hostedDraft
             ? { copy: { value: latestDecofile[latestPageKey] } }
