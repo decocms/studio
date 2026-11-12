@@ -114,6 +114,62 @@ test("an address that must not reach a src is refused", async ({ mount }) => {
   await expect(component.getByTestId("write-count")).toHaveText("0");
 });
 
+test("pasted image data is refused, since the body would drop it", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <LegacyContentEditorHarness initialPost={{ content: "<p>text</p>" }} />,
+  );
+
+  await component
+    .getByRole("button", { name: "Insert image from a URL" })
+    .click();
+  const input = component.getByRole("textbox", {
+    name: "Insert image from a URL",
+  });
+  await input.fill("data:image/png;base64,AAAA");
+  await input.press("Enter");
+
+  await expect(component.getByRole("alert")).toContainText("Pasted image data");
+  await expect(component.getByTestId("write-count")).toHaveText("0");
+});
+
+test("a highlight swatch marks the selection with its color", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <LegacyContentEditorHarness initialPost={{ content: "<p>mark me</p>" }} />,
+  );
+
+  const editor = component.locator('[contenteditable="true"]');
+  await editor.click();
+  await editor.press("ControlOrMeta+a");
+  await component.getByRole("button", { name: "Highlight" }).click();
+  await component.getByRole("button", { name: "#ca8a04" }).click();
+
+  // The browser serializes the style's color as rgb(); data-color keeps the hex.
+  await expect
+    .poll(async () => (await readPost(component)).content)
+    .toMatch(/^<p><mark data-color="#ca8a04" [^>]*>mark me<\/mark><\/p>$/);
+});
+
+test("closing the custom highlight picker without a choice applies nothing", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <LegacyContentEditorHarness initialPost={{ content: "<p>mark me</p>" }} />,
+  );
+
+  const editor = component.locator('[contenteditable="true"]');
+  await editor.click();
+  await editor.press("ControlOrMeta+a");
+  await component.getByRole("button", { name: "Highlight" }).click();
+  await component.locator('input[type="color"]').focus();
+  await editor.click();
+
+  await expect(component.getByTestId("write-count")).toHaveText("0");
+});
+
 test("an image from the library is inserted", async ({ mount }) => {
   const component = await mount(
     <LegacyContentEditorHarness initialPost={{ content: "<p>text</p>" }} />,

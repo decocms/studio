@@ -19,8 +19,11 @@ import { TableKit } from "@tiptap/extension-table";
 export function legacyContentExtensions(): Extensions {
   return [
     StarterKit.configure({
-      // Each link keeps its own `target`/`rel`; the link control sets them.
-      link: { openOnClick: false, HTMLAttributes: {} },
+      // Explicit nulls: `{}` would merge into Link's `_blank`/`nofollow` defaults.
+      link: {
+        openOnClick: false,
+        HTMLAttributes: { target: null, rel: null },
+      },
       // The admin never appended an empty paragraph after a final list or image.
       trailingNode: false,
     }),

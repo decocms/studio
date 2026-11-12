@@ -7,7 +7,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { FilePickerDialog } from "@/components/file-picker/file-picker-dialog";
 import { EDITOR_LINK_CLASS } from "@/components/sections-editor/editor-classes";
 import { ImageUrlPopover } from "@/components/sections-editor/fields/image-url-popover";
-import { safeImageSrc } from "@/components/sections-editor/fields/safe-image-url";
 import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
 import { RichTextColorControl } from "@/components/sections-editor/rich-text-color-control";
 import { ToolbarButton } from "@/components/sections-editor/rich-text-link-control";
@@ -17,7 +16,7 @@ import {
 } from "@/components/sections-editor/rich-text-toolbar";
 import { useT } from "@/i18n/use-t.ts";
 import { useLinkSources } from "../blocks/link-pickers";
-import { blankIfEmpty } from "./legacy-content";
+import { blankIfEmpty, bodyImageSrc } from "./legacy-content";
 import { legacyContentExtensions } from "./legacy-content-extensions";
 
 /** The admin's scale: its stepper wrote `font-size` in pt, from 12. */
@@ -78,17 +77,17 @@ function ImageControls({ editor }: { editor: Editor }) {
   };
 
   const commitUrl = () => {
-    const draft = urlDraft ?? "";
-    const src = safeImageSrc(draft);
-    if (!src) {
-      if (draft.trim()) {
-        setUrlNotice(t("sectionsEditor.imageField.unsafeUrl"));
-        return;
-      }
-      closeUrl();
+    const draft = (urlDraft ?? "").trim();
+    const src = bodyImageSrc(draft);
+    if (!src && draft) {
+      setUrlNotice(
+        draft.toLowerCase().startsWith("data:")
+          ? t("sandbox.postEditor.legacyImageDataUrl")
+          : t("sectionsEditor.imageField.unsafeUrl"),
+      );
       return;
     }
-    insert(src);
+    if (src) insert(src);
     closeUrl();
   };
 
@@ -128,7 +127,7 @@ function ImageControls({ editor }: { editor: Editor }) {
         onOpenChange={setPickerOpen}
         mode="image"
         onSelect={(url) => {
-          const src = safeImageSrc(url);
+          const src = bodyImageSrc(url);
           if (src) insert(src);
         }}
       />

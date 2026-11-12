@@ -9,6 +9,15 @@ import { safeImageSrc } from "@/components/sections-editor/fields/safe-image-url
 import { looksLikeHtml } from "../import-content";
 import { legacyContentExtensions } from "./legacy-content-extensions";
 
+/**
+ * `url` as a body image's `src`, or "" when the body cannot keep it: unsafe
+ * schemes, and `data:` images, which the schema drops on the next load.
+ */
+export function bodyImageSrc(url: string): string {
+  const src = safeImageSrc(url);
+  return src.toLowerCase().startsWith("data:") ? "" : src;
+}
+
 /** What an empty editor serializes to; stored as "" so the body reads as empty. */
 export function blankIfEmpty(html: string): string {
   return html === "<p></p>" ? "" : html;

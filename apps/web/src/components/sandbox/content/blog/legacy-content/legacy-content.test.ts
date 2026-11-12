@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import "../../../../../../test/setup";
 import {
   blankIfEmpty,
+  bodyImageSrc,
   importAsLegacyContent,
   normalizeLegacyHtml,
 } from "./legacy-content";
@@ -27,6 +28,12 @@ describe("normalizeLegacyHtml", () => {
       '<p style="text-align: justify"><span style="font-size: 12pt">a <a href="https://e.com">l</a></span></p>';
     const once = normalizeLegacyHtml(messy);
     expect(normalizeLegacyHtml(once)).toBe(once);
+  });
+
+  test("keeps a link without a target in the same tab", () => {
+    const html =
+      '<p><a href="/blog/other-post">internal</a> and <a target="_blank" rel="noopener" href="https://e.com">external</a></p>';
+    expect(normalizeLegacyHtml(html)).toBe(html);
   });
 
   test("keeps an image inside its paragraph", () => {
@@ -108,6 +115,22 @@ describe("importAsLegacyContent", () => {
       title: "Only a title",
       content: "",
     });
+  });
+});
+
+describe("bodyImageSrc", () => {
+  test("keeps addresses the body can store", () => {
+    expect(bodyImageSrc("https://e.com/a.png")).toBe("https://e.com/a.png");
+    expect(bodyImageSrc("/assets/a.png")).toBe("/assets/a.png");
+  });
+
+  test("refuses data images, which the schema drops on the next load", () => {
+    expect(bodyImageSrc("data:image/png;base64,AAAA")).toBe("");
+    expect(bodyImageSrc("DATA:image/png;base64,AAAA")).toBe("");
+  });
+
+  test("refuses unsafe schemes", () => {
+    expect(bodyImageSrc("javascript:alert(1)")).toBe("");
   });
 });
 

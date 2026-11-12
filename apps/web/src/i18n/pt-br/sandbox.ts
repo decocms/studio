@@ -977,6 +977,8 @@ export const sandbox = {
   "sandbox.postEditor.keyPlaceholder": "chave",
   "sandbox.postEditor.legacyCodeBlock": "Bloco de código",
   "sandbox.postEditor.legacyContentPlaceholder": "Escreva o post…",
+  "sandbox.postEditor.legacyImageDataUrl":
+    "Dados de imagem colados não ficam no post. Envie a imagem ou use o endereço dela.",
   "sandbox.postEditor.legacyInsertImage": "Inserir imagem da biblioteca",
   "sandbox.postEditor.legacyInsertImageUrl": "Inserir imagem por URL",
   "sandbox.postEditor.legacySectionsNotice":
@@ -1224,9 +1226,9 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
-  "sandbox.legacyBlogPostFormatField.label": "Posts do blog em HTML",
+  "sandbox.legacyBlogPostFormatField.label": "Editor de blogpost legado",
   "sandbox.legacyBlogPostFormatField.description":
-    "Edita o corpo do post num único editor de texto rico, salvo no campo content, o formato que templates de blog mais antigos leem, em vez de em blocos.",
+    "Edita o corpo do post via HTML, num único editor de texto rico salvo no campo content, o formato que templates de blog mais antigos leem, em vez de em blocos.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",
