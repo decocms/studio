@@ -65,7 +65,11 @@ export function buildSiteMetaRequest(input: {
 }): SiteMetaRequest {
   const url = new URL("/live/_meta", input.target.siteUrl).href;
   const headers: Record<string, string> = { accept: "application/json" };
-  if (input.ifNoneMatch) headers["if-none-match"] = input.ifNoneMatch;
+  // The edge in front of Studio compresses the response and weakens its etag
+  // (`W/"…"`). If-None-Match compares weakly, but the runtime matches the
+  // string exactly, so it gets the tag back as the site issued it.
+  const etag = input.ifNoneMatch?.replace(/^W\//, "");
+  if (etag) headers["if-none-match"] = etag;
   if (input.adminToken && input.target.trusted) {
     headers[SITE_ADMIN_TOKEN_HEADER] = input.adminToken;
   }
