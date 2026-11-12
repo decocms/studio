@@ -56,21 +56,22 @@ const BLOCKS_SITE_SIDEBAR_VIEWS = [
   "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
-/** A hosted site's settings (env vars, domains, deploys) sit next to its
- * Site Editor, offered once the same way. */
+/** A hosted site's settings (env vars, domains, deploys), offered once the
+ * same way, and only beside a Site Editor the project shows. */
 const HOSTED_SITE_SIDEBAR_VIEWS = [
   "hosting",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
-/** Native presence the offers depend on: `calendar` marks a Blocks site. */
+/** Presence the offers depend on: `calendar` marks a Blocks site. */
 export type ProjectSidebarOfferPresence = Pick<
-  ProjectNativeViewPresence,
-  "calendar" | "hosting"
+  ProjectSidebarViewPresence,
+  "calendar" | "hosting" | "site-editor"
 >;
 
 const NO_SITE_OFFERS: ProjectSidebarOfferPresence = {
   calendar: false,
   hosting: false,
+  "site-editor": false,
 };
 
 function offerableProjectSidebarViews(
@@ -79,7 +80,9 @@ function offerableProjectSidebarViews(
   return [
     ...PROJECT_NAV_VIEW_IDS,
     ...(presence.calendar ? BLOCKS_SITE_SIDEBAR_VIEWS : []),
-    ...(presence.hosting ? HOSTED_SITE_SIDEBAR_VIEWS : []),
+    ...(presence.hosting && presence["site-editor"]
+      ? HOSTED_SITE_SIDEBAR_VIEWS
+      : []),
   ];
 }
 
@@ -94,14 +97,19 @@ export function offeredProjectSidebarViews(
   );
 }
 
-/** `sidebarViewsSeen` after a save; site views stay unseen until the site has them. */
+/** `sidebarViewsSeen` after saving `saved`; site views stay unseen until the
+ * site has them, and Hosting until the Site Editor is shown beside it. */
 export function seenProjectSidebarViewsAfterSave(
   seen: readonly VirtualMcpSidebarView[] | null | undefined,
   presence: ProjectSidebarOfferPresence,
+  saved: readonly VirtualMcpSidebarView[],
 ): VirtualMcpSidebarView[] {
   const next = new Set<VirtualMcpSidebarView>([
     ...(seen ?? []),
-    ...offerableProjectSidebarViews(presence),
+    ...offerableProjectSidebarViews({
+      ...presence,
+      "site-editor": presence["site-editor"] && saved.includes("site-editor"),
+    }),
   ]);
   return PROJECT_SIDEBAR_VIEW_IDS.filter((view) => next.has(view));
 }
@@ -220,7 +228,10 @@ export function effectiveProjectSidebarViews(
   if (version !== PROJECT_SIDEBAR_VIEWS_VERSION) {
     for (const viewId of DEFAULT_PROJECT_SIDEBAR_VIEWS) selected.add(viewId);
   }
-  for (const viewId of offered) selected.add(viewId);
+  for (const viewId of offered) {
+    if (viewId === "hosting" && !selected.has("site-editor")) continue;
+    selected.add(viewId);
+  }
   return PROJECT_SIDEBAR_VIEW_IDS.filter((viewId) => selected.has(viewId));
 }
 

@@ -82,12 +82,13 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
 
   const hasClonableSource = agentHasClonableSource(project.metadata);
   const presence = nativeViews.presence;
+  const viewPresence = projectSidebarViewPresence(hasClonableSource, presence);
   const sidebarViews =
     optimisticSidebarViews ?? resolveProjectSidebarViews(project.metadata);
   const selectedViews = new Set(
     selectedProjectSidebarViews(
       sidebarViews,
-      projectSidebarViewPresence(hasClonableSource, presence),
+      viewPresence,
       optimisticSidebarViews !== undefined
         ? 1
         : project.metadata.sidebarViewsVersion,
@@ -96,7 +97,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
         ? []
         : offeredProjectSidebarViews(
             project.metadata.sidebarViewsSeen,
-            presence,
+            viewPresence,
           ),
     ),
   );

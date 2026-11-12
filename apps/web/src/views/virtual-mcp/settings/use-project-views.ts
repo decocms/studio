@@ -180,9 +180,18 @@ export function useProjectViews({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  /**
+   * Preview is available whenever the agent has a clonable source —
+   * either a Start Website template or a connected GitHub repo — matching
+   * the gating in `use-main-panel-tabs.ts`.
+   */
+  const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
+  const sidebarViewPresence = projectSidebarViewPresence(
+    hasClonableSource,
+    nativeViews.presence,
+  );
   // Site views (Blocks' Calendar and Experiments, Hosting) are offered once
   // on top of a list saved before they were defaults, until the next save.
-  const sitePresence = nativeViews.presence;
   const formSidebarViewsSeen = form.watch("metadata.sidebarViewsSeen");
   const formSidebarViews = effectiveProjectSidebarViews(
     resolveProjectSidebarViews({
@@ -190,7 +199,7 @@ export function useProjectViews({
       ui: { layout: layoutMeta },
     }),
     form.watch("metadata.sidebarViewsVersion"),
-    offeredProjectSidebarViews(formSidebarViewsSeen, sitePresence),
+    offeredProjectSidebarViews(formSidebarViewsSeen, sidebarViewPresence),
   );
   /**
    * A Settings panel can remount while its previous instance is still saving.
@@ -205,7 +214,7 @@ export function useProjectViews({
           virtualMcp.metadata.sidebarViewsVersion,
           offeredProjectSidebarViews(
             virtualMcp.metadata.sidebarViewsSeen,
-            sitePresence,
+            sidebarViewPresence,
           ),
         )
       : formSidebarViews);
@@ -407,7 +416,8 @@ export function useProjectViews({
       "metadata.sidebarViewsSeen",
       seenProjectSidebarViewsAfterSave(
         virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
-        sitePresence,
+        sidebarViewPresence,
+        nextSidebarViews,
       ),
       { shouldDirty: true },
     );
@@ -427,16 +437,6 @@ export function useProjectViews({
      */
   };
 
-  /**
-   * Preview is available whenever the agent has a clonable source —
-   * either a Start Website template or a connected GitHub repo — matching
-   * the gating in `use-main-panel-tabs.ts`.
-   */
-  const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
-  const sidebarViewPresence = projectSidebarViewPresence(
-    hasClonableSource,
-    nativeViews.presence,
-  );
   const availableSidebarViews =
     availableProjectSidebarViews(sidebarViewPresence);
   const enabledSidebarViews = selectedProjectSidebarViews(
