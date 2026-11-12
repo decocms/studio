@@ -39,6 +39,60 @@ import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
 
 const MAX_CAS_ATTEMPTS = 3;
 
+/**
+ * Right after a commit, GitHub can keep answering `GET /branches/:branch` with
+ * the head that commit replaced for a few seconds. Checked against that head,
+ * the next autosave's `expect` (made against the commit that just landed)
+ * looks stale and is refused, and its CAS fails too. So this process
+ * remembers, per queue, the heads its own commits replaced: a read that
+ * returns one of them is GitHub lagging behind us, and is read again.
+ * Another replica's commit isn't known here; the CAS still guards it.
+ */
+const replacedHeads = new Map<string, { shas: string[]; at: number }>();
+const REPLACED_HEADS_KEPT = 5;
+const REPLACED_HEADS_TRACKED_QUEUES = 500;
+const REPLACED_HEADS_TTL_MS = 60_000;
+const LAGGING_HEAD_REREADS = 4;
+
+function rememberReplacedHead(queueKey: string, sha: string): void {
+  const entry = replacedHeads.get(queueKey);
+  replacedHeads.delete(queueKey);
+  const shas = [...(entry?.shas ?? []), sha].slice(-REPLACED_HEADS_KEPT);
+  replacedHeads.set(queueKey, { shas, at: Date.now() });
+  if (replacedHeads.size > REPLACED_HEADS_TRACKED_QUEUES) {
+    const oldest = replacedHeads.keys().next().value;
+    if (oldest !== undefined) replacedHeads.delete(oldest);
+  }
+}
+
+function isReplacedHead(queueKey: string, sha: string): boolean {
+  const entry = replacedHeads.get(queueKey);
+  if (!entry) return false;
+  if (Date.now() - entry.at > REPLACED_HEADS_TTL_MS) {
+    replacedHeads.delete(queueKey);
+    return false;
+  }
+  return entry.shas.includes(sha);
+}
+
+/** The branch head, read again while GitHub still serves one our commits replaced. */
+async function currentHead(
+  queueKey: string,
+  client: RepoContentClient,
+  branch: string,
+): Promise<string> {
+  let headSha = await resolveOrCreateHead(client, branch);
+  for (
+    let reread = 0;
+    reread < LAGGING_HEAD_REREADS && isReplacedHead(queueKey, headSha);
+    reread++
+  ) {
+    await sleep(exponentialBackoffWithJitter(2_000, 250, reread, 2, 0.5));
+    headSha = (await client.getBranch(branch))?.sha ?? headSha;
+  }
+  return headSha;
+}
+
 export interface DecofilePatch {
   set?: Record<string, unknown>;
   delete?: string[];
@@ -126,7 +180,7 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
       const batch = state.pending;
       state.pending = null;
       try {
-        const { sha, accepted, conflicts } = await commitBatch(batch);
+        const { sha, accepted, conflicts } = await commitBatch(queueKey, batch);
         for (const queued of accepted) queued.resolve(sha);
         for (const { queued, blocks } of conflicts) {
           queued.reject(new BlockConflictError(blocks));
@@ -212,7 +266,10 @@ async function screenPatches(
   return { accepted, conflicts };
 }
 
-async function commitBatch(batch: Batch): Promise<BatchOutcome> {
+async function commitBatch(
+  queueKey: string,
+  batch: Batch,
+): Promise<BatchOutcome> {
   const { client, branch, packagePath } = batch.deps;
   /** blob sha -> text, shared across CAS attempts. A blob sha is immutable, so
    *  a retry that rebuilds on a fresh head re-reads only blocks it has not
@@ -221,7 +278,7 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
   for (let attempt = 0; ; attempt++) {
     // Writes are session-only, so first-touch of a thread-minted branch may
     // materialize it here (a save can race ahead of the editor's first read).
-    const headSha = await resolveOrCreateHead(client, branch);
+    const headSha = await currentHead(queueKey, client, branch);
     const tree = await client.listDecofileEntries(headSha, packagePath);
     const entries = blockEntriesInTree(tree, packagePath);
 
@@ -307,6 +364,7 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
         expectedHead: headSha,
         changes: writes,
       });
+      rememberReplacedHead(queueKey, headSha);
       return { sha, accepted, conflicts };
     } catch (err) {
       // Someone else advanced the branch between our head read and the write.

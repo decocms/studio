@@ -38,6 +38,11 @@ interface FakeOpts {
   tracksGen: boolean;
   /** Reject this many `commitFiles` calls with a conflict before accepting. */
   conflicts?: number;
+  /**
+   * After each commit, answer `getBranch` with the head it replaced this many
+   * more times, as GitHub does for a few seconds after a write.
+   */
+  laggingReads?: number;
 }
 
 function fakeClient(opts: FakeOpts) {
@@ -46,6 +51,13 @@ function fakeClient(opts: FakeOpts) {
   let maxInFlight = 0;
   let commitAttempts = 0;
   let committed: FileChange[] = [];
+  let head = "head1";
+  let previousHead: string | null = null;
+  let laggingLeft = 0;
+  const getBranchAnswers: string[] = [];
+  /** Trees and blobs the fake's commits wrote, so a later read sees them. */
+  const trees = new Map<string, TreeEntry[]>();
+  const blobs = new Map<string, string>();
 
   const treeEntries = (): TreeEntry[] => [
     ...opts.stems.map(
@@ -69,14 +81,19 @@ function fakeClient(opts: FakeOpts) {
   const client: RepoContentClient = {
     repo: REPO,
     getDefaultBranch: async () => "main",
-    getBranch: async () => ({ sha: "head1" }),
+    getBranch: async () => {
+      const sha = laggingLeft > 0 && previousHead ? previousHead : head;
+      if (laggingLeft > 0) laggingLeft--;
+      getBranchAnswers.push(sha);
+      return { sha };
+    },
     searchBranches: async (): Promise<BranchPage> => ({
       branches: [],
       totalCount: 0,
       nextCursor: null,
     }),
     getArchive: async () => null,
-    listDecofileEntries: async () => treeEntries(),
+    listDecofileEntries: async (sha: string) => trees.get(sha) ?? treeEntries(),
     getEntriesAtPaths: async () => new Map(),
     readBlob: async (sha: string) => {
       readBlobCalls.push(sha);
@@ -85,6 +102,8 @@ function fakeClient(opts: FakeOpts) {
       // Yield so concurrent callers actually overlap.
       await new Promise((r) => setTimeout(r, 1));
       inFlight--;
+      const written = blobs.get(sha);
+      if (written !== undefined) return written;
       const stem = sha.replace(/^sha-/, "");
       return JSON.stringify({ __resolveType: stem });
     },
@@ -95,7 +114,27 @@ function fakeClient(opts: FakeOpts) {
         throw new RepoWriteConflict("head moved");
       }
       committed = changes;
-      return { sha: `commit${commitAttempts}` };
+      previousHead = head;
+      head = `commit${commitAttempts}`;
+      const tree = new Map(
+        (trees.get(previousHead) ?? treeEntries()).map((e) => [e.path, e]),
+      );
+      for (const change of changes) {
+        if ("deleted" in change && change.deleted) {
+          tree.delete(change.path);
+          continue;
+        }
+        const blobSha = `blob-${head}-${change.path}`;
+        blobs.set(blobSha, (change as { content: string }).content);
+        tree.set(change.path, {
+          path: change.path,
+          type: "blob",
+          sha: blobSha,
+        });
+      }
+      trees.set(head, [...tree.values()]);
+      laggingLeft = opts.laggingReads ?? 0;
+      return { sha: head };
     },
     createBranch: async () => {},
     forceBranchHead: async () => {},
@@ -115,6 +154,7 @@ function fakeClient(opts: FakeOpts) {
     get committed() {
       return committed;
     },
+    getBranchAnswers,
   };
 }
 
@@ -356,5 +396,26 @@ describe("enqueueDecofilePatch expectations", () => {
       __resolveType: "Header",
       title: "second",
     });
+  });
+
+  it("reads the head again while GitHub still serves the one its own commit replaced", async () => {
+    const f = fakeClient({ stems, tracksGen: false, laggingReads: 2 });
+    const queue = `q-expect-lagging-${Date.now()}`;
+    const first = { __resolveType: "Header", title: "first" };
+    await expect(
+      enqueueDecofilePatch(queue, deps(f), {
+        set: { Header: first },
+        expect: { Header: await headFingerprint("Header") },
+      }),
+    ).resolves.toBe("commit1");
+    // Made against the commit that just landed, while reads still lag.
+    await expect(
+      enqueueDecofilePatch(queue, deps(f), {
+        set: { Header: { __resolveType: "Header", title: "second" } },
+        expect: { Header: await decoBlockFingerprint(first) },
+      }),
+    ).resolves.toBe("commit2");
+    expect(f.getBranchAnswers).toEqual(["head1", "head1", "head1", "commit1"]);
+    expect(f.commitAttempts).toBe(2);
   });
 });

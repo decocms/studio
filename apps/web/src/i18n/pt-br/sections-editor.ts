@@ -434,6 +434,9 @@ export const sectionsEditor = {
     "Nenhuma página encontrada para {currentPath}",
   "sectionsEditor.sectionsEditor.blockChangedElsewhere":
     "Este bloco mudou enquanto você editava e não foi possível salvar. A versão mais recente foi carregada.",
+  "sectionsEditor.sectionsEditor.formEditNotSavedYet":
+    "Sua alteração ainda não foi salva. Ela continua no formulário; tente de novo para salvar.",
+  "sectionsEditor.sectionsEditor.retrySave": "Tentar de novo",
   "sectionsEditor.sectionsEditor.blockFieldsChangedElsewhere":
     "Não foi possível salvar: {fields} mudou enquanto você editava. A versão mais recente foi carregada.",
   "sectionsEditor.formConflict.titleOne":
