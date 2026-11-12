@@ -15,7 +15,7 @@ import {
   type HostedCall,
   type HostedRpc,
   useEnsureHostedBlocks,
-} from "./hosted-content";
+} from "@/cms/hosted-content";
 
 const CACHE_KEY = "acme/vm-1/draft-1";
 

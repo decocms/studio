@@ -27,6 +27,10 @@ import {
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
+import {
+  useIndexNamesOfType,
+  useLoadDecofileBlock,
+} from "@/components/sections-editor/use-decofile";
 import { useNeverPublished } from "@/components/sections-editor/use-never-published";
 import { useShownWhileClosing } from "../closing-dialog";
 import { deleteConfirmKey } from "../delete-copy";
@@ -43,6 +47,7 @@ import {
   emptyBlogPayload,
   generateBlogKey,
   getBlogPayload,
+  isBlogRecordType,
   listAllPostPayloads,
   missingFieldsLabel,
   removeCategoryFromPost,
@@ -126,6 +131,15 @@ export function BlogBrowser({
   const collection = visibleBlogCollection(requestedCollection, blogAi);
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
+  /** v8 reads a copy source's body before writing from it; v7 reads the
+   *  listing, which holds every body, exactly as before. */
+  const v8 = saveBlock.v8;
+  const loadBlock = useLoadDecofileBlock({ orgSlug, virtualMcpId, branch });
+  /** Hosted v8: the records a category delete rewrites, loaded at that time. */
+  const recordNames = useIndexNamesOfType(
+    hostedDraft ? { orgSlug, virtualMcpId, branch } : null,
+    isBlogRecordType,
+  );
   // A block the draft created: deleting it is no change Publish lists.
   const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
 
@@ -177,7 +191,11 @@ export function BlogBrowser({
     const key = generateBlogKey(decofile, kind);
     const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
     try {
-      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      const created = await saveBlock.mutateAsync({
+        blockKey: key,
+        data,
+        ...(v8 ? { create: true } : {}),
+      });
       if (!keptTheirVersion(created)) {
         toast.success(`Created ${BLOG_SINGULAR[kind]}`);
       }
@@ -188,26 +206,39 @@ export function BlogBrowser({
   };
 
   const duplicateRecord = async (entry: BlogEntry) => {
-    const source = decofile[entry.key] as Record<string, unknown> | undefined;
-    if (!source) {
-      toast.error("Record not found.");
-      return;
-    }
-    const key = generateBlogKey(decofile, entry.kind);
-    const labelKey = entry.kind === "posts" ? "title" : "name";
-    const payload: Record<string, unknown> = {
-      ...structuredClone(getBlogPayload(source, entry.kind)),
-      [labelKey]: `${entry.label} (copy)`,
+    const prepare = (source: Record<string, unknown> | undefined) => {
+      if (!source) {
+        toast.error("Record not found.");
+        return null;
+      }
+      const key = generateBlogKey(decofile, entry.kind);
+      const labelKey = entry.kind === "posts" ? "title" : "name";
+      const payload: Record<string, unknown> = {
+        ...structuredClone(getBlogPayload(source, entry.kind)),
+        [labelKey]: `${entry.label} (copy)`,
+      };
+      // A clone keeping the slug would answer for the original.
+      if (entry.kind === "categories") {
+        const taken = entries.categories
+          .map((c) => c.slug ?? "")
+          .filter(Boolean);
+        payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
+      }
+      return { key, payload };
     };
-    // A clone keeping the slug would answer for the original.
-    if (entry.kind === "categories") {
-      const taken = entries.categories.map((c) => c.slug ?? "").filter(Boolean);
-      payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
-    }
+    const legacy = v8
+      ? null
+      : prepare(decofile[entry.key] as Record<string, unknown> | undefined);
     try {
+      const prepared = v8
+        ? prepare(await loadBlock(decofile, entry.key))
+        : legacy;
+      if (!prepared) return;
+      const { key, payload } = prepared;
       const duplicated = await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
+        ...(v8 ? { create: true } : {}),
       });
       if (!keptTheirVersion(duplicated)) {
         toast.success(`Duplicated "${entry.label}"`);
@@ -223,7 +254,11 @@ export function BlogBrowser({
     const key = generateBlogKey(decofile, "posts");
     const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
     try {
-      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      const created = await saveBlock.mutateAsync({
+        blockKey: key,
+        data,
+        ...(v8 ? { create: true } : {}),
+      });
       if (!keptTheirVersion(created)) {
         toast.success(t("sandbox.postCalendar.createdScheduledPost"));
       }
@@ -239,18 +274,27 @@ export function BlogBrowser({
 
   /** Calendar drag: move an already-scheduled post to another day. */
   const reschedulePost = async (key: string, day: Date) => {
-    const source = decofile[key] as Record<string, unknown> | undefined;
-    const payload = source
-      ? rescheduleToDay(getBlogPayload(source, "posts"), day)
-      : null;
-    if (!payload) {
-      toast.error(t("sandbox.postCalendar.onlyScheduledCanMove"));
-      return;
-    }
+    const prepare = (source: Record<string, unknown> | undefined) => {
+      const payload = source
+        ? rescheduleToDay(getBlogPayload(source, "posts"), day)
+        : null;
+      if (!payload) {
+        toast.error(t("sandbox.postCalendar.onlyScheduledCanMove"));
+        return null;
+      }
+      return { source, payload };
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[key] as Record<string, unknown> | undefined);
     try {
+      const prepared = v8 ? prepare(await loadBlock(decofile, key)) : legacy;
+      if (!prepared) return;
+      const { source, payload } = prepared;
       await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, "posts", payload),
+        ...(v8 ? { base: { value: source, fromCache: true } } : {}),
       });
     } catch (err) {
       toast.error(
@@ -265,28 +309,51 @@ export function BlogBrowser({
     if (!deleteTarget) return;
     const { kind, key, label } = deleteTarget;
     try {
+      const source = v8
+        ? await loadBlock(decofile, key)
+        : kind === "categories"
+          ? (decofile[key] as Record<string, unknown> | undefined)
+          : undefined;
+      if (v8 && !source) {
+        throw new Error(t("sectionsEditor.hosted.blockLoadFailed"));
+      }
       // Posts denormalize the slug; unlink first so a failure stays recoverable.
       if (kind === "categories") {
-        const slugValue = getBlogPayload(
-          decofile[key] as Record<string, unknown> | undefined,
-          "categories",
-        ).slug;
+        const slugValue = getBlogPayload(source, "categories").slug;
         const slug = typeof slugValue === "string" ? slugValue : "";
         if (slug) {
+          // v8 rewrites each post from its loaded body, never a listing stub.
+          const loaded = v8 ? { ...decofile } : decofile;
+          if (v8) {
+            const bodies = await Promise.all(
+              recordNames.map(
+                async (name) =>
+                  [name, await loadBlock(decofile, name)] as const,
+              ),
+            );
+            for (const [name, body] of bodies) {
+              if (body) loaded[name] = body;
+              else delete loaded[name];
+            }
+          }
           // Both forms: writing a draft back as a live block would publish it.
-          for (const { key: postKey, payload } of listAllPostPayloads(
-            decofile,
-          )) {
+          for (const { key: postKey, payload } of listAllPostPayloads(loaded)) {
             const next = removeCategoryFromPost(payload, slug);
             if (next === payload) continue;
             await saveBlock.mutateAsync({
               blockKey: postKey,
               data: buildPostBlock(postKey, stampPostModified(next)),
+              ...(v8
+                ? { base: { value: loaded[postKey], fromCache: true } }
+                : {}),
             });
           }
         }
       }
-      const deleted = await deleteBlock.mutateAsync({ blockKey: key });
+      const deleted = await deleteBlock.mutateAsync({
+        blockKey: key,
+        ...(v8 ? { base: { value: source } } : {}),
+      });
       setDeleteTarget(null);
       // The user kept their version (the hook said so in its own toast).
       if (keptTheirVersion(deleted)) return;

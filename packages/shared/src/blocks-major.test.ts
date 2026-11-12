@@ -324,7 +324,7 @@ describe("one v8 detector", () => {
     const DECIDERS = [
       "apps/api/src/tools/virtual/blocks-v8-switch.ts",
       "apps/web/src/components/sections-editor/content-backend.ts",
-      "apps/web/src/components/sections-editor/use-content-backend.ts",
+      "apps/web/src/cms/use-content-backend.ts",
       "apps/web/src/hooks/use-blocks-v8-project.ts",
       "apps/web/src/hooks/use-deco-serve-connection.ts",
     ];
@@ -344,7 +344,7 @@ describe("one v8 detector", () => {
     // backends never ask a schema (main's, a working tree's, a deco serve's).
     const DECIDERS = [
       "apps/web/src/components/sections-editor/content-backend.ts",
-      "apps/web/src/components/sections-editor/use-content-backend.ts",
+      "apps/web/src/cms/use-content-backend.ts",
       "apps/web/src/hooks/use-blocks-v8-project.ts",
       "apps/web/src/hooks/use-deco-serve-connection.ts",
       "apps/web/src/hooks/use-local-preview-url.ts",

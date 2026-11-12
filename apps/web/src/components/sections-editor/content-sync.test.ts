@@ -15,7 +15,7 @@ import type { ContentBackend, ProtocolBackend } from "./content-backend";
 import {
   applyProtocolPatch,
   pollProtocolContent,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import { decofileWriteScope } from "./decofile-api";
 import { getHeldPreviewRevision } from "./preview-draft-link";
 import {

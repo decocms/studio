@@ -15,6 +15,7 @@ import {
 } from "@/components/command-palette-store";
 import { VersionCheckDialog } from "@/components/version-check-dialog";
 import { LanguageAnnouncementDialog } from "@/components/language-announcement-dialog";
+import { LegacyAdminWelcomeDialog } from "@/components/legacy-admin-welcome-dialog";
 import { isModKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { authClient } from "@/lib/auth-client";
@@ -428,6 +429,7 @@ function ShellLayoutContent() {
       />
 
       <LanguageAnnouncementDialog />
+      <LegacyAdminWelcomeDialog />
     </ShellProjectProvider>
   );
 }

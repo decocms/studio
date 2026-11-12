@@ -48,6 +48,12 @@ func withEnv(c *TenantConfig, env map[string]string) *TenantConfig {
 	return &out
 }
 
+func withOrg(c *TenantConfig, org string) *TenantConfig {
+	out := *c
+	out.OrgId = org
+	return &out
+}
+
 func TestClassify(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -141,6 +147,30 @@ func TestClassify(t *testing.T) {
 			after:  withPm(&TenantConfig{Application: &Application{Runtime: Str("bun")}}, "pnpm", ""),
 			want:   KindRuntimeChange,
 		},
+		{
+			name:   "orgId change = identity-conflict",
+			before: withOrg(repo("https://example.com/a.git", "main"), "org_a"),
+			after:  withOrg(repo("https://example.com/a.git", "main"), "org_b"),
+			want:   KindIdentityConflict,
+		},
+		{
+			name:   "orgId change beats a benign branch change",
+			before: withOrg(repo("https://example.com/a.git", "main"), "org_a"),
+			after:  withOrg(repo("https://example.com/a.git", "feature"), "org_b"),
+			want:   KindIdentityConflict,
+		},
+		{
+			name:   "orgId first stamp on a warm pod is allowed (not a conflict)",
+			before: repo("https://example.com/a.git", "main"),
+			after:  withOrg(repo("https://example.com/a.git", "main"), "org_a"),
+			want:   KindNoOp,
+		},
+		{
+			name:   "unchanged orgId is not a conflict",
+			before: withOrg(repo("https://example.com/a.git", "main"), "org_a"),
+			after:  withOrg(repo("https://example.com/a.git", "feature"), "org_a"),
+			want:   KindBranchChange,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -149,6 +179,21 @@ func TestClassify(t *testing.T) {
 				t.Fatalf("Classify() = %q, want %q", got.Kind, tt.want)
 			}
 		})
+	}
+}
+
+// A post-claim orgId change must surface as an immutable-field rejection with
+// the field named, mirroring cloneUrl, so the route answers 409 "immutable:
+// orgId" instead of silently repointing this pod at another org's golden cache.
+func TestClassifyOrgIdImmutableField(t *testing.T) {
+	before := withOrg(repo("https://example.com/a.git", "main"), "org_a")
+	after := withOrg(repo("https://example.com/a.git", "main"), "org_b")
+	got := Classify(before, after)
+	if got.Kind != KindIdentityConflict {
+		t.Fatalf("kind = %q, want %q", got.Kind, KindIdentityConflict)
+	}
+	if got.Field != "orgId" {
+		t.Fatalf("field = %q, want orgId", got.Field)
 	}
 }
 

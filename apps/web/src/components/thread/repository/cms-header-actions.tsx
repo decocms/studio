@@ -38,9 +38,9 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
+import { useContentBackend } from "@/cms/use-content-backend.ts";
 import { settleAfterPublish } from "./publish-completion.ts";
-import { useContentChanges } from "../../sections-editor/content-changes.ts";
+import { useContentChanges } from "@/cms/content-changes.ts";
 import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
 import {
   contentSyncScope,

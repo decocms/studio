@@ -24,7 +24,7 @@ import {
   protocolBlockVersion,
   reloadProtocolBlock,
   rereadProtocolContent,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import type { DecofileScopeParams } from "./decofile-api";
 import {
   type ConflictChoices,
@@ -42,7 +42,7 @@ import {
   type DeletedConflict,
 } from "./named-rule-conflict";
 import { type HeldCopy, heldCopyVersion } from "./held-copy";
-import { copyDraftVersion } from "./draft-version";
+import { copyDraftVersion, cachedProductionVersion } from "./draft-version";
 import { parsePageName } from "./page-list";
 import { blogBlockKind, blogBlockTitle, blogKindWord } from "./blog-block-name";
 import type { SchemaProperty } from "./resolve-schema";
@@ -313,7 +313,11 @@ export async function hostedIfMatch(
     if (listed === undefined) throw new HostedDraftUnreadError();
     const version =
       copies && Object.hasOwn(copies, key)
-        ? await copyDraftVersion(listed, copies[key])
+        ? await copyDraftVersion(
+            listed,
+            copies[key],
+            cachedProductionVersion(ctx.queryClient, ctx.cacheKey, key),
+          )
         : listed;
     if (version === undefined) throw new HostedDraftUnreadError();
     ifMatch[key] = version;
@@ -407,7 +411,10 @@ export async function applyHostedChange(
     if (round === 0) {
       for (const key of own) {
         if (Object.hasOwn(ifMatch, key)) {
-          ifMatch[key] = await heldCopyVersion(shown![key]!);
+          ifMatch[key] = await heldCopyVersion(
+            shown![key]!,
+            cachedProductionVersion(ctx.queryClient, ctx.cacheKey, key),
+          );
         }
       }
     }

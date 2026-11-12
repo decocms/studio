@@ -104,10 +104,15 @@ export interface BlogEntry {
   duplicateName?: boolean;
 }
 
-export function kindOfResolveType(resolveType: unknown): BlogKind | null {
+function kindOfResolveType(resolveType: unknown): BlogKind | null {
   return typeof resolveType === "string"
     ? (KIND_FOR_RESOLVE_TYPE[resolveType] ?? null)
     : null;
+}
+
+/** A post, author or category block's type. */
+export function isBlogRecordType(type: string): boolean {
+  return kindOfResolveType(type) !== null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

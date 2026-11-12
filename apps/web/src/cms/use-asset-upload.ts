@@ -1,8 +1,12 @@
+import { cmsRequestSignal } from "./request-deadline";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
-import { serveAssetUploadOrigin, servePreviewUrl } from "../content-backend";
-import { useContentBackend } from "../use-content-backend";
-import type { SandboxConfig } from "./field-props";
+import {
+  serveAssetUploadOrigin,
+  servePreviewUrl,
+} from "@/components/sections-editor/content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
+import type { SandboxConfig } from "@/components/sections-editor/fields/field-props";
 
 /**
  * Uploads to a connected `deco serve` (Localhost, `/site-editor` play mode),
@@ -44,6 +48,7 @@ export function useServeAssetUpload(
     try {
       res = await fetch(uploadUrl(file.name), {
         method: "PUT",
+        signal: cmsRequestSignal(),
         headers: {
           "content-type": file.type || "application/octet-stream",
         },

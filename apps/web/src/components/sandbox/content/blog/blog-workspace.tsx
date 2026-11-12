@@ -13,7 +13,7 @@ import {
 } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   isProtocolProject,
   servePreviewUrl,
@@ -33,13 +33,15 @@ import { useT } from "@/i18n/use-t.ts";
 import { SandboxStateRenderer } from "../sandbox-state-renderer";
 import { resolveContentSandboxGate } from "../content-sandbox-gate";
 import { EmptyMessage } from "../empty-message";
-import { BLOG_KINDS, kindOfResolveType, scanBlogEntries } from "./blog-data";
+import {
+  BLOG_KINDS,
+  BRAND_BLOCK_KEY,
+  CONTEXT_BLOCK_KEY,
+  FORMATS_BLOCK_KEY,
+  isBlogRecordType,
+  scanBlogEntries,
+} from "./blog-data";
 import { findBlogPageSlug } from "./blog-preview-url";
-
-/** A post, author or category block. */
-function isBlogRecordType(type: string): boolean {
-  return kindOfResolveType(type) !== null;
-}
 
 export interface BlogWorkspaceContext {
   orgSlug: string;
@@ -184,14 +186,17 @@ function BlogWorkspaceData({
    * Hosted v8: the decofile lists the index, and a block's body loads when a
    * view opens it. Every Blog row and editor shows a record's body, and an
    * editor started from an index stub would save the stub back over the
-   * record, so the records and the blocks they reference load first. Ready at
-   * once for every other backend, which holds every body.
+   * record, so the records and the blocks they reference load first, with
+   * the Context page's own blocks (post generation reads the formats too).
+   * Ready at once for every other backend, which holds every body.
    */
   const hostedScope = hostedDraft ? { orgSlug, virtualMcpId, branch } : null;
   const recordNames = useIndexNamesOfType(hostedScope, isBlogRecordType);
-  const records = useEnsureDecofileBlocks(hostedScope, recordNames, {
-    withRefs: true,
-  });
+  const records = useEnsureDecofileBlocks(
+    hostedScope,
+    [...recordNames, BRAND_BLOCK_KEY, CONTEXT_BLOCK_KEY, FORMATS_BLOCK_KEY],
+    { withRefs: true },
+  );
 
   if (records.failed) {
     return (
