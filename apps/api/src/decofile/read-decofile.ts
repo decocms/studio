@@ -77,20 +77,34 @@ const BLOB_FETCH_CONCURRENCY = 12;
  * per-blob API calls (rate-limit- and latency-wise). */
 const COLD_READ_TARBALL_THRESHOLD = 50;
 
-/** Spec §Limits: refuse the tarball path when the tree-derived blocks
- * aggregate size exceeds this (golden rule 3 beats golden rule 2). Read here
- * rather than exposed from disk-cache config because it guards the fetch
- * path, not the store; read per cold read (rare) so tests can tune it via
- * env without a reset hook. */
-const COLD_TARBALL_MAX_BYTES_DEFAULT = 128 * 1024 * 1024;
+/** Spec §Limits: a read holds about 8x its block bytes at peak (block
+ * strings, the merged document, the response body), so a read over this would
+ * push an API process past its memory limit. Read per call so tests can tune
+ * it via env without a reset hook. */
+const DECOFILE_MAX_BYTES_DEFAULT = 64 * 1024 * 1024;
 
-function coldTarballMaxBytes(): number {
-  const raw = Bun.env.FAST_PREVIEW_COLD_TARBALL_MAX_BYTES;
-  if (raw === undefined || raw === "") return COLD_TARBALL_MAX_BYTES_DEFAULT;
+function decofileMaxBytes(): number {
+  const raw = Bun.env.FAST_PREVIEW_DECOFILE_MAX_BYTES;
+  if (raw === undefined || raw === "") return DECOFILE_MAX_BYTES_DEFAULT;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0
     ? Math.floor(value)
-    : COLD_TARBALL_MAX_BYTES_DEFAULT;
+    : DECOFILE_MAX_BYTES_DEFAULT;
+}
+
+export class DecofileTooLargeError extends Error {
+  constructor(bytes: number, maxBytes: number) {
+    const mb = (n: number) => Math.ceil(n / (1024 * 1024));
+    super(
+      `This site's blocks total ${mb(bytes)} MB, over the ${mb(maxBytes)} MB the editor can load`,
+    );
+    this.name = "DecofileTooLargeError";
+  }
+}
+
+function assertReadableSize(bytes: number): void {
+  const maxBytes = decofileMaxBytes();
+  if (bytes > maxBytes) throw new DecofileTooLargeError(bytes, maxBytes);
 }
 
 /** Lazily created so it binds the post-SDK-start meter (same pattern as
@@ -308,6 +322,8 @@ async function resolveSnapshot(
 
   const tree = await client.listDecofileEntries(sha, packagePath);
   const entries = blockEntriesInTree(tree, packagePath);
+  // Refuse before fetching anything; trees without sizes are checked below.
+  assertReadableSize(entries.reduce((sum, e) => sum + (e.size ?? 0), 0));
 
   // Per-blob disk hits first; only what's left goes to GitHub.
   const known = new Map<string, string>(); // tree path -> block content
@@ -343,6 +359,9 @@ async function resolveSnapshot(
       return { stem: e.stem, content };
     },
   );
+  assertReadableSize(
+    contents.reduce((sum, c) => sum + Buffer.byteLength(c.content), 0),
+  );
   const { decofile, skipped } = mergeBlocks(contents);
   if (skipped.length > 0) {
     countSkippedBlocks(skipped.length);
@@ -358,8 +377,8 @@ async function resolveSnapshot(
 }
 
 /**
- * The tarball cold path (spec §Cold read): pre-validate aggregate size from
- * the tree, stream the tarball into a `tar` subprocess (the archive never
+ * The tarball cold path (spec §Cold read): require every tree entry to carry
+ * a size, stream the tarball into a `tar` subprocess (the archive never
  * touches the JS heap), read each extracted block, and write blobs through
  * the disk store keyed by the tree's sha for that path. Returns the extracted
  * contents by tree path, or `null` on ANY failure/refusal — the caller then
@@ -378,24 +397,13 @@ async function tryTarballIngest(
   const repoKey = repoIdentityKey(client.repo);
 
   // Pre-validate BEFORE downloading (golden rule 3 beats golden rule 2): the
-  // extracted files are only "small" in aggregate if the tree says so. A tree
-  // entry without a size cannot be validated, so it refuses the path too.
-  const maxBytes = coldTarballMaxBytes();
-  let aggregateBytes = 0;
-  for (const e of entries) {
-    if (e.size === undefined) {
-      console.warn(
-        "decofile cold read: tarball skipped (tree entry missing size; cannot pre-validate)",
-        { repo: repoKey, sha, path: e.path },
-      );
-      return null;
-    }
-    aggregateBytes += e.size;
-  }
-  if (aggregateBytes > maxBytes) {
+  // caller already refused trees over FAST_PREVIEW_DECOFILE_MAX_BYTES, but a
+  // tree entry without a size escaped that check, so it refuses this path.
+  const unsized = entries.find((e) => e.size === undefined);
+  if (unsized) {
     console.warn(
-      "decofile cold read: tarball skipped (blocks over FAST_PREVIEW_COLD_TARBALL_MAX_BYTES)",
-      { repo: repoKey, sha, aggregateBytes, maxBytes },
+      "decofile cold read: tarball skipped (tree entry missing size; cannot pre-validate)",
+      { repo: repoKey, sha, path: unsized.path },
     );
     return null;
   }

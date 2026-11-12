@@ -84,7 +84,7 @@ $FAST_PREVIEW_CACHE_DIR/
 | `FAST_PREVIEW_CACHE_MAX_BLOB_BYTES` | 1 MiB | Admission cap for a single blob entry. Larger blobs are served but not cached. |
 | `FAST_PREVIEW_CACHE_MAX_MERGED_BYTES` | 32 MiB | Admission cap for a single merged doc. |
 | `FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES` | 1 GiB | If `statfs` free space on the cache volume is below this, skip ALL cache writes (reads still served) and emit `fast_preview_cache_floor_skips`. |
-| `FAST_PREVIEW_COLD_TARBALL_MAX_BYTES` | 128 MiB | Refuse the tarball path when the tree-derived `.deco/blocks` aggregate size exceeds this; fall back to bounded blob fetches. |
+| `FAST_PREVIEW_DECOFILE_MAX_BYTES` | 64 MiB | Refuse the whole read (413 `decofile-too-large`) when the `.deco/blocks` aggregate size exceeds this: checked from the tree before any fetch, and from the fetched contents when the tree omits sizes. A read holds about 8x its block bytes at peak, so a larger one can OOM an API process. |
 | `FAST_PREVIEW_CACHE_SWEEP_INTERVAL_MS` | 10 min | Reconciliation sweep (drift + `tmp/` orphans older than 1 h). |
 
 Fixed (not env): tarball threshold stays `> 50` missing blobs; blob fetch
@@ -124,9 +124,10 @@ in-memory path, plus restart-warmness today's path lacks.
 
 When `missing > 50`:
 
-1. **Pre-validate**: sum `size` of matching `.deco/blocks/*.json` entries from
-   the already-fetched tree. Over `FAST_PREVIEW_COLD_TARBALL_MAX_BYTES` → skip to
-   bounded blob fetches (log + metric; golden rule 3 beats golden rule 2 here).
+1. **Pre-validate**: the read already refused trees over
+   `FAST_PREVIEW_DECOFILE_MAX_BYTES`; a tree entry without a `size` escaped that
+   check, so it skips to bounded blob fetches (log + metric; golden rule 3
+   beats golden rule 2 here).
 2. **Stream**: `fetch` the tarball; pipe `res.body` directly into
    `Bun.spawn(["tar", "-xz", "--strip-components=1", "-C", scratchDir,
    "--wildcards", "*/.deco/blocks/*.json"])` stdin. The archive exists only as

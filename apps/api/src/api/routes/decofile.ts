@@ -57,7 +57,10 @@ import {
   DefaultBranchWriteError,
   repoGitRebase,
 } from "@/decofile/git-compat";
-import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import {
+  DecofileTooLargeError,
+  readDecofileSnapshot,
+} from "@/decofile/read-decofile";
 import { readCommittedMeta } from "@/decofile/read-meta";
 import { projectPackagePath } from "@/hosted/blocks-major";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
@@ -311,6 +314,9 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
   }
   if (err instanceof DefaultBranchWriteError) {
     return c.json({ error: message, code: DEFAULT_BRANCH_READ_ONLY }, 409);
+  }
+  if (err instanceof DecofileTooLargeError) {
+    return c.json({ error: message, code: "decofile-too-large" }, 413);
   }
   if (err instanceof RepoWriteConflict) return c.json({ error: message }, 409);
   const retryAfterMs = repoRateLimitRetryAfterMs(err);
