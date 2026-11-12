@@ -101,10 +101,13 @@ let etagCacheBytes = 0;
  * verb said only that the decofile lane spent the budget, never on what.
  * Only the leading literal segments survive (plus the second under `git/`), so
  * a branch name, sha or file path can never become a label value.
+ *
+ * `path` is relative to the repository (`/git/trees/…`), so the parse never
+ * has to agree with how many segments `repoBase` happens to have.
  */
 export function contentOperation(method: string, path: string): string {
   const [pathname = ""] = path.split("?");
-  const [first = "", second] = pathname.split("/").slice(4);
+  const [first = "", second] = pathname.split("/").slice(1);
   if (!first) return `${method} /repo`;
   return first === "git" && second
     ? `${method} /git/${second}`
@@ -484,7 +487,10 @@ export class GithubContentClient implements RepoContentClient {
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     const installation = budgetOwnerFor(accessToken);
-    const operation = contentOperation(method, path);
+    const operation = contentOperation(
+      method,
+      path.slice(this.repoBase.length),
+    );
     recordGithubRateLimit(res.headers, {
       lane: "rest",
       operation,
