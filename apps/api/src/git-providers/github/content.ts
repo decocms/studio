@@ -95,6 +95,22 @@ const etagCache = new Map<
 >();
 let etagCacheBytes = 0;
 
+/**
+ * The `operation` label for one content call: the verb plus the endpoint with
+ * its ids dropped — `GET /git/trees`, `PATCH /git/refs`, `GET /repo`. A bare
+ * verb said only that the decofile lane spent the budget, never on what.
+ * Only the leading literal segments survive (plus the second under `git/`), so
+ * a branch name, sha or file path can never become a label value.
+ */
+export function contentOperation(method: string, path: string): string {
+  const [pathname = ""] = path.split("?");
+  const [first = "", second] = pathname.split("/").slice(4);
+  if (!first) return `${method} /repo`;
+  return first === "git" && second
+    ? `${method} /git/${second}`
+    : `${method} /${first}`;
+}
+
 function etagCacheable(method: string, path: string): boolean {
   return (
     method === "GET" &&
@@ -468,9 +484,10 @@ export class GithubContentClient implements RepoContentClient {
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     const installation = budgetOwnerFor(accessToken);
+    const operation = contentOperation(method, path);
     recordGithubRateLimit(res.headers, {
       lane: "rest",
-      operation: method,
+      operation,
       installation,
     });
 
@@ -482,7 +499,7 @@ export class GithubContentClient implements RepoContentClient {
         res.headers.get("retry-after") !== null ? "secondary" : "primary";
       countGithubRateLimited({
         lane: "rest",
-        operation: method,
+        operation,
         installation,
         kind,
       });
