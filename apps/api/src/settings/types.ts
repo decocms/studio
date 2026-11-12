@@ -202,6 +202,9 @@ export interface Settings {
    *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
    *  Shortened only by e2e. */
   boardTransitionSettleSeconds: number;
+  /** Least time between two decofile autosave commits to one branch
+   *  (`DECOFILE_COMMIT_GAP_SECONDS`, default 5). Shortened only by e2e. */
+  decofileCommitGapSeconds: number;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap

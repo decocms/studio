@@ -77,6 +77,8 @@ interface CommitRecord {
   treeSha: string;
   parents: string[];
   message: string;
+  /** Committer date, as GitHub reports it. */
+  date: string;
 }
 
 interface PullRecord {
@@ -195,13 +197,14 @@ function putCommit(
   treeSha: string,
   parents: string[],
   message: string,
+  date = new Date().toISOString(),
 ): string {
   // The counter keeps same-(tree,parents,message) commits distinct — this is
   // fixture code, not git; determinism-per-run is all the tests need.
   const sha = sha1(
     `commit:${treeSha}:${parents.join(",")}:${message}:${commitCounter++}`,
   );
-  repo.commits.set(sha, { sha, treeSha, parents, message });
+  repo.commits.set(sha, { sha, treeSha, parents, message, date });
   repo.commitLog.push(sha);
   return sha;
 }
@@ -311,7 +314,15 @@ function seedRepo(body: SeedRepoBody): RepoState {
       ]),
     ),
   );
-  const defaultHead = putCommit(repo, defaultTree, [], `seed ${defaultBranch}`);
+  // Seeds stand for existing history, committed long before the test.
+  const seedDate = new Date(0).toISOString();
+  const defaultHead = putCommit(
+    repo,
+    defaultTree,
+    [],
+    `seed ${defaultBranch}`,
+    seedDate,
+  );
   repo.refs.set(defaultBranch, defaultHead);
 
   for (const [branch, spec] of Object.entries(branches)) {
@@ -331,7 +342,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     );
     repo.refs.set(
       branch,
-      putCommit(repo, tree, [defaultHead], `seed ${branch}`),
+      putCommit(repo, tree, [defaultHead], `seed ${branch}`, seedDate),
     );
   }
   repos.set(repoKey(body.owner, body.repo), repo);
@@ -642,7 +653,7 @@ async function handleRepos(
     json(res, 200, {
       sha: commit.sha,
       message: commit.message,
-      committer: { date: new Date().toISOString() },
+      committer: { date: commit.date },
       tree: { sha: commit.treeSha },
       parents: commit.parents.map((sha) => ({ sha })),
     });
