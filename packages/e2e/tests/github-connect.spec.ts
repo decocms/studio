@@ -1725,3 +1725,133 @@ test("a narrowed legacy grant blocks linked repos and a stale chooser cannot res
     await teammate.dispose();
   }
 });
+
+test("linked repository reads reuse its recorded id and reject a narrowed grant", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const owner = `repo-id-${randomUUID().slice(0, 8)}`;
+  const repoId = Math.floor(Math.random() * 100_000_000) + 1;
+  const path = `${owner}/site`;
+  const schema = { schema: { definitions: {} } };
+  const seed = async (id: number) => {
+    expect(
+      (
+        await page.request.post(`${fixtureOrigin}/__admin/repos`, {
+          data: {
+            owner,
+            repo: "site",
+            id,
+            branches: {
+              main: {
+                files: { ".deco/meta.gen.json": JSON.stringify(schema) },
+              },
+            },
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+  };
+  await seed(repoId);
+  const account = installation(owner, "Organization", [
+    { id: repoId },
+    { id: repoId + 1 },
+  ]);
+  const flow = await seedFlow(authedPage, [account]);
+  const connected = await page.request.post(flow.path, {
+    data: await grantInput(page.request, flow.path, account),
+  });
+  expect(connected.status()).toBe(200);
+  const accountId = (await connected.json()).account.id;
+  const linked = await callSelfMcpTool<{ repository: { id: string } }>(
+    page.request,
+    orgSlug,
+    "REPOSITORY_LINK",
+    {
+      accountId,
+      url: `https://github.com/${path}`,
+    },
+  );
+  const project = await callSelfMcpTool<{ item: { id: string } }>(
+    page.request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title: "Repository identity regression",
+        connections: [],
+        metadata: {
+          previewServerUrl: "https://site.example.com",
+          repository: {
+            owner,
+            name: "site",
+            url: `https://github.com/${path}`,
+            repositoryId: linked.repository.id,
+          },
+        },
+      },
+    },
+  );
+  const reads = async () =>
+    (
+      await (
+        await page.request.get(`${fixtureOrigin}/__admin/repos/${path}`)
+      ).json()
+    ).metadataReads as number;
+  const before = await reads();
+  const endpoint = `/api/${orgSlug}/decofile/${project.item.id}/main/meta`;
+  for (let i = 0; i < 3; i++) {
+    const result = await page.request.get(endpoint);
+    expect(result.status()).toBe(200);
+    expect(await result.json()).toEqual(schema);
+  }
+  expect(await reads()).toBe(before);
+
+  // Legacy rows without a recorded id still resolve through GitHub.
+  const db = await connectDevDb();
+  try {
+    const invalidIds = [
+      null,
+      "invalid",
+      "0",
+      "-1",
+      "1e3",
+      "0x10",
+      "9007199254740992",
+    ];
+    for (const [index, externalId] of invalidIds.entries()) {
+      await db.query(
+        "UPDATE repositories SET external_id=$1 WHERE id=$2 AND organization_id=$3",
+        [externalId, linked.repository.id, flow.orgId],
+      );
+      expect((await page.request.get(endpoint)).status()).toBe(200);
+      expect(await reads()).toBe(before + index + 1);
+    }
+    await db.query(
+      "UPDATE repositories SET external_id=$1 WHERE id=$2 AND organization_id=$3",
+      [String(repoId), linked.repository.id, flow.orgId],
+    );
+  } finally {
+    await db.end();
+  }
+
+  // The installation grants both ids, but this linked row names only the first.
+  await seed(repoId + 1);
+  expect((await page.request.get(endpoint)).status()).toBe(404);
+  await seed(repoId);
+
+  const readsBeforeRevoke = await reads();
+  const reconnect = await seedFlow(authedPage, [account]);
+  expect(
+    (
+      await page.request.post(reconnect.path, {
+        data: await grantInput(page.request, reconnect.path, account, [
+          repoId + 1,
+        ]),
+      })
+    ).status(),
+  ).toBe(200);
+  const denied = await page.request.get(endpoint);
+  expect(denied.status()).toBe(502);
+  expect(await reads()).toBe(readsBeforeRevoke);
+});

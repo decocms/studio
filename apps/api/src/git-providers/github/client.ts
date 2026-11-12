@@ -50,6 +50,8 @@ export type GithubProviderClientOptions =
        * granted, by id. Null is the whole installation.
        */
       repositoryIds?: number[] | null;
+      /** Identity recorded when Studio linked the repository. */
+      knownRepository?: { ref: RepoRef; externalId: string | null };
       appAuth: GithubAppAuth;
     }
   | { host: string; tokenSource: TokenSource };
@@ -261,10 +263,10 @@ export class GithubProviderClient implements GitProviderClient {
   /**
    * The id of `repo` within a partial grant, or a 403.
    *
-   * The lookup runs on the account token, which is itself minted for the
-   * granted ids, so a repository outside the grant answers 404 here and never
-   * reaches the mint. The id is memoized: `archiveTarball` asks twice when its
-   * first token turns out to be dead.
+   * Linked repositories supply their recorded immutable id. Older rows and
+   * unlinked targets resolve through the grant-scoped account token instead.
+   * Both paths check the current grant before minting a repository token.
+   * The per-client memo also covers an archive's retry after a rejected token.
    */
   private async grantedRepositoryId(
     repo: RepoRef,
@@ -273,7 +275,23 @@ export class GithubProviderClient implements GitProviderClient {
     const key = repo.path.toLowerCase();
     const memoized = this.grantedIds.get(key);
     if (memoized !== undefined) return memoized;
-    const id = Number((await this.getRepo(repo))?.externalId);
+    const known =
+      "appAuth" in this.options ? this.options.knownRepository : undefined;
+    const recordedId =
+      known?.ref.provider === "github" &&
+      repo.provider === "github" &&
+      known.ref.host.toLowerCase() === repo.host.toLowerCase() &&
+      known.ref.path.toLowerCase() === key &&
+      known.externalId !== null &&
+      /^[1-9]\d*$/.test(known.externalId)
+        ? Number(known.externalId)
+        : NaN;
+    // Keep the current grant check and mint by immutable id. A reused path
+    // must not authorize a replacement repository through a stale stored row.
+    const id =
+      Number.isSafeInteger(recordedId) && recordedId > 0
+        ? recordedId
+        : Number((await this.getRepo(repo))?.externalId);
     if (!Number.isSafeInteger(id) || !granted.includes(id)) {
       const { owner } = splitOwnerName(repo);
       throw new GitProviderError({

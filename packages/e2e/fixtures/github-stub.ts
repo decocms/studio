@@ -95,6 +95,7 @@ interface RepoState {
   name: string;
   defaultBranch: string;
   mergeMode: MergeMode;
+  metadataReads: number;
   /** branch -> head commit sha */
   refs: Map<string, string>;
   commits: Map<string, CommitRecord>;
@@ -146,7 +147,9 @@ function nextRepoId(): number {
  * unrestricted so the suites that send a static token are unaffected.
  */
 function tokenScope(authorization: string | undefined): number[] | null {
-  const scope = /^Bearer ghs-inst-\d+-ids-([\d.]+)$/.exec(authorization ?? "");
+  const scope = /^(?:Bearer|token) ghs-inst-\d+-ids-([\d.]+)$/i.exec(
+    authorization ?? "",
+  );
   return scope?.[1] ? scope[1].split(".").map(Number) : null;
 }
 let commitCounter = 0;
@@ -272,6 +275,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     name: body.repo,
     defaultBranch,
     mergeMode: body.mergeMode ?? "merge",
+    metadataReads: 0,
     refs: new Map(),
     commits: new Map(),
     commitLog: [],
@@ -461,6 +465,7 @@ async function handleAdmin(
     json(res, 200, {
       defaultBranch: repo.defaultBranch,
       mergeMode: repo.mergeMode,
+      metadataReads: repo.metadataReads,
       refs: Object.fromEntries(repo.refs),
       commits: repo.commitLog.map((sha) => {
         const c = repo.commits.get(sha);
@@ -503,6 +508,7 @@ async function handleRepos(
 
   // GET /repos/{o}/{r}
   if (req.method === "GET" && rest.length === 0) {
+    repo.metadataReads++;
     json(res, 200, {
       id: repo.id,
       name: repo.name,
