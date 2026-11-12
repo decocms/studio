@@ -114,7 +114,7 @@ nova rodada focada nessas etapas.
   convida a conectar GA4, a loja e o Deco Analytics, usando os fluxos de
   conexão que já existem.
 - **Erro.** Mostra a etapa que falhou e um botão para rodar de novo. Nenhuma
-  etapa paga é repetida automaticamente (ver 7.3).
+  etapa paga é repetida automaticamente (ver 5.1).
 
 #### Largura estreita
 
