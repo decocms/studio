@@ -7,10 +7,11 @@
  * tree behind them.
  *
  * Invariants of sandbox-less mode that shape these payloads:
- * - There is no working tree: every save is already a commit on the branch,
- *   so local-work fields (modified/staged/unpushed/...) are always empty/0.
- * - "Publish" (sync-local-work) is therefore a no-op — the route answers OK
- *   without calling here.
+ * - There is no working tree. Every save is a commit on the branch, unless the
+ *   org turned `cms_auto_commit` off: then saves are held in Studio
+ *   (pending-blocks.ts) and play the working tree's part —
+ *   {@link withPendingStatus} lists them as local changes, and "Publish"
+ *   (sync-local-work) commits them.
  */
 
 import {
@@ -24,6 +25,7 @@ import {
 } from "@/git-providers";
 import { mergeBlockJson } from "@decocms/shared/decofile";
 import { mapBounded } from "@decocms/shared/std";
+import { type PendingFile, pendingFileContent } from "./pending-blocks";
 import { resolveOrCreateHead } from "./read-decofile";
 
 const DIFF_MAX_FILES = 200;
@@ -195,6 +197,80 @@ export async function repoGitStatus(
     compareAfterMaterializing(client, base, branch, materialized),
   ]);
   return buildPublishStatus({ base, branch, headSha, compared });
+}
+
+/**
+ * The status with the branch's pending saves as uncommitted changes: in the
+ * manifest (against base, folded with what the branch already committed) and
+ * in the local-change lists, and `headSha` as the draft version, so a new
+ * save is a new head to everything keyed by it.
+ */
+export function withPendingStatus(
+  status: CompatGitStatus,
+  files: PendingFile[],
+  version: string,
+): CompatGitStatus {
+  if (files.length === 0) return status;
+  const manifest = new Map(status.changedFiles.map((f) => [f.path, f]));
+  const local: Record<"created" | "modified" | "deleted", string[]> = {
+    created: [],
+    modified: [],
+    deleted: [],
+  };
+  for (const { block, path, existsAtHead } of files) {
+    const committed = manifest.get(path);
+    if (block.content === null) {
+      local.deleted.push(path);
+      // Added on the branch and deleted again: nothing differs from base.
+      if (committed?.status === "added") manifest.delete(path);
+      else manifest.set(path, { path, status: "removed" });
+      continue;
+    }
+    (existsAtHead ? local.modified : local.created).push(path);
+    if (committed?.status === "added" || committed?.status === "renamed") {
+      continue;
+    }
+    manifest.set(path, {
+      path,
+      status: committed || existsAtHead ? "modified" : "added",
+    });
+  }
+  const all = [...manifest.values()];
+  const changedFiles = all.slice(0, DIFF_MAX_FILES);
+  // Paths the cap already dropped are unknown here; count them as before.
+  const dropped = status.changedFilesTotal - status.changedFiles.length;
+  return {
+    ...status,
+    ...local,
+    headSha: version,
+    changedFiles,
+    changedFilesTotal: all.length + dropped,
+    changedFilesTruncated: dropped > 0 || all.length > changedFiles.length,
+  };
+}
+
+/**
+ * The diff with each pending save's content as the new side. The old side is
+ * the base's copy, already on the entry when the branch committed a change to
+ * that path, read at the merge base otherwise.
+ */
+export async function withPendingDiff(
+  client: RepoContentClient,
+  diff: CompatGitDiff,
+  files: PendingFile[],
+): Promise<CompatGitDiff> {
+  if (files.length === 0) return diff;
+  const diffs = { ...diff.diffs };
+  await mapBounded(files, DIFF_FETCH_CONCURRENCY, async ({ block, path }) => {
+    const from =
+      path in diffs
+        ? (diffs[path]?.from ?? null)
+        : await client.readFileAtRef(diff.mergeBaseSha, path);
+    const to = pendingFileContent(block);
+    if (from === to) delete diffs[path];
+    else diffs[path] = { from, to };
+  });
+  return { ...diff, diffs };
 }
 
 /** Mirror of the daemon's diff JSON: full old/new contents per path. */

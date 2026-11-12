@@ -222,6 +222,32 @@ async function headFingerprints(
 }
 
 /**
+ * {@link decoBlockFingerprint} of `keys` at `headSha`: null for a block the
+ * head lacks, and no entry for one that is not valid JSON (no expectation can
+ * hold against it).
+ */
+export async function readHeadFingerprints(
+  client: RepoContentClient,
+  headSha: string,
+  packagePath: string | null,
+  keys: Set<string>,
+): Promise<Map<string, string | null>> {
+  if (keys.size === 0) return new Map();
+  const tree = await client.listDecofileEntries(headSha, packagePath);
+  const read = await headFingerprints(
+    client,
+    blockEntriesInTree(tree, packagePath),
+    keys,
+    new Map(),
+  );
+  const out = new Map<string, string | null>();
+  for (const [key, value] of read) {
+    if (value !== UNREADABLE) out.set(key, value);
+  }
+  return out;
+}
+
+/**
  * Split the batch into patches whose expectations hold and patches that would
  * overwrite a newer version, replaying accepted writes in order so a later
  * patch is checked against what the earlier ones in this commit leave behind.

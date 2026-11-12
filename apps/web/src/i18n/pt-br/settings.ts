@@ -382,6 +382,9 @@ export const settings = {
   "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
   "settings.multiAppPreview.description":
     "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",
+  "settings.cmsAutoCommit.title": "Commitar cada salvamento na branch",
+  "settings.cmsAutoCommit.description":
+    "No Fast Preview, cada salvamento vira um commit na branch em edição. Desligado, os salvamentos ficam no Studio: o editor e o preview mostram as mudanças, mas elas só chegam na branch quando alguém publica ou envia para revisão, em um único commit. Até lá elas não estão no repositório, então um pull request, um deploy preview ou quem trabalha na branch fora do Studio não as vê.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeLight": "Tema claro",
   "settings.preferences.themeDark": "Tema escuro",

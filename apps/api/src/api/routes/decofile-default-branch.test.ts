@@ -79,6 +79,8 @@ function setup(repoOptions: { defaultBranch?: string } = {}) {
     auth: { user: { id: "user", role: "owner" } },
     access: { getRole: () => "owner", check: async () => {} },
     storage: {
+      organizationSettings: { get: async () => null },
+      decofilePendingBlocks: { list: async () => [] },
       virtualMcps: {
         findById: async (id: string) =>
           id === "p1"

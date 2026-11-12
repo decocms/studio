@@ -142,6 +142,7 @@ export interface StudioToolIO {
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
             multi_app_preview?: boolean | undefined;
+            cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
@@ -231,6 +232,7 @@ export interface StudioToolIO {
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
             multi_app_preview?: boolean | undefined;
+            cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
@@ -316,6 +318,7 @@ export interface StudioToolIO {
             blog_ai_enabled?: boolean | undefined;
             site_apps_install_enabled?: boolean | undefined;
             multi_app_preview?: boolean | undefined;
+            cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
