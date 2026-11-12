@@ -20,18 +20,27 @@ export interface SiteMetaTarget {
   trusted: boolean;
 }
 
+export function projectSiteSlug(
+  metadata: Record<string, unknown> | null,
+): string | null {
+  return typeof metadata?.siteSlug === "string" && metadata.siteSlug
+    ? metadata.siteSlug
+    : null;
+}
+
 /**
  * The token is one secret for every site, so it only goes to the platform's
- * own host for the project's site. `siteSlug` cannot change once set, while
- * `previewServerUrl` is free text any project editor can point anywhere: that
- * one is read without the token.
+ * host for a site the caller's org owns (`org_sites`). A project can name any
+ * slug, and `previewServerUrl` is free text any editor can point anywhere:
+ * those are read without the token.
  */
 export function resolveSiteMetaTarget(
   metadata: Record<string, unknown> | null,
+  orgOwnsSite: boolean,
 ): SiteMetaTarget | null {
-  const siteSlug =
-    typeof metadata?.siteSlug === "string" ? metadata.siteSlug : null;
-  const platformUrl = defaultPreviewServerUrl(siteSlug);
+  const platformUrl = orgOwnsSite
+    ? defaultPreviewServerUrl(projectSiteSlug(metadata))
+    : null;
   if (platformUrl && isTrustedSiteOrigin(platformUrl)) {
     return { siteUrl: platformUrl, trusted: true };
   }

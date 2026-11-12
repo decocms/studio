@@ -9,37 +9,55 @@ import {
 } from "./site-meta-request";
 
 describe("resolveSiteMetaTarget", () => {
-  it("reads the site's platform host when the project has a site slug", () => {
+  it("reads the platform host of a site the org owns", () => {
     expect(
-      resolveSiteMetaTarget({
-        siteSlug: "acme",
-        previewServerUrl: "https://attacker.example",
-      }),
+      resolveSiteMetaTarget(
+        {
+          siteSlug: "acme",
+          previewServerUrl: "https://attacker.example",
+        },
+        true,
+      ),
     ).toEqual({ siteUrl: "https://acme.deco.site/", trusted: true });
   });
 
   it("cannot be steered off the platform domain through the slug", () => {
-    const target = resolveSiteMetaTarget({ siteSlug: "evil.example/#" });
+    const target = resolveSiteMetaTarget({ siteSlug: "evil.example/#" }, true);
     expect(target?.trusted).toBe(true);
     expect(new URL(target!.siteUrl).hostname.endsWith(".deco.site")).toBe(true);
   });
 
+  it("never trusts a slug another org owns, even on the platform domain", () => {
+    expect(
+      resolveSiteMetaTarget(
+        { siteSlug: "victim", previewServerUrl: "https://victim.deco.site" },
+        false,
+      ),
+    ).toEqual({ siteUrl: "https://victim.deco.site/", trusted: false });
+    expect(resolveSiteMetaTarget({ siteSlug: "victim" }, false)).toBeNull();
+  });
+
   it("falls back to the editor's preview URL without trust", () => {
     expect(
-      resolveSiteMetaTarget({ previewServerUrl: "https://store.example.com" }),
+      resolveSiteMetaTarget(
+        { previewServerUrl: "https://store.example.com" },
+        false,
+      ),
     ).toEqual({ siteUrl: "https://store.example.com/", trusted: false });
     expect(
-      resolveSiteMetaTarget({
-        siteSlug: "",
-        productionUrl: "https://store.example.com",
-      }),
+      resolveSiteMetaTarget(
+        { siteSlug: "", productionUrl: "https://store.example.com" },
+        true,
+      ),
     ).toEqual({ siteUrl: "https://store.example.com/", trusted: false });
   });
 
   it("is null without a slug or a preview URL", () => {
-    expect(resolveSiteMetaTarget(null)).toBeNull();
-    expect(resolveSiteMetaTarget({ siteSlug: 42 })).toBeNull();
-    expect(resolveSiteMetaTarget({ previewServerUrl: "ftp://x" })).toBeNull();
+    expect(resolveSiteMetaTarget(null, false)).toBeNull();
+    expect(resolveSiteMetaTarget({ siteSlug: 42 }, true)).toBeNull();
+    expect(
+      resolveSiteMetaTarget({ previewServerUrl: "ftp://x" }, false),
+    ).toBeNull();
   });
 });
 

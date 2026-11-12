@@ -76,6 +76,7 @@ import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-ur
 import {
   buildSiteMetaRequest,
   isJsonContentType,
+  projectSiteSlug,
   resolveSiteMetaTarget,
   siteMetaResponseHeaders,
 } from "../../lib/site-meta-request";
@@ -1509,7 +1510,15 @@ export const createSandboxRoutes = () => {
   // edge rejects `/live/_meta` on public hosts without the admin token, which
   // only Studio holds, so the browser cannot read it directly.
   app.get("/:virtualMcpId/:branch/site-meta", async (c) => {
-    const target = resolveSiteMetaTarget(c.get("vmClaim").virtualMcpMetadata);
+    const metadata = c.get("vmClaim").virtualMcpMetadata;
+    const siteSlug = projectSiteSlug(metadata);
+    const orgOwnsSite = siteSlug
+      ? await c.var.studioContext.storage.orgSites.isOwnedBy(
+          siteSlug,
+          requireOrganization(c.var.studioContext).id,
+        )
+      : false;
+    const target = resolveSiteMetaTarget(metadata, orgOwnsSite);
     if (!target) {
       return c.json(
         { error: "Project has no preview server configured" },
