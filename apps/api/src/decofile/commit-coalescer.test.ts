@@ -51,6 +51,8 @@ function fakeClient(opts: FakeOpts) {
   let commitAttempts = 0;
   let committed: FileChange[] = [];
   const inlined: Array<boolean | undefined> = [];
+  /** The branch head; `committedAt` empty for the seeded head (long ago). */
+  let head = { sha: "head1", committedAt: "" };
 
   const treeEntries = (): TreeEntry[] => [
     ...opts.stems.map(
@@ -74,7 +76,9 @@ function fakeClient(opts: FakeOpts) {
   const client: RepoContentClient = {
     repo: REPO,
     getDefaultBranch: async () => "main",
-    getBranch: async () => ({ sha: "head1" }),
+    getBranch: async () => ({ sha: head.sha }),
+    readCommit: async (sha: string) =>
+      sha === head.sha ? { message: "", date: head.committedAt } : null,
     searchBranches: async (): Promise<BranchPage> => ({
       branches: [],
       totalCount: 0,
@@ -107,7 +111,11 @@ function fakeClient(opts: FakeOpts) {
         throw new RepoWriteConflict("head moved");
       }
       committed = changes;
-      return { sha: `commit${commitAttempts}` };
+      head = {
+        sha: `commit${commitAttempts}`,
+        committedAt: new Date().toISOString(),
+      };
+      return { sha: head.sha };
     },
     createBranch: async () => {},
     forceBranchHead: async () => {},
@@ -354,7 +362,7 @@ describe("enqueueDecofilePatch expectations", () => {
     const afterFirst = await decoBlockFingerprint(first);
 
     vi.useFakeTimers();
-    // Holds the queue so the next three land in ONE batch.
+    // All four arrive before the first commit starts: ONE batch.
     const blocker = enqueueDecofilePatch(queue, deps(f), {
       set: { Footer: { __resolveType: "Footer", x: 1 } },
     });
@@ -385,7 +393,7 @@ describe("enqueueDecofilePatch expectations", () => {
       "rejected",
       "fulfilled",
     ]);
-    expect(results[0]).toMatchObject({ value: "commit2" });
+    expect(results[0]).toMatchObject({ value: "commit1" });
     expect(results[1]).toMatchObject({
       reason: expect.any(BlockConflictError),
     });
@@ -446,16 +454,45 @@ describe("enqueueDecofilePatch commit gap", () => {
     }
   });
 
+  it("keeps the gap when the next save reaches another replica", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fakeClient({ stems, tracksGen: false });
+      // Each replica has its own in-process queue for the branch.
+      const key = `q-gap-replica-${Date.now()}`;
+      await settleWithClock([
+        enqueueDecofilePatch(`${key}/pod-a`, deps(f), {
+          set: { Header: { __resolveType: "Header", v: 1 } },
+        }),
+      ]);
+      const start = Date.now();
+      const [second] = await settleWithClock([
+        enqueueDecofilePatch(`${key}/pod-b`, deps(f), {
+          set: { Header: { __resolveType: "Header", v: 2 } },
+        }),
+      ]);
+      expect(second).toMatchObject({ value: "commit2" });
+      expect(Date.now() - start).toBeGreaterThanOrEqual(
+        MIN_COMMIT_INTERVAL_MS - 250,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps queues for different branches independent", async () => {
-    const f = fakeClient({ stems, tracksGen: false });
     const key = `q-gap-other-${Date.now()}`;
-    await enqueueDecofilePatch(`${key}/a`, deps(f), {
-      set: { Header: { __resolveType: "Header" } },
-    });
+    await enqueueDecofilePatch(
+      `${key}/a`,
+      deps(fakeClient({ stems, tracksGen: false })),
+      { set: { Header: { __resolveType: "Header" } } },
+    );
     const start = Date.now();
-    await enqueueDecofilePatch(`${key}/b`, deps(f), {
-      set: { Header: { __resolveType: "Header" } },
-    });
+    await enqueueDecofilePatch(
+      `${key}/b`,
+      deps(fakeClient({ stems, tracksGen: false })),
+      { set: { Header: { __resolveType: "Header" } } },
+    );
     expect(Date.now() - start).toBeLessThan(MIN_COMMIT_INTERVAL_MS);
   });
 

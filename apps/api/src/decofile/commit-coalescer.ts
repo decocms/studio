@@ -40,16 +40,13 @@ import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
 const MAX_CAS_ATTEMPTS = 3;
 
 /**
- * Least time between the starts of two commits to one branch. The first save
- * after a pause commits at once; saves made while typing wait out the gap and
- * land together, instead of one commit (about five GitHub calls) per autosave.
- * Per process: replicas still commit independently.
+ * Least time between two commits to one branch. The first save after a pause
+ * commits at once; saves made while typing wait out the gap and land together,
+ * instead of one commit (about five GitHub calls) per autosave. Measured from
+ * the branch head's commit time, so it holds across replicas: an editor's
+ * saves go out one at a time and each can reach a different pod.
  */
 export const MIN_COMMIT_INTERVAL_MS = 5_000;
-
-/** queueKey -> when its last commit started. Outlives the queue, which is
- *  dropped as soon as it drains — between two autosaves. */
-const lastCommitAt = new Map<string, number>();
 
 export interface DecofilePatch {
   set?: Record<string, unknown>;
@@ -114,10 +111,6 @@ export function enqueueDecofilePatch(
   deps: CommitDeps,
   patch: DecofilePatch,
 ): Promise<string> {
-  const now = Date.now();
-  for (const [key, at] of lastCommitAt) {
-    if (now - at >= MIN_COMMIT_INTERVAL_MS) lastCommitAt.delete(key);
-  }
   let state = queues.get(queueKey);
   if (!state) {
     state = { pending: null, running: false };
@@ -139,10 +132,8 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
   state.running = true;
   try {
     while (state.pending) {
-      const wait =
-        (lastCommitAt.get(queueKey) ?? 0) + MIN_COMMIT_INTERVAL_MS - Date.now();
-      if (wait > 0) await sleep(wait);
-      lastCommitAt.set(queueKey, Date.now());
+      // Saves arriving during the wait join this batch.
+      await waitOutCommitGap(state.pending.deps);
       const batch = state.pending;
       state.pending = null;
       try {
@@ -158,6 +149,30 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
   } finally {
     state.running = false;
     if (!state.pending) queues.delete(queueKey);
+  }
+}
+
+/**
+ * Sleep until {@link MIN_COMMIT_INTERVAL_MS} after the branch head was
+ * committed. Both reads are ETag-cached and repeated by the commit right
+ * after, so they add no rate-limited call. Fails open: the commit surfaces
+ * any real error.
+ */
+async function waitOutCommitGap({ client, branch }: CommitDeps) {
+  try {
+    const head = await client.getBranch(branch);
+    if (!head) return;
+    const committedAt = Date.parse(
+      (await client.readCommit(head.sha))?.date ?? "",
+    );
+    // Capped: a commit pushed from a machine whose clock runs ahead.
+    const wait = Math.min(
+      MIN_COMMIT_INTERVAL_MS,
+      committedAt + MIN_COMMIT_INTERVAL_MS - Date.now(),
+    );
+    if (wait > 0) await sleep(wait);
+  } catch {
+    // No gap when the head can't be read; the commit reports the real error.
   }
 }
 
