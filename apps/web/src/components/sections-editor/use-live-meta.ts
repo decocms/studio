@@ -1,6 +1,7 @@
 import { type Query, useQuery, useQueryClient } from "@tanstack/react-query";
 import { contentReadRetryDelay } from "./content-response-error";
 import { KEYS } from "@/lib/query-keys";
+import { buildSandboxUrl, type SandboxProxyRef } from "@/sdk/sandbox-url";
 import { decoRepoPath } from "./deco-repo-path";
 import {
   readCommittedJson,
@@ -78,6 +79,20 @@ export function metaSourceOrder(input: {
 const LOCAL_META_POLL_MS = 5_000;
 
 /**
+ * The URL a runtime source is read from. The sandbox dev server and a local
+ * tunnel answer in the browser. The deployed site goes through Studio, which
+ * holds the token its edge requires for `/live/_meta`.
+ */
+export function metaSourceUrl(
+  source: Exclude<MetaSource, { kind: "committed" }>,
+  ref: SandboxProxyRef,
+): string {
+  return source.kind === "live"
+    ? new URL("/live/_meta", source.baseUrl).href
+    : buildSandboxUrl(ref, "site-meta");
+}
+
+/**
  * What each site's runtime turned out to do with `If-None-Match`, learned by
  * asking. A failed cross-origin request reads exactly like a dev server that
  * is down, so the two are told apart the only way the browser allows: ask
@@ -88,7 +103,8 @@ const LOCAL_META_POLL_MS = 5_000;
  * read, and — worse, because it is the common case — every read taken while
  * the dev server restarts sends two failing requests instead of one.
  *
- * Keyed by base URL, which is the pod: a different sandbox re-learns.
+ * Keyed by the meta URL, which names the pod (or Studio's proxy for the
+ * deployed site): a different sandbox re-learns.
  */
 export type ConditionalSupport = Map<string, "ok" | "refused">;
 
@@ -102,13 +118,12 @@ const conditionalSupport: ConditionalSupport = new Map();
  * (CORS); the held schema is kept then too, as before polling.
  */
 export async function fetchLiveMeta(
-  baseUrl: string,
+  url: string,
   previous?: LiveMeta,
   /** What this browser has learned about each runtime; see above. */
   support: ConditionalSupport = conditionalSupport,
 ): Promise<LiveMeta | null> {
-  const url = new URL("/live/_meta", baseUrl).href;
-  const known = support.get(baseUrl);
+  const known = support.get(url);
   const etag = known === "refused" ? undefined : previous?.etag;
   const first = await fetch(url, {
     cache: "no-store",
@@ -124,8 +139,8 @@ export async function fetchLiveMeta(
   if (etag) {
     // The plain request answering where the conditional one could not is the
     // only evidence that the HEADER, not the server, was the problem.
-    if (retryPlainly && res) support.set(baseUrl, "refused");
-    else if (first) support.set(baseUrl, "ok");
+    if (retryPlainly && res) support.set(url, "refused");
+    else if (first) support.set(url, "ok");
   }
   if (previous && (!res || res.status === 304)) return previous;
   if (!res?.ok) return null;
@@ -261,7 +276,7 @@ export function useLiveMeta(
         // runtime is new enough to accept the conditional request at all.
         const held = queryClient.getQueryData<LiveMeta>(queryKey);
         const meta = await fetchLiveMeta(
-          source.baseUrl,
+          metaSourceUrl(source, params!),
           localOverride || held?.etag ? held : undefined,
         );
         if (meta) return meta;
