@@ -13,11 +13,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  callStudioTool,
-  planRefusalOf,
-  StudioToolError,
-} from "@/lib/studio-tools";
+import { callStudioTool, rateLimitWaitOf } from "@/lib/studio-tools";
 import {
   hasRepoCredential,
   type RepoToolTarget,
@@ -60,23 +56,6 @@ const POLL = 60_000;
  */
 const IDLE_POLL = 5 * 60_000;
 const STALE = 30_000;
-/** Cooldown assumed when a rate-limit refusal names no wait. */
-const RATE_LIMIT_DEFAULT_WAIT = 60_000;
-
-/**
- * The tool route sends a GitHub rate-limit refusal as a 500 whose message is
- * the only marker; see `git-providers/github/graphql.ts`.
- */
-const RATE_LIMIT_MESSAGE =
-  /GitHub (?:primary|secondary) rate limit reached(?:; retry in (\d+)s)?/;
-
-/** The wait a GitHub rate-limit refusal asked for, or null for any other error. */
-export function githubRateLimitWaitMs(error: unknown): number | null {
-  if (!(error instanceof StudioToolError)) return null;
-  const match = RATE_LIMIT_MESSAGE.exec(error.message);
-  if (!match) return null;
-  return match[1] ? Number(match[1]) * 1000 : RATE_LIMIT_DEFAULT_WAIT;
-}
 
 interface ReadState {
   error: unknown;
@@ -85,21 +64,17 @@ interface ReadState {
 
 /** Time left before a rate-limited read may ask the provider again. */
 export function rateLimitCooldownMs(state: ReadState, now: number): number {
-  const wait = githubRateLimitWaitMs(state.error);
+  const wait = rateLimitWaitOf(state.error);
   if (wait === null) return 0;
   return Math.max(0, state.errorUpdatedAt + wait - now);
 }
 
 /**
  * Every change-request read spends the repository installation's GitHub
- * budget, which other projects share. A rate-limited one is not retried, and
- * focus or a remount does not re-ask until the wait it named has passed.
+ * budget, which other projects share. After a rate limit, focus or a remount
+ * does not re-ask until the wait it named has passed.
  */
 const budgetAwareRead = {
-  retry: (failureCount: number, error: Error) =>
-    failureCount < 1 &&
-    planRefusalOf(error) === null &&
-    githubRateLimitWaitMs(error) === null,
   refetchOnWindowFocus: (query: { state: ReadState }) =>
     rateLimitCooldownMs(query.state, Date.now()) === 0,
   refetchOnMount: (query: { state: ReadState }) =>

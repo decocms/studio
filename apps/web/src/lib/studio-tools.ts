@@ -39,6 +39,8 @@ export class StudioToolError extends Error {
     readonly status: number,
     /** The server's `code`, when it sent one. */
     readonly code?: string,
+    /** The wait a 429 named, in milliseconds. */
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "StudioToolError";
@@ -58,6 +60,35 @@ export function planRefusalOf(error: unknown): PlanRefusalCode | null {
   return codes.includes(error.code ?? "")
     ? (error.code as PlanRefusalCode)
     : null;
+}
+
+/** Wait assumed when a rate limit names none. */
+const RATE_LIMIT_DEFAULT_WAIT_MS = 60_000;
+
+/**
+ * How long a rate-limited call asked its caller to wait, or null when the
+ * error is not a rate limit. Accepts `unknown` so a React Query `error` can be
+ * passed straight in.
+ */
+export function rateLimitWaitOf(error: unknown): number | null {
+  if (!(error instanceof StudioToolError) || error.status !== 429) return null;
+  return error.retryAfterMs ?? RATE_LIMIT_DEFAULT_WAIT_MS;
+}
+
+/** The wait a 429 named: the body's `retryAfterMs`, else `Retry-After` seconds. */
+function retryAfterMsOf(res: Response, body: unknown): number | undefined {
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "retryAfterMs" in body &&
+    typeof body.retryAfterMs === "number" &&
+    Number.isFinite(body.retryAfterMs)
+  ) {
+    return Math.max(0, body.retryAfterMs);
+  }
+  const header = res.headers.get("retry-after");
+  const seconds = header ? Number(header) : Number.NaN;
+  return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : undefined;
 }
 
 /**
@@ -86,15 +117,22 @@ export async function callStudioTool<N extends StudioToolName>(
   if (!res.ok) {
     let message = `${name} failed (${res.status})`;
     let code: string | undefined;
+    let body: unknown = null;
     try {
-      const body = (await res.json()) as { error?: string; code?: string };
-      if (body?.error) message = body.error;
+      body = await res.json();
+      const parsed = body as { error?: string; code?: string } | null;
+      if (parsed?.error) message = parsed.error;
       // `code` is what makes a plan refusal actionable — see planRefusalOf.
-      if (typeof body?.code === "string") code = body.code;
+      if (typeof parsed?.code === "string") code = parsed.code;
     } catch {
       // non-JSON error body — keep the default message
     }
-    throw new StudioToolError(message, res.status, code);
+    throw new StudioToolError(
+      message,
+      res.status,
+      code,
+      res.status === 429 ? retryAfterMsOf(res, body) : undefined,
+    );
   }
 
   try {
