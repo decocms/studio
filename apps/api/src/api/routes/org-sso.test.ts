@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
-import { isOrgAdmin, isOrgOwner } from "./org-sso";
+import { isOrgAdmin, isOrgOwner, validateOIDCUrl } from "./org-sso";
 
 function ctxWith(opts: {
   activeOrgRole?: string;
@@ -44,5 +44,27 @@ describe("isOrgAdmin / isOrgOwner", () => {
     const ctx = ctxWith({ activeOrgRole: "owner", targetOrgRole: undefined });
     expect(isOrgAdmin(ctx)).toBe(false);
     expect(isOrgOwner(ctx)).toBe(false);
+  });
+});
+
+describe("validateOIDCUrl (SSRF guard)", () => {
+  test("rejects the cloud metadata address", async () => {
+    await expect(
+      validateOIDCUrl(
+        "https://169.254.169.254/.well-known/openid-configuration",
+      ),
+    ).rejects.toThrow();
+  });
+
+  test("rejects a private IP literal", async () => {
+    await expect(validateOIDCUrl("https://10.0.0.5/x")).rejects.toThrow();
+  });
+
+  test("rejects a non-https scheme outside local mode", async () => {
+    await expect(validateOIDCUrl("http://8.8.8.8/x")).rejects.toThrow(/HTTPS/);
+  });
+
+  test("allows a public https endpoint (IP literal, no DNS)", async () => {
+    await expect(validateOIDCUrl("https://8.8.8.8/x")).resolves.toBeUndefined();
   });
 });
