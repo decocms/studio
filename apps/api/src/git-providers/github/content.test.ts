@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   type ChangeSources,
+  contentOperation,
   mapGithubPull,
   resolveEntriesAtPaths,
   treeWriteEntries,
@@ -299,5 +300,20 @@ describe("mapGithubPull", () => {
         merged: false,
       }).state,
     ).toBe("closed");
+  });
+});
+
+describe("contentOperation", () => {
+  it.each([
+    ["GET", "", "GET /repo"],
+    ["GET", "/git/trees/abc123?recursive=1", "GET /git/trees"],
+    ["POST", "/git/blobs", "POST /git/blobs"],
+    ["PATCH", "/git/refs/heads/feat/some-branch", "PATCH /git/refs"],
+    ["GET", "/contents/.deco/blocks/a.json?ref=main", "GET /contents"],
+    ["GET", "/compare/main...feat/x", "GET /compare"],
+    ["GET", "/pulls?state=open&head=deco-sites:x", "GET /pulls"],
+    ["GET", "/branches/main", "GET /branches"],
+  ])("%s %s -> %s", (method, path, expected) => {
+    expect(contentOperation(method, path)).toBe(expected);
   });
 });
