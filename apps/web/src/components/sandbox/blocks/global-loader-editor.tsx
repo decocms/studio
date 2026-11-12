@@ -32,8 +32,10 @@ export function GlobalLoaderEditor({
 }) {
   const t = useT();
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver((key, data) =>
-    saveBlock.mutate({ blockKey: key, data }),
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => saveBlock.mutate(write),
+    decofile,
+    saveBlock.v8,
   );
 
   const { resolveType, props, title } = readSavedRunnableBlock(
@@ -50,6 +52,7 @@ export function GlobalLoaderEditor({
 
   return (
     <HeldBlockView
+      listing={decofile}
       key={`loader:${blockKey}`}
       orgSlug={orgSlug}
       virtualMcpId={virtualMcpId}

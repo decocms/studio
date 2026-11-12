@@ -12,10 +12,7 @@ import {
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/hooks/use-file-picker";
-import {
-  useServeAssetSrc,
-  useServeAssetUpload,
-} from "./use-serve-asset-upload";
+import { useServeAssetSrc, useServeAssetUpload } from "@/cms/use-asset-upload";
 import { ClickToReplaceOverlay } from "./click-to-replace-overlay";
 import { extractUrl } from "./extract-url";
 import { FieldLabel } from "./field-label";

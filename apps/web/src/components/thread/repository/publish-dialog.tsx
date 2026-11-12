@@ -86,7 +86,7 @@ import {
 } from "./use-content-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
+import { useContentBackend } from "@/cms/use-content-backend.ts";
 import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile.ts";
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";

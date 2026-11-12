@@ -5,7 +5,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { RichCode } from "./deco-serve-notices";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 
 /**
  * "Read-only" in the site editor's header when the connected `deco serve`

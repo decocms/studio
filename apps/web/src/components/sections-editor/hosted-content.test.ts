@@ -15,7 +15,7 @@ import {
   applyProtocolPatch,
   pollProtocolContent,
   protocolBlockVersion,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import {
   contentSyncScope,
   getContentSyncState,
@@ -30,8 +30,8 @@ import {
   listingOf,
   loadBlockBody,
   stubNames,
-} from "./hosted-content";
-import { cmsBlockVersion } from "./cms-api";
+} from "@/cms/hosted-content";
+import { cmsBlockVersion } from "@/cms/cms-api";
 import { pagesShowingBlock, previewPageForBlock } from "./page-list";
 import { findSiteSeoEntry } from "./seo-block";
 
@@ -370,18 +370,30 @@ describe("copying a page (template, duplicate, rename)", () => {
     expect(state.bodies["pages-copy"]).toEqual(copy);
   });
 
-  it("answers a loaded body as is, and nothing for a missing name", async () => {
+  it("reads the current body instead of a stale listing, and nothing for a missing name", async () => {
     const queryClient = new QueryClient();
     const { state, backend, hosted } = hostedServer();
     await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
     const loaded = { home: { __resolveType: "page", path: "/" } };
     expect(
       await loadBlockBody(queryClient, hosted, CACHE_KEY, loaded, "home"),
-    ).toBe(loaded.home);
+    ).toEqual(state.bodies.home);
     expect(
       await loadBlockBody(queryClient, hosted, CACHE_KEY, loaded, "gone"),
     ).toBeUndefined();
-    expect(state.blocksCalls).toEqual([]);
+    expect(state.blocksCalls).toEqual([["home"]]);
+  });
+
+  it("legacy copies retain the original shallow body check", async () => {
+    const body = { __resolveType: "page", props: { __indexStub: "user data" } };
+    const result = await loadBlockBody(
+      new QueryClient(),
+      null,
+      "legacy",
+      { home: body },
+      "home",
+    );
+    expect(result).toBe(body);
   });
 
   it("off the hosted CMS, never reads", async () => {

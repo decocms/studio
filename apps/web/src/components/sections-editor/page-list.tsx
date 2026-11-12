@@ -11,7 +11,7 @@ import {
   underlyingSectionResolveType,
 } from "./section-catalog";
 import { extractRedirects } from "@/components/sandbox/content/redirect-data";
-import { indexStubRefs, isIndexStub } from "./hosted-content";
+import { indexStubRefs, isIndexStub } from "@/cms/hosted-content";
 
 export interface PageEntry {
   key: string;

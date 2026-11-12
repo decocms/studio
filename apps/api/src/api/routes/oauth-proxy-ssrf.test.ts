@@ -86,6 +86,11 @@ describe("assertOriginEndpointIsSafe SSRF guard", () => {
     expect(response?.status).toBe(502);
   });
 
+  test("refuses a non-http(s) scheme endpoint (file://)", () => {
+    expect(assertOriginEndpointIsSafe("file:///flag")?.status).toBe(502);
+    expect(assertOriginEndpointIsSafe("file:///etc/passwd")?.status).toBe(502);
+  });
+
   test("allows a public endpoint URL", () => {
     const response = assertOriginEndpointIsSafe(
       "https://auth.example.com/token",

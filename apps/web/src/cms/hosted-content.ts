@@ -1,3 +1,11 @@
+import { cmsRequestSignal } from "./request-deadline";
+import {
+  adoptBlockLoad,
+  blockIsLoaded,
+  blocksAreLoaded,
+  parseBlocksResult,
+  type BlockLoadSnapshot,
+} from "./block-load";
 /**
  * Studio's hosted CMS (`backend.source === "github"`) reads only the index
  * plus the blocks a view opens (design "Studio reads only the index plus the
@@ -17,6 +25,14 @@
  *   references instead of its (absent) body.
  */
 
+import {
+  INDEX_STUB,
+  INDEX_STUB_REFS,
+  isIndexStub,
+  isBlockBody,
+} from "./block-body";
+export { isIndexStub, indexStubRefs, stubNames } from "./block-body";
+
 import type { QueryClient } from "@tanstack/react-query";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -29,7 +45,7 @@ import {
 import { DRAFT_TOMBSTONE_VERSION } from "@decocms/shared/blocks-major";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
-import { keepContentBookkeeping } from "./content-bookkeeping";
+import { keepContentBookkeeping } from "@/components/sections-editor/content-bookkeeping";
 
 /** One name of the overlaid index (latest ⊕ draft), as `cms.index` answers it. */
 export interface HostedIndexEntry {
@@ -94,6 +110,7 @@ export function createHostedRpc(
           method: "POST",
           headers: { "content-type": "application/json" },
           credentials: "include",
+          signal: cmsRequestSignal(),
           body: JSON.stringify(
             calls.map((c, i) => ({
               jsonrpc: "2.0",
@@ -135,40 +152,6 @@ export function createHostedRpc(
       });
     },
   };
-}
-
-/** The key that marks an index stub: a block whose body isn't loaded. */
-const INDEX_STUB = "__indexStub";
-/** An index stub's direct references (the index's `meta.refs`). */
-const INDEX_STUB_REFS = "__indexRefs";
-
-/** Whether `value` is an index stub (or a copy of one). */
-export function isIndexStub(value: unknown): boolean {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.hasOwn(value, INDEX_STUB)
-  );
-}
-
-/**
- * The names an index stub's block references directly (its index
- * `meta.refs`); `[]` for anything else.
- */
-export function indexStubRefs(value: unknown): string[] {
-  if (!isIndexStub(value)) return [];
-  const refs = (value as Record<string, unknown>)[INDEX_STUB_REFS];
-  return Array.isArray(refs)
-    ? refs.filter((ref): ref is string => typeof ref === "string")
-    : [];
-}
-
-/** The names of `set` whose value is an index stub: never written. */
-export function stubNames(set: Record<string, unknown> | undefined): string[] {
-  return Object.entries(set ?? {})
-    .filter(([, value]) => isIndexStub(value))
-    .map(([name]) => name);
 }
 
 /**
@@ -333,7 +316,7 @@ export function adoptDraftCopyIntoIndex(
   );
 }
 
-const loading = new Map<string, Promise<void>>();
+const loadsByClient = new WeakMap<QueryClient, Map<string, Promise<void>>>();
 
 /**
  * Loads the bodies of `names` that the editor doesn't hold at the index's
@@ -352,7 +335,16 @@ export async function ensureHostedBlocks(
   const index = queryClient.getQueryData<ContentIndex>(
     KEYS.contentIndex(cacheKey),
   );
-  if (!index) return;
+  if (!index)
+    throw new ContentProtocolError(
+      ErrorCode.Unavailable,
+      "The CMS index is not loaded yet",
+    );
+  let loading = loadsByClient.get(queryClient);
+  if (!loading) {
+    loading = new Map();
+    loadsByClient.set(queryClient, loading);
+  }
   const loaded =
     queryClient.getQueryData<Record<string, unknown>>(
       KEYS.decofile(cacheKey),
@@ -366,8 +358,7 @@ export async function ensureHostedBlocks(
   for (const name of new Set(names)) {
     const entry = index.entries[name];
     if (!entry || saving.has(name)) continue;
-    if (Object.hasOwn(loaded, name) && versions[name] === entry.version)
-      continue;
+    if (isBlockBody(loaded[name]) && versions[name] === entry.version) continue;
     const running = loading.get(`${cacheKey}\0${name}`);
     if (running) waits.push(running);
     else wanted.push(name);
@@ -386,6 +377,20 @@ export async function ensureHostedBlocks(
     waits.push(load);
   }
   await Promise.all(waits);
+  const held = blockLoadSnapshot(queryClient, cacheKey);
+  if (
+    names.some(
+      (name) =>
+        held.index?.entries[name] &&
+        !saving.has(name) &&
+        !blockIsLoaded(held, name),
+    )
+  ) {
+    throw new ContentProtocolError(
+      ErrorCode.Unavailable,
+      "A CMS block changed while loading; try again",
+    );
+  }
 }
 
 /**
@@ -401,17 +406,32 @@ export async function loadBlockBody(
   listed: Record<string, unknown> | undefined,
   name: string,
 ): Promise<Record<string, unknown> | undefined> {
-  const value = listed?.[name];
-  if (!rpc || !isIndexStub(value)) return isBody(value) ? value : undefined;
+  if (!rpc) {
+    const value = listed?.[name];
+    return isRecord(value) && !isIndexStub(value) ? value : undefined;
+  }
   await ensureHostedBlocks(queryClient, rpc, cacheKey, [name]);
-  const body = queryClient.getQueryData<Record<string, unknown>>(
-    KEYS.decofile(cacheKey),
-  )?.[name];
-  return isBody(body) ? body : undefined;
+  const held = blockLoadSnapshot(queryClient, cacheKey);
+  return held.index?.entries[name] && blockIsLoaded(held, name)
+    ? (held.blocks[name] as Record<string, unknown>)
+    : undefined;
 }
 
-function isBody(value: unknown): value is Record<string, unknown> {
-  return isRecord(value) && !isIndexStub(value);
+function blockLoadSnapshot(
+  queryClient: QueryClient,
+  cacheKey: string,
+): BlockLoadSnapshot {
+  return {
+    index: queryClient.getQueryData<ContentIndex>(KEYS.contentIndex(cacheKey)),
+    blocks:
+      queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(cacheKey),
+      ) ?? {},
+    versions:
+      queryClient.getQueryData<Record<string, string>>(
+        KEYS.contentVersions(cacheKey),
+      ) ?? {},
+  };
 }
 
 async function loadBlocks(
@@ -420,42 +440,47 @@ async function loadBlocks(
   cacheKey: string,
   names: string[],
 ): Promise<void> {
+  const started = blockLoadSnapshot(queryClient, cacheKey);
   const chunks: string[][] = [];
   for (let i = 0; i < names.length; i += BLOCKS_PER_CALL) {
     chunks.push(names.slice(i, i + BLOCKS_PER_CALL));
   }
   for (let i = 0; i < chunks.length; i += CALLS_PER_BATCH) {
+    const batch = chunks.slice(i, i + CALLS_PER_BATCH);
     const outcomes = await rpc.batch(
-      chunks
-        .slice(i, i + CALLS_PER_BATCH)
-        .map((chunk) => ({ method: "cms.blocks", params: { names: chunk } })),
+      batch.map((chunk) => ({
+        method: "cms.blocks",
+        params: { names: chunk },
+      })),
     );
-    for (const outcome of outcomes) {
+    if (outcomes.length !== batch.length)
+      throw new ContentProtocolError(
+        ErrorCode.InternalError,
+        "Incomplete CMS batch response",
+      );
+    for (const [position, outcome] of outcomes.entries()) {
       if (!outcome.ok) throw outcome.error;
-      const result = outcome.result as CmsBlocksResult;
+      const result = parseBlocksResult(outcome.result, batch[position]!);
+      const current = blockLoadSnapshot(queryClient, cacheKey);
+      const adopted = adoptBlockLoad(started, current, result);
       keepContentBookkeeping(queryClient);
-      queryClient.setQueryData<Record<string, unknown>>(
-        KEYS.decofile(cacheKey),
-        (current) => {
-          const next = { ...current };
-          for (const [name, body] of Object.entries(result.blocks)) {
-            next[name] = body;
-          }
-          for (const name of result.missing) delete next[name];
-          return next;
-        },
-      );
-      queryClient.setQueryData<Record<string, string>>(
-        KEYS.contentVersions(cacheKey),
-        (current) => {
-          const next = { ...current };
-          for (const [name, version] of Object.entries(result.versions)) {
-            next[name] = version;
-          }
-          for (const name of result.missing) delete next[name];
-          return next;
-        },
-      );
+      if (adopted.blocks !== current.blocks)
+        queryClient.setQueryData(KEYS.decofile(cacheKey), adopted.blocks);
+      if (adopted.versions !== current.versions)
+        queryClient.setQueryData(
+          KEYS.contentVersions(cacheKey),
+          adopted.versions,
+        );
+      if (adopted.refreshIndex) {
+        void queryClient.invalidateQueries(
+          { queryKey: KEYS.decofile(cacheKey), exact: true },
+          { cancelRefetch: false },
+        );
+        throw new ContentProtocolError(
+          ErrorCode.Unavailable,
+          "The CMS index changed while loading blocks; try again",
+        );
+      }
     }
   }
 }
@@ -480,18 +505,17 @@ export function useContentIndex(cacheKey: string): ContentIndex | undefined {
  * the content), and the next refetch (a sync, a refused save's re-read)
  * would answer with this one's instead.
  */
-function useHeldBodies(
+function useHeldData<T>(
   queryClient: QueryClient,
-  cacheKey: string,
-): Record<string, unknown> | undefined {
-  const queryKey = KEYS.decofile(cacheKey);
+  queryKey: readonly unknown[],
+): T | undefined {
   const queryHash = hashKey(queryKey);
   return useSyncExternalStore(
     (onChange) =>
       queryClient.getQueryCache().subscribe((event) => {
         if (event.query.queryHash === queryHash) onChange();
       }),
-    () => queryClient.getQueryData<Record<string, unknown>>(queryKey),
+    () => queryClient.getQueryData<T>(queryKey),
   );
 }
 
@@ -526,11 +550,18 @@ export function useEnsureHostedBlocks(
   rpc: HostedRpc | null | undefined,
   cacheKey: string,
   names: readonly string[],
-  options?: { withRefs?: boolean },
+  options?: { withRefs?: boolean; listing?: Record<string, unknown> },
 ): HostedBlocksLoad {
   const queryClient = useQueryClient();
   const index = useContentIndex(cacheKey);
-  const loaded = useHeldBodies(queryClient, cacheKey);
+  const loaded = useHeldData<Record<string, unknown>>(
+    queryClient,
+    KEYS.decofile(cacheKey),
+  );
+  const versions = useHeldData<Record<string, string>>(
+    queryClient,
+    KEYS.contentVersions(cacheKey),
+  );
   const withRefs = options?.withRefs ?? false;
   const wantedSet = new Set(names);
   if (withRefs) {
@@ -539,20 +570,19 @@ export function useEnsureHostedBlocks(
     }
   }
   const wanted = [...wantedSet].filter((name) => !!index?.entries[name]).sort();
-  const pending = wanted.some(
-    (name) => !loaded || !Object.hasOwn(loaded, name),
+  const held: BlockLoadSnapshot = {
+    index,
+    blocks: loaded ?? {},
+    versions: versions ?? {},
+  };
+  const pending = wanted.some((name) => !blockIsLoaded(held, name));
+  const key = JSON.stringify(
+    wanted.map((name) => [
+      name,
+      index?.entries[name]?.version,
+      blockIsLoaded(held, name),
+    ]),
   );
-  // A body wanted and not held (never loaded, or dropped from the cache
-  // since) is part of the key, so its load runs again even when the index
-  // didn't move its version: the view would otherwise wait on it for good.
-  const key = wanted
-    .map(
-      (name) =>
-        `${name}@${index?.entries[name]?.version ?? ""}${
-          loaded && Object.hasOwn(loaded, name) ? "" : "!"
-        }`,
-    )
-    .join("\n");
   // The failures of the load of `key` so far, and the attempt to run.
   const [failure, setFailure] = useState<{
     key: string;
@@ -566,9 +596,9 @@ export function useEnsureHostedBlocks(
     if (!rpc || !key) return;
     let current = true;
     // `key` carries the names wanted and their versions.
-    const names = key
-      .split("\n")
-      .map((line) => line.slice(0, line.lastIndexOf("@")));
+    const names = (JSON.parse(key) as Array<[string, string, boolean]>).map(
+      ([name]) => name,
+    );
     ensureHostedBlocks(queryClient, rpc, cacheKey, names).then(
       () => {
         if (current) setFailure((f) => (f?.key === key ? null : f));
@@ -604,7 +634,7 @@ export function useEnsureHostedBlocks(
     return () => clearTimeout(timer);
   }, [failures]);
   return {
-    ready: !rpc || !pending,
+    ready: !rpc || blocksAreLoaded(held, [...wantedSet], options?.listing),
     failed: !!rpc && pending && failures !== null,
     retry: () => setAttempt((n) => n + 1),
   };

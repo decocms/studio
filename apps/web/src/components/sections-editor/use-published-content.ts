@@ -1,6 +1,9 @@
 import type { ChangeDetail } from "@decocms/blocks/protocol";
-import { useContentChanges, useContentChangeSides } from "./content-changes";
-import { useContentBackend } from "./use-content-backend";
+import {
+  useContentChanges,
+  useContentChangeSides,
+} from "@/cms/content-changes";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useDecofileCacheKey } from "./use-decofile";
 
 /**
