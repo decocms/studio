@@ -50,6 +50,8 @@ export type GithubProviderClientOptions =
        * granted, by id. Null is the whole installation.
        */
       repositoryIds?: number[] | null;
+      /** Identity recorded when Studio linked the repository. */
+      knownRepository?: { ref: RepoRef; externalId: string | null };
       appAuth: GithubAppAuth;
     }
   | { host: string; tokenSource: TokenSource };
@@ -311,19 +313,32 @@ export class GithubProviderClient implements GitProviderClient {
   }
 
   /**
-   * The id of `repo` within a partial grant, or a 403.
-   *
-   * The lookup runs on the account token, which is itself minted for the
-   * granted ids, so a repository outside the grant answers 404 here and never
-   * reaches the mint. A cached id outside the grant is looked up once more
-   * before refusing: the path may now name a recreated repository.
+   * Linked repositories use their recorded immutable id. Older rows and
+   * unlinked targets use the shared lookup cache, revalidating a cached id
+   * outside the current grant in case the path now names another repository.
+   * Both paths check the current grant before minting a scoped token.
    */
   private async grantedRepositoryId(
     repo: RepoRef,
     installationId: number,
     granted: number[],
   ): Promise<number> {
-    let { id, cached } = await this.repositoryId(repo, installationId);
+    const known =
+      "appAuth" in this.options ? this.options.knownRepository : undefined;
+    const recordedId =
+      known?.ref.provider === "github" &&
+      repo.provider === "github" &&
+      known.ref.host.toLowerCase() === repo.host.toLowerCase() &&
+      known.ref.path.toLowerCase() === repo.path.toLowerCase() &&
+      known.externalId !== null &&
+      /^[1-9]\d*$/.test(known.externalId)
+        ? Number(known.externalId)
+        : NaN;
+    // A linked row must not authorize a replacement repository at the old path.
+    let { id, cached } =
+      Number.isSafeInteger(recordedId) && recordedId > 0
+        ? { id: recordedId, cached: false }
+        : await this.repositoryId(repo, installationId);
     if (cached && (id === null || !granted.includes(id))) {
       ({ id } = await this.repositoryId(repo, installationId, { fresh: true }));
     }
