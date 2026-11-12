@@ -113,6 +113,8 @@ interface RepoState {
   /** When set, recursive tree reads answer `truncated: true` (GitHub's
    *  100k-entry / 7MB cap) — arms the large-repo path in tests. */
   truncateRecursive: boolean;
+  contentsReads: number;
+  blobReads: number;
 }
 
 interface SeedRepoBody {
@@ -285,6 +287,8 @@ function seedRepo(body: SeedRepoBody): RepoState {
     pulls: [],
     nextPullNumber: 1,
     truncateRecursive: body.truncateRecursive ?? false,
+    contentsReads: 0,
+    blobReads: 0,
   };
 
   const branches = body.branches ?? {};
@@ -466,6 +470,8 @@ async function handleAdmin(
       defaultBranch: repo.defaultBranch,
       mergeMode: repo.mergeMode,
       metadataReads: repo.metadataReads,
+      contentsReads: repo.contentsReads,
+      blobReads: repo.blobReads,
       refs: Object.fromEntries(repo.refs),
       commits: repo.commitLog.map((sha) => {
         const c = repo.commits.get(sha);
@@ -694,6 +700,7 @@ async function handleRepos(
 
   // GET /repos/{o}/{r}/contents/{path}?ref={sha|branch}
   if (req.method === "GET" && rest[0] === "contents" && rest.length > 1) {
+    repo.contentsReads++;
     const filePath = rest.slice(1).join("/");
     const ref = url.searchParams.get("ref") ?? repo.defaultBranch;
     const commitSha = repo.refs.get(ref) ?? ref;
@@ -708,8 +715,12 @@ async function handleRepos(
       path: filePath,
       sha: blobSha,
       size: Buffer.byteLength(content, "utf8"),
-      content: Buffer.from(content, "utf-8").toString("base64"),
-      encoding: "base64",
+      content:
+        Buffer.byteLength(content, "utf8") > 1024 * 1024
+          ? ""
+          : Buffer.from(content, "utf-8").toString("base64"),
+      encoding:
+        Buffer.byteLength(content, "utf8") > 1024 * 1024 ? "none" : "base64",
     });
     return;
   }
@@ -721,6 +732,7 @@ async function handleRepos(
     rest[1] === "blobs" &&
     rest.length === 3
   ) {
+    repo.blobReads++;
     const content = rest[2] ? repo.blobs.get(rest[2]) : undefined;
     if (content === undefined) {
       notFound(res);

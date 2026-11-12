@@ -18,6 +18,8 @@ const GITHUB_STUB_ORIGIN = `http://localhost:${process.env.GITHUB_STUB_PORT ?? "
 export interface StubRepoInspection {
   defaultBranch: string;
   mergeMode: string;
+  contentsReads: number;
+  blobReads: number;
   refs: Record<string, string>;
   commits: Array<{ sha: string; message: string; parents: string[] }>;
   branches: Record<string, { headSha: string; files: Record<string, string> }>;
