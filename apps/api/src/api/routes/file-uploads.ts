@@ -49,13 +49,8 @@ export const createFileUploadRoutes = () => {
     if (!orgId) {
       throw new HTTPException(400, { message: "Organization required" });
     }
-    // Gate behind a write-tier file-config permission. We pick
-    // FILE_CONFIG_UPDATE specifically so that if the `file-configs:manage`
-    // group ever splits into read/write capabilities, this upload route
-    // lands on the write side. Using a read-only tool here (e.g.
-    // FILE_OBJECTS_LIST) would silently expose write access to read-only
-    // principals after such a split.
-    await ctx.access.check("FILE_CONFIG_UPDATE");
+    // Browser uploads and URL imports use the same asset write permission.
+    await ctx.access.check("FILE_OBJECT_UPLOAD");
 
     const configId = c.req.param("id");
     if (!configId) {

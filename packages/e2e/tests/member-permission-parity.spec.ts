@@ -155,6 +155,25 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
     );
     expect(conn.item?.id).toBeTruthy();
 
+    const configs = await callSelfMcpTool<{ configs: unknown[] }>(
+      memberCtx,
+      owner.orgSlug,
+      "FILE_CONFIG_LIST",
+      {},
+    );
+    expect(configs.configs).toEqual([]);
+
+    // Missing filename reaches input validation only after upload authorization.
+    const upload = await memberCtx.post(
+      `/api/${owner.orgSlug}/file-configs/config_example/upload`,
+    );
+    expect(upload.status()).toBe(400);
+    expect(await upload.text()).toContain("Missing `filename`");
+
+    await expectDenied(memberCtx, owner.orgSlug, "FILE_CONFIG_DELETE", {
+      id: "config_example",
+    });
+
     // DENY: a gated tool NOT in the user role's self list → in-memory "deny".
     // This is the case that would silently over-grant if the matcher were
     // wrong (e.g. mis-applied a wildcard).
@@ -226,6 +245,11 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
       {},
     );
     expect(stats).toBeDefined();
+
+    const upload = await memberCtx.post(
+      `/api/${owner.orgSlug}/file-configs/config_example/upload`,
+    );
+    expect(upload.status()).toBe(403);
 
     // DENY via fall-back: a tool the custom role does NOT list. Better Auth
     // denies; basic-usage is still granted out-of-band, so pick a clearly gated
