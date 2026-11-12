@@ -13,7 +13,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { callStudioTool } from "@/lib/studio-tools";
+import {
+  callStudioTool,
+  planRefusalOf,
+  StudioToolError,
+} from "@/lib/studio-tools";
 import {
   hasRepoCredential,
   type RepoToolTarget,
@@ -48,8 +52,59 @@ export interface PrSummary {
   changedFiles: number | null;
 }
 
+/** An open change request's checks and reviews move, so it is polled. */
 const POLL = 60_000;
+/**
+ * No open change request (none yet, merged, closed): only a new or reopened one
+ * changes the answer, and focus or an explicit refresh still re-read it.
+ */
+const IDLE_POLL = 5 * 60_000;
 const STALE = 30_000;
+/** Cooldown assumed when a rate-limit refusal names no wait. */
+const RATE_LIMIT_DEFAULT_WAIT = 60_000;
+
+/**
+ * The tool route sends a GitHub rate-limit refusal as a 500 whose message is
+ * the only marker; see `git-providers/github/graphql.ts`.
+ */
+const RATE_LIMIT_MESSAGE =
+  /GitHub (?:primary|secondary) rate limit reached(?:; retry in (\d+)s)?/;
+
+/** The wait a GitHub rate-limit refusal asked for, or null for any other error. */
+export function githubRateLimitWaitMs(error: unknown): number | null {
+  if (!(error instanceof StudioToolError)) return null;
+  const match = RATE_LIMIT_MESSAGE.exec(error.message);
+  if (!match) return null;
+  return match[1] ? Number(match[1]) * 1000 : RATE_LIMIT_DEFAULT_WAIT;
+}
+
+interface ReadState {
+  error: unknown;
+  errorUpdatedAt: number;
+}
+
+/** Time left before a rate-limited read may ask the provider again. */
+export function rateLimitCooldownMs(state: ReadState, now: number): number {
+  const wait = githubRateLimitWaitMs(state.error);
+  if (wait === null) return 0;
+  return Math.max(0, state.errorUpdatedAt + wait - now);
+}
+
+/**
+ * Every change-request read spends the repository installation's GitHub
+ * budget, which other projects share. A rate-limited one is not retried, and
+ * focus or a remount does not re-ask until the wait it named has passed.
+ */
+const budgetAwareRead = {
+  retry: (failureCount: number, error: Error) =>
+    failureCount < 1 &&
+    planRefusalOf(error) === null &&
+    githubRateLimitWaitMs(error) === null,
+  refetchOnWindowFocus: (query: { state: ReadState }) =>
+    rateLimitCooldownMs(query.state, Date.now()) === 0,
+  refetchOnMount: (query: { state: ReadState }) =>
+    rateLimitCooldownMs(query.state, Date.now()) === 0,
+};
 
 /**
  * Which repository the hooks act on.
@@ -101,9 +156,11 @@ export interface CheckRun {
   durationMs: number | null;
 }
 
-type ChangeRequestState = Awaited<
+type ChangeRequestStateResult = Awaited<
   ReturnType<typeof callStudioTool<"CHANGE_REQUEST_STATE">>
->["changeRequest"];
+>;
+
+type ChangeRequestState = ChangeRequestStateResult["changeRequest"];
 
 type ChangeRequestSummary = Awaited<
   ReturnType<typeof callStudioTool<"CHANGE_REQUEST_LAST_MERGED">>
@@ -146,6 +203,17 @@ function toCheckRun(
   };
 }
 
+/** How long until the branch's change request is read again. */
+export function prStatePollInterval(
+  state: ReadState & { data: ChangeRequestStateResult | undefined },
+  now: number,
+): number {
+  const cooldown = rateLimitCooldownMs(state, now);
+  if (cooldown > 0) return Math.max(cooldown, POLL);
+  if (state.data === undefined) return POLL;
+  return state.data.changeRequest?.state === "open" ? POLL : IDLE_POLL;
+}
+
 /**
  * The one read every panel hook selects from. Spread this rather than
  * restating the key — two hooks that disagree about it would double the poll.
@@ -172,7 +240,10 @@ export function prStateQueryOptions(
      * connection, so requiring one here is what would keep its panel empty.
      */
     enabled: !!branch && hasRepoCredential(target) && !!owner && !!repo,
-    refetchInterval: POLL,
+    ...budgetAwareRead,
+    refetchInterval: (query: {
+      state: ReadState & { data: ChangeRequestStateResult | undefined };
+    }) => prStatePollInterval(query.state, Date.now()),
     refetchIntervalInBackground: false,
     staleTime: STALE,
   };
@@ -235,6 +306,7 @@ export function useLastPublishedPr(
       hasRepoCredential(target) &&
       !!owner &&
       !!repo,
+    ...budgetAwareRead,
     staleTime: LAST_PUBLISHED_STALE,
     select: (r): PrSummary | null =>
       r.changeRequest ? toPrSummary(r.changeRequest) : null,
@@ -262,6 +334,7 @@ export function useOpenPrs(args: RepoArgs & { enabled?: boolean }) {
       }),
     enabled:
       (args.enabled ?? true) && hasRepoCredential(target) && !!owner && !!repo,
+    ...budgetAwareRead,
     staleTime: STALE,
     select: (r): PrSummary[] => r.changeRequests.map(toPrSummary),
   });
