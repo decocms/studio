@@ -3,8 +3,8 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { useT } from "@/i18n/use-t.ts";
 
-/** "Local" tab: paste a tunnel URL to point preview + CMS at your own dev
- *  server, or turn the override off. Save is disabled until the URL changes.
+/** "Local" tab: paste your dev server's URL (localhost or a tunnel) to point
+ *  preview + CMS at it, or turn the override off. Save is disabled until the URL changes.
  *
  *  v7 sites only, and exactly main's: a synchronous save, no `deco serve`
  *  probe. Blocks v8 sites use Localhost instead. */
@@ -19,7 +19,7 @@ export function LocalUrlForm({
   const [value, setValue] = useState(url ?? "");
   const trimmed = value.trim();
   const submit = () =>
-    onSave(trimmed ? productionUrlFromDomain(trimmed) : null);
+    onSave(trimmed ? productionUrlFromDomain(withLocalScheme(trimmed)) : null);
   return (
     <div className="flex flex-col gap-2 p-2">
       <p className="text-xs text-muted-foreground">
@@ -57,3 +57,9 @@ export function LocalUrlForm({
     </div>
   );
 }
+
+// A bare `localhost:8000` must stay http: a local dev server has no TLS, and
+// productionUrlFromDomain defaults bare hosts to https (right for deco domains).
+const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i;
+const withLocalScheme = (url: string): string =>
+  LOOPBACK.test(url) ? `http://${url}` : url;
