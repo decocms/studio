@@ -17,9 +17,10 @@ export function LocalUrlForm({
 }) {
   const t = useT();
   const [value, setValue] = useState(url ?? "");
-  const trimmed = value.trim();
-  const submit = () =>
-    onSave(trimmed ? productionUrlFromDomain(withLocalScheme(trimmed)) : null);
+  // null when empty or unparseable: Save stays disabled instead of silently
+  // turning Local off.
+  const next = productionUrlFromDomain(withLocalScheme(value.trim()));
+  const submit = () => next && onSave(next);
   return (
     <div className="flex flex-col gap-2 p-2">
       <p className="text-xs text-muted-foreground">
@@ -33,7 +34,7 @@ export function LocalUrlForm({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && trimmed) submit();
+          if (e.key === "Enter") submit();
         }}
         className="h-8 w-full rounded-md border bg-transparent px-2 text-sm focus-ring"
       />
@@ -50,7 +51,7 @@ export function LocalUrlForm({
         ) : (
           <span />
         )}
-        <Button size="sm" disabled={!trimmed} onClick={submit}>
+        <Button size="sm" disabled={!next} onClick={submit}>
           {t("thread.branchPicker.save")}
         </Button>
       </div>

@@ -63,6 +63,26 @@ describe("LocalUrlForm (v7, as on main)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("a bare non-loopback host still saves as https", () => {
+    const onSave = mock((_url: string | null) => {});
+    const { getByLabelText, getByRole } = renderBare(
+      <LocalUrlForm url={null} onSave={onSave} />,
+      { wrapper },
+    );
+    type(getByLabelText("Local URL"), "localhost.example.com");
+    fireEvent.click(getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith("https://localhost.example.com/");
+  });
+
+  it("an unparseable URL can't be saved (it used to turn Local off)", () => {
+    const { getByLabelText, getByRole } = renderBare(
+      <LocalUrlForm url="http://localhost:3000/" onSave={() => {}} />,
+      { wrapper },
+    );
+    type(getByLabelText("Local URL"), "localhost:abc");
+    expect(getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
   it("an empty field can't be saved", () => {
     const { getByRole } = renderBare(
       <LocalUrlForm url={null} onSave={() => {}} />,
