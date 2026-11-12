@@ -538,6 +538,8 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: authConfig.emailAndPassword.enabled,
+    // Drop all of a user's sessions on reset so a pre-existing session can't outlive it.
+    revokeSessionsOnPasswordReset: true,
     ...(sendResetPassword && { sendResetPassword }),
   },
 
