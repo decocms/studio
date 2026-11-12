@@ -310,6 +310,7 @@ export const sectionsEditor = {
   "sectionsEditor.richTextColorControl.colorButtonLabel": "Text color",
   "sectionsEditor.richTextColorControl.customLabel": "Custom",
   "sectionsEditor.richTextColorControl.defaultLabel": "Default",
+  "sectionsEditor.richTextColorControl.highlightButtonLabel": "Highlight",
   "sectionsEditor.richTextField.alignCenter": "Align center",
   "sectionsEditor.richTextField.alignJustify": "Justify",
   "sectionsEditor.richTextField.alignLeft": "Align left",

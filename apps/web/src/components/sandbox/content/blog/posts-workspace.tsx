@@ -38,6 +38,7 @@ import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useHideDefaultBlogBlocks } from "@/hooks/use-hide-default-blog-blocks";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -71,6 +72,7 @@ import {
   parseImportedContent,
   sectionsToBlocks,
 } from "./import-content";
+import { importAsLegacyContent } from "./legacy-content/legacy-content";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { str } from "./blocks/primitives";
 import {
@@ -161,6 +163,9 @@ export function PostsWorkspace({
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
   const hideDefaults = useHideDefaultBlogBlocks();
+  const legacyFormat = useLegacyBlogPostFormat(virtualMcpId);
+  // Generation writes blocks, which a project on the HTML body format never shows.
+  const canGenerate = blogAi && !legacyFormat;
 
   const [dragOverLane, setDragOverLane] = useState<PostStatus | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -312,29 +317,45 @@ export function PostsWorkspace({
 
   const writePost = () => {
     const key = planningPostKey(newPostId());
-    const payload = emptyDraftPostPayload({ title: "", now: new Date() });
+    const payload = emptyDraftPostPayload({
+      title: "",
+      now: new Date(),
+      legacyContent: legacyFormat,
+    });
     save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
     onOpen(key);
   };
 
-  /**
-   * Import externally-authored HTML/Markdown into a review-ready post — no AI,
-   * no credits. Parsed onto the site's own blocks so it renders on-brand.
-   */
-  const importContent = () => {
-    const parsed = parseImportedContent(importText);
-    const blocks = sectionsToBlocks(
+  /** The pasted text as a title and a body in the project's format, or null when empty. */
+  const importedPost = (text: string) => {
+    if (legacyFormat) {
+      const { title, content } = importAsLegacyContent(text);
+      return content || title.trim() ? { title, body: { content } } : null;
+    }
+    const parsed = parseImportedContent(text);
+    const sections = sectionsToBlocks(
       parsed.sections,
       sectionResolveTypes(meta, { hideDefaults }),
     );
-    if (blocks.length === 0 && !parsed.title.trim()) {
+    return sections.length > 0 || parsed.title.trim()
+      ? { title: parsed.title, body: { sections } }
+      : null;
+  };
+
+  /**
+   * Import externally-authored HTML/Markdown into a review-ready post — no AI,
+   * no credits. Parsed onto the site's own blocks so it renders on-brand, or
+   * kept as one HTML document on the legacy body format.
+   */
+  const importContent = () => {
+    const imported = importedPost(importText);
+    if (!imported) {
       toast.error(t("sandbox.postBoard.importEmpty"));
       return;
     }
     const key = planningPostKey(newPostId());
     const payload = buildImportedPostPayload({
-      title: parsed.title,
-      blocks,
+      ...imported,
       takenSlugs: posts.map((p) => p.slug).filter(Boolean),
       now: new Date(),
     });
@@ -374,7 +395,7 @@ export function PostsWorkspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {blogAi && (
+              {canGenerate && (
                 <DropdownMenuItem onClick={() => setGenerateOpen(true)}>
                   <Stars02 size={14} />
                   <div className="flex flex-col">
@@ -405,7 +426,7 @@ export function PostsWorkspace({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {blogAi && (
+          {canGenerate && (
             <GeneratePostDialog
               open={generateOpen}
               onOpenChange={setGenerateOpen}

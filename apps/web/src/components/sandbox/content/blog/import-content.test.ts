@@ -278,7 +278,7 @@ describe("buildImportedPostPayload", () => {
   test("lands in review with a slug, date and body, no AI fields", () => {
     const payload = buildImportedPostPayload({
       title: "Guia de Malas",
-      blocks: [{ __resolveType: "rt/Paragraph", html: "x" }],
+      body: { sections: [{ __resolveType: "rt/Paragraph", html: "x" }] },
       takenSlugs: [],
       now,
     });
@@ -287,12 +287,24 @@ describe("buildImportedPostPayload", () => {
     expect(payload.date).toBe("2026-09-01");
     expect(payload.image).toBe("");
     expect(payload.sections).toHaveLength(1);
+    expect(payload).not.toHaveProperty("content");
+  });
+
+  test("carries an HTML body in content, with no sections", () => {
+    const payload = buildImportedPostPayload({
+      title: "Guia de Malas",
+      body: { content: "<p>x</p>" },
+      takenSlugs: [],
+      now,
+    });
+    expect(payload.content).toBe("<p>x</p>");
+    expect(payload).not.toHaveProperty("sections");
   });
 
   test("suffixes a slug that collides with an existing post", () => {
     const payload = buildImportedPostPayload({
       title: "Guia de Malas",
-      blocks: [],
+      body: { sections: [] },
       takenSlugs: ["guia-de-malas"],
       now,
     });

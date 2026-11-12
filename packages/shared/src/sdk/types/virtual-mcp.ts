@@ -907,6 +907,13 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
     ),
+  legacyBlogPostFormat: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Blog: edit a post's body as one HTML document in `post.content` (the format sites built before `sections` read), instead of blocks in `post.sections`.",
+    ),
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,
   fastPreviewInPlace: fastPreviewInPlaceMetadataField,
