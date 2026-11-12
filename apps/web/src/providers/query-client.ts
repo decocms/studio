@@ -3,7 +3,11 @@
 
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { PLAN_REFUSAL_CODES, planRefusalOf } from "@/lib/studio-tools";
+import {
+  PLAN_REFUSAL_CODES,
+  planRefusalOf,
+  rateLimitWaitOf,
+} from "@/lib/studio-tools";
 import { keepContentBookkeeping } from "@/components/sections-editor/content-bookkeeping";
 import { hydrateQueryClient, persistQueryClient } from "@/lib/query-persist";
 import {
@@ -53,9 +57,12 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: true,
       // Don't refetch on mount if data is still fresh
       refetchOnMount: true,
-      // Retry once, but never a plan refusal: it is a decision, not a blip.
+      // Retry once, but never a plan refusal (a decision, not a blip) or a
+      // rate limit (another call spends the budget that is already gone).
       retry: (failureCount, error) =>
-        planRefusalOf(error) === null && failureCount < 1,
+        planRefusalOf(error) === null &&
+        rateLimitWaitOf(error) === null &&
+        failureCount < 1,
       // Keep unused data in cache for 5 minutes
       gcTime: 5 * 60 * 1000,
     },
