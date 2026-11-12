@@ -73,14 +73,22 @@ export function draftsForView<T extends { branch: string }>(
 
 /** The draft to move to when `deleted` (the current one) goes: another of the
  *  same kind, a non-`sandbox` one first so a CMS chat stays put, or
- *  `undefined`. */
+ *  `undefined`. An unstamped draft runs in `projectDefault`. */
 export function siblingDraft<
   T extends { branch: string; runtime?: ThreadRuntime },
->(releases: readonly T[], deleted: string, kind: DraftKind): T | undefined {
+>(
+  releases: readonly T[],
+  deleted: string,
+  kind: DraftKind,
+  projectDefault: ThreadRuntime,
+): T | undefined {
   const siblings = releases.filter(
     (r) => r.branch !== deleted && branchDraftKind(r.branch) === kind,
   );
-  return siblings.find((r) => r.runtime !== "sandbox") ?? siblings[0];
+  return (
+    siblings.find((r) => (r.runtime ?? projectDefault) !== "sandbox") ??
+    siblings[0]
+  );
 }
 
 /** The default name of a draft on `branch`: "Blog Draft N" or "Draft N". */

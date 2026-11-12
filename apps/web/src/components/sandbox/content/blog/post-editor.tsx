@@ -64,6 +64,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { SuggestLinksButton } from "./link-suggestions";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useNeverPublished } from "@/components/sections-editor/use-never-published";
@@ -74,6 +75,7 @@ import {
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
+import { LegacyContentEditor } from "./legacy-content/legacy-content-editor";
 import {
   AddButton,
   EditableText,
@@ -143,6 +145,7 @@ function PostEditorForm({
   const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
+  const legacyFormat = useLegacyBlogPostFormat(virtualMcpId);
   const initial = getBlogPayload(block, "posts");
   /** The form's own copy of `key` (hosted v8), for a write built from it. */
   const shownCopy = (key: string): Record<string, HeldCopy> => {
@@ -327,7 +330,8 @@ function PostEditorForm({
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {blogAi && (
+                {/* Suggestions rewrite blocks; an HTML body has none. */}
+                {blogAi && !legacyFormat && (
                   <SuggestLinksButton
                     decofile={decofile}
                     virtualMcpId={virtualMcpId}
@@ -345,19 +349,38 @@ function PostEditorForm({
             </div>
 
             <TabsContent value="content">
-              <div className="surface p-8">
-                <BlockDocument
-                  key={contentRevision}
-                  value={asBlocks(post.sections)}
-                  onChange={(next) => setField("sections", next)}
-                  meta={meta}
-                  decofile={decofile}
-                  sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
-                  previewBaseUrl={previewBaseUrl}
-                  onSaveReferencedBlock={saveReferencedBlock}
-                  emptyMessage={t("sandbox.postEditor.noContentYet")}
-                />
-              </div>
+              {legacyFormat ? (
+                <div className="space-y-3">
+                  {asBlocks(post.sections).length > 0 && (
+                    <p className="flex items-start gap-1.5 text-xs text-warning">
+                      <AlertCircle size={14} className="mt-px shrink-0" />
+                      {t("sandbox.postEditor.legacySectionsNotice", {
+                        count: asBlocks(post.sections).length,
+                      })}
+                    </p>
+                  )}
+                  <LegacyContentEditor
+                    value={str(post.content)}
+                    onChange={(html) => setField("content", html)}
+                    decofile={decofile}
+                    sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                  />
+                </div>
+              ) : (
+                <div className="surface p-8">
+                  <BlockDocument
+                    key={contentRevision}
+                    value={asBlocks(post.sections)}
+                    onChange={(next) => setField("sections", next)}
+                    meta={meta}
+                    decofile={decofile}
+                    sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                    previewBaseUrl={previewBaseUrl}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    emptyMessage={t("sandbox.postEditor.noContentYet")}
+                  />
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="settings">

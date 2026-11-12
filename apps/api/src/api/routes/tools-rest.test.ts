@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import type { StudioContext } from "@/core/studio-context";
+import { GitProviderError } from "@/git-providers/types";
 import { TOOL_BY_NAME } from "@/tools";
 import {
   resolveThreadToolNames,
@@ -18,7 +19,7 @@ const threads: Record<string, { title: string; virtual_mcp_id: string }> = {
  * Inert collaborators for `defineTool`'s wrapper; the thread lookup and the
  * interests write are what the assertions read.
  */
-function app(auth: StudioContext["auth"]) {
+function app(auth: StudioContext["auth"], failWith?: unknown) {
   const interestWrites: string[] = [];
   const ctx = {
     organization: { id: "org_tools_rest", slug: "o", name: "O" },
@@ -52,6 +53,7 @@ function app(auth: StudioContext["auth"]) {
       threads: { get: async (id: string) => threads[id] ?? null },
       interests: {
         setForAgent: async (_org: string, agentId: string) => {
+          if (failWith !== undefined) throw failWith;
           interestWrites.push(agentId);
         },
       },
@@ -162,5 +164,50 @@ describe("tools REST for any other caller", () => {
     // Its own input validation answers, so the route did not refuse the name.
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: "Invalid input" });
+  });
+});
+
+describe("tools REST for a tool that hits a provider rate limit", () => {
+  const limited = (retryAfterMs: number | null, status = 403) =>
+    new GitProviderError({
+      provider: "github",
+      status,
+      retryAfterMs,
+      message: "GitHub primary rate limit reached; retry in 5s",
+    });
+
+  it("answers 429 with the wait the provider named", async () => {
+    const { hono } = app(boundTo("thrd_chat"), limited(4_200));
+    const res = await call(hono, "update_interests", interests);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("5");
+    expect(await res.json()).toEqual({
+      error: "GitHub primary rate limit reached; retry in 5s",
+      code: "provider_rate_limited",
+      retryAfterMs: 4_200,
+    });
+  });
+
+  it("assumes a minute when a 429 names no wait", async () => {
+    const { hono } = app(boundTo("thrd_chat"), limited(null, 429));
+    const res = await call(hono, "update_interests", interests);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("60");
+    expect(await res.json()).toMatchObject({ retryAfterMs: 60_000 });
+  });
+
+  it("keeps other provider failures a 500", async () => {
+    const failure = new GitProviderError({
+      provider: "github",
+      status: 502,
+      message: "GitHub GraphQL change request failed: 502",
+    });
+    const res = await call(
+      app(boundTo("thrd_chat"), failure).hono,
+      "update_interests",
+      interests,
+    );
+    expect(res.status).toBe(500);
+    expect(res.headers.get("retry-after")).toBeNull();
   });
 });

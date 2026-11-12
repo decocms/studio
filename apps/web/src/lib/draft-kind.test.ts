@@ -313,9 +313,11 @@ describe("the draft select's list", () => {
   });
 
   test("deleting the current draft moves to one of the same kind", () => {
-    expect(siblingDraft(releases, "sacci-a", "site")?.branch).toBe("sacci-c");
+    expect(siblingDraft(releases, "sacci-a", "site", "cms")?.branch).toBe(
+      "sacci-c",
+    );
     expect(
-      siblingDraft(releases, "blog-draft-sacci-b", "blog"),
+      siblingDraft(releases, "blog-draft-sacci-b", "blog", "cms"),
     ).toBeUndefined();
   });
 
@@ -326,8 +328,21 @@ describe("the draft select's list", () => {
       { branch: "blog-draft-sacci-b", runtime: "cms" as const },
       { branch: "sacci-c" },
     ];
-    expect(siblingDraft(mixed, "sacci-a", "site")?.branch).toBe("sacci-c");
-    expect(siblingDraft(mixed.slice(0, 3), "sacci-a", "site")?.branch).toBe(
+    expect(siblingDraft(mixed, "sacci-a", "site", "cms")?.branch).toBe(
+      "sacci-c",
+    );
+    expect(
+      siblingDraft(mixed.slice(0, 3), "sacci-a", "site", "cms")?.branch,
+    ).toBe("sacci-code");
+  });
+
+  test("an unstamped draft runs in the project's default runtime", () => {
+    const mixed = [
+      { branch: "sacci-a", runtime: "cms" as const },
+      { branch: "sacci-code", runtime: "sandbox" as const },
+      { branch: "sacci-c" },
+    ];
+    expect(siblingDraft(mixed, "sacci-a", "site", "sandbox")?.branch).toBe(
       "sacci-code",
     );
   });

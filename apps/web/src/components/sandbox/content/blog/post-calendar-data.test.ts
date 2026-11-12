@@ -130,6 +130,14 @@ describe("scheduledPostPayload", () => {
     expect(payload.title).toBe("Untitled post");
     expect(payload.sections).toEqual([]);
   });
+
+  it("starts the body as empty HTML on the legacy format", () => {
+    const payload = scheduledPostPayload(new Date(2026, 8, 2), {
+      legacyContent: true,
+    });
+    expect(payload.content).toBe("");
+    expect(payload).not.toHaveProperty("sections");
+  });
 });
 
 describe("rescheduleToDay", () => {

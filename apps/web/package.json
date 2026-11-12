@@ -40,6 +40,7 @@
     "@tanstack/react-virtual": "3.13.24",
     "@tiptap/core": "3.30.5",
     "@tiptap/extension-bubble-menu": "3.30.5",
+    "@tiptap/extension-highlight": "3.30.5",
     "@tiptap/extension-image": "3.30.5",
     "@tiptap/extension-link": "3.30.5",
     "@tiptap/extension-list": "3.30.5",

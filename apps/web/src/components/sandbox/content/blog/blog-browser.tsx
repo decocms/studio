@@ -22,6 +22,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import {
   keptTheirVersion,
   useSaveBlock,
@@ -128,6 +129,7 @@ export function BlogBrowser({
     hostedDraft,
   } = context;
   const blogAi = useBlogAi();
+  const legacyContent = useLegacyBlogPostFormat(virtualMcpId);
   const collection = visibleBlogCollection(requestedCollection, blogAi);
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
@@ -189,7 +191,11 @@ export function BlogBrowser({
 
   const createRecord = async (kind: BlogKind) => {
     const key = generateBlogKey(decofile, kind);
-    const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
+    const data = buildBlogBlock(
+      key,
+      kind,
+      emptyBlogPayload(kind, { legacyContent }),
+    );
     try {
       const created = await saveBlock.mutateAsync({
         blockKey: key,
@@ -252,7 +258,11 @@ export function BlogBrowser({
   /** Calendar "+" on a day: a post scheduled for that day, opened to edit. */
   const createScheduledPost = async (day: Date) => {
     const key = generateBlogKey(decofile, "posts");
-    const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
+    const data = buildBlogBlock(
+      key,
+      "posts",
+      scheduledPostPayload(day, { legacyContent }),
+    );
     try {
       const created = await saveBlock.mutateAsync({
         blockKey: key,

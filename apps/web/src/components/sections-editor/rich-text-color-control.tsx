@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Palette } from "@untitledui/icons";
+import { Brush01, Palette } from "@untitledui/icons";
 import type { Editor } from "@tiptap/core";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -30,28 +30,37 @@ const PRESET_COLORS = [
  * input for custom values, and a "default" option that clears the color mark.
  * The parent owns `open` so the toolbar stays visible while the popover holds
  * focus (the editor is blurred at that point), mirroring the link control.
+ *
+ * With `mark="highlight"` the same popover paints the text background through
+ * the Highlight extension, which the editor must register (multicolor).
  */
 export function RichTextColorControl({
   editor,
   currentColor,
   open,
   onOpenChange,
+  mark = "color",
 }: {
   editor: Editor;
   currentColor: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  mark?: "color" | "highlight";
 }) {
   const t = useT();
-  const [custom, setCustom] = useState("#000000");
+  // Null until the author picks one: dismissing the native picker must not apply a color.
+  const [custom, setCustom] = useState<string | null>(null);
+  const highlight = mark === "highlight";
 
   const applyColor = (color: string) => {
-    editor.chain().focus().setColor(color).run();
+    const chain = editor.chain().focus();
+    (highlight ? chain.setHighlight({ color }) : chain.setColor(color)).run();
     onOpenChange(false);
   };
 
   const clearColor = () => {
-    editor.chain().focus().unsetColor().run();
+    const chain = editor.chain().focus();
+    (highlight ? chain.unsetHighlight() : chain.unsetColor()).run();
     onOpenChange(false);
   };
 
@@ -59,11 +68,15 @@ export function RichTextColorControl({
     <div className="relative">
       <ToolbarButton
         active={open || currentColor !== null}
-        label={t("sectionsEditor.richTextColorControl.colorButtonLabel")}
+        label={
+          highlight
+            ? t("sectionsEditor.richTextColorControl.highlightButtonLabel")
+            : t("sectionsEditor.richTextColorControl.colorButtonLabel")
+        }
         onClick={() => onOpenChange(!open)}
       >
         <span className="relative flex flex-col items-center">
-          <Palette size={14} />
+          {highlight ? <Brush01 size={14} /> : <Palette size={14} />}
           <span
             className="mt-0.5 h-0.5 w-3.5 rounded-full"
             style={{ backgroundColor: currentColor ?? "currentColor" }}
@@ -103,10 +116,13 @@ export function RichTextColorControl({
             <label className="flex flex-1 items-center gap-1.5 rounded-[var(--studio-control-radius,var(--radius))] bg-muted/40 px-2 py-1 text-xs text-muted-foreground cursor-pointer">
               <input
                 type="color"
-                value={custom}
+                value={custom ?? "#000000"}
                 onMouseDown={(e) => e.stopPropagation()}
                 onChange={(e) => setCustom(e.target.value)}
-                onBlur={() => applyColor(custom)}
+                onBlur={() => {
+                  if (custom) applyColor(custom);
+                  setCustom(null);
+                }}
                 className="h-5 w-5 cursor-pointer rounded-[var(--studio-control-radius,var(--radius))] border-0 bg-transparent p-0"
               />
               {t("sectionsEditor.richTextColorControl.customLabel")}

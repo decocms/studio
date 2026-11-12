@@ -570,6 +570,73 @@ describe("org-scoped API coexistence", () => {
     });
   });
 
+  // Connection with an OAuth client so POST /register echoes creds without network.
+  async function seedOAuthConnection() {
+    const now = new Date().toISOString();
+    await database.db
+      .insertInto("connections")
+      .values({
+        id: "conn_oauth",
+        organization_id: "org_1",
+        created_by: "user_1",
+        title: "OAuth Connection",
+        connection_type: "HTTP",
+        connection_url: "https://example.test",
+        status: "active",
+        pinned: false,
+        oauth_config: JSON.stringify({
+          clientId: "client-abc",
+          clientSecret: "secret-xyz",
+        }),
+        created_at: now,
+        updated_at: now,
+      })
+      .execute();
+  }
+
+  it("legacy oauth-proxy mount blocks a non-member from another org's connection", async () => {
+    await seedOAuthConnection();
+    // Principal is authenticated but NOT a member of conn_oauth's org (org_1).
+    mockApiKey("user_outsider", "org_outsider", "org_outsider");
+
+    const res = await app.fetch(
+      new Request("http://studio.localhost/oauth-proxy/conn_oauth/register", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ client_name: "test" }),
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.text();
+    expect(body).not.toContain("secret-xyz");
+    expect(body).not.toContain("client-abc");
+  });
+
+  it("legacy oauth-proxy mount serves a member of the connection's org", async () => {
+    await seedOAuthConnection();
+    // Default principal user_1 is a member of org_1 (conn_oauth's org).
+    const res = await app.fetch(
+      new Request("http://studio.localhost/oauth-proxy/conn_oauth/register", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ client_name: "test" }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      client_id: "client-abc",
+      client_secret: "secret-xyz",
+    });
+  });
+
   it("DCR injects the connection's owning org into the registration metadata", async () => {
     // The downstream MCP App needs to know which studio org an OAuth client
     // belongs to *at registration time* — there is no per-user "active org"

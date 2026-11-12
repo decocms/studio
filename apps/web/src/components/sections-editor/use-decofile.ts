@@ -9,7 +9,7 @@ import {
 } from "@/cms/hosted-content";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { exponentialBackoffWithJitter } from "@decocms/shared/std";
+import { contentReadRetryDelay } from "./content-response-error";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { parseDecofileBody } from "./decofile-body";
@@ -247,9 +247,9 @@ export function useDecofile(
     // waiting for `running` would strand it behind the install it skips.
     //
     // Sandbox-less Fast Preview inverts the rule: there is no lifecycle event
-    // coming, and the API maps transient GitHub failures (rate limits,
-    // upstream 5xx) to 502 — so a single hiccup would otherwise stick as a
-    // terminal error card. Bounded retries with backoff ARE the recovery.
+    // coming, so transient provider failures need bounded retries. Rate limits
+    // carry a retry deadline; contentReadRetryDelay preserves it instead of
+    // applying the normal five-second cap.
     // 404 = no decofile route on this repo (not a deco site) — as terminal as
     // 502 for retry purposes.
     retry: (failureCount, error) => {
@@ -259,8 +259,7 @@ export function useDecofile(
       const status = (error as { status?: number }).status;
       return status !== 502 && status !== 404 && failureCount < 2;
     },
-    retryDelay: (attempt) =>
-      exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
+    retryDelay: contentReadRetryDelay,
   });
   const hostedListing =
     hostedIndex && query.data

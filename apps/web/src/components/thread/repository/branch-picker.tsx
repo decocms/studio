@@ -68,6 +68,7 @@ import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { pickerCurrent } from "./branch-picker-current.ts";
@@ -83,7 +84,7 @@ import {
   releaseIconClass,
   useReleases,
 } from "./use-releases";
-import { groupReleasesByRuntime } from "./release-edits";
+import { groupReleasesByRuntime, releaseRuntime } from "./release-edits";
 import { useStartDraft } from "./use-start-draft";
 import {
   type StoreDraft,
@@ -192,6 +193,9 @@ export function BranchPicker({
     userId,
     kind: draftKind,
   });
+  const { projectDefault } = useSessionRuntime(virtualMcpId);
+  const isCodeDraft = (r: Release) =>
+    releaseRuntime(r, projectDefault) === "sandbox";
   // Hosted v8: the drafts the CMS holds that no release names — the ones
   // `deco push --draft` made. Read again on every open.
   const storeDraftsQuery = useStoreDrafts(virtualMcpId, isV8);
@@ -235,7 +239,7 @@ export function BranchPicker({
   // view's kind remains to move to. Without one, the session would fall back
   // to production, where a Fast Preview save commits to the live site.
   const canDeleteRelease = (r: Release) =>
-    !!siblingDraft(releases, r.branch, draftKind);
+    !!siblingDraft(releases, r.branch, draftKind, projectDefault);
   const capReachedMessage = t("thread.branchPicker.capReached", {
     max: RELEASES_MAX,
   });
@@ -280,7 +284,8 @@ export function BranchPicker({
     !localhostActive &&
     !localActive &&
     !isBase &&
-    current?.runtime === "sandbox";
+    !!current &&
+    isCodeDraft(current);
 
   const pick = (branch: string) => {
     // Picking a branch/draft turns Local mode off.
@@ -403,14 +408,19 @@ export function BranchPicker({
     // (non-`sandbox` first, so a CMS chat stays put) — never to production,
     // where a Fast Preview save commits to the live site.
     if (r.branch === value) {
-      const sibling = siblingDraft(releases, r.branch, draftKind);
+      const sibling = siblingDraft(
+        releases,
+        r.branch,
+        draftKind,
+        projectDefault,
+      );
       if (sibling) pick(sibling.branch);
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
   };
 
-  const releaseGroups = groupReleasesByRuntime(shownReleases);
+  const releaseGroups = groupReleasesByRuntime(shownReleases, projectDefault);
   // Headers only when both kinds exist; a single kind stays a plain list.
   const groupByRuntime =
     (releaseGroups.content.length > 0 || shownStoreDrafts.length > 0) &&
@@ -429,13 +439,11 @@ export function BranchPicker({
         key={r.branch}
         rowRef={!localActive && r.branch === value ? selectedRowRef : undefined}
         dot={releaseDotClass(r.color)}
-        codeIcon={
-          r.runtime === "sandbox" ? releaseIconClass(r.color) : undefined
-        }
+        codeIcon={isCodeDraft(r) ? releaseIconClass(r.color) : undefined}
         label={r.name}
         creator={creatorName(r.createdBy)}
         originTooltip={isV8 ? t("thread.branchPicker.viaStudioUi") : undefined}
-        branch={!isV8 || r.runtime === "sandbox" ? r.branch : undefined}
+        branch={!isV8 || isCodeDraft(r) ? r.branch : undefined}
         selected={!localActive && r.branch === value}
         onSelect={() => pick(r.branch)}
         onRename={() => startRename(r)}
@@ -452,7 +460,7 @@ export function BranchPicker({
     setPendingDiscard(null);
     if (!d) return;
     if (d.name === value) {
-      const sibling = siblingDraft(releases, d.name, draftKind);
+      const sibling = siblingDraft(releases, d.name, draftKind, projectDefault);
       if (!sibling) return;
       pick(sibling.branch);
     }
@@ -491,7 +499,8 @@ export function BranchPicker({
         }}
         onDelete={() => setPendingDiscard(d)}
         deleteBlocked={
-          d.name === value && !siblingDraft(releases, d.name, draftKind)
+          d.name === value &&
+          !siblingDraft(releases, d.name, draftKind, projectDefault)
         }
       />
     ),

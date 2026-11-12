@@ -255,6 +255,7 @@ describe("known-field coverage", () => {
 
   test("the post body never leaks into the generic form", () => {
     expect(KNOWN_POST_FIELDS.has("sections")).toBe(true);
+    expect(KNOWN_POST_FIELDS.has("content")).toBe(true);
     expect(KNOWN_CATEGORY_FIELDS.has("sections")).toBe(true);
   });
 

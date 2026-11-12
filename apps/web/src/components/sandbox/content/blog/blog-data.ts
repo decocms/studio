@@ -681,11 +681,21 @@ export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
   };
 }
 
+/**
+ * A new post's empty body, in the format the project edits: blocks in
+ * `sections`, or one HTML document in `content` for a project on the legacy
+ * format, whose templates read `content` as a string.
+ */
+function emptyPostBody(legacyContent = false): Record<string, unknown> {
+  return legacyContent ? { content: "" } : { sections: [] };
+}
+
 /** Payload for a post started by hand: a briefing, no body yet. */
 export function emptyDraftPostPayload(args: {
   title: string;
   planning?: PlanningMeta;
   now: Date;
+  legacyContent?: boolean;
 }): Record<string, unknown> {
   return {
     title: args.title,
@@ -696,7 +706,7 @@ export function emptyDraftPostPayload(args: {
     alt: "",
     authors: [],
     categories: [],
-    sections: [],
+    ...emptyPostBody(args.legacyContent),
     status: "draft",
     planning: (args.planning ?? {}) as Record<string, unknown>,
   };
@@ -962,7 +972,10 @@ export function generateBlogKey(
 }
 
 /** Default payload for a freshly created record. */
-export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
+export function emptyBlogPayload(
+  kind: BlogKind,
+  { legacyContent = false }: { legacyContent?: boolean } = {},
+): Record<string, unknown> {
   switch (kind) {
     case "posts":
       return {
@@ -974,7 +987,7 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
         alt: "",
         authors: [],
         categories: [],
-        sections: [],
+        ...emptyPostBody(legacyContent),
       };
     case "authors":
       return {

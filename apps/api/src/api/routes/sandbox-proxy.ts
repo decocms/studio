@@ -73,6 +73,14 @@ import {
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import {
+  buildSiteMetaRequest,
+  isJsonContentType,
+  projectSiteSlug,
+  resolveSiteMetaTarget,
+  siteMetaResponseHeaders,
+} from "../../lib/site-meta-request";
+import { guardAgainstPrivateUrl } from "../../mcp-clients/url-security";
 import { sandboxContentHandler } from "../../sandbox/content-storage";
 import { projectPackagePath } from "../../hosted/blocks-major";
 import { isBlocksV8Project } from "@decocms/shared/blocks-major";
@@ -1497,6 +1505,74 @@ export const createSandboxRoutes = () => {
       });
     },
   );
+
+  // The deployed site's schema, for the CMS's last-resort meta source. The
+  // edge rejects `/live/_meta` on public hosts without the admin token, which
+  // only Studio holds, so the browser cannot read it directly.
+  app.get("/:virtualMcpId/:branch/site-meta", async (c) => {
+    const metadata = c.get("vmClaim").virtualMcpMetadata;
+    const siteSlug = projectSiteSlug(metadata);
+    const orgOwnsSite = siteSlug
+      ? await c.var.studioContext.storage.orgSites.isOwnedBy(
+          siteSlug,
+          requireOrganization(c.var.studioContext).id,
+        )
+      : false;
+    const target = resolveSiteMetaTarget(metadata, orgOwnsSite);
+    if (!target) {
+      return c.json(
+        { error: "Project has no preview server configured" },
+        404,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+    const request = buildSiteMetaRequest({
+      target,
+      ifNoneMatch: c.req.header("if-none-match"),
+      adminToken: process.env.DECO_SITE_ADMIN_TOKEN,
+    });
+    const blocked = await guardAgainstPrivateUrl(request.url);
+    if (blocked) {
+      return c.json({ error: blocked }, 403, SANDBOX_PROXY_CACHE_HEADERS);
+    }
+
+    let upstream: Response;
+    try {
+      upstream = await fetch(request.url, {
+        headers: request.headers,
+        redirect: "manual",
+        signal: AbortSignal.any([
+          c.req.raw.signal,
+          AbortSignal.timeout(30_000),
+        ]),
+      });
+    } catch {
+      return c.json(
+        { error: "Site unreachable" },
+        502,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+
+    const headers = siteMetaResponseHeaders(upstream.headers);
+    if (upstream.status === 304) {
+      await upstream.body?.cancel();
+      return new Response(null, { status: 304, headers });
+    }
+    if (
+      !upstream.ok ||
+      !isJsonContentType(upstream.headers.get("content-type"))
+    ) {
+      await upstream.body?.cancel();
+      // Redirects are not followed: they would leave the project's origin.
+      return c.json(
+        { error: `Site answered ${upstream.status} without a schema` },
+        upstream.status === 404 ? 404 : 502,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+    return new Response(upstream.body, { status: 200, headers });
+  });
 
   return app;
 };

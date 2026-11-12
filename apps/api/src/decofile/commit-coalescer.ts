@@ -4,6 +4,7 @@ import {
   decoBlockFingerprint,
 } from "@decocms/shared/decofile";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/shared/std";
+import { getSettings } from "@/settings";
 import {
   type FileChange,
   type RepoContentClient,
@@ -38,6 +39,25 @@ import { decofileCommitMessage, regenerateGenArtifact } from "./gen-artifact";
  */
 
 const MAX_CAS_ATTEMPTS = 3;
+
+/**
+ * Least time between two commits to one branch. The first save after a pause
+ * commits at once; saves made while typing wait out the gap and land together,
+ * instead of one commit (about five GitHub calls) per autosave. Measured from
+ * the branch head's commit time, so it holds across replicas: an editor's
+ * saves go out one at a time and each can reach a different pod.
+ */
+export const MIN_COMMIT_INTERVAL_MS = 5_000;
+
+/** The configured gap (`DECOFILE_COMMIT_GAP_SECONDS`), or the default where
+ *  settings are not initialized (unit tests). */
+function commitGapMs(): number {
+  try {
+    return getSettings().decofileCommitGapSeconds * 1000;
+  } catch {
+    return MIN_COMMIT_INTERVAL_MS;
+  }
+}
 
 export interface DecofilePatch {
   set?: Record<string, unknown>;
@@ -123,6 +143,8 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
   state.running = true;
   try {
     while (state.pending) {
+      // Saves arriving during the wait join this batch.
+      await waitOutCommitGap(state.pending.deps);
       const batch = state.pending;
       state.pending = null;
       try {
@@ -138,6 +160,28 @@ async function runQueue(queueKey: string, state: QueueState): Promise<void> {
   } finally {
     state.running = false;
     if (!state.pending) queues.delete(queueKey);
+  }
+}
+
+/**
+ * Sleep until the commit gap has passed since the branch head was
+ * committed. Both reads are ETag-cached and repeated by the commit right
+ * after, so they add no rate-limited call. Fails open: the commit surfaces
+ * any real error.
+ */
+async function waitOutCommitGap({ client, branch }: CommitDeps) {
+  try {
+    const head = await client.getBranch(branch);
+    if (!head) return;
+    const committedAt = Date.parse(
+      (await client.readCommit(head.sha))?.date ?? "",
+    );
+    const gap = commitGapMs();
+    // Capped: a commit pushed from a machine whose clock runs ahead.
+    const wait = Math.min(gap, committedAt + gap - Date.now());
+    if (wait > 0) await sleep(wait);
+  } catch {
+    // No gap when the head can't be read; the commit reports the real error.
   }
 }
 
@@ -306,6 +350,7 @@ async function commitBatch(batch: Batch): Promise<BatchOutcome> {
         ),
         expectedHead: headSha,
         changes: writes,
+        inlineContent: true,
       });
       return { sha, accepted, conflicts };
     } catch (err) {

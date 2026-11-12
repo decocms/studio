@@ -874,7 +874,7 @@ const VirtualMcpMetadataFields = {
     .nullable()
     .optional()
     .describe(
-      "Views Studio offered this project once on top of an exact sidebarViews list (the top rows and Blog, plus Experiments and Calendar on a Blocks site). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
+      "Views Studio offered this project once on top of an exact sidebarViews list (the top rows and Blog, plus Experiments and Calendar on a Blocks site and Hosting beside a hosted site's Site Editor). A view listed here shows only when sidebarViews selects it, so hiding it sticks.",
     ),
   repository: RepositoryBindingSchema.nullable()
     .optional()
@@ -907,6 +907,13 @@ const VirtualMcpMetadataFields = {
     .optional()
     .describe(
       "Blocks form: opt in to showing a field's schema description as a hover tooltip on its title, instead of the default inline text below the title.",
+    ),
+  legacyBlogPostFormat: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Blog: edit a post's body as one HTML document in `post.content` (the format sites built before `sections` read), instead of blocks in `post.sections`.",
     ),
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,
