@@ -179,13 +179,41 @@ function cannotCreateIn(
   });
 }
 
+/**
+ * Repository path → id, across requests. A partial grant mints tokens by id,
+ * so every scoped token used to cost a `GET /repos/…` before the token cache
+ * could even be consulted, and that lookup spent most of a shared
+ * installation's hourly budget. Ids only go stale when a path is deleted and
+ * recreated, which the TTL and the grant check's re-lookup absorb. Keyed by
+ * installation as well as path: what a lookup can see depends on it.
+ */
+const REPO_ID_TTL_MS = 60 * 60 * 1000;
+const REPO_ID_MAX_ENTRIES = 10_000;
+const repoIds = new Map<string, { id: number; expiresAt: number }>();
+
+function cachedRepoId(key: string, now = Date.now()): number | null {
+  const entry = repoIds.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt > now) return entry.id;
+  repoIds.delete(key);
+  return null;
+}
+
+function rememberRepoId(key: string, id: number, now = Date.now()): void {
+  repoIds.delete(key);
+  while (repoIds.size >= REPO_ID_MAX_ENTRIES) {
+    const oldest = repoIds.keys().next();
+    if (oldest.done) break;
+    repoIds.delete(oldest.value);
+  }
+  repoIds.set(key, { id, expiresAt: now + REPO_ID_TTL_MS });
+}
+
 export class GithubProviderClient implements GitProviderClient {
   readonly kind = "github" as const;
   readonly host: string;
   private readonly apiBaseUrl: string;
   private readonly options: GithubProviderClientOptions;
-  /** Repository path → id, for the grant check. Per client, so per request. */
-  private readonly grantedIds = new Map<string, number>();
 
   constructor(options: GithubProviderClientOptions) {
     this.options = options;
@@ -216,8 +244,17 @@ export class GithubProviderClient implements GitProviderClient {
           ...(granted
             ? {
                 repositoryIds: [
-                  await this.grantedRepositoryId(repo, granted),
-                  ...(await this.grantedSiblingIds(repo, siblings, granted)),
+                  await this.grantedRepositoryId(
+                    repo,
+                    options.installationId,
+                    granted,
+                  ),
+                  ...(await this.grantedSiblingIds(
+                    repo,
+                    options.installationId,
+                    siblings,
+                    granted,
+                  )),
                 ],
               }
             : { repositories: [repoName(repo), ...siblings] }),
@@ -258,23 +295,39 @@ export class GithubProviderClient implements GitProviderClient {
     return this.sourceToken(options.tokenSource, opts);
   }
 
+  /** The id of `repo`, from the shared cache when an earlier request looked it up. */
+  private async repositoryId(
+    repo: RepoRef,
+    installationId: number,
+    { fresh = false } = {},
+  ): Promise<{ id: number | null; cached: boolean }> {
+    const key = `${this.host}|${installationId}|${repo.path.toLowerCase()}`;
+    const hit = fresh ? null : cachedRepoId(key);
+    if (hit !== null) return { id: hit, cached: true };
+    const id = Number((await this.getRepo(repo))?.externalId);
+    if (!Number.isSafeInteger(id)) return { id: null, cached: false };
+    rememberRepoId(key, id);
+    return { id, cached: false };
+  }
+
   /**
    * The id of `repo` within a partial grant, or a 403.
    *
    * The lookup runs on the account token, which is itself minted for the
    * granted ids, so a repository outside the grant answers 404 here and never
-   * reaches the mint. The id is memoized: `archiveTarball` asks twice when its
-   * first token turns out to be dead.
+   * reaches the mint. A cached id outside the grant is looked up once more
+   * before refusing: the path may now name a recreated repository.
    */
   private async grantedRepositoryId(
     repo: RepoRef,
+    installationId: number,
     granted: number[],
   ): Promise<number> {
-    const key = repo.path.toLowerCase();
-    const memoized = this.grantedIds.get(key);
-    if (memoized !== undefined) return memoized;
-    const id = Number((await this.getRepo(repo))?.externalId);
-    if (!Number.isSafeInteger(id) || !granted.includes(id)) {
+    let { id, cached } = await this.repositoryId(repo, installationId);
+    if (cached && (id === null || !granted.includes(id))) {
+      ({ id } = await this.repositoryId(repo, installationId, { fresh: true }));
+    }
+    if (id === null || !granted.includes(id)) {
       const { owner } = splitOwnerName(repo);
       throw new GitProviderError({
         provider: "github",
@@ -282,7 +335,6 @@ export class GithubProviderClient implements GitProviderClient {
         message: `Studio's GitHub App is installed on ${owner} without access to ${repo.path}. Someone who administers ${owner} on GitHub has to add it to the app's repository access, then reconnect the account in Studio.`,
       });
     }
-    this.grantedIds.set(key, id);
     return id;
   }
 
@@ -300,18 +352,18 @@ export class GithubProviderClient implements GitProviderClient {
    */
   private async grantedSiblingIds(
     repo: RepoRef,
+    installationId: number,
     siblings: string[],
     granted: number[],
   ): Promise<number[]> {
     const { owner } = splitOwnerName(repo);
     const ids: number[] = [];
     for (const name of siblings) {
-      const summary = await this.getRepo({
-        ...repo,
-        path: `${owner}/${name}`,
-      }).catch(() => null);
-      const id = Number(summary?.externalId);
-      if (Number.isSafeInteger(id) && granted.includes(id)) ids.push(id);
+      const { id } = await this.repositoryId(
+        { ...repo, path: `${owner}/${name}` },
+        installationId,
+      ).catch(() => ({ id: null }));
+      if (id !== null && granted.includes(id)) ids.push(id);
     }
     return ids;
   }
