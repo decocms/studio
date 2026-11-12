@@ -6,7 +6,6 @@ import "@testing-library/jest-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { ReactNode } from "react";
-import { productionUrlFromDomain } from "@decocms/shared/deco-site-production-url";
 import { LocalUrlForm } from "./local-url-form";
 
 // useT() reads the language preference through TanStack Query.
@@ -37,7 +36,7 @@ function type(element: HTMLElement, value: string) {
 }
 
 const MAIN_HINT =
-  "Point preview and the CMS at your own dev server. Paste a public tunnel URL (e.g. ngrok, cloudflared) reachable from this browser.";
+  "Point preview and the CMS at your own dev server. Paste its address, e.g. http://localhost:8000. A public tunnel URL (ngrok, cloudflared) works too.";
 
 describe("LocalUrlForm (v7, as on main)", () => {
   const realFetch = globalThis.fetch;
@@ -50,20 +49,38 @@ describe("LocalUrlForm (v7, as on main)", () => {
     globalThis.fetch = realFetch;
   });
 
-  it("saves localhost:3000 synchronously as a tunnel URL, with no request", () => {
+  it("saves a bare localhost:3000 as http, synchronously, with no request", () => {
     const onSave = mock((_url: string | null) => {});
     const { getByLabelText, getByRole } = renderBare(
       <LocalUrlForm url={null} onSave={onSave} />,
       { wrapper },
     );
-    type(getByLabelText("Local tunnel URL"), "localhost:3000");
+    type(getByLabelText("Local URL"), "localhost:3000");
     fireEvent.click(getByRole("button", { name: "Save" }));
     // Called in the same tick: no probe, no "checking" state.
     expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave).toHaveBeenCalledWith(
-      productionUrlFromDomain("localhost:3000"),
-    );
+    expect(onSave).toHaveBeenCalledWith("http://localhost:3000/");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("a bare non-loopback host still saves as https", () => {
+    const onSave = mock((_url: string | null) => {});
+    const { getByLabelText, getByRole } = renderBare(
+      <LocalUrlForm url={null} onSave={onSave} />,
+      { wrapper },
+    );
+    type(getByLabelText("Local URL"), "localhost.example.com");
+    fireEvent.click(getByRole("button", { name: "Save" }));
+    expect(onSave).toHaveBeenCalledWith("https://localhost.example.com/");
+  });
+
+  it("an unparseable URL can't be saved (it used to turn Local off)", () => {
+    const { getByLabelText, getByRole } = renderBare(
+      <LocalUrlForm url="http://localhost:3000/" onSave={() => {}} />,
+      { wrapper },
+    );
+    type(getByLabelText("Local URL"), "localhost:abc");
+    expect(getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
   it("an empty field can't be saved", () => {
