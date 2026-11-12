@@ -1,5 +1,5 @@
 import { type Query, useQuery, useQueryClient } from "@tanstack/react-query";
-import { exponentialBackoffWithJitter } from "@decocms/shared/std";
+import { contentReadRetryDelay } from "./content-response-error";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import {
@@ -287,13 +287,13 @@ export function useLiveMeta(
     // retrying just hammers a known-down endpoint. Sandbox-less Fast Preview
     // has no lifecycle event coming — a transient failure of the production
     // /live/_meta fetch would stick as a terminal error card, so bounded
-    // retries ARE the recovery there.
+    // retries ARE the recovery there. Provider rate limits retain their own
+    // retry deadline through contentReadRetryDelay.
     // Local mode, like sandbox-less Fast Preview, has no lifecycle event to re-invalidate a 502, so bounded retries are its recovery.
     retry: (failureCount, error) =>
       protocol || fastPreviewActive || localOverride
         ? failureCount < 3
         : (error as { status?: number }).status !== 502 && failureCount < 3,
-    retryDelay: (attempt) =>
-      exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
+    retryDelay: contentReadRetryDelay,
   });
 }

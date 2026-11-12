@@ -42,6 +42,7 @@ import {
   RepoWriteConflict,
   contentClientForProjectRepo,
   repoErrorStatus,
+  repoRateLimitRetryAfterMs,
   type RepoContentClient,
 } from "@/git-providers";
 import {
@@ -312,6 +313,13 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
     return c.json({ error: message, code: DEFAULT_BRANCH_READ_ONLY }, 409);
   }
   if (err instanceof RepoWriteConflict) return c.json({ error: message }, 409);
+  const retryAfterMs = repoRateLimitRetryAfterMs(err);
+  if (retryAfterMs !== undefined) {
+    return c.json({ error: message }, 429, {
+      "Cache-Control": "no-store",
+      "Retry-After": String(Math.ceil((retryAfterMs ?? 60_000) / 1000)),
+    });
+  }
   const providerStatus = repoErrorStatus(err);
   if (providerStatus !== null) {
     /** 401/403 from the provider means OUR credential, not the caller's — map

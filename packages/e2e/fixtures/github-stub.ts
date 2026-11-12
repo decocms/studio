@@ -88,6 +88,12 @@ interface PullRecord {
   html_url: string;
 }
 
+interface StubRateLimit {
+  status: 403 | 429;
+  retryAfterSeconds?: number;
+  resetAfterSeconds?: number;
+}
+
 interface RepoState {
   /** GitHub's numeric repository id, which is what a token scope names. */
   id: number;
@@ -115,6 +121,7 @@ interface RepoState {
   truncateRecursive: boolean;
   contentsReads: number;
   blobReads: number;
+  rateLimit: StubRateLimit | null;
 }
 
 interface SeedRepoBody {
@@ -134,6 +141,7 @@ interface SeedRepoBody {
   /** Make recursive tree reads return `truncated: true`, simulating a repo too
    *  large for GitHub's recursive listing. */
   truncateRecursive?: boolean;
+  rateLimit?: StubRateLimit;
 }
 
 const repos = new Map<string, RepoState>();
@@ -289,6 +297,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     truncateRecursive: body.truncateRecursive ?? false,
     contentsReads: 0,
     blobReads: 0,
+    rateLimit: body.rateLimit ?? null,
   };
 
   const branches = body.branches ?? {};
@@ -508,6 +517,21 @@ async function handleRepos(
   // Out of scope reads as absent, exactly as it does on github.com.
   if (!repo || (scope && !scope.includes(repo.id))) {
     notFound(res);
+    return;
+  }
+  if (repo.rateLimit) {
+    const { status, retryAfterSeconds, resetAfterSeconds } = repo.rateLimit;
+    res.setHeader("x-ratelimit-remaining", "0");
+    if (retryAfterSeconds !== undefined) {
+      res.setHeader("retry-after", String(retryAfterSeconds));
+    }
+    if (resetAfterSeconds !== undefined) {
+      res.setHeader(
+        "x-ratelimit-reset",
+        String(Math.floor(Date.now() / 1000) + resetAfterSeconds),
+      );
+    }
+    json(res, status, { message: "API rate limit exceeded" });
     return;
   }
   const rest = segments.slice(3);
