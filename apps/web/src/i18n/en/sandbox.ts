@@ -958,6 +958,12 @@ export const sandbox = {
   "sandbox.postEditor.issuePlural": "issues",
   "sandbox.postEditor.issueSingular": "issue",
   "sandbox.postEditor.keyPlaceholder": "key",
+  "sandbox.postEditor.legacyCodeBlock": "Code block",
+  "sandbox.postEditor.legacyContentPlaceholder": "Write the post…",
+  "sandbox.postEditor.legacyInsertImage": "Insert image from the library",
+  "sandbox.postEditor.legacyInsertImageUrl": "Insert image from a URL",
+  "sandbox.postEditor.legacySectionsNotice":
+    "This post also has {count} blocks from the block editor. They are kept as they are; this editor only changes the HTML body.",
   "sandbox.postEditor.missingFieldPlural": "Missing required fields: {fields}",
   "sandbox.postEditor.missingFieldSingular": "Missing required field: {fields}",
   "sandbox.postEditor.noAuthorsYet":
@@ -1190,6 +1196,9 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
   "sandbox.fieldDescriptionTooltipsField.description":
     "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",
+  "sandbox.legacyBlogPostFormatField.label": "Blog posts as HTML",
+  "sandbox.legacyBlogPostFormatField.description":
+    "Edit a blog post's body in one rich-text editor saved to its content field, the format older blog templates read, instead of as blocks.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",

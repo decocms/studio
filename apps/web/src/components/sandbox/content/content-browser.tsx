@@ -1,6 +1,7 @@
 import { isBlockBody } from "@/cms/block-body";
 import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -566,6 +567,7 @@ function ContentBrowserReady({
       "pages",
   );
   const blogAi = useBlogAi();
+  const legacyContent = useLegacyBlogPostFormat(virtualMcpId);
   const activeCollection = visibleCollection(
     storedCollection,
     blogAi,
@@ -1533,7 +1535,11 @@ function ContentBrowserReady({
   // ------------------ Blog CRUD ------------------
   const handleCreateBlog = async (kind: BlogKind) => {
     const key = generateBlogKey(decofile, kind);
-    const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
+    const data = buildBlogBlock(
+      key,
+      kind,
+      emptyBlogPayload(kind, { legacyContent }),
+    );
     try {
       const created = await saveBlock.mutateAsync({
         blockKey: key,
@@ -1552,7 +1558,11 @@ function ContentBrowserReady({
   /** Calendar "+" on a day: a post scheduled for that day, opened to edit. */
   const handleCreateScheduledPost = async (day: Date) => {
     const key = generateBlogKey(decofile, "posts");
-    const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
+    const data = buildBlogBlock(
+      key,
+      "posts",
+      scheduledPostPayload(day, { legacyContent }),
+    );
     try {
       const created = await saveBlock.mutateAsync({
         blockKey: key,

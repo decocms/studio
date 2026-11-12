@@ -101,6 +101,7 @@ import { RuntimeAppsField } from "@/components/sandbox/runtime-card/runtime-apps
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
+import { LegacyBlogPostFormatField } from "@/components/sandbox/runtime-card/legacy-blog-post-format-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
@@ -1147,6 +1148,11 @@ function VirtualMcpDetailViewWithData({
                     {!cmsOff && (
                       <SettingsCardRow>
                         <FieldDescriptionTooltipsField control={form.control} />
+                      </SettingsCardRow>
+                    )}
+                    {!cmsOff && (
+                      <SettingsCardRow>
+                        <LegacyBlogPostFormatField control={form.control} />
                       </SettingsCardRow>
                     )}
                     {!cmsOff && hasRepository && (
