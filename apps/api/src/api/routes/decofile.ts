@@ -57,6 +57,7 @@ import {
   repoGitRebase,
 } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import { readCommittedMeta } from "@/decofile/read-meta";
 import { projectPackagePath } from "@/hosted/blocks-major";
 import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
@@ -399,11 +400,11 @@ export function createDecofileRoutes(
        *  from default at first CMS touch), so fall back to the default branch —
        *  meta.gen.json is a code artifact the CMS never edits, so the default's
        *  copy is the schema the forked branch would carry anyway. */
-      let text = await client.readFileAtRef(scope.branch, metaPath);
+      let text = await readCommittedMeta(client, scope.branch, metaPath);
       if (text === null) {
         const defaultBranch = await client.getDefaultBranch();
         if (defaultBranch !== scope.branch) {
-          text = await client.readFileAtRef(defaultBranch, metaPath);
+          text = await readCommittedMeta(client, defaultBranch, metaPath);
         }
       }
       if (text === null) {
