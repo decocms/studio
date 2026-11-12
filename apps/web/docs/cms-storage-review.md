@@ -73,7 +73,8 @@ and schema-free callback timing.
 
 Shared files and import paths still change, so this is not a claim of zero
 regression risk. The PR does not change the API server, storefront runtime,
-database schema, or dependencies. Browser E2E remains an explicit validation gap.
+database schema, or dependencies. Browser verification runs in CI; no local
+full-stack browser execution is claimed.
 
 ## Communication bypass inventory
 
@@ -159,13 +160,23 @@ normal Playwright services; unit tests cannot establish browser wiring.
 
 Final local results:
 
-- `bun run verify`: formatting, lint, unused-code checks and **13,509 tests passed**
+- `bun run verify`: formatting, lint, unused-code checks and **13,516 tests passed**
   using the repository's CI-pinned Bun 1.3.14.
 - Web and Playwright workspace TypeScript checks passed.
 - Playwright discovered both new hosted Settings regressions.
-- Browser execution was not run: local PostgreSQL/NATS were unavailable, their
-  environment URLs were unset, and Docker was not installed. The browser
-  assertions still need execution in the normal E2E environment.
+- Browser execution was unavailable locally: PostgreSQL/NATS were unavailable,
+  their environment URLs were unset, and Docker was not installed. CI runs the
+  browser assertions with the normal E2E services; consult the PR checks for
+  the latest outcome.
+
+The first CI execution found a navigation-selector defect in both new Settings
+regressions: the draft-change badge contributes to the button's accessible name,
+so an exact `Settings` match fails once the block is changed. The tests now use
+the existing Settings sidebar wrapper and its button. Their body-load,
+preservation, creation and reload assertions remain intact. CI also reproduced
+an OAuth integration timeout already failing on main: that test's authorization
+metadata case now has time for both bounded discovery stages to finish. These
+CI repairs change tests only, with no production behavior change.
 
 Local Bun 1.4.0 full-suite attempts encountered `EBADF` while spawning oxlint
 subprocesses; the isolated plugin smoke test passed. The final complete run
@@ -201,8 +212,8 @@ bug-free.
 The new regression tests exercise pure cache transitions, stale source guards,
 production/deletion baselines, backend identities, response parsers, change-side
 cache keys and real lint diagnostics. Existing editor/protocol suites continue
-to cover the surrounding behavior. The two browser regressions still require
-the normal E2E services to execute.
+to cover the surrounding behavior. The two browser regressions execute against
+the normal E2E services in CI.
 
 The final independent quality pass also caught an A → loading B → A readiness
 latch reuse and unbounded shared requests. The latch now resets on every target

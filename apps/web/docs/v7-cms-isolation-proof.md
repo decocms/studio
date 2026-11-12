@@ -1,7 +1,7 @@
 # V7 isolation evidence for the CMS refactor
 
 This review compares the complete PR with main at
-`972fd64531a9bb2ffcb7a36063f4d56d89eb794c`. The claim is that the new CMS
+`7ecc55b39401067412474242ed478e879a6986ca`. The claim is that the new CMS
 behavior is reachable only through a v8 backend. It covers v7 GitHub,
 sandbox and Advanced Local tunnel storage, editor state and action payloads.
 The account-less site editor is an existing explicit v8 protocol entry point.
@@ -11,7 +11,7 @@ The account-less site editor is an existing explicit v8 protocol entry point.
 Run from the repository root:
 
 ```sh
-bun run check:v7-cms-isolation --base 972fd64531a9bb2ffcb7a36063f4d56d89eb794c
+bun run check:v7-cms-isolation --base 7ecc55b39401067412474242ed478e879a6986ca
 bun test apps/web/src/components/sections-editor/content-backend.test.ts
 bun test apps/web/src/components/sections-editor/save-referenced-block.test.ts
 bun test apps/web/src/components/sections-editor/hosted-content.test.ts
@@ -37,7 +37,7 @@ They are covered by the gate/reachability review below; equality of their
 whole source is not claimed.
 
 Final validation with CI-pinned Bun 1.3.14: the checker passes, `bun run verify`
-passes **13,509 tests**, and web/E2E workspace TypeScript checks pass. The
+passes **13,516 tests**, and web/E2E workspace TypeScript checks pass. The
 standalone comparison tool's TypeScript check also passes.
 
 ## Gate-off path
@@ -91,7 +91,8 @@ and independent review. Shared imports, component adapters and disabled query
 observers still change the bundle; this is not byte identity of the whole app
 or a proof about every browser/runtime interaction.
 
-Browser E2E has not executed in this environment. Real-browser smoke evidence
-for both generations is still required before treating the draft PR as fully
-validated. The refactor changes no API server, storefront runtime, database
+Full-stack browser E2E could not run locally. The hosted Settings regressions
+execute in CI with real services; their latest result is recorded in the PR
+checks. Browser flow evidence remains distinct from this source comparison.
+The refactor changes no production API server, storefront runtime, database
 schema or dependencies.

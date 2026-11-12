@@ -121,13 +121,15 @@ for (const saved of [true, false]) {
           requestedBodies.push(...call.params.names);
       }
     });
+    // Chromium includes the draft-change marker in this button's accessible name.
+    const settingsNavigation = page
+      .getByTestId("main-panel")
+      .getByTestId("content-sidebar-settings")
+      .getByRole("button");
     await page.goto(
       `/${orgSlug}/projects/${project.vmcpId}/site-editor/content?thread=${thread.id}&sidepanel=false`,
     );
-    await page
-      .getByTestId("main-panel")
-      .getByRole("button", { name: "Settings", exact: true })
-      .click({ timeout: 60_000 });
+    await settingsNavigation.click({ timeout: 60_000 });
     const settings = page.getByTestId("cms-settings-page");
     const enabled = settings.getByRole("switch", {
       name: "Send telemetry",
@@ -154,10 +156,7 @@ for (const saved of [true, false]) {
       )
       .toEqual(expected);
     await page.reload();
-    await page
-      .getByTestId("main-panel")
-      .getByRole("button", { name: "Settings", exact: true })
-      .click({ timeout: 60_000 });
+    await settingsNavigation.click({ timeout: 60_000 });
     await expect(
       page
         .getByTestId("cms-settings-page")
