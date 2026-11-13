@@ -78,7 +78,7 @@ import { BUILTIN_ROLES } from "@decocms/shared/auth/roles";
 export function getBuiltinRoleStatements(
   allTools: string[],
 ): Record<string, Permission> {
-  const creatorSelf = ["*", ...allTools];
+  const creatorSelf = ["*", "ASSETS_MANAGE", ...allTools];
   return {
     user: {
       self: [...USER_ROLE_TOOLS],

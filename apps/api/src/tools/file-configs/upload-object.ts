@@ -1,3 +1,4 @@
+import { checkAssetWrite } from "../../file-storage/asset-access";
 import z from "zod";
 import { mapBounded } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
@@ -149,7 +150,7 @@ export const FILE_OBJECT_UPLOAD = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     const org = requireOrganization(ctx);
-    await ctx.access.check();
+    await checkAssetWrite(ctx.access, "import");
 
     const fileCfg = await resolveFileConfig(
       ctx.storage.orgFileConfigs,
