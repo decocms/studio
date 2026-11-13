@@ -8,6 +8,7 @@
 
 import { useEffect } from "react";
 import { useRouterState } from "@tanstack/react-router";
+import { useBlogView } from "./use-blog-view.ts";
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { PROJECT_APPS } from "@/components/projects/project-apps";
@@ -33,10 +34,13 @@ export function useRecentApps(orgSlug: string): {
     LOCALSTORAGE_KEYS.recentApps(orgSlug),
     EMPTY,
   );
+  const blogView = useBlogView();
+  /** A value from an older build must not crash the rail. */
+  const stored = Array.isArray(recent) ? recent : EMPTY;
 
   return {
-    /** A value from an older build must not crash the rail. */
-    recent: Array.isArray(recent) ? recent : EMPTY,
+    /** Blog only while the org has its view on; the entry stays for later. */
+    recent: blogView ? stored : stored.filter((entry) => entry.app !== "blog"),
     remember: (entry) =>
       setRecent((prev) =>
         pushRecentApp(Array.isArray(prev) ? prev : [], entry),

@@ -128,6 +128,7 @@ function PostEditorForm({
   onClose,
   expanded,
   onToggleExpand,
+  onDeleted,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -141,10 +142,14 @@ function PostEditorForm({
   expanded?: boolean;
   /** When set, renders a control that toggles panel ↔ full page. */
   onToggleExpand?: () => void;
-  /** When set, renders a close control in the top cluster. */
+  /** When set (the Content tab's panel), renders a close control in the top
+   *  cluster and a link to the post's page; Blog's screen shows the page
+   *  beside the editor instead. */
   onClose?: () => void;
   /** The one status transition, shared with the board — see `usePostStatusMove`. */
   move: PostStatusMove;
+  /** The post is gone, so its screen has nothing left to show. */
+  onDeleted?: () => void;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
@@ -261,6 +266,7 @@ function PostEditorForm({
       toast.success(
         t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
       );
+      onDeleted?.();
       onClose?.();
     } catch (err) {
       toast.error(
@@ -409,25 +415,31 @@ function PostEditorForm({
                     }}
                   />
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!previewUrl}
-                  title={
-                    previewUrl
-                      ? t("sandbox.postEditor.previewTooltip")
-                      : t("sandbox.postEditor.previewRequiresSlugAndCategory")
-                  }
-                  onClick={() => {
-                    if (previewUrl) {
-                      window.open(previewUrl, "_blank", "noopener,noreferrer");
+                {onClose && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!previewUrl}
+                    title={
+                      previewUrl
+                        ? t("sandbox.postEditor.previewTooltip")
+                        : t("sandbox.postEditor.previewRequiresSlugAndCategory")
                     }
-                  }}
-                >
-                  <LinkExternal01 size={14} />
-                  {t("sandbox.postEditor.seePreview")}
-                </Button>
+                    onClick={() => {
+                      if (previewUrl) {
+                        window.open(
+                          previewUrl,
+                          "_blank",
+                          "noopener,noreferrer",
+                        );
+                      }
+                    }}
+                  >
+                    <LinkExternal01 size={14} />
+                    {t("sandbox.postEditor.seePreview")}
+                  </Button>
+                )}
               </div>
             </div>
 

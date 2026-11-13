@@ -123,7 +123,9 @@ response (never read into a string, never JSON-parsed). Miss → tree fetch
 (ETag'd) → blocks in filename order, a window of 12 at a time, each from its
 disk blob, else GitHub (written through) → each block is validated and
 appended to a merge file in a scratch dir → the file is renamed into
-`merged/` → serve it as a hit. When it can't land (cache off, free-space
+`merged/` → serve it as a hit. Saves held until publish (`pending-blocks.ts`)
+are laid over the blocks during the merge, and the document is keyed by their
+version, so each set of held saves is merged once. When it can't land (cache off, free-space
 floor, write error), that read is served from memory. Identical GitHub request counts to today's
 in-memory path, plus restart-warmness today's path lacks.
 

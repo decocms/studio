@@ -364,6 +364,9 @@ export const settings = {
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "View Blog",
+  "settings.blogView.description":
+    "O Blog como uma view própria do projeto, com cada post ao lado de como o site o mostra. Desligado, o blog é editado na aba Conteúdo do Site Editor.",
   "settings.blog.aiTitle": "Blog com IA",
   "settings.blog.aiDescription":
     "Contexto da marca, campanhas e geração de posts. Desligado, os posts são escritos à mão.",
@@ -379,6 +382,9 @@ export const settings = {
   "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
   "settings.multiAppPreview.description":
     "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",
+  "settings.cmsAutoCommit.title": "Commitar cada salvamento na branch",
+  "settings.cmsAutoCommit.description":
+    "No Fast Preview, cada salvamento vira um commit na branch em edição. Desligado, os salvamentos ficam no Studio: o editor e o preview mostram as mudanças, mas elas só chegam na branch quando alguém publica ou envia para revisão, em um único commit. Até lá elas não estão no repositório, então um pull request, um deploy preview ou quem trabalha na branch fora do Studio não as vê.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeLight": "Tema claro",
   "settings.preferences.themeDark": "Tema escuro",

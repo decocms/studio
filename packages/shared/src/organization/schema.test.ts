@@ -35,6 +35,14 @@ describe("orgFlagEnabled", () => {
     ).toBe(false);
   });
 
+  it("the Blog view is off until an org turns it on", () => {
+    expect(DEFAULT_ON_FLAGS.has("blog_view_enabled")).toBe(false);
+    expect(orgFlagEnabled({}, "blog_view_enabled")).toBe(false);
+    expect(
+      orgFlagEnabled({ blog_view_enabled: true }, "blog_view_enabled"),
+    ).toBe(true);
+  });
+
   it("default-off flags read as disabled unless stored exactly true", () => {
     expect(DEFAULT_ON_FLAGS.has("auto_merge")).toBe(false);
     expect(orgFlagEnabled(null, "auto_merge")).toBe(false);

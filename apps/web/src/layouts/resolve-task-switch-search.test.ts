@@ -19,6 +19,7 @@ test("new chat keeps the open project app", () => {
     savedLayout: null,
     opts: { newThread: true },
     autosendValue: AUTOSEND,
+    blogView: true,
   });
   expect(
     canonicalThreadRouteTarget({
@@ -45,6 +46,7 @@ function resolve(
     decopilotId: DECOPILOT,
     savedLayout: null,
     autosendValue: AUTOSEND,
+    blogView: true,
     ...over,
   });
 }
@@ -251,5 +253,89 @@ describe("resolveTaskSwitchSearch — restoring per-thread memory", () => {
       tabId: "settings",
       search: {},
     });
+  });
+});
+
+/**
+ * Blog runs only in a sandbox, and the site's views never run on a Blog
+ * draft. A switch that carried the view anyway would be bounced back by the
+ * shell: a click that visibly does nothing.
+ */
+describe("a carried view that can't show the target thread", () => {
+  const switchFrom = (
+    tabId: string,
+    target: { branch: string; metadata: { runtime: "cms" | "sandbox" } },
+    blogView = true,
+  ) =>
+    resolveTaskSwitchSearch({
+      prev: { virtualmcpid: "project-example", tabId },
+      decopilotId: DECOPILOT,
+      savedLayout: null,
+      autosendValue: AUTOSEND,
+      target,
+      blogView,
+    }).tabId;
+
+  test("Blog gives way to the Site Editor for a site draft in Fast Preview", () => {
+    expect(
+      switchFrom("blog", { branch: "sacci-a", metadata: { runtime: "cms" } }),
+    ).toBe("site-editor");
+    expect(
+      switchFrom("blog-post:abc", {
+        branch: "sacci-a",
+        metadata: { runtime: "cms" },
+      }),
+    ).toBe("site-editor");
+  });
+
+  test("a site view gives way to Blog for a Blog draft", () => {
+    for (const tabId of ["site-editor", "content", "experiments", "calendar"]) {
+      expect(
+        switchFrom(tabId, {
+          branch: "blog-draft-sacci-a",
+          metadata: { runtime: "sandbox" },
+        }),
+      ).toBe("blog");
+    }
+  });
+
+  test("a view that can show the thread stays", () => {
+    for (const runtime of ["sandbox", "cms"] as const) {
+      expect(
+        switchFrom("blog", {
+          branch: "blog-draft-sacci-a",
+          metadata: { runtime },
+        }),
+      ).toBe("blog");
+    }
+    expect(
+      switchFrom("site-editor", {
+        branch: "sacci-a",
+        metadata: { runtime: "cms" },
+      }),
+    ).toBe("site-editor");
+    expect(
+      switchFrom("settings", {
+        branch: "blog-draft-sacci-a",
+        metadata: { runtime: "sandbox" },
+      }),
+    ).toBe("settings");
+  });
+
+  test("without the org's Blog view, every view stays: drafts have no kinds", () => {
+    expect(
+      switchFrom(
+        "site-editor",
+        { branch: "blog-draft-sacci-a", metadata: { runtime: "sandbox" } },
+        false,
+      ),
+    ).toBe("site-editor");
+    expect(
+      switchFrom(
+        "blog",
+        { branch: "sacci-a", metadata: { runtime: "cms" } },
+        false,
+      ),
+    ).toBe("blog");
   });
 });

@@ -491,6 +491,9 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.offDescription":
     "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
+  "sandbox.blogWorkspace.noBlogApp": "This site has no blog",
+  "sandbox.blogWorkspace.noBlogAppHint":
+    "Install the blog app, or add a page with the blog post section, and your posts, authors and categories show up here.",
   "sandbox.collectionsSidebar.actions": "Actions",
   "sandbox.collectionsSidebar.advanced": "Advanced",
   "sandbox.collectionsSidebar.apps": "Apps",
@@ -974,6 +977,28 @@ export const sandbox = {
     "No categories yet — create some in the categories collection.",
   "sandbox.postEditor.noContentYet":
     "This post has no content yet. Use ⊕ to add your first block.",
+  "sandbox.postEditScreen.notFound": "This post no longer exists",
+  "sandbox.postEditScreen.notFoundHint":
+    "It may have been deleted, or the link points at an id this site does not have.",
+  "sandbox.postEditScreen.edit": "Edit",
+  "sandbox.postEditScreen.preview": "Preview",
+  "sandbox.postEditScreen.resizeSplit": "Resize the editor and the preview",
+  "sandbox.postEditScreen.resizeSplitHint":
+    "Drag to resize. Double-click to reset.",
+  "sandbox.postPreview.desktop": "Desktop",
+  "sandbox.postPreview.frameTitle": "Post preview",
+  "sandbox.postPreview.missingParams": "Not enough to build the URL",
+  "sandbox.postPreview.missingParamsHint":
+    "Set the post's slug, and its category when the blog route uses one.",
+  "sandbox.postPreview.mobile": "Mobile",
+  "sandbox.postPreview.noOrigin": "Waiting for the site",
+  "sandbox.postPreview.noOriginHint":
+    "The preview appears once this project's site is serving.",
+  "sandbox.postPreview.noRoute": "This site has no blog post page",
+  "sandbox.postPreview.noRouteHint":
+    "Add a page with the blog post section, or set the blog app's pageSlug, and the preview can render.",
+  "sandbox.postPreview.openInNewTab": "Open in new tab",
+  "sandbox.postPreview.refresh": "Refresh",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
   "sandbox.postEditor.readTimeLabel": "Read time (minutes)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":

@@ -57,6 +57,7 @@ import {
   contentClientForProjectRepo,
   repoErrorStatus,
   repoRateLimitRetryAfterMs,
+  type RepoContentClient,
 } from "@/git-providers";
 import { GitProviderError } from "../../git-providers/types";
 import {
@@ -66,7 +67,16 @@ import {
   repoGitDiscard,
   repoGitRebase,
   repoGitStatus,
+  withPendingDiff,
+  withPendingStatus,
 } from "../../decofile/git-compat";
+import {
+  commitPendingBlocks,
+  pendingFiles,
+  pendingVersion,
+} from "../../decofile/pending-blocks";
+import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
+import type { PendingBranchScope } from "../../storage/decofile-pending-blocks";
 import {
   buildLoaderInvokeUrl,
   isCatalogLoaderResolveType,
@@ -485,10 +495,70 @@ async function proxyPreviewUpstream(
   });
 }
 
+/** The session's branch, as the pending-saves store addresses it. */
+function fastPreviewPendingScope(c: Context<VmEnv>): PendingBranchScope {
+  const claim = c.get("vmClaim");
+  return {
+    organizationId: requireOrganization(c.var.studioContext).id,
+    virtualMcpId: claim.virtualMcpId,
+    branch: claim.branch,
+  };
+}
+
+/** The branch's pending saves with the file each one touches at `headSha`. */
+async function fastPreviewPendingFiles(
+  c: Context<VmEnv>,
+  client: RepoContentClient,
+  headSha: string,
+) {
+  const pending = await c.var.studioContext.storage.decofilePendingBlocks.list(
+    fastPreviewPendingScope(c),
+  );
+  const files = await pendingFiles(
+    client,
+    headSha,
+    projectPackagePath(c.get("vmClaim").virtualMcpMetadata),
+    pending,
+  );
+  return { pending, files };
+}
+
+/** `repoGitStatus` plus the saves held in Studio, as uncommitted work. */
+async function fastPreviewStatusPayload(
+  c: Context<VmEnv>,
+  client: RepoContentClient,
+) {
+  const status = await repoGitStatus(client, c.get("vmClaim").branch);
+  const { pending, files } = await fastPreviewPendingFiles(
+    c,
+    client,
+    status.headSha,
+  );
+  return withPendingStatus(
+    status,
+    files,
+    pendingVersion(status.headSha, pending),
+  );
+}
+
+/** `repoGitDiff` with the saves held in Studio as the new side. */
+async function fastPreviewDiffPayload(
+  c: Context<VmEnv>,
+  client: RepoContentClient,
+  base?: string,
+) {
+  const { branch } = c.get("vmClaim");
+  const diff = await repoGitDiff(client, branch, base);
+  const head = await client.getBranch(branch);
+  if (!head) return diff;
+  const { files } = await fastPreviewPendingFiles(c, client, head.sha);
+  return withPendingDiff(client, diff, files);
+}
+
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
     const client = await fastPreviewGitClient(c);
-    const status = await repoGitStatus(client, c.get("vmClaim").branch);
+    const status = await fastPreviewStatusPayload(c, client);
     return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
   } catch (err) {
     return fastPreviewGitError(c, err);
@@ -1095,7 +1165,7 @@ export const createSandboxRoutes = () => {
           base?: string;
         };
         const client = await fastPreviewGitClient(c);
-        const diff = await repoGitDiff(client, claim.branch, body.base);
+        const diff = await fastPreviewDiffPayload(c, client, body.base);
         return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
         return fastPreviewGitError(c, err);
@@ -1107,10 +1177,7 @@ export const createSandboxRoutes = () => {
     });
   });
   app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
-    // Sandbox-less: every save is already a commit on the remote branch, so
-    // "sync local work" has nothing to do. Answering OK keeps the publish
-    // dialog's flow (push → rebase → PR/merge via the GitHub connection)
-    // working with no working tree behind it.
+    // Sandbox-less: "sync local work" only commits the saves held in Studio.
     //
     // Deliberately does NOT flush a coding session's pod on the same branch:
     // the daemon's publish commits its ENTIRE working tree, while the gate that
@@ -1118,8 +1185,26 @@ export const createSandboxRoutes = () => {
     // flushing would push unreviewed code past a `smart`/`code-review` policy.
     // A teammate's unpushed work staying invisible here is a pre-existing blind
     // spot, and the honest fix is to widen the GATE, not to widen the push.
-    if (c.get("vmClaim").runtime === "cms") {
-      return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+    const publishClaim = c.get("vmClaim");
+    if (publishClaim.runtime === "cms") {
+      return withClaimGitLock(publishClaim.claimName, async () => {
+        try {
+          const client = await fastPreviewGitClient(c);
+          await commitPendingBlocks(
+            c.var.studioContext.storage.decofilePendingBlocks,
+            fastPreviewPendingScope(c),
+            {
+              client,
+              branch: publishClaim.branch,
+              packagePath: projectPackagePath(publishClaim.virtualMcpMetadata),
+              coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+            },
+          );
+          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+        } catch (err) {
+          return fastPreviewGitError(c, err);
+        }
+      });
     }
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
@@ -1180,6 +1265,22 @@ export const createSandboxRoutes = () => {
         }
         try {
           const client = await fastPreviewGitClient(c);
+          // A held save is discarded by dropping it; a committed one below.
+          const head = await client.getBranch(claim.branch);
+          if (head) {
+            const { files } = await fastPreviewPendingFiles(
+              c,
+              client,
+              head.sha,
+            );
+            const wanted = new Set(filepaths);
+            await c.var.studioContext.storage.decofilePendingBlocks.deleteKeys(
+              fastPreviewPendingScope(c),
+              files
+                .filter((f) => wanted.has(f.path))
+                .map((f) => f.block.blockKey),
+            );
+          }
           await repoGitDiscard(client, claim.branch, filepaths);
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
@@ -1312,8 +1413,8 @@ export const createSandboxRoutes = () => {
                 await (async () => {
                   const client = await fastPreviewGitClient(c);
                   return Promise.all([
-                    repoGitStatus(client, claim.branch),
-                    repoGitDiff(client, claim.branch),
+                    fastPreviewStatusPayload(c, client),
+                    fastPreviewDiffPayload(c, client),
                   ]);
                 })();
         // The only route under /sandbox that spends real money: one model call

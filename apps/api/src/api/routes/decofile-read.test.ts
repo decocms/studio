@@ -13,6 +13,7 @@ import { Hono } from "hono";
 import type { StudioContext } from "@/core/studio-context";
 import { resetDecofileDiskCacheForTests } from "@/decofile/disk-cache";
 import type { RepoContentClient, TreeEntry } from "@/git-providers";
+import type { DecofilePendingBlock } from "@/storage/types";
 import type { Env } from "../hono-env";
 import { createDecofileRoutes } from "./decofile";
 
@@ -46,6 +47,8 @@ function setup(
   archive: () => ReadableStream<Uint8Array> | null = () => null,
 ) {
   const calls = { tree: 0, blobs: [] as string[] };
+  /** Saves held until publish, laid over the head on every read. */
+  const pending: DecofilePendingBlock[] = [];
   const tree: TreeEntry[] = Object.entries(blocks).map(([stem, content]) => ({
     path: `.deco/blocks/${stem}.json`,
     type: "blob",
@@ -79,6 +82,7 @@ function setup(
       auth: user ? { user: { id: "user", role: "owner" } } : {},
       access: { getRole: () => "owner", check: async () => {} },
       storage: {
+        decofilePendingBlocks: { list: async () => pending },
         virtualMcps: {
           findById: async (id: string) => ({
             id,
@@ -106,6 +110,7 @@ function setup(
 
   return {
     calls,
+    pending,
     read: () => app(true).request("/decofile/p1/draft"),
     readAnonymous: (token: string) =>
       app(false).request(
@@ -226,5 +231,50 @@ describe("decofile GET cold read", () => {
     } finally {
       rmSync(src, { recursive: true, force: true });
     }
+  });
+});
+
+describe("decofile GET with held saves", () => {
+  beforeEach(() => useCache(true));
+
+  it("lays the held saves over the head, cached per version", async () => {
+    process.env.FAST_PREVIEW_DECOFILE_MAX_BYTES = "";
+    const { read, calls, pending } = setup({
+      gone: '{"v":1}',
+      home: '{"v":1}',
+      tail: '{"v":1}',
+    });
+    const head = (await (await read()).json()) as {
+      version: string;
+      decofile: Record<string, unknown>;
+    };
+    expect(head.decofile).toEqual({
+      gone: { v: 1 },
+      home: { v: 1 },
+      tail: { v: 1 },
+    });
+
+    pending.push(
+      { blockKey: "home", content: { v: 2 }, revision: "1" },
+      { blockKey: "gone", content: null, revision: "1" },
+      { blockKey: "new", content: { v: 1 }, revision: "1" },
+    );
+    const held = (await (await read()).json()) as {
+      version: string;
+      decofile: Record<string, unknown>;
+    };
+    expect(held.version).not.toBe(head.version);
+    // Replaced in place, deleted, and the new block last.
+    expect(Object.entries(held.decofile)).toEqual([
+      ["home", { v: 2 }],
+      ["tail", { v: 1 }],
+      ["new", { v: 1 }],
+    ]);
+
+    // Same held saves: the overlaid document comes from the cache.
+    const treeReads = calls.tree;
+    const again = (await (await read()).json()) as { decofile: unknown };
+    expect(again.decofile).toEqual(held.decofile);
+    expect(calls.tree).toBe(treeReads);
   });
 });

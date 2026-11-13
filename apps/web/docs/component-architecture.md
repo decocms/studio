@@ -211,6 +211,38 @@ export default function SiteEditorRoute() {
 }
 ```
 
+Blog is its own destination rather than a view of that surface, because its
+editing screen needs the whole panel: `/blog` is the browser (posts, authors,
+categories, schedule, brand context) and `/blog/posts/$postId` is one post's
+screen, with the editor beside the site's render of it. The post is addressed
+by **post id**, never by decofile block key — a status change moves the block
+between its planning and live forms, and a key in the URL would break on it.
+
+That screen measures its own container with `useElementWidth` and keeps both
+panes mounted at every width, so toggling them, and resizing the conversation
+across the breakpoint, never reload the preview. `post-split-layout.ts` owns
+the rule and `?blogView=` carries it: without it a wide panel shows the split
+and a narrow one the editor, and `edit` or `preview` shows that pane alone at
+any width. The split's width is dragged on its divider and kept per browser.
+
+Blog works on drafts of its own: `blog-draft-` branches, named "Blog Draft N",
+in the project's runtime (a sandbox or Fast Preview, like the site's drafts),
+under the same draft bar as the Site Editor (`SiteDraftActions`). The shell
+enforces it (`lib/draft-kind.ts`): with no `?thread=` a view resumes or mints a
+draft of its kind, and a thread the view can't show (Blog on a site draft in
+Fast Preview, a site view on a Blog draft) is sent to the view's own. Threads
+created from Blog are Blog drafts too; Blog shows another branch only in a
+sandbox, which is what Advanced → Branches opens.
+
+All of this is the org's `blog_view_enabled` flag (`hooks/use-blog-view.ts`),
+off by default. Off, the blog stays in the Site Editor's Content tab
+(`content-browser.tsx`, with the post editor in a panel beside the list), the
+Blog routes send their links there (`BlogViewGate`), and no view has a draft
+kind, so a `blog-draft-` branch is a draft like any other. On, the Content tab
+lists no blog, and the Blog Manager's "Editar no Studio" link, which points at
+the Content tab, is handed to Blog (`BlogDeepLinkHandoff`). Both gates wait for
+the flag rather than open one place and then leave it.
+
 The drawer stays outside the body's error boundary. `aside` is a second surface
 beside the content on desktop, such as the Library's file preview; the route
 composes it, and with the conversation open the Library shows the file in the

@@ -14,6 +14,7 @@ import {
   RepoWriteConflict,
   type TreeEntry,
 } from "@/git-providers";
+import type { DecofilePendingBlock } from "@/storage/types";
 import { meter } from "../observability";
 import { createPreviewProjection } from "./blog-draft-projection";
 import {
@@ -278,8 +279,13 @@ export interface DecofileDocument {
 export interface DecofileSnapshot {
   /** Branch head commit sha — the version everywhere (ETag, __draft, response). */
   sha: string;
-  /** Opens the merged document. Once per response, right before streaming it. */
-  open(): Promise<DecofileDocument>;
+  /** Opens the merged document with the held saves laid over it (see
+   * pending-blocks), as of `version` — `pendingVersion` of the head and those
+   * rows. Once per response, right before streaming it. */
+  open(overlay: {
+    version: string;
+    pending: DecofilePendingBlock[];
+  }): Promise<DecofileDocument>;
 }
 
 /** Bump when the merge output changes so entries written by an older
@@ -288,19 +294,20 @@ export interface DecofileSnapshot {
 const MERGED_DOC_FORMAT = "3";
 
 /**
- * Disk key for the merged document — a sha1 of (format, head sha, packagePath),
- * so it's deterministic/content-addressed (restart-warm) yet distinct per
- * nested project (two can share one repo) and per merge-output format. `part`
- * keys the document's preview members as a sibling entry.
+ * Disk key for the merged document — a sha1 of (format, version,
+ * packagePath), so it's deterministic/content-addressed (restart-warm) yet
+ * distinct per set of held saves, per nested project (two can share one repo)
+ * and per merge-output format. `part` keys the document's preview members as
+ * a sibling entry.
  */
 function mergedDocSha(
-  sha: string,
+  version: string,
   packagePath: string | null,
   part: "doc" | "preview",
 ): string {
   const tag = part === "doc" ? "" : `${part}:`;
   return createHash("sha1")
-    .update(`${MERGED_DOC_FORMAT}:${tag}${sha}:${packagePath ?? ""}`)
+    .update(`${MERGED_DOC_FORMAT}:${tag}${version}:${packagePath ?? ""}`)
     .digest("hex");
 }
 
@@ -332,30 +339,34 @@ export async function readDecofileSnapshot(
   const sha = options?.createBranchIfMissing
     ? await resolveOrCreateHead(client, branch)
     : await requireBranchHead(client, branch);
-  return { sha, open: () => openDocument(client, sha, packagePath) };
+  return {
+    sha,
+    open: (overlay) => openDocument(client, sha, packagePath, overlay),
+  };
 }
 
 async function openDocument(
   client: RepoContentClient,
   sha: string,
   packagePath: string | null,
+  overlay: { version: string; pending: DecofilePendingBlock[] },
 ): Promise<DecofileDocument> {
   const [owner, repo] = cacheScope(client.repo);
-  const cached = () =>
-    openCachedDocument(
-      owner,
-      repo,
-      mergedDocSha(sha, packagePath, "doc"),
-      mergedDocSha(sha, packagePath, "preview"),
-    );
+  const docSha = mergedDocSha(overlay.version, packagePath, "doc");
+  const previewSha = mergedDocSha(overlay.version, packagePath, "preview");
+  const cached = () => openCachedDocument(owner, repo, docSha, previewSha);
   const hit = await cached();
   if (hit) return hit;
   // Twice: the entry a merge just wrote can be evicted before this reader
   // opens it; the second merge is then served without another race.
   for (let attempt = 0; attempt < 2; attempt++) {
     const inMemory = await mergeFlight.run(
-      `${repoIdentityKey(client.repo)}@${sha}:${packagePath ?? ""}`,
-      () => mergeToCache(client, sha, packagePath),
+      `${repoIdentityKey(client.repo)}@${overlay.version}:${packagePath ?? ""}`,
+      () =>
+        mergeToCache(client, sha, packagePath, overlay.pending, {
+          docSha,
+          previewSha,
+        }),
     );
     if (inMemory) {
       return {
@@ -471,15 +482,18 @@ function mergeSink(path: string | null) {
 }
 
 /**
- * Merge every block into the disk cache, one block at a time: memory holds a
- * fetch window of blocks, never the document. Returns null when the document
- * and its preview members landed in the cache, or the document in memory when
- * they couldn't (cache off, disk floor, write error).
+ * Merge every block into the disk cache, one block at a time, with the held
+ * saves laid over them: memory holds a fetch window of blocks, never the
+ * document. Returns null when the document and its preview members landed in
+ * the cache, or the document in memory when they couldn't (cache off, disk
+ * floor, write error).
  */
 async function mergeToCache(
   client: RepoContentClient,
   sha: string,
   packagePath: string | null,
+  pending: DecofilePendingBlock[],
+  keys: { docSha: string; previewSha: string },
 ): Promise<InMemoryDoc | null> {
   const [owner, repo] = cacheScope(client.repo);
   const tree = await client.listDecofileEntries(sha, packagePath);
@@ -521,6 +535,17 @@ async function mergeToCache(
     const sink = mergeSink(path);
     const merger = createBlockMerger();
     const preview = createPreviewProjection();
+    // A held save replaces its block in place or deletes it; one the head
+    // doesn't have goes last — where assigning it into the parsed document
+    // would have put it.
+    const held = new Map(pending.map((p) => [p.blockKey, p.content]));
+    let members = 0;
+    const write = async (key: string, value: unknown, member: string) => {
+      preview.add(key, value);
+      await sink.write(`${members++ === 0 ? "{" : ","}${member}`);
+    };
+    const writeHeld = (key: string, content: Record<string, unknown>) =>
+      write(key, content, `${JSON.stringify(key)}:${JSON.stringify(content)}`);
     let blockBytes = 0;
     try {
       for (let i = 0; i < entries.length; i += BLOB_FETCH_CONCURRENCY) {
@@ -533,11 +558,19 @@ async function mergeToCache(
           assertReadableSize(blockBytes);
           const block = merger.add({ stem: window[j]!.stem, content });
           if (!block) continue;
-          preview.add(block.key, block.value);
-          await sink.write(block.text);
+          if (!held.has(block.key)) {
+            await write(block.key, block.value, block.member);
+            continue;
+          }
+          const save = held.get(block.key);
+          held.delete(block.key);
+          if (save) await writeHeld(block.key, save);
         }
       }
-      await sink.write(merger.close());
+      for (const [key, content] of held) {
+        if (content) await writeHeld(key, content);
+      }
+      await sink.write(members === 0 ? "{}" : "}");
     } finally {
       await sink.close();
     }
@@ -556,19 +589,8 @@ async function mergeToCache(
       return { chunks: sink.chunks, size: sink.size(), previewMembers };
     }
     const landed =
-      (await putMerged(
-        owner,
-        repo,
-        mergedDocSha(sha, packagePath, "preview"),
-        previewMembers,
-      )) &&
-      (await adoptMerged(
-        owner,
-        repo,
-        mergedDocSha(sha, packagePath, "doc"),
-        path,
-        sink.size(),
-      ));
+      (await putMerged(owner, repo, keys.previewSha, previewMembers)) &&
+      (await adoptMerged(owner, repo, keys.docSha, path, sink.size()));
     if (landed) return null;
     const bytes = await readFile(path);
     return { chunks: [bytes], size: bytes.length, previewMembers };

@@ -190,8 +190,9 @@ export function useProjectViews({
     hasClonableSource,
     nativeViews.presence,
   );
-  // Site views (Blocks' Calendar and Experiments, Hosting) are offered once
-  // on top of a list saved before they were defaults, until the next save.
+  // The top rows and Blog, plus the site views (Blocks' Calendar and
+  // Experiments, Hosting), are offered once on top of a list saved without
+  // them, until the next save.
   const formSidebarViewsSeen = form.watch("metadata.sidebarViewsSeen");
   const formSidebarViews = effectiveProjectSidebarViews(
     resolveProjectSidebarViews({
@@ -452,6 +453,7 @@ export function useProjectViews({
     reports: t("sidebar.navDestinations.reports"),
     board: t("sidebar.navDestinations.spineTasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
+    blog: t("sidebar.projectNav.blog"),
     assets: t("common.mainPanelTabs.assets"),
     releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),

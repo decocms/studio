@@ -334,11 +334,23 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Previewing more than one app of a monorepo: an Apps list in project settings, app tabs with a split view in the preview, and a dev server per extra app in the sandbox, served at its own preview host. Off by default.",
     ),
+  cms_auto_commit: z
+    .boolean()
+    .optional()
+    .describe(
+      "Fast Preview: commit each CMS save to the editing branch. On by default (see DEFAULT_ON_FLAGS). Off, saves are kept in Studio and shown in the editor and the preview, and reach the branch in one commit when someone publishes or submits for review.",
+    ),
   hide_default_blog_blocks: z
     .boolean()
     .optional()
     .describe(
       "Hide the `deco-cms/blog` app's own blocks (`blog/*`) everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible, plus, in the inserter, the sections under the blog app's `customSectionPaths`. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
+    ),
+  blog_view_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Blog as a project view of its own (a sidebar row, an app tile and `/blog`), edited on Blog drafts with each post beside the site's render of it. Off by default: the blog stays in the Site Editor's Content tab, and `blog-draft-` branches are ordinary drafts.",
     ),
 });
 
@@ -357,6 +369,7 @@ export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "reviewer_enabled",
   "cheap_reviewer_model",
   "chat_harness_sandbox_only",
+  "cms_auto_commit",
 ]);
 
 /**

@@ -9,6 +9,10 @@
  *   POST   /api/:org/decofile/:virtualMcpId/:branch/publish   merge into default (session)
  *   GET    /api/:org/decofile/:virtualMcpId/:branch/status    drift vs default (session)
  *
+ * With the org's `cms_auto_commit` flag off, a write is held in Studio instead
+ * (decofile/pending-blocks.ts): reads lay it over the head, and publish
+ * commits it first.
+ *
  * The surface is inert unless the virtual MCP has both a preview server URL
  * (`previewServerUrl`, legacy `productionUrl`) and a GitHub repo — what a CMS
  * session needs to render and to commit. The project's `fastPreview` switch
@@ -45,11 +49,18 @@ import {
   repoRateLimitRetryAfterMs,
   type RepoContentClient,
 } from "@/git-providers";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   BlockConflictError,
   enqueueDecofilePatch,
   type DecofilePatch,
 } from "@/decofile/commit-coalescer";
+import {
+  commitPendingBlocks,
+  decofileQueueKey,
+  holdDecofilePatch,
+  pendingVersion,
+} from "@/decofile/pending-blocks";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import {
   assertNotDefaultBranch,
@@ -60,6 +71,7 @@ import {
 import {
   DecofileTooLargeError,
   readDecofileSnapshot,
+  resolveOrCreateHead,
   streamDocument,
 } from "@/decofile/read-decofile";
 import { readCommittedMeta } from "@/decofile/read-meta";
@@ -369,12 +381,16 @@ export function createDecofileRoutes(
         { createBranchIfMissing: !!scope.userId },
       );
 
+      const pending =
+        await c.var.studioContext.storage.decofilePendingBlocks.list(scope);
+      const version = pendingVersion(snapshot.sha, pending);
+
       const headers: Record<string, string> = {
-        ETag: `"${snapshot.sha}"`,
+        ETag: `"${version}"`,
         "Cache-Control": "no-store",
         "Access-Control-Allow-Origin": "*",
       };
-      if (c.req.header("if-none-match") === `"${snapshot.sha}"`) {
+      if (c.req.header("if-none-match") === `"${version}"`) {
         return c.body(null, 304, headers);
       }
 
@@ -387,15 +403,15 @@ export function createDecofileRoutes(
       // grant.
       headers["content-type"] = "application/json";
       if (!scope.userId) {
-        const doc = await snapshot.open();
+        const doc = await snapshot.open({ version, pending });
         // Preview-only: render unscheduled planning posts (see blog-draft-projection).
         const body = streamDocument(doc, { appendMembers: doc.previewMembers });
         return c.body(body, 200, headers);
       }
       const token = signScopeDraftToken(scope);
-      const doc = await snapshot.open();
+      const doc = await snapshot.open({ version, pending });
       const body = streamDocument(doc, {
-        prefix: `{"version":${JSON.stringify(snapshot.sha)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":`,
+        prefix: `{"version":${JSON.stringify(version)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":`,
         suffix: "}",
       });
       return c.body(body, 200, headers);
@@ -487,18 +503,40 @@ export function createDecofileRoutes(
     try {
       const client = await contentClientForScope(c);
       await assertNotDefaultBranch(client, scope.branch);
-      const sha = await enqueueDecofilePatch(
-        `${scope.organizationId}/${scope.virtualMcpId}/${scope.branch}`,
-        {
+      const pendingStorage = ctx.storage.decofilePendingBlocks;
+      const settings = await ctx.storage.organizationSettings.get(
+        scope.organizationId,
+      );
+      let version: string;
+      if (orgFlagEnabled(settings?.flags, "cms_auto_commit")) {
+        const deps = {
           client,
           branch: scope.branch,
           packagePath: scope.packagePath,
           coAuthor: coAuthorFromStudioContext(ctx),
-        },
-        patch,
-      );
+        };
+        // Held saves first: this patch's `expect` was made against them.
+        await commitPendingBlocks(pendingStorage, scope, deps);
+        version = await enqueueDecofilePatch(
+          decofileQueueKey(scope),
+          deps,
+          patch,
+        );
+      } else {
+        const headSha = await resolveOrCreateHead(client, scope.branch);
+        await holdDecofilePatch({
+          storage: pendingStorage,
+          scope,
+          client,
+          headSha,
+          packagePath: scope.packagePath,
+          patch,
+          userId: scope.userId,
+        });
+        version = pendingVersion(headSha, await pendingStorage.list(scope));
+      }
       const token = signScopeDraftToken(scope);
-      return c.json({ version: sha, token, apiHost: requestApiHost(c) });
+      return c.json({ version, token, apiHost: requestApiHost(c) });
     } catch (err) {
       return errorResponse(c, err);
     }
@@ -513,6 +551,16 @@ export function createDecofileRoutes(
         return c.json({ error: "Branch is already the default branch" }, 400);
       }
       const message = `chore(decofile): publish ${scope.branch}`;
+      await commitPendingBlocks(
+        c.var.studioContext.storage.decofilePendingBlocks,
+        scope,
+        {
+          client,
+          branch: scope.branch,
+          packagePath: scope.packagePath,
+          coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+        },
+      );
       try {
         let sha: string | null;
         try {

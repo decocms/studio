@@ -33,6 +33,10 @@ import {
   siteEditorContentSearchShape,
   taskBoardSearchShape,
 } from "@/lib/legacy-workspace-search";
+import {
+  blogPostSearchShape,
+  blogSearchShape,
+} from "@/components/sandbox/content/blog/blog-search-params";
 
 const rootRoute = createRootRoute({
   /** No `<Providers>` here: the entry (`index.web.tsx`) wraps
@@ -693,6 +697,41 @@ const agentSiteEditorRoute = createRoute({
   }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-site-editor.tsx"),
+  ),
+});
+
+const agentBlogRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/blog",
+  staticData: {
+    pageTitle: "sidebar.projectNav.blog",
+    defaultMain: "blog",
+    mainView: "blog",
+  },
+  validateSearch: z.object(blogSearchShape),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-blog.tsx"),
+  ),
+});
+
+/** One post's editor, addressed by post id: the decofile block key moves
+ *  between the planning and live forms as the status changes, so a key in the
+ *  URL would break on a status change. */
+const agentBlogPostRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/blog/posts/$postId",
+  staticData: {
+    pageTitle: "sidebar.projectNav.blog",
+    defaultMain: "blog",
+    mainView: "blog-post",
+  },
+  validateSearch: z.object(blogPostSearchShape),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-blog-post.tsx"),
   ),
 });
 
@@ -1782,6 +1821,8 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   projectTasksRoute,
   projectReportsRoute,
   agentSiteEditorWithChildren,
+  agentBlogRoute,
+  agentBlogPostRoute,
   agentAutomationsRoute,
   agentAutomationRoute,
   agentSettingsRoute,

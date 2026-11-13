@@ -56,11 +56,19 @@ import {
   Plus,
   Trash01,
 } from "@untitledui/icons";
+import {
+  branchDraftKind,
+  type DraftKind,
+  draftNameKey,
+  draftsForView,
+  siblingDraft,
+} from "@/lib/draft-kind";
 import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
 import { useMembersQuery } from "@/hooks/use-members";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { useBlogView } from "@/hooks/use-blog-view";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
@@ -131,6 +139,9 @@ interface Props {
   spawnsNewChat?: boolean;
   /** Chat input collapses the label responsively; header always shows it. */
   placement?: "chat" | "header";
+  /** Which drafts the view works on: Blog lists and creates Blog drafts
+   *  (`blog-draft-` branches); every other view, the site's. */
+  draftKind?: DraftKind;
 }
 
 /** Version switcher over {@link useReleases}: the curated list of named,
@@ -159,8 +170,13 @@ export function BranchPicker({
   disabled = false,
   spawnsNewChat = false,
   placement = "chat",
+  draftKind: viewKind = "site",
 }: Props) {
   const t = useT();
+  // Drafts have kinds only while the org has the Blog view on; otherwise a
+  // `blog-draft-` branch is listed and picked like any other, as before.
+  const blogView = useBlogView();
+  const draftKind = blogView ? viewKind : null;
   const isHeader = placement === "header";
   const [open, setOpen] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -176,7 +192,12 @@ export function BranchPicker({
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
-  const startDraft = useStartDraft({ virtualMcpId, userLabel, userId });
+  const startDraft = useStartDraft({
+    virtualMcpId,
+    userLabel,
+    userId,
+    kind: draftKind ?? undefined,
+  });
   const { projectDefault } = useSessionRuntime(virtualMcpId);
   const isCodeDraft = (r: Release) =>
     releaseRuntime(r, projectDefault) === "sandbox";
@@ -219,9 +240,11 @@ export function BranchPicker({
 
   // At RELEASES_MAX the server rejects another create, so gate it in the UI.
   const atReleaseCap = releases.length >= RELEASES_MAX;
-  // The last draft stays: without one, the session would fall back to
-  // production, where a Fast Preview save commits to the live site.
-  const canDeleteRelease = releases.length > 1;
+  // The view's last draft stays: a draft goes only while another of the
+  // view's kind remains to move to. Without one, the session would fall back
+  // to production, where a Fast Preview save commits to the live site.
+  const canDeleteRelease = (r: Release) =>
+    !!siblingDraft(releases, r.branch, draftKind, projectDefault);
   const capReachedMessage = t("thread.branchPicker.capReached", {
     max: RELEASES_MAX,
   });
@@ -233,12 +256,21 @@ export function BranchPicker({
     baseIsDraft,
     storeDrafts,
   });
+  /** The view's own drafts, plus the current one whatever its kind. The cap
+   *  and the current draft above read the whole list: the server counts it
+   *  all, and a draft hidden here is still named. */
+  const shownReleases = draftsForView(releases, draftKind, value);
+  /** Likewise the CMS's own drafts, which are the site's. */
+  const shownStoreDrafts = storeDrafts.filter(
+    (d) =>
+      draftKind === null ||
+      branchDraftKind(d.name) === draftKind ||
+      d.name === value,
+  );
 
   const currentLabel = isBase
     ? t("thread.branchPicker.live")
-    : (current?.name ??
-      storeDraft?.name ??
-      t("thread.branchPicker.defaultVersionName"));
+    : (current?.name ?? storeDraft?.name ?? t(draftNameKey(value)));
   const label = localhostActive
     ? t("thread.branchPicker.localhost.label")
     : localActive
@@ -379,23 +411,27 @@ export function BranchPicker({
     const r = pendingDelete;
     setPendingDelete(null);
     // Checked again: the other draft may have gone while the dialog was open.
-    if (!r || !canDeleteRelease) return;
-    // Deleting the active draft: switch to a sibling draft (non-`sandbox` first,
-    // so a CMS chat stays put) — never to production, where a Fast Preview save
-    // commits to the live site.
+    if (!r || !canDeleteRelease(r)) return;
+    // Deleting the active draft: switch to a sibling draft of the view's kind
+    // (non-`sandbox` first, so a CMS chat stays put) — never to production,
+    // where a Fast Preview save commits to the live site.
     if (r.branch === value) {
-      const siblings = releases.filter((x) => x.branch !== r.branch);
-      const sibling = siblings.find((x) => !isCodeDraft(x)) ?? siblings[0];
+      const sibling = siblingDraft(
+        releases,
+        r.branch,
+        draftKind,
+        projectDefault,
+      );
       if (sibling) pick(sibling.branch);
       else setOpen(false);
     } else setOpen(false);
     deleteRelease(r.branch).catch(reportReleaseError);
   };
 
-  const releaseGroups = groupReleasesByRuntime(releases, projectDefault);
+  const releaseGroups = groupReleasesByRuntime(shownReleases, projectDefault);
   // Headers only when both kinds exist; a single kind stays a plain list.
   const groupByRuntime =
-    (releaseGroups.content.length > 0 || storeDrafts.length > 0) &&
+    (releaseGroups.content.length > 0 || shownStoreDrafts.length > 0) &&
     releaseGroups.code.length > 0;
   const releaseRow = (r: Release) =>
     editing === r.branch ? (
@@ -420,20 +456,21 @@ export function BranchPicker({
         onSelect={() => pick(r.branch)}
         onRename={() => startRename(r)}
         onDelete={() => setPendingDelete(r)}
-        deleteBlocked={!canDeleteRelease}
+        deleteBlocked={!canDeleteRelease(r)}
       />
     );
   // Discarding a CMS draft drops its row and its unpublished changes, as
   // `deco drafts discard` does — published or abandoned ones otherwise stay
-  // listed forever. Off the active one first, never to production.
+  // listed forever. Off the active one first, to a draft of the view's kind;
+  // never to production.
   const confirmDiscard = () => {
     const d = pendingDiscard;
     setPendingDiscard(null);
-    if (!d || (d.name === value && releases.length === 0)) return;
+    if (!d) return;
     if (d.name === value) {
-      const sibling = releases[0];
-      if (sibling) pick(sibling.branch);
-      else setOpen(false);
+      const sibling = siblingDraft(releases, d.name, draftKind, projectDefault);
+      if (!sibling) return;
+      pick(sibling.branch);
     }
     discardStoreDraft.mutateAsync(d.name).catch((err: unknown) => {
       toast.error(t("thread.branchPicker.discardStoreDraftError"), {
@@ -442,7 +479,7 @@ export function BranchPicker({
     });
   };
 
-  const storeDraftRows = storeDrafts.map((d, index) =>
+  const storeDraftRows = shownStoreDrafts.map((d) =>
     editing === d.name ? (
       <RenameInput
         key={`store:${d.name}`}
@@ -458,7 +495,7 @@ export function BranchPicker({
         dot={releaseDotClass(undefined)}
         label={d.name}
         creator={creatorName(d.createdBy)}
-        agentIcon={releaseIconClass(nextReleaseColor(index))}
+        agentIcon={releaseIconClass(nextReleaseColor(storeDrafts.indexOf(d)))}
         originTooltip={t("thread.branchPicker.storeDraftVia", {
           via: storeDraftVia(d.via),
         })}
@@ -469,7 +506,10 @@ export function BranchPicker({
           setEditName(d.name);
         }}
         onDelete={() => setPendingDiscard(d)}
-        deleteBlocked={d.name === value && releases.length === 0}
+        deleteBlocked={
+          d.name === value &&
+          !siblingDraft(releases, d.name, draftKind, projectDefault)
+        }
       />
     ),
   );
@@ -577,6 +617,7 @@ export function BranchPicker({
             onSaveLocal={activateLocal}
             onBack={() => setAdvanced(false)}
             onAdopt={adoptBranch}
+            draftKind={draftKind}
           />
         ) : (
           <>
@@ -610,7 +651,7 @@ export function BranchPicker({
                   <ReleaseRow
                     rowRef={localActive ? undefined : selectedRowRef}
                     dot={releaseDotClass("orange")}
-                    label={t("thread.branchPicker.defaultVersionName")}
+                    label={t(draftNameKey(value))}
                     branch={isV8 ? undefined : value}
                     originTooltip={
                       isV8 ? t("thread.branchPicker.viaStudioUi") : undefined
@@ -620,10 +661,7 @@ export function BranchPicker({
                     onRename={() => {
                       setEditing(value);
                       setEditName(
-                        nextDraftName(
-                          releases,
-                          t("thread.branchPicker.defaultVersionName"),
-                        ),
+                        nextDraftName(releases, t(draftNameKey(value))),
                       );
                     }}
                   />
@@ -642,7 +680,7 @@ export function BranchPicker({
                 </>
               ) : (
                 <>
-                  {releases.map(releaseRow)}
+                  {shownReleases.map(releaseRow)}
                   {storeDraftRows}
                 </>
               )}
@@ -657,8 +695,8 @@ export function BranchPicker({
               )}
             </div>
             {(unlisted ||
-              releases.length > 0 ||
-              storeDrafts.length > 0 ||
+              shownReleases.length > 0 ||
+              shownStoreDrafts.length > 0 ||
               isV8) && <div className="my-1 border-t" />}
             <button
               type="button"
@@ -1024,6 +1062,7 @@ function AdvancedPicker({
   onSaveLocal,
   onBack,
   onAdopt,
+  draftKind,
 }: {
   /** A Blocks v8 site (its "Blocks v8 site" switch): no Local tab, Localhost is in
    *  the drafts list instead. v7 gets main's Local tab. */
@@ -1044,6 +1083,9 @@ function AdvancedPicker({
   onSaveLocal: (url: string | null) => void;
   onBack: () => void;
   onAdopt: (branch: string, name: string) => void;
+  /** The site's views don't offer Blog drafts: adopting one there would be
+   *  sent straight back to the site's own draft. */
+  draftKind: DraftKind | null;
 }) {
   const t = useT();
   const [search, setSearch] = useState("");
@@ -1084,7 +1126,7 @@ function AdvancedPicker({
   const branches = [...recent, ...yours, ...others].filter((b) => {
     if (seen.has(b.name)) return false;
     seen.add(b.name);
-    return true;
+    return draftKind !== "site" || branchDraftKind(b.name) === "site";
   });
 
   return (

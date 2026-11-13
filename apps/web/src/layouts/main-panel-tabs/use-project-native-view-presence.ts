@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
+import { useBlogViewState } from "@/hooks/use-blog-view";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
@@ -14,6 +15,8 @@ export interface ProjectNativeViewPresenceResult {
   presence: ProjectNativeViewPresence;
   assetsPending: boolean;
   siteAccessPending: boolean;
+  /** The org's flags are loading: Blog's presence isn't known yet. */
+  blogPending: boolean;
 }
 
 /**
@@ -28,6 +31,7 @@ export function useProjectNativeViewPresence(
   const { org } = useProjectContext();
   const config = usePublicConfig();
   const controlPlaneViews = useControlPlaneViews();
+  const blogView = useBlogViewState();
   const fileConfigs = useFileConfigsQuery();
   // The hosted Deco CMS: Blocks v8 projects (their switch). A v7 project
   // never gets Releases, Calendar nor Experiments.
@@ -49,11 +53,13 @@ export function useProjectNativeViewPresence(
       // Every v8 site: its A/B tests are content too (v7 tests stay in
       // Monitor).
       experiments: v8,
+      blog: blogView === true,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending: siteAccessProbeEnabled && siteAccess.isPending,
+    blogPending: blogView === undefined,
   };
 }
 

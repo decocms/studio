@@ -1,9 +1,10 @@
 /**
  * The Posts area: one workspace with two views of the same lifecycle — a Kanban
  * Board (lanes by status, drag to advance) and a grouped List (by status by
- * default). Opening a post swaps to the editor;
- * the caller renders that with a Back button. Statuses are the blog app's own
- * `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
+ * default). In the Content tab an open post shows beside the list or in the
+ * board's drawer (`renderDetail`); Blog leaves for the post's own screen,
+ * `/blog/posts/<id>`, and lists posts full width. Statuses are the blog app's
+ * own `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
  */
 import { Fragment, type ReactNode, Suspense, useRef, useState } from "react";
 import {
@@ -141,6 +142,8 @@ export function PostsWorkspace({
   /** The open post — a highlighted row in list mode, an open drawer in board mode. */
   selectedKey?: string | null;
   onViewChange: (view: PostsView) => void;
+  /** Open a post by decofile block key: select it (with `renderDetail`) or
+   *  leave for its screen. */
   onOpen: (key: string) => void;
   /** Close the board's post drawer. */
   onClose?: () => void;
@@ -148,7 +151,8 @@ export function PostsWorkspace({
   move: PostStatusMove;
   /** Live schema — which section kinds generation may write. */
   meta: LiveMeta;
-  /** Renders the open post — the list's right pane or the board's floating panel. */
+  /** Renders the open post — the list's right pane or the board's floating
+   *  panel. Without it, the list takes the whole width. */
   renderDetail?: (
     key: string,
     controls?: {
@@ -606,7 +610,12 @@ export function PostsWorkspace({
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="flex w-80 shrink-0 flex-col border-r">
+          <div
+            className={cn(
+              "flex flex-col",
+              renderDetail ? "w-80 shrink-0 border-r" : "min-w-0 flex-1",
+            )}
+          >
             <PostSearchInput value={query} onChange={setQuery} />
             {selectionActive ? (
               <PostSelectionToolbar
@@ -637,7 +646,7 @@ export function PostsWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto">
               <PostList
                 posts={listedPosts}
-                selectedKey={detailKey}
+                selectedKey={renderDetail ? detailKey : null}
                 selectionActive={selectionActive}
                 selectedKeys={selectedKeys}
                 onToggleSelect={toggleSelect}
@@ -647,26 +656,28 @@ export function PostsWorkspace({
               />
             </div>
           </div>
-          <div className="min-w-0 flex-1 overflow-hidden">
-            {detailKey && renderDetail ? (
-              <Suspense
-                fallback={
-                  <div className="flex h-full items-center justify-center">
-                    <Loading02
-                      size={20}
-                      className="animate-spin text-muted-foreground"
-                    />
-                  </div>
-                }
-              >
-                {renderDetail(detailKey)}
-              </Suspense>
-            ) : (
-              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                {t("sandbox.postBoard.selectPrompt")}
-              </div>
-            )}
-          </div>
+          {renderDetail && (
+            <div className="min-w-0 flex-1 overflow-hidden">
+              {detailKey ? (
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center">
+                      <Loading02
+                        size={20}
+                        className="animate-spin text-muted-foreground"
+                      />
+                    </div>
+                  }
+                >
+                  {renderDetail(detailKey)}
+                </Suspense>
+              ) : (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                  {t("sandbox.postBoard.selectPrompt")}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

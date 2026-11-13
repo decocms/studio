@@ -1,6 +1,7 @@
 import { isBlockBody } from "@/cms/block-body";
 import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useBlogView } from "@/hooks/use-blog-view";
 import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
@@ -141,7 +142,7 @@ import {
   uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
-  kindOfResolveType,
+  isBlogRecordType,
   listAllPostPayloads,
   missingFieldsLabel,
   postIdOfKey,
@@ -261,8 +262,12 @@ const RedirectEditor = lazy(() =>
 
 /** Types whose list rows show fields of the body: loaded with the list (hosted v8). */
 function isBodyListedType(type: string): boolean {
+  return isBlogRecordType(type) || isSiteBodyListedType(type);
+}
+
+/** {@link isBodyListedType} when the blog is the Blog view's, not listed here. */
+function isSiteBodyListedType(type: string): boolean {
   return (
-    kindOfResolveType(type) !== null ||
     type === REDIRECTS_RESOLVE_TYPE ||
     type === "redirect" ||
     REDIRECT_LOADER_RESOLVE_TYPES.has(type)
@@ -298,23 +303,35 @@ export function visibleCollection(
   blogAi: boolean,
   /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
+  /** The org's Blog view (`blog_view_enabled`) holds the blog instead. */
+  blogView = false,
 ): CollectionId {
+  if (blogView && isBlogCollection(active)) return "pages";
   if (active === "context" && !blogAi) return "posts";
   if (blocksV8 && active === "calendar") return "pages";
   return active;
 }
 
+/** The blog's collections: its records, its schedule and its brand context. */
+function isBlogCollection(id: CollectionId): boolean {
+  return isBlogKind(id) || id === "post-schedule" || id === "context";
+}
+
 /**
  * A `?contentCollection=` deep link's collection: a blog collection (the Blog
- * Manager's "Editar no Studio") and, on a Blocks v8 site, Sections (the
- * Experiments tab's links). Anything else opens Pages.
+ * Manager's "Editar no Studio"), unless the org's Blog view takes those, and,
+ * on a Blocks v8 site, Sections (the Experiments tab's links). Anything else
+ * opens Pages.
  */
 export function deepLinkCollection(
   param: string | undefined,
   blocksV8: boolean,
+  blogView = false,
 ): CollectionId | null {
   if (!param) return null;
-  if (isBlogKind(param as CollectionId)) return param as CollectionId;
+  if (isBlogKind(param as CollectionId)) {
+    return blogView ? null : (param as CollectionId);
+  }
   if (!blocksV8) return null;
   return param === "sections" ? param : null;
 }
@@ -546,9 +563,11 @@ function ContentBrowserReady({
   // show fields of the body (blog records, redirect rules, the site app)
   // load their blocks.
   const scope = { orgSlug, virtualMcpId, branch };
+  // With the org's Blog view on, the blog isn't listed here.
+  const blogView = useBlogView();
   const typeListNames = useIndexNamesOfType(
     hostedDraft ? scope : null,
-    isBodyListedType,
+    blogView ? isSiteBodyListedType : isBodyListedType,
   );
   const typeListLoad = useEnsureDecofileBlocks(
     hostedDraft ? scope : null,
@@ -563,8 +582,11 @@ function ContentBrowserReady({
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
-      deepLinkCollection(contentDeepLink.contentCollection, !runsSiteCode) ??
-      "pages",
+      deepLinkCollection(
+        contentDeepLink.contentCollection,
+        !runsSiteCode,
+        blogView,
+      ) ?? "pages",
   );
   const blogAi = useBlogAi();
   const legacyContent = useLegacyBlogPostFormat(virtualMcpId);
@@ -572,6 +594,7 @@ function ContentBrowserReady({
     storedCollection,
     blogAi,
     !runsSiteCode,
+    blogView,
   );
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
@@ -937,7 +960,8 @@ function ContentBrowserReady({
     activeCollection === "sections" ? listAvailableSections(meta) : [];
   const siteApp = findSiteAppEntry(decofile, meta);
   const allBlogEntries = scanBlogEntries(decofile);
-  const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
+  const showBlog =
+    !blogView && BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
   const blogEntries = isBlogKind(activeCollection)
     ? allBlogEntries[activeCollection]
     : [];
@@ -2113,7 +2137,7 @@ function ContentBrowserReady({
             counts={counts}
             hidden={hiddenCollections}
             showBlog={showBlog}
-            showContext={blogAi}
+            showContext={blogAi && !blogView}
             onSelect={(id) => {
               setActiveCollection(id);
               setSelection(null);

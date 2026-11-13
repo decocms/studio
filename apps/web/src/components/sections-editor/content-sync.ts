@@ -261,9 +261,18 @@ async function contentChanged(
           queryKey: KEYS.hostedReleases(orgSlug, virtualMcpId),
         })
       : null;
-  // Any other backend refreshes the way it always has, in its own write.
+  // Any other backend refreshes in its own write, except for a change the
+  // editor did not make (a discard): Fast Preview has no push to re-read it.
   if (backend?.kind !== "protocol") {
-    await releases;
+    const reread =
+      cacheKey && change.reread
+        ? queryClient.invalidateQueries({ queryKey: KEYS.decofile(cacheKey) })
+        : null;
+    await Promise.all([releases, reread]);
+    if (reread && change.kind !== "edit") {
+      const scope = contentSyncScope(orgSlug, virtualMcpId);
+      set(scope, { epoch: getContentSyncState(scope).epoch + 1 });
+    }
     return { navigates: false };
   }
   const pointerKey = branch

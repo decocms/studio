@@ -60,7 +60,9 @@ export function branchUserLabel(
  * the most human-readable identity they have; slugification handles the rest.
  */
 export function generateBranchName(userLabel?: string | null): string {
-  const slug = slugify(userLabel);
+  const label = slugify(userLabel);
+  // A user whose name slugs to "blog-draft…" must not mint Blog drafts.
+  const slug = isBlogDraftBranch(`${label}-`) ? `user-${label}` : label;
   // base36(Date.now()) is a clock: its high-order (leading) digits change
   // slowly, so branches minted the same day share a prefix like "mrch3…".
   // Reverse the digits so the fast-changing low-order digit leads and the
@@ -69,4 +71,20 @@ export function generateBranchName(userLabel?: string | null): string {
   // within the same millisecond).
   const stamp = Date.now().toString(36).split("").reverse().join("");
   return `${slug}-${stamp}`;
+}
+
+/**
+ * Blog drafts are told apart from the site's drafts by their branch name
+ * alone, so neither the thread nor its release needs a field of its own.
+ */
+export const BLOG_DRAFT_BRANCH_PREFIX = "blog-draft-";
+
+/** Whether `branch` is a Blog draft (see {@link BLOG_DRAFT_BRANCH_PREFIX}). */
+export function isBlogDraftBranch(branch: string | null | undefined): boolean {
+  return !!branch?.startsWith(BLOG_DRAFT_BRANCH_PREFIX);
+}
+
+/** A fresh Blog draft branch: `blog-draft-<user-slug>-<stamp>`. */
+export function blogDraftBranchName(userLabel?: string | null): string {
+  return `${BLOG_DRAFT_BRANCH_PREFIX}${generateBranchName(userLabel)}`;
 }

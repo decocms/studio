@@ -91,6 +91,13 @@ describe("buildSiteMetaRequest", () => {
     ).toEqual({ accept: "application/json" });
   });
 
+  it("forwards a weakened etag as the site issued it", () => {
+    expect(
+      buildSiteMetaRequest({ target: untrusted, ifNoneMatch: 'W/"abc"' })
+        .headers["if-none-match"],
+    ).toBe('"abc"');
+  });
+
   it("forwards the etag and ignores empty values", () => {
     expect(
       buildSiteMetaRequest({ target: untrusted, ifNoneMatch: '"abc"' }).headers,

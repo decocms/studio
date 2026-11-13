@@ -23,8 +23,12 @@ import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import {
+  blogDraftBranchName,
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import {
   useThreadActions,
   useThreadManager,
@@ -74,6 +78,13 @@ import {
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
+import {
+  blogThreadDefaults,
+  draftNameKey,
+  isEntryCandidate,
+  viewAcceptsThread,
+} from "@/lib/draft-kind";
 import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
 import type { Task } from "@/components/chat/task/types";
 import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
@@ -187,6 +198,7 @@ function VmEventsBridge({
   const t = useT();
   const { currentBranch, activeTask, setCurrentTaskBranch, isThreadLocked } =
     useChatTask();
+  const draftKind = useViewDraftKind();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
   const executionEnabled = !shouldBlockHostedRuntime(activeTask?.harness_id);
@@ -230,20 +242,28 @@ function VmEventsBridge({
     if (!adoptBranchEligible || !activeTask) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't mint twice
     adoptedBranchForThreadRef.current = activeTask.id;
+    // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
+    // would let Better Auth's empty display name through and slug to "user".
+    const label = session?.user?.name || session?.user?.email?.split("@")[0];
     setCurrentTaskBranch(
-      generateBranchName(
-        // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
-        // would let Better Auth's empty display name through and slug to "user".
-        session?.user?.name || session?.user?.email?.split("@")[0],
-      ),
+      draftKind === "blog"
+        ? blogDraftBranchName(label)
+        : generateBranchName(label),
     );
-  }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
+  }, [
+    adoptBranchEligible,
+    activeTask,
+    session,
+    setCurrentTaskBranch,
+    draftKind,
+  ]);
 
   const sessionState = useSessionRuntime(virtualMcpId);
   /** `null` until the answer is real — never act on the project default. */
   const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
 
-  // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
+  // Auto-name a fresh draft "Draft N" (a Blog draft "Blog Draft N", by its
+  // branch); one write per branch per tab, like the guards above.
   const draftsVm = useVirtualMCP(virtualMcpId);
   const draftsBase = useBaseBranch(draftsVm, currentBranch);
   const {
@@ -280,10 +300,7 @@ function VmEventsBridge({
     namedDraftForBranchRef.current = currentBranch;
     createDraftRelease({
       branch: currentBranch,
-      name: nextDraftName(
-        draftReleases,
-        t("thread.branchPicker.defaultVersionName"),
-      ),
+      name: nextDraftName(draftReleases, t(draftNameKey(currentBranch))),
       color: nextReleaseColor(draftReleases.length),
       createdBy: userId,
       createdAt: new Date().toISOString(),
@@ -544,6 +561,14 @@ function ThreadSessionProvider() {
       session?.user?.name || session?.user?.email?.split("@")[0],
     ),
   );
+  /** Blog mints its own entry, on a Blog draft. A separate id, so a thread
+   *  the shell minted for another view (and carried here) is never the one
+   *  Blog is sent to. */
+  const [blogMintId] = useState(() => crypto.randomUUID());
+  const [blogMintBranch] = useState(() =>
+    blogDraftBranchName(branchUserLabel(session?.user)),
+  );
+  const draftKind = useViewDraftKind();
   const threadManager = useThreadManager();
   const threads = useSyncExternalStore(
     threadManager.threads.subscribe,
@@ -569,14 +594,33 @@ function ThreadSessionProvider() {
   if (routeThreadId !== null && composerSettledFor !== null) {
     setComposerSettledFor(null);
   }
+  // Ensure the thread row exists for this URL before rendering the chat. On
+  // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
+  // "Creating task…" state until the row is persisted. Without this the
+  // chat renders with branch=null because the thread never existed.
+  const ensureState = useEnsureTask(routeThreadId, virtualMcpId, (id) =>
+    // A freshly minted thread lands on an editable draft, never production.
+    id === blogMintId ? blogMintBranch : generatedDraftBranch,
+  );
+  const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
+  /** The thread in the URL is one this view can't show: Blog on a site draft
+   *  in Fast Preview, or a site view on a Blog draft. It goes to the view's
+   *  own entry. */
+  const refusedThread =
+    !!ensuredTask &&
+    !!routeAgentId &&
+    ensuredTask.virtual_mcp_id === virtualMcpId &&
+    !viewAcceptsThread(draftKind, ensuredTask, entity?.metadata);
   const resolvingEntry =
-    routeThreadId === null &&
+    (routeThreadId === null || refusedThread) &&
     !!routeAgentId &&
     !!entity &&
-    composerSettledFor !== virtualMcpId;
+    (refusedThread || composerSettledFor !== virtualMcpId);
   const findEntry = (candidates: Task[]) =>
     findAgentEntryThread(
-      candidates,
+      candidates.filter((thread) =>
+        isEntryCandidate(draftKind, thread, entity?.metadata),
+      ),
       virtualMcpId,
       session?.user?.id,
       defaultThreadRuntime(entity?.metadata),
@@ -593,17 +637,6 @@ function ThreadSessionProvider() {
   const scopedEntryThreads = useAgentEntryThreads(
     virtualMcpId,
     resolvingEntry && threadsStatus.kind !== "loading" && !localEntry,
-  );
-
-  // Ensure the thread row exists for this URL before rendering the chat. On
-  // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
-  // "Creating task…" state until the row is persisted. Without this the
-  // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(
-    routeThreadId,
-    virtualMcpId,
-    // A freshly minted thread lands on an editable draft, never production.
-    generatedDraftBranch,
   );
 
   // Read-only teammate threads: pull the current metadata (repository /
@@ -636,7 +669,12 @@ function ThreadSessionProvider() {
       await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
-        ...(branch ? { branch } : {}),
+        // A chat opened from Blog is a Blog draft.
+        ...(draftKind === "blog"
+          ? blogThreadDefaults(branch, branchUserLabel(session?.user))
+          : branch
+            ? { branch }
+            : {}),
       });
     } catch {
       // The collection action reports errors; the route retries a missing row.
@@ -658,7 +696,6 @@ function ThreadSessionProvider() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
   const ensuredTaskAgentId = ensuredTask?.virtual_mcp_id;
   if (
     ensuredTask &&
@@ -710,16 +747,36 @@ function ThreadSessionProvider() {
       (scopedEntryThreads.status === "ready"
         ? findEntry(scopedEntryThreads.threads)
         : undefined);
-    const threadId =
-      entry?.id ?? (hasActiveRepository ? generatedThreadId : null);
-    if (threadId) {
+    // A repo editor mints a draft of the view's kind.
+    const mint = hasActiveRepository
+      ? draftKind === "blog"
+        ? blogMintId
+        : generatedThreadId
+      : null;
+    const threadId = entry?.id ?? mint;
+    // Sending the URL to the thread it already names would render nothing.
+    if (threadId && threadId === routeThreadId) {
+      return (
+        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+          <div
+            role="alert"
+            className="flex h-full items-center justify-center bg-background shadow-edge rounded-[0.75rem] p-8 text-sm text-muted-foreground"
+          >
+            {t("agentShellLayout.agentShellLayout.viewDraftUnavailable")}
+          </div>
+        </div>
+      );
+    }
+    if (threadId || refusedThread) {
       return (
         <Navigate
           to="."
           replace
           search={(prev: Record<string, unknown>) => ({
             ...prev,
-            thread: threadId,
+            // No entry to send a refused thread to: drop it, and the no-thread
+            // path decides (a composer, never a loop through this branch).
+            thread: threadId ?? undefined,
           })}
         />
       );
