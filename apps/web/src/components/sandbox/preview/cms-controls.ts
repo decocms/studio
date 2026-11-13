@@ -14,12 +14,17 @@ export function showPreviewToolbarFor(input: {
   );
 }
 
-/** The page selector uses the exact same product gate as Content and Blocks. */
-export function showCmsPageSelector(input: {
+/** The page selector lists CMS pages under the same gate as Content and
+ *  Blocks, and the site's own router routes, which need no CMS. */
+export function showPageSelector(input: {
   showPreviewToolbar: boolean;
   contentEditingEnabled: boolean;
+  hasFrameworkRoutes: boolean;
 }): boolean {
-  return input.showPreviewToolbar && input.contentEditingEnabled;
+  return (
+    input.showPreviewToolbar &&
+    (input.contentEditingEnabled || input.hasFrameworkRoutes)
+  );
 }
 
 /** What activates the v7 CMS overlay script in the frame. */
