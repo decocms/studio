@@ -7,7 +7,6 @@ import {
   withPendingStatus,
 } from "./git-compat";
 import {
-  overlayDecofile,
   type PendingFile,
   pendingFileContent,
   pendingVersion,
@@ -50,25 +49,6 @@ describe("pendingVersion", () => {
     ]);
     const after = pendingVersion(SHA, [block("b", {}, "2")]);
     expect(after).not.toBe(before);
-  });
-});
-
-describe("overlayDecofile", () => {
-  it("sets and deletes the pending blocks over the merged document", () => {
-    const merged = JSON.stringify({ home: { v: 1 }, gone: { v: 1 } });
-    const out = JSON.parse(
-      overlayDecofile(merged, [
-        block("home", { v: 2 }),
-        block("gone", null),
-        block("new", { v: 1 }),
-      ]),
-    );
-    expect(out).toEqual({ home: { v: 2 }, new: { v: 1 } });
-  });
-
-  it("returns the document untouched when nothing is pending", () => {
-    const merged = '{"home":{"v":1}}';
-    expect(overlayDecofile(merged, [])).toBe(merged);
   });
 });
 

@@ -56,20 +56,6 @@ export function pendingVersion(
   return `${headSha}.${digest.digest("hex").slice(0, 16)}`;
 }
 
-/** The merged decofile (JSON text) with the pending blocks laid over it. */
-export function overlayDecofile(
-  decofile: string,
-  pending: DecofilePendingBlock[],
-): string {
-  if (pending.length === 0) return decofile;
-  const doc = JSON.parse(decofile) as Record<string, unknown>;
-  for (const block of pending) {
-    if (block.content === null) delete doc[block.blockKey];
-    else doc[block.blockKey] = block.content;
-  }
-  return JSON.stringify(doc);
-}
-
 /** A pending block's file content, as the commit will write it. */
 export function pendingFileContent(block: DecofilePendingBlock): string | null {
   return block.content === null

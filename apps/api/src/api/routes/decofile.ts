@@ -59,7 +59,6 @@ import {
   commitPendingBlocks,
   decofileQueueKey,
   holdDecofilePatch,
-  overlayDecofile,
   pendingVersion,
 } from "@/decofile/pending-blocks";
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
@@ -70,12 +69,13 @@ import {
   repoGitRebase,
 } from "@/decofile/git-compat";
 import {
+  DecofileTooLargeError,
   readDecofileSnapshot,
   resolveOrCreateHead,
+  streamDocument,
 } from "@/decofile/read-decofile";
 import { readCommittedMeta } from "@/decofile/read-meta";
 import { projectPackagePath } from "@/hosted/blocks-major";
-import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
 
@@ -327,6 +327,9 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
   if (err instanceof DefaultBranchWriteError) {
     return c.json({ error: message, code: DEFAULT_BRANCH_READ_ONLY }, 409);
   }
+  if (err instanceof DecofileTooLargeError) {
+    return c.json({ error: message, code: "decofile-too-large" }, 413);
+  }
   if (err instanceof RepoWriteConflict) return c.json({ error: message }, 409);
   const retryAfterMs = repoRateLimitRetryAfterMs(err);
   if (retryAfterMs !== undefined) {
@@ -390,7 +393,6 @@ export function createDecofileRoutes(
       if (c.req.header("if-none-match") === `"${version}"`) {
         return c.body(null, 304, headers);
       }
-      const decofile = overlayDecofile(snapshot.decofile, pending);
 
       // Two consumers, two shapes, distinguished by how they authenticate:
       // the production runtime (anonymous + ?token=) expects the BARE decofile
@@ -399,19 +401,20 @@ export function createDecofileRoutes(
       // The editor (session) gets the wrapper with the version and a fresh
       // draft token, so the preview pointer it builds never carries a stale
       // grant.
+      headers["content-type"] = "application/json";
       if (!scope.userId) {
+        const doc = await snapshot.open({ version, pending });
         // Preview-only: render unscheduled planning posts (see blog-draft-projection).
-        return c.body(projectPlanningPostsForPreview(decofile), 200, {
-          ...headers,
-          "content-type": "application/json",
-        });
+        const body = streamDocument(doc, { appendMembers: doc.previewMembers });
+        return c.body(body, 200, headers);
       }
       const token = signScopeDraftToken(scope);
-      return c.body(
-        `{"version":${JSON.stringify(version)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":${decofile}}`,
-        200,
-        { ...headers, "content-type": "application/json" },
-      );
+      const doc = await snapshot.open({ version, pending });
+      const body = streamDocument(doc, {
+        prefix: `{"version":${JSON.stringify(version)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":`,
+        suffix: "}",
+      });
+      return c.body(body, 200, headers);
     } catch (err) {
       return errorResponse(c, err);
     }

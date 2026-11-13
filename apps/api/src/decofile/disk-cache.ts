@@ -27,7 +27,9 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  type FileHandle,
   mkdir,
+  open,
   readdir,
   readFile,
   rename,
@@ -99,7 +101,7 @@ function getConfig(): DiskCacheConfig {
       ),
       maxEntryBytes: {
         blobs: envBytes("FAST_PREVIEW_CACHE_MAX_BLOB_BYTES", MiB),
-        merged: envBytes("FAST_PREVIEW_CACHE_MAX_MERGED_BYTES", 32 * MiB),
+        merged: envBytes("FAST_PREVIEW_CACHE_MAX_MERGED_BYTES", 256 * MiB),
       },
     },
     freeFloorBytes: envBytes("FAST_PREVIEW_CACHE_FREE_FLOOR_BYTES", GiB),
@@ -401,6 +403,51 @@ export function getMerged(
   return readEntry("merged", mergedKey(owner, repo, headSha));
 }
 
+/** True when the blob is cached. An index lookup: nothing is read. */
+export async function hasBlob(
+  owner: string,
+  repo: string,
+  blobSha: string,
+): Promise<boolean> {
+  try {
+    const state = await getState();
+    const rel = blobKey(owner, repo, blobSha);
+    return state !== null && rel !== null && state.index.entries.has(rel);
+  } catch {
+    return false;
+  }
+}
+
+/** Opens a cached merged document for streaming. The open handle keeps its
+ * bytes readable even if the entry is evicted mid-read. Null on a miss. */
+export async function openMerged(
+  owner: string,
+  repo: string,
+  headSha: string,
+): Promise<{ handle: FileHandle; size: number } | null> {
+  try {
+    const state = await getState();
+    if (!state) return null;
+    const rel = mergedKey(owner, repo, headSha);
+    let handle: FileHandle | null = null;
+    try {
+      if (rel === null) throw new Error("invalid key");
+      handle = await open(join(state.root, rel), "r");
+      const { size } = await handle.stat();
+      touch(state.index, rel);
+      countHit("merged");
+      return { handle, size };
+    } catch {
+      await handle?.close().catch(() => {});
+      countMiss("merged");
+      return null;
+    }
+  } catch {
+    countError("get_merged");
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Writes.
 
@@ -442,55 +489,76 @@ async function emergencyEvict(state: CacheState): Promise<void> {
   }
 }
 
-async function writeEntry(
+/** Admits `rel` and has `place` put its bytes at the destination path. True
+ * when the entry landed. */
+async function admitEntry(
   area: CacheArea,
   op: string,
   rel: string | null,
-  content: string,
-): Promise<void> {
+  bytes: number,
+  place: (dest: string, root: string) => Promise<void>,
+): Promise<boolean> {
   try {
     const state = await getState();
-    if (!state) return;
+    if (!state) return false;
     if (rel === null) {
       countInvalidKey(op);
-      return;
+      return false;
     }
     if (!(await hasFreeSpace(state))) {
       counters.floorSkips += 1;
       instruments?.floorSkips.add(1);
-      return;
+      return false;
     }
-    const bytes = Buffer.byteLength(content, "utf8");
     const plan = admit(state.index, { path: rel, bytes, area });
     if (!plan.admitted) {
       // Over an admission cap — served but not cached (spec §Limits). Not an
       // OTel metric (not in the spec's list); tracked for tests/logs only.
       counters.admissionRefusals += 1;
-      return;
+      return false;
     }
     for (const victim of plan.evict) {
       await unlinkSafe(join(state.root, victim));
       countEviction();
     }
-    // Atomic write: stage in tmp/ on the same volume, then rename into place.
-    const staging = join(state.root, "tmp", `stage-${randomUUID()}`);
     try {
-      await writeFile(staging, content, "utf8");
       const dest = join(state.root, rel);
       await mkdir(dirname(dest), { recursive: true });
-      await rename(staging, dest);
+      await place(dest, state.root);
+      return true;
     } catch (err) {
       // The admit already inserted the entry; the file never landed. Undo.
       remove(state.index, rel);
-      await unlinkSafe(staging);
       countError(op);
       if ((err as NodeJS.ErrnoException | null)?.code === "ENOSPC") {
         await emergencyEvict(state);
       }
+      return false;
     }
   } catch {
     countError(op);
+    return false;
   }
+}
+
+function writeEntry(
+  area: CacheArea,
+  op: string,
+  rel: string | null,
+  content: string,
+): Promise<boolean> {
+  const bytes = Buffer.byteLength(content, "utf8");
+  return admitEntry(area, op, rel, bytes, async (dest, root) => {
+    // Atomic write: stage in tmp/ on the same volume, then rename into place.
+    const staging = join(root, "tmp", `stage-${randomUUID()}`);
+    try {
+      await writeFile(staging, content, "utf8");
+      await rename(staging, dest);
+    } catch (err) {
+      await unlinkSafe(staging);
+      throw err;
+    }
+  });
 }
 
 export function putBlob(
@@ -498,7 +566,7 @@ export function putBlob(
   repo: string,
   blobSha: string,
   content: string,
-): Promise<void> {
+): Promise<boolean> {
   return writeEntry(
     "blobs",
     "put_blob",
@@ -512,12 +580,31 @@ export function putMerged(
   repo: string,
   headSha: string,
   content: string,
-): Promise<void> {
+): Promise<boolean> {
   return writeEntry(
     "merged",
     "put_merged",
     mergedKey(owner, repo, headSha),
     content,
+  );
+}
+
+/** Moves a fully written file (under a scratch dir, so on the cache volume)
+ * into the merged area. False when it didn't land; the file is then left in
+ * place for the caller. */
+export function adoptMerged(
+  owner: string,
+  repo: string,
+  headSha: string,
+  path: string,
+  bytes: number,
+): Promise<boolean> {
+  return admitEntry(
+    "merged",
+    "put_merged",
+    mergedKey(owner, repo, headSha),
+    bytes,
+    (dest) => rename(path, dest),
   );
 }
 

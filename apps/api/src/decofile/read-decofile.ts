@@ -1,9 +1,10 @@
 import { mapBounded } from "@decocms/shared/std";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { type FileHandle, mkdir, open, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
+  createBlockMerger,
   decoBlockKeyFromFileStem,
-  mergeBlocks,
 } from "@decocms/shared/decofile";
 import { repoIdentityKey, type RepoRef } from "@decocms/shared/git-providers";
 import type { Counter } from "@opentelemetry/api";
@@ -13,11 +14,16 @@ import {
   RepoWriteConflict,
   type TreeEntry,
 } from "@/git-providers";
+import type { DecofilePendingBlock } from "@/storage/types";
 import { meter } from "../observability";
+import { createPreviewProjection } from "./blog-draft-projection";
 import {
+  adoptMerged,
   getBlob,
   getMerged,
+  hasBlob,
   makeScratchDir,
+  openMerged,
   putBlob,
   putMerged,
   removeScratchDir,
@@ -77,20 +83,33 @@ const BLOB_FETCH_CONCURRENCY = 12;
  * per-blob API calls (rate-limit- and latency-wise). */
 const COLD_READ_TARBALL_THRESHOLD = 50;
 
-/** Spec §Limits: refuse the tarball path when the tree-derived blocks
- * aggregate size exceeds this (golden rule 3 beats golden rule 2). Read here
- * rather than exposed from disk-cache config because it guards the fetch
- * path, not the store; read per cold read (rare) so tests can tune it via
- * env without a reset hook. */
-const COLD_TARBALL_MAX_BYTES_DEFAULT = 128 * 1024 * 1024;
+/** Spec §Limits: the read streams, so this bounds the disk entry and what the
+ * editor's browser tab must parse, not API memory. Read per call so tests can
+ * tune it via env without a reset hook. */
+const DECOFILE_MAX_BYTES_DEFAULT = 256 * 1024 * 1024;
 
-function coldTarballMaxBytes(): number {
-  const raw = Bun.env.FAST_PREVIEW_COLD_TARBALL_MAX_BYTES;
-  if (raw === undefined || raw === "") return COLD_TARBALL_MAX_BYTES_DEFAULT;
+function decofileMaxBytes(): number {
+  const raw = Bun.env.FAST_PREVIEW_DECOFILE_MAX_BYTES;
+  if (raw === undefined || raw === "") return DECOFILE_MAX_BYTES_DEFAULT;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0
     ? Math.floor(value)
-    : COLD_TARBALL_MAX_BYTES_DEFAULT;
+    : DECOFILE_MAX_BYTES_DEFAULT;
+}
+
+export class DecofileTooLargeError extends Error {
+  constructor(bytes: number, maxBytes: number) {
+    const mb = (n: number) => Math.ceil(n / (1024 * 1024));
+    super(
+      `This site's blocks total ${mb(bytes)} MB, over the ${mb(maxBytes)} MB the editor can load`,
+    );
+    this.name = "DecofileTooLargeError";
+  }
+}
+
+function assertReadableSize(bytes: number): void {
+  const maxBytes = decofileMaxBytes();
+  if (bytes > maxBytes) throw new DecofileTooLargeError(bytes, maxBytes);
 }
 
 /** Lazily created so it binds the post-SDK-start meter (same pattern as
@@ -184,8 +203,11 @@ export function gitBlobSha(content: string): string {
 /** Let writers prime blobs they just wrote, so the read after a save never
  * re-fetches content this replica already has in hand. Write-through to the
  * disk store; fail-open (a store problem is a no-op, never an error). */
-export function primeBlobCache(repo: RepoRef, content: string): Promise<void> {
-  return putBlob(...cacheScope(repo), gitBlobSha(content), content);
+export async function primeBlobCache(
+  repo: RepoRef,
+  content: string,
+): Promise<void> {
+  await putBlob(...cacheScope(repo), gitBlobSha(content), content);
 }
 
 /** A block source that is either already in hand or still addressed by sha. */
@@ -243,11 +265,27 @@ export async function resolveBlockContents(
   });
 }
 
+/** A merged document opened for one response. */
+export interface DecofileDocument {
+  /** Byte length of the merged document. */
+  size: number;
+  /** Members the anonymous preview pull appends (see blog-draft-projection);
+   * "" when none. */
+  previewMembers: string;
+  /** The document's bytes. Read once; ending the read early releases it. */
+  chunks(): AsyncGenerator<Uint8Array>;
+}
+
 export interface DecofileSnapshot {
   /** Branch head commit sha — the version everywhere (ETag, __draft, response). */
   sha: string;
-  /** Merged decofile document (JSON text). */
-  decofile: string;
+  /** Opens the merged document with the held saves laid over it (see
+   * pending-blocks), as of `version` — `pendingVersion` of the head and those
+   * rows. Once per response, right before streaming it. */
+  open(overlay: {
+    version: string;
+    pending: DecofilePendingBlock[];
+  }): Promise<DecofileDocument>;
 }
 
 /** Bump when the merge output changes so entries written by an older
@@ -256,22 +294,36 @@ export interface DecofileSnapshot {
 const MERGED_DOC_FORMAT = "3";
 
 /**
- * Disk key for the merged document — a sha1 of (format, head sha, packagePath),
- * so it's deterministic/content-addressed (restart-warm) yet distinct per
- * nested project (two can share one repo) and per merge-output format.
+ * Disk key for the merged document — a sha1 of (format, version,
+ * packagePath), so it's deterministic/content-addressed (restart-warm) yet
+ * distinct per set of held saves, per nested project (two can share one repo)
+ * and per merge-output format. `part` keys the document's preview members as
+ * a sibling entry.
  */
-function mergedDocSha(sha: string, packagePath: string | null): string {
+function mergedDocSha(
+  version: string,
+  packagePath: string | null,
+  part: "doc" | "preview",
+): string {
+  const tag = part === "doc" ? "" : `${part}:`;
   return createHash("sha1")
-    .update(`${MERGED_DOC_FORMAT}:${sha}:${packagePath ?? ""}`)
+    .update(`${MERGED_DOC_FORMAT}:${tag}${version}:${packagePath ?? ""}`)
     .digest("hex");
 }
 
-/** Concurrent snapshot reads of the same content share ONE resolution — this
- * exists for the thundering herd on cold reads (spec §Cold read) but wraps
- * warm reads too (cheap). Keyed by content, not branch: the branch → sha
- * resolution happens BEFORE the flight. `packagePath` is part of the key
- * (the merged doc depends on it). */
-const snapshotFlight = createSingleFlight<DecofileSnapshot>();
+/** A merge that could not land in the disk cache, served from memory. */
+interface InMemoryDoc {
+  chunks: Uint8Array[];
+  size: number;
+  previewMembers: string;
+}
+
+/** Concurrent reads of the same content share ONE merge — this exists for the
+ * thundering herd on cold reads (spec §Cold read). Keyed by content, not
+ * branch: the branch → sha resolution happens BEFORE the flight.
+ * `packagePath` is part of the key (the merged doc depends on it). Resolves
+ * null when the merge landed in the cache, for each reader to open. */
+const mergeFlight = createSingleFlight<InMemoryDoc | null>();
 
 export async function readDecofileSnapshot(
   client: RepoContentClient,
@@ -287,146 +339,338 @@ export async function readDecofileSnapshot(
   const sha = options?.createBranchIfMissing
     ? await resolveOrCreateHead(client, branch)
     : await requireBranchHead(client, branch);
-  return snapshotFlight.run(
-    `${repoIdentityKey(client.repo)}@${sha}:${packagePath ?? ""}`,
-    () => resolveSnapshot(client, sha, packagePath),
-  );
+  return {
+    sha,
+    open: (overlay) => openDocument(client, sha, packagePath, overlay),
+  };
 }
 
-async function resolveSnapshot(
+async function openDocument(
   client: RepoContentClient,
   sha: string,
   packagePath: string | null,
-): Promise<DecofileSnapshot> {
+  overlay: { version: string; pending: DecofilePendingBlock[] },
+): Promise<DecofileDocument> {
   const [owner, repo] = cacheScope(client.repo);
-  const docSha = mergedDocSha(sha, packagePath);
-
-  // Merged disk hit: serve the stored string as-is — no JSON parse, no
-  // re-serialization (byte-identical responses across reads).
-  const cachedMerged = await getMerged(owner, repo, docSha);
-  if (cachedMerged !== null) return { sha, decofile: cachedMerged };
-
-  const tree = await client.listDecofileEntries(sha, packagePath);
-  const entries = blockEntriesInTree(tree, packagePath);
-
-  // Per-blob disk hits first; only what's left goes to GitHub.
-  const known = new Map<string, string>(); // tree path -> block content
-  await mapBounded(entries, BLOB_FETCH_CONCURRENCY, async (e) => {
-    const hit = await getBlob(owner, repo, e.sha);
-    if (hit !== null) known.set(e.path, hit);
-  });
-  const missing = entries.length - known.size;
-
-  // Truly cold (most blobs unknown): ONE tarball request instead of one blob
-  // request per block — a ~700-block site would otherwise burn hundreds of
-  // API calls and can trip GitHub's abuse limiter. NOT worth it warm: after a
-  // save only the changed blob is missing, and the tarball is the whole repo
-  // archive versus one small blob fetch. Any failure (no tarball endpoint —
-  // the e2e stub —, oversized blocks, cache disabled, tar error) falls back
-  // to the bounded blob fetches below.
-  if (missing > COLD_READ_TARBALL_THRESHOLD) {
-    const extracted = await tryTarballIngest(client, sha, packagePath, entries);
-    countColdRead(extracted !== null ? "tarball" : "blobs");
-    if (extracted !== null) {
-      for (const [path, content] of extracted) known.set(path, content);
+  const docSha = mergedDocSha(overlay.version, packagePath, "doc");
+  const previewSha = mergedDocSha(overlay.version, packagePath, "preview");
+  const cached = () => openCachedDocument(owner, repo, docSha, previewSha);
+  const hit = await cached();
+  if (hit) return hit;
+  // Twice: the entry a merge just wrote can be evicted before this reader
+  // opens it; the second merge is then served without another race.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const inMemory = await mergeFlight.run(
+      `${repoIdentityKey(client.repo)}@${overlay.version}:${packagePath ?? ""}`,
+      () =>
+        mergeToCache(client, sha, packagePath, overlay.pending, {
+          docSha,
+          previewSha,
+        }),
+    );
+    if (inMemory) {
+      return {
+        size: inMemory.size,
+        previewMembers: inMemory.previewMembers,
+        chunks: async function* () {
+          yield* inMemory.chunks;
+        },
+      };
     }
+    const opened = await cached();
+    if (opened) return opened;
   }
+  throw new Error("decofile: merged document evicted before it could be read");
+}
 
-  const contents = await mapBounded(
-    entries,
-    BLOB_FETCH_CONCURRENCY,
-    async (e) => {
-      const hit = known.get(e.path);
-      if (hit !== undefined) return { stem: e.stem, content: hit };
-      const content = await client.readBlob(e.sha);
-      await putBlob(owner, repo, e.sha, content);
-      return { stem: e.stem, content };
-    },
-  );
-  const { decofile, skipped } = mergeBlocks(contents);
-  if (skipped.length > 0) {
-    countSkippedBlocks(skipped.length);
-    console.warn("decofile read: dropped blocks that were not valid JSON", {
-      repo: `${owner}/${repo}`,
-      sha,
-      packagePath,
-      blocks: skipped.map((s) => s.key),
-    });
+async function openCachedDocument(
+  owner: string,
+  repo: string,
+  docSha: string,
+  previewSha: string,
+): Promise<DecofileDocument | null> {
+  const previewMembers = await getMerged(owner, repo, previewSha);
+  if (previewMembers === null) return null;
+  const opened = await openMerged(owner, repo, docSha);
+  if (!opened) return null;
+  return {
+    size: opened.size,
+    previewMembers,
+    chunks: () => readAll(opened.handle),
+  };
+}
+
+const READ_CHUNK_BYTES = 256 * 1024;
+
+async function* readAll(handle: FileHandle): AsyncGenerator<Uint8Array> {
+  try {
+    for (;;) {
+      const buffer = new Uint8Array(READ_CHUNK_BYTES);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) return;
+      yield buffer.subarray(0, bytesRead);
+    }
+  } finally {
+    await handle.close();
   }
-  await putMerged(owner, repo, docSha, decofile);
-  return { sha, decofile };
 }
 
 /**
- * The tarball cold path (spec §Cold read): pre-validate aggregate size from
- * the tree, stream the tarball into a `tar` subprocess (the archive never
- * touches the JS heap), read each extracted block, and write blobs through
- * the disk store keyed by the tree's sha for that path. Returns the extracted
- * contents by tree path, or `null` on ANY failure/refusal — the caller then
- * falls back to bounded per-blob fetches. The extracted map feeds the shared
- * merge/putMerged tail in `resolveSnapshot`, so an incomplete extraction
- * (e.g. an uppercase `.JSON` member the tar glob misses) degrades to a few
- * blob fetches instead of a wrong document.
+ * A response body: `prefix`, the document, then `suffix`. With
+ * `appendMembers`, the members are spliced in before the document's closing
+ * brace. The document is read as the client consumes it, so the API never
+ * holds more than a chunk of it.
+ */
+export function streamDocument(
+  doc: DecofileDocument,
+  parts: { prefix?: string; suffix?: string; appendMembers?: string },
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const append = parts.appendMembers ?? "";
+  async function* body(): AsyncGenerator<Uint8Array> {
+    if (parts.prefix) yield encoder.encode(parts.prefix);
+    // A merged document always ends in "}"; drop it to splice members in.
+    let remaining = append ? doc.size - 1 : doc.size;
+    for await (const chunk of doc.chunks()) {
+      if (remaining <= 0) break;
+      const part =
+        chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+      remaining -= part.length;
+      yield part;
+    }
+    if (remaining > 0) throw new Error("decofile: merged document truncated");
+    // "{}" (2 bytes) has no members to separate from.
+    if (append) yield encoder.encode(`${doc.size > 2 ? "," : ""}${append}}`);
+    if (parts.suffix) yield encoder.encode(parts.suffix);
+  }
+  const it = body();
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await it.next();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    async cancel() {
+      await it.return(undefined);
+    },
+  });
+}
+
+/** Where a merge writes: a file under the scratch dir, or memory when the
+ * disk cache is off. */
+function mergeSink(path: string | null) {
+  const chunks: Uint8Array[] = [];
+  const encoder = new TextEncoder();
+  let handle: FileHandle | null = null;
+  let size = 0;
+  return {
+    chunks,
+    size: () => size,
+    async write(text: string): Promise<void> {
+      if (path === null) {
+        const bytes = encoder.encode(text);
+        chunks.push(bytes);
+        size += bytes.length;
+        return;
+      }
+      handle ??= await open(path, "w");
+      const { bytesWritten } = await handle.write(text);
+      size += bytesWritten;
+    },
+    close: async () => handle?.close(),
+  };
+}
+
+/**
+ * Merge every block into the disk cache, one block at a time, with the held
+ * saves laid over them: memory holds a fetch window of blocks, never the
+ * document. Returns null when the document and its preview members landed in
+ * the cache, or the document in memory when they couldn't (cache off, disk
+ * floor, write error).
+ */
+async function mergeToCache(
+  client: RepoContentClient,
+  sha: string,
+  packagePath: string | null,
+  pending: DecofilePendingBlock[],
+  keys: { docSha: string; previewSha: string },
+): Promise<InMemoryDoc | null> {
+  const [owner, repo] = cacheScope(client.repo);
+  const tree = await client.listDecofileEntries(sha, packagePath);
+  // Every entry shares the blocks dir prefix, so path order is mergeBlocks'
+  // filename order.
+  const entries = blockEntriesInTree(tree, packagePath).sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+  );
+  // Refuse before fetching anything; trees without sizes are checked as the
+  // blocks arrive.
+  assertReadableSize(entries.reduce((sum, e) => sum + (e.size ?? 0), 0));
+
+  const scratchDir = await makeScratchDir();
+  try {
+    // Truly cold (most blobs unknown): ONE tarball request instead of one blob
+    // request per block — a ~700-block site would otherwise burn hundreds of
+    // API calls and can trip GitHub's abuse limiter. NOT worth it warm: after
+    // a save only the changed blob is missing, and the tarball is the whole
+    // repo archive versus one small blob fetch. Any failure (no tarball
+    // endpoint — the e2e stub —, cache disabled, tar error) falls back to the
+    // bounded blob fetches below.
+    const cachedBlobs = await Promise.all(
+      entries.map((e) => hasBlob(owner, repo, e.sha)),
+    );
+    const missing = cachedBlobs.filter((hit) => !hit).length;
+    let extracted: Map<string, string> | null = null;
+    if (missing > COLD_READ_TARBALL_THRESHOLD) {
+      extracted = await tryTarballIngest(
+        client,
+        sha,
+        packagePath,
+        entries,
+        scratchDir,
+      );
+      countColdRead(extracted !== null ? "tarball" : "blobs");
+    }
+
+    const path = scratchDir === null ? null : join(scratchDir, "merged.json");
+    const sink = mergeSink(path);
+    const merger = createBlockMerger();
+    const preview = createPreviewProjection();
+    // A held save replaces its block in place or deletes it; one the head
+    // doesn't have goes last — where assigning it into the parsed document
+    // would have put it.
+    const held = new Map(pending.map((p) => [p.blockKey, p.content]));
+    let members = 0;
+    const write = async (key: string, value: unknown, member: string) => {
+      preview.add(key, value);
+      await sink.write(`${members++ === 0 ? "{" : ","}${member}`);
+    };
+    const writeHeld = (key: string, content: Record<string, unknown>) =>
+      write(key, content, `${JSON.stringify(key)}:${JSON.stringify(content)}`);
+    let blockBytes = 0;
+    try {
+      for (let i = 0; i < entries.length; i += BLOB_FETCH_CONCURRENCY) {
+        const window = entries.slice(i, i + BLOB_FETCH_CONCURRENCY);
+        const contents = await Promise.all(
+          window.map((e) => readBlock(client, e, extracted)),
+        );
+        for (const [j, content] of contents.entries()) {
+          blockBytes += Buffer.byteLength(content);
+          assertReadableSize(blockBytes);
+          const block = merger.add({ stem: window[j]!.stem, content });
+          if (!block) continue;
+          if (!held.has(block.key)) {
+            await write(block.key, block.value, block.member);
+            continue;
+          }
+          const save = held.get(block.key);
+          held.delete(block.key);
+          if (save) await writeHeld(block.key, save);
+        }
+      }
+      for (const [key, content] of held) {
+        if (content) await writeHeld(key, content);
+      }
+      await sink.write(members === 0 ? "{}" : "}");
+    } finally {
+      await sink.close();
+    }
+    if (merger.skipped.length > 0) {
+      countSkippedBlocks(merger.skipped.length);
+      console.warn("decofile read: dropped blocks that were not valid JSON", {
+        repo: `${owner}/${repo}`,
+        sha,
+        packagePath,
+        blocks: merger.skipped.map((s) => s.key),
+      });
+    }
+
+    const previewMembers = preview.members();
+    if (path === null) {
+      return { chunks: sink.chunks, size: sink.size(), previewMembers };
+    }
+    const landed =
+      (await putMerged(owner, repo, keys.previewSha, previewMembers)) &&
+      (await adoptMerged(owner, repo, keys.docSha, path, sink.size()));
+    if (landed) return null;
+    const bytes = await readFile(path);
+    return { chunks: [bytes], size: bytes.length, previewMembers };
+  } finally {
+    if (scratchDir !== null) await removeScratchDir(scratchDir);
+  }
+}
+
+/** A block's text: disk cache, then the extracted tarball, then the provider;
+ * the latter two are written through to the cache. */
+async function readBlock(
+  client: RepoContentClient,
+  entry: { sha: string; path: string },
+  extracted: Map<string, string> | null,
+): Promise<string> {
+  const [owner, repo] = cacheScope(client.repo);
+  const hit = await getBlob(owner, repo, entry.sha);
+  if (hit !== null) return hit;
+  const diskPath = extracted?.get(entry.path);
+  const content =
+    diskPath === undefined
+      ? await client.readBlob(entry.sha)
+      : await readFile(diskPath, "utf8");
+  await putBlob(owner, repo, entry.sha, content);
+  return content;
+}
+
+/**
+ * The tarball cold path (spec §Cold read): require every tree entry to carry
+ * a size, then stream the tarball into a `tar` subprocess (the archive never
+ * touches the JS heap) extracting into `scratchDir`, which the caller owns.
+ * Returns each extracted block's disk path by tree path, or `null` on ANY
+ * failure/refusal — the caller then falls back to bounded per-blob fetches. A
+ * block missing from the extraction (e.g. an uppercase `.JSON` member the tar
+ * glob misses) degrades to a blob fetch instead of a wrong document.
  */
 async function tryTarballIngest(
   client: RepoContentClient,
   sha: string,
   packagePath: string | null,
   entries: Array<{ stem: string; sha: string; path: string; size?: number }>,
+  scratchDir: string | null,
 ): Promise<Map<string, string> | null> {
-  const [owner, repo] = cacheScope(client.repo);
   const repoKey = repoIdentityKey(client.repo);
 
   // Pre-validate BEFORE downloading (golden rule 3 beats golden rule 2): the
-  // extracted files are only "small" in aggregate if the tree says so. A tree
-  // entry without a size cannot be validated, so it refuses the path too.
-  const maxBytes = coldTarballMaxBytes();
-  let aggregateBytes = 0;
-  for (const e of entries) {
-    if (e.size === undefined) {
-      console.warn(
-        "decofile cold read: tarball skipped (tree entry missing size; cannot pre-validate)",
-        { repo: repoKey, sha, path: e.path },
-      );
-      return null;
-    }
-    aggregateBytes += e.size;
-  }
-  if (aggregateBytes > maxBytes) {
+  // caller already refused trees over FAST_PREVIEW_DECOFILE_MAX_BYTES, but a
+  // tree entry without a size escaped that check, so it refuses this path.
+  const unsized = entries.find((e) => e.size === undefined);
+  if (unsized) {
     console.warn(
-      "decofile cold read: tarball skipped (blocks over FAST_PREVIEW_COLD_TARBALL_MAX_BYTES)",
-      { repo: repoKey, sha, aggregateBytes, maxBytes },
+      "decofile cold read: tarball skipped (tree entry missing size; cannot pre-validate)",
+      { repo: repoKey, sha, path: unsized.path },
     );
     return null;
   }
 
-  // Scratch dir lives under the cache root; null means the cache is disabled
-  // or unavailable — no place to extract to, so take the blob path.
-  const scratchDir = await makeScratchDir();
+  // No scratch dir means the cache is disabled or unavailable — no place to
+  // extract to, so take the blob path.
   if (scratchDir === null) return null;
   try {
     const body = await client.getArchive(sha);
     if (body === null) return null; // provider serves no archive (the e2e stub)
+    // Its own dir, apart from the merge file written next to it.
+    const tarDir = join(scratchDir, "tar");
+    await mkdir(tarDir);
     const files = await extractBlocksFromTarball(
       body,
-      scratchDir,
+      tarDir,
       blocksDirPath(packagePath),
     );
-    const shaByPath = new Map(entries.map((e) => [e.path, e.sha]));
-    const out = new Map<string, string>();
-    for (const f of files) {
-      const blobSha = shaByPath.get(f.path);
-      // Extracted member not in this head's tree view (shouldn't happen —
-      // same ref): skip rather than cache under a wrong sha.
-      if (blobSha === undefined) continue;
-      const content = await readFile(f.diskPath, "utf8");
-      await putBlob(owner, repo, blobSha, content);
-      out.set(f.path, content);
-    }
-    return out;
+    const inTree = new Set(entries.map((e) => e.path));
+    // A member not in this head's tree view (shouldn't happen — same ref) is
+    // skipped rather than cached under a wrong sha.
+    return new Map(
+      files.filter((f) => inTree.has(f.path)).map((f) => [f.path, f.diskPath]),
+    );
   } catch (err) {
-    // TarExtractError (spawn/exit/empty), a fetch failure, or a read race —
-    // golden rule 4: fall back to bounded blob fetches, never fail the read.
+    // TarExtractError (spawn/exit/empty) or a fetch failure — golden rule 4:
+    // fall back to bounded blob fetches, never fail the read.
     console.warn(
       "decofile cold read: tarball path failed; falling back to blob fetches",
       {
@@ -436,7 +680,5 @@ async function tryTarballIngest(
       },
     );
     return null;
-  } finally {
-    await removeScratchDir(scratchDir);
   }
 }

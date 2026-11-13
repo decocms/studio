@@ -33,60 +33,52 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Use the `__resolveType` the site's own live posts carry, so a projected post
- * resolves through the exact loader this storefront renders with. Falls back to
- * the well-known deco blog loader when the site has no posts yet.
+ * Project planning posts into renderable post blocks for a preview pull. Fed
+ * every merged block in document order, so it runs inside the streaming merge
+ * instead of re-parsing the whole document. The projected post reuses the
+ * `__resolveType` the site's first live post carries (the exact loader this
+ * storefront renders with), falling back to the well-known deco blog loader,
+ * and forces a `published` status so the app's status filter renders it — it
+ * exists only in the preview response.
  */
-function detectPostResolveType(doc: Record<string, unknown>): string {
-  for (const [key, value] of Object.entries(doc)) {
-    if (!key.startsWith(LIVE_POST_PREFIX)) continue;
-    const rt = asRecord(value)?.__resolveType;
-    if (typeof rt === "string" && rt) return rt;
-  }
-  return FALLBACK_POST_RESOLVE_TYPE;
-}
-
-/**
- * Project planning posts into renderable post blocks for a preview pull. Pure:
- * takes and returns the merged decofile JSON text, unchanged when there is
- * nothing to project (so the common no-planning-posts case is a cheap parse).
- * The projected block forces a `published` status so the app's status filter
- * renders it — it exists only in this single preview response.
- */
-export function projectPlanningPostsForPreview(decofileJson: string): string {
-  let doc: Record<string, unknown> | null;
-  try {
-    doc = asRecord(JSON.parse(decofileJson));
-  } catch {
-    return decofileJson;
-  }
-  if (!doc) return decofileJson;
-
-  const resolveType = detectPostResolveType(doc);
-  const out: Record<string, unknown> = { ...doc };
-  let projected = 0;
-
-  for (const [key, value] of Object.entries(doc)) {
-    if (!key.startsWith(PLANNING_POST_PREFIX)) continue;
-    const block = asRecord(value);
-    const payload = block && asRecord(block[POST_WRAPPER]);
-    if (!payload) continue;
-    // A soft-deleted post shouldn't resurface in preview.
-    if (payload.status === "archived") continue;
-    // Without a slug there is no route to render, so projecting is pointless.
-    if (typeof payload.slug !== "string" || !payload.slug) continue;
-
-    const id = key.slice(PLANNING_POST_PREFIX.length);
-    const liveKey = `${LIVE_POST_PREFIX}${id}`;
-    if (Object.hasOwn(out, liveKey)) continue;
-
-    out[liveKey] = {
-      name: liveKey,
-      __resolveType: resolveType,
-      [POST_WRAPPER]: { ...payload, status: "published" },
-    };
-    projected++;
-  }
-
-  return projected > 0 ? JSON.stringify(out) : decofileJson;
+export function createPreviewProjection() {
+  let resolveType: string | null = null;
+  const liveKeys = new Set<string>();
+  const planning: Array<{ id: string; payload: Record<string, unknown> }> = [];
+  return {
+    add(key: string, value: unknown): void {
+      if (key.startsWith(LIVE_POST_PREFIX)) {
+        liveKeys.add(key);
+        const rt = asRecord(value)?.__resolveType;
+        if (resolveType === null && typeof rt === "string" && rt) {
+          resolveType = rt;
+        }
+        return;
+      }
+      if (!key.startsWith(PLANNING_POST_PREFIX)) return;
+      const block = asRecord(value);
+      const payload = block && asRecord(block[POST_WRAPPER]);
+      if (!payload) return;
+      // A soft-deleted post shouldn't resurface in preview.
+      if (payload.status === "archived") return;
+      // Without a slug there is no route to render, so projecting is pointless.
+      if (typeof payload.slug !== "string" || !payload.slug) return;
+      planning.push({ id: key.slice(PLANNING_POST_PREFIX.length), payload });
+    },
+    /** Comma-joined `"key":value` members to append; "" when none. */
+    members(): string {
+      return planning
+        .filter(({ id }) => !liveKeys.has(`${LIVE_POST_PREFIX}${id}`))
+        .map(({ id, payload }) => {
+          const liveKey = `${LIVE_POST_PREFIX}${id}`;
+          const block = {
+            name: liveKey,
+            __resolveType: resolveType ?? FALLBACK_POST_RESOLVE_TYPE,
+            [POST_WRAPPER]: { ...payload, status: "published" },
+          };
+          return `${JSON.stringify(liveKey)}:${JSON.stringify(block)}`;
+        })
+        .join(",");
+    },
+  };
 }
