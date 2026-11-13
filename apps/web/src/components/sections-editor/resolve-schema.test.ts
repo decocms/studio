@@ -199,6 +199,83 @@ describe("resolveSchema – nullable unions inherit leaf metadata", () => {
     expect(icon?.format).toBe("icon-select");
     expect(icon?.options).toBe("site/loaders/icons.ts");
   });
+
+  test("resolves `T[] | null` whose array lives behind a $ref (no loader branch)", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": { $ref: "#/definitions/TestProps" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          TestProps: {
+            type: "object",
+            properties: {
+              navItems: { $ref: "#/definitions/NavItem[]|null", title: "Nav" },
+            },
+          },
+          "NavItem[]|null": {
+            anyOf: [{ $ref: "#/definitions/[NavItem]" }, { type: "null" }],
+          },
+          "[NavItem]": {
+            type: "array",
+            items: { $ref: "#/definitions/NavItem" },
+          },
+          NavItem: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              children: { $ref: "#/definitions/[NavItem]" },
+            },
+          },
+        },
+      },
+    };
+
+    const navItems = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.navItems;
+    expect(navItems?.type).toBe("array");
+    expect(navItems?.title).toBe("Nav");
+    expect(navItems?.items?.type).toBe("object");
+    expect(Object.keys(navItems?.items?.properties ?? {})).toEqual([
+      "name",
+      "children",
+    ]);
+  });
+
+  test("a nullable $ref to an object stays an object", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": { $ref: "#/definitions/TestProps" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          TestProps: {
+            type: "object",
+            properties: {
+              logo: {
+                anyOf: [{ $ref: "#/definitions/Logo" }, { type: "null" }],
+              },
+            },
+          },
+          Logo: { type: "object", properties: { src: { type: "string" } } },
+        },
+      },
+    };
+
+    const logo = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.logo;
+    expect(logo?.type).toBe("object");
+    expect(logo?.items).toBeUndefined();
+    expect(Object.keys(logo?.properties ?? {})).toEqual(["src"]);
+  });
 });
 
 describe("resolveSchema – app resolveType aliases", () => {
