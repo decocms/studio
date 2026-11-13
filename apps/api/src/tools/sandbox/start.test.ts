@@ -801,6 +801,50 @@ describe("SANDBOX_START", () => {
     }
   });
 
+  it("ensureSandbox records the preview URL of a reused sandbox that moved providers", async () => {
+    const recorded = { ...CACHED_ENTRY, createdAt: 1_000 };
+    const virtualMcp = makeVirtualMcp(ORG_ID, {
+      ...BASE_METADATA,
+      sandboxMap: { [USER_ID]: { [BRANCH]: { "agent-sandbox": recorded } } },
+    });
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy });
+    const original = mockRunner.getPreviewUrl;
+    try {
+      mockRunner.getPreviewUrl = async () => "https://moved.preview/";
+      const entry = await ensureSandbox(
+        { virtualMcpId: VMCP_ID, branch: BRANCH },
+        ctx,
+      );
+      expect(mockEnsure).not.toHaveBeenCalled();
+      expect(entry).toEqual({
+        ...recorded,
+        previewUrl: "https://moved.preview/",
+      });
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      const updated = (
+        (updateSpy.mock.calls as unknown[][])[0]![2] as {
+          metadata: { sandboxMap: SandboxMap };
+        }
+      ).metadata;
+      expect(
+        (updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>)?.[
+          "agent-sandbox"
+        ],
+      ).toEqual(entry);
+
+      // Unchanged, or unknown to the provider: no write.
+      updateSpy.mockClear();
+      mockRunner.getPreviewUrl = async () => recorded.previewUrl;
+      await ensureSandbox({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+      mockRunner.getPreviewUrl = async () => null;
+      await ensureSandbox({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      mockRunner.getPreviewUrl = original;
+    }
+  });
+
   it("generates a <creator-slug>-<timestamp> branch when input.branch is omitted and threads it into the ref", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
