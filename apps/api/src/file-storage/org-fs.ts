@@ -154,6 +154,12 @@ export class OrgFs {
     return this.manifest.listVolumeFiles(this.organizationId, volume);
   }
 
+  /** Every live entry in a volume, at most `limit` of them. One query. */
+  async listVolume(volume: string, limit: number): Promise<OrgFsEntry[]> {
+    assertValidVolume(volume);
+    return this.manifest.listVolume(this.organizationId, volume, limit);
+  }
+
   /** Live immediate children of a directory (root when path is empty). */
   async listDir(volume: string, path: string): Promise<OrgFsEntry[]> {
     assertValidVolume(volume);

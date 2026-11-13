@@ -26,10 +26,19 @@ agent reads /app/org/home/notes.md
   → kernel FUSE (mount propagated from the sidecar)
   → rclone mount --vfs-cache-mode full        (sidecar, one process per volume)
   → WebDAV on 127.0.0.1:<random>              (sidecar, webdav.ts, one server per volume)
+  → TreeCache                                 (tree-cache.ts; listings and stats from memory)
   → OrgFsClient                               (client.ts)
-  → Studio /api/:org/fs/:volume/{list,stat,read,file,dir,move,changes}
+  → Studio /api/:org/fs/:volume/{tree,list,stat,read,file,dir,move,changes}
   → S3
 ```
+
+`TreeCache` loads the volume's whole tree with one `tree` request and answers
+directory listings and stats from memory. Without it, every directory a
+recursive walk opens (`find`, `grep -r`) costs a `stat` and a `list` round
+trip to Studio, which is minutes on a volume with a few thousand directories.
+File bytes and every write still go to Studio. A volume above Studio's cap
+(413), or a Studio without the `tree` route, falls back to per-directory
+requests.
 
 Studio presigns large reads (`read?presign=1`), and `client.ts` then fetches
 the bytes directly from S3 with the caller's `Range` header. If the presigned
@@ -148,14 +157,19 @@ image next to the sandbox image.
 ## Freshness and failure handling
 
 - **External writes.** WebDAV has no change notification. For each volume,
-  `invalidator.ts` long-polls `/changes?wait=1` and calls rclone's
-  `vfs/refresh` on the parent directory of each changed path. The first drain
+  `invalidator.ts` long-polls `/changes?wait=1`, marks the parent directory of
+  each changed path stale in `TreeCache`, and calls rclone's `vfs/refresh` on
+  it. A stale directory is listed again from Studio on its next read. The
+  whole tree reloads once it is 60 s old, which bounds staleness if the feed
+  misses a change. The first drain
   only primes the cursor. A failed poll retries with exponential backoff and
   jitter, from 1 s up to 30 s. `--dir-cache-time 10s` is the fallback bound.
   `vfs/refresh` is used instead of `vfs/forget`, because forget kills open
   handles, including the mount's own in-flight writes.
 - **Own writes.** `--vfs-write-back 1s` uploads closed files about a second
-  after close.
+  after close. Once Studio accepts a write, `TreeCache` marks its parent
+  directory stale, plus any ancestor whose cached listing lacks the next
+  directory down.
 - **rclone crash.** `MountManager` watches each rclone process. On an
   unexpected exit it detaches the stale mount and remounts once. Deliberate
   teardown sets `closing` first, so it is not treated as a crash.

@@ -180,6 +180,31 @@ describe("org-fs HTTP routes (integration)", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("returns a whole volume's tree in one response", async () => {
+    await put("docs/guide/intro.md", "# hi");
+    await put("top.md", "x");
+    const res = await app.request(`${BASE}/skills/tree`);
+    expect(res.status).toBe(200);
+    const { entries } = await res.json();
+    expect(
+      entries.map((e: { path: string; kind: string }) => `${e.kind}:${e.path}`),
+    ).toEqual([
+      "dir:docs",
+      "dir:docs/guide",
+      "file:docs/guide/intro.md",
+      "file:top.md",
+    ]);
+  });
+
+  it("413s a tree too large to list whole", async () => {
+    await sql`
+      INSERT INTO org_fs_entry (organization_id, volume, path, parent, kind, created_by, updated_by)
+      SELECT ${ORG}, 'big', 'f' || n, '', 'file', ${USER}, ${USER}
+      FROM generate_series(1, 50001) AS n
+    `.execute(db.db);
+    expect((await app.request(`${BASE}/big/tree`)).status).toBe(413);
+  });
+
   it("lists a volume's files at any depth, newest first, extensionless included", async () => {
     await put("t1/report.md", "a");
     await put("t2/Makefile", "b");
@@ -353,6 +378,12 @@ describe("org-fs HTTP routes (integration)", () => {
       }
       const listed = await (await app.request(homeUrl("list", "users"))).json();
       expect(listed.entries).toEqual([]);
+      const tree = await (await app.request(`${BASE}/home/tree`)).json();
+      expect(
+        tree.entries.filter((e: { path: string }) =>
+          e.path.startsWith(`users/${OTHER}`),
+        ),
+      ).toEqual([]);
       const search = await (
         await app.request(`${BASE}/search?q=MEMORY`)
       ).json();

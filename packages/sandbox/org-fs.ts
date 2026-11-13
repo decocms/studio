@@ -10,4 +10,5 @@ export {
   OrgFsApiError,
   type OrgFsNode,
 } from "./orgfs/api";
+export { TreeCache } from "./orgfs/tree-cache";
 export { createWebdavHandler } from "./orgfs/webdav";

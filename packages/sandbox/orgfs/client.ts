@@ -93,6 +93,15 @@ export class OrgFsClient implements OrgFsApi {
     return body.entries.map(toNode);
   }
 
+  /** Every entry in the volume, or null when it is too large to list whole. */
+  async listTree(): Promise<OrgFsNode[] | null> {
+    const res = await this.fetch(this.url("tree"), { headers: this.headers });
+    if (res.status === 413) return null;
+    if (!res.ok) return this.fail(res);
+    const body = (await res.json()) as { entries: ApiEntry[] };
+    return body.entries.map(toNode);
+  }
+
   async stat(path: string): Promise<OrgFsNode | null> {
     const res = await this.fetch(this.url("stat", { path }), {
       headers: this.headers,

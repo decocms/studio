@@ -32,7 +32,11 @@ import {
 } from "../../database/test-db-pg";
 import { OrgFsEntryStorage } from "../../storage/org-fs";
 import { OrgRepoSyncStorage } from "../../storage/org-repo-syncs";
-import { OrgFsClient, createWebdavHandler } from "@decocms/sandbox/org-fs";
+import {
+  OrgFsClient,
+  TreeCache,
+  createWebdavHandler,
+} from "@decocms/sandbox/org-fs";
 
 const ORG = "org_wd";
 const SLUG = "wdtest";
@@ -92,6 +96,8 @@ describe("WebDAV serve layer (integration, full chain)", () => {
   let dav: (req: Request) => Promise<Response>;
   /** Same backing fs, NOT behind the WebDAV junk filter (external writer). */
   let api: OrgFsClient;
+  /** The org-fs operation of every request that reached Studio. */
+  let ops: string[];
 
   const req = (path: string, init?: RequestInit) =>
     dav(new Request(`http://dav${path}`, init));
@@ -110,9 +116,14 @@ describe("WebDAV serve layer (integration, full chain)", () => {
       orgSlug: SLUG,
       volume: VOLUME,
       token: "test-token",
-      fetch: (url, reqInit) => Promise.resolve(app.request(url, reqInit)),
+      fetch: (url, reqInit) => {
+        ops.push(new URL(url).pathname.split("/").pop() ?? "");
+        return Promise.resolve(app.request(url, reqInit));
+      },
     });
-    dav = createWebdavHandler(api);
+    ops = [];
+    // The sandbox serves the mount through the tree cache.
+    dav = createWebdavHandler(new TreeCache(api));
   }, HOOK_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -125,6 +136,26 @@ describe("WebDAV serve layer (integration, full chain)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("dav")).toContain("1");
     expect(res.headers.get("allow")).toContain("PROPFIND");
+  });
+
+  it("lists nested directories from one tree request", async () => {
+    for (const path of ["a/b/c.txt", "a/d.txt", "e/f.txt"]) {
+      await api.write(path, new TextEncoder().encode("x"));
+    }
+    ops = [];
+    const listing = async (dir: string) => {
+      const res = await req(dir, {
+        method: "PROPFIND",
+        headers: { depth: "1" },
+      });
+      expect(res.status).toBe(207);
+      return res.text();
+    };
+    expect(await listing("/")).toContain("/e/");
+    expect(await listing("/a/")).toContain("/a/d.txt");
+    expect(await listing("/a/b/")).toContain("/a/b/c.txt");
+    expect(await listing("/e/")).toContain("/e/f.txt");
+    expect(ops).toEqual(["tree"]);
   });
 
   it("PUT then GET round-trips bytes", async () => {
