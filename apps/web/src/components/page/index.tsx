@@ -169,7 +169,7 @@ function PageHeader({
           </div>
           <Panel.Toolbar.Left.Target />
         </Panel.Toolbar.Left>
-        <Panel.Toolbar.Center className="@max-xl/panel-toolbar:order-last @max-xl/panel-toolbar:basis-full [&:not(:has([data-toolbar-content]:not(:empty)))]:hidden">
+        <Panel.Toolbar.Center className="max-md:@max-xl/panel-toolbar:order-last max-md:@max-xl/panel-toolbar:basis-full md:@max-[40rem]/panel-toolbar:min-w-fit [&:not(:has([data-toolbar-content]:not(:empty)))]:hidden">
           <Panel.Toolbar.Center.Target />
         </Panel.Toolbar.Center>
         <Panel.Toolbar.Right>

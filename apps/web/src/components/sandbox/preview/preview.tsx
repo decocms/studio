@@ -44,6 +44,7 @@ import {
   LinkExternal01,
   ChevronDown,
   Database01,
+  File06,
   Globe01,
   Plus,
   Monitor04,
@@ -2038,9 +2039,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   ? pageName
                   : [pageName, currentPath].filter(Boolean).join(" · ")
             }
-            className="group/page-picker flex h-7 w-80 min-w-0 shrink items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-ring"
+            className="group/page-picker flex h-7 w-80 min-w-0 shrink items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-ring md:@max-[40rem]/panel-toolbar:w-7 md:@max-[40rem]/panel-toolbar:shrink-0 md:@max-[40rem]/panel-toolbar:border-transparent md:@max-[40rem]/panel-toolbar:bg-transparent"
           >
-            <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
+            <span className="hidden flex-1 items-center justify-center text-sidebar-foreground/60 transition-colors group-hover/page-picker:bg-sidebar-accent group-hover/page-picker:text-sidebar-foreground group-data-[state=open]/page-picker:bg-sidebar-accent group-data-[state=open]/page-picker:text-sidebar-foreground md:@max-[40rem]/panel-toolbar:flex">
+              <File06 size={16} />
+            </span>
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50 md:@max-[40rem]/panel-toolbar:hidden">
               {activeGlobalSection && (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-2xs font-medium text-global-section-fg dark:text-global-section-fg-dark">
                   <Globe01 size={11} />
