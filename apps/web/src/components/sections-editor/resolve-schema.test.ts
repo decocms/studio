@@ -205,20 +205,18 @@ describe("resolveSchema – nullable unions inherit leaf metadata", () => {
       manifest: {
         blocks: {
           sections: {
-            "site/sections/Test.tsx": {
-              type: "object",
-              properties: {
-                navItems: {
-                  $ref: "#/definitions/NavItem[]|null",
-                  title: "Nav",
-                },
-              },
-            },
+            "site/sections/Test.tsx": { $ref: "#/definitions/TestProps" },
           },
         },
       },
       schema: {
         definitions: {
+          TestProps: {
+            type: "object",
+            properties: {
+              navItems: { $ref: "#/definitions/NavItem[]|null", title: "Nav" },
+            },
+          },
           "NavItem[]|null": {
             anyOf: [{ $ref: "#/definitions/[NavItem]" }, { type: "null" }],
           },
@@ -253,19 +251,20 @@ describe("resolveSchema – nullable unions inherit leaf metadata", () => {
       manifest: {
         blocks: {
           sections: {
-            "site/sections/Test.tsx": {
-              type: "object",
-              properties: {
-                logo: {
-                  anyOf: [{ $ref: "#/definitions/Logo" }, { type: "null" }],
-                },
-              },
-            },
+            "site/sections/Test.tsx": { $ref: "#/definitions/TestProps" },
           },
         },
       },
       schema: {
         definitions: {
+          TestProps: {
+            type: "object",
+            properties: {
+              logo: {
+                anyOf: [{ $ref: "#/definitions/Logo" }, { type: "null" }],
+              },
+            },
+          },
           Logo: { type: "object", properties: { src: { type: "string" } } },
         },
       },
