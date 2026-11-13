@@ -106,6 +106,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.secretValuePlaceholder": "value",
   "mainPanelTabs.hostingTab.secretValueHidden": "••••••",
   "mainPanelTabs.hostingTab.secretOnWorker": "On worker",
+  "mainPanelTabs.hostingTab.secretNotOnWorker": "Not on worker",
+  "mainPanelTabs.hostingTab.secretNotOnWorkerHint":
+    "Saved, but the Cloudflare worker doesn't have it yet, so the site can't read it. Save it again to retry.",
   "mainPanelTabs.hostingTab.secretScope": "Scope",
   "mainPanelTabs.hostingTab.secretScopeRuntime": "Runtime",
   "mainPanelTabs.hostingTab.secretScopeBuild": "Build",
@@ -118,6 +121,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.confirmDeleteSecretDescription":
     "Delete {name}? This removes it from the site.",
   "mainPanelTabs.hostingTab.toastSecretSaved": "Secret saved",
+  "mainPanelTabs.hostingTab.toastSecretNotOnWorker":
+    "Secret saved, but it didn't reach the Cloudflare worker. Save it again to retry.",
   "mainPanelTabs.hostingTab.toastSecretDeleted": "Secret deleted",
   "mainPanelTabs.hostingTab.errorSecretNameRequired": "Name is required",
   "mainPanelTabs.hostingTab.errorSecretValueRequired": "Value is required",
