@@ -15,7 +15,10 @@ export function isChatModel(model: {
   capabilities?: readonly string[];
   asyncResearch?: boolean;
 }): boolean {
-  return !isDecisionModel(model) && model.asyncResearch !== true;
+  const imageOnly =
+    model.capabilities?.includes("image") === true &&
+    !model.capabilities.includes("text");
+  return !isDecisionModel(model) && model.asyncResearch !== true && !imageOnly;
 }
 
 /**

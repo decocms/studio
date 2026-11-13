@@ -15,17 +15,46 @@ import type {
 const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
 
+/** Without `outputModalities`, OpenRouter lists only models that output text. */
 function fetchModelsWithRetry(
   headers: Record<string, string>,
-  decisions = false,
+  outputModalities?: "decisions" | "image",
 ): Promise<Response> {
   return fetchWithTransientRetry(
     "OpenRouter listModels",
-    decisions
-      ? "https://openrouter.ai/api/v1/models?output_modalities=decisions"
+    outputModalities
+      ? `https://openrouter.ai/api/v1/models?output_modalities=${outputModalities}`
       : "https://openrouter.ai/api/v1/models",
-    { headers, signal: AbortSignal.timeout(decisions ? 5_000 : 30_000) },
+    {
+      headers,
+      signal: AbortSignal.timeout(
+        outputModalities === "decisions" ? 5_000 : 30_000,
+      ),
+    },
   );
+}
+
+/** Image-only models (`openai/gpt-image-*`, seedream) for the image tier. */
+async function listImageOnlyModels(
+  headers: Record<string, string>,
+): Promise<OpenRouterAPIModel[]> {
+  try {
+    const res = await fetchModelsWithRetry(headers, "image");
+    if (!res.ok) await throwResponseError("OpenRouter image models", res);
+    const { data } = await parseJsonResponse<{ data: OpenRouterAPIModel[] }>(
+      "OpenRouter image models",
+      res,
+    );
+    return data.filter(
+      (m) =>
+        isMappableModel(m) &&
+        !m.architecture.output_modalities.includes("text"),
+    );
+  } catch (error) {
+    // The chat catalog must not fail over the image list.
+    console.warn("[OpenRouter] image model list unavailable", error);
+    return [];
+  }
 }
 
 /**
@@ -57,11 +86,16 @@ function mapV1Model(m: OpenRouterAPIModel): ModelInfo {
     title: m.name,
     description: m.description ?? null,
     logo: null,
+    // "text" means text out: image-only models must stay out of chat pickers.
     capabilities: deriveModalityCapabilities(
       m.architecture.input_modalities,
       m.architecture.output_modalities,
       m.supported_parameters,
       m.supported_parameters?.includes("reasoning") ? ["reasoning"] : [],
+    ).filter(
+      (capability) =>
+        capability !== "text" ||
+        m.architecture.output_modalities.includes("text"),
     ),
     limits: {
       contextWindow,
@@ -136,7 +170,7 @@ export const openrouterAdapter: ProviderAdapter = {
       decisions: {
         model: (modelId) => aiSdk.evaluationModel(modelId),
         async listModels() {
-          const res = await fetchModelsWithRetry(headers, true);
+          const res = await fetchModelsWithRetry(headers, "decisions");
           if (!res.ok)
             await throwResponseError("OpenRouter decision models", res);
           const { data } = await parseJsonResponse<{
@@ -153,12 +187,15 @@ export const openrouterAdapter: ProviderAdapter = {
 
       async listModels(): Promise<ModelInfo[]> {
         // v1 is the authoritative source — has supported_parameters, canonical slugs, etc.
-        const res = await fetchModelsWithRetry(headers);
+        const [res, imageOnly] = await Promise.all([
+          fetchModelsWithRetry(headers),
+          listImageOnlyModels(headers),
+        ]);
         if (!res.ok) await throwResponseError("OpenRouter listModels", res);
         const { data } = await parseJsonResponse<{
           data: OpenRouterAPIModel[];
         }>("OpenRouter listModels", res);
-        return data.filter(isMappableModel).map(mapV1Model);
+        return [...data.filter(isMappableModel), ...imageOnly].map(mapV1Model);
       },
     };
   },
