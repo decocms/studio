@@ -1780,7 +1780,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
 // ============================================================================
 
 /**
- * A gated permission capability — a user-facing feature grouping that maps to a set of MCP tools.
+ * A gated permission capability — a user-facing feature grouping that maps to MCP tools or resource actions.
  * Used for role editing and OAuth consent screens.
  */
 export interface PermissionCapability {
@@ -1788,7 +1788,8 @@ export interface PermissionCapability {
   label: string;
   description: string;
   section: string;
-  tools: ToolName[];
+  // Resource actions authorize operations shared by HTTP routes and MCP tools.
+  tools: (ToolName | "ASSETS_MANAGE")[];
   dangerous?: boolean;
 }
 
@@ -1859,8 +1860,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "GET_OBJECT_METADATA",
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
-      // Browse files in a configured bucket (file picker in the sandbox /
-      // content editor). Lists object keys only — no credentials returned.
+      // The CMS picker needs bucket metadata before it can list objects.
+      // Neither listing returns credentials.
+      "FILE_CONFIG_LIST",
       "FILE_OBJECTS_LIST",
       // Read-only list of synced repos — every member needs it so the
       // Library can mark mirror volumes read-only (management stays gated
@@ -2088,6 +2090,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     section: "Organization",
     tools: ["SECRET_CREATE", "SECRET_LIST"],
   },
+  {
+    id: "assets:manage",
+    label: "Manage assets",
+    description: "Upload and delete files in configured buckets",
+    section: "Organization",
+    tools: ["ASSETS_MANAGE"],
+  },
   // File Configs
   {
     id: "file-configs:manage",
@@ -2249,14 +2258,14 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
 
 /**
  * Gated capability ids additionally granted to the built-in `user` role, beyond
- * basic-usage. EMPTY by default — every member is otherwise enforced down to
- * basic-usage only. Add a capability id here (e.g. "agents:manage") to grant ALL
- * of its tools to every member of every org. This is a GLOBAL change with no
+ * basic-usage. Add a capability id here to grant ALL of its tools to the
+ * built-in user role in every org. This is a GLOBAL change with no
  * migration; for per-org grants use a custom role instead.
  */
 const USER_ROLE_CAPABILITY_IDS: string[] = [
   "agents:manage",
   "connections:manage",
+  "assets:manage",
 ];
 
 /**

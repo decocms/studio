@@ -192,6 +192,8 @@ describe("getBuiltinRoleStatements", () => {
     // admin/owner enumerate "*" plus the full tool list (creator-role gating).
     expect(adminStmt.self).toContain("*");
     expect(adminStmt.self).toContain("TOOL_X");
+    expect(adminStmt.self).toContain("ASSETS_MANAGE");
+    expect(userStmt.self).toContain("ASSETS_MANAGE");
     expect(ownerStmt.self).toEqual(adminStmt.self);
     // user carries the org-plugin memberAc keys (organization/member/.../ac).
     expect(userStmt.ac).toEqual(["read"]);

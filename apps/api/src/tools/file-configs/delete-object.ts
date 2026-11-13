@@ -1,3 +1,4 @@
+import { checkAssetWrite } from "../../file-storage/asset-access";
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -24,7 +25,7 @@ export const FILE_OBJECT_DELETE = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     const org = requireOrganization(ctx);
-    await ctx.access.check();
+    await checkAssetWrite(ctx.access, "delete");
 
     // resolveFileConfig enforces managed-config ownership (the single choke point).
     const fileCfg = await resolveFileConfig(

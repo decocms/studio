@@ -17,6 +17,8 @@
  * single-shot PutObject offers when the SDK can't replay a stream.
  */
 
+import { checkAssetWrite } from "@/file-storage/asset-access";
+import { ForbiddenError } from "@/core/access-control";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -49,13 +51,14 @@ export const createFileUploadRoutes = () => {
     if (!orgId) {
       throw new HTTPException(400, { message: "Organization required" });
     }
-    // Gate behind a write-tier file-config permission. We pick
-    // FILE_CONFIG_UPDATE specifically so that if the `file-configs:manage`
-    // group ever splits into read/write capabilities, this upload route
-    // lands on the write side. Using a read-only tool here (e.g.
-    // FILE_OBJECTS_LIST) would silently expose write access to read-only
-    // principals after such a split.
-    await ctx.access.check("FILE_CONFIG_UPDATE");
+    try {
+      await checkAssetWrite(ctx.access, "browser-upload");
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        return c.json({ message: error.message }, 403);
+      }
+      throw error;
+    }
 
     const configId = c.req.param("id");
     if (!configId) {

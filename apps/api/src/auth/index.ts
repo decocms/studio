@@ -67,7 +67,10 @@ function rejectReservedOrganizationSlug(slug: unknown): void {
 const allTools = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => t.name))
   .flat();
-const statement = { ...defaultStatements, self: ["*", ...allTools] };
+const statement = {
+  ...defaultStatements,
+  self: ["*", "ASSETS_MANAGE", ...allTools],
+};
 
 const ac = createAccessControl(statement);
 
@@ -116,9 +119,12 @@ const admin = ac.newRole(builtinRoleStatements.admin as NewRoleArg) as Role;
 
 const owner = ac.newRole(builtinRoleStatements.owner as NewRoleArg) as Role;
 
-const scopes = Object.values(getToolsByCategory())
-  .map((tool) => tool.map((t) => `self:${t.name}`))
-  .flat();
+const scopes = [
+  "self:ASSETS_MANAGE",
+  ...Object.values(getToolsByCategory()).flatMap((tools) =>
+    tools.map((tool) => `self:${tool.name}`),
+  ),
+];
 
 /**
  * Deployment admin user IDs, resolved lazily from `deploymentAdminEmails` by

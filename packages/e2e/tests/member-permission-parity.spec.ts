@@ -155,6 +155,25 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
     );
     expect(conn.item?.id).toBeTruthy();
 
+    const configs = await callSelfMcpTool<{ configs: unknown[] }>(
+      memberCtx,
+      owner.orgSlug,
+      "FILE_CONFIG_LIST",
+      {},
+    );
+    expect(configs.configs).toEqual([]);
+
+    // Missing filename reaches input validation only after upload authorization.
+    const upload = await memberCtx.post(
+      `/api/${owner.orgSlug}/file-configs/config_example/upload`,
+    );
+    expect(upload.status()).toBe(400);
+    expect(await upload.text()).toContain("Missing `filename`");
+
+    await expectDenied(memberCtx, owner.orgSlug, "FILE_CONFIG_DELETE", {
+      id: "config_example",
+    });
+
     // DENY: a gated tool NOT in the user role's self list → in-memory "deny".
     // This is the case that would silently over-grant if the matcher were
     // wrong (e.g. mis-applied a wildcard).
@@ -162,6 +181,172 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
 
     await ownerCtx.dispose();
     await memberCtx.dispose();
+  });
+
+  for (const grant of [
+    "ASSETS_MANAGE",
+    "FILE_CONFIG_UPDATE",
+    "FILE_OBJECT_UPLOAD",
+  ]) {
+    test(`custom ${grant} grant allows browser uploads`, async ({
+      playwright,
+    }) => {
+      const ownerCtx = await newApiContext(playwright);
+      const memberCtx = await newApiContext(playwright);
+      try {
+        const owner = await signUpViaApi(ownerCtx);
+        const member = await signUpViaApi(memberCtx);
+        const result = await db.query<{ id: string }>(
+          `SELECT id FROM organization WHERE slug = $1`,
+          [owner.orgSlug],
+        );
+        const orgId = result.rows[0]!.id;
+        const role = `asset-editor-${crypto.randomUUID()}`;
+        const created = await ownerCtx.post(
+          "/api/auth/organization/create-role",
+          {
+            data: {
+              organizationId: orgId,
+              role,
+              permission: { self: [grant] },
+            },
+          },
+        );
+        expect(created.ok(), await created.text()).toBe(true);
+        await inviteAndAccept(ownerCtx, memberCtx, orgId, member.email);
+        const membership = await db.query<{ id: string }>(
+          `SELECT id FROM member WHERE "organizationId" = $1 AND "userId" = $2`,
+          [orgId, member.userId],
+        );
+        const assigned = await ownerCtx.post(
+          "/api/auth/organization/update-member-role",
+          {
+            data: {
+              organizationId: orgId,
+              memberId: membership.rows[0]!.id,
+              role: [role],
+            },
+          },
+        );
+        expect(assigned.ok(), await assigned.text()).toBe(true);
+
+        const upload = await memberCtx.post(
+          `/api/${owner.orgSlug}/file-configs/config_example/upload`,
+        );
+        expect(upload.status()).toBe(400);
+        expect(await upload.text()).toContain("Missing `filename`");
+        if (grant !== "ASSETS_MANAGE") {
+          await expectDenied(memberCtx, owner.orgSlug, "FILE_OBJECT_DELETE", {
+            configId: "config_example",
+            key: "image.png",
+          });
+        }
+        if (grant === "FILE_CONFIG_UPDATE") {
+          await expectDenied(memberCtx, owner.orgSlug, "FILE_OBJECT_UPLOAD", {
+            configId: "config_example",
+            files: [
+              { url: "https://example.com/image.png", filename: "image.png" },
+            ],
+          });
+        }
+      } finally {
+        await memberCtx.dispose();
+        await ownerCtx.dispose();
+      }
+    });
+  }
+
+  test("user uploads, browses and deletes assets without administering buckets", async ({
+    playwright,
+  }) => {
+    test.skip(
+      !process.env.S3_ENDPOINT ||
+        !process.env.S3_BUCKET ||
+        !process.env.S3_ACCESS_KEY_ID ||
+        !process.env.S3_SECRET_ACCESS_KEY,
+      "requires the E2E S3 service",
+    );
+    const ownerCtx = await newApiContext(playwright);
+    const memberCtx = await newApiContext(playwright);
+    try {
+      const owner = await signUpViaApi(ownerCtx);
+      const member = await signUpViaApi(memberCtx);
+      const result = await db.query<{ id: string }>(
+        `SELECT id FROM organization WHERE slug = $1`,
+        [owner.orgSlug],
+      );
+      await inviteAndAccept(
+        ownerCtx,
+        memberCtx,
+        result.rows[0]!.id,
+        member.email,
+      );
+      const configInput = {
+        name: `assets-${crypto.randomUUID()}`,
+        bucket: process.env.S3_BUCKET,
+        region: process.env.S3_REGION ?? "us-east-1",
+        endpoint: process.env.S3_ENDPOINT,
+        accessKeyId: process.env.S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+        forcePathStyle: true,
+        prefix: `asset-test/${crypto.randomUUID()}/`,
+      };
+      const config = await callSelfMcpTool<{ id: string }>(
+        ownerCtx,
+        owner.orgSlug,
+        "FILE_CONFIG_CREATE",
+        configInput,
+      );
+      const configs = await callSelfMcpTool<{ configs: Array<{ id: string }> }>(
+        memberCtx,
+        owner.orgSlug,
+        "FILE_CONFIG_LIST",
+        {},
+      );
+      expect(configs.configs.some((c) => c.id === config.id)).toBe(true);
+      const bytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=",
+        "base64",
+      );
+      const upload = await memberCtx.post(
+        `/api/${owner.orgSlug}/file-configs/${config.id}/upload?filename=asset.png`,
+        { data: bytes, headers: { "Content-Type": "image/png" } },
+      );
+      expect(upload.ok(), await upload.text()).toBe(true);
+      const uploaded = (await upload.json()) as { key: string; size: number };
+      expect(uploaded.size).toBe(bytes.length);
+      const list = () =>
+        callSelfMcpTool<{ items: Array<{ key: string }> }>(
+          memberCtx,
+          owner.orgSlug,
+          "FILE_OBJECTS_LIST",
+          { configId: config.id },
+        );
+      expect((await list()).items.map((item) => item.key)).toContain(
+        uploaded.key,
+      );
+      await callSelfMcpTool(memberCtx, owner.orgSlug, "FILE_OBJECT_DELETE", {
+        configId: config.id,
+        key: uploaded.key,
+      });
+      expect((await list()).items).toEqual([]);
+      await expectDenied(
+        memberCtx,
+        owner.orgSlug,
+        "FILE_CONFIG_CREATE",
+        configInput,
+      );
+      await expectDenied(memberCtx, owner.orgSlug, "FILE_CONFIG_UPDATE", {
+        id: config.id,
+        name: "renamed-bucket",
+      });
+      await expectDenied(memberCtx, owner.orgSlug, "FILE_CONFIG_DELETE", {
+        id: config.id,
+      });
+    } finally {
+      await memberCtx.dispose();
+      await ownerCtx.dispose();
+    }
   });
 
   test("custom role falls back to Better Auth and is still enforced", async ({
@@ -226,6 +411,11 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
       {},
     );
     expect(stats).toBeDefined();
+
+    const upload = await memberCtx.post(
+      `/api/${owner.orgSlug}/file-configs/config_example/upload`,
+    );
+    expect(upload.status()).toBe(403);
 
     // DENY via fall-back: a tool the custom role does NOT list. Better Auth
     // denies; basic-usage is still granted out-of-band, so pick a clearly gated
