@@ -15,6 +15,7 @@ import {
   newNameProblem,
 } from "./named-rule-picker";
 import { useT } from "@/i18n/use-t.ts";
+import { whilePending } from "@/lib/while-pending";
 import { NamedRuleCreateForm, NamedRuleRow } from "./named-rule-step";
 import { VariantRuleForm } from "./sections-editor-panels";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
@@ -123,12 +124,7 @@ function LoadedVariantRuleEditor({
     newNameProblem(namedRow.name, existingNames) === null;
   const create = async (pick: NamedRulePick) => {
     if (!named) return;
-    setCreatePending(true);
-    try {
-      await named.onPick(pick);
-    } finally {
-      setCreatePending(false);
-    }
+    await whilePending(setCreatePending, () => named.onPick(pick));
     setCreatingFor(null);
   };
   return (

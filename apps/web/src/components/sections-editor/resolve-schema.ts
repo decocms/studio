@@ -168,6 +168,24 @@ const MAX_STRUCTURE_DEPTH = 32;
 const MAX_ANYOF_EAGER_SCHEMA_BRANCHES = 40;
 
 /**
+ * The definition a module branch builds: its own `$ref`, or the sole `allOf`
+ * member deco wraps a block's props in. A loader can accept its own return
+ * type, so its branch points back at the block being built; keying the cycle
+ * guard on this definition (not the shared `__resolveType` of a generic flag)
+ * leaves exactly that re-entry lazy.
+ */
+function branchDefinitionKey(branch: RawSchema): string | undefined {
+  const allOf = branch.allOf as RawSchema[] | undefined;
+  const ref =
+    typeof branch.$ref === "string"
+      ? branch.$ref
+      : allOf?.length === 1 && typeof allOf[0]?.$ref === "string"
+        ? allOf[0].$ref
+        : undefined;
+  return ref?.split("/").pop() || undefined;
+}
+
+/**
  * Definition key for the "pick any section" union (mirrors the meta composer's
  * `SECTION_REF_DEF_KEY`). Section-typed props (`children`, `fallback`, …) `$ref`
  * this; not every meta materializes the def, so {@link resolveSchema} falls back
@@ -638,6 +656,27 @@ function buildSchema(
         ? buildProperty(branch, branchDepth, unionSeen)
         : undefined;
 
+    /** {@link eagerBranchSchema} for a module branch; lazy if its definition is on the stack. */
+    const eagerModuleBranchSchema = (
+      definitionKey: string | undefined,
+      branch: RawSchema,
+      branchDepth: number,
+      branchCount: number,
+    ): SchemaProperty | undefined => {
+      if (!definitionKey) {
+        return eagerBranchSchema(branch, branchDepth, branchCount);
+      }
+      if (cyclicRef || unionSeen.has(definitionKey)) return undefined;
+      return branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES &&
+        branchDepth < MAX_BUILD_PROPERTY_DEPTH
+        ? buildProperty(
+            branch,
+            branchDepth,
+            new Set([...unionSeen, definitionKey]),
+          )
+        : undefined;
+    };
+
     // Extract enum values from anyOf/oneOf const/enum branches
     let enumFromConsts: unknown[] | undefined;
     {
@@ -819,7 +858,12 @@ function buildSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
-              schema: eagerBranchSchema(branch, depth + 1, pickerBranches.size),
+              schema: eagerModuleBranchSchema(
+                branchDefinitionKey(branch),
+                branch,
+                depth + 1,
+                pickerBranches.size,
+              ),
             };
           });
 
@@ -866,7 +910,12 @@ function buildSchema(
                 typeof def.description === "string"
                   ? def.description
                   : undefined,
-              schema: eagerBranchSchema(def, depth + 1, nonNull.length),
+              schema: eagerModuleBranchSchema(
+                branchDefinitionKey(branch),
+                def,
+                depth + 1,
+                nonNull.length,
+              ),
             });
           }
 
@@ -1429,6 +1478,9 @@ function buildSchema(
 
   if ("ref" in target) return buildProperty({ $ref: target.ref });
 
+  const rootDefinitionKey = branchDefinitionKey(blockSchema);
+  const rootSeen = new Set(rootDefinitionKey ? [rootDefinitionKey] : []);
+
   // deco wraps a block's config as
   //   { type:"object", allOf:[{$ref:<Props>}], properties:{__resolveType:{…}},
   //     required:["__resolveType"] }
@@ -1473,7 +1525,7 @@ function buildSchema(
       // (`allOf` intersections and base-object-plus-extension shapes fall
       // through to the normal merge below.)
       if (!isChoiceUnion || def.properties) continue;
-      const built = buildProperty(def, 0);
+      const built = buildProperty(def, 0, rootSeen);
       if (built.type === "inline-union" && built.inlineUnionBranches) {
         const machineTitle = isMachineGeneratedTitle(built.title);
         return {
@@ -1498,7 +1550,7 @@ function buildSchema(
   const properties: Record<string, SchemaProperty> = {};
   for (const [key, raw] of Object.entries(topRaw)) {
     if (key.startsWith("__") || key === "@type") continue;
-    properties[key] = buildProperty(raw as RawSchema, 0);
+    properties[key] = buildProperty(raw as RawSchema, 0, rootSeen);
   }
 
   if (Object.keys(properties).length === 0) return null;

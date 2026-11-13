@@ -2,7 +2,6 @@ import { isV8Schema } from "@decocms/shared/blocks-major";
 import { type ReactNode, useEffect } from "react";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
-import { resolveSchema } from "./resolve-schema";
 import { applySchemaDefaults } from "./schema-defaults";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
@@ -25,6 +24,7 @@ import { LocationField } from "./fields/location-field";
 import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import {
+  cachedResolveSchema,
   expandRecursiveSchema,
   fillDepthCappedBranches,
 } from "./fields/resolved-schema-cache";
@@ -150,7 +150,7 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
   }
   const resolveType = (value as Record<string, unknown>).__resolveType;
   if (typeof resolveType !== "string" || !meta) return null;
-  const referencedSchema = resolveSchema(resolveType, meta);
+  const referencedSchema = cachedResolveSchema(resolveType, meta);
   if (!referencedSchema) return null;
   return (
     <SchemaForm
@@ -170,6 +170,15 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
       sandbox={props.sandbox}
     />
   );
+}
+
+/**
+ * {@link renderField} as a component. Use it where the field props carry
+ * callbacks that touch refs: React Compiler skips a component that hands such
+ * callbacks to a plain function call during render, but not to JSX.
+ */
+export function SchemaField(props: FieldProps) {
+  return renderField(props);
 }
 
 export function renderField(fieldProps: FieldProps): ReactNode {
@@ -534,6 +543,19 @@ interface SchemaFormProps {
  * `object-field-expansion.tsx`. It also writes missing `@default`s back through
  * `onChange`, so the form only shows values that are saved.
  */
+/**
+ * `obj` without `key`. A module helper because React Compiler skips a
+ * component that destructures a computed key.
+ */
+function omitKey(
+  obj: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
+  const rest = { ...obj };
+  delete rest[key];
+  return rest;
+}
+
 export function SchemaForm(props: SchemaFormProps) {
   const hasExpansionProvider = useHasObjectFieldExpansion();
   if (hasExpansionProvider) return <SchemaFormBody {...props} />;
@@ -680,12 +702,11 @@ function SchemaFormBody({
   }
 
   const updateField = (key: string, fieldValue: unknown) => {
-    if (fieldValue === undefined) {
-      const { [key]: _removed, ...rest } = objValue;
-      onChange(rest);
-      return;
-    }
-    onChange({ ...objValue, [key]: fieldValue });
+    onChange(
+      fieldValue === undefined
+        ? omitKey(objValue, key)
+        : { ...objValue, [key]: fieldValue },
+    );
   };
 
   const containerResolveType =

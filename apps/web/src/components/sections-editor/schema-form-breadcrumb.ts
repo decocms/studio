@@ -3,11 +3,8 @@ import {
   getArrayItemLabel,
 } from "./array-item-display";
 import { isPageMultivariateSectionArrayField } from "./page-variants";
-import {
-  resolveSchema,
-  type LiveMeta,
-  type SchemaProperty,
-} from "./resolve-schema";
+import { cachedResolveSchema } from "./fields/resolved-schema-cache";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import { unwrapBlockReference } from "./unwrap-section";
 
 /**
@@ -557,7 +554,7 @@ function blockRefSchemaOwnsArrayLabel(
   }
   const resolveType = (data as Record<string, unknown>).__resolveType;
   if (typeof resolveType !== "string" || !resolveType) return false;
-  const props = resolveSchema(resolveType, meta)?.properties;
+  const props = cachedResolveSchema(resolveType, meta)?.properties;
   if (!props) return false;
   const keys = Object.keys(props);
   for (const key of keys) {

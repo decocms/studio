@@ -7,11 +7,8 @@ import {
   parseSavedBlockSchemaTitle,
   unionRefMatchesValue,
 } from "./block-type-utils";
-import {
-  resolveSchema,
-  type LiveMeta,
-  type SchemaProperty,
-} from "./resolve-schema";
+import { cachedResolveSchema } from "./fields/resolved-schema-cache";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import { V8_MULTIVARIATE_RESOLVE_TYPE } from "./variant-shape";
 
 export type BlockRefOption = {
@@ -248,7 +245,7 @@ export function resolveNestedBlockRefSchema(
     return moduleRt.includes("/") ? null : (fallback ?? null);
   }
 
-  const resolved = resolveSchema(moduleRt, meta);
+  const resolved = cachedResolveSchema(moduleRt, meta);
   if (resolved) return resolved;
 
   if (moduleRt.includes("/")) return null;
@@ -313,4 +310,53 @@ export function blockRefLoaderConfigHasData(
     return Array.isArray(obj.variants) && obj.variants.length > 0;
   }
   return Object.keys(obj).some((k) => !k.startsWith("__") && k !== "@type");
+}
+
+function defaultsForSchema(schema?: SchemaProperty): Record<string, unknown> {
+  if (!schema?.properties) return {};
+  const out: Record<string, unknown> = {};
+  for (const [key, prop] of Object.entries(schema.properties)) {
+    if (key.startsWith("__") || key === "@type") continue;
+    if (prop.default !== undefined) {
+      out[key] = prop.default;
+    } else if (prop.type === "boolean") {
+      out[key] = false;
+    } else if (prop.type === "string") {
+      out[key] = "";
+    } else if (prop.type === "number" || prop.type === "integer") {
+      out[key] = 0;
+    } else if (prop.type === "object") {
+      out[key] = {};
+    }
+  }
+  return out;
+}
+
+/**
+ * The value a block-ref field switches to when its `resolveType` branch is
+ * picked: the branch's defaults, then the current value's fields it also has.
+ */
+export function valueForBranchSwitch(
+  ref: Pick<BlockRefOption, "schema"> | undefined,
+  resolveType: string,
+  value: unknown,
+  editorValue: unknown,
+  meta: LiveMeta | undefined,
+): Record<string, unknown> {
+  // A lazy branch (cycle, width or depth cap) carries no schema of its own.
+  const schema =
+    ref?.schema ??
+    (meta ? (cachedResolveSchema(resolveType, meta) ?? undefined) : undefined);
+  const resolved = resolveNestedBlockRefSchema(editorValue, meta, schema);
+  const allowed = new Set(Object.keys((resolved ?? schema)?.properties ?? {}));
+  const existing =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return {
+    ...defaultsForSchema(schema),
+    ...Object.fromEntries(
+      Object.entries(existing).filter(([key]) => allowed.has(key)),
+    ),
+  };
 }
