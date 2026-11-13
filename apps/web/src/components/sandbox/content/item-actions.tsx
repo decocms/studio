@@ -4,6 +4,7 @@ import {
   CreditCardSearch,
   DotsHorizontal,
   Edit01,
+  FlipBackward,
   LayersThree01,
   Trash01,
 } from "@untitledui/icons";
@@ -22,6 +23,7 @@ export function ItemActions({
   onAddVariant,
   onEditSeo,
   onViewJson,
+  onDiscard,
   onDelete,
 }: {
   onDuplicate?: () => void;
@@ -29,7 +31,9 @@ export function ItemActions({
   onAddVariant?: () => void;
   onEditSeo?: () => void;
   onViewJson?: () => void;
-  onDelete: () => void;
+  /** Drops the draft's changes to the entry, back to its published copy. */
+  onDiscard?: () => void;
+  onDelete?: () => void;
 }) {
   const t = useT();
   return (
@@ -86,14 +90,26 @@ export function ItemActions({
             )}
           </>
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={onDelete}
-          className="text-destructive focus:text-destructive"
-        >
-          <Trash01 size={14} />
-          {t("sandbox.itemActions.delete")}
-        </DropdownMenuItem>
+        {(onDiscard || onDelete) && (
+          <>
+            <DropdownMenuSeparator />
+            {onDiscard && (
+              <DropdownMenuItem onClick={onDiscard}>
+                <FlipBackward size={14} />
+                {t("sandbox.itemActions.discardChanges")}
+              </DropdownMenuItem>
+            )}
+            {onDelete && (
+              <DropdownMenuItem
+                onClick={onDelete}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash01 size={14} />
+                {t("sandbox.itemActions.delete")}
+              </DropdownMenuItem>
+            )}
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
