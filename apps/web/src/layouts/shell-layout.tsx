@@ -155,6 +155,14 @@ export function usePanelActions() {
     const savedLayout = isSameThread ? null : readThreadLayout(id);
     const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
+    // The org assistant's chat follows you across pages: opening one keeps the
+    // page you're on.
+    if (virtualMcpId === decopilotId && !opts?.panel) {
+      return navigateThread(id, () =>
+        opts?.autosend ? { autosend: AUTOSEND_QUERY_VALUE } : {},
+      );
+    }
+
     const target = resolveTaskSwitchSearch({
       /** The source agent is the one the ROUTE names, never a search param a previous navigation left behind — a stale one misreports the agent we're switching AWAY from, and the carry-forward view rides on that comparison. */
       prev: {
