@@ -47,6 +47,10 @@ function isRepolessSandboxRun(
 export function resolvePreviewSource(input: {
   /** Id of the active thread. */
   threadId: string | null | undefined;
+  /** Agent that owns the active thread. */
+  threadAgentId: string | null | undefined;
+  /** Agent whose Preview / Code this is. */
+  agentId: string;
   /** `threads.branch` of the active thread — the sandbox isolation key. */
   sandboxBranch: string | null | undefined;
   /** The agent entity declares a clonable `repository`. */
@@ -54,6 +58,11 @@ export function resolvePreviewSource(input: {
   /** The thread itself declares a clonable `repository`. */
   threadHasRepo: boolean;
 }): PreviewSource {
+  // The one chat follows you across projects: a thread of another agent (the
+  // org assistant's) says nothing about this project's source.
+  const ownThread =
+    input.threadAgentId == null || input.threadAgentId === input.agentId;
+  if (!ownThread) return input.agentHasRepo ? "repo" : "none";
   if (input.threadHasRepo) return "repo";
   if (isRepolessSandboxRun(input.threadId, input.sandboxBranch)) return "none";
   return input.agentHasRepo ? "repo" : "none";

@@ -142,6 +142,8 @@ export function useMainPanelTabs(ctx: {
   // other thread, harness included, still previews the agent repo.
   const previewSource = resolvePreviewSource({
     threadId: ctx.taskId,
+    threadAgentId: activeTask?.virtual_mcp_id,
+    agentId: ctx.virtualMcpId,
     sandboxBranch: activeTask?.branch ?? currentBranch,
     agentHasRepo: agentHasClonableSource(entity?.metadata),
     threadHasRepo:

@@ -3,6 +3,8 @@ import { resolvePreviewSource } from "./preview-source";
 
 const base = {
   threadId: "t1",
+  threadAgentId: "agent" as string | null,
+  agentId: "agent",
   sandboxBranch: null as string | null,
   agentHasRepo: false,
   threadHasRepo: false,
@@ -69,6 +71,28 @@ describe("resolvePreviewSource", () => {
         agentHasRepo: true,
       }),
     ).toBe("repo");
+  });
+
+  it("previews the agent repo under another agent's chat", () => {
+    // The org assistant's sandbox chat carries a bare key of its own thread.
+    expect(
+      resolvePreviewSource({
+        ...base,
+        threadAgentId: "decopilot",
+        sandboxBranch: "thread:t1",
+        agentHasRepo: true,
+      }),
+    ).toBe("repo");
+  });
+
+  it("ignores another agent's thread-scoped repo", () => {
+    expect(
+      resolvePreviewSource({
+        ...base,
+        threadAgentId: "decopilot",
+        threadHasRepo: true,
+      }),
+    ).toBe("none");
   });
 
   it("has nothing to preview without any repo", () => {

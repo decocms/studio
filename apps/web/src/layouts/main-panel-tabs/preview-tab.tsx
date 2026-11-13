@@ -51,6 +51,8 @@ export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {
   // empty state if it is deep-linked to.
   const previewSource = resolvePreviewSource({
     threadId: taskId,
+    threadAgentId: activeTask?.virtual_mcp_id,
+    agentId: virtualMcpId,
     sandboxBranch: activeTask?.branch ?? currentBranch,
     agentHasRepo: agentHasClonableSource(entity?.metadata),
     threadHasRepo:
