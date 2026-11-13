@@ -141,7 +141,7 @@ import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
 import {
   cmsEditorActivation,
-  showCmsPageSelector,
+  showPageSelector,
   showPreviewToolbarFor,
   visualEditorActivation,
 } from "./cms-controls";
@@ -1384,7 +1384,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     packagePath,
     showsFrameworkRoutes && daemonReady,
   );
-  const pagePaths = new Set(pages.map((page) => normPath(page.path)));
+  const pagePaths = new Set(
+    contentEditingEnabled ? pages.map((page) => normPath(page.path)) : [],
+  );
   const visibleFrameworkRoutes = showsFrameworkRoutes
     ? frameworkRoutes.filter((route) => !pagePaths.has(normPath(route)))
     : [];
@@ -1980,21 +1982,29 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     servePreviewUrl: servePreviewUrl(contentBackend),
   });
 
-  /** The page selector shares the exact project-level gate used by Content and
-   *  Blocks. Session runtime and metadata readiness do not change the topbar's
-   *  shape; the selector can expose setup/creation flows while data loads. */
-  const pageSelectorVisible = showCmsPageSelector({
+  /** CMS entries share the project-level gate used by Content and Blocks;
+   *  router routes show without it. Session runtime and metadata readiness do
+   *  not change the topbar's shape for a CMS project; the selector can expose
+   *  setup/creation flows while data loads. */
+  const pageSelectorVisible = showPageSelector({
     showPreviewToolbar,
     contentEditingEnabled,
+    hasFrameworkRoutes: visibleFrameworkRoutes.length > 0,
   });
+  const pickerPages = contentEditingEnabled ? filteredPages : [];
+  const pickerGlobalSections = contentEditingEnabled
+    ? filteredGlobalSections
+    : [];
 
   const closePagePicker = () => {
     setPagesOpen(false);
     setPagesSearch("");
   };
-  const pageName =
-    activeGlobalSection?.name ?? activeLoader?.title ?? currentPage?.name;
-  const blocksLoading = decofileQuery.isPending || metaQuery.isPending;
+  const pageName = contentEditingEnabled
+    ? (activeGlobalSection?.name ?? activeLoader?.title ?? currentPage?.name)
+    : undefined;
+  const blocksLoading =
+    contentEditingEnabled && (decofileQuery.isPending || metaQuery.isPending);
   const pagePickerLabel = blocksLoading
     ? previewOrigin(display.iframeBase)
     : pageName;
@@ -2002,7 +2012,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     ? `section:${activeGlobalSection.key}`
     : activeLoaderKey
       ? `loader:${activeLoaderKey}`
-      : currentPageKey
+      : contentEditingEnabled && currentPageKey
         ? `page:${currentPageKey}`
         : visibleFrameworkRoutes.includes(normPath(currentPath))
           ? `route:${normPath(currentPath)}`
@@ -2028,7 +2038,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   ? pageName
                   : [pageName, currentPath].filter(Boolean).join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-ring"
+            className="group/page-picker flex h-7 w-80 min-w-0 shrink items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-ring"
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
@@ -2051,7 +2061,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               {!blocksLoading && !activeGlobalSection && !activeLoader && (
                 <span
                   data-testid="preview-page-path"
-                  className="ml-auto min-w-0 truncate text-right font-mono text-muted-foreground"
+                  className={cn(
+                    "min-w-0 truncate font-mono",
+                    pagePickerLabel
+                      ? "ml-auto shrink-[2] text-right text-muted-foreground"
+                      : "flex-1 text-foreground",
+                  )}
                 >
                   {currentPath}
                 </span>
@@ -2083,16 +2098,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             />
             <CommandList ref={pagesListRef} className="max-h-80">
               <CommandEmpty>
-                {pages.length === 0 &&
+                {(!contentEditingEnabled || pages.length === 0) &&
                 visibleFrameworkRoutes.length === 0 &&
-                globalSections.length === 0 &&
+                (!contentEditingEnabled || globalSections.length === 0) &&
                 visibleGlobalLoaders.length === 0
                   ? t("sandbox.preview.noPagesFound")
                   : t("sandbox.preview.noSearchResults")}
               </CommandEmpty>
-              {filteredPages.length > 0 && (
+              {pickerPages.length > 0 && (
                 <CommandGroup>
-                  {filteredPages.map((page) => (
+                  {pickerPages.map((page) => (
                     <CommandItem
                       key={page.key}
                       value={`page:${page.key}`}
@@ -2139,9 +2154,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   ))}
                 </CommandGroup>
               )}
-              {filteredGlobalSections.length > 0 && (
+              {pickerGlobalSections.length > 0 && (
                 <CommandGroup heading={t("sandbox.preview.globalComponents")}>
-                  {filteredGlobalSections.map((section) => (
+                  {pickerGlobalSections.map((section) => (
                     <CommandItem
                       key={section.key}
                       value={`section:${section.key}`}
@@ -2183,7 +2198,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               )}
             </CommandList>
           </Command>
-          {!activeGlobalSection &&
+          {contentEditingEnabled &&
+            !activeGlobalSection &&
             !activeLoaderKey &&
             splitPathTemplate(currentPath).some(
               (token) => token.type !== "text",
@@ -2214,20 +2230,22 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 })}
               </div>
             )}
-          <div className="border-t p-1.5">
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => {
-                closePagePicker();
-                setCreatePageError(undefined);
-                setCreatePageDialogOpen(true);
-              }}
-            >
-              <Plus size={16} />
-              {t("sandbox.preview.createNewPage")}
-            </Button>
-          </div>
+          {contentEditingEnabled && (
+            <div className="border-t p-1.5">
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => {
+                  closePagePicker();
+                  setCreatePageError(undefined);
+                  setCreatePageDialogOpen(true);
+                }}
+              >
+                <Plus size={16} />
+                {t("sandbox.preview.createNewPage")}
+              </Button>
+            </div>
+          )}
         </PopoverContent>
       </Popover>
     ) : (
