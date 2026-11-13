@@ -1024,8 +1024,15 @@ export interface StudioToolIO {
         | "3:4"
         | "3:2"
         | "2:3"
+        | "4:5"
+        | "5:4"
         | undefined;
       n?: number | undefined;
+      provider?: string | undefined;
+      model?: string | undefined;
+      size?: string | undefined;
+      quality?: "low" | "medium" | "high" | "auto" | undefined;
+      moderation?: "low" | "auto" | undefined;
     };
     output: {
       success: true;
