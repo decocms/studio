@@ -1,6 +1,18 @@
 import type { virtualMcp as virtualMcpEn } from "../en/virtual-mcp.ts";
 
 export const virtualMcp = {
+  "virtualMcp.settings.assetStorage.label": "Armazenamento de arquivos",
+  "virtualMcp.settings.assetStorage.description":
+    "Escolha onde este projeto consulta e envia imagens e arquivos. As URLs do conteúdo existente não mudam.",
+  "virtualMcp.settings.assetStorage.automatic":
+    "Automático (corresponder ao site)",
+  "virtualMcp.settings.assetStorage.missing":
+    "O armazenamento selecionado está indisponível. Escolha outro nas configurações do projeto.",
+  "virtualMcp.settings.assetStorage.loading":
+    "Carregando configurações de armazenamento…",
+  "virtualMcp.settings.assetStorage.loadError":
+    "Não foi possível carregar as configurações de armazenamento.",
+
   "virtualMcp.addConnectionDialog.addConnectionTitle": "Adicionar Conexão",
   "virtualMcp.addConnectionDialog.authenticationFailedError":
     "Autenticação falhou: {error}",

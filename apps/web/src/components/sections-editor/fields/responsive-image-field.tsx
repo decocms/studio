@@ -149,6 +149,7 @@ export function ResponsiveImageField({
 
   const { isDragging, isPending, lockedConfigId, dropProps } = useImageUpload({
     siteSlug: sandbox?.siteSlug,
+    virtualMcpId: sandbox?.virtualMcpId,
     onUploaded: setActive,
     onNeedsPicker: () => setPickerOpen(true),
   });

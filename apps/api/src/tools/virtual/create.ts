@@ -132,6 +132,12 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
     const { prompts, metadata: rawMetadata, ...createData } = input.data;
     // A new project starts v7: only an org admin turns "Blocks v8 site" on.
     refuseBlocksV8MetadataWrite(null, rawMetadata);
+    if (rawMetadata?.assetStorageConfigId) {
+      await ctx.storage.orgFileConfigs.findById(
+        rawMetadata.assetStorageConfigId,
+        organization.id,
+      );
+    }
     const metadata = stripServerManagedMetadata(rawMetadata);
 
     if (createData.connections.length > 0) {

@@ -112,6 +112,7 @@ export function ImageField({
   const { isDragging, isPending, lockedConfigId, dropProps, handleFiles } =
     useImageUpload({
       siteSlug: sandbox?.siteSlug,
+      virtualMcpId: sandbox?.virtualMcpId,
       onUploaded: setValue,
       onNeedsPicker: () => setPickerOpen(true),
       serveUpload,

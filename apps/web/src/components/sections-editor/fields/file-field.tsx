@@ -1,3 +1,4 @@
+import { useVirtualMCP } from "@/sdk";
 import { useRef, useState } from "react";
 import { File02, Film01, Trash01, Upload01 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -39,6 +40,8 @@ export function FileField({
   sandbox,
 }: FieldProps) {
   const t = useT();
+  const project = useVirtualMCP(sandbox?.virtualMcpId);
+  const explicitConfigId = project?.metadata?.assetStorageConfigId;
   const isVideo = schema.format === "video-uri";
   const strValue = extractUrl(value);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -59,7 +62,9 @@ export function FileField({
   const lockedConfig = matchSiteSlugConfig(
     configsQuery.data?.configs ?? [],
     sandbox?.siteSlug,
+    explicitConfigId,
   );
+  const lockedConfigId = explicitConfigId ?? lockedConfig?.id ?? null;
 
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
@@ -88,7 +93,7 @@ export function FileField({
 
     const targetConfigId = resolveTargetConfigId(
       configsQuery.data?.configs ?? [],
-      lockedConfig?.id,
+      lockedConfigId,
       typeof window !== "undefined"
         ? window.localStorage.getItem(LAST_CONFIG_KEY)
         : null,
@@ -295,7 +300,7 @@ export function FileField({
           onOpenChange={setPickerOpen}
           mode="any"
           onSelect={(url) => onChange(url)}
-          lockedConfigId={lockedConfig?.id ?? null}
+          lockedConfigId={lockedConfigId ?? null}
         />
       )}
     </div>

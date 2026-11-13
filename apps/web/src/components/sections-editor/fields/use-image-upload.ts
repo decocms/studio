@@ -1,3 +1,4 @@
+import { useVirtualMCP } from "@/sdk";
 import { useState } from "react";
 import { toast } from "sonner";
 import { LAST_CONFIG_KEY } from "@/components/file-picker/file-picker-dialog";
@@ -35,16 +36,18 @@ export const ACCEPTED_IMAGE_TYPES = new Set([
 /**
  * Upload + drag-and-drop plumbing for an image slot, shared by the form field
  * ({@link ImageField}) and the inline post-body image block. Both surfaces
- * must resolve the same bucket, honour the same site-slug lock, and fall back
+ * must resolve the same bucket, honour the same project storage, and fall back
  * to the picker the same way; only their chrome differs.
  */
 export function useImageUpload({
   siteSlug,
+  virtualMcpId,
   onUploaded,
   onNeedsPicker,
   serveUpload,
 }: {
   siteSlug?: string | null;
+  virtualMcpId?: string | null;
   onUploaded: (publicUrl: string) => void;
   /** No deterministic bucket — the caller opens the picker to choose one. */
   onNeedsPicker: () => void;
@@ -55,13 +58,17 @@ export function useImageUpload({
   serveUpload?: ((file: File) => Promise<string>) | null;
 }) {
   const t = useT();
+  const project = useVirtualMCP(virtualMcpId);
+  const explicitConfigId = project?.metadata?.assetStorageConfigId;
   const configsQuery = useFileConfigsQuery({ enabled: !serveUpload });
   const upload = useFilePickerUpload();
   const [isDragging, setIsDragging] = useState(false);
   const lockedConfig = matchSiteSlugConfig(
     configsQuery.data?.configs ?? [],
     siteSlug,
+    explicitConfigId,
   );
+  const lockedConfigId = explicitConfigId ?? lockedConfig?.id ?? null;
 
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
@@ -88,7 +95,7 @@ export function useImageUpload({
 
     const targetConfigId = resolveTargetConfigId(
       configsQuery.data?.configs ?? [],
-      lockedConfig?.id,
+      lockedConfigId,
       typeof window !== "undefined"
         ? window.localStorage.getItem(LAST_CONFIG_KEY)
         : null,
@@ -128,7 +135,7 @@ export function useImageUpload({
   return {
     isDragging,
     isPending: upload.isPending,
-    lockedConfigId: lockedConfig?.id ?? null,
+    lockedConfigId,
     handleFiles,
     dropProps: {
       onDragOver: (e: React.DragEvent) => {

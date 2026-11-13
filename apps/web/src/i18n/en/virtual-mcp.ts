@@ -1,4 +1,14 @@
 export const virtualMcp = {
+  "virtualMcp.settings.assetStorage.label": "Asset storage",
+  "virtualMcp.settings.assetStorage.description":
+    "Choose where this project browses and uploads images and files. Existing content URLs stay unchanged.",
+  "virtualMcp.settings.assetStorage.automatic": "Automatic (match the site)",
+  "virtualMcp.settings.assetStorage.missing":
+    "The selected asset storage is unavailable. Choose another storage in project settings.",
+  "virtualMcp.settings.assetStorage.loading": "Loading storage configurations…",
+  "virtualMcp.settings.assetStorage.loadError":
+    "Could not load storage configurations.",
+
   "virtualMcp.addConnectionDialog.addConnectionTitle": "Add Connection",
   "virtualMcp.addConnectionDialog.authenticationFailedError":
     "Authentication failed: {error}",

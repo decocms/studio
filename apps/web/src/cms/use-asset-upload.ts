@@ -1,3 +1,4 @@
+import { useVirtualMCP } from "@/sdk";
 import { cmsRequestSignal } from "./request-deadline";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
@@ -19,10 +20,12 @@ export function useServeAssetUpload(
   sandbox: SandboxConfig | null | undefined,
 ): ((file: File) => Promise<string>) | null {
   const t = useT();
+  const project = useVirtualMCP(sandbox?.virtualMcpId);
   const backend = useContentBackend(sandbox?.virtualMcpId, sandbox?.branch);
   const { connection } = useDecoServeConnection(sandbox?.virtualMcpId);
   const origin = serveAssetUploadOrigin(backend, connection);
   if (
+    project?.metadata?.assetStorageConfigId ||
     !origin ||
     !sandbox ||
     backend.kind !== "protocol" ||

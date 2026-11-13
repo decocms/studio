@@ -892,6 +892,15 @@ const VirtualMcpMetadataFields = {
     .describe(
       "The project's site id (asset tenancy, CDN paths, site tokens). Set once when the site is created or imported; any write that would change it is refused.",
     ),
+  assetStorageConfigId: z
+    .string()
+    .trim()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe(
+      "Organization file configuration used for this project’s assets. null/absent uses automatic site matching.",
+    ),
   publishPolicy: publishPolicyMetadataField,
   previewServerUrl: previewServerUrlMetadataField,
   productionUrl: z
