@@ -11,6 +11,8 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.chatLoadingError":
     "Algo deu errado ao carregar o chat. Tente atualizar.",
   "agentShellLayout.agentShellLayout.creatingTask": "Criando tarefa…",
+  "agentShellLayout.agentShellLayout.viewDraftUnavailable":
+    "Não deu para abrir um draft para esta tela. Recarregue a página para tentar de novo.",
   "agentShellLayout.agentShellLayout.goToOrgHome":
     "Ir para a página inicial da organização",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Tarefa indisponível",

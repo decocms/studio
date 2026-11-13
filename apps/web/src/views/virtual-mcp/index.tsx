@@ -81,8 +81,10 @@ import {
 import { useProjectSettingsSection } from "./settings/use-settings-section";
 import type { ProjectSettingsSectionKey } from "./settings/sections";
 import { SiteTokenSection } from "./settings/site-token-section";
+import { BlocksV8SiteSection } from "./settings/blocks-v8-site-section";
+import { cmsSiteOf } from "@/cms/cms-api";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
-import { useMainSchemaV8 } from "@/hooks/use-main-schema-v8";
+import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
@@ -92,13 +94,14 @@ import {
   agentHasConnectedRepository,
 } from "@/lib/agent-capabilities";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
-import { omitSandboxMap } from "@/lib/omit-sandbox-map";
+import { omitServerManagedMetadata } from "@/lib/omit-server-managed-metadata";
 import { RepositoryCard } from "./settings/repository-card";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
 import { RuntimeAppsField } from "@/components/sandbox/runtime-card/runtime-apps-field";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
+import { LegacyBlogPostFormatField } from "@/components/sandbox/runtime-card/legacy-blog-post-format-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
@@ -366,7 +369,7 @@ function VirtualMcpDetailViewWithData({
     defaultValues: {
       ...virtualMcp,
       metadata: {
-        ...omitSandboxMap(virtualMcp.metadata),
+        ...omitServerManagedMetadata(virtualMcp.metadata),
         previewServerUrl: resolvePreviewServerUrl(virtualMcp.metadata),
         ...initialSidebarFormFields,
       },
@@ -591,7 +594,7 @@ function VirtualMcpDetailViewWithData({
       cachedVirtualMcp?.metadata,
     );
     payload.metadata = {
-      ...omitSandboxMap(payload.metadata),
+      ...omitServerManagedMetadata(payload.metadata),
       ...sidebarFieldsForSave,
     };
 
@@ -910,7 +913,8 @@ function VirtualMcpDetailViewWithData({
     : showGeneral;
   // Site tokens are for Blocks v8 sites only (hosted Deco CMS); a v7 site
   // never shows them.
-  const hostedCms = useMainSchemaV8(virtualMcp.id) === "v8";
+  const hostedCms = useBlocksV8Project(virtualMcp.id);
+  const cmsSite = cmsSiteOf(virtualMcp.metadata);
   const views = useProjectViews({
     virtualMcpId: virtualMcp.id,
     form,
@@ -1146,6 +1150,11 @@ function VirtualMcpDetailViewWithData({
                         <FieldDescriptionTooltipsField control={form.control} />
                       </SettingsCardRow>
                     )}
+                    {!cmsOff && (
+                      <SettingsCardRow>
+                        <LegacyBlogPostFormatField control={form.control} />
+                      </SettingsCardRow>
+                    )}
                     {!cmsOff && hasRepository && (
                       <SettingsCardRow>
                         <PublishPolicyField
@@ -1177,11 +1186,17 @@ function VirtualMcpDetailViewWithData({
                 </SettingsSection>
               )}
 
+              {/* The "Blocks v8 site" switch: org owners and admins only. */}
+              {section === "site" && (
+                <BlocksV8SiteSection virtualMcp={virtualMcp} />
+              )}
+
               {/* Hosted Deco CMS (Blocks v8): the site's telemetry tokens. */}
-              {section === "site" && hostedCms && hasRepository && (
+              {section === "site" && hostedCms && cmsSite && (
                 <SiteTokenSection
                   orgSlug={org.slug}
                   virtualMcpId={virtualMcp.id}
+                  site={cmsSite}
                 />
               )}
 

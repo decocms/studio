@@ -5,6 +5,7 @@ import {
   duplicateVariantIndex,
   isDefaultVariantRule,
   newVariantIndex,
+  numberRepeatedLabels,
 } from "./section-variants";
 import type { RawSection } from "./section-types";
 import {
@@ -195,22 +196,13 @@ export function parsePageVariants(
         rule?: Record<string, unknown>;
         value?: unknown;
       }>;
-      const labels = raw.map((v) =>
-        resolveVariantRuleLabel(v.rule, decofile, formatMatcher),
+      const labels = numberRepeatedLabels(
+        raw.map((v) =>
+          resolveVariantRuleLabel(v.rule, decofile, formatMatcher),
+        ),
       );
-      const labelCounts = labels.reduce<Record<string, number>>((acc, l) => {
-        acc[l] = (acc[l] ?? 0) + 1;
-        return acc;
-      }, {});
-      const seen: Record<string, number> = {};
       return raw.map((v, i) => {
-        const baseLabel = labels[i] ?? `Variant ${i + 1}`;
-        const total = labelCounts[baseLabel] ?? 1;
-        let label = baseLabel;
-        if (total > 1) {
-          seen[baseLabel] = (seen[baseLabel] ?? 0) + 1;
-          label = `${baseLabel} ${seen[baseLabel]}`;
-        }
+        const label = labels[i];
         const value = readVariantValue(v);
         return {
           label: label || `Variant ${i + 1}`,
@@ -378,4 +370,19 @@ export function countSavedMatcherBlockReferences(
   meta?: LiveMeta | null,
 ): number {
   return findSavedMatcherReferences(decofile, blockKey, meta).length;
+}
+
+/**
+ * Whether the sections editor deletes the saved matcher block `blockKey`
+ * after a write left `decofile`: on a v7 site, once nothing references it.
+ * A v8 site (`protocolProject`) keeps its saved rules, used or not.
+ */
+export function shouldDeleteOrphanMatcherBlock(
+  decofile: Record<string, unknown>,
+  blockKey: string,
+  meta: LiveMeta | null | undefined,
+  protocolProject: boolean,
+): boolean {
+  if (protocolProject) return false;
+  return countSavedMatcherBlockReferences(decofile, blockKey, meta) === 0;
 }

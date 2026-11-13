@@ -1,6 +1,6 @@
 /**
- * Maps a page's editable sections onto the top-level `<section
- * data-manifest-key>` nodes the runtime rendered, in order.
+ * Maps a page's editable sections onto the top-level `data-manifest-key`
+ * nodes the runtime rendered, by key.
  *
  * Both sides skip: the runtime injects framework sections (SEO, Theme,
  * Analytics) around and between the editable ones, and an editable section can
@@ -8,6 +8,19 @@
  * that missed). A section only takes a node whose key it could have rendered;
  * otherwise it stays unmapped, because a mismapped section edits the wrong
  * component. Exact matches outscore wildcards.
+ *
+ * Two passes:
+ * 1. In order: the longest order-preserving match (wildcards included). On a
+ *    page whose DOM follows its sections array this is the whole answer.
+ * 2. Out of order, by key: a section the first pass left unmapped takes the
+ *    first node nobody took whose key it lists. A site's layout can render a
+ *    section where the array doesn't put it (a header the layout draws first,
+ *    after a SEO section saved ahead of it in the array). Only exact keys move
+ *    out of order; a wildcard there could grab a framework node.
+ * The second pass never changes what the first mapped, and a repeated key keeps
+ * its order: a section only takes a node of a key if every section mapped to an
+ * earlier node of that key comes before it in the array, and every one mapped
+ * to a later node comes after it.
  *
  * `candidates[i] === null` = renders nothing by construction; stays null so
  * positions still index the decofile array.
@@ -85,6 +98,42 @@ export function alignSections(
       b--;
     } else {
       a--;
+    }
+  }
+
+  // Pass 2: an exact-keyed section left unmapped takes a free node by key.
+  const taken: boolean[] = new Array(m).fill(false);
+  for (const v of visible) {
+    const node = result[v];
+    if (node !== null && node !== undefined) taken[node] = true;
+  }
+  const lists = (v: number, nodeIdx: number): boolean => {
+    const keys = candidates[v];
+    return (
+      !!keys && keys.length > 0 && keys.indexOf(domKeys[nodeIdx] ?? "") >= 0
+    );
+  };
+  // Pass 1 results are final. A node of a key may only go to a section that
+  // keeps that key's order: no section mapped to an earlier node of the key
+  // may come later in the array, and none mapped to a later node earlier.
+  const keepsOrder = (v: number, j: number): boolean => {
+    for (const u of visible) {
+      const ju = result[u];
+      if (ju === null || ju === undefined || domKeys[ju] !== domKeys[j])
+        continue;
+      if (u < v !== ju < j) return false;
+    }
+    return true;
+  };
+  for (const v of visible) {
+    if (result[v] !== null) continue;
+    for (let j = 0; j < m; j++) {
+      if (!taken[j] && lists(v, j) && keepsOrder(v, j)) {
+        result[v] = j;
+        taken[j] = true;
+        assigned++;
+        break;
+      }
     }
   }
 

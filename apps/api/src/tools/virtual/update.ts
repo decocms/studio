@@ -21,6 +21,11 @@ import { pinnedSiteSlugOnRename } from "./pin-site-slug";
 import { assertSiteSlugUnchanged } from "./site-slug-guard";
 import { claimProjectFolderFor } from "./project-folder-ensure";
 import {
+  blocksV8SwitchPatch,
+  refuseBlocksV8MetadataWrite,
+  requireOrgAdminForBlocksV8Switch,
+} from "./blocks-v8-switch";
+import {
   metadataKeptOnClear,
   stripServerManagedMetadata,
 } from "../strip-server-managed-metadata";
@@ -86,9 +91,21 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
 
     // `prompts` lives in org-fs, not on the agent row — pull it out before the
     // row update and re-seed separately below.
-    const { prompts, metadata: rawMetadata, ...updateData } = input.data;
+    const {
+      prompts,
+      metadata: rawMetadata,
+      blocksV8,
+      ...updateData
+    } = input.data;
     // The site slug is set once, by the create/import flow; never changed here.
     assertSiteSlugUnchanged(existing, rawMetadata);
+    // The "Blocks v8 site" switch: only `blocksV8`, only an org admin.
+    refuseBlocksV8MetadataWrite(existing.metadata, rawMetadata);
+    const blocksV8Patch =
+      blocksV8 === undefined
+        ? null
+        : blocksV8SwitchPatch(existing.metadata, blocksV8);
+    if (blocksV8Patch) requireOrgAdminForBlocksV8Switch(ctx);
     let metadata = stripServerManagedMetadata(rawMetadata);
     if (metadata && existing.metadata) {
       metadata = { ...existing.metadata, ...metadata };
@@ -150,11 +167,24 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
       );
     }
 
-    const virtualMcp = await ctx.storage.virtualMcps.update(
+    let virtualMcp = await ctx.storage.virtualMcps.update(
       input.id,
       userId,
       data,
     );
+
+    // After the row update, which writes the switch back as it was read: a
+    // single-key patch, so a concurrent `sandboxMap` write is kept.
+    if (blocksV8Patch) {
+      await ctx.storage.virtualMcps.patchMetadata({
+        id: input.id,
+        organizationId: organization.id,
+        ...blocksV8Patch,
+        by: userId,
+      });
+      virtualMcp =
+        (await ctx.storage.virtualMcps.findById(input.id)) ?? virtualMcp;
+    }
 
     // Re-seed kickstart prompts when provided (full replace; [] clears all).
     // Best-effort: never fail the update over a prompt write.

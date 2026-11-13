@@ -13,10 +13,7 @@ import { basename, extension } from "./media-filename";
 import { MediaTransformControls } from "./media-transform-controls";
 import { isSafeImageUrl, safeImageSrc } from "./safe-image-url";
 import { ACCEPTED_IMAGE_TYPES, useImageUpload } from "./use-image-upload";
-import {
-  useServeAssetSrc,
-  useServeAssetUpload,
-} from "./use-serve-asset-upload";
+import { useServeAssetSrc, useServeAssetUpload } from "@/cms/use-asset-upload";
 
 /** How many times a thumbnail served by the site's dev app is retried. */
 const SERVED_SRC_RETRIES = 3;

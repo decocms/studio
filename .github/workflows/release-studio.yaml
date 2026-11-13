@@ -613,24 +613,20 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
-    # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT already used to
-    # dispatch the Studio image bump (non-personal; decobot is admin on
-    # decocms/deco-apps-cd). Same bot, same mechanism as the legacy repo, no
-    # new/ personal token. The bump is a convenience and must never red the
-    # release: if the token isn't present the step no-ops and the job passes.
-    env:
-      DISPATCH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
     steps:
-      - name: Skip notice (dispatch token not configured)
-        if: env.DISPATCH_TOKEN == ''
-        run: echo "::notice::DEPLOY_REPO_TOKEN not set — skipping the deco-apps-cd bump."
+      - name: Generate deco-apps-cd token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+          owner: decocms
+          repositories: deco-apps-cd
       - uses: actions/checkout@v4
-        if: env.DISPATCH_TOKEN != ''
         with:
           ref: ${{ inputs.ref }}
       - name: Read deploy scope from release commit
         id: scope
-        if: env.DISPATCH_TOKEN != ''
         # release-tagging stamps a `Deploy-Scope:` trailer on the [release]
         # commit (web / server / both). deco-apps-cd's bump-studio-image rolls
         # only the matching tier. Absent/old commits default to both.
@@ -638,13 +634,11 @@ jobs:
           S=$(git log -1 --format=%B | sed -n 's/^Deploy-Scope:[[:space:]]*//p' | head -1)
           echo "scope=${S:-both}" >> "$GITHUB_OUTPUT"
       - name: Dispatch studio-image-bump to deco-apps-cd
-        if: env.DISPATCH_TOKEN != ''
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           repository: decocms/deco-apps-cd
           event-type: studio-image-bump
           client-payload: '{"version": "${{ needs.prepare.outputs.version }}", "scope": "${{ steps.scope.outputs.scope }}"}'
       - name: Summary
-        if: env.DISPATCH_TOKEN != ''
         run: echo "Dispatched \`studio-image-bump\` (version ${{ needs.prepare.outputs.version }}, scope ${{ steps.scope.outputs.scope }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"

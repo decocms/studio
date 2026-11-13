@@ -33,6 +33,10 @@ const CONFIG = `${TMP}/.oxlintrc.json`;
  * Paths matter: the boundary plugins key off the tree a file sits in.
  */
 const FIXTURES: Record<string, { path: string; code: string }> = {
+  "ban-cms-storage-bypass": {
+    path: "apps/web/src/components/editor.ts",
+    code: 'import { createContentClient } from "@decocms/blocks/protocol";\nexport const client = createContentClient({ endpoint: "https://example.test/rpc" });\n',
+  },
   "enforce-kebab-case-file-names": {
     path: "apps/web/src/NotKebab.tsx",
     code: "export const a = 1;\n",
@@ -90,6 +94,10 @@ const FIXTURES: Record<string, { path: string; code: string }> = {
   "ban-git-provider-reachthrough": {
     path: "apps/api/src/tools/reach-through.ts",
     code: 'import { x } from "@/git-providers/github/client";\nexport const y = x;\n',
+  },
+  "ban-cms-git-imports": {
+    path: "apps/api/src/hosted/cms-reach.ts",
+    code: 'import { x } from "@/git-providers";\nexport const y = x;\n',
   },
   "ensure-tailwind-design-system-tokens": {
     path: "apps/web/src/tokens.tsx",

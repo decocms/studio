@@ -61,6 +61,11 @@ export function namedRuleKindInfo(kind: NamedRuleKind): NamedRuleKindInfo {
   return NAMED_RULES[kind];
 }
 
+/** The blocks that hold the tests and the campaigns. */
+export const NAMED_RULE_BLOCKS: readonly string[] = NAMED_RULE_KINDS.map(
+  (kind) => NAMED_RULES[kind].blockKey,
+);
+
 /** The kind whose rule is `resolveType`, if any. */
 function namedRuleKindOfMatcher(resolveType: unknown): NamedRuleKind | null {
   for (const kind of NAMED_RULE_KINDS) {
@@ -220,15 +225,6 @@ export function namedRuleExists(read: NamedRuleBlock, name: string): boolean {
   return read.kind !== "conflict" && Object.hasOwn(read.values, name);
 }
 
-/**
- * Every name the block holds, readable or not (empty for a conflicting
- * block): what a rename can't move onto, since the entry would be lost.
- */
-export function namedRuleNames(read: NamedRuleBlock): string[] {
-  if (read.kind === "conflict") return [];
-  return Object.keys(read.block).filter((key) => key !== "__resolveType");
-}
-
 /** The usable names of both kinds (empty for an absent or conflicting block). */
 export function readNamedRuleValues(
   decofile: Record<string, unknown>,
@@ -270,15 +266,6 @@ export function experimentStatus(share: number): ExperimentStatus {
   if (share <= 0) return "off";
   if (share >= 100) return "everyone";
   return "running";
-}
-
-/**
- * Whether a test's name can still change: only while it isn't running. The
- * name is what visitors are grouped by and results are kept under, so
- * renaming a running test starts a new one.
- */
-export function canRenameExperiment(share: number | undefined): boolean {
-  return share === undefined || experimentStatus(share) !== "running";
 }
 
 /**
@@ -350,31 +337,6 @@ export function withoutNamedRuleEntry(
   if (name === "__resolveType") return block;
   const { [name]: _removed, ...rest } = block;
   return rest;
-}
-
-/**
- * The block with `from` renamed to `to`, in the same position. Unchanged when
- * `from` is missing or `to` is taken.
- */
-export function withRenamedNamedRuleEntry(
-  block: Record<string, unknown>,
-  from: string,
-  to: string,
-): Record<string, unknown> {
-  if (
-    from === to ||
-    from === "__resolveType" ||
-    to === "__resolveType" ||
-    !Object.hasOwn(block, from) ||
-    Object.hasOwn(block, to)
-  ) {
-    return block;
-  }
-  const next: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(block)) {
-    next[key === from ? to : key] = value;
-  }
-  return next;
 }
 
 export function isPlainRecord(

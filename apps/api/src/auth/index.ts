@@ -26,6 +26,7 @@ import {
 } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { APIError } from "better-auth/api";
+import { mcpOAuthBeforeHook } from "./mcp-consent";
 import {
   adminAc as systemAdminAc,
   defaultRoles as systemDefaultRoles,
@@ -403,7 +404,11 @@ const plugins = [
     },
   }),
 
-  sso(authConfig.ssoConfig ? createSSOConfig(authConfig.ssoConfig) : undefined),
+  sso({
+    ...(authConfig.ssoConfig ? createSSOConfig(authConfig.ssoConfig) : {}),
+    // Self-service `/sso/register` would let any user add a global IdP; org SSO uses its own routes.
+    providersLimit: 0,
+  }),
 
   ...(authConfig.magicLinkConfig?.enabled &&
   authConfig.emailProviders &&
@@ -533,6 +538,8 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: authConfig.emailAndPassword.enabled,
+    // Drop all of a user's sessions on reset so a pre-existing session can't outlive it.
+    revokeSessionsOnPasswordReset: true,
     ...(sendResetPassword && { sendResetPassword }),
   },
 
@@ -542,9 +549,23 @@ export const auth = betterAuth({
     enabled: !settings.disableRateLimit,
     window: 60,
     max: 10000, // Very high limit as fallback
+    // Tighten email-send + reset/OTP endpoints the default special rules (sign-in/sign-up/change-*) miss, so the high global fallback can't bomb emails or brute reset/OTP codes.
+    customRules: {
+      "/request-password-reset": { window: 60, max: 5 },
+      "/reset-password": { window: 60, max: 10 },
+      "/email-otp/send-verification-otp": { window: 60, max: 5 },
+      "/email-otp/request-password-reset": { window: 60, max: 5 },
+      "/email-otp/reset-password": { window: 60, max: 10 },
+      "/email-otp/verify-email": { window: 60, max: 10 },
+      "/sign-in/email-otp": { window: 60, max: 10 },
+      "/sign-in/magic-link": { window: 60, max: 5 },
+      "/two-factor/send-otp": { window: 60, max: 5 },
+    },
   },
 
   plugins,
+
+  hooks: { before: mcpOAuthBeforeHook },
 
   // Database hooks for automatic organization creation on signup
   databaseHooks: {

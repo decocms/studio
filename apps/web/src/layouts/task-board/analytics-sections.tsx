@@ -183,7 +183,7 @@ export function MetricCard({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "surface flex h-full w-full flex-col gap-6 px-4 pt-4 pb-5",
+        "surface @container flex h-full w-full min-w-0 flex-col gap-6 px-4 pt-4 pb-5",
         onClick && CLICKABLE,
       )}
     >
@@ -191,7 +191,7 @@ export function MetricCard({
         <div className="flex min-w-0 flex-col gap-1">
           <h3 className="text-sm text-foreground/70">{title}</h3>
           {value !== undefined && (
-            <span className="tnum text-4xl font-normal text-foreground">
+            <span className="tnum whitespace-nowrap text-4xl font-normal text-foreground @max-xs:text-3xl @max-3xs:text-2xl">
               {value}
             </span>
           )}

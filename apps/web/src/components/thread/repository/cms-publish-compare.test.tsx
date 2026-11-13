@@ -164,7 +164,7 @@ describe("the publish panel's Code tab", () => {
 });
 
 describe("the review frames (publish review)", () => {
-  const draft = { kind: "pointer", pointer: "drafts/x.json" } as const;
+  const draft = { kind: "pointer", pointer: "drafts/x/index.json" } as const;
   const pane = (props: { v8: boolean; onReady?: () => void }) => (
     <PublishCompare
       change={page}
@@ -244,9 +244,9 @@ describe("the review frames (publish review)", () => {
   });
 
   test("v8: Open draft carries the frame's __draft; the panes the bare pointer, the before side off", () => {
-    const pointer = "delivery.decocms.com/sites/acme/drafts/s1.json@e3";
+    const pointer = "delivery.decocms.com/sites/acme/drafts/s1/index.json@e3";
     const link =
-      "delivery.decocms.com/sites/acme/drafts/s1.json?__variant=pages-home%40sections%3D1@e3";
+      "delivery.decocms.com/sites/acme/drafts/s1/index.json?__variant=pages-home%40sections%3D1@e3";
     const view = render(
       <PublishCompare
         change={page}

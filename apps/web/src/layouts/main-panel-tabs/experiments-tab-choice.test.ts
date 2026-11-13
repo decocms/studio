@@ -1,17 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
-  waitsForMainAnswer,
-  editsBlocksDraft,
   experimentsRouteView,
   experimentsTabVisible,
   pickExperimentsTab,
 } from "./experiments-tab-choice";
 
-const pick = (
-  flagEnabled: boolean,
-  ui: string | undefined,
-  siteMajor: "v8" | "v7" | "loading" | "error" = "v7",
-) => pickExperimentsTab({ flagEnabled, ui, siteMajor });
+const pick = (flagEnabled: boolean, ui: string | undefined, v8 = false) =>
+  pickExperimentsTab({ flagEnabled, ui, v8 });
 
 describe("pickExperimentsTab", () => {
   it("renders the legacy tab when the org flag is off", () => {
@@ -36,93 +31,32 @@ describe("pickExperimentsTab", () => {
     expect(pick(true, "")).toBe("v2");
   });
 
-  it("gives a Blocks (v8) site its content tab, whatever the flag or ?ui= says", () => {
+  it("gives a Blocks v8 project its content tab, whatever the flag or ?ui= says", () => {
     for (const flag of [false, true]) {
       for (const ui of [undefined, "legacy", "v2"]) {
-        expect(pick(flag, ui, "v8")).toBe("v8");
+        expect(pick(flag, ui, true)).toBe("v8");
       }
     }
-  });
-
-  it("opens a site last found v8 as v8 while its main can't be read", () => {
-    expect(pick(false, undefined, "error")).toBe("v8");
-  });
-
-  it("v8 (last found v8): waits while main's schema is read, so no other tab flashes first", () => {
-    for (const flagEnabled of [true, false]) {
-      expect(
-        pickExperimentsTab({
-          flagEnabled,
-          ui: undefined,
-          siteMajor: "loading",
-          lastFoundV8: true,
-        }),
-      ).toBe("loading");
-    }
-  });
-
-  it("v7 (never found v8): shows v7's choice at once while main's schema is read, as before", () => {
-    expect(pick(true, undefined, "loading")).toBe("v2");
-    expect(pick(false, undefined, "loading")).toBe("legacy");
-    expect(pick(true, "legacy", "loading")).toBe("legacy");
-  });
-});
-
-describe("experimentsRouteView", () => {
-  const view = (
-    orgEnabled: boolean,
-    siteMajor: "v8" | "v7" | "loading" | "error",
-    lastFoundV8 = false,
-  ) => experimentsRouteView({ orgEnabled, siteMajor, lastFoundV8 });
-
-  it("v7: the org's rollout decides at once, loading or not, as before", () => {
-    expect(view(true, "v7")).toBe("tab");
-    expect(view(false, "v7")).toBe("settings");
-    expect(view(true, "loading")).toBe("tab");
-    expect(view(false, "loading")).toBe("settings");
-  });
-
-  it("v8: the tab whatever the rollout, waiting on a site last found v8", () => {
-    expect(view(false, "v8")).toBe("tab");
-    expect(view(false, "error", true)).toBe("tab");
-    expect(view(false, "loading", true)).toBe("loading");
-    expect(view(true, "loading", true)).toBe("tab");
   });
 });
 
 describe("experimentsTabVisible", () => {
-  it("keeps the org's rollout for v7 sites", () => {
-    expect(experimentsTabVisible(false, "v7")).toBe(false);
-    expect(experimentsTabVisible(true, "v7")).toBe(true);
-    expect(experimentsTabVisible(false, "loading")).toBe(false);
+  it("keeps the org's rollout with the switch off (v7)", () => {
+    expect(experimentsTabVisible(false, false)).toBe(false);
+    expect(experimentsTabVisible(true, false)).toBe(true);
   });
 
-  it("shows the tab on every v8 site", () => {
-    expect(experimentsTabVisible(false, "v8")).toBe(true);
-    expect(experimentsTabVisible(false, "error")).toBe(true);
+  it("shows the tab on every v8 project", () => {
+    expect(experimentsTabVisible(false, true)).toBe(true);
   });
 });
 
-describe("editsBlocksDraft", () => {
-  it("is every Blocks (v8) site, including one last found v8", () => {
-    expect(editsBlocksDraft("v8")).toBe(true);
-    expect(editsBlocksDraft("error")).toBe(true);
+describe("experimentsRouteView", () => {
+  it("gives a Blocks v8 project its Experiments app", () => {
+    expect(experimentsRouteView(true)).toBe("app");
   });
 
-  it("is no other site, and waits while main's schema is read", () => {
-    expect(editsBlocksDraft("v7")).toBe(false);
-    expect(editsBlocksDraft("loading")).toBe(false);
-  });
-});
-
-describe("waitsForMainAnswer", () => {
-  it("waits only while main is read on a site last found v8", () => {
-    expect(waitsForMainAnswer("loading", true)).toBe(true);
-    // A v7 site (never marked) shows its tab at once, as on main.
-    expect(waitsForMainAnswer("loading", false)).toBe(false);
-    expect(waitsForMainAnswer("loading", undefined)).toBe(false);
-    for (const answer of ["v8", "v7", "error"] as const) {
-      expect(waitsForMainAnswer(answer, true)).toBe(false);
-    }
+  it("sends any other project to Monitor's Experiments view", () => {
+    expect(experimentsRouteView(false)).toBe("monitor");
   });
 });

@@ -84,6 +84,9 @@ export type SuperAgentPromptOpts = {
     /** Absent for a manual fire, which no trigger started. */
     triggerId?: string;
     fence: { threadId: string; workflowID: string };
+    /** Open the run's thread on the card with the Super Agent's comment.
+     *  Not for a run a comment started, which is its own thread's root. */
+    announce?: boolean;
   };
 };
 
@@ -159,11 +162,13 @@ async function openPrForTask(
   return undefined;
 }
 
+/** The run's thread, and whether this call started it (false when its fence
+ *  had already started one). */
 export async function enqueueSuperAgentForTask(
   ctx: StudioContext,
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
-): Promise<void> {
+): Promise<{ threadId: string; isNew: boolean }> {
   // A frozen card must not dispatch at all.
   await assertNotFrozenDemoCard(ctx, task);
 
@@ -280,6 +285,11 @@ export async function enqueueSuperAgentForTask(
           agentId: opts.automation.agentId,
           triggerId: opts.automation.triggerId,
           fence: opts.automation.fence,
+          ...(opts.automation.announce
+            ? {
+                runRoot: `${opts.automation.name} started working on this card.`,
+              }
+            : {}),
         }
       : {}),
   });
@@ -314,4 +324,5 @@ export async function enqueueSuperAgentForTask(
       ...(opts?.runClass ? { run_class: opts.runClass } : {}),
     },
   });
+  return dispatched;
 }

@@ -34,7 +34,9 @@ import { assertPlannableSprint } from "./sprints";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
-  description: "Create a new task board item for the organization.",
+  description:
+    "Create a new task board item for the organization. With assigneeId " +
+    `"${SUPER_AGENT_ASSIGNEE_ID}" this one call also starts a Super Agent run on it.`,
   annotations: {
     title: "Create Task Board Item",
     readOnlyHint: false,
@@ -55,7 +57,14 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     harnessId: TaskBoardHarnessSchema.optional().describe(
       "Runtime for future implementation runs and retries. Defaults to claude-code. Codex requires the task_board_codex organization flag and a linked ChatGPT plan or compatible Responses API provider. Does not change reviewer runs or an active run.",
     ),
-    assigneeId: z.string().nullable().optional(),
+    assigneeId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        `A member's user id, or "${SUPER_AGENT_ASSIGNEE_ID}" to hand the card ` +
+          "to the Super Agent, which puts it In Progress and starts a run.",
+      ),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     virtualMcpId: z
       .string()

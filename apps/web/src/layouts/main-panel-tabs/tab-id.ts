@@ -4,13 +4,14 @@
  * View id grammar:
  *   - Fixed system/destination: "overview" | "settings" | "automations" |
  *     "site-editor" | "content" | "code" | "assets" | "hosting" | "e2e" |
- *     "analytics" | "cdn"
+ *     "analytics" | "cdn" | "blog"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
  *   - Agent-declared: "agent-view:<encoded agentTab.id>"
  *     (from virtualMcp.metadata.ui.layout.tabs)
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
  *   - Pinned view: "app:<connectionId>:<toolName>" (from metadata.ui.pinnedViews)
  *   - Ephemeral automation: "automation:<id>"
+ *   - One blog post's editor: "blog-post:<post id>"
  *   - Ephemeral file preview: "file:<encoded output key>" (thread output viewer)
  *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
  *   - Ephemeral Library file preview: "library-file:<encoded browse path>"
@@ -73,6 +74,36 @@ export function parseAutomationTabId(
   const id = tabId.slice("automation:".length);
   if (!id) return null;
   return { id };
+}
+
+export interface BlogPostTabParsed {
+  /** The post id shared by a post's planning and live block keys. */
+  id: string;
+}
+
+/**
+ * The Blog view's post editor, addressed by POST ID rather than decofile block
+ * key: a post's key moves between `blog-manager/posts/<id>` and
+ * `collections/blog/posts/<id>` as its status crosses the planning/live
+ * boundary, so a key in the tab id would break on a status change. The id is
+ * the one thing both forms share.
+ */
+export function formatBlogPostTabId(id: string): string {
+  return `blog-post:${encodeURIComponent(id)}`;
+}
+
+export function parseBlogPostTabId(
+  tabId: string | undefined,
+): BlogPostTabParsed | null {
+  if (!tabId?.startsWith("blog-post:")) return null;
+  const encoded = tabId.slice("blog-post:".length);
+  if (!encoded) return null;
+  try {
+    const id = decodeURIComponent(encoded);
+    return id ? { id } : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface PinnedViewTabParsed {
@@ -212,6 +243,7 @@ export const FIXED_SYSTEM_TABS = [
   "site-editor",
   "code",
   "content",
+  "blog",
   "assets",
   "hosting",
   "e2e",
@@ -310,16 +342,6 @@ export function isLegacySettingsTab(tabId: string | undefined): boolean {
 }
 
 /**
- * The view a link to this agent should land on, or `undefined` when it names
- * none. `undefined` is meaningful: the caller sends those to Home rather than
- * to a bare agent URL with no view.
- *
- * `resolveDefaultTabId` cannot answer this — it falls back to `settings` for an
- * agent that named nothing, which is a sensible tab to RENDER but a wrong place
- * to SEND someone from a card they clicked.
- */
-
-/**
  * Org-level destinations an agent may name as its main view. They are not
  * `FIXED_SYSTEM_TABS` — they never appear on the tab bar — but the panel
  * machinery renders them, so they are legal places to land.
@@ -329,15 +351,6 @@ export const DESTINATION_MAIN_VIEWS: ReadonlySet<string> = new Set([
   "board",
   "reports",
 ]);
-
-export function landingTabIdFor(
-  metadata: EntityLayoutMetadata | null | undefined,
-): string | undefined {
-  const def = metadata?.defaultMainView ?? null;
-  /** `chat` is the retired "no main view" state; treat it as naming none. */
-  if (!def || def.type === "chat") return undefined;
-  return resolveDefaultTabId(metadata ?? null);
-}
 
 export function resolveDefaultTabId(
   metadata: EntityLayoutMetadata | null,
@@ -377,6 +390,20 @@ export function resolveDefaultTabId(
   return firstDeclaredTabId
     ? formatAgentViewTabId(firstDeclaredTabId)
     : "settings";
+}
+
+/**
+ * Where entering a project lands: the view its settings name as the main
+ * view, or `null` to stay on the Overview. Unlike {@link resolveDefaultTabId},
+ * an unset or retired `chat` default means the Overview, not Settings.
+ */
+export function resolveProjectLandingTabId(
+  metadata: EntityLayoutMetadata | null,
+): string | null {
+  const type = metadata?.defaultMainView?.type;
+  if (!type || type === "chat") return null;
+  const tabId = resolveDefaultTabId(metadata);
+  return tabId === "overview" ? null : tabId;
 }
 
 /**

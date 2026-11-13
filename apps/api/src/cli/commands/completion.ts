@@ -20,7 +20,7 @@ _deco_completion() {
       return 0
       ;;
     *)
-      COMPREPLY=($(compgen -W "init auth api tools orgs backfill-assets completion --help --version --home --target --org --json" -- "$cur"))
+      COMPREPLY=($(compgen -W "init auth api tools orgs sandbox backfill-assets completion --help --version --home --target --org --json" -- "$cur"))
       ;;
   esac
 }
@@ -55,6 +55,7 @@ _deco_commands() {
     'api:Make an authenticated API request'
     'tools:List, inspect, and call tools'
     'orgs:List organizations'
+    'sandbox:Boot, chat with, and run commands in a sandbox'
     'backfill-assets:Hoist legacy inline media'
     'completion:Install shell completion'
   )

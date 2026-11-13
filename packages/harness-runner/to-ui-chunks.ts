@@ -24,6 +24,11 @@
  */
 
 import type { UIMessageChunk } from "ai";
+import {
+  studioCliErrorText,
+  studioCliOutput,
+  studioToolCall,
+} from "./studio-cli";
 
 /**
  * The subset of the SDK's message union this translator reads. Narrowed
@@ -233,7 +238,7 @@ export class UiChunkTranslator {
    *  seen this turn — guards the ordering contract above. */
   private readonly announcedToolCalls = new Map<
     string,
-    { name: string; announcedAt: number }
+    { name: string; announcedAt: number; studioCli?: true }
   >();
   /** Subagent text so far, keyed by the `Task` call that started it. */
   private readonly subtaskText = new Map<string, string>();
@@ -281,6 +286,9 @@ export class UiChunkTranslator {
    * stack up past the context window).
    */
   contextTokens = 0;
+
+  /** `studioCli`: a Bash call that is one `decocms tools call` renders as that tool. */
+  constructor(private readonly options: { studioCli?: boolean } = {}) {}
 
   /**
    * Chunks for one SDK message, in emission order. Unknown message types and
@@ -523,21 +531,36 @@ export class UiChunkTranslator {
         typeof block.id === "string" &&
         typeof block.name === "string"
       ) {
+        const cliCall = this.studioCliCall(block.name, block.input);
         this.announcedToolCalls.set(block.id, {
           name: block.name,
           announcedAt: Date.now(),
+          ...(cliCall ? { studioCli: true as const } : {}),
         });
         chunks.push({
           type: "tool-input-available",
           toolCallId: block.id,
-          toolName: canonicalToolName(block.name),
-          input: canonicalToolInput(block.name, block.input ?? {}),
+          toolName: cliCall?.name ?? canonicalToolName(block.name),
+          input:
+            cliCall?.input ?? canonicalToolInput(block.name, block.input ?? {}),
         });
       }
     }
     // These blocks are accounted for; the next message restates the ones after.
     this.restatedBlocks += message.message.content.length;
     return chunks;
+  }
+
+  private studioCliCall(
+    name: string,
+    input: unknown,
+  ): { name: string; input: Record<string, unknown> } | null {
+    if (!this.options.studioCli || name !== "Bash" || !isRecord(input)) {
+      return null;
+    }
+    // A backgrounded command's result is a launch notice, not the tool's.
+    if (input.run_in_background === true) return null;
+    return studioToolCall(input.command);
   }
 
   private translateToolResults(message: SdkUserMessage): UIMessageChunk[] {
@@ -557,23 +580,23 @@ export class UiChunkTranslator {
       const flattened = call.name.startsWith(STUDIO_MCP_PREFIX)
         ? studioToolOutput(block.content)
         : flattenToolResult(block.content);
+      const text = () =>
+        typeof flattened === "string" ? flattened : JSON.stringify(flattened);
       if (block.is_error === true) {
         chunks.push({
           type: "tool-output-error",
           toolCallId,
-          errorText:
-            typeof flattened === "string"
-              ? flattened
-              : JSON.stringify(flattened),
+          errorText: call.studioCli ? studioCliErrorText(text()) : text(),
         });
       } else {
         chunks.push({
           type: "tool-output-available",
           toolCallId,
           // The `subtask` renderer reads the subagent's report as `text`.
-          output:
-            canonicalToolName(call.name) === "subtask" &&
-            typeof flattened === "string"
+          output: call.studioCli
+            ? studioCliOutput(text())
+            : canonicalToolName(call.name) === "subtask" &&
+                typeof flattened === "string"
               ? { text: flattened }
               : flattened,
         });

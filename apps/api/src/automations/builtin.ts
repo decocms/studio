@@ -33,6 +33,7 @@
  *     (`card-run.ts` → `tools/task-board/reviewer-run.ts`).
  * - Move cards from linked chats runs no agent: its starter is the board's run reactions, gated in `TaskBoardStorage.runMovesLinkedCards`.
  * - Ship merged pull requests and Track chat pull requests run no agent: their starter is code gated on `builtinActive`.
+ * - Super Agent mentions: its starter is a comment (`tools/task-board/mention-runs.ts`), and its card step starts the run without claiming the card and ties it to the comment (`card-run.ts`).
  *
  * A new built-in adds its special case to this list. Its board run takes its
  * instructions from the board's column prompts, which is where an org
@@ -67,6 +68,10 @@ export const PR_MERGED_SYSTEM_KEY = "pr_merged";
 /** Puts a pull request a chat with no card opened on the board. */
 export const CHAT_PR_SYSTEM_KEY = "chat_pr";
 
+/** Runs the Super Agent on a card when a comment mentions it, and carries
+ *  replies in a run's comment thread to that run. */
+export const MENTIONS_SYSTEM_KEY = "agent_mentions";
+
 const BUILTINS = [
   {
     key: IMPLEMENTER_SYSTEM_KEY,
@@ -100,6 +105,13 @@ const BUILTINS = [
     key: CHAT_PR_SYSTEM_KEY,
     name: "Track chat pull requests",
     triggerType: "chat_pr_opened",
+    columnKey: null,
+    fromKind: null,
+  },
+  {
+    key: MENTIONS_SYSTEM_KEY,
+    name: "Super Agent mentions",
+    triggerType: "card_mention",
     columnKey: null,
     fromKind: null,
   },
@@ -159,7 +171,10 @@ export function builtinOwningStarter(type: string): string | undefined {
 export async function builtinActive(
   ctx: StudioContext,
   organizationId: string,
-  systemKey: typeof PR_MERGED_SYSTEM_KEY | typeof CHAT_PR_SYSTEM_KEY,
+  systemKey:
+    | typeof PR_MERGED_SYSTEM_KEY
+    | typeof CHAT_PR_SYSTEM_KEY
+    | typeof MENTIONS_SYSTEM_KEY,
 ): Promise<boolean> {
   return (
     (await ctx.storage.automations.builtinActive(organizationId, systemKey)) ??

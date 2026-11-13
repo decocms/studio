@@ -429,7 +429,7 @@ test.describe("destination routes", () => {
       "org level e2e chat",
     );
 
-    await page.goto(`/${orgSlug}/reports?sidepanel=true`);
+    await page.goto(`/${orgSlug}/tasks?sidepanel=true`);
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     expect(new URL(page.url()).searchParams.get("virtualmcpid")).toBeNull();
 
@@ -442,7 +442,7 @@ test.describe("destination routes", () => {
 
     /* Landing on the agents route, the scope is legitimate — that route is one
        of the two that resolve it. The assertion that matters for this test is
-       the one above, on `/reports`, where it must never appear. */
+       the one above, on `/tasks`, where it must never appear. */
     await page.waitForURL(
       (url) =>
         url.pathname === `/${orgSlug}/projects/${projectId}` &&

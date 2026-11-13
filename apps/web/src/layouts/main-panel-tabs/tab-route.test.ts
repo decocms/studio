@@ -10,6 +10,7 @@ import {
 } from "./tab-id";
 import {
   canonicalThreadRouteTarget,
+  navigateToTabRouteTarget,
   tabIdForRoute,
   tabRouteLocation,
   tabRouteTarget,
@@ -139,10 +140,37 @@ describe("tabRouteLocation", () => {
         section: "settings",
       });
     }
-    expect(tabRouteLocation("cdn")).toEqual({
-      kind: "agent-section",
-      section: "monitor",
-    });
+  });
+
+  test("opens each retired app in the Monitor view that took it over", () => {
+    const rows = [
+      ["analytics", "audience"],
+      ["cdn", "performance"],
+    ] as const;
+    for (const [tabId, view] of rows) {
+      expect(tabRouteLocation(tabId)).toEqual({
+        kind: "project-destination",
+        destination: "monitoring",
+        monitorView: view,
+      });
+      expect(tabRouteTarget({ org: "acme", agentId: "vir_1", tabId })).toEqual({
+        to: "/$org/projects/$agentId/monitoring",
+        params: { org: "acme", agentId: "vir_1" },
+        search: { view },
+      });
+      expect(
+        tabRouteTarget({
+          org: "acme",
+          agentId: "vir_1",
+          tabId,
+          destinationScope: "organization",
+        }),
+      ).toEqual({
+        to: "/$org/monitoring",
+        params: { org: "acme" },
+        search: { view },
+      });
+    }
   });
 
   test("routes every built-in explicitly instead of treating it as metadata", () => {
@@ -442,5 +470,125 @@ describe("the Calendar view", () => {
       params: { org: "acme", agentId: "agent-1" },
       search: {},
     });
+  });
+});
+
+describe("the Experiments app", () => {
+  test("is its own project section with its own route", () => {
+    expect(tabRouteLocation("experiments")).toEqual({
+      kind: "agent-section",
+      section: "experiments",
+    });
+    expect(
+      tabRouteTarget({ tabId: "experiments", org: "acme", agentId: "agent-1" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/experiments",
+      params: { org: "acme", agentId: "agent-1" },
+      search: {},
+    });
+  });
+
+  test("a saved Experiments tab reads back as the same tab id", () => {
+    expect(tabIdForRoute({ mainView: "experiments" })).toBe("experiments");
+  });
+
+  test("the other retired apps still open in Monitor", () => {
+    expect(
+      tabRouteTarget({ tabId: "analytics", org: "acme", agentId: "agent-1" }),
+    ).toMatchObject({ to: "/$org/projects/$agentId/monitoring" });
+    expect(
+      tabRouteTarget({ tabId: "cdn", org: "acme", agentId: "agent-1" }),
+    ).toMatchObject({ to: "/$org/projects/$agentId/monitoring" });
+  });
+});
+
+describe("blog routes", () => {
+  test("the browser round-trips through its tab id", () => {
+    expect(tabRouteLocation("blog")).toEqual({ kind: "blog" });
+    expect(tabIdForRoute({ mainView: "blog" })).toBe("blog");
+  });
+
+  test("a post carries its id both ways", () => {
+    expect(tabRouteLocation("blog-post:abc123")).toEqual({
+      kind: "blog",
+      postId: "abc123",
+    });
+    expect(
+      tabIdForRoute({ mainView: "blog-post", params: { postId: "abc123" } }),
+    ).toBe("blog-post:abc123");
+  });
+
+  test("a post route with no id falls back to the browser, not a broken tab", () => {
+    expect(tabIdForRoute({ mainView: "blog-post" })).toBe("blog");
+  });
+
+  test("resolves to the canonical routes", () => {
+    expect(
+      tabRouteTarget({ tabId: "blog", org: "acme", agentId: "proj" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/blog",
+      params: { org: "acme", agentId: "proj" },
+      search: {},
+    });
+    expect(
+      tabRouteTarget({
+        tabId: "blog-post:abc123",
+        org: "acme",
+        agentId: "proj",
+      }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/blog/posts/$postId",
+      params: { org: "acme", agentId: "proj", postId: "abc123" },
+      search: {},
+    });
+  });
+});
+
+/**
+ * `navigateToTabRouteTarget` returns void, so a missing case there falls
+ * through and navigates nowhere — the click does nothing, silently. This is
+ * the test for that class of bug, not for one route.
+ */
+describe("navigateToTabRouteTarget covers every target", () => {
+  const TAB_IDS = [
+    "overview",
+    "settings",
+    "site-editor",
+    "content",
+    "code",
+    "blog",
+    "blog-post:abc",
+    "automations",
+    "automation:a1",
+    "calendar",
+    "experiments",
+    "assets",
+    "releases",
+    "hosting",
+    "e2e",
+    "analytics",
+    "cdn",
+    "board",
+    "reports",
+    "files",
+    "discover",
+    "connect-sources",
+    formatPinnedViewTabId("conn", "tool"),
+    formatAgentViewTabId("custom"),
+    formatFileTabId("org-fs:outputs/t/x.pdf"),
+    formatDeckTabId("decks/a.html"),
+    formatLibraryFileTabId("home/a.md"),
+    formatCodeTabId("src/a.ts"),
+  ];
+
+  test("every tab id reaches a navigate call", () => {
+    for (const tabId of TAB_IDS) {
+      const calls: unknown[] = [];
+      navigateToTabRouteTarget(
+        ((args: unknown) => calls.push(args)) as never,
+        tabRouteTarget({ tabId, org: "acme", agentId: "proj" }),
+      );
+      expect(calls.length, `no navigation for "${tabId}"`).toBe(1);
+    }
   });
 });

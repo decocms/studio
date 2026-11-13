@@ -22,6 +22,9 @@ export type AnalyticsRegistration =
     }
   /** `host` is the site's production domain, what a registration would use. */
   | { status: "unregistered"; host: string | null }
+  /** The control-plane has no such site: an `org_sites` slug claimed when a
+   *  project was created, which registers by domain like an external site. */
+  | { status: "unhosted" }
   /** Unreachable or not configured: never cache this as "unregistered". */
   | { status: "error" };
 
@@ -53,6 +56,7 @@ export async function readAnalyticsRegistration(
   try {
     const res = await controlplane(sitePath(site, "analytics/status"));
     if (!res) return { status: "error" };
+    if (await isUnknownSite(res)) return { status: "unhosted" };
     if (!res.ok) {
       console.error(
         `[analytics] status resolve HTTP ${res.status} for site="${site}"`,
@@ -80,6 +84,21 @@ export async function readAnalyticsRegistration(
     console.error(`[analytics] status resolve failed for site="${site}":`, err);
     return { status: "error" };
   }
+}
+
+/** The control-plane's answer for a site it has no record of, as opposed to a
+ *  404 from a wrong base URL or a missing route. */
+async function isUnknownSite(res: Response): Promise<boolean> {
+  if (res.status !== 404) return false;
+  const body = (await res
+    .clone()
+    .json()
+    .catch(() => null)) as { error?: unknown; message?: unknown } | null;
+  return (
+    body?.error === "not_found" &&
+    typeof body.message === "string" &&
+    body.message.startsWith("unknown site:")
+  );
 }
 
 /** The control-plane's refusal: `code` is its machine reason (`on_cdn`, `no_domains`). */

@@ -1,5 +1,9 @@
 <!DOCTYPE html>
-<html>
+<!--
+  Studio ships its own translations. Browser translation rewrites React-owned
+  text nodes, and the next render crashes with "removeChild ... is not a child".
+-->
+<html translate="no">
   <head>
     <meta name="theme-color" content="#f6f4ed" />
     <script>
@@ -16,7 +20,7 @@
       });
     </script>
     <script>
-      // Apply dark mode class before first paint to prevent flash
+      // Apply dark mode class and language before first paint to prevent flash
       (function() {
         try {
           var p = JSON.parse(
@@ -24,6 +28,10 @@
               localStorage.getItem("mesh:user:preferences") ||
               "{}",
           );
+          document.documentElement.lang =
+            p.language === "en" || p.language === "pt-BR"
+              ? p.language
+              : /^pt/i.test(navigator.language || "") ? "pt-BR" : "en";
           var theme = p.theme || "system";
           var isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           if (isDark) {

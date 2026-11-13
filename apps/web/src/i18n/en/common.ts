@@ -142,36 +142,7 @@ export const common = {
   "common.iconPicker.randomIcon": "Random icon",
   "common.iconPicker.uploadHint": "Click to upload an image (max 2MB)",
   "common.iconPicker.uploadTab": "Upload",
-  "common.importFromDecoDialog.cancel": "Cancel",
-  "common.importFromDecoDialog.failedToConnectGithub":
-    "Failed to connect GitHub",
-  "common.importFromDecoDialog.failedToCreateAgent":
-    "Failed to create the imported project",
-  "common.importFromDecoDialog.failedToPrepareImport":
-    "Failed to prepare deco.cx import",
-  "common.importFromDecoDialog.githubNotConnected":
-    "GitHub is not connected. Complete GitHub setup and try again.",
-  "common.importFromDecoDialog.import": "Import",
-  "common.importFromDecoDialog.importFailed": "Import failed: {error}",
-  "common.importFromDecoDialog.importSuccess": "Imported {slug} from deco.cx",
-  "common.importFromDecoDialog.importing": "Importing...",
-  "common.importFromDecoDialog.installGithubApp":
-    'Install the GitHub App on the "{owner}" organization to import this site. {installUrl}',
   "common.loading": "Loading",
-  "common.importFromDecoDialog.loadingSites": "Loading sites...",
-  "common.importFromDecoDialog.noSitesFound":
-    "No sites found for this account.",
-  "common.importFromDecoDialog.noSitesMatch": 'No sites match "{search}"',
-  "common.importFromDecoDialog.retryGithubSetup": "Retry GitHub setup",
-  "common.importFromDecoDialog.searchPlaceholder": "Search sites...",
-  "common.importFromDecoDialog.selectGithubConnection":
-    "Select a GitHub connection",
-  "common.importFromDecoDialog.settingUpGithub":
-    "Setting up GitHub connection...",
-  "common.importFromDecoDialog.siteNoLongerAvailable":
-    "Selected site is no longer available",
-  "common.importFromDecoDialog.title": "Import from deco.cx",
-  "common.importFromDecoDialog.unknownError": "Unknown error",
   "common.index.pageNotFound": "Page not found",
   "common.index.pageNotFoundDescription":
     "The page you are looking for does not exist or has been moved.",
@@ -256,9 +227,6 @@ export const common = {
   "common.toolSetSelector.searchPlaceholder": "Search MCP Servers...",
   "common.toolSetSelector.selectConnection":
     "Select a connection to view its tools",
-  "common.createAgentDropdown.createFromScratch": "Create from scratch",
-  "common.createAgentDropdown.importFromGitHub": "Import repository",
-  "common.createAgentDropdown.importFromDeco": "Import from deco.cx",
   "common.mainPanelTabs.preview": "Preview",
   "common.mainPanelTabs.code": "Code",
   "common.mainPanelTabs.content": "Content",
@@ -266,10 +234,8 @@ export const common = {
   "common.mainPanelTabs.releases": "Releases",
   "common.mainPanelTabs.hosting": "Hosting",
   "common.mainPanelTabs.e2e": "E2E",
-  "common.mainPanelTabs.analytics": "Analytics",
-  "common.mainPanelTabs.experiments": "Experiments",
   "common.mainPanelTabs.calendar": "Calendar",
-  "common.mainPanelTabs.cdn": "Monitor",
+  "common.mainPanelTabs.experiments": "Experiments",
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
   "common.taskBoard.feedView": "Feed",

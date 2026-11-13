@@ -1,3 +1,6 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
+import { isIndexStub } from "@/cms/block-body";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useState, type ReactNode } from "react";
 import {
   ChevronDown,
@@ -49,7 +52,7 @@ import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
 import type { SchemaProperty } from "../resolve-schema";
 import { FieldLabel } from "./field-label";
-import type { FieldProps } from "./field-props";
+import type { FieldProps, SandboxConfig } from "./field-props";
 
 import { toast } from "sonner";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
@@ -195,7 +198,7 @@ function CollapsibleLoaderConfig({
   );
 }
 
-export function AnyOfField({
+function LoadedAnyOfField({
   schema,
   value,
   onChange,
@@ -240,12 +243,9 @@ export function AnyOfField({
         r.resolveType.includes("/") &&
         !isEmbeddedUnionResolveType(r.resolveType),
     );
-  /**
-   * A Section slot accepts any section, but its schema names only a handful,
-   * so the catalog is the honest list — the same one "Add section" draws from.
-   * It is long, hence searchable rather than a plain dropdown.
-   */
+  // Plain `Section` names only a few of the sections it accepts, so it offers the catalog; `Section<T>` names them all.
   const sectionSlot = isSectionBlockRefField(schema) && !!meta;
+  const anySectionSlot = sectionSlot && !!schema.acceptsAnySection;
   const sectionOptions = sectionSlot
     ? (() => {
         const seen = new Set<string>();
@@ -256,6 +256,7 @@ export function AnyOfField({
           options.push({ value, label });
         };
         for (const ref of refs) push(ref.resolveType, blockRefOptionLabel(ref));
+        if (!anySectionSlot) return options;
         for (const entry of extractSectionCatalog(meta, decofile ?? {})) {
           push(entry.resolveType, entry.title);
         }
@@ -435,7 +436,7 @@ export function AnyOfField({
                   )}
                   emptyMessage={t("sectionsEditor.anyOfField.noSectionsFound")}
                   renderSearchAction={
-                    onRequestAddSection
+                    anySectionSlot && onRequestAddSection
                       ? (close) => (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -710,5 +711,37 @@ export function AnyOfField({
         placeholder={schema.description ?? ""}
       />
     </div>
+  );
+}
+
+function ConnectedAnyOfField(props: FieldProps & { sandbox: SandboxConfig }) {
+  const backend = useContentBackend(
+    props.sandbox.virtualMcpId,
+    props.sandbox.branch,
+  );
+  const reference =
+    backend.kind !== "legacy" && props.decofile && props.value
+      ? unwrapBlockReference(props.value, props.decofile)
+      : null;
+  if (reference && isIndexStub(reference.data)) {
+    return (
+      <CmsBlockBoundary
+        listing={props.decofile ?? {}}
+        scope={props.sandbox}
+        names={[reference.blockKey]}
+      >
+        <LoadedAnyOfField {...props} />
+      </CmsBlockBoundary>
+    );
+  }
+  return <LoadedAnyOfField {...props} />;
+}
+
+/** Saved references can be selected without their parent page referencing them yet. */
+export function AnyOfField(props: FieldProps) {
+  return props.sandbox ? (
+    <ConnectedAnyOfField {...props} sandbox={props.sandbox} />
+  ) : (
+    <LoadedAnyOfField {...props} />
   );
 }

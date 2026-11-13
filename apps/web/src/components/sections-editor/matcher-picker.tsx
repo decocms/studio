@@ -34,6 +34,7 @@ import {
   namedRuleMatchers,
 } from "./named-rule-picker";
 import {
+  type NamedRuleBlocksLoad,
   NamedRuleCreateForm,
   NamedRuleKindItems,
   NamedRuleNameStep,
@@ -196,6 +197,11 @@ export interface NamedRulePickerProps {
   campaignPrefill?: CampaignWindow | null;
   /** Writes the pick; resolves once saved (or refused, with its toast). */
   onPick: (pick: NamedRulePick) => Promise<unknown> | void;
+  /**
+   * The tests and campaigns blocks, asked for when the picker opens; names
+   * are listed once they are loaded. Absent: they are always at hand.
+   */
+  load?: NamedRuleBlocksLoad;
 }
 
 type PickerStep =
@@ -232,7 +238,10 @@ export function MatcherPicker({
   // dialog keeps showing what was picked or created, not the rule list
   // filtered by the name typed.
   const setOpen = (next: boolean) => {
-    if (next) setStep({ view: "rules" });
+    if (next) {
+      setStep({ view: "rules" });
+      named?.load?.request();
+    }
     setOpenState(next);
   };
   const t = useT();
@@ -306,6 +315,7 @@ export function MatcherPicker({
           <NamedRuleNameStep
             key={stepKind.kind}
             kind={stepKind}
+            load={named?.load}
             currentName={
               named?.selected?.kind === stepKind.kind
                 ? named.selected.name

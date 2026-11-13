@@ -32,8 +32,7 @@ export const LOCALSTORAGE_KEYS = {
   /** One entry per org holding the apps last opened in it — see
    *  `lib/recent-apps.ts`. */
   recentApps: (orgSlug: string) => `studio:recent-apps:${orgSlug}`,
-  /** The projects last opened in the org, newest first — the rail's recents
-   *  under the new navigation. */
+  /** The projects last opened in the org, newest first — the rail's recents. */
   recentProjects: (orgSlug: string) => `studio:recent-projects:${orgSlug}`,
   /** Not scoped to an org — this is the list of orgs themselves. */
   recentOrgs: () => `studio:recent-orgs`,
@@ -51,6 +50,9 @@ export const LOCALSTORAGE_KEYS = {
     `studio:sidebar:section-open:${locator}:${folderId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
+  /** sessionStorage: set when the legacy admin's redirect lands here, cleared
+   *  when the welcome card is dismissed. */
+  legacyAdminArrival: () => `studio:legacy-admin-arrival`,
   /** Per-project "Local" preview override — a tunnel URL the CMS + preview point
    *  at instead of the managed sandbox/production. Per-browser: a tunnel to a
    *  dev server only this machine can reach, so it never belongs on shared

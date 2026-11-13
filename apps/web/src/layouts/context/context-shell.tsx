@@ -3,7 +3,6 @@
  * plus the brand, connections, repositories, skills and memory that used to
  * live in Settings; for a project, its folder, instructions and connections.
  * A project's settings use the same shell on their own page.
- * Project-first nav only.
  */
 
 import type { ComponentType, ReactNode } from "react";

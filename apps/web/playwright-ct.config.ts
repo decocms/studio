@@ -80,7 +80,7 @@ export default defineConfig({
             find: /^@\/hooks\/use-new-blocks-editor$/,
             replacement: stub("use-new-blocks-editor.ts"),
           },
-          // The content backend waits for main's schema answer and probes its
+          // The content backend reads the project's v8 switch and probes its
           // backend via useProjectContext(); fields are tested as v7 (legacy)
           // sites see them. Matches the fields' relative
           // `../use-content-backend` import too.
@@ -88,11 +88,11 @@ export default defineConfig({
             find: /^.*\/use-content-backend$/,
             replacement: stub("use-content-backend.ts"),
           },
-          // Main's schema answer (the deco serve connection reads it) asks the
-          // server via useProjectContext(): main reads as v7 here.
+          // The "Blocks v8 site" switch (the deco serve connection reads it)
+          // reads the project via useProjectContext(): off (v7) here.
           {
-            find: /^.*\/use-main-schema-v8$/,
-            replacement: stub("use-main-schema-v8.ts"),
+            find: /^.*\/use-blocks-v8-project$/,
+            replacement: stub("use-blocks-v8-project.ts"),
           },
           // Editor uploads PUT to the org filesystem via useProjectContext(), which a bare mount lacks.
           {

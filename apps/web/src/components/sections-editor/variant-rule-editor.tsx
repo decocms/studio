@@ -1,10 +1,13 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
+import { isIndexStub } from "@/cms/block-body";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   MatcherPicker,
   type MatcherEntry,
   type MatcherGlobalEntry,
   type NamedRulePickerProps,
 } from "./matcher-picker";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   missingNamedRuleWithin,
   type NamedRulePick,
@@ -22,7 +25,7 @@ import type { SandboxConfig } from "./fields/field-props";
  * section-variant rule editors. Caller owns the resolveType/formValue state
  * and any surrounding chrome (label, collapse toggle, disabled overlay).
  */
-export function VariantRuleEditor({
+function LoadedVariantRuleEditor({
   currentRt,
   currentLabel,
   currentGlobalKey,
@@ -86,9 +89,23 @@ export function VariantRuleEditor({
   const [createPending, setCreatePending] = useState(false);
   if (creatingFor !== null && creatingFor !== createFor) setCreatingFor(null);
   const creating = creatingFor !== null && creatingFor === createFor;
-  const missingWithin = named
+  // On a hosted draft the tests and campaigns blocks are only the index's
+  // stubs until they are loaded (a rule naming a test doesn't point at the
+  // block, so opening the page doesn't load it): every name looks missing.
+  // A name is said to be missing, and offered to create, only once they are
+  // loaded, and the editor asks for them as soon as it would say so.
+  const namesLoaded = !named?.load || named.load.ready;
+  const seemsMissingWithin = named
     ? missingNamedRuleWithin(rule, named.kinds, decofile)
     : null;
+  const seemsMissing = !!namedRow?.missing || seemsMissingWithin !== null;
+  const requestNames = named?.load?.request;
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- loads the blocks the row reads once it would call a name missing, as a view loads what it opens (hosted-content.ts)
+  useEffect(() => {
+    if (seemsMissing && !namesLoaded) requestNames?.();
+  }, [seemsMissing, namesLoaded, requestNames]);
+  const missingWithin = namesLoaded ? seemsMissingWithin : null;
+  const rowMissing = !!namedRow?.missing && namesLoaded;
   // A name the rule uses but the site doesn't have can be created right
   // here, as the picker would, when its kind takes new names.
   const rowKind =
@@ -99,7 +116,7 @@ export function VariantRuleEditor({
   const canCreate =
     !!named &&
     !!namedRow &&
-    namedRow.missing &&
+    rowMissing &&
     !namedRow.inlineDate &&
     !!rowKind &&
     rowKind.state !== "conflict" &&
@@ -147,7 +164,7 @@ export function VariantRuleEditor({
               kind={namedRow.kind}
               name={namedRow.name}
               summary={namedRow.summary}
-              missing={namedRow.missing}
+              missing={rowMissing}
               conflict={namedRow.conflict}
               inlineDate={namedRow.inlineDate}
               {...(canCreate
@@ -184,5 +201,39 @@ export function VariantRuleEditor({
         </p>
       )}
     </>
+  );
+}
+
+function ConnectedVariantRuleEditor(
+  props: Parameters<typeof LoadedVariantRuleEditor>[0] & {
+    sandbox: SandboxConfig;
+  },
+) {
+  const backend = useContentBackend(
+    props.sandbox.virtualMcpId,
+    props.sandbox.branch,
+  );
+  const key = props.currentGlobalKey;
+  if (backend.kind !== "legacy" && key && isIndexStub(props.decofile?.[key])) {
+    return (
+      <CmsBlockBoundary
+        listing={props.decofile ?? {}}
+        scope={props.sandbox}
+        names={[key]}
+      >
+        <LoadedVariantRuleEditor {...props} />
+      </CmsBlockBoundary>
+    );
+  }
+  return <LoadedVariantRuleEditor {...props} />;
+}
+
+export function VariantRuleEditor(
+  props: Parameters<typeof LoadedVariantRuleEditor>[0],
+) {
+  return props.sandbox ? (
+    <ConnectedVariantRuleEditor {...props} sandbox={props.sandbox} />
+  ) : (
+    <LoadedVariantRuleEditor {...props} />
   );
 }

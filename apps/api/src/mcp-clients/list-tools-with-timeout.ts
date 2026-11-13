@@ -64,3 +64,17 @@ export async function listToolsWithTimeout(
     if (timer) clearTimeout(timer);
   }
 }
+
+/**
+ * {@link listToolsWithTimeout} for a connection read without its credentials:
+ * loads the stored entity, token included, only when it actually connects.
+ */
+export async function listStoredConnectionTools(
+  connectionId: string,
+  ctx: StudioContext,
+  timeoutMs: number,
+): Promise<Tool[]> {
+  const connection = await ctx.storage.connections.findById(connectionId);
+  if (!connection) throw new Error(`Connection not found: ${connectionId}`);
+  return listToolsWithTimeout(connection, ctx, timeoutMs);
+}

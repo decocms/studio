@@ -124,6 +124,53 @@ describe("whoamiCommand", () => {
   });
 });
 
+describe("whoamiCommand with a session provided by the environment", () => {
+  const nowMs = 1_700_000_000_000;
+  const provided = {
+    target: "https://studio.example.ts.net:10000",
+    clientId: "sandbox-run",
+    user: { sub: "u_1" },
+    accessToken: "studio_api_key",
+    expiresAt: Math.floor(nowMs / 1000) + 600,
+    createdAt: "2026-05-04T00:00:00.000Z",
+  };
+
+  it("prints it without calling the studio", async () => {
+    await writeSession(dir, provided);
+    const fetchMock = mock(async () => new Response("", { status: 500 }));
+
+    const code = await whoamiCommand({
+      dataDir: dir,
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => nowMs,
+    });
+
+    expect(code).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(logs.join("\n")).toContain(
+      "Target: https://studio.example.ts.net:10000",
+    );
+  });
+
+  it("says to report an expired one instead of only asking for a login", async () => {
+    await writeSession(dir, {
+      ...provided,
+      expiresAt: Math.floor(nowMs / 1000) - 60,
+    });
+
+    const code = await whoamiCommand({ dataDir: dir, now: () => nowMs });
+
+    expect(code).toBe(1);
+    const message = logs.join("\n");
+    expect(message).toContain(
+      "Session for https://studio.example.ts.net:10000 expired and has no refresh token",
+    );
+    expect(message).toContain("report this error instead of logging in");
+    expect(message).not.toContain("Not logged in");
+    expect(await readSession(dir)).not.toBeNull();
+  });
+});
+
 describe("whoamiCommand --target", () => {
   it("reports the session for the requested studio", async () => {
     for (const [target, email] of [

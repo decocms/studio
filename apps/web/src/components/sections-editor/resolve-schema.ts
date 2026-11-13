@@ -63,6 +63,11 @@ export interface SchemaProperty {
     /** The branch lists its discriminator in `required`. */
     discriminatorRequired?: boolean;
   }>;
+  /**
+   * A block-ref typed as plain `Section`: it accepts every section, while its
+   * `anyOfRefs` name only a few. `Section<T>` lists exactly what it accepts.
+   */
+  acceptsAnySection?: true;
   /** Property used to pick the active union branch (e.g. `type`). */
   discriminatorKey?: string;
   /**
@@ -462,6 +467,20 @@ function buildSchema(
     return unwrapRefAliases(resolveRef(s.$ref), new Set([...seen, key]));
   };
 
+  /** True when `s` aliases the registry of every section (plain `Section`, not `Section<T>`). */
+  const refsSectionRegistry = (
+    s: RawSchema,
+    seen: Set<string> = new Set(),
+  ): boolean => {
+    if (typeof s.$ref !== "string") return false;
+    const key = s.$ref.split("/").pop() ?? "";
+    if (s.$ref === "#/root/sections" || key === SECTION_REF_DEF_KEY) {
+      return true;
+    }
+    if (!key || seen.has(key)) return false;
+    return refsSectionRegistry(resolveRef(s.$ref), new Set([...seen, key]));
+  };
+
   const inlineLoaderResolveType = (s: RawSchema): string | undefined => {
     const rtEnum = (
       (s.properties as RawSchema | undefined)?.__resolveType as
@@ -708,6 +727,10 @@ function buildSchema(
 
         // deco.cx inline loader branches
         const loaderBranches = nonNull.filter(isInlineLoaderBranch);
+        const acceptsAnySection =
+          refsSectionRegistry(v) ||
+          nonNull.some((b) => refsSectionRegistry(b)) ||
+          undefined;
 
         // Site `global` / page `sections`: plain section arrays with an optional
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
@@ -879,6 +902,7 @@ function buildSchema(
                   ? resolved.description
                   : undefined,
             anyOfRefs,
+            acceptsAnySection,
             plainSchema,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
@@ -1186,6 +1210,7 @@ function buildSchema(
           }
           return {
             type: "block-ref",
+            acceptsAnySection,
             title:
               typeof v.title === "string"
                 ? v.title

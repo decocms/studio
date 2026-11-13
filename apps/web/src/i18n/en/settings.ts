@@ -5,16 +5,7 @@ export const settings = {
   "settings.subscriptionUsage.secondary": "Secondary limit",
   "settings.subscriptionUsage.resets": "Resets {date}",
   "settings.subscriptionUsage.limitReached": "Limit reached",
-  "settings.subscriptionUsage.permission":
-    "This token cannot read usage limits. Check usage on the provider’s website.",
-  "settings.subscriptionUsage.authorization":
-    "The provider could not authorize this usage request. Relink your subscription to refresh its credentials.",
-  "settings.subscriptionUsage.rateLimited":
-    "The provider is limiting usage checks. Try again after the time below.",
-  "settings.subscriptionUsage.disconnected":
-    "Link your subscription to view usage limits.",
-  "settings.subscriptionUsage.unavailable":
-    "Usage limits are unavailable right now. Check the provider for the latest status.",
+  "settings.subscriptionUsage.viewUsage": "View usage",
   "settings.subscriptionUsage.openProvider": "View on provider",
 
   "settings.voice.title": "Voice mode",
@@ -338,7 +329,6 @@ export const settings = {
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
   "settings.nav.memory": "Memory",
@@ -365,6 +355,9 @@ export const settings = {
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "Blog view",
+  "settings.blogView.description":
+    "Blog as its own project view, with each post beside the site's render of it. When off, the blog is edited in the Site Editor's Content tab.",
   "settings.blog.aiTitle": "AI blog",
   "settings.blog.aiDescription":
     "Brand context, campaigns and post generation. When off, posts are written by hand.",
@@ -380,9 +373,9 @@ export const settings = {
   "settings.multiAppPreview.title": "Preview several apps of a monorepo",
   "settings.multiAppPreview.description":
     "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
-  "settings.preferences.projectFirstNav": "Project-first navigation",
-  "settings.preferences.projectFirstNavDescription":
-    "Try the org rail, project launcher and the Today/Agents home.",
+  "settings.cmsAutoCommit.title": "Commit each save to the branch",
+  "settings.cmsAutoCommit.description":
+    "In Fast Preview, every save becomes a commit on the branch being edited. Turned off, saves stay in Studio: the editor and the preview show them, but they reach the branch only when someone publishes or submits for review, as a single commit. Until then they are not in the repository, so a pull request, a deploy preview, or anyone working on the branch outside Studio won't see them.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeLight": "Light theme",
   "settings.preferences.themeDark": "Dark theme",
@@ -417,7 +410,6 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
-  "settings.skills.pageTitle": "Skills",
   "settings.skills.importButton": "Import skill",
   "settings.skills.importing": "Importing…",
   "settings.skills.importSuccess": 'Imported "{name}"',
@@ -449,15 +441,10 @@ export const settings = {
   "settings.skills.errorDescription":
     "The skill catalog could not be loaded. You may not have access to this org's files.",
   "settings.skills.retry": "Try again",
-  "settings.memory.pageTitle": "Memory",
   "settings.memory.tabOrg": "Organization",
   "settings.memory.tabUser": "Just you",
   "settings.memory.orgHeading": "Shared with everyone in {org}",
-  "settings.memory.orgDescription":
-    "Deco reads this at the start of every chat and adds to it as it learns. Fix anything wrong or out of date.",
   "settings.memory.userHeading": "Your personal memory",
-  "settings.memory.userDescription":
-    "Loaded only into your chats. Good for how you like to work, what you own and what to skip.",
   "settings.memory.orgPlaceholder":
     "Facts everyone's chats should know. For example: we ship on Thursdays, prices are in BRL, the brand voice is informal.",
   "settings.memory.userPlaceholder":
@@ -672,7 +659,6 @@ export const settings = {
     "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
-  "settings.subscriptionUsage.unavailableShort": "Usage unavailable",
   "settings.ownAccounts.more": "More actions",
   "settings.providerKeyRow.edit": "Edit",
   "settings.ownAccounts.title": "Your own accounts",
@@ -707,11 +693,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
-  "settings.planUsage.noPlan": "No active plan",
-  "settings.planUsage.noPlanDescription":
-    "This organization has no active plan. Pick one below — Starter's first month is free.",
   "settings.planUsage.included": "Included in plan",
-  "settings.planUsage.credits": "Credits",
+  "settings.planUsage.credits": "Added credits",
   "settings.planUsage.creditsInUse": "In use",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
@@ -772,12 +755,6 @@ export const settings = {
     "This organization has used its monthly AI allowance. Chat and tasks pause until you upgrade or top up.",
 
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
-  "settings.decoNudgeCard.connectDeco": "Connect Deco",
-  "settings.decoNudgeCard.connecting": "Connecting…",
-  "settings.decoNudgeCard.decoAiGateway": "Deco AI Gateway",
-  "settings.decoNudgeCard.description":
-    "100+ models, one connection — pay as you go, no API keys to juggle.",
-  "settings.decoNudgeCard.recommended": "Recommended",
   "settings.deleteOrganizationSection.cancel": "Cancel",
   "settings.deleteOrganizationSection.dangerZone": "Danger zone",
   "settings.deleteOrganizationSection.deleteButton": "Delete",
@@ -1196,10 +1173,6 @@ export const settings = {
   "settings.aiProviders.customOpenAiCompatible": "Custom OpenAI-compatible",
   "settings.aiProviders.customOpenAiDescription":
     "Bring your own model server (advanced)",
-  "settings.aiProviders.decoConnectSuccess":
-    "Deco AI Gateway connected successfully",
-  "settings.aiProviders.decoConnectError":
-    "Failed to connect Deco AI Gateway: {error}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",

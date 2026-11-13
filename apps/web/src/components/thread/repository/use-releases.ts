@@ -2,7 +2,12 @@ import { useProjectContext, useVirtualMCP, useVirtualMCPActions } from "@/sdk";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Release, VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { runSerializedTask } from "@/lib/serial-task-queue";
-import { addRelease, removeRelease, renameReleaseIn } from "./release-edits";
+import {
+  addRelease,
+  markReleaseSandbox,
+  removeRelease,
+  renameReleaseIn,
+} from "./release-edits";
 
 /**
  * Dot colors a named release can take, in assignment order. `success` (green) is
@@ -40,6 +45,20 @@ const DOT_CLASS: Record<string, string> = {
   amber: "bg-amber-500",
   teal: "bg-teal-500",
 };
+
+const ICON_CLASS: Record<string, string> = {
+  orange: "text-orange-500",
+  violet: "text-violet-500",
+  blue: "text-blue-500",
+  pink: "text-pink-500",
+  amber: "text-amber-500",
+  teal: "text-teal-500",
+};
+
+/** Text color for a coding draft's icon, which replaces its dot. */
+export function releaseIconClass(color: string | undefined): string {
+  return (color && ICON_CLASS[color]) || "text-muted-foreground";
+}
 
 /** Tailwind class for a stored color token; falls back to a neutral dot. */
 export function releaseDotClass(color: string | undefined): string {
@@ -126,5 +145,8 @@ export function useReleases(virtualMcpId: string) {
   const deleteRelease = (branch: string) =>
     write((current) => removeRelease(current, branch));
 
-  return { releases, createRelease, renameRelease, deleteRelease };
+  const markSandbox = (branch: string) =>
+    write((current) => markReleaseSandbox(current, branch));
+
+  return { releases, createRelease, renameRelease, deleteRelease, markSandbox };
 }

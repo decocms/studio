@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import type { StudioContext } from "../../core/studio-context";
 
 const USER_ID = "user_1";
@@ -21,12 +21,24 @@ mock.module("./auth-client", () => ({
   unlinkReportsSite: async () => ({ unlinked: true }),
 }));
 
+const notifyMock = mock(
+  async (
+    _ctx: unknown,
+    _connection: unknown,
+    _params: { state: Record<string, unknown> },
+  ) => {},
+);
+mock.module("../connection/on-configuration", () => ({
+  notifyMcpConfiguration: notifyMock,
+}));
+
 const { REPORTS_SETUP } = await import("./setup");
 
 interface StubConnection {
   id: string;
   connection_token?: string | null;
   metadata?: Record<string, unknown> | null;
+  configuration_state?: Record<string, unknown> | null;
 }
 
 interface StubVirtualMcp {
@@ -164,6 +176,140 @@ describe("REPORTS_SETUP", () => {
     expect((update.data.metadata as Record<string, unknown>).siteUrl).toBe(
       "https://new-site.com",
     );
+  });
+
+  test("re-sends the stored connection picks with the new site's token", async () => {
+    notifyMock.mockClear();
+    const state = { ga4: { __type: "google-analytics", value: "conn_ga" } };
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old_site_token",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: state,
+      },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    const [, connection, params] = notifyMock.mock.calls[0]!;
+    // The token decides which site Reports files the picks under.
+    expect((connection as StubConnection).connection_token).toBe(
+      "dgn_fresh_token",
+    );
+    expect(params.state).toEqual(state);
+  });
+
+  test("a failed send does not fail the setup, and the next setup for the same site retries it", async () => {
+    notifyMock.mockClear();
+    notifyMock.mockImplementationOnce(async () => {
+      throw new Error("downstream unreachable");
+    });
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old_site_token",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: { gsc: { __type: "x", value: "conn_gsc" } },
+      },
+    });
+
+    await expect(
+      REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx),
+    ).resolves.toBeDefined();
+    // siteUrl now says new-site.com, but the picks never got there.
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(notifyMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("same site after a successful send ⇒ no second send", async () => {
+    notifyMock.mockClear();
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: { ga4: { __type: "x", value: "conn_ga" } },
+      },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+    // Same hostname, different spelling: still the same diagnostic.
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com/" }, ctx);
+
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("a setup that moved the site during the send keeps its siteUrl", async () => {
+    notifyMock.mockClear();
+    // Another setup lands while this one's send is in flight.
+    notifyMock.mockImplementationOnce(async (ctx) => {
+      await (ctx as StudioContext).storage.connections.update("conn_1", {
+        metadata: { siteUrl: "https://other-site.com" },
+      });
+    });
+    let final: StubConnection | undefined;
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: { ga4: { __type: "x", value: "conn_ga" } },
+      },
+      connectionUpdate: (_id, data) => {
+        final = { id: "conn_1", ...data } as StubConnection;
+      },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(final?.metadata?.siteUrl).toBe("https://other-site.com");
+    expect(final?.metadata?.picksSentToHost).toBeUndefined();
+  });
+
+  test("a DB error after a successful send is logged as bookkeeping, not as a failed send", async () => {
+    notifyMock.mockClear();
+    // The send succeeds, then the re-read for the marker hits a DB error.
+    notifyMock.mockImplementationOnce(async (ctx) => {
+      (ctx as StudioContext).storage.connections.findById = async () => {
+        throw new Error("db down");
+      };
+    });
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    const ctx = makeCtx({
+      existingConnection: {
+        id: "conn_1",
+        connection_token: "dgn_old",
+        metadata: { siteUrl: "https://old-site.com" },
+        configuration_state: { ga4: { __type: "x", value: "conn_ga" } },
+      },
+    });
+
+    await expect(
+      REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx),
+    ).resolves.toBeDefined();
+
+    const messages = errors.mock.calls.map((c) => String(c[0]));
+    errors.mockRestore();
+    expect(messages).toContain(
+      "[reports] recording picksSentToHost after the send failed",
+    );
+    expect(messages.some((m) => m.includes("ON_MCP_CONFIGURATION"))).toBe(
+      false,
+    );
+  });
+
+  test("nothing to re-send ⇒ no notify", async () => {
+    notifyMock.mockClear();
+    const ctx = makeCtx({
+      existingConnection: { id: "conn_1", connection_token: "dgn_old" },
+    });
+
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
+
+    expect(notifyMock).not.toHaveBeenCalled();
   });
 
   test("defaults reports_only on for an org the flow just created", async () => {

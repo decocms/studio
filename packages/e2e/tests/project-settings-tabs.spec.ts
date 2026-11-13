@@ -31,18 +31,15 @@ test.describe("project settings tabs", () => {
     await page.goto(path);
     const header = page.getByTestId("page-header");
     const tabs = page
-      .locator('[data-slot="panel-toolbar"]')
-      .getByRole("navigation", { name: "Project settings sections" });
+      .getByTestId("main-panel")
+      .locator("nav")
+      .filter({ has: page.getByRole("link", { name: "Repository" }) });
     const content = page.locator('[data-slot="page-content"]');
     const name = content.getByRole("textbox", { name: "Project name" });
     await expect(name).toHaveValue("Forma", { timeout: 60_000 });
-    await expect(
-      header.getByRole("heading", { level: 1, name: "Project settings" }),
-    ).toBeVisible();
     await expect(tabs.getByRole("link")).toHaveText([
       "General",
       "Views",
-      "Connections",
       "Repository",
       "CMS",
     ]);
@@ -56,19 +53,10 @@ test.describe("project settings tabs", () => {
     });
 
     await name.fill("Forma Studio");
-    await tabs.getByRole("link", { name: "Connections" }).click();
+    await tabs.getByRole("link", { name: "Views" }).click();
     await expect(
-      content.getByRole("button", {
-        name: "No connections yet. Add one to get started.",
-      }),
+      content.getByRole("heading", { name: "Default layout" }),
     ).toBeVisible();
-    await header
-      .getByRole("button", { name: "Add connection", exact: true })
-      .click();
-    const addConnection = page.getByRole("dialog");
-    await expect(addConnection).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(addConnection).toBeHidden();
     await page.goBack();
     await expect(name).toHaveValue("Forma Studio");
     await expect
@@ -138,9 +126,6 @@ test.describe("project settings tabs", () => {
     const description = content.getByRole("textbox", { name: "Description" });
     await description.scrollIntoViewIfNeeded();
     await expect(description).toBeInViewport();
-    await expect(
-      header.getByRole("button", { name: "Connect", exact: true }),
-    ).toBeInViewport();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(390);
@@ -154,16 +139,8 @@ test.describe("project settings tabs", () => {
       animations: "disabled",
       path: testInfo.outputPath("project-settings-mobile.png"),
     });
-    await tabs.getByRole("link", { name: "Connections" }).click();
-    await expect(
-      header.getByRole("button", { name: "Add connection", exact: true }),
-    ).toBeInViewport();
     await page.goto(`${path}?section=unknown`);
     await expect(name).toHaveValue("Forma Studio");
-    await expect(tabs.getByRole("link", { name: "General" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
   });
 
   test("existing Site links keep preview settings editable across tab changes", async ({
@@ -186,9 +163,10 @@ test.describe("project settings tabs", () => {
     });
     const path = `/${orgSlug}/projects/${project.vmcpId}/settings`;
     await page.goto(`${path}?section=site`);
-    const tabs = page.getByRole("navigation", {
-      name: "Project settings sections",
-    });
+    const tabs = page
+      .getByTestId("main-panel")
+      .locator("nav")
+      .filter({ has: page.getByRole("link", { name: "Repository" }) });
     await expect(
       tabs.getByRole("link", { name: "CMS", exact: true }),
     ).toHaveAttribute("aria-current", "page", { timeout: 60_000 });
@@ -198,14 +176,7 @@ test.describe("project settings tabs", () => {
     });
     await expect(previewServer).toHaveValue("https://forma.example.com/");
     await previewServer.fill("https://preview.forma.example.com/");
-    await tabs.getByRole("link", { name: "Connections", exact: true }).click();
-    await expect(
-      tabs.getByRole("link", { name: "Connections", exact: true }),
-    ).toHaveAttribute("aria-current", "page");
-    await page.goBack();
-    await expect(previewServer).toHaveValue(
-      "https://preview.forma.example.com/",
-    );
+    // The section saves on its own; switching away before then drops the edit.
     await expect
       .poll(async () => {
         const { item } = await callSelfMcpTool<{
@@ -216,6 +187,14 @@ test.describe("project settings tabs", () => {
         return item.metadata.previewServerUrl;
       })
       .toBe("https://preview.forma.example.com/");
+    await tabs.getByRole("link", { name: "Views", exact: true }).click();
+    await expect(
+      tabs.getByRole("link", { name: "Views", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await page.goBack();
+    await expect(previewServer).toHaveValue(
+      "https://preview.forma.example.com/",
+    );
     await page.reload();
     await expect(previewServer).toHaveValue(
       "https://preview.forma.example.com/",
@@ -224,5 +203,75 @@ test.describe("project settings tabs", () => {
       animations: "disabled",
       path: testInfo.outputPath("project-settings-site.png"),
     });
+  });
+  test("an org owner turns a project into a Blocks v8 site and back from the CMS tab", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const request = page.context().request;
+    const owner = uniqueOwner();
+    const repo = "forma-v8";
+    await seedStubRepo(request, {
+      owner,
+      repo,
+      branches: { main: { files: {} } },
+    });
+    const project = await createFastPreviewProject(request, orgSlug, {
+      owner,
+      repo,
+      connectionUrl: "http://127.0.0.1:1/unused",
+      previewServerUrl: "https://forma.example.com/",
+      siteSlug: owner,
+    });
+    const isV8 = async () => {
+      const { item } = await callSelfMcpTool<{
+        item: { metadata: Record<string, unknown> | null };
+      }>(request, orgSlug, "COLLECTION_VIRTUAL_MCP_GET", {
+        id: project.vmcpId,
+      });
+      return item.metadata?.blocksV8 === true;
+    };
+    const pushSchema = () =>
+      request.put(`/api/cms/${owner}/schema`, {
+        data: JSON.stringify({ blocksMajor: 8, definitions: {}, root: {} }),
+        headers: { "Content-Type": "application/json" },
+      });
+    await page.goto(
+      `/${orgSlug}/projects/${project.vmcpId}/settings?section=site`,
+    );
+    const toggle = page.getByRole("switch", { name: "Blocks v8 site" });
+    // A v7 site: the switch is off, and the v7 Fast Preview switch is there.
+    await expect(toggle).toHaveAttribute("aria-checked", "false", {
+      timeout: 60_000,
+    });
+    await expect(
+      page.getByRole("switch", { name: "Fast Preview" }),
+    ).toBeVisible();
+    expect((await pushSchema()).status()).toBe(409);
+    expect(await isV8()).toBe(false);
+
+    await toggle.click();
+    await expect.poll(isV8).toBe(true);
+    // The v8 gates follow: no Fast Preview switch (always on), site tokens.
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(
+      page.getByRole("switch", { name: "Fast Preview" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Site tokens" }),
+    ).toBeVisible();
+    expect((await pushSchema()).status()).toBe(200);
+    // A schema push never turns it off either.
+    expect(await isV8()).toBe(true);
+
+    await toggle.click();
+    await expect.poll(isV8).toBe(false);
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(
+      page.getByRole("switch", { name: "Fast Preview" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Site tokens" }),
+    ).toHaveCount(0);
   });
 });

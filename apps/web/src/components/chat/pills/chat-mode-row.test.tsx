@@ -20,7 +20,7 @@ mock.module("../../thread/repository/branch-picker", () => ({
   ),
 }));
 
-import { ChatModeRowPure } from "./chat-mode-row";
+import { branchPickAction, ChatModeRowPure } from "./chat-mode-row";
 import { BranchPill } from "./branch-pill";
 
 // BranchPill resolves the locked-tooltip copy via useT(), which reads the
@@ -87,5 +87,187 @@ describe("BranchPill", () => {
       <BranchPill {...BRANCH_PILL_PROPS} locked={false} />,
     );
     expect(getByRole("button")).toHaveTextContent("branch-picker");
+  });
+});
+
+describe("branchPickAction", () => {
+  it("switches an unlocked chat in place for a branch that is not a draft", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: "cms",
+      }),
+    ).toEqual({
+      kind: "switch",
+    });
+  });
+
+  it("switches an unlocked chat in place for a draft in its own runtime", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: "sandbox",
+        draftRuntime: "sandbox",
+      }),
+    ).toEqual({ kind: "switch" });
+  });
+
+  it("opens a coding chat when a PR's coding draft is picked from a CMS chat", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: "cms",
+        draftRuntime: "sandbox",
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "sandbox" });
+  });
+
+  it("opens a coding chat for a coding draft while the chat's runtime is unresolved", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: null,
+        draftRuntime: "sandbox",
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "sandbox" });
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: null,
+        draftRuntime: "cms",
+      }),
+    ).toEqual({ kind: "switch" });
+  });
+
+  // Switching in place would stamp the CMS draft `sandbox`.
+  it("opens a project-default chat when a CMS draft is picked from a coding chat", () => {
+    for (const locked of [false, true]) {
+      expect(
+        branchPickAction({
+          projectRuntime: "cms",
+          locked,
+          sessionRuntime: "sandbox",
+          draftRuntime: "cms",
+        }),
+      ).toEqual({ kind: "new-chat" });
+    }
+  });
+
+  it("keeps an unlocked coding chat in place when its own CMS-stamped draft is re-picked", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: "sandbox",
+        draftRuntime: "cms",
+        current: true,
+      }),
+    ).toEqual({ kind: "switch" });
+  });
+
+  it("keeps a coding chat when the project can't serve a CMS chat", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "sandbox",
+        locked: false,
+        sessionRuntime: "sandbox",
+        draftRuntime: "cms",
+      }),
+    ).toEqual({ kind: "switch" });
+  });
+
+  it("opens a coding chat for a coding draft from a locked CMS chat", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: true,
+        sessionRuntime: "cms",
+        draftRuntime: "sandbox",
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "sandbox" });
+  });
+
+  it("keeps a locked coding chat's new chat in sandbox for a coding draft or another branch", () => {
+    for (const draftRuntime of ["sandbox", undefined] as const) {
+      expect(
+        branchPickAction({
+          projectRuntime: "cms",
+          locked: true,
+          sessionRuntime: "sandbox",
+          draftRuntime,
+        }),
+      ).toEqual({ kind: "new-chat", runtime: "sandbox" });
+    }
+  });
+
+  it("leaves a locked CMS or unresolved chat's new chat to the project default", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: true,
+        sessionRuntime: "cms",
+        draftRuntime: "cms",
+      }),
+    ).toEqual({ kind: "new-chat" });
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: true,
+        sessionRuntime: "cms",
+      }),
+    ).toEqual({
+      kind: "new-chat",
+    });
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: true,
+        sessionRuntime: null,
+        draftRuntime: "cms",
+      }),
+    ).toEqual({ kind: "new-chat" });
+  });
+});
+
+describe("branchPickAction for v8 content drafts", () => {
+  it("opens CMS from coding or unresolved sessions", () => {
+    for (const sessionRuntime of ["sandbox", null] as const) {
+      for (const locked of [true, false]) {
+        expect(
+          branchPickAction({
+            projectRuntime: "cms",
+            locked,
+            sessionRuntime,
+            draftRuntime: "cms",
+            contentOnly: true,
+          }),
+        ).toEqual({ kind: "new-chat", runtime: "cms" });
+      }
+    }
+  });
+  it("switches an empty CMS chat and opens a new locked CMS chat", () => {
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: false,
+        sessionRuntime: "cms",
+        draftRuntime: "cms",
+        contentOnly: true,
+      }),
+    ).toEqual({ kind: "switch" });
+    expect(
+      branchPickAction({
+        projectRuntime: "cms",
+        locked: true,
+        sessionRuntime: "cms",
+        draftRuntime: "cms",
+        contentOnly: true,
+      }),
+    ).toEqual({ kind: "new-chat", runtime: "cms" });
   });
 });

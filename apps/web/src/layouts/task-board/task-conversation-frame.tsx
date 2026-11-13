@@ -9,7 +9,7 @@ import {
   useTaskBoardComments,
 } from "@/hooks/use-task-board-comments";
 import { toast } from "sonner";
-import type { TaskBoardItem } from "./config";
+import { isLiveAttempt, type TaskBoardItem } from "./config";
 import { NewCommentComposer } from "./task-comments";
 
 /** Owns conversation scrolling; the composer stays visible beside the inspector. */
@@ -84,6 +84,16 @@ export function TaskConversationFrame({
             </div>
           )}
           <NewCommentComposer
+            agentRoute={
+              item.threads.some(
+                (run) =>
+                  isLiveAttempt(run) &&
+                  (run.status === "in_progress" ||
+                    run.status === "requires_action"),
+              )
+                ? "steer"
+                : "start"
+            }
             onSubmit={async (body) => {
               try {
                 await comments.post.mutateAsync({ body });

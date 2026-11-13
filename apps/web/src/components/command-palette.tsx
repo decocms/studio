@@ -7,7 +7,7 @@
  *
  * Two kinds of result, deliberately separated:
  *
- *   LOCAL   — destinations, projects, settings pages, actions. Already in
+ *   LOCAL   — orgs, destinations, projects, settings pages, actions. Already in
  *             memory, so they appear on the first keystroke with no spinner and
  *             work offline. Every label goes through `t()`.
  *   REMOTE  — threads and tasks, via GLOBAL_SEARCH. Deferred, so typing never
@@ -41,6 +41,8 @@ import {
   CommandItem,
   CommandList,
 } from "@decocms/ui/components/command.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import { OrgIcon } from "@/components/header/org-switcher";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
 import {
@@ -50,6 +52,12 @@ import {
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useRecentProjects } from "@/hooks/use-recent-projects";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useOrganizationSearch } from "@/hooks/use-organization-search";
+import { useRecentOrgs } from "@/hooks/use-recent-orgs";
+import { useTravelToOrg } from "@/hooks/use-travel-to-org";
+import { useActiveOrganizations } from "@/lib/auth-client";
+import { withCurrentOrg } from "@/lib/recent-orgs";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import {
@@ -87,7 +95,62 @@ type SearchHit =
 /** The palette lists a few best matches; the threads-panel dialog pages. */
 const PALETTE_LIMIT = 8;
 
-function useGlobalSearch(term: string): SearchHit[] {
+const SCOPES = [
+  "all",
+  "organizations",
+  "projects",
+  "chats",
+  "connections",
+  "actions",
+] as const;
+type Scope = (typeof SCOPES)[number];
+
+/** Orgs shown under "All" before anything is typed; the chip lists them all. */
+const ORG_PREVIEW_LIMIT = 5;
+
+interface PaletteOrg {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+}
+
+function scopeLabelKey(scope: Scope) {
+  switch (scope) {
+    case "all":
+      return "commandPalette.scope.all" as const;
+    case "organizations":
+      return "commandPalette.organizations" as const;
+    case "projects":
+      return "commandPalette.projects" as const;
+    case "chats":
+      return "commandPalette.scope.chats" as const;
+    case "connections":
+      return "commandPalette.connections" as const;
+    case "actions":
+      return "commandPalette.actions" as const;
+    default: {
+      const exhaustive: never = scope;
+      return exhaustive;
+    }
+  }
+}
+
+/** Recent first (the order the rail keeps), then the rest by name. */
+function orderOrgs(
+  orgs: readonly PaletteOrg[],
+  recent: readonly string[],
+): PaletteOrg[] {
+  const rank = (slug: string) => {
+    const at = recent.indexOf(slug);
+    return at === -1 ? Number.POSITIVE_INFINITY : at;
+  };
+  return [...orgs].sort(
+    (a, b) => rank(a.slug) - rank(b.slug) || a.name.localeCompare(b.name),
+  );
+}
+
+function useGlobalSearch(term: string, enabled: boolean): SearchHit[] {
   const { org } = useProjectContext();
   /** Non-blocking on purpose: the palette mounts on ⌘K, outside every Suspense
    *  boundary but the root, so suspending on the self-MCP connect (uncached on
@@ -101,7 +164,7 @@ function useGlobalSearch(term: string): SearchHit[] {
 
   const { data } = useQuery({
     queryKey: KEYS.globalSearch(org.id, term, PALETTE_LIMIT),
-    enabled: !!client && term.trim().length >= 2,
+    enabled: enabled && !!client && term.trim().length >= 2,
     staleTime: 15_000,
     retry: false,
     queryFn: async () => {
@@ -134,12 +197,49 @@ export function CommandPalette({
   const { projects, hasProjects } = useProjectScope();
   const { remember: rememberProject } = useRecentProjects(org.slug);
   const [term, setTerm] = useState("");
+  const [scope, setScope] = useState<Scope>("all");
+  const shows = (kind: Scope) => scope === "all" || scope === kind;
   const deferredTerm = useDeferredValue(term);
-  const hits = useGlobalSearch(deferredTerm);
+  const hits = useGlobalSearch(
+    deferredTerm,
+    shows("chats") || shows("connections"),
+  );
+
+  /** Orgs: the in-memory list, plus the server's matches past Better Auth's
+   *  first 500 memberships once something is typed. */
+  const travelToOrg = useTravelToOrg();
+  const { data: organizations } = useActiveOrganizations();
+  const { recent: recentOrgs } = useRecentOrgs();
+  const typed = term.trim();
+  const orgTerm = useDebouncedValue(typed, 150);
+  const { hits: orgHits } = useOrganizationSearch(
+    shows("organizations") ? orgTerm : "",
+  );
+  const memberOrgs = orderOrgs(
+    withCurrentOrg((organizations ?? []) as PaletteOrg[], org),
+    recentOrgs,
+  );
+  const serverOrgIds = new Set(orgHits.map((hit) => hit.id));
+  const allOrgs = [
+    ...memberOrgs,
+    ...orgHits.filter((hit) => !memberOrgs.some((o) => o.id === hit.id)),
+  ];
+  /** Under "All" with nothing typed, a short list of the OTHER orgs — the one
+   *  you are in is not where you are going. */
+  const paletteOrgs =
+    scope === "all" && !typed
+      ? allOrgs.filter((it) => it.slug !== org.slug).slice(0, ORG_PREVIEW_LIMIT)
+      : allOrgs;
 
   const close = () => {
     onOpenChange(false);
     setTerm("");
+    setScope("all");
+  };
+
+  const cycleScope = (step: 1 | -1) => {
+    const at = SCOPES.indexOf(scope);
+    setScope(SCOPES[(at + step + SCOPES.length) % SCOPES.length] ?? "all");
   };
 
   const go = (fn: () => void, what: string) => {
@@ -255,36 +355,106 @@ export function CommandPalette({
       description={t("commandPalette.description")}
     >
       <CommandInput
-        placeholder={t("commandPalette.placeholder")}
+        placeholder={
+          scope === "all"
+            ? t("commandPalette.placeholder")
+            : t("commandPalette.placeholderScoped", {
+                scope: t(scopeLabelKey(scope)).toLowerCase(),
+              })
+        }
         aria-label={t("commandPalette.placeholder")}
         value={term}
         onValueChange={setTerm}
+        onKeyDown={(event) => {
+          if (event.key === "Tab") {
+            event.preventDefault();
+            cycleScope(event.shiftKey ? -1 : 1);
+            return;
+          }
+          /** Backspace on an empty field steps out of the scope first. */
+          if (event.key === "Backspace" && !term && scope !== "all") {
+            event.preventDefault();
+            setScope("all");
+          }
+        }}
       />
-      <CommandList>
+      <div
+        role="radiogroup"
+        aria-label={t("commandPalette.scope.label")}
+        className="flex gap-1 overflow-x-auto border-b px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {SCOPES.map((option) => (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={scope === option}
+            tabIndex={-1}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setScope(option)}
+            className={cn(
+              "h-7 shrink-0 cursor-pointer rounded-full px-3 text-xs font-medium transition-colors focus-ring",
+              scope === option
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            {t(scopeLabelKey(option))}
+          </button>
+        ))}
+      </div>
+      <CommandList className="h-[min(420px,60vh)] max-h-none">
         <CommandEmpty>{t("commandPalette.empty")}</CommandEmpty>
 
-        <CommandGroup heading={t("commandPalette.goTo")}>
-          {destinations.map((destination) => (
-            <CommandItem
-              key={destination.key}
-              onSelect={() =>
-                go(
-                  () =>
-                    navigate({
-                      to: destination.to,
-                      params: destination.params,
-                    }),
-                  "destination",
-                )
-              }
-            >
-              {destination.icon}
-              <span>{destination.label}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {shows("organizations") && paletteOrgs.length > 0 && (
+          <CommandGroup heading={t("commandPalette.organizations")}>
+            {paletteOrgs.map((candidate) => (
+              <CommandItem
+                key={`org:${candidate.id}`}
+                value={`org ${candidate.name} ${candidate.slug}`}
+                keywords={serverOrgIds.has(candidate.id) ? [term] : undefined}
+                onSelect={() =>
+                  go(() => travelToOrg(candidate.slug), "organization")
+                }
+              >
+                <OrgIcon org={candidate} size="xs" />
+                <span className="min-w-0 flex-1 truncate">
+                  {candidate.name}
+                </span>
+                {candidate.slug === org.slug && (
+                  <span className="text-meta shrink-0">
+                    {t("sidebar.rail.currentOrganization")}
+                  </span>
+                )}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
 
-        {hasProjects && (
+        {shows("actions") && (
+          <CommandGroup heading={t("commandPalette.goTo")}>
+            {destinations.map((destination) => (
+              <CommandItem
+                key={destination.key}
+                onSelect={() =>
+                  go(
+                    () =>
+                      navigate({
+                        to: destination.to,
+                        params: destination.params,
+                      }),
+                    "destination",
+                  )
+                }
+              >
+                {destination.icon}
+                <span>{destination.label}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
+        {shows("projects") && hasProjects && (
           <CommandGroup heading={t("commandPalette.projects")}>
             {projects.map((project) => (
               /** Opens the workspace rather than setting the scope: "go to" is
@@ -317,75 +487,77 @@ export function CommandPalette({
           </CommandGroup>
         )}
 
-        <CommandGroup heading={t("commandPalette.actions")}>
-          <CommandItem
-            value={t("commandPalette.newProject")}
-            onSelect={() =>
-              go(
-                () =>
-                  navigate({
-                    to: DESTINATION_ROUTE.home,
-                    params: orgParams,
-                  }),
-                "new_project",
-              )
-            }
-          >
-            <Plus aria-hidden="true" />
-            <span>{t("commandPalette.newProject")}</span>
-          </CommandItem>
-          <CommandItem
-            value={t("commandPalette.inviteTeammate")}
-            onSelect={() =>
-              go(
-                () =>
-                  navigate({
-                    to: "/$org/settings/members",
-                    params: orgParams,
-                  }),
-                "invite",
-              )
-            }
-          >
-            <UserPlus01 aria-hidden="true" />
-            <span>{t("commandPalette.inviteTeammate")}</span>
-          </CommandItem>
-          <CommandItem
-            value={t("commandPalette.addConnection")}
-            onSelect={() =>
-              go(
-                () =>
-                  navigate({
-                    to: "/$org/settings/connections",
-                    params: orgParams,
-                    search: { tab: "all" as const },
-                  }),
-                "add_connection",
-              )
-            }
-          >
-            <Plus aria-hidden="true" />
-            <span>{t("commandPalette.addConnection")}</span>
-          </CommandItem>
-          <CommandItem
-            value={t("commandPalette.settings")}
-            onSelect={() =>
-              go(
-                () =>
-                  navigate({
-                    to: "/$org/settings/general",
-                    params: orgParams,
-                  }),
-                "settings",
-              )
-            }
-          >
-            <Settings02 aria-hidden="true" />
-            <span>{t("commandPalette.settings")}</span>
-          </CommandItem>
-        </CommandGroup>
+        {shows("actions") && (
+          <CommandGroup heading={t("commandPalette.actions")}>
+            <CommandItem
+              value={t("commandPalette.newProject")}
+              onSelect={() =>
+                go(
+                  () =>
+                    navigate({
+                      to: DESTINATION_ROUTE.home,
+                      params: orgParams,
+                    }),
+                  "new_project",
+                )
+              }
+            >
+              <Plus aria-hidden="true" />
+              <span>{t("commandPalette.newProject")}</span>
+            </CommandItem>
+            <CommandItem
+              value={t("commandPalette.inviteTeammate")}
+              onSelect={() =>
+                go(
+                  () =>
+                    navigate({
+                      to: "/$org/settings/members",
+                      params: orgParams,
+                    }),
+                  "invite",
+                )
+              }
+            >
+              <UserPlus01 aria-hidden="true" />
+              <span>{t("commandPalette.inviteTeammate")}</span>
+            </CommandItem>
+            <CommandItem
+              value={t("commandPalette.addConnection")}
+              onSelect={() =>
+                go(
+                  () =>
+                    navigate({
+                      to: "/$org/settings/connections",
+                      params: orgParams,
+                      search: { tab: "all" as const },
+                    }),
+                  "add_connection",
+                )
+              }
+            >
+              <Plus aria-hidden="true" />
+              <span>{t("commandPalette.addConnection")}</span>
+            </CommandItem>
+            <CommandItem
+              value={t("commandPalette.settings")}
+              onSelect={() =>
+                go(
+                  () =>
+                    navigate({
+                      to: "/$org/settings/general",
+                      params: orgParams,
+                    }),
+                  "settings",
+                )
+              }
+            >
+              <Settings02 aria-hidden="true" />
+              <span>{t("commandPalette.settings")}</span>
+            </CommandItem>
+          </CommandGroup>
+        )}
 
-        {connectionHits.length > 0 && (
+        {shows("connections") && connectionHits.length > 0 && (
           <CommandGroup heading={t("commandPalette.connections")}>
             {connectionHits.map((hit) => (
               <CommandItem
@@ -407,7 +579,7 @@ export function CommandPalette({
           </CommandGroup>
         )}
 
-        {resultHits.length > 0 && (
+        {shows("chats") && resultHits.length > 0 && (
           <CommandGroup heading={t("commandPalette.results")}>
             {resultHits.map((hit) => (
               <CommandItem
@@ -432,6 +604,33 @@ export function CommandPalette({
           </CommandGroup>
         )}
       </CommandList>
+      <div className="flex items-center gap-4 border-t px-3 py-2 text-xs text-muted-foreground">
+        <PaletteHint
+          keys={["↑", "↓"]}
+          label={t("commandPalette.hint.navigate")}
+        />
+        <PaletteHint keys={["↵"]} label={t("commandPalette.hint.open")} />
+        <PaletteHint keys={["Tab"]} label={t("commandPalette.hint.filter")} />
+        <PaletteHint keys={["Esc"]} label={t("commandPalette.hint.close")} />
+      </div>
     </CommandDialog>
+  );
+}
+
+function PaletteHint({ keys, label }: { keys: string[]; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="flex items-center gap-0.5">
+        {keys.map((key) => (
+          <kbd
+            key={key}
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-border bg-muted px-1 font-mono text-2xs"
+          >
+            {key}
+          </kbd>
+        ))}
+      </span>
+      {label}
+    </span>
   );
 }

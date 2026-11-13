@@ -754,6 +754,14 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         .where("virtual_mcp_id", "=", id)
         .execute();
 
+      // automations.virtual_mcp_id has no FK.
+      await trx
+        .updateTable("automations")
+        .set({ active: false, updated_at: new Date().toISOString() })
+        .where("virtual_mcp_id", "=", id)
+        .where("active", "=", true)
+        .execute();
+
       // Delete aggregations (no cascade since it's a different relationship)
       await trx
         .deleteFrom("connection_aggregations")

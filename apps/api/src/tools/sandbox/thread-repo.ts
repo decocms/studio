@@ -11,6 +11,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import type { RepoChoice } from "@/git-providers/repo-choices";
 import type { Thread } from "@/storage/types";
 import {
   type GitProviderKind,
@@ -66,6 +67,43 @@ export function threadBranch(
   return connectionId
     ? `thread:${threadId}/${connectionId}`
     : `thread:${threadId}`;
+}
+
+/**
+ * Bind one of the org's repos to a thread: `metadata.repository`, which every
+ * later consumer reads, and a branch carrying the repo's id, so switching
+ * repos yields a distinct sandbox. `SANDBOX_START` resolves the clone
+ * credential from `repositoryId` or the legacy connection, so nothing is
+ * minted here. Returns the thread as it was before the write.
+ */
+export async function bindThreadRepository(
+  ctx: StudioContext,
+  threadId: string,
+  repo: RepoChoice,
+  userId: string,
+): Promise<{
+  branch: string;
+  repository: RepositoryBinding;
+  previous: Thread | null;
+}> {
+  const branch = threadBranch(threadId, repo.id);
+  const repository: RepositoryBinding = {
+    url: repo.webUrl,
+    owner: repo.owner,
+    name: repo.name,
+    ...(repo.installationId !== undefined
+      ? { installationId: repo.installationId }
+      : {}),
+    ...(repo.connectionId ? { connectionId: repo.connectionId } : {}),
+    ...(repo.repository ? { repositoryId: repo.repository.id } : {}),
+  };
+  const previous = await ctx.storage.threads.get(threadId);
+  await ctx.storage.threads.update(threadId, {
+    metadata: { ...(previous?.metadata ?? {}), repository },
+    branch,
+    updated_by: userId,
+  });
+  return { branch, repository, previous };
 }
 
 /**

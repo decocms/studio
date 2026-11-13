@@ -9,6 +9,8 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.chatLoadingError":
     "Something went wrong loading the chat. Try refreshing.",
   "agentShellLayout.agentShellLayout.creatingTask": "Creating task…",
+  "agentShellLayout.agentShellLayout.viewDraftUnavailable":
+    "Couldn't open a draft for this view. Reload the page to try again.",
   "agentShellLayout.agentShellLayout.goToOrgHome": "Go to organization home",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Task unavailable",
 } as const;

@@ -77,6 +77,8 @@ interface CommitRecord {
   treeSha: string;
   parents: string[];
   message: string;
+  /** Committer date, as GitHub reports it. */
+  date: string;
 }
 
 interface PullRecord {
@@ -88,6 +90,12 @@ interface PullRecord {
   html_url: string;
 }
 
+interface StubRateLimit {
+  status: 403 | 429;
+  retryAfterSeconds?: number;
+  resetAfterSeconds?: number;
+}
+
 interface RepoState {
   /** GitHub's numeric repository id, which is what a token scope names. */
   id: number;
@@ -95,6 +103,7 @@ interface RepoState {
   name: string;
   defaultBranch: string;
   mergeMode: MergeMode;
+  metadataReads: number;
   /** branch -> head commit sha */
   refs: Map<string, string>;
   commits: Map<string, CommitRecord>;
@@ -112,6 +121,9 @@ interface RepoState {
   /** When set, recursive tree reads answer `truncated: true` (GitHub's
    *  100k-entry / 7MB cap) — arms the large-repo path in tests. */
   truncateRecursive: boolean;
+  contentsReads: number;
+  blobReads: number;
+  rateLimit: StubRateLimit | null;
 }
 
 interface SeedRepoBody {
@@ -131,6 +143,7 @@ interface SeedRepoBody {
   /** Make recursive tree reads return `truncated: true`, simulating a repo too
    *  large for GitHub's recursive listing. */
   truncateRecursive?: boolean;
+  rateLimit?: StubRateLimit;
 }
 
 const repos = new Map<string, RepoState>();
@@ -146,7 +159,9 @@ function nextRepoId(): number {
  * unrestricted so the suites that send a static token are unaffected.
  */
 function tokenScope(authorization: string | undefined): number[] | null {
-  const scope = /^Bearer ghs-inst-\d+-ids-([\d.]+)$/.exec(authorization ?? "");
+  const scope = /^(?:Bearer|token) ghs-inst-\d+-ids-([\d.]+)$/i.exec(
+    authorization ?? "",
+  );
   return scope?.[1] ? scope[1].split(".").map(Number) : null;
 }
 let commitCounter = 0;
@@ -182,13 +197,14 @@ function putCommit(
   treeSha: string,
   parents: string[],
   message: string,
+  date = new Date().toISOString(),
 ): string {
   // The counter keeps same-(tree,parents,message) commits distinct — this is
   // fixture code, not git; determinism-per-run is all the tests need.
   const sha = sha1(
     `commit:${treeSha}:${parents.join(",")}:${message}:${commitCounter++}`,
   );
-  repo.commits.set(sha, { sha, treeSha, parents, message });
+  repo.commits.set(sha, { sha, treeSha, parents, message, date });
   repo.commitLog.push(sha);
   return sha;
 }
@@ -272,6 +288,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     name: body.repo,
     defaultBranch,
     mergeMode: body.mergeMode ?? "merge",
+    metadataReads: 0,
     refs: new Map(),
     commits: new Map(),
     commitLog: [],
@@ -281,6 +298,9 @@ function seedRepo(body: SeedRepoBody): RepoState {
     pulls: [],
     nextPullNumber: 1,
     truncateRecursive: body.truncateRecursive ?? false,
+    contentsReads: 0,
+    blobReads: 0,
+    rateLimit: body.rateLimit ?? null,
   };
 
   const branches = body.branches ?? {};
@@ -294,7 +314,15 @@ function seedRepo(body: SeedRepoBody): RepoState {
       ]),
     ),
   );
-  const defaultHead = putCommit(repo, defaultTree, [], `seed ${defaultBranch}`);
+  // Seeds stand for existing history, committed long before the test.
+  const seedDate = new Date(0).toISOString();
+  const defaultHead = putCommit(
+    repo,
+    defaultTree,
+    [],
+    `seed ${defaultBranch}`,
+    seedDate,
+  );
   repo.refs.set(defaultBranch, defaultHead);
 
   for (const [branch, spec] of Object.entries(branches)) {
@@ -314,7 +342,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     );
     repo.refs.set(
       branch,
-      putCommit(repo, tree, [defaultHead], `seed ${branch}`),
+      putCommit(repo, tree, [defaultHead], `seed ${branch}`, seedDate),
     );
   }
   repos.set(repoKey(body.owner, body.repo), repo);
@@ -461,6 +489,9 @@ async function handleAdmin(
     json(res, 200, {
       defaultBranch: repo.defaultBranch,
       mergeMode: repo.mergeMode,
+      metadataReads: repo.metadataReads,
+      contentsReads: repo.contentsReads,
+      blobReads: repo.blobReads,
       refs: Object.fromEntries(repo.refs),
       commits: repo.commitLog.map((sha) => {
         const c = repo.commits.get(sha);
@@ -499,10 +530,26 @@ async function handleRepos(
     notFound(res);
     return;
   }
+  if (repo.rateLimit) {
+    const { status, retryAfterSeconds, resetAfterSeconds } = repo.rateLimit;
+    res.setHeader("x-ratelimit-remaining", "0");
+    if (retryAfterSeconds !== undefined) {
+      res.setHeader("retry-after", String(retryAfterSeconds));
+    }
+    if (resetAfterSeconds !== undefined) {
+      res.setHeader(
+        "x-ratelimit-reset",
+        String(Math.floor(Date.now() / 1000) + resetAfterSeconds),
+      );
+    }
+    json(res, status, { message: "API rate limit exceeded" });
+    return;
+  }
   const rest = segments.slice(3);
 
   // GET /repos/{o}/{r}
   if (req.method === "GET" && rest.length === 0) {
+    repo.metadataReads++;
     json(res, 200, {
       id: repo.id,
       name: repo.name,
@@ -606,7 +653,7 @@ async function handleRepos(
     json(res, 200, {
       sha: commit.sha,
       message: commit.message,
-      committer: { date: new Date().toISOString() },
+      committer: { date: commit.date },
       tree: { sha: commit.treeSha },
       parents: commit.parents.map((sha) => ({ sha })),
     });
@@ -688,6 +735,7 @@ async function handleRepos(
 
   // GET /repos/{o}/{r}/contents/{path}?ref={sha|branch}
   if (req.method === "GET" && rest[0] === "contents" && rest.length > 1) {
+    repo.contentsReads++;
     const filePath = rest.slice(1).join("/");
     const ref = url.searchParams.get("ref") ?? repo.defaultBranch;
     const commitSha = repo.refs.get(ref) ?? ref;
@@ -702,8 +750,12 @@ async function handleRepos(
       path: filePath,
       sha: blobSha,
       size: Buffer.byteLength(content, "utf8"),
-      content: Buffer.from(content, "utf-8").toString("base64"),
-      encoding: "base64",
+      content:
+        Buffer.byteLength(content, "utf8") > 1024 * 1024
+          ? ""
+          : Buffer.from(content, "utf-8").toString("base64"),
+      encoding:
+        Buffer.byteLength(content, "utf8") > 1024 * 1024 ? "none" : "base64",
     });
     return;
   }
@@ -715,6 +767,7 @@ async function handleRepos(
     rest[1] === "blobs" &&
     rest.length === 3
   ) {
+    repo.blobReads++;
     const content = rest[2] ? repo.blobs.get(rest[2]) : undefined;
     if (content === undefined) {
       notFound(res);

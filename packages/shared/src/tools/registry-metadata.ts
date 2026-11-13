@@ -270,6 +270,7 @@ const ALL_TOOL_NAMES = [
   // VM tools (app-only)
   "SANDBOX_START",
   "SANDBOX_DELETE",
+  "THREAD_SANDBOX_START",
 
   // GitHub App installations (app-only)
   "GITHUB_LIST_USER_ORGS",
@@ -1345,6 +1346,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "VM",
   },
   {
+    name: "THREAD_SANDBOX_START",
+    description: "Start or resume a chat's sandbox VM",
+    category: "VM",
+  },
+  {
     name: "GITHUB_LIST_USER_ORGS",
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
@@ -1863,6 +1869,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Sandbox previews, and the branch picker that feeds them
       "SANDBOX_START",
       "SANDBOX_DELETE",
+      "THREAD_SANDBOX_START",
       "REPOSITORY_SEARCH_BRANCHES",
       // Repo picker reads: which accounts/repos exist and what can be connected
       "GIT_PROVIDER_CAPABILITIES",

@@ -51,16 +51,14 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   branchUserLabel,
   generateBranchName,
+  isBlogDraftBranch,
 } from "@decocms/shared/branch-name";
 import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
 import {
-  prewarmThreadSandbox,
+  startThreadSandbox,
   sandboxOnlyChatsEnabled,
 } from "../../harnesses/sandbox-only-chats";
 import { getSettings } from "../../settings";
-import { metadataForThreadRuntime } from "../../hosted/blocks-major";
-import { contentClientForProjectRepo } from "../../git-providers";
-import { parseRepositoryBinding } from "../sandbox/sync-git-credentials";
 
 const CreateInputSchema = z.object({
   data: ThreadCreateDataSchema.describe(
@@ -84,15 +82,19 @@ type SandboxMapMeta = {
 /**
  * Pick the user's most-recently-touched hosted branch from sandboxMap. Native
  * desktop siblings are not routable by the API and cannot warm a hosted chat.
+ * A Blog draft is never offered: a chat that names no branch is not Blog work.
  */
-function pickWarmBranchFromSandboxMap(
+export function pickWarmBranchFromSandboxMap(
   sandboxMap: SandboxMapMeta["sandboxMap"],
   userId: string,
 ): string | undefined {
   const branchMap = sandboxMap?.[userId];
   if (!branchMap) return undefined;
   const sorted = Object.entries(branchMap)
-    .filter(([, kinds]) => AGENT_SANDBOX_KIND in kinds)
+    .filter(
+      ([branch, kinds]) =>
+        AGENT_SANDBOX_KIND in kinds && !isBlogDraftBranch(branch),
+    )
     .sort(
       ([, aKinds], [, bKinds]) =>
         (bKinds[AGENT_SANDBOX_KIND]?.createdAt ?? 0) -
@@ -133,34 +135,9 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       organization.id,
     );
 
-    // A v8 site whose marker isn't written yet (repo seeded after create, an
-    // older project) must still get a `cms` stamp, and a stamp is for life:
-    // when the v8 check's answer decides the default (repo + preview server,
-    // unmarked, Fast Preview off), run it first, bounded. Any other create,
-    // an explicit runtime included, makes no extra reads.
-    const stored = (vmcp.metadata ?? null) as Record<string, unknown> | null;
-    const metadata = (
-      data.runtime
-        ? stored
-        : await metadataForThreadRuntime({
-            projects: ctx.storage.virtualMcps,
-            project: {
-              id: vmcp.id,
-              organizationId: organization.id,
-              metadata: stored,
-            },
-            by: userId,
-            client: async () => {
-              const binding = parseRepositoryBinding(
-                stored,
-                vmcp.connections?.map((c) => c.connection_id) ?? [],
-              );
-              return binding
-                ? contentClientForProjectRepo(ctx, organization.id, binding)
-                : null;
-            },
-          })
-    ) as
+    // The runtime stamp reads the stored metadata, the "Blocks v8 site"
+    // switch included (an org admin's): no repository read.
+    const metadata = (vmcp.metadata ?? null) as
       | (RepositoryMetadata & SandboxMapMeta & VmcpRuntimeMetadata)
       | null
       | undefined;
@@ -200,7 +177,7 @@ export const COLLECTION_THREADS_CREATE = defineTool({
       sandboxOnlyChats &&
       getSettings().sandboxPrewarmOnThreadCreateEnabled
     ) {
-      void prewarmThreadSandbox(ctx, result).catch((err) =>
+      void startThreadSandbox(ctx, result).catch((err) =>
         console.warn("[thread-create] sandbox prewarm failed", err),
       );
     }

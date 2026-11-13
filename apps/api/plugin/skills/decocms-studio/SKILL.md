@@ -1,6 +1,6 @@
 ---
 name: decocms-studio
-description: Operate the user's deco Studio (decocms) organization from the terminal with their own login. Use when the user asks to read or change something in Studio, such as chats/threads, agents, the task board, connections, monitoring, or org files, or to send a message to a Studio agent.
+description: Operate the user's deco Studio (decocms) organization from the terminal with their own login. Use when the user asks to read or change something in Studio, such as chats/threads, agents, the task board, connections, monitoring, or org files, to send a message to a Studio agent, or to boot a sandbox on one of the org's repositories and run commands in it.
 ---
 
 # Operate deco Studio
@@ -33,6 +33,11 @@ not work around a missing session with API keys, MCP tokens or presigned URLs.
 A self-hosted or local studio adds `--target <url>` to every command, e.g.
 `--target http://localhost:3000`.
 
+Inside a Studio sandbox run the session is provided: never run
+`decocms auth login` or pass `--target` there. If a call says it is not logged
+in, the session expired, or it cannot refresh, report that error to the user
+instead of asking them to log in.
+
 Done when `whoami` prints the user the person expects. Its `Target` is the
 studio origin used in the links below.
 
@@ -58,8 +63,8 @@ Org files are the exception: use the `fs` routes in section 4. They cover
 listing, moving and sharing, which no tool does.
 
 ```bash
-decocms tools list --org <slug> thread            # NAME<TAB>summary, filtered
-decocms tools describe COLLECTION_THREADS_LIST --org <slug>   # full JSON schema
+decocms tools list --org <slug> thread            # NAME<TAB>summary, name matches first
+decocms tools describe COLLECTION_THREADS_LIST --org <slug>   # one line per input field
 decocms tools call COLLECTION_THREADS_LIST --org <slug> -d '{"limit":5}'
 decocms tools call <NAME> --org <slug> -d @args.json          # or -d @- for stdin
 ```
@@ -72,8 +77,9 @@ error body still on stdout:
   plan or budget refusal. Report it; a retry gets the same answer.
 - `404 Unknown tool`: the name is wrong; search with `tools list`.
 
-Read `annotations` in `describe` before calling: `destructiveHint: true` (delete,
-remove, overwrite) needs the user's explicit go-ahead for that specific call.
+Use the field names exactly as `describe` prints them; add `--json` for the full
+schema. When `describe` lists `destructiveHint` (delete, remove, overwrite),
+get the user's explicit go-ahead for that specific call.
 
 ## 4. REST routes
 
@@ -104,10 +110,36 @@ Share a file only when the user asks, and confirm the mode first: `public`
 lets anyone with the link read it, `password` asks for a password you set and
 hand back to the user. See `POST fs/<vol>/public` in [rest.md](rest.md).
 
+## 6. Sandboxes
+
+A sandbox belongs to a chat: the chat id is the sandbox id, and the same chat
+shows up in Studio. Create one, then run commands in it or message its agent:
+
+```bash
+decocms sandbox new --org <slug> --repo <owner/name>   # prints the chat id; the boot continues in the background
+decocms sandbox exec <chat-id> --org <slug> -- git status
+decocms sandbox chat <chat-id> "run the tests and fix what fails" --org <slug>
+```
+
+- `new`: `--repo` clones one of the org's linked repositories (`owner/name`
+  or its id). An unknown name fails and lists the linked ones. Leave out
+  `--repo` for an empty sandbox. `--project <id>` uses that project's own
+  repository instead and cannot be combined with `--repo`.
+- `exec`: exits with the command's exit code, prints its stdout and stderr,
+  and has no stdin or TTY. Pass one quoted argument to run it as a shell script
+  (`-- 'cd app && bun test'`). It times out at 30s, or `--timeout <s>` up to
+  120; a timeout exits 124. The first `exec` waits for the boot.
+- `chat`: streams the agent's reply to stdout, and tool names to stderr, until
+  the turn finishes.
+
+Use these commands rather than calling `THREAD_SANDBOX_START` yourself: `exec`
+and `chat` reach routes that no tool covers.
+
 ## Vocabulary
 
 - **thread**: what the UI calls a *chat*. Tools and routes use `thread`.
 - **agent**: a *virtual MCP* (`COLLECTION_VIRTUAL_MCP_*`, ids like `vir_...`).
   The org's default agent is Decopilot, id `decopilot_<orgId>`.
+- **project**: an agent with its own repository; `--project` takes its agent id.
 - **connection**: an MCP server registered in the org (`COLLECTION_CONNECTIONS_*`).
 - **volume**: a top-level folder of the org filesystem (`home`, `outputs`, `uploads`).

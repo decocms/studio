@@ -382,52 +382,18 @@ describe("resolvePreviewDisplay", () => {
   });
 });
 
-describe("deciding v7 or v8 (GitHub mode while main's answer loads)", () => {
-  // GitHub mode: Fast Preview on, nothing booting, the hosted draft only
-  // once main is known to be v8.
-  const github = (
-    main: "loading" | "error" | "v8" | "v7",
-  ): Partial<PreviewDisplayInput> => ({
-    fastPreviewActive: true,
-    fastPreviewReady: false,
-    deciding: main === "loading" || main === "error",
-    hostedDraft: main === "v8",
+describe("the v8 switch decides the GitHub-mode surface at once", () => {
+  it("v8 (switch on): the hosted draft, never a waking pill", () => {
+    const v8 = run({
+      fastPreviewActive: true,
+      fastPreviewReady: false,
+      hostedDraft: true,
+    });
+    expect(v8.showWakingPill).toBe(false);
+    expect(v8).toMatchObject({ mode: "production", iframeBase: PROD });
   });
 
-  it("main loading, then v8: never a waking pill, never the v7 surface first", () => {
-    const steps = (["loading", "error", "v8"] as const).map((main) =>
-      run(github(main)),
-    );
-    expect(steps.some((d) => d.showWakingPill)).toBe(false);
-    expect(steps.slice(0, 2).every((d) => d.mode === "none")).toBe(true);
-    expect(steps.slice(0, 2).every((d) => d.showDecidingLoader)).toBe(true);
-    expect(steps.at(-1)).toMatchObject({
-      mode: "production",
-      iframeBase: PROD,
-    });
-  });
-
-  it("main loading, then v7: a neutral loader, then the v7 surface as on main", () => {
-    const [deciding, v7] = (["loading", "v7"] as const).map((main) =>
-      run(github(main)),
-    );
-    expect(deciding).toMatchObject({
-      mode: "none",
-      showBlockingOverlay: false,
-      showWakingPill: false,
-      showDecidingLoader: true,
-    });
-    expect(v7).toEqual(run({ fastPreviewActive: true }));
-  });
-
-  it("a saved Local tunnel waiting for main: no boot card, no tunnel, then the tunnel (v7)", () => {
-    const tunnel = "https://my-tunnel.example.com";
-    const deciding = run({ deciding: true, localPreviewUrl: null });
-    expect(deciding.showBlockingOverlay).toBe(false);
-    expect(deciding.iframeBase).toBeNull();
-    expect(run({ localPreviewUrl: tunnel })).toMatchObject({
-      mode: "sandbox",
-      iframeBase: tunnel,
-    });
+  it("v7 (switch off): main's surface", () => {
+    expect(run({ fastPreviewActive: true }).showDecidingLoader).toBeUndefined();
   });
 });

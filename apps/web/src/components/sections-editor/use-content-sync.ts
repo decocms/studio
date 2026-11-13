@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { ContentSyncTarget } from "./content-sync";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useDecofileCacheKey } from "./use-decofile";
 
 /** The editor's content-sync target for one project and draft (content-sync.ts). */

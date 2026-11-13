@@ -251,4 +251,114 @@ describe("findAgentEntryThread", () => {
       )?.id,
     ).toBe("sandbox-empty");
   });
+
+  describe("a CMS entry and `sandbox` drafts", () => {
+    const onCodeDraft = task({
+      id: "cms-on-code-draft",
+      metadata: { runtime: "cms" },
+      branch: "pr-branch",
+      updated_at: "2026-05-01T00:00:00Z",
+    });
+    const onContentDraft = task({
+      id: "cms-on-content-draft",
+      metadata: { runtime: "cms" },
+      branch: "content-draft",
+      updated_at: "2026-04-01T00:00:00Z",
+    });
+    const releases = [
+      { branch: "pr-branch", runtime: "sandbox" as const },
+      { branch: "content-draft", runtime: "cms" as const },
+    ];
+
+    it("skips a CMS thread on a `sandbox` draft for the next draft", () => {
+      expect(
+        findAgentEntryThread(
+          [onCodeDraft, onContentDraft],
+          "agent-1",
+          USER,
+          "cms",
+          true,
+          { baseBranch: "main", releases },
+        )?.id,
+      ).toBe("cms-on-content-draft");
+    });
+
+    it("mints a fresh draft when the only CMS thread is on a `sandbox` draft", () => {
+      expect(
+        findAgentEntryThread([onCodeDraft], "agent-1", USER, "cms", true, {
+          baseBranch: "main",
+          releases,
+        }),
+      ).toBeUndefined();
+    });
+
+    it("still resumes it when the draft has no runtime", () => {
+      expect(
+        findAgentEntryThread([onCodeDraft], "agent-1", USER, "cms", true, {
+          baseBranch: "main",
+          releases: [{ branch: "pr-branch" }],
+        })?.id,
+      ).toBe("cms-on-code-draft");
+    });
+
+    it("keeps a coding entry on its `sandbox` draft", () => {
+      const sandboxOnCodeDraft = task({
+        id: "sandbox-on-code-draft",
+        metadata: { runtime: "sandbox" },
+        branch: "pr-branch",
+        updated_at: "2026-05-01T00:00:00Z",
+      });
+      expect(
+        findAgentEntryThread(
+          [sandboxOnCodeDraft],
+          "agent-1",
+          USER,
+          "sandbox",
+          true,
+          { baseBranch: "main", releases },
+        )?.id,
+      ).toBe("sandbox-on-code-draft");
+    });
+  });
+});
+
+/**
+ * A Blog draft rarely gets a message, so it stays "New chat" forever. Without
+ * this, every other view's "New chat" would land on the Blog's draft, and Blog
+ * would reuse the site's empty chats.
+ */
+describe("findReusableNewChat and Blog drafts", () => {
+  const blogDraft = task({
+    id: "blog",
+    branch: "blog-draft-sacci-a",
+    metadata: { runtime: "sandbox" },
+  });
+  const siteChat = task({
+    id: "site",
+    branch: "sacci-a",
+    metadata: { runtime: "sandbox" },
+  });
+
+  it("never reuses a Blog draft outside Blog", () => {
+    expect(
+      findReusableNewChat([blogDraft], "agent-1", USER, "sandbox"),
+    ).toBeUndefined();
+    expect(
+      findReusableNewChat([blogDraft, siteChat], "agent-1", USER, "sandbox")
+        ?.id,
+    ).toBe("site");
+  });
+
+  it("from Blog, reuses only a Blog draft", () => {
+    expect(
+      findReusableNewChat([siteChat], "agent-1", USER, "sandbox", {
+        blogDrafts: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      findReusableNewChat([siteChat, blogDraft], "agent-1", USER, "sandbox", {
+        blogDrafts: true,
+      })?.id,
+    ).toBe("blog");
+  });
 });

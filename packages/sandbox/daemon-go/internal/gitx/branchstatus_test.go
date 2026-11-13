@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -139,5 +140,37 @@ func TestBaselineDetectsEditToBaselinedPath(t *testing.T) {
 	write(t, repo, "boot.gen.json", `{"edited":true}`)
 	if !dirty(t, m) {
 		t.Fatal("a changed baselined file is the user's work")
+	}
+}
+
+// A checkpoint push that keeps failing used to be a log line nobody could
+// read, so a sandbox kept work local for days while the header looked normal.
+func TestPushFailureShowsUntilWorkIsSafe(t *testing.T) {
+	repo := initRepoOnBranch(t, "feature")
+	m := NewBranchStatusMonitor(repo, nopBroadcaster{}, nil)
+	write(t, repo, "user.txt", "edit\n")
+	m.MarkUserTouched("user.txt")
+
+	m.RecordPush(errors.New("remote: Invalid username or token"))
+	first := m.compute().Ready
+	if first.PushError != "remote: Invalid username or token" || first.PushFailingSince == "" {
+		t.Fatalf("a failed push must show in the branch status, got %+v", first)
+	}
+	m.RecordPush(errors.New("remote: still failing"))
+	if again := m.compute().Ready; again.PushFailingSince != first.PushFailingSince || again.PushError != "remote: still failing" {
+		t.Fatalf("a repeat failure keeps the first failure time and the latest error, got %+v", again)
+	}
+
+	m.RecordPush(nil)
+	if ok := m.compute().Ready; ok.PushError != "" || ok.PushFailingSince != "" {
+		t.Fatalf("a successful push clears the failure, got %+v", ok)
+	}
+
+	m.RecordPush(errors.New("remote: Invalid username or token"))
+	if err := os.Remove(filepath.Join(repo, "user.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if clean := m.compute().Ready; clean.PushError != "" {
+		t.Fatalf("with nothing left to push the failure no longer matters, got %+v", clean)
 	}
 }

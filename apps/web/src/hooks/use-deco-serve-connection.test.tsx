@@ -10,21 +10,20 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 const sessionRef: { current: { user: { id: string } } | null } = {
   current: null,
 };
-/** Main's schema answer (`useMainSchemaV8`), never the project's marker. */
-const mainRef: { current: "v8" | "v7" | "loading" | "error" } = {
-  current: "v8",
-};
+/** The project's "Blocks v8 site" switch (`useBlocksV8Project`). */
+const v8Ref = { current: true };
 
 mock.module("@/lib/auth-client", () => ({
   authClient: { useSession: () => ({ data: sessionRef.current }) },
 }));
-mock.module("./use-main-schema-v8", () => ({
-  useMainSchemaV8: () => mainRef.current,
+// The module's other exports stay real: the mock outlives this file.
+const realSwitch = await import("./use-blocks-v8-project");
+mock.module("./use-blocks-v8-project", () => ({
+  ...realSwitch,
+  useBlocksV8Project: () => v8Ref.current,
 }));
 
-const { storedConnectionApplies, useDecoServeConnection } = await import(
-  "./use-deco-serve-connection"
-);
+const { useDecoServeConnection } = await import("./use-deco-serve-connection");
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -39,7 +38,7 @@ describe("useDecoServeConnection (the Localhost choice)", () => {
   beforeEach(() => {
     localStorage.clear();
     sessionRef.current = { user: { id: "u1" } };
-    mainRef.current = "v8";
+    v8Ref.current = true;
   });
 
   it("is remembered per user and project", async () => {
@@ -76,57 +75,26 @@ describe("useDecoServeConnection (the Localhost choice)", () => {
     expect(result.current.lastEndpoint).toBe(ENDPOINT);
   });
 
-  it("a v7 project reads as none, as on main", () => {
+  it("the switch off (v7) reads a stored choice as none, as on main", () => {
     localStorage.setItem(
       LOCALSTORAGE_KEYS.decoServeConnection("u1", "vmcp"),
       JSON.stringify({ endpoint: ENDPOINT }),
     );
-    mainRef.current = "v7";
-    const { result } = renderHook(() => useDecoServeConnection("vmcp"), {
-      wrapper,
-    });
-    expect(result.current.connection).toBeNull();
-    expect(result.current.undecided).toBe(false);
-    expect(result.current.lastEndpoint).toBeNull();
-  });
-
-  it("a stored choice waits for main's answer instead of reading as none", () => {
     localStorage.setItem(
-      LOCALSTORAGE_KEYS.decoServeConnection("u1", "vmcp"),
-      JSON.stringify({ endpoint: ENDPOINT }),
+      LOCALSTORAGE_KEYS.decoServeEndpoint("u1", "vmcp"),
+      JSON.stringify(ENDPOINT),
     );
-    mainRef.current = "loading";
-    const { result } = renderHook(() => useDecoServeConnection("vmcp"), {
-      wrapper,
-    });
-    expect(result.current.connection).toBeNull();
-    expect(result.current.undecided).toBe(true);
-  });
+    v8Ref.current = false;
+    const off = renderHook(() => useDecoServeConnection("vmcp"), { wrapper });
+    expect(off.result.current.connection).toBeNull();
+    expect(off.result.current.lastEndpoint).toBeNull();
+    off.unmount();
 
-  it("storedConnectionApplies: v8 uses it, v7 never, loading waits", () => {
-    expect(storedConnectionApplies("v8", true)).toEqual({
-      applies: true,
-      undecided: false,
-    });
-    expect(storedConnectionApplies("v7", true)).toEqual({
-      applies: false,
-      undecided: false,
-    });
-    expect(storedConnectionApplies("loading", true)).toEqual({
-      applies: false,
-      undecided: true,
-    });
-    // Main unreadable: the choice stands; deco serve's own schema decides.
-    expect(storedConnectionApplies("error", true)).toEqual({
-      applies: true,
-      undecided: false,
-    });
-    for (const main of ["v8", "v7", "loading", "error"] as const) {
-      expect(storedConnectionApplies(main, false)).toEqual({
-        applies: false,
-        undecided: false,
-      });
-    }
+    // The switch on (v8): the same stored choice applies at once, no wait.
+    v8Ref.current = true;
+    const on = renderHook(() => useDecoServeConnection("vmcp"), { wrapper });
+    expect(on.result.current.connection?.endpoint).toBe(ENDPOINT);
+    expect(on.result.current.lastEndpoint).toBe(ENDPOINT);
   });
 
   it("writes nothing before the session loads", async () => {

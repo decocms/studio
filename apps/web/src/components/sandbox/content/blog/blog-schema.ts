@@ -108,7 +108,7 @@ const KNOWN_POST_KEYS = [
   "status",
   "dateModified",
   "planning",
-  // Pre-`sections` rich-text body; showing it would rival the block document.
+  // Pre-`sections` HTML body, edited in the Content tab when the project uses that format.
   "content",
 ] as const;
 

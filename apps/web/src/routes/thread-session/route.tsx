@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { cn } from "@decocms/ui/lib/utils.ts";
 /** Binds project and thread runtime to ChatLayout and its routed content. */
 
 import {
@@ -21,8 +23,12 @@ import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import {
+  blogDraftBranchName,
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import {
   useThreadActions,
   useThreadManager,
@@ -48,6 +54,11 @@ import {
   nextReleaseColor,
   useReleases,
 } from "@/components/thread/repository/use-releases";
+import {
+  isForeignStoreDraft,
+  useStoreDrafts,
+} from "@/components/thread/repository/cms-store-drafts";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 
@@ -67,6 +78,13 @@ import {
   shouldAdoptBranch,
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
+import {
+  blogThreadDefaults,
+  draftNameKey,
+  isEntryCandidate,
+  viewAcceptsThread,
+} from "@/lib/draft-kind";
 import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
 import type { Task } from "@/components/chat/task/types";
 import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
@@ -178,7 +196,9 @@ function VmEventsBridge({
   children: ReactNode;
 }) {
   const t = useT();
-  const { currentBranch, activeTask, setCurrentTaskBranch } = useChatTask();
+  const { currentBranch, activeTask, setCurrentTaskBranch, isThreadLocked } =
+    useChatTask();
+  const draftKind = useViewDraftKind();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
   const executionEnabled = !shouldBlockHostedRuntime(activeTask?.harness_id);
@@ -222,53 +242,104 @@ function VmEventsBridge({
     if (!adoptBranchEligible || !activeTask) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't mint twice
     adoptedBranchForThreadRef.current = activeTask.id;
+    // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
+    // would let Better Auth's empty display name through and slug to "user".
+    const label = session?.user?.name || session?.user?.email?.split("@")[0];
     setCurrentTaskBranch(
-      generateBranchName(
-        // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
-        // would let Better Auth's empty display name through and slug to "user".
-        session?.user?.name || session?.user?.email?.split("@")[0],
-      ),
+      draftKind === "blog"
+        ? blogDraftBranchName(label)
+        : generateBranchName(label),
     );
-  }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
+  }, [
+    adoptBranchEligible,
+    activeTask,
+    session,
+    setCurrentTaskBranch,
+    draftKind,
+  ]);
 
   const sessionState = useSessionRuntime(virtualMcpId);
+  /** `null` until the answer is real — never act on the project default. */
+  const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
 
-  // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
+  // Auto-name a fresh draft "Draft N" (a Blog draft "Blog Draft N", by its
+  // branch); one write per branch per tab, like the guards above.
   const draftsVm = useVirtualMCP(virtualMcpId);
   const draftsBase = useBaseBranch(draftsVm, currentBranch);
-  const { releases: draftReleases, createRelease: createDraftRelease } =
-    useReleases(virtualMcpId);
+  const {
+    releases: draftReleases,
+    createRelease: createDraftRelease,
+    markSandbox: markDraftSandbox,
+  } = useReleases(virtualMcpId);
+  // A draft made outside Studio (`deco push --draft`) already has a name: it
+  // stays a CMS draft in the switcher, not a fresh "Rascunho N". Wait for the
+  // hosted list on a v8 site; a failed read falls back to naming it.
+  const storeDraftsQuery = useStoreDrafts(
+    virtualMcpId,
+    blocksV8Project(draftsVm),
+  );
+  const currentIsForeignDraft =
+    blocksV8Project(draftsVm) && currentBranch
+      ? isForeignStoreDraft(currentBranch, storeDraftsQuery.data)
+      : false;
   const isOwnDraftThread = !!userId && activeTask?.created_by === userId;
   const currentIsUnnamedDraft =
+    !!sessionRuntime &&
     isOwnDraftThread &&
     !!currentBranch &&
     currentBranch !== draftsBase &&
-    !draftReleases.some((r) => r.branch === currentBranch);
+    !draftReleases.some((r) => r.branch === currentBranch) &&
+    !storeDraftsQuery.isLoading &&
+    currentIsForeignDraft !== true;
   const namedDraftForBranchRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot release write for a fresh unnamed draft; no render-time equivalent
   useEffect(() => {
-    if (!currentIsUnnamedDraft || !currentBranch) return;
+    if (!currentIsUnnamedDraft || !currentBranch || !sessionRuntime) return;
     if (namedDraftForBranchRef.current === currentBranch) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the branch so a re-render can't create twice
     namedDraftForBranchRef.current = currentBranch;
     createDraftRelease({
       branch: currentBranch,
-      name: nextDraftName(
-        draftReleases,
-        t("thread.branchPicker.defaultVersionName"),
-      ),
+      name: nextDraftName(draftReleases, t(draftNameKey(currentBranch))),
       color: nextReleaseColor(draftReleases.length),
       createdBy: userId,
       createdAt: new Date().toISOString(),
+      runtime: sessionRuntime,
     }).catch(() => {});
   }, [
     currentIsUnnamedDraft,
     currentBranch,
+    sessionRuntime,
     draftReleases,
     createDraftRelease,
     userId,
     t,
   ]);
+
+  /** A CMS draft a coding chat has run on may now hold code: stamp it
+   *  `sandbox`. Only once the chat ran (locked): merely opening a draft in a
+   *  coding chat doesn't change its branch. */
+  const currentDraftNeedsSandboxStamp =
+    sessionRuntime === "sandbox" &&
+    isThreadLocked &&
+    isOwnDraftThread &&
+    draftReleases.some(
+      (r) => r.branch === currentBranch && r.runtime !== "sandbox",
+    );
+  const [stampedSandboxBranch, setStampedSandboxBranch] = useState<
+    string | null
+  >(null);
+  if (
+    currentDraftNeedsSandboxStamp &&
+    currentBranch &&
+    stampedSandboxBranch !== currentBranch
+  ) {
+    setStampedSandboxBranch(currentBranch);
+    const branch = currentBranch;
+    queueMicrotask(() => {
+      markDraftSandbox(branch).catch(() => {});
+    });
+  }
 
   // Open the events stream only when a sandbox actually exists or a start is
   // in flight — NOT merely because the agent has a GitHub repo configured.
@@ -276,8 +347,6 @@ function VmEventsBridge({
   // SANDBOX_START (covers the booting window; SandboxLifecycleProvider's
   // auto-start shares this mutation key, so `useIsSandboxStartPending`
   // observes it).
-  /** `null` until the answer is real — never act on the project default. */
-  const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
   const isStartPending = useIsSandboxStartPending(
     virtualMcpId,
     currentBranch ?? undefined,
@@ -384,12 +453,14 @@ function VmEventsBridge({
 function ThreadTopbar() {
   const t = useT();
   const { toggleSidebar } = useSidebar();
+  const collapsed = useSidebarCollapsed();
   const { virtualMcpId, taskId } = useChatTask();
   return (
     <Panel.Topbar className="border-b border-border/60 px-3">
       <Panel.Topbar.Left>
+        {/* The open chat is the leftmost panel, so it holds the collapsed sidebar's toggle. */}
         <ToolbarIconButton
-          className="md:hidden"
+          className={cn(!collapsed && "md:hidden")}
           onClick={toggleSidebar}
           aria-label={t("layouts.shellControls.toggleSidebar")}
         >
@@ -490,6 +561,14 @@ function ThreadSessionProvider() {
       session?.user?.name || session?.user?.email?.split("@")[0],
     ),
   );
+  /** Blog mints its own entry, on a Blog draft. A separate id, so a thread
+   *  the shell minted for another view (and carried here) is never the one
+   *  Blog is sent to. */
+  const [blogMintId] = useState(() => crypto.randomUUID());
+  const [blogMintBranch] = useState(() =>
+    blogDraftBranchName(branchUserLabel(session?.user)),
+  );
+  const draftKind = useViewDraftKind();
   const threadManager = useThreadManager();
   const threads = useSyncExternalStore(
     threadManager.threads.subscribe,
@@ -515,19 +594,38 @@ function ThreadSessionProvider() {
   if (routeThreadId !== null && composerSettledFor !== null) {
     setComposerSettledFor(null);
   }
+  // Ensure the thread row exists for this URL before rendering the chat. On
+  // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
+  // "Creating task…" state until the row is persisted. Without this the
+  // chat renders with branch=null because the thread never existed.
+  const ensureState = useEnsureTask(routeThreadId, virtualMcpId, (id) =>
+    // A freshly minted thread lands on an editable draft, never production.
+    id === blogMintId ? blogMintBranch : generatedDraftBranch,
+  );
+  const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
+  /** The thread in the URL is one this view can't show: Blog on a site draft
+   *  in Fast Preview, or a site view on a Blog draft. It goes to the view's
+   *  own entry. */
+  const refusedThread =
+    !!ensuredTask &&
+    !!routeAgentId &&
+    ensuredTask.virtual_mcp_id === virtualMcpId &&
+    !viewAcceptsThread(draftKind, ensuredTask, entity?.metadata);
   const resolvingEntry =
-    routeThreadId === null &&
+    (routeThreadId === null || refusedThread) &&
     !!routeAgentId &&
     !!entity &&
-    composerSettledFor !== virtualMcpId;
+    (refusedThread || composerSettledFor !== virtualMcpId);
   const findEntry = (candidates: Task[]) =>
     findAgentEntryThread(
-      candidates,
+      candidates.filter((thread) =>
+        isEntryCandidate(draftKind, thread, entity?.metadata),
+      ),
       virtualMcpId,
       session?.user?.id,
       defaultThreadRuntime(entity?.metadata),
       hasActiveRepository,
-      { baseBranch },
+      { baseBranch, releases: entity?.metadata?.releases ?? undefined },
     );
   const localEntry =
     resolvingEntry && threadsStatus.kind !== "loading"
@@ -539,17 +637,6 @@ function ThreadSessionProvider() {
   const scopedEntryThreads = useAgentEntryThreads(
     virtualMcpId,
     resolvingEntry && threadsStatus.kind !== "loading" && !localEntry,
-  );
-
-  // Ensure the thread row exists for this URL before rendering the chat. On
-  // 404 the hook fires COLLECTION_THREADS_CREATE (idempotent) and surfaces a
-  // "Creating task…" state until the row is persisted. Without this the
-  // chat renders with branch=null because the thread never existed.
-  const ensureState = useEnsureTask(
-    routeThreadId,
-    virtualMcpId,
-    // A freshly minted thread lands on an editable draft, never production.
-    generatedDraftBranch,
   );
 
   // Read-only teammate threads: pull the current metadata (repository /
@@ -582,7 +669,12 @@ function ThreadSessionProvider() {
       await create({
         id: newTaskId,
         virtual_mcp_id: virtualMcpId,
-        ...(branch ? { branch } : {}),
+        // A chat opened from Blog is a Blog draft.
+        ...(draftKind === "blog"
+          ? blogThreadDefaults(branch, branchUserLabel(session?.user))
+          : branch
+            ? { branch }
+            : {}),
       });
     } catch {
       // The collection action reports errors; the route retries a missing row.
@@ -604,7 +696,6 @@ function ThreadSessionProvider() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
   const ensuredTaskAgentId = ensuredTask?.virtual_mcp_id;
   if (
     ensuredTask &&
@@ -656,16 +747,36 @@ function ThreadSessionProvider() {
       (scopedEntryThreads.status === "ready"
         ? findEntry(scopedEntryThreads.threads)
         : undefined);
-    const threadId =
-      entry?.id ?? (hasActiveRepository ? generatedThreadId : null);
-    if (threadId) {
+    // A repo editor mints a draft of the view's kind.
+    const mint = hasActiveRepository
+      ? draftKind === "blog"
+        ? blogMintId
+        : generatedThreadId
+      : null;
+    const threadId = entry?.id ?? mint;
+    // Sending the URL to the thread it already names would render nothing.
+    if (threadId && threadId === routeThreadId) {
+      return (
+        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+          <div
+            role="alert"
+            className="flex h-full items-center justify-center bg-background shadow-edge rounded-[0.75rem] p-8 text-sm text-muted-foreground"
+          >
+            {t("agentShellLayout.agentShellLayout.viewDraftUnavailable")}
+          </div>
+        </div>
+      );
+    }
+    if (threadId || refusedThread) {
       return (
         <Navigate
           to="."
           replace
           search={(prev: Record<string, unknown>) => ({
             ...prev,
-            thread: threadId,
+            // No entry to send a refused thread to: drop it, and the no-thread
+            // path decides (a composer, never a loop through this branch).
+            thread: threadId ?? undefined,
           })}
         />
       );

@@ -286,6 +286,15 @@ describe("harnessStreamInputSchema (v3)", () => {
     }
   });
 
+  it("carries the CLI org slug, and nothing else, on studioCli", () => {
+    const parse = (studioCli: unknown) =>
+      harnessStreamInputSchema.safeParse({ ...minimalV3, studioCli }).success;
+    expect(parse({ org: "acme" })).toBe(true);
+    expect(parse({ org: "" })).toBe(false);
+    expect(parse({ org: "acme", token: "secret" })).toBe(false);
+    expect(harnessStreamInputSchema.safeParse(minimalV3).success).toBe(true);
+  });
+
   it("rejects unknown harness modes", () => {
     const result = harnessStreamInputSchema.safeParse({
       ...minimalV3,

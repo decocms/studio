@@ -1,7 +1,15 @@
+import { decofileCacheKey } from "@/cms/cache-key";
+import { useCmsBlocks } from "@/cms/use-blocks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type HostedBlocksLoad,
+  listingOf,
+  loadBlockBody,
+  useContentIndex,
+} from "@/cms/hosted-content";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { exponentialBackoffWithJitter } from "@decocms/shared/std";
+import { contentReadRetryDelay } from "./content-response-error";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { parseDecofileBody } from "./decofile-body";
@@ -19,12 +27,12 @@ import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 import { decofileErrorStatus } from "./decofile-read-status";
 import { usePackagePath } from "./use-package-path";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   pollProtocolContent,
   protocolUnavailableError,
   useRereadOnWriteElsewhere,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 
 interface UseDecofileParams {
   orgSlug: string;
@@ -35,42 +43,7 @@ interface UseDecofileParams {
   previewUrl?: string | null;
 }
 
-/**
- * The `KEYS.decofile` cache key. Local mode reads a different source (the
- * tunnel) than the branch's git/sandbox, so it gets its own key suffix —
- * shared with `useSaveBlock` so its optimistic writes land where the read
- * looks. Same string ⇒ shared cache; a Local edit never bleeds into the real
- * branch's decofile and vice-versa.
- */
-function decofileCacheKey(input: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  localPreviewUrl?: string | null;
-  /** A content-protocol backend's suffix (a `deco serve` endpoint), if any. */
-  protocolSuffix?: string | null;
-}): string {
-  const base = `${input.orgSlug}/${input.virtualMcpId}/${input.branch}`;
-  if (input.protocolSuffix) return `${base}${input.protocolSuffix}`;
-  return input.localPreviewUrl
-    ? `${base}:local:${input.localPreviewUrl}`
-    : base;
-}
-
-/**
- * The decofile cache key of a content-protocol backend's project (what
- * {@link useDecofileCacheKey} answers for it), for a reader that already
- * holds the backend.
- */
-export function protocolDecofileCacheKey(
-  params: { orgSlug: string; virtualMcpId: string; branch: string },
-  backend: { cacheKeySuffix: string },
-): string {
-  return decofileCacheKey({
-    ...params,
-    protocolSuffix: backend.cacheKeySuffix,
-  });
-}
+export { protocolDecofileCacheKey } from "@/cms/cache-key";
 
 /**
  * The decofile cache key for a project, given its content backend. Pass
@@ -83,7 +56,7 @@ export function useDecofileCacheKey(
   const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
   if (!params) return "";
-  return backend.kind === "protocol"
+  return backend.kind !== "legacy" && backend.cacheKeySuffix !== undefined
     ? decofileCacheKey({ ...params, protocolSuffix: backend.cacheKeySuffix })
     : decofileCacheKey({
         ...params,
@@ -109,9 +82,8 @@ export function useDecofile(
    * localhost origin, so `buildDecofileFetchUrl`'s proxy path can't reach it —
    * the Local branch below fetches it directly instead.
    */
-  // A saved Local tunnel waits for main's answer (v7 uses it, v8 never).
-  const { url: localPreviewUrl, undecided: tunnelUndecided } =
-    useLocalPreviewUrl(params?.virtualMcpId);
+  // A saved Local tunnel (v7 only; a v8 project reads it as off).
+  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
   const localOverride = !!localPreviewUrl;
   // Next-major Blocks sites: the content protocol, polled (see content-backend).
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
@@ -184,7 +156,10 @@ export function useDecofile(
       );
     },
   });
-  return useQuery({
+  // Studio's hosted CMS: the query holds only the bodies loaded so far; its
+  // readers see every name of the index (an unloaded one as a stub).
+  const hostedIndex = useContentIndex(protocol?.hosted ? key : "");
+  const query = useQuery({
     queryKey,
     queryFn: async () => {
       if (protocol) {
@@ -259,7 +234,7 @@ export function useDecofile(
       });
       throw err;
     },
-    enabled: !!params && backend.kind !== "pending" && !tunnelUndecided,
+    enabled: !!params && backend.kind !== "pending",
     staleTime: protocol ? 0 : 30_000,
     refetchInterval: protocol?.describe.pollIntervalMs,
     refetchIntervalInBackground: false,
@@ -272,9 +247,9 @@ export function useDecofile(
     // waiting for `running` would strand it behind the install it skips.
     //
     // Sandbox-less Fast Preview inverts the rule: there is no lifecycle event
-    // coming, and the API maps transient GitHub failures (rate limits,
-    // upstream 5xx) to 502 — so a single hiccup would otherwise stick as a
-    // terminal error card. Bounded retries with backoff ARE the recovery.
+    // coming, so transient provider failures need bounded retries. Rate limits
+    // carry a retry deadline; contentReadRetryDelay preserves it instead of
+    // applying the normal five-second cap.
     // 404 = no decofile route on this repo (not a deco site) — as terminal as
     // 502 for retry purposes.
     retry: (failureCount, error) => {
@@ -284,7 +259,62 @@ export function useDecofile(
       const status = (error as { status?: number }).status;
       return status !== 502 && status !== 404 && failureCount < 2;
     },
-    retryDelay: (attempt) =>
-      exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
+    retryDelay: contentReadRetryDelay,
   });
+  const hostedListing =
+    hostedIndex && query.data
+      ? listingOf(hostedIndex, query.data as Record<string, unknown>)
+      : undefined;
+  return protocol?.hosted && hostedListing
+    ? ({ ...query, data: hostedListing } as typeof query)
+    : query;
+}
+
+/**
+ * Studio's hosted CMS: loads the bodies of `names` (and, with `withRefs`,
+ * of the blocks they reference directly) a view opens, through
+ * `cms.blocks`, and again when the index moves their versions. `ready`
+ * once they're loaded, and always for every other backend (it holds every
+ * body); `failed` while a load that failed waits to be tried again.
+ */
+export function useEnsureDecofileBlocks(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+  names: readonly string[],
+  options?: { withRefs?: boolean; listing?: Record<string, unknown> },
+): HostedBlocksLoad {
+  return useCmsBlocks(params, names, options);
+}
+
+/**
+ * Reads the whole body of a block a page is copied from (a template, a
+ * duplicate, a rename), loading it first on Studio's hosted CMS (see
+ * {@link loadBlockBody}).
+ */
+export function useLoadDecofileBlock(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+) {
+  const queryClient = useQueryClient();
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const key = useDecofileCacheKey(params);
+  const rpc = backend.kind === "protocol" ? backend.hosted : undefined;
+  return (listed: Record<string, unknown> | undefined, name: string) =>
+    loadBlockBody(queryClient, rpc, key, listed, name);
+}
+
+/**
+ * Names of the index whose type `matches` (`""` for a block with no type;
+ * hosted CMS only, empty otherwise).
+ */
+export function useIndexNamesOfType(
+  params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
+  matches: (type: string) => boolean,
+): string[] {
+  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
+  const key = useDecofileCacheKey(params);
+  const index = useContentIndex(
+    backend.kind === "protocol" && backend.hosted ? key : "",
+  );
+  return Object.entries(index?.entries ?? {})
+    .filter(([, entry]) => matches(entry.meta?.type ?? ""))
+    .map(([name]) => name);
 }

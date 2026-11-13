@@ -20,19 +20,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { useInboxFeed } from "@/hooks/use-inbox-feed";
-import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useProjectContext } from "@/sdk";
 import { taskKey } from "@decocms/shared/task-key";
 import { useT } from "@/i18n/use-t.ts";
 import { InboxTaskItem } from "./inbox-task-item";
 import { InvitationRow } from "@/components/header/org-switcher";
 import { usePendingInvitations } from "@/hooks/use-pending-invitations";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 /**
  * Loads the next page once it scrolls into view. An observer in a ref callback
@@ -59,10 +56,8 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { updates, markAllRead, markRead, hasMore, fetchMore } = useInboxFeed();
-  const projectFirstNav = useProjectFirstNav();
   const pending = usePendingInvitations();
-  // Classic still surfaces invitations in `org-project-picker.tsx`.
-  const invitations = projectFirstNav ? pending.invitations : [];
+  const invitations = pending.invitations;
   const refetchInvitations = pending.refetch;
 
   return (
@@ -183,28 +178,6 @@ export function InboxIconButton() {
           <Bell01 size={15} />
           <InboxDot />
         </button>
-      </PopoverTrigger>
-    </InboxPopover>
-  );
-}
-
-/** Full-width row, for the collapsed rail where there's no gear to sit beside. */
-export function InboxFullButton() {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  const collapsed = useSidebarCollapsed();
-  return (
-    <InboxPopover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <SidebarMenuButton
-          tooltip={collapsed ? t("sidebar.inbox.title") : undefined}
-          className="relative"
-        >
-          <Bell01 />
-          {/* Before the label: the collapsed rail hides `span:last-child`. */}
-          <InboxDot />
-          <span className="truncate">{t("sidebar.inbox.title")}</span>
-        </SidebarMenuButton>
       </PopoverTrigger>
     </InboxPopover>
   );

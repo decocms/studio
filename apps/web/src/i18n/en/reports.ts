@@ -47,12 +47,6 @@ export const reports = {
     "You can follow along here — it takes a few minutes.",
   "reports.scanGate.tryAnother": "Try another store",
   "reports.socialProof.alreadyReceived": "Already received by",
-  "reports.banner.storeDefault": "your store",
-  "reports.banner.generatingTitle": "Generating your Deco Score",
-  "reports.banner.readyTitle": "Your Deco Score is ready",
-  "reports.banner.generatingSubtitle":
-    "Analyzing {store}. This takes a few minutes.",
-  "reports.banner.readySubtitle": "See the full analysis of {store}.",
   "reports.emptyState.title": "No Deco Score yet",
   "reports.emptyState.description":
     "Get your store's Deco Score to see how it performs and what to fix first.",

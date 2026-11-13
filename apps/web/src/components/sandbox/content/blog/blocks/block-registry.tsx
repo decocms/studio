@@ -21,7 +21,11 @@ import {
 } from "./list-blocks";
 import { ProductCardBlock, ProductShelfBlock } from "./product-blocks";
 import { TableBlock } from "./table-block";
-import { blockComponentName, isBlogPostBlockResolveType } from "../blog-data";
+import {
+  blockComponentName,
+  customBlogSectionPaths,
+  isBlogPostBlockResolveType,
+} from "../blog-data";
 import { GenericBlockEditor } from "./generic-block";
 import { jsonField, str } from "./primitives";
 
@@ -29,8 +33,9 @@ export type RawBlock = { __resolveType?: string } & Record<string, unknown>;
 
 /**
  * Render a single block as its native, inline-editable representation
- * (Notion-style). Common blocks get bespoke editors matched by component
- * filename (e.g. Paragraph.tsx), regardless of resolveType path prefix;
+ * (Notion-style). Blog post blocks — the blog app's, the site's
+ * `sections/Blog/Post`, and those under the blog app's `customSectionPaths` —
+ * get bespoke editors matched by component filename (e.g. Paragraph.tsx);
  * anything else falls back to the schema-driven form so it stays editable.
  */
 export function BlockEditor({
@@ -45,7 +50,10 @@ export function BlockEditor({
   block: RawBlock;
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
-  /** The site's blocks — enables linking to another post from rich text. */
+  /**
+   * The site's blocks — enables linking to another post from rich text, and
+   * the bespoke editors for sections under the blog app's `customSectionPaths`.
+   */
   decofile?: Record<string, unknown>;
   /**
    * Running sandbox coords — enables the VTEX product picker, and in the
@@ -60,7 +68,10 @@ export function BlockEditor({
   const t = useT();
   const resolveType = block.__resolveType ?? "";
   const componentName = blockComponentName(resolveType);
-  const bespoke = isBlogPostBlockResolveType(resolveType);
+  const bespoke = isBlogPostBlockResolveType(
+    resolveType,
+    decofile ? customBlogSectionPaths(decofile) : [],
+  );
 
   if (bespoke) {
     switch (componentName) {

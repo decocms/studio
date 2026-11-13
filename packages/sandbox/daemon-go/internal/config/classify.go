@@ -55,6 +55,21 @@ func Classify(before, after *TenantConfig) Transition {
 		return Transition{Kind: KindIdentityConflict, Field: "cloneUrl"}
 	}
 
+	// OrgId is identity, not configuration. Studio stamps it once at claim and it
+	// is the SOLE isolation key for the cross-node golden dependency cache
+	// (golden/<orgId>/...; see types.go and setup.RemoteGoldenArchivePath). A
+	// post-claim change would repoint this pod at another org's cache namespace —
+	// restoring that org's tree into this sandbox, or publishing this one under
+	// theirs — so it is frozen exactly like cloneUrl: the first stamp
+	// (before.OrgId == "") is allowed, any later change is an identity-conflict.
+	afterOrg := ""
+	if after != nil {
+		afterOrg = after.OrgId
+	}
+	if before != nil && before.OrgId != "" && afterOrg != before.OrgId {
+		return Transition{Kind: KindIdentityConflict, Field: "orgId"}
+	}
+
 	isMeaningful := afterHasUrl || (after != nil && after.Application != nil)
 	if before == nil && isMeaningful {
 		return Transition{Kind: KindBootstrap, Config: after}

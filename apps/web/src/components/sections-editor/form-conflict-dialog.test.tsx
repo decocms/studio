@@ -653,7 +653,7 @@ describe("hosted v8: the window opens at once", () => {
     you: false,
   };
 
-  test("who made it unknown at open: a title that names no one, and stays so once the name arrives", () => {
+  test("who made it unknown at open: a title that names no one, then names them once known", () => {
     const view = render(
       <Harness onApply={() => {}} only={headline} anonymousTitle />,
     );
@@ -668,11 +668,81 @@ describe("hosted v8: the window opens at once", () => {
         author={ana}
       />,
     );
-    // The name lands on their card; the title doesn't switch.
+    // The name lands on their card and in the title.
+    expect(view.getByRole("heading")).toHaveTextContent(
+      "Ana changed the headline while you were editing",
+    );
+    expect(view.getByRole("radio", { name: "Ana Souza" })).toBeInTheDocument();
+  });
+
+  test("a window opened anonymous names whoever turns out to have made it", () => {
+    const cases: Array<[ReactNode, string]> = [
+      [
+        <Heading
+          key="you"
+          only={headline}
+          anonymous
+          author={{ ...ana, you: true }}
+        />,
+        "You changed the headline in another tab or window",
+      ],
+      [
+        <Heading key="step" only={fields} anonymous author={ana} />,
+        "Ana also changed the headline",
+      ],
+      [
+        <Heading
+          key="in"
+          only={headline}
+          anonymous
+          author={ana}
+          block="Footer"
+        />,
+        'Ana changed the Headline of "Footer" while you were editing',
+      ],
+      [
+        <Heading
+          key="labeled"
+          only={headline}
+          asLabeled
+          anonymous
+          author={{ ...ana, name: "Demo 2", shortName: "Demo 2" }}
+        />,
+        "Demo 2 changed the Headline while you were editing",
+      ],
+      // Read, but no one to name: still no one.
+      [
+        <Heading
+          key="nameless"
+          only={headline}
+          anonymous
+          author={{ ...ana, name: undefined }}
+        />,
+        "The headline was changed while you were editing",
+      ],
+    ];
+    for (const [ui, title] of cases) {
+      const view = render(ui);
+      expect(view.getByRole("heading")).toHaveTextContent(title);
+      view.unmount();
+    }
+  });
+
+  test("who made it couldn't be read: the title stays as it opened", () => {
+    const view = render(
+      <Harness onApply={() => {}} only={headline} anonymousTitle />,
+    );
+    view.rerender(
+      <Harness
+        onApply={() => {}}
+        only={headline}
+        anonymousTitle
+        author={null}
+      />,
+    );
     expect(view.getByRole("heading")).toHaveTextContent(
       "The headline was changed while you were editing",
     );
-    expect(view.getByRole("radio", { name: "Ana Souza" })).toBeInTheDocument();
   });
 
   test("the titles that name no one, for every kind of window", () => {
@@ -700,7 +770,6 @@ describe("hosted v8: the window opens at once", () => {
             },
           ]}
           anonymous
-          author={ana}
         />,
         'The A/B test "hero" was changed while you were editing',
       ],

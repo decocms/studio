@@ -1,6 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { generateKeyPairSync } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { RepoRef } from "@decocms/shared/git-providers";
+import { GithubAppAuth } from "./app-auth";
 import {
+  GithubProviderClient,
   type GithubRepoJson,
   githubTarballPath,
   mapGithubIdentity,
@@ -205,5 +208,113 @@ describe("githubTarballPath", () => {
     expect(githubTarballPath({ ...repo, path: "my org/my repo" }, "v1.0")).toBe(
       "/repos/my%20org/my%20repo/tarball/v1.0",
     );
+  });
+});
+
+describe("GithubProviderClient.tokenForRepo under a partial grant", () => {
+  /** path → id GitHub answers with; a missing path 404s. */
+  const ids = new Map<string, number>();
+  const lookups: string[] = [];
+  const mints: number[][] = [];
+  let server: ReturnType<typeof Bun.serve>;
+  let auth: GithubAppAuth;
+  const previousBase = process.env.GITHUB_API_BASE_URL;
+
+  beforeAll(() => {
+    server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (req.method === "POST") {
+          const body = (await req.json()) as { repository_ids?: number[] };
+          mints.push(body.repository_ids ?? []);
+          return Response.json({
+            token: `ghs_${mints.length}`,
+            expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+            permissions: {},
+          });
+        }
+        const path = url.pathname.replace(/^\/repos\//, "");
+        lookups.push(path);
+        const id = ids.get(path);
+        if (id === undefined) return new Response(null, { status: 404 });
+        return Response.json({ ...base, id, full_name: path });
+      },
+    });
+    process.env.GITHUB_API_BASE_URL = server.url.origin;
+    auth = new GithubAppAuth(
+      {
+        appId: "1",
+        privateKeyPem: generateKeyPairSync("rsa", {
+          modulusLength: 2048,
+          privateKeyEncoding: { type: "pkcs8", format: "pem" },
+          publicKeyEncoding: { type: "spki", format: "pem" },
+        }).privateKey,
+        clientId: "c",
+        clientSecret: "s",
+        slug: "studio",
+      },
+      { apiBaseUrl: server.url.origin },
+    );
+  });
+
+  afterAll(() => {
+    server.stop(true);
+    if (previousBase === undefined) delete process.env.GITHUB_API_BASE_URL;
+    else process.env.GITHUB_API_BASE_URL = previousBase;
+  });
+
+  const repo = (path: string): RepoRef => ({
+    provider: "github",
+    host: "github.com",
+    path,
+  });
+  const client = (installationId: number, repositoryIds: number[]) =>
+    new GithubProviderClient({
+      host: "github.com",
+      installationId,
+      repositoryIds,
+      appAuth: auth,
+    });
+
+  test("looks a repository id up once across requests", async () => {
+    ids.set("acme/site", 11);
+    ids.set("acme/lib", 12);
+    lookups.length = 0;
+    for (let i = 0; i < 3; i++) {
+      await client(101, [11, 12]).tokenForRepo(repo("acme/site"), {
+        alsoRepositories: ["lib"],
+      });
+    }
+    expect(lookups).toEqual(["acme/site", "acme/lib"]);
+    expect(mints.at(-1)).toEqual([11, 12]);
+  });
+
+  test("keeps installations apart", async () => {
+    ids.set("acme/other", 21);
+    lookups.length = 0;
+    await client(201, [21]).tokenForRepo(repo("acme/other"));
+    await client(202, [21]).tokenForRepo(repo("acme/other"));
+    expect(lookups).toEqual(["acme/other", "acme/other"]);
+  });
+
+  test("re-reads a cached id the grant no longer covers", async () => {
+    ids.set("acme/recreated", 31);
+    await client(301, [31]).tokenForRepo(repo("acme/recreated"));
+    ids.set("acme/recreated", 32);
+    lookups.length = 0;
+    await client(301, [32]).tokenForRepo(repo("acme/recreated"));
+    expect(lookups).toEqual(["acme/recreated"]);
+    expect(mints.at(-1)).toEqual([32]);
+  });
+
+  test("refuses a repository outside the grant without caching it", async () => {
+    lookups.length = 0;
+    for (let i = 0; i < 2; i++) {
+      await expect(
+        client(401, [99]).tokenForRepo(repo("acme/missing")),
+      ).rejects.toMatchObject({ status: 403 });
+    }
+    expect(lookups).toEqual(["acme/missing", "acme/missing"]);
   });
 });

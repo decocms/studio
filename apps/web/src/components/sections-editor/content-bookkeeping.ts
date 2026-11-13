@@ -16,6 +16,7 @@ export function keepContentBookkeeping(queryClient: QueryClient) {
     "content-versions",
     "content-changes",
     "content-draft-tombstones",
+    "content-index",
   ]) {
     if (queryClient.getQueryDefaults([prefix]).gcTime !== Infinity) {
       queryClient.setQueryDefaults([prefix], { gcTime: Infinity });

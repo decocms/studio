@@ -19,6 +19,10 @@ container:
   API so sandbox preview requests do not fall through to the SPA fallback.
 - `/assets/*` is served with immutable cache headers; missing assets return 404
   with `no-store` to avoid negative-cache poisoning.
+- `/studio-modules/*` (the editor modules a Blocks v8 site page imports from
+  Studio cross-origin) answers with `Access-Control-Allow-Origin: *` and
+  `no-cache` with no ETag or Last-Modified (the filenames are not hashed); a
+  missing module is a 404 with `no-store`, never the SPA fallback.
 
 The config is `deploy/helm/studio/files/api-nginx.conf`. It is copied into the
 image by `apps/web/Dockerfile` as `/etc/nginx/templates/default.conf.template`.

@@ -491,6 +491,9 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.offDescription":
     "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
+  "sandbox.blogWorkspace.noBlogApp": "This site has no blog",
+  "sandbox.blogWorkspace.noBlogAppHint":
+    "Install the blog app, or add a page with the blog post section, and your posts, authors and categories show up here.",
   "sandbox.collectionsSidebar.actions": "Actions",
   "sandbox.collectionsSidebar.advanced": "Advanced",
   "sandbox.collectionsSidebar.apps": "Apps",
@@ -958,6 +961,14 @@ export const sandbox = {
   "sandbox.postEditor.issuePlural": "issues",
   "sandbox.postEditor.issueSingular": "issue",
   "sandbox.postEditor.keyPlaceholder": "key",
+  "sandbox.postEditor.legacyCodeBlock": "Code block",
+  "sandbox.postEditor.legacyContentPlaceholder": "Write the post…",
+  "sandbox.postEditor.legacyImageDataUrl":
+    "Pasted image data isn't kept in the post. Upload the image or use its address.",
+  "sandbox.postEditor.legacyInsertImage": "Insert image from the library",
+  "sandbox.postEditor.legacyInsertImageUrl": "Insert image from a URL",
+  "sandbox.postEditor.legacySectionsNotice":
+    "This post also has {count} blocks from the block editor. They are kept as they are; this editor only changes the HTML body.",
   "sandbox.postEditor.missingFieldPlural": "Missing required fields: {fields}",
   "sandbox.postEditor.missingFieldSingular": "Missing required field: {fields}",
   "sandbox.postEditor.noAuthorsYet":
@@ -966,6 +977,28 @@ export const sandbox = {
     "No categories yet — create some in the categories collection.",
   "sandbox.postEditor.noContentYet":
     "This post has no content yet. Use ⊕ to add your first block.",
+  "sandbox.postEditScreen.notFound": "This post no longer exists",
+  "sandbox.postEditScreen.notFoundHint":
+    "It may have been deleted, or the link points at an id this site does not have.",
+  "sandbox.postEditScreen.edit": "Edit",
+  "sandbox.postEditScreen.preview": "Preview",
+  "sandbox.postEditScreen.resizeSplit": "Resize the editor and the preview",
+  "sandbox.postEditScreen.resizeSplitHint":
+    "Drag to resize. Double-click to reset.",
+  "sandbox.postPreview.desktop": "Desktop",
+  "sandbox.postPreview.frameTitle": "Post preview",
+  "sandbox.postPreview.missingParams": "Not enough to build the URL",
+  "sandbox.postPreview.missingParamsHint":
+    "Set the post's slug, and its category when the blog route uses one.",
+  "sandbox.postPreview.mobile": "Mobile",
+  "sandbox.postPreview.noOrigin": "Waiting for the site",
+  "sandbox.postPreview.noOriginHint":
+    "The preview appears once this project's site is serving.",
+  "sandbox.postPreview.noRoute": "This site has no blog post page",
+  "sandbox.postPreview.noRouteHint":
+    "Add a page with the blog post section, or set the blog app's pageSlug, and the preview can render.",
+  "sandbox.postPreview.openInNewTab": "Open in new tab",
+  "sandbox.postPreview.refresh": "Refresh",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
   "sandbox.postEditor.readTimeLabel": "Read time (minutes)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
@@ -1043,6 +1076,7 @@ export const sandbox = {
   "sandbox.preview.loaderNoLongerExists": "This loader no longer exists.",
   "sandbox.preview.noPagesFound": "No pages found in this site.",
   "sandbox.preview.noSearchResults": "No results match your search.",
+  "sandbox.preview.siteRoutes": "Site routes",
   "sandbox.preview.noServerRunning": "No server running",
   "sandbox.preview.openInNewTab": "Open in new tab",
   "sandbox.preview.pageAlreadyExists":
@@ -1189,6 +1223,9 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
   "sandbox.fieldDescriptionTooltipsField.description":
     "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",
+  "sandbox.legacyBlogPostFormatField.label": "Legacy blog post editor",
+  "sandbox.legacyBlogPostFormatField.description":
+    "Edit a blog post's body via HTML, in one rich-text editor saved to its content field, the format older blog templates read, instead of as blocks.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",
@@ -1287,13 +1324,19 @@ export const sandbox = {
     "Invalid JSON — changes aren't saved until it parses.",
   "sandbox.savedSectionEditor.noEditableFields":
     "No editable fields for this section.",
+  "sandbox.schemaless.agentPrompt":
+    "This site's content is edited in deco Studio, but Studio hasn't received the site's schema yet, so its content forms show raw fields. Please set that up in this repository:\n\n1. Make sure @decocms/blocks is 8.11.0 or newer (upgrade it if not), then run `npx deco skills install` to add the deco framework skills to this repository.\n2. Load the deco-site-workflow skill and follow its references/schema.md: generate the schema with `npx deco schema` and commit .deco/schema.gen.json; make DECO_SITE resolve to the Studio site {site}; send the schema to Studio with `npx deco schema push`; and wire `npx deco schema push` into the production deploy (after the deploy succeeds, with a Studio API key in the DECO_TOKEN secret) so every deploy sends it.\n3. Run `npx deco check` and report back: what you changed, and what each command printed.",
+  "sandbox.schemaless.agentPromptSiteUnknown":
+    "this project uses (ask me for its name if you can't find it)",
   "sandbox.schemaless.back": "All blocks",
   "sandbox.schemaless.bannerBody":
-    "Until then, each block opens with plain fields built from its saved values, and saving keeps every other value as it is. Generate the schema in your site's folder; this page picks it up on its own.",
-  "sandbox.schemaless.bannerTitle":
-    "Forms get proper fields once the schema exists",
-  "sandbox.schemaless.docsLink": "About deco schema",
+    "This site hasn't sent Studio its schema yet (the description of each form's fields), so every block opens with plain fields built from its saved values. Saving still keeps everything else as it is. Ask the coding agent working on your site to set it up: copy the prompt and paste it into the agent. It takes one deploy, and the forms here update on their own.",
+  "sandbox.schemaless.bannerTitle": "Content forms are showing raw fields",
+  "sandbox.schemaless.copyPrompt": "Copy prompt for your agent",
+  "sandbox.schemaless.copyPromptFailed":
+    "Couldn't copy the prompt. Check that this page may use the clipboard, then try again.",
   "sandbox.schemaless.empty": "Empty",
+  "sandbox.schemaless.installSkill": "Install skill",
   "sandbox.schemaless.item": "Item {n}",
   "sandbox.schemaless.itemCount": "{count} items",
   "sandbox.schemaless.listLabel": "Saved blocks",
@@ -1304,7 +1347,11 @@ export const sandbox = {
     "Enter a number. The saved value stays until you do.",
   "sandbox.schemaless.notSet": "Not set",
   "sandbox.schemaless.pickBlock": "Pick a block to see its content.",
+  "sandbox.schemaless.promptCopied": "Copied",
+  "sandbox.schemaless.promptCopiedAnnouncement":
+    "Prompt copied to the clipboard",
   "sandbox.schemaless.searchPlaceholder": "Search blocks",
+  "sandbox.schemaless.usesSkill": "Uses the deco-site-workflow skill",
   "sandbox.sectionRenameDialog.cancel": "Cancel",
   "sandbox.sectionRenameDialog.description":
     "Updates the display name. The internal key stays the same so pages referencing this section keep working.",
@@ -1386,8 +1433,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.status.ended": "Ended",
   "sandbox.dateCampaigns.status.always": "Always on",
   "sandbox.dateCampaigns.status.unreadable": "Dates can't be read",
-  "sandbox.dateCampaigns.usedBy": "Used by {count}",
-  "sandbox.dateCampaigns.notUsed": "Not used yet",
   "sandbox.dateCampaigns.state.new": "Not published yet",
   "sandbox.dateCampaigns.state.changed": "Changed in your draft",
   "sandbox.dateCampaigns.removedTitle": "Removed in your draft",
@@ -1397,15 +1442,10 @@ export const sandbox = {
     "One of its dates can't be read, so its variants don't show. Pick new dates and save.",
   "sandbox.dateCampaigns.publishedWindow": "Published: {window}",
   "sandbox.dateCampaigns.saveDates": "Save dates",
-  "sandbox.dateCampaigns.renameHint":
-    "Every variant that uses this campaign is updated in the same change.",
-  "sandbox.dateCampaigns.renameWholeHint":
-    "Sections that read every campaign in their own code still look for the old name. Update them in the site editor.",
   "sandbox.dateCampaigns.delete": "Delete campaign",
   "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
   "sandbox.dateCampaigns.deletedHint":
     "It leaves the site when you publish. Undo brings it back.",
-  "sandbox.dateCampaigns.renamed": "Campaign renamed to “{name}”",
   "sandbox.dateCampaigns.allCampaigns": "All campaigns",
   "sandbox.dateCampaigns.today": "Today",
   "sandbox.dateCampaigns.previous": "Earlier",
@@ -1436,6 +1476,8 @@ export const sandbox = {
   "sandbox.previewAs.testsHint":
     "Not set: you see the side your own visit got.",
   "sandbox.previewAs.noTests": "No A/B tests yet.",
+  "sandbox.previewAs.testsLoadFailed": "Couldn't load your tests.",
+  "sandbox.previewAs.tryAgain": "Try again",
   "sandbox.previewAs.off": "Off",
   "sandbox.previewAs.on": "On",
   "sandbox.previewAs.reset": "Show as it is now",

@@ -227,6 +227,7 @@ export type FireAutomationOutcome =
         | "inactive"
         | "creator_invalid"
         | "org_unavailable"
+        | "agent_not_found"
         | CardRunSkip
         | JiraRunSkip;
       /** Why a card or Jira run was refused. */
@@ -244,7 +245,14 @@ function toThinkingCapabilities(caps: string[] | undefined) {
 }
 
 type PrepareOutcome =
-  | { skip: "not_found" | "inactive" | "creator_invalid" | "org_unavailable" }
+  | {
+      skip:
+        | "not_found"
+        | "inactive"
+        | "creator_invalid"
+        | "org_unavailable"
+        | "agent_not_found";
+    }
   /** A card run resolves its own model (`enqueueAgentRunForTask`). */
   | { automation: Automation; onCard: CardTarget }
   | { automation: Automation; onJira: JiraTarget }
@@ -275,6 +283,18 @@ async function prepareFireStep(
     );
     await rt.storage.deactivateAutomation(automation.id);
     return { skip: "creator_invalid" };
+  }
+  // Hosted runs report a missing agent as a stream error, not a PermanentRunError.
+  const agent = await studioCtx.storage.virtualMcps.findById(
+    automation.virtual_mcp_id,
+    automation.organization_id,
+  );
+  if (!agent || agent.organization_id !== automation.organization_id) {
+    console.warn(
+      `[fireAutomationWorkflow] deactivating "${automation.name}" (${automation.id}) — agent ${automation.virtual_mcp_id} no longer exists`,
+    );
+    await rt.storage.deactivateAutomation(automation.id);
+    return { skip: "agent_not_found" };
   }
   if (ctx.target?.kind === "jira") return { automation, onJira: ctx.target };
   if (ctx.target) return { automation, onCard: ctx.target };

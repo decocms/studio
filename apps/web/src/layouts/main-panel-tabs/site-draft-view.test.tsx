@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as renderBare } from "@testing-library/react";
 import type { ReactNode } from "react";
 import * as realChat from "@/components/chat/chat-context";
-import * as realBackend from "@/components/sections-editor/use-content-backend";
+import * as realBackend from "@/cms/use-content-backend";
 import * as realDecofile from "@/components/sections-editor/use-decofile";
 import * as realLiveMeta from "@/components/sections-editor/use-live-meta";
 import * as realMembers from "@/hooks/use-members";
@@ -21,7 +21,7 @@ let backend: Record<string, unknown> = { kind: "pending" };
 
 const restore = [
   ["@/components/chat/chat-context", { ...realChat }],
-  ["@/components/sections-editor/use-content-backend", { ...realBackend }],
+  ["@/cms/use-content-backend", { ...realBackend }],
   ["@/components/sections-editor/use-decofile", { ...realDecofile }],
   ["@/components/sections-editor/use-live-meta", { ...realLiveMeta }],
   ["@/hooks/use-members", { ...realMembers }],
@@ -36,7 +36,7 @@ mock.module("@/components/chat/chat-context", () => ({
   ...realChat,
   useOptionalChatTask: () => ({ currentBranch: "draft-1", taskId: null }),
 }));
-mock.module("@/components/sections-editor/use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   ...realBackend,
   useContentBackend: () => backend,
 }));

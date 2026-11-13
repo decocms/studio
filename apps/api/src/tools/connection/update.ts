@@ -24,6 +24,8 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { assertMayMoveCredentials } from "./credential-origin-guard";
+import { toPublicConnection } from "./public-connection";
 import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
 import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
 import {
@@ -202,6 +204,8 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       finalConnectionUrl = buildVirtualUrl(virtualMcpId);
     }
 
+    await assertMayMoveCredentials(ctx, existing, finalConnectionUrl);
+
     // Handle MCP configuration state and scopes if present
     // IMPORTANT: configuration_state must never be null/undefined to ensure
     // it's always included in the JWT token sent to downstream connections
@@ -247,7 +251,10 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // Fetch tools from the MCP server.
     // If the connection uses OAuth (token stored in downstream_tokens), use the
     // access token to discover tools after authentication.
-    let tokenForToolFetch = data.connection_token ?? existing.connection_token;
+    let tokenForToolFetch =
+      data.connection_token !== undefined
+        ? data.connection_token
+        : existing.connection_token;
     if (!tokenForToolFetch) {
       try {
         const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
@@ -467,7 +474,7 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     invalidateConnectionCaches(id);
 
     return {
-      item: connection,
+      item: toPublicConnection(connection),
     };
   },
 });

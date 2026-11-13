@@ -29,6 +29,7 @@ function fake(
     alive?: boolean;
     capacity?: boolean;
     owns?: boolean | Error;
+    aliveError?: Error;
     ensureError?: Error;
     pools?: { tenant: string; image: string }[];
   } = {},
@@ -47,8 +48,16 @@ function fake(
         provider: kind === "fs" ? "freestyle" : "kubernetes",
       };
     },
-    alive: async () => state.alive ?? false,
-    hasSchedulableCapacity: async () => state.capacity ?? true,
+    alive: async () => {
+      calls.push("alive");
+      if (state.aliveError) throw state.aliveError;
+      return state.alive ?? false;
+    },
+    hasSchedulableCapacity: async () => {
+      calls.push("capacity");
+      if (state.aliveError) throw state.aliveError;
+      return state.capacity ?? true;
+    },
     owns: async () => {
       calls.push("owns");
       if (state.owns instanceof Error) throw state.owns;
@@ -199,6 +208,43 @@ describe("SandboxProviderRouter", () => {
     });
   });
 
+  test("stops waiting on an unreachable Kubernetes API, and asks again later", async () => {
+    let now = 0;
+    const kubernetes = fake("k8s", { aliveError: new Error("502 sandbox op") });
+    const router = new SandboxProviderRouter(
+      { kubernetes, freestyle: fake("fs") },
+      { now: () => now },
+    );
+    const place = (i: number) => kindOf(router, `h-${i}`, {});
+
+    // Each failed placement probes alive and capacity; three failures open it.
+    expect(await place(0)).toBe("freestyle");
+    expect(await place(1)).toBe("freestyle");
+    kubernetes.calls.length = 0;
+    expect(await place(2)).toBe("freestyle");
+    expect(kubernetes.calls).toEqual([]);
+
+    now += 30_000;
+    expect(await place(3)).toBe("freestyle");
+    expect(kubernetes.calls).toContain("alive");
+  });
+
+  test("a live Kubernetes sandbox is found again once its API answers", async () => {
+    let now = 0;
+    const state: { alive: boolean; aliveError?: Error } = {
+      alive: true,
+      aliveError: new Error("502 sandbox op"),
+    };
+    const router = new SandboxProviderRouter(
+      { kubernetes: fake("k8s", state), freestyle: fake("fs") },
+      { now: () => now },
+    );
+    for (let i = 0; i < 3; i++) await kindOf(router, HANDLE, {});
+    state.aliveError = undefined;
+    now += 30_000;
+    expect(await kindOf(router, HANDLE, {})).toBe("kubernetes");
+  });
+
   test("a live Kubernetes sandbox is placed without asking Freestyle", async () => {
     const freestyle = fake("fs");
     const router = new SandboxProviderRouter({
@@ -226,20 +272,18 @@ describe("SandboxProviderRouter", () => {
     });
   });
 
-  test("falls back to Kubernetes when Freestyle fails", async () => {
+  test("a failed Freestyle ensure never moves to Kubernetes", async () => {
+    const kubernetes = fake("k8s");
     const router = new SandboxProviderRouter({
-      kubernetes: fake("k8s"),
+      kubernetes,
       freestyle: fake("fs", {
         ensureError: new FreestyleApiError(429, { code: "RATE_LIMITED" }),
       }),
     });
-    const sb = await router.ensure(ID, { provider: "freestyle" });
-    expect(sb.provider).toBe("kubernetes");
-    expect(sb.placement).toEqual({
-      reason: "fallback",
-      fallbackFrom: "freestyle",
-    });
-    expect(await router.getPreviewUrl(HANDLE)).toBe("k8s");
+    await expect(
+      router.ensure(ID, { provider: "freestyle" }),
+    ).rejects.toBeInstanceOf(FreestyleApiError);
+    expect(kubernetes.calls).not.toContain("ensure");
   });
 
   test("falls back to Freestyle when Kubernetes has no capacity", async () => {
@@ -266,21 +310,6 @@ describe("SandboxProviderRouter", () => {
       ConfigRequestError,
     );
     expect(freestyle.calls).not.toContain("ensure");
-  });
-
-  test("a resume that falls back deletes the old sandbox", async () => {
-    const freestyle = fake("fs", {
-      owns: true,
-      ensureError: new FreestyleApiError(503, { code: "UNAVAILABLE" }),
-    });
-    const router = new SandboxProviderRouter({
-      kubernetes: fake("k8s"),
-      freestyle,
-    });
-    const sb = await router.ensure(ID, {});
-    expect(sb.provider).toBe("kubernetes");
-    await sleep(0);
-    expect(freestyle.calls).toContain("delete");
   });
 
   test("Android never goes to Freestyle, even on failure", async () => {
@@ -314,5 +343,24 @@ describe("SandboxProviderRouter", () => {
       reason: "existing",
     });
     expect(kubernetes.calls).toContain("delete");
+  });
+
+  test("two ensures for one handle land on one provider", async () => {
+    const fsState: { owns?: boolean } = {};
+    const freestyle = fake("fs", fsState);
+    const create = freestyle.ensure.bind(freestyle);
+    freestyle.ensure = async (...args) => {
+      await sleep(20);
+      fsState.owns = true;
+      return create(...args);
+    };
+    const kubernetes = fake("k8s");
+    const router = new SandboxProviderRouter({ kubernetes, freestyle });
+    const [a, b] = await Promise.all([
+      router.ensure(ID, { provider: "freestyle" }),
+      router.ensure(ID, { provider: "kubernetes" }),
+    ]);
+    expect([a.previewUrl, b.previewUrl]).toEqual(["fs", "fs"]);
+    expect(kubernetes.calls).not.toContain("ensure");
   });
 });

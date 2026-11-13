@@ -46,6 +46,30 @@ export function isSeoSectionResolveType(
   );
 }
 
+/** Resolve the form's schema without replacing saved references or page overrides. */
+export function resolveSeoSchemaType(
+  resolveType: string,
+  decofile: Record<string, unknown>,
+  meta: LiveMeta,
+): string | null {
+  const seen = new Set<string>();
+  let current = resolveType;
+  for (let depth = 0; depth < 32; depth++) {
+    if (seen.has(current)) return null;
+    seen.add(current);
+    if (!Object.hasOwn(decofile, current)) {
+      return resolveSchema(current, meta) ? current : null;
+    }
+    const block = decofile[current];
+    if (!block || typeof block !== "object" || Array.isArray(block))
+      return null;
+    const next = (block as Record<string, unknown>).__resolveType;
+    if (typeof next !== "string" || !next) return null;
+    current = next;
+  }
+  return null;
+}
+
 function seoTypeLabel(resolveType: string, title: string): string {
   if (resolveType === DEFAULT_SEO_RESOLVE_TYPE) return DEFAULT_SEO_TYPE_LABEL;
   return title;

@@ -123,6 +123,24 @@ Canonical organization-scoped routes use `/api/:org/...`. Keep compatibility
 routes isolated and deprecated; new API and web code must use the canonical
 paths.
 
+### Blocks v8 sites
+
+A project is a Blocks v8 site only while its "Blocks v8 site" switch is on
+(`metadata.blocksV8`, read by `isBlocksV8Project` in
+`@decocms/shared/blocks-major`). It is the single source of truth for every
+v8 gate, in this API and in the web app. Only an organization owner or admin
+flips it: in the project's settings (CMS tab), or with `blocksV8` on
+`COLLECTION_VIRTUAL_MCP_UPDATE`. A client metadata write that would change it
+is refused. `deco schema push` (`PUT /api/cms/:site/schema`) never changes it,
+and is refused with `409 not_blocks_v8_site` while it is off. Turning it off
+returns the project to the v7 editor, exactly as before.
+
+Cutover: no data migration. A `blocksMajor: 8` marker an earlier Studio wrote
+is ignored, so every existing project starts as v7. The one v8 site in
+production, `demo-storefront`, needs an organization admin to turn on "Blocks
+v8 site" in its project settings once this ships; until then its schema push
+is refused and Studio opens it with the v7 editor.
+
 ## Development
 
 Run API checks from the repository root:

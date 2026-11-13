@@ -5,7 +5,7 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import { act, render as rtlRender } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactElement, type ReactNode, useState } from "react";
-import * as realBackend from "@/components/sections-editor/use-content-backend";
+import * as realBackend from "@/cms/use-content-backend";
 import { en } from "@/i18n/en/index.ts";
 import { KEYS } from "@/lib/query-keys";
 
@@ -13,12 +13,9 @@ import { KEYS } from "@/lib/query-keys";
 const project = { backend: { kind: "protocol", source: "github" } as object };
 const backendModule = { ...realBackend };
 afterAll(() => {
-  mock.module(
-    "@/components/sections-editor/use-content-backend",
-    () => backendModule,
-  );
+  mock.module("@/cms/use-content-backend", () => backendModule);
 });
-mock.module("@/components/sections-editor/use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   ...realBackend,
   useContentBackend: () => project.backend,
 }));
@@ -44,7 +41,12 @@ function Form({ seed }: { seed: string }) {
 
 function view(seed: string, present: boolean | undefined, blockKey = "Footer") {
   return (
-    <HeldBlockView {...scope} blockKey={blockKey} present={present}>
+    <HeldBlockView
+      listing={{ [blockKey]: { seed } }}
+      {...scope}
+      blockKey={blockKey}
+      present={present}
+    >
       <Form seed={seed} />
     </HeldBlockView>
   );

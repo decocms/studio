@@ -18,8 +18,10 @@ import {
   normalizePanelSegment,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { useT } from "@/i18n/use-t.ts";
-import { useVirtualMCP } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useRef } from "react";
 import type { VirtualMcpFormReturn } from "../types";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
@@ -29,6 +31,7 @@ import {
   defaultMainViewAfterSidebarToggle,
   effectiveProjectSidebarViews,
   offeredProjectSidebarViews,
+  PROJECT_NAV_VIEW_IDS,
   seenProjectSidebarViewsAfterSave,
   projectSidebarViewPresence,
   resolveProjectSidebarViews,
@@ -43,6 +46,17 @@ import {
 
 /** The merged landing view: the surface Preview, Content and Code are tabs on. */
 const SITE_EDITOR_VIEW = "site-editor";
+
+/** Top rows that are pages of their own, not tabs the panel can open. */
+const NAV_VIEW_ROUTES = {
+  context: PROJECT_ROUTE.library,
+  monitor: PROJECT_ROUTE.monitoring,
+  plan: PROJECT_ROUTE.plan,
+} as const;
+
+function isNavViewRoute(tabId: string): tabId is keyof typeof NAV_VIEW_ROUTES {
+  return Object.hasOwn(NAV_VIEW_ROUTES, tabId);
+}
 
 /** Stored `defaultMainView.type` values that all mean "land on the Site
  *  Editor" — its own id, and `content`, which was a sibling option before the
@@ -88,6 +102,8 @@ export function useProjectViews({
   const t = useT();
   const studio = useStudioTools();
   const { openPanel } = usePanelNavigate();
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
   const nativeViews = useProjectNativeViewPresence(virtualMcp);
@@ -164,9 +180,19 @@ export function useProjectViews({
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
   const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
-  // A Blocks (v8) site: Experiments and Calendar are offered once on top of
-  // a list saved before they were defaults, until the next save.
-  const blocksSite = nativeViews.presence.calendar;
+  /**
+   * Preview is available whenever the agent has a clonable source —
+   * either a Start Website template or a connected GitHub repo — matching
+   * the gating in `use-main-panel-tabs.ts`.
+   */
+  const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
+  const sidebarViewPresence = projectSidebarViewPresence(
+    hasClonableSource,
+    nativeViews.presence,
+  );
+  // The top rows and Blog, plus the site views (Blocks' Calendar and
+  // Experiments, Hosting), are offered once on top of a list saved without
+  // them, until the next save.
   const formSidebarViewsSeen = form.watch("metadata.sidebarViewsSeen");
   const formSidebarViews = effectiveProjectSidebarViews(
     resolveProjectSidebarViews({
@@ -174,7 +200,7 @@ export function useProjectViews({
       ui: { layout: layoutMeta },
     }),
     form.watch("metadata.sidebarViewsVersion"),
-    offeredProjectSidebarViews(formSidebarViewsSeen, blocksSite),
+    offeredProjectSidebarViews(formSidebarViewsSeen, sidebarViewPresence),
   );
   /**
    * A Settings panel can remount while its previous instance is still saving.
@@ -189,7 +215,7 @@ export function useProjectViews({
           virtualMcp.metadata.sidebarViewsVersion,
           offeredProjectSidebarViews(
             virtualMcp.metadata.sidebarViewsSeen,
-            blocksSite,
+            sidebarViewPresence,
           ),
         )
       : formSidebarViews);
@@ -386,19 +412,16 @@ export function useProjectViews({
       shouldDirty: true,
     });
     form.setValue("metadata.sidebarViewsVersion", 1, { shouldDirty: true });
-    // A Blocks (v8) site: the list this change was made on showed the
-    // offered views, so from now on the saved list alone decides and hiding
-    // one sticks. Any other site saves exactly what it did before.
-    if (blocksSite) {
-      form.setValue(
-        "metadata.sidebarViewsSeen",
-        seenProjectSidebarViewsAfterSave(
-          virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
-          blocksSite,
-        ),
-        { shouldDirty: true },
-      );
-    }
+    // Offers shown on this list are now seen, so hiding one sticks.
+    form.setValue(
+      "metadata.sidebarViewsSeen",
+      seenProjectSidebarViewsAfterSave(
+        virtualMcp?.metadata.sidebarViewsSeen ?? formSidebarViewsSeen,
+        sidebarViewPresence,
+        nextSidebarViews,
+      ),
+      { shouldDirty: true },
+    );
     optimisticSidebarViews.stage(nextSidebarViews, sidebarViews);
     const nextDefaultMain = defaultMainViewAfterSidebarToggle(
       currentDefaultMain,
@@ -415,16 +438,6 @@ export function useProjectViews({
      */
   };
 
-  /**
-   * Preview is available whenever the agent has a clonable source —
-   * either a Start Website template or a connected GitHub repo — matching
-   * the gating in `use-main-panel-tabs.ts`.
-   */
-  const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
-  const sidebarViewPresence = projectSidebarViewPresence(
-    hasClonableSource,
-    nativeViews.presence,
-  );
   const availableSidebarViews =
     availableProjectSidebarViews(sidebarViewPresence);
   const enabledSidebarViews = selectedProjectSidebarViews(
@@ -433,19 +446,21 @@ export function useProjectViews({
     1,
   );
   const sidebarViewLabels: Record<ProjectSidebarViewId, string> = {
-    overview: t("sidebar.navDestinations.home"),
+    overview: t("sidebar.navDestinations.overview"),
+    context: t("sidebar.navDestinations.context"),
+    monitor: t("sidebar.navDestinations.monitor"),
+    plan: t("sidebar.navDestinations.plan"),
     reports: t("sidebar.navDestinations.reports"),
-    board: t("sidebar.navDestinations.tasks"),
+    board: t("sidebar.navDestinations.spineTasks"),
     "site-editor": t("virtualMcp.layoutTabContent.siteEditor"),
+    blog: t("sidebar.projectNav.blog"),
     assets: t("common.mainPanelTabs.assets"),
     releases: t("common.mainPanelTabs.releases"),
     hosting: t("common.mainPanelTabs.hosting"),
     e2e: t("common.mainPanelTabs.e2e"),
-    analytics: t("common.mainPanelTabs.analytics"),
-    cdn: t("common.mainPanelTabs.cdn"),
     automations: t("virtualMcp.layoutTabContent.automations"),
-    experiments: t("experiments.title"),
     calendar: t("common.mainPanelTabs.calendar"),
+    experiments: t("common.mainPanelTabs.experiments"),
   };
 
   /**
@@ -464,6 +479,10 @@ export function useProjectViews({
      * that final project row after the pinned-view loop below.
      */
     if (viewId === "automations") continue;
+    /** Already the first option. */
+    if (viewId === "overview") continue;
+    /** Pages of their own, not a view a project can open on. */
+    if (isNavViewRoute(viewId)) continue;
     defaultMainOptions.push({
       value: viewId,
       label: sidebarViewLabels[viewId],
@@ -486,17 +505,31 @@ export function useProjectViews({
     label: t("virtualMcp.layoutTabContent.settings"),
   });
 
-  const openView = (tabId: string) =>
+  const openView = (tabId: string) => {
+    if (isNavViewRoute(tabId)) {
+      navigate({
+        to: NAV_VIEW_ROUTES[tabId],
+        params: { org: org.slug, agentId: virtualMcpId },
+      });
+      return;
+    }
     openPanel(tabId, { virtualmcpid: virtualMcpId });
+  };
+
+  const navViews: ReadonlySet<ProjectSidebarViewId> = new Set(
+    PROJECT_NAV_VIEW_IDS,
+  );
 
   return {
-    /** Every view this project can open, in sidebar order. */
-    projectViews: availableSidebarViews,
-    /** A Blocks (v8) site (its Calendar is present). */
-    blocksSite,
+    /** The project's top rows, which every project shows, in sidebar order. */
+    navViews: PROJECT_NAV_VIEW_IDS,
+    /** Every other view this project can open, in sidebar order. */
+    projectViews: availableSidebarViews.filter((id) => !navViews.has(id)),
     labels: sidebarViewLabels,
     pinned: (viewId: ProjectSidebarViewId) => sidebarViews.includes(viewId),
     isMainView: (value: string) => defaultMainView === value,
+    canBeMainView: (value: string) =>
+      defaultMainOptions.some((option) => option.value === value),
     defaultMainView,
     defaultMainOptions,
     noMainView,

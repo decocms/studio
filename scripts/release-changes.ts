@@ -16,6 +16,14 @@ const SANDBOX_CONTROLLER_SOURCES = [
   "packages/shared/src/std/",
 ];
 
+// The `decocms` CLI and its skill are packed INTO the sandbox image
+// (packages/sandbox/scripts/build-studio-cli.ts).
+const STUDIO_CLI_SOURCES = [
+  "apps/api/src/cli.ts",
+  "apps/api/src/cli/",
+  "apps/api/plugin/",
+];
+
 export type DeployScope = "both" | "server" | "web";
 
 export interface ReleaseChanges {
@@ -43,6 +51,9 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
 
     if (file.startsWith("apps/api/") || file.startsWith("apps/web/")) {
       manifests.add(API_MANIFEST);
+      if (STUDIO_CLI_SOURCES.some((source) => file.startsWith(source))) {
+        manifests.add(SANDBOX_MANIFEST);
+      }
       continue;
     }
 

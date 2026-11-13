@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { threadIdFromApiKey } from "@/core/context-factory";
 import {
   MissingOrganizationSlugError,
   mcpEndpointUrl,
+  mcpKeyMetadata,
   orgMcpServers,
   runKeyPermissions,
 } from "./mint-endpoint";
@@ -189,5 +191,50 @@ describe("runKeyPermissions", () => {
 
   it("is just the tool scope when the run mounts no connections", () => {
     expect(permissions({})).toEqual({ self: ["TASK_BOARD_ITEM_UPDATE"] });
+  });
+});
+
+describe("mcpKeyMetadata", () => {
+  const org = { id: "org_1", slug: "acme", name: "Acme" };
+
+  it("binds a thread key to its thread, read back by the context factory", () => {
+    const metadata = mcpKeyMetadata({
+      organization: org,
+      target: "thread",
+      threadId: "thrd_1",
+    });
+    expect(metadata).toEqual({
+      organization: org,
+      threadGrant: expect.any(String),
+    });
+    expect(threadIdFromApiKey(metadata, org.id)).toBe("thrd_1");
+    expect(threadIdFromApiKey(metadata, "org_2")).toBeUndefined();
+  });
+
+  it("binds no other key to a thread", () => {
+    for (const target of ["agent-tools", "management"] as const) {
+      const metadata = mcpKeyMetadata({
+        organization: org,
+        target,
+        threadId: "thrd_1",
+      });
+      expect(metadata).toEqual({ organization: org });
+      expect(threadIdFromApiKey(metadata, org.id)).toBeUndefined();
+    }
+  });
+
+  it("keeps the run metadata beside the thread", () => {
+    expect(
+      mcpKeyMetadata({
+        organization: org,
+        target: "thread",
+        threadId: "thrd_1",
+        runMetadata: { tenant: "shop.example" },
+      }),
+    ).toEqual({
+      organization: org,
+      threadGrant: expect.any(String),
+      runMetadata: { tenant: "shop.example" },
+    });
   });
 });

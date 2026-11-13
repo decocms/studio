@@ -6,9 +6,7 @@ import type { ListState } from "@/hooks/use-list-state";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
-import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
-import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
 import { ConnectionCard } from "@/components/connections/connection-card.tsx";
@@ -697,8 +695,6 @@ function OrgMcpsContent() {
   });
 
   const actions = useConnectionActions();
-
-  const projectFirstNav = useProjectFirstNav();
 
   // Tab state
   type ConnectionTab = "connected" | "all";
@@ -1433,51 +1429,26 @@ function OrgMcpsContent() {
         })()}
 
         <Page.Content>
-          {/* Title + Toolbar. Project-first nav hosts this page in Context,
-              where search and display sit in the bars like the files'. */}
+          {/* Hosted in Context, where search and display sit in the bars
+              like the files'. */}
           <Page.Container>
             <div className="flex flex-col gap-6">
-              {projectFirstNav ? (
-                <Page.Actions
-                  secondary={
-                    <>
-                      <SearchToggle
-                        value={listState.search}
-                        onChange={listState.setSearch}
-                        label={t("library.context.search")}
-                        placeholder={t("orgs.connections.searchPlaceholder")}
-                        clearLabel={t("library.library.clearSearch")}
-                      />
-                      {displayButton}
-                    </>
-                  }
-                >
-                  {ctaButton}
-                </Page.Actions>
-              ) : (
-                <Page.Title actions={ctaButton}>
-                  {t("orgs.connections.pageTitle")}
-                </Page.Title>
-              )}
-              <div className="flex flex-wrap items-center justify-between gap-3 empty:hidden">
-                {!projectFirstNav && (
-                  <div className="flex items-center gap-2">
-                    <SearchInput
+              <Page.Actions
+                secondary={
+                  <>
+                    <SearchToggle
                       value={listState.search}
                       onChange={listState.setSearch}
+                      label={t("library.context.search")}
                       placeholder={t("orgs.connections.searchPlaceholder")}
-                      className="w-full md:w-[375px]"
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          listState.setSearch("");
-                          (event.target as HTMLInputElement).blur();
-                        }
-                      }}
+                      clearLabel={t("library.library.clearSearch")}
                     />
                     {displayButton}
-                  </div>
-                )}
-              </div>
+                  </>
+                }
+              >
+                {ctaButton}
+              </Page.Actions>
               <CollectionTabs
                 placement="page"
                 tabs={[

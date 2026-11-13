@@ -1,72 +1,112 @@
 /**
- * In-memory stand-ins for the hosted tests: a delivery bucket, the org KV and
- * a one-branch-plus-commits git repository behind `RepoContentClient`.
+ * In-memory stand-ins for the hosted tests: a delivery bucket and the org KV.
  */
 
-import { createHash } from "node:crypto";
-import type { RepoRef } from "@decocms/shared/git-providers";
-import {
-  type FileChange,
-  type RepoContentClient,
-  type RepoInsightsClient,
-  RepoWriteConflict,
-  type TreeEntry,
-} from "@/git-providers";
 import type { KVStorage } from "@/storage/kv";
 import type { DeliveryPurge } from "./delivery-purge";
-import { type DeliveryStore, ObjectChangedError } from "./delivery-store";
+import {
+  type DeliveryStore,
+  type GetOptions,
+  type NotModified,
+  ObjectChangedError,
+  type PutCondition,
+  type StoredObject,
+} from "./delivery-store";
 
 export function memoryDeliveryStore() {
   const objects = new Map<
     string,
-    {
-      text: string;
-      etag: string;
-      cacheControl: string;
-      metadata?: Record<string, string>;
-    }
+    { text: string; etag: string; cacheControl: string }
   >();
   const log: string[] = [];
+  /** Every read, `get <key>` (or `get <key> if-none-match`), in order. */
+  const reads: string[] = [];
   let n = 0;
+  /** Runs before each write: a test throws here (an R2 429, a crash). */
+  const hooks: {
+    beforePut?: (key: string, condition: PutCondition | undefined) => void;
+    beforeGet?: (key: string) => void;
+  } = {};
+  const put = (
+    key: string,
+    text: string,
+    cacheControl: string,
+    condition: PutCondition | undefined,
+  ) => {
+    hooks.beforePut?.(key, condition);
+    // Conditional writes as R2 checks them: against the object right now.
+    const current = objects.get(key);
+    if (
+      condition &&
+      ("ifMatch" in condition
+        ? current?.etag !== condition.ifMatch
+        : current !== undefined)
+    ) {
+      log.push(`refused ${key}`);
+      throw new ObjectChangedError(key);
+    }
+    const etag = `"etag${++n}"`;
+    objects.set(key, { text, etag, cacheControl });
+    log.push(`put ${key}`);
+    return { etag };
+  };
+  function get(key: string): Promise<StoredObject | null>;
+  function get(
+    key: string,
+    options: GetOptions,
+  ): Promise<StoredObject | NotModified | null>;
+  async function get(
+    key: string,
+    options?: GetOptions,
+  ): Promise<StoredObject | NotModified | null> {
+    hooks.beforeGet?.(key);
+    reads.push(
+      options?.ifNoneMatch ? `get ${key} if-none-match` : `get ${key}`,
+    );
+    const o = objects.get(key);
+    if (!o) return null;
+    if (options?.ifNoneMatch && options.ifNoneMatch === o.etag) {
+      return { notModified: true };
+    }
+    return { text: o.text, etag: o.etag };
+  }
   const store: DeliveryStore = {
-    async putJson(key, value, cacheControl, metadata, condition) {
-      // Conditional writes as R2 checks them: against the object right now.
-      const current = objects.get(key);
-      if (
-        condition &&
-        ("ifMatch" in condition
-          ? current?.etag !== condition.ifMatch
-          : current !== undefined)
-      ) {
-        log.push(`refused ${key}`);
-        throw new ObjectChangedError(key);
-      }
-      const etag = `"etag${++n}"`;
-      objects.set(key, {
-        text: JSON.stringify(value),
-        etag,
-        cacheControl,
-        ...(metadata ? { metadata: { ...metadata } } : {}),
-      });
-      log.push(`put ${key}`);
-      return { etag };
+    async putText(key, text, cacheControl, condition) {
+      return put(key, text, cacheControl, condition);
     },
-    async get(key) {
-      const o = objects.get(key);
-      return o
-        ? {
-            text: o.text,
-            etag: o.etag,
-            ...(o.metadata ? { metadata: { ...o.metadata } } : {}),
-          }
-        : null;
+    /**
+     * Like S3: folders and plain objects right under `prefix`, in key order,
+     * share `maxKeys`; only the folders come back.
+     */
+    async listPage(prefix, { maxKeys, continuationToken, startAfter }) {
+      const entries = [
+        ...new Set(
+          [...objects.keys()]
+            .filter((k) => k.startsWith(prefix))
+            .map((k) => {
+              const slash = k.indexOf("/", prefix.length);
+              return slash > 0 ? k.slice(0, slash + 1) : k;
+            }),
+        ),
+      ].sort();
+      const start = continuationToken
+        ? Number(continuationToken)
+        : startAfter
+          ? entries.filter((e) => e <= startAfter).length
+          : 0;
+      const next = start + maxKeys;
+      return {
+        prefixes: entries.slice(start, next).filter((e) => e.endsWith("/")),
+        nextToken: next < entries.length ? String(next) : null,
+      };
     },
+    async putJson(key, value, cacheControl, condition) {
+      return put(key, JSON.stringify(value), cacheControl, condition);
+    },
+    get,
     async delete(key) {
       objects.delete(key);
       log.push(`delete ${key}`);
-    },
-    async listKeys(prefix) {
-      return [...objects.keys()].filter((k) => k.startsWith(prefix)).sort();
     },
   };
   /** Logs `purge <key>` into the same log; `failPurge` makes it throw. */
@@ -81,6 +121,8 @@ export function memoryDeliveryStore() {
     store,
     objects,
     log,
+    reads,
+    hooks,
     purge,
     failPurge: (fail: boolean) => {
       purgeState.fail = fail;
@@ -101,232 +143,6 @@ export function memoryKv(): KVStorage {
   };
 }
 
-function blobSha(content: string): string {
-  const bytes = Buffer.from(content, "utf-8");
-  return createHash("sha1")
-    .update(`blob ${bytes.length}\0`)
-    .update(bytes)
-    .digest("hex");
-}
-
-/** Distinct commit shas and repository paths across fake repos
- *  (process-wide caches key on them). */
-let fakeRepos = 0;
-
-/** A repository with one branch, `main`, whose commits are file maps. */
-export function fakeRepo(files: Record<string, string>) {
-  const repoId = ++fakeRepos;
-  const blobs = new Map<string, string>();
-  const commits = new Map<string, Map<string, string>>();
-  // Each commit is dated now (tests move the clock with setSystemTime).
-  const history: Array<{ sha: string; message: string; date: string }> = [];
-  let head = "";
-  let n = 0;
-  const commit = (tree: Map<string, string>, message: string) => {
-    const sha = createHash("sha1")
-      .update(`repo ${repoId} commit ${++n}`)
-      .digest("hex");
-    for (const content of tree.values()) blobs.set(blobSha(content), content);
-    commits.set(sha, tree);
-    history.unshift({ sha, message, date: new Date().toISOString() });
-    head = sha;
-    return sha;
-  };
-  commit(new Map(Object.entries(files)), "initial");
-
-  const treeAt = (ref: string) => {
-    const tree = commits.get(ref === "main" ? head : ref);
-    if (!tree) throw new Error(`no commit ${ref}`);
-    return tree;
-  };
-
-  const client: RepoContentClient = {
-    repo: {
-      provider: "github",
-      host: "github.com",
-      path: `acme/site-${repoId}`,
-    } satisfies RepoRef,
-    getDefaultBranch: async () => "main",
-    getBranch: async (branch) => (branch === "main" ? { sha: head } : null),
-    searchBranches: async () => ({
-      branches: [],
-      totalCount: 0,
-      nextCursor: null,
-    }),
-    getArchive: async () => null,
-    listDecofileEntries: async (treeish, packagePath) => {
-      // As the real providers: `.deco/blocks.gen.json` and the direct
-      // children of `.deco/blocks/`, nothing else (no schema.gen.json).
-      const deco = packagePath ? `${packagePath}/.deco/` : ".deco/";
-      return [...treeAt(treeish)]
-        .filter(
-          ([path]) =>
-            path === `${deco}blocks.gen.json` ||
-            (path.startsWith(`${deco}blocks/`) &&
-              !path.slice(`${deco}blocks/`.length).includes("/")),
-        )
-        .map(
-          ([path, content]): TreeEntry => ({
-            path,
-            sha: blobSha(content),
-            type: "blob",
-            size: Buffer.byteLength(content),
-          }),
-        );
-    },
-    getEntriesAtPaths: async (treeish, paths) => {
-      const tree = treeAt(treeish);
-      return new Map(
-        paths.flatMap((path) => {
-          const content = tree.get(path);
-          return content === undefined
-            ? []
-            : [[path, { path, sha: blobSha(content), type: "blob" as const }]];
-        }),
-      );
-    },
-    readBlob: async (sha) => {
-      const content = blobs.get(sha);
-      if (content === undefined) throw new Error(`no blob ${sha}`);
-      return content;
-    },
-    readFileAtRef: async (ref, path) => treeAt(ref).get(path) ?? null,
-    readCommit: async (sha) => {
-      const row = history.find((c) => c.sha === sha);
-      return row ? { message: row.message, date: row.date } : null;
-    },
-    commitFiles: async ({ branch, message, expectedHead, changes }) => {
-      if (branch !== "main") throw new Error("only main");
-      if (expectedHead !== null && expectedHead !== head) {
-        throw new RepoWriteConflict("head moved");
-      }
-      const tree = new Map(treeAt(head));
-      for (const change of changes as FileChange[]) {
-        if ("deleted" in change) tree.delete(change.path);
-        else if ("content" in change) tree.set(change.path, change.content);
-        else {
-          const content = treeAt(change.copyFromRef).get(change.path);
-          if (content === undefined) throw new Error(`no ${change.path}`);
-          tree.set(change.path, content);
-        }
-      }
-      return { sha: commit(tree, message) };
-    },
-    createBranch: async () => {},
-    forceBranchHead: async () => {},
-    mergeBranches: async () => null,
-    createChangeRequest: async () => {
-      throw new Error("unused");
-    },
-    findOpenChangeRequest: async () => null,
-    compare: async () => ({ aheadBy: 0, behindBy: 0 }),
-    compareDetailed: async () => {
-      throw new Error("unused");
-    },
-  };
-
-  return {
-    client,
-    head: () => head,
-    history,
-    filesAt: (ref: string) => Object.fromEntries(treeAt(ref)),
-    /** A commit made behind Studio's back (another writer). */
-    pushDirect: (
-      changes: Record<string, string | null>,
-      message = "direct",
-    ) => {
-      const tree = new Map(treeAt(head));
-      for (const [path, content] of Object.entries(changes)) {
-        if (content === null) tree.delete(path);
-        else tree.set(path, content);
-      }
-      return commit(tree, message);
-    },
-  };
-}
-
-/** `listCommits` over a fake repo's history, paged by offset; counts calls. */
-export function fakeInsights(
-  history: ReadonlyArray<{ sha: string; message: string; date: string }>,
-) {
-  const calls: Array<{ cursor: string | null; limit: number }> = [];
-  const client = {
-    listCommits: async ({
-      cursor,
-      limit = 50,
-    }: {
-      cursor?: string | null;
-      limit?: number;
-    }) => {
-      calls.push({ cursor: cursor ?? null, limit });
-      const from = cursor ? Number(cursor) : 0;
-      // Like the providers: the subject line, and the rest as `body`.
-      const items = history.slice(from, from + limit).map((c) => {
-        const [subject = "", ...rest] = c.message.split("\n");
-        const body = rest.join("\n").trim();
-        return {
-          sha: c.sha,
-          date: c.date,
-          message: subject,
-          ...(body ? { body } : {}),
-          author: { name: "Ana", email: null, login: null },
-        };
-      });
-      return {
-        items,
-        nextCursor: from + limit < history.length ? String(from + limit) : null,
-      };
-    },
-  } as unknown as RepoInsightsClient;
-  return { client, calls };
-}
-
-/** The schemaHash test vector shared with @decocms/blocks `deco content`. */
+/** A Blocks v8 schema (`"blocksMajor": 8`). */
 export const SCHEMA_TEXT =
   '{\n  "version": "8.1.0-next.7",\n  "blocksMajor": 8,\n  "definitions": { "seo": { "type": "object", "title": "Seo" } },\n  "root": {}\n}\n';
-export const SCHEMA_HASH =
-  "00b083655ee7af02aa92dbff85e402857bb1e50c253a579dbab23498a7842c98";
-
-/**
- * The draft store as another API process has it: Studio runs several (pods,
- * and two per pod), each with its own in-process draft lock, and a second
- * instance of the module is one of them.
- */
-export async function otherApiProcess(): Promise<
-  typeof import("./draft-store")
-> {
-  const specifier = "./draft-store";
-  return import(`${specifier}?process=2`);
-}
-
-/**
- * A delivery store whose next PUT, once `hold()` is called, waits for
- * `release()`: the writer has read the object, and another process's whole
- * save can land before it writes. `atPut` resolves when the PUT is waiting.
- */
-export function heldPuts(store: DeliveryStore) {
-  let gate: Promise<void> | null = null;
-  let open = () => {};
-  let reached = () => {};
-  const atPut = new Promise<void>((r) => (reached = r));
-  const held: DeliveryStore = {
-    ...store,
-    async putJson(...args) {
-      if (gate) {
-        const wait = gate;
-        gate = null;
-        reached();
-        await wait;
-      }
-      return store.putJson(...args);
-    },
-  };
-  return {
-    store: held,
-    hold: () => {
-      gate = new Promise<void>((r) => (open = r));
-    },
-    atPut,
-    release: () => open(),
-  };
-}

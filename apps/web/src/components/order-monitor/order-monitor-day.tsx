@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { Calendar } from "@untitledui/icons";
+import { Calendar, ChevronDown } from "@untitledui/icons";
 import {
   Area,
   CartesianGrid,
@@ -860,10 +860,11 @@ export function DayInput({
           variant="outline"
           size="sm"
           aria-label={t("orderMonitor.pickDay")}
-          className="tnum font-normal"
+          className="tnum gap-1 font-normal"
         >
           <Calendar size={14} />
           {value === max ? `${t("orderMonitor.today")} · ${label}` : label}
+          <ChevronDown size={14} className="text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-auto p-0">

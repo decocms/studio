@@ -65,6 +65,8 @@ export interface Settings {
    *  does NOT implicitly get cross-org kanban, and a member of an admin org
    *  does NOT get /api/_admin. Never union the two. */
   taskBoardAdminOrgIds: string[];
+  feedbackOrgId: string | undefined;
+  feedbackProjectId: string | undefined;
   /** Shared secret for server-to-server calls to /api/_admin (DEPLOYMENT_ADMIN_TOKEN),
    *  sent as `x-deployment-admin-token`. Read-only routes and member-add only —
    *  no impersonation. Unset = header ignored entirely. */
@@ -200,6 +202,9 @@ export interface Settings {
    *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
    *  Shortened only by e2e. */
   boardTransitionSettleSeconds: number;
+  /** Least time between two decofile autosave commits to one branch
+   *  (`DECOFILE_COMMIT_GAP_SECONDS`, default 5). Shortened only by e2e. */
+  decofileCommitGapSeconds: number;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap
@@ -354,6 +359,8 @@ export interface Settings {
   deliveryR2Endpoint: string | undefined;
   /** test-only: overrides `https://delivery.decocms.com` in draft pointers. */
   deliveryPublicOrigin: string | undefined;
+  /** test-only: a prefix for every delivery key (E2E writes under `spikes/e2e/`). */
+  deliveryKeyPrefix: string | undefined;
   /** Ed25519 private key (base64 PKCS8) that signs site tokens. */
   siteTokenSigningKey: string | undefined;
   /**

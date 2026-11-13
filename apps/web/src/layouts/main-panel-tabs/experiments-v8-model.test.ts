@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { namedRuleUses } from "@/components/sections-editor/named-rule-uses";
+import { publishedDecofile } from "@/components/sections-editor/use-published-content";
 import {
+  draftHasUnpublishedTests,
   experimentRows,
+  liveExperimentRows,
   removedExperiments,
-  contentSearchForUse,
 } from "./experiments-v8-model";
 
 const lazy = (value: unknown) => ({ __resolveType: "lazy", value });
@@ -41,26 +42,21 @@ describe("experimentRows", () => {
     },
   };
 
-  it("lists running tests first, then everyone, then off, with uses and draft marks", () => {
-    const uses = namedRuleUses({
-      decofile: draft,
-      changeCount: 1,
-      sides: {
-        experiments: {
-          kind: "set",
-          before: published.experiments,
-          after: draft.experiments,
-          version: "v2",
-          baseVersion: "v1",
-        },
+  it("lists running tests first, then everyone, then off, with draft marks", () => {
+    const live = publishedDecofile(draft, {
+      experiments: {
+        kind: "set",
+        before: published.experiments,
+        after: draft.experiments,
+        version: "v2",
+        baseVersion: "v1",
       },
     });
-    expect(experimentRows(draft, uses)).toEqual([
+    expect(experimentRows(draft, live)).toEqual([
       {
         name: "hero-test",
         share: 20,
         status: "running",
-        uses: 1,
         entryState: "changed",
         publishedShare: 50,
       },
@@ -68,34 +64,31 @@ describe("experimentRows", () => {
         name: "new-test",
         share: 50,
         status: "running",
-        uses: 0,
         entryState: "new",
       },
       {
         name: "ship-test",
         share: 100,
         status: "everyone",
-        uses: 0,
         entryState: "new",
       },
       {
         name: "old-test",
         share: 0,
         status: "off",
-        uses: 0,
         entryState: "published",
       },
     ]);
-    expect(removedExperiments(draft, uses)).toEqual(["gone-test"]);
+    expect(removedExperiments(draft, live)).toEqual(["gone-test"]);
   });
 
   it("reads the draft alone while the published site isn't known", () => {
     const rows = experimentRows(draft, null);
-    expect(rows.map((r) => [r.name, r.entryState, r.uses])).toEqual([
-      ["hero-test", null, 0],
-      ["new-test", null, 0],
-      ["ship-test", null, 0],
-      ["old-test", null, 0],
+    expect(rows.map((r) => [r.name, r.entryState])).toEqual([
+      ["hero-test", null],
+      ["new-test", null],
+      ["ship-test", null],
+      ["old-test", null],
     ]);
     expect(removedExperiments(draft, null)).toEqual([]);
   });
@@ -123,69 +116,48 @@ describe("experimentRows", () => {
   });
 });
 
-describe("contentSearchForUse", () => {
-  it("opens a page by its key and anything else in Sections", () => {
-    expect(
-      contentSearchForUse({ blockKey: "pages-home-1", blockKind: "page" }),
-    ).toStrictEqual({
-      contentPageId: "pages-home-1",
-      contentCollection: undefined,
-      contentItem: undefined,
-      contentPageVariant: undefined,
-      contentSection: undefined,
-      contentVariant: undefined,
-    });
-    expect(
-      contentSearchForUse({ blockKey: "banner", blockKind: "section" }),
-    ).toStrictEqual({
-      contentPageId: undefined,
-      contentCollection: "sections",
-      contentItem: "banner",
-      contentPageVariant: undefined,
-      contentSection: undefined,
-      contentVariant: undefined,
-    });
-  });
-
-  it("opens on the variant that uses the name", () => {
-    expect(
-      contentSearchForUse({
-        blockKey: "pages-home-1",
-        blockKind: "page",
-        focus: { pageVariant: 1, section: 2, variant: 0 },
-      }),
-    ).toMatchObject({
-      contentPageId: "pages-home-1",
-      contentPageVariant: 1,
-      contentSection: 2,
-      contentVariant: 0,
-    });
-    expect(
-      contentSearchForUse({
-        blockKey: "banner",
-        blockKind: "section",
-        focus: { variant: 3 },
-      }),
-    ).toMatchObject({ contentItem: "banner", contentVariant: 3 });
-  });
-
-  it("clears a place an earlier Open left in the URL", () => {
-    const earlier = {
-      contentPageId: "pages-home-1",
-      contentSection: 4,
-      contentVariant: 2,
+describe("liveExperimentRows", () => {
+  it("lists the published tests, all published, running first", () => {
+    const published = {
+      experiments: { __resolveType: "split-traffic", off: 0, hero: 40 },
     };
-    expect({
-      ...earlier,
-      ...contentSearchForUse({
-        blockKey: "pages-sale-1",
-        blockKind: "page",
-        focus: {},
-      }),
-    }).toMatchObject({
-      contentPageId: "pages-sale-1",
-      contentSection: undefined,
-      contentVariant: undefined,
-    });
+    expect(liveExperimentRows(published)).toEqual([
+      { name: "hero", share: 40, status: "running", entryState: "published" },
+      { name: "off", share: 0, status: "off", entryState: "published" },
+    ]);
+  });
+
+  it("is empty when nothing is published", () => {
+    expect(liveExperimentRows({})).toEqual([]);
+  });
+});
+
+describe("draftHasUnpublishedTests", () => {
+  const tests = (values: Record<string, number>) => ({
+    experiments: { __resolveType: "split-traffic", ...values },
+  });
+  const published = tests({ hero: 40, menu: 10 });
+
+  it("is false when the draft has the published tests", () => {
+    expect(
+      draftHasUnpublishedTests(tests({ menu: 10, hero: 40 }), published),
+    ).toBe(false);
+  });
+
+  it("is true when the draft adds, changes or removes a test", () => {
+    expect(
+      draftHasUnpublishedTests(
+        tests({ hero: 40, menu: 10, new: 5 }),
+        published,
+      ),
+    ).toBe(true);
+    expect(
+      draftHasUnpublishedTests(tests({ hero: 50, menu: 10 }), published),
+    ).toBe(true);
+    expect(draftHasUnpublishedTests(tests({ hero: 40 }), published)).toBe(true);
+  });
+
+  it("is false while the published content isn't known", () => {
+    expect(draftHasUnpublishedTests(tests({ hero: 1 }), null)).toBe(false);
   });
 });

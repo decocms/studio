@@ -26,6 +26,8 @@ import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
 import { isAlreadyMemberError } from "@/auth/is-already-member-error";
 import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
+import { getObjectStorageS3Service } from "@/object-storage/factory";
+import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import {
@@ -39,13 +41,8 @@ import {
   decoSiteExists,
   type SiteClaimCandidate,
 } from "@/hosted/claim-site";
-import {
-  projectPackagePath,
-  syncBlocksMajorMarker,
-} from "@/hosted/blocks-major";
-import { mainIsV8, projectSite } from "@/hosted/scope";
-import { contentClientForProjectRepo } from "@/git-providers";
-import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
+import { projectSite } from "@/hosted/scope";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
@@ -392,6 +389,7 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name as name",
         "organization.slug as slug",
         "organization.createdAt as createdAt",
+        "organization.logo as logo",
         // Soft-delete lives in metadata.archived — surface it to badge the row.
         "organization.metadata as metadata",
       ])
@@ -413,6 +411,7 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name",
         "organization.slug",
         "organization.createdAt",
+        "organization.logo",
         "organization.metadata",
       ])
       .orderBy("organization.createdAt", "desc")
@@ -433,6 +432,64 @@ export function createAdminRoutes(): Hono<Env> {
         archived: isOrgArchived({ metadata }),
       })),
     });
+  });
+
+  // An org's logo as image bytes, for server-to-server callers holding the
+  // admin token (deco Atlas shows a client's org logo as its account's). The
+  // `logo` column usually points at the members-only /api/:org/files route
+  // (see auth/hoist-org-logo.ts), which such a caller can't open.
+  app.get("/orgs/:orgId/logo", async (c) => {
+    const orgId = c.req.param("orgId");
+    const org = await getDb()
+      .db.selectFrom("organization")
+      .select("logo")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    const logo = org?.logo;
+    if (!logo) return c.json({ error: "No logo" }, 404);
+
+    const image = (body: BodyInit | null, type: string) => {
+      if (!type.startsWith("image/"))
+        return c.json({ error: "The logo is not an image" }, 404);
+      const headers = new Headers({
+        "Content-Type": type,
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+      });
+      // An SVG logo must not run script wherever it is served from.
+      if (type.startsWith("image/svg"))
+        headers.set(
+          "Content-Security-Policy",
+          "default-src 'none'; style-src 'unsafe-inline'",
+        );
+      return new Response(body, { headers });
+    };
+
+    // Inline (an SVG the hoister keeps as data:).
+    const inline = /^data:([^;,]+);base64,(.+)$/s.exec(logo);
+    if (inline) return image(Buffer.from(inline[2]!, "base64"), inline[1]!);
+
+    // Hoisted to object storage: /api/<org>/files/<key> → that org's object.
+    const key = /\/api\/[^/]+\/files\/(.+)$/.exec(
+      logo.startsWith("http") ? new URL(logo).pathname : logo,
+    )?.[1];
+    const url = key
+      ? await (async () => {
+          const s3 = getObjectStorageS3Service();
+          return s3
+            ? createBoundObjectStorage(s3, orgId).presignedGetUrl(
+                decodeURIComponent(key),
+                300,
+              )
+            : null;
+        })()
+      : logo.startsWith("https://")
+        ? logo
+        : null;
+    if (!url) return c.json({ error: "Logo not reachable" }, 404);
+    const upstream = await fetch(url);
+    if (!upstream.ok) return c.json({ error: "Logo not found" }, 404);
+    return image(upstream.body, upstream.headers.get("content-type") ?? "");
   });
 
   app.post("/orgs/:orgId/members", async (c) => {
@@ -960,17 +1017,15 @@ export function createAdminRoutes(): Hono<Env> {
   });
 
   /**
-   * Links every existing Blocks v8 project (main's `.deco/schema.gen.json`
-   * says `blocksMajor: 8`) to the site it names (`metadata.siteSlug`) in
-   * `org_sites`, as project creation now does, claiming a free slug for its
-   * org first. Safe to re-run; never takes a slug another org, project or
-   * deco.cx has, nor a deleted org's (reported as `refused`), and links
-   * nobody to a slug several orgs' or projects name (`ambiguous`). A dry run
-   * unless the body says `{"dryRun": false}`. A route rather than a
-   * migration: telling a v8 project needs a GitHub read. A real run also
-   * syncs every project's Blocks v8 marker (`metadata.blocksMajor`, the
-   * cached `isV8Schema` answer for main), in every org, and gives each
-   * linked project its site's managed asset config (Studio's S3).
+   * Links every existing Blocks v8 project (its "Blocks v8 site" switch
+   * on, `isBlocksV8Project`) to the site it names
+   * (`metadata.siteSlug`) in `org_sites`, as project creation now does,
+   * claiming a free slug for its org first. Safe to re-run; never takes a
+   * slug another org, project or deco.cx has, nor a deleted org's (reported
+   * as `refused`), and links nobody to a slug several orgs' or projects name
+   * (`ambiguous`). A dry run unless the body says `{"dryRun": false}`. A real
+   * run also gives each linked project its site's managed asset config
+   * (Studio's S3). Reads no repository.
    */
   app.post("/hosted/site-claims/backfill", async (c) => {
     const raw = (await c.req.json().catch(() => ({}))) as {
@@ -996,14 +1051,11 @@ export function createAdminRoutes(): Hono<Env> {
         "connections.id as id",
         "connections.organization_id as organizationId",
         "connections.metadata as metadata",
-        "organization.slug as orgSlug",
-        "organization.name as orgName",
       ])
       .where("connections.connection_type", "=", "VIRTUAL")
       .orderBy("connections.created_at", "asc")
       .execute();
     const candidates: SiteClaimCandidate[] = [];
-    const orgs = new Map<string, { id: string; slug: string; name: string }>();
     for (const row of rows) {
       let metadata: Record<string, unknown> | null = null;
       try {
@@ -1021,11 +1073,6 @@ export function createAdminRoutes(): Hono<Env> {
         projectId: row.id,
         slug,
       });
-      orgs.set(row.organizationId, {
-        id: row.organizationId,
-        slug: row.orgSlug,
-        name: row.orgName,
-      });
     }
     const projects = new VirtualMCPStorage(db);
     const report = await backfillSiteClaims({
@@ -1038,37 +1085,9 @@ export function createAdminRoutes(): Hono<Env> {
       dryRun,
       isV8: async ({ organizationId, projectId }) => {
         const [project] = await projects.listByIds(organizationId, [projectId]);
-        const metadata = (project?.metadata ?? null) as Record<
-          string,
-          unknown
-        > | null;
-        const repository = parseRepositoryBinding(
-          metadata,
-          project?.connections?.map((conn) => conn.connection_id) ?? [],
+        return isBlocksV8Project(
+          (project?.metadata ?? null) as Record<string, unknown> | null,
         );
-        if (!repository) return false;
-        // Credentials resolve against the project's org, as in admin-prompts.
-        const client = await contentClientForProjectRepo(
-          { ...ctx, organization: orgs.get(organizationId)! },
-          organizationId,
-          repository,
-        );
-        const isV8 = await mainIsV8(
-          client,
-          projectPackagePath(metadata),
-          await client.getDefaultBranch(),
-        );
-        // The project's Blocks v8 marker (hosted/blocks-major.ts). Run this
-        // once before release so existing v8 projects open in Fast Preview.
-        if (!dryRun && project) {
-          await syncBlocksMajorMarker(
-            projects,
-            { id: projectId, organizationId, metadata },
-            isV8,
-            actorId,
-          );
-        }
-        return isV8;
       },
     });
     auditAdminAction("hosted_site_claims_backfill", {

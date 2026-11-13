@@ -288,36 +288,25 @@ function isDecoStaffEmail(email: string | null | undefined): boolean {
   return !!email && email.trim().toLowerCase().endsWith("@deco.cx");
 }
 
-/**
- * Whether the signed-in user is deco.cx staff (by email). Cosmetic gating for
- * internal-only surfaces still rolling out (e.g. the "Import from deco.cx"
- * create-agent option); a brief pre-resolution render as `false` is harmless.
- */
-export function useIsDecoStaff(): boolean {
-  const { data: session } = authClient.useSession();
-  return isDecoStaffEmail(session?.user?.email);
-}
-
-/** The three control-plane views, each toggled by its own org flag. */
+/** The control-plane views, each toggled by its own org flag. */
 export interface ControlPlaneViews {
   hosting: boolean;
-  analytics: boolean;
   e2e: boolean;
   monitor: boolean;
   experiments: boolean;
 }
 
 /**
- * Per-view gate for the Deco control-plane tabs (Hosting · Deco Analytics ·
- * E2E). Each view is enabled when ANY of these is on:
+ * Per-view gate for the Deco control-plane tabs (Hosting · E2E · Monitor ·
+ * Experiments). Each view is enabled when ANY of these is on:
  *  - local mode — always in local dev (deco-infra feature, never self-hosted,
  *    so no reason to hide it from a developer whose deployment wired the BFF);
  *  - deco.cx staff (by email) — always, while the surface rolls out;
- *  - a deployment-wide GA switch — the "open to every org at once" env: the
- *    control-plane trio (Hosting/Analytics/E2E) shares `HOSTING_CONTROL_PLANE_GA`;
+ *  - a deployment-wide GA switch — the "open to every org at once" env: Hosting,
+ *    E2E and Experiments share `HOSTING_CONTROL_PLANE_GA`;
  *    Monitor has its own `MONITOR_GA`;
- *  - the view's own org flag (`hosting_enabled` / `deco_analytics_enabled` /
- *    `e2e_enabled` / `monitor_enabled`) — the per-client lever set via
+ *  - the view's own org flag (`hosting_enabled` / `e2e_enabled` /
+ *    `monitor_enabled` / `experiments_enabled`) — the per-client lever set via
  *    `organization_settings`.
  *
  * A client never sees a view — even an org admin — until deco.cx turns that
@@ -333,13 +322,11 @@ export function useControlPlaneViews(): ControlPlaneViews {
   const controlPlaneGa = config.hostingControlPlaneGa === true;
   const monitorGa = config.monitorGa === true;
   const hostingFlag = useOrgFlag("hosting_enabled");
-  const analyticsFlag = useOrgFlag("deco_analytics_enabled");
   const e2eFlag = useOrgFlag("e2e_enabled");
   const monitorFlag = useOrgFlag("monitor_enabled");
   const experimentsFlag = useOrgFlag("experiments_enabled");
   return {
     hosting: staffOrLocal || controlPlaneGa || hostingFlag,
-    analytics: staffOrLocal || controlPlaneGa || analyticsFlag,
     e2e: staffOrLocal || controlPlaneGa || e2eFlag,
     monitor: staffOrLocal || monitorGa || monitorFlag,
     experiments: staffOrLocal || controlPlaneGa || experimentsFlag,

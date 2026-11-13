@@ -3,22 +3,18 @@
  * with no `deco serve` yet, and a project's Preview while Localhost waits for
  * `deco serve` or for the app it reports. Same layout everywhere: the
  * "your computer ↔ Studio" wire (a dot shuttles on it while waiting), a
- * title and lead, optional alerts, numbered steps (with a copyable command)
- * and a footer.
+ * title and lead, optional alerts, steps (numbered when there are several)
+ * and a footer. Studio never shows a command to run.
  */
 
 import { type ReactNode, useId } from "react";
 import { Browser, Laptop01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { CommandSnippet } from "./deco-serve-notices";
 
 export interface ServeConnectStep {
   title: string;
-  /** Text above the command. */
   body?: ReactNode;
-  /** A terminal command, shown with a Copy button. */
-  command?: string;
-  /** Anything under the command: a note, a status line, an alert, a button. */
+  /** Anything under the body: a note, a status line, an alert, a button. */
   after?: ReactNode;
 }
 
@@ -91,7 +87,6 @@ function Step({
         {step.body && (
           <p className="text-sm text-muted-foreground">{step.body}</p>
         )}
-        {step.command && <CommandSnippet command={step.command} />}
         {step.after}
       </div>
     </li>

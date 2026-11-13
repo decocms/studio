@@ -6,7 +6,10 @@ import { useChatTask } from "@/components/chat/context";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { hasEditableDecoContent } from "@/components/sections-editor/page-list";
-import { useDecofile } from "@/components/sections-editor/use-decofile";
+import {
+  useDecofile,
+  useDecofileCacheKey,
+} from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
 import {
   lastPreviewPageKey,
@@ -25,7 +28,7 @@ import {
   isSiteNotOwned,
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { isProtocolProject } from "@/components/sections-editor/content-backend";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { isNoSchemaMeta } from "@/components/sections-editor/schemaless";
@@ -41,6 +44,7 @@ const SectionsEditor = lazy(() =>
 export function BlocksPanel({
   virtualMcpId,
   externalSelection = null,
+  onSectionPicked,
   onViewJsonFile,
 }: {
   virtualMcpId: string;
@@ -50,6 +54,8 @@ export function BlocksPanel({
    * distinct selections, so re-clicking one reopens its form.
    */
   externalSelection?: { index: number; seq: number } | null;
+  /** A section picked in the list: the preview scrolls it into view. */
+  onSectionPicked?: (index: number) => void;
   /**
    * Open the page's raw JSON in a side panel (Preview owns the slot). When
    * omitted the editor falls back to its local modal.
@@ -77,6 +83,7 @@ export function BlocksPanel({
     : null;
   const contentBackend = useContentBackend(virtualMcpId, currentBranch);
   const decofile = useDecofile(fetchParams, { fetchEnabled: devServerReady });
+  const editorScope = useDecofileCacheKey(fetchParams);
   const meta = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   const state = resolveBlocksTabState({
     lifecyclePhase: sandboxEvents.lifecycle.phase,
@@ -116,7 +123,11 @@ export function BlocksPanel({
       target?.kind === "page" || target?.kind === "section" ? target.key : null;
     return panel(
       <SchemalessEditor
-        key={initialKey ?? ""}
+        key={
+          contentBackend.kind === "legacy"
+            ? (initialKey ?? "")
+            : `${editorScope}:${initialKey ?? ""}`
+        }
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}
@@ -150,6 +161,7 @@ export function BlocksPanel({
   if (target?.kind === "loader" && decofile.data && meta.data) {
     return editorPanel(
       <GlobalLoaderEditor
+        key={contentBackend.kind === "legacy" ? undefined : editorScope}
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}
@@ -196,7 +208,11 @@ export function BlocksPanel({
       }
     >
       <SectionsEditor
-        key={editorKey}
+        key={
+          contentBackend.kind === "legacy"
+            ? editorKey
+            : `${editorScope}:${editorKey}`
+        }
         orgSlug={org.slug}
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? ""}
@@ -206,6 +222,7 @@ export function BlocksPanel({
         activePageBlockKey={activePageBlockKey}
         activeGlobalBlockKey={activeGlobalBlockKey}
         externalSelection={activeGlobalBlockKey ? null : externalSelection}
+        onSectionPicked={activeGlobalBlockKey ? undefined : onSectionPicked}
         initialEditSeo={
           !!activePageBlockKey &&
           workspace.state.editSeoPageKey === activePageBlockKey

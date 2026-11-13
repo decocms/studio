@@ -89,9 +89,8 @@ export function SiteNotOwnedState() {
 }
 
 /**
- * The editor waiting for the schema that decides v7 or v8 (the content
- * backend is `pending`). When that read failed and is retried, it says so,
- * in neutral words: the site may be either, so neither editor shows.
+ * A v8 project's editor waiting for its content backend (`pending`). When
+ * the sandbox failed before its first answer and is retried, it says so.
  */
 export function ContentBackendWaiting({
   backend,
@@ -108,11 +107,7 @@ export function ContentBackendWaiting({
       <Spinner className="size-5 text-muted-foreground" />
       {retrying && (
         <p className="max-w-xs text-center text-sm text-muted-foreground">
-          {t(
-            retrying === "github"
-              ? "siteEditor.retrying.github"
-              : "siteEditor.retrying.sandbox",
-          )}
+          {t("siteEditor.retrying.sandbox")}
         </p>
       )}
     </div>

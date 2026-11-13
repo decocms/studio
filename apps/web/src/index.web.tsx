@@ -5,8 +5,10 @@ import { Providers } from "@/providers/providers";
 import { router } from "@/router";
 import "../index.css";
 import { migrateLegacyStorageKeys } from "@/lib/legacy-storage";
+import { captureLegacyAdminArrival } from "@/lib/legacy-admin-arrival";
 
 migrateLegacyStorageKeys(window.localStorage);
+captureLegacyAdminArrival(window.location.search);
 
 const rootElement = document.getElementById("root")!;
 

@@ -3,6 +3,7 @@ import { VirtualMcpSidebarViewSchema } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import {
   DEFAULT_PROJECT_SIDEBAR_VIEWS,
+  PROJECT_NAV_VIEW_IDS,
   PROJECT_SIDEBAR_VIEW_IDS,
   availableProjectSidebarViews,
   defaultMainViewAfterSidebarToggle,
@@ -17,9 +18,11 @@ import {
   projectSidebarViewUnavailable,
   resolveProjectMainViewContext,
   resolveProjectSidebarViews,
+  selectedProjectNavViews,
   selectedProjectSidebarViews,
   toggleProjectSidebarView,
   type ProjectNativeViewPresence,
+  type ProjectSidebarOfferPresence,
 } from "./project-sidebar-views";
 
 const nativePresence = (
@@ -29,17 +32,34 @@ const nativePresence = (
   releases: present.includes("releases"),
   hosting: present.includes("hosting"),
   e2e: present.includes("e2e"),
-  analytics: present.includes("analytics"),
-  cdn: present.includes("cdn"),
-  experiments: present.includes("experiments"),
   calendar: present.includes("calendar"),
+  experiments: present.includes("experiments"),
+  blog: present.includes("blog"),
 });
 
+const offerPresence = (
+  present: Array<keyof ProjectSidebarOfferPresence>,
+): ProjectSidebarOfferPresence => ({
+  calendar: present.includes("calendar"),
+  hosting: present.includes("hosting"),
+  "site-editor": present.includes("site-editor"),
+  blog: present.includes("blog"),
+});
+const NO_SITE = offerPresence([]);
+const BLOCKS = offerPresence(["calendar", "site-editor"]);
+const HOSTED = offerPresence(["hosting", "site-editor"]);
+
+/** The Blocks site views a project that already saw the top rows is offered. */
+const blocksOffers = (seen: Array<"calendar" | "experiments"> = []) =>
+  offeredProjectSidebarViews([...PROJECT_NAV_VIEW_IDS, ...seen], BLOCKS);
+
 describe("project sidebar views", () => {
-  test("covers every persisted sidebar id exactly once", () => {
-    expect([...PROJECT_SIDEBAR_VIEW_IDS]).toEqual([
-      ...VirtualMcpSidebarViewSchema.options,
-    ]);
+  test("covers every persisted sidebar id but the retired apps, once", () => {
+    // Retired apps, moved into Monitor; saved layouts may still name them.
+    const retired = new Set(["analytics", "cdn"]);
+    expect<string[]>([...PROJECT_SIDEBAR_VIEW_IDS]).toEqual(
+      VirtualMcpSidebarViewSchema.options.filter((v) => !retired.has(v)),
+    );
     expect(new Set(PROJECT_SIDEBAR_VIEW_IDS).size).toBe(
       PROJECT_SIDEBAR_VIEW_IDS.length,
     );
@@ -57,49 +77,30 @@ describe("project sidebar views", () => {
   test("combines source and native presence in sidebar order", () => {
     const presence = projectSidebarViewPresence(
       true,
-      nativePresence(["cdn", "assets", "e2e"]),
+      nativePresence(["e2e", "assets", "hosting"]),
     );
 
     expect(availableProjectSidebarViews(presence)).toEqual([
       "overview",
+      "context",
+      "monitor",
+      "plan",
       "reports",
       "board",
       "site-editor",
       "assets",
+      "hosting",
       "e2e",
-      "cdn",
       "automations",
     ]);
   });
 
-  test("gates experiments on a CMS source, not the flag alone", () => {
-    // Flag on (native.experiments) but no clonable source → no experiments row.
-    expect(
-      availableProjectSidebarViews(
-        projectSidebarViewPresence(false, nativePresence(["experiments"])),
-      ),
-    ).toEqual(["automations"]);
-    // With a clonable source, the flag surfaces it.
-    expect(
-      availableProjectSidebarViews(
-        projectSidebarViewPresence(true, nativePresence(["experiments"])),
-      ),
-    ).toEqual([
-      "overview",
-      "reports",
-      "board",
-      "site-editor",
-      "experiments",
-      "automations",
-    ]);
-  });
-
-  test("keeps only automations when a project has no source or native views", () => {
+  test("keeps the sourceless top rows and automations when a project has no source or native views", () => {
     expect(
       availableProjectSidebarViews(
         projectSidebarViewPresence(false, nativePresence([])),
       ),
-    ).toEqual(["automations"]);
+    ).toEqual(["context", "monitor", "plan", "automations"]);
   });
 
   test("keeps org destinations present while gating their project-scoped form", () => {
@@ -108,12 +109,20 @@ describe("project sidebar views", () => {
       availableProjectSidebarViews(
         projectMainViewPresence(null, false, native),
       ),
-    ).toEqual(["overview", "reports", "board", "automations"]);
+    ).toEqual([
+      "overview",
+      "context",
+      "monitor",
+      "plan",
+      "reports",
+      "board",
+      "automations",
+    ]);
     expect(
       availableProjectSidebarViews(
         projectMainViewPresence("vir_1", false, native),
       ),
-    ).toEqual(["automations"]);
+    ).toEqual(["context", "monitor", "plan", "automations"]);
   });
 
   test("uses the scoped project instead of the org shell for destination main views", () => {
@@ -136,7 +145,16 @@ describe("project sidebar views", () => {
           nativePresence([]),
         ),
       ),
-    ).toEqual(["overview", "reports", "board", "site-editor", "automations"]);
+    ).toEqual([
+      "overview",
+      "context",
+      "monitor",
+      "plan",
+      "reports",
+      "board",
+      "site-editor",
+      "automations",
+    ]);
   });
 
   test("reuses an agent-route shell and fails open while a destination scope resolves", () => {
@@ -160,6 +178,7 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
+      "blog",
       "assets",
     ]);
     expect(effectiveProjectSidebarViews(null)).toEqual(
@@ -170,46 +189,27 @@ describe("project sidebar views", () => {
     );
   });
 
-  test("v7: an unversioned project's defaults never include Experiments, as before", () => {
+  test("v8: an unversioned project also shows Calendar", () => {
     const presence = projectSidebarViewPresence(
       true,
-      nativePresence(["experiments"]),
-    );
-    expect(DEFAULT_PROJECT_SIDEBAR_VIEWS).toEqual([
-      "overview",
-      "reports",
-      "board",
-      "site-editor",
-    ]);
-    expect(
-      selectedProjectSidebarViews(
-        undefined,
-        presence,
-        undefined,
-        offeredProjectSidebarViews(undefined, false),
-      ),
-    ).toEqual(["overview", "reports", "board", "site-editor"]);
-  });
-
-  test("v8: an unversioned project also shows Experiments and Calendar", () => {
-    const presence = projectSidebarViewPresence(
-      true,
-      nativePresence(["experiments", "calendar"]),
+      nativePresence(["calendar"]),
     );
     expect(
       selectedProjectSidebarViews(
         undefined,
         presence,
         undefined,
-        offeredProjectSidebarViews(undefined, true),
+        offeredProjectSidebarViews(undefined, BLOCKS),
       ),
     ).toEqual([
       "overview",
+      "context",
+      "monitor",
+      "plan",
       "reports",
       "board",
       "site-editor",
       "calendar",
-      "experiments",
     ]);
   });
 
@@ -221,15 +221,15 @@ describe("project sidebar views", () => {
   test("requires both presence and selection", () => {
     const presence = projectSidebarViewPresence(
       true,
-      nativePresence(["assets", "e2e", "cdn"]),
+      nativePresence(["assets", "e2e"]),
     );
     expect(
       selectedProjectSidebarViews(
-        ["board", "cdn", "assets", "hosting", "automations"],
+        ["board", "e2e", "assets", "hosting", "automations"],
         presence,
         1,
       ),
-    ).toEqual(["board", "assets", "cdn", "automations"]);
+    ).toEqual(["board", "assets", "e2e", "automations"]);
     expect(selectedProjectSidebarViews(undefined, presence)).toEqual([
       "overview",
       "reports",
@@ -299,16 +299,27 @@ describe("project sidebar views", () => {
       "reports",
       "board",
       "site-editor",
+      "blog",
       "assets",
     ]);
     expect(
       toggleProjectSidebarView(
-        ["cdn", "overview", "cdn", "automations"],
+        ["e2e", "overview", "e2e", "automations"],
         "overview",
         false,
         1,
       ),
-    ).toEqual(["cdn", "automations"]);
+    ).toEqual(["e2e", "automations"]);
+  });
+
+  test("drops the retired Analytics, CDN and Experiments rows from a saved list", () => {
+    expect(
+      selectedProjectSidebarViews(
+        ["analytics", "cdn", "experiments", "board"],
+        projectSidebarViewPresence(true, nativePresence([])),
+        1,
+      ),
+    ).toEqual(["board"]);
   });
 
   test("keeps native routes while presence discovery is pending", () => {
@@ -340,19 +351,16 @@ describe("project sidebar views", () => {
     ).toBe(false);
   });
 
-  test("keeps a Releases deep link while main's schema is being read", () => {
+  test("Releases, Calendar and Experiments deep links follow the v8 switch at once", () => {
     const none = projectSidebarViewPresence(true, nativePresence([]));
-    const settled = { assets: false, siteAccess: false };
-
-    expect(
-      projectSidebarViewUnavailable("releases", none, {
-        ...settled,
-        releases: true,
-      }),
-    ).toBe(false);
-    expect(projectSidebarViewUnavailable("releases", none, settled)).toBe(true);
-    const v8 = projectSidebarViewPresence(true, nativePresence(["releases"]));
-    expect(projectSidebarViewUnavailable("releases", v8, settled)).toBe(false);
+    const pending = { assets: true, siteAccess: true };
+    for (const viewId of ["releases", "calendar", "experiments"] as const) {
+      // The switch off (v7): unavailable, nothing to wait for.
+      expect(projectSidebarViewUnavailable(viewId, none, pending)).toBe(true);
+      // The switch on (v8): there.
+      const v8 = projectSidebarViewPresence(true, nativePresence([viewId]));
+      expect(projectSidebarViewUnavailable(viewId, v8, pending)).toBe(false);
+    }
   });
 
   test("rejects source-backed views immediately when source is absent", () => {
@@ -408,26 +416,25 @@ describe("project sidebar views", () => {
   });
 });
 
-describe("Calendar and Experiments on a Blocks (v8) site", () => {
-  test("show by default as peers of the Site Editor where the site has them", () => {
-    const v8 = projectSidebarViewPresence(
-      true,
-      nativePresence(["experiments", "calendar"]),
-    );
+describe("Calendar on a Blocks (v8) site", () => {
+  test("shows by default as a peer of the Site Editor where the site has it", () => {
+    const v8 = projectSidebarViewPresence(true, nativePresence(["calendar"]));
     expect(
       selectedProjectSidebarViews(
         undefined,
         v8,
         undefined,
-        offeredProjectSidebarViews(undefined, true),
+        offeredProjectSidebarViews(undefined, BLOCKS),
       ),
     ).toEqual([
       "overview",
+      "context",
+      "monitor",
+      "plan",
       "reports",
       "board",
       "site-editor",
       "calendar",
-      "experiments",
     ]);
   });
 
@@ -444,96 +451,69 @@ describe("Calendar and Experiments on a Blocks (v8) site", () => {
   });
 
   test("a saved choice is kept: a turned-off Calendar stays off", () => {
-    const v8 = projectSidebarViewPresence(
-      true,
-      nativePresence(["experiments", "calendar"]),
-    );
-    expect(
-      selectedProjectSidebarViews(["site-editor", "experiments"], v8, 1),
-    ).toEqual(["site-editor", "experiments"]);
+    const v8 = projectSidebarViewPresence(true, nativePresence(["calendar"]));
+    expect(selectedProjectSidebarViews(["site-editor"], v8, 1)).toEqual([
+      "site-editor",
+    ]);
   });
-
-  test.each(["calendar", "experiments"])(
-    "a %s deep link waits while main's schema is read",
-    (view) => {
-      const presence = projectSidebarViewPresence(true, nativePresence([]));
-      expect(
-        projectSidebarViewUnavailable(view, presence, {
-          assets: false,
-          siteAccess: true,
-          calendar: true,
-        }),
-      ).toBe(false);
-      expect(
-        projectSidebarViewUnavailable(view, presence, {
-          assets: false,
-          siteAccess: true,
-          calendar: false,
-        }),
-      ).toBe(true);
-    },
-  );
 });
 
-describe("Experiments and Calendar added once to a Blocks site's saved list", () => {
-  const v8 = projectSidebarViewPresence(
-    true,
-    nativePresence(["experiments", "calendar"]),
-  );
+describe("Calendar added once to a Blocks site's saved list", () => {
+  const v8 = projectSidebarViewPresence(true, nativePresence(["calendar"]));
   const saved = ["site-editor", "releases"] as const;
 
-  test("a list saved before they were defaults gets them on a Blocks site", () => {
-    const offered = offeredProjectSidebarViews(undefined, true);
+  test("a list saved before it was a default gets it on a Blocks site", () => {
+    const offered = blocksOffers();
     expect(offered).toEqual(["calendar", "experiments"]);
     expect(selectedProjectSidebarViews(saved, v8, 1, offered)).toEqual([
       "site-editor",
       "calendar",
-      "experiments",
     ]);
   });
 
   test("never on a v7 site", () => {
-    expect(offeredProjectSidebarViews(undefined, false)).toEqual([]);
-    const v7 = projectSidebarViewPresence(
-      true,
-      nativePresence(["experiments"]),
+    expect(offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, NO_SITE)).toEqual(
+      [],
     );
+    const v7 = projectSidebarViewPresence(true, nativePresence([]));
     expect(
       selectedProjectSidebarViews(
         saved,
         v7,
         1,
-        offeredProjectSidebarViews(undefined, false),
+        offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, NO_SITE),
       ),
     ).toEqual(["site-editor"]);
   });
 
-  test("once: after a save, hiding one sticks", () => {
-    // The editor sees both offered, and hides Calendar.
-    const shown = effectiveProjectSidebarViews(
-      saved,
-      1,
-      offeredProjectSidebarViews(undefined, true),
-    );
+  test("once: after a save, hiding it sticks", () => {
+    // The editor sees Calendar offered, and hides it.
+    const shown = effectiveProjectSidebarViews(saved, 1, blocksOffers());
     const next = toggleProjectSidebarView(shown, "calendar", false, 1);
-    const seen = seenProjectSidebarViewsAfterSave(undefined, true);
-    expect(seen).toEqual(["calendar", "experiments"]);
+    const seen = seenProjectSidebarViewsAfterSave(
+      PROJECT_NAV_VIEW_IDS,
+      BLOCKS,
+      ["site-editor"],
+    );
+    expect(seen).toEqual([...PROJECT_NAV_VIEW_IDS, "calendar", "experiments"]);
     // Read back: nothing is offered again, the saved list decides.
-    const offered = offeredProjectSidebarViews(seen, true);
+    const offered = offeredProjectSidebarViews(seen, BLOCKS);
     expect(offered).toEqual([]);
     expect(selectedProjectSidebarViews(next, v8, 1, offered)).toEqual([
       "site-editor",
-      "experiments",
     ]);
   });
 
-  test("a save on a v7 site leaves them to offer once it becomes a Blocks site", () => {
-    expect(seenProjectSidebarViewsAfterSave(undefined, false)).toBeUndefined();
-    expect(seenProjectSidebarViewsAfterSave(null, false)).toBeNull();
-    expect(seenProjectSidebarViewsAfterSave(["calendar"], false)).toEqual([
-      "calendar",
+  test("a save on a v7 site leaves it to offer once it becomes a Blocks site", () => {
+    const seen = seenProjectSidebarViewsAfterSave(undefined, NO_SITE, [
+      "site-editor",
     ]);
-    expect(offeredProjectSidebarViews(["calendar"], true)).toEqual([
+    expect(seen).toEqual([...PROJECT_NAV_VIEW_IDS]);
+    expect(
+      seenProjectSidebarViewsAfterSave(null, NO_SITE, ["site-editor"]),
+    ).toEqual(seen);
+    expect(offeredProjectSidebarViews(seen, BLOCKS)).toEqual([
+      "calendar",
       "experiments",
     ]);
   });
@@ -544,23 +524,304 @@ describe("Experiments and Calendar added once to a Blocks site's saved list", ()
         undefined,
         v8,
         undefined,
-        offeredProjectSidebarViews(undefined, true),
+        offeredProjectSidebarViews(undefined, BLOCKS),
       ),
     ).toContain("calendar");
   });
 
   test("Calendar is still only where it shows today", () => {
-    const noCalendar = projectSidebarViewPresence(
-      true,
-      nativePresence(["experiments"]),
-    );
+    const noCalendar = projectSidebarViewPresence(true, nativePresence([]));
     expect(
       selectedProjectSidebarViews(
         saved,
         noCalendar,
         1,
-        offeredProjectSidebarViews(undefined, true),
+        offeredProjectSidebarViews(undefined, BLOCKS),
       ),
     ).not.toContain("calendar");
+  });
+});
+
+describe("Experiments on a Blocks (v8) site", () => {
+  const v8 = projectSidebarViewPresence(
+    true,
+    nativePresence(["calendar", "experiments"]),
+  );
+
+  test("shows as a peer of the Site Editor, after Calendar", () => {
+    expect(
+      selectedProjectSidebarViews(
+        undefined,
+        v8,
+        undefined,
+        offeredProjectSidebarViews(undefined, BLOCKS),
+      ),
+    ).toEqual([
+      "overview",
+      "context",
+      "monitor",
+      "plan",
+      "reports",
+      "board",
+      "site-editor",
+      "calendar",
+      "experiments",
+    ]);
+  });
+
+  test("is absent where the site isn't v8 (v7 tests stay in Monitor), and needs a source", () => {
+    const v7 = projectSidebarViewPresence(true, nativePresence([]));
+    expect(v7.experiments).toBe(false);
+    expect(
+      selectedProjectSidebarViews(
+        ["site-editor", "experiments"],
+        v7,
+        1,
+        offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, NO_SITE),
+      ),
+    ).toEqual(["site-editor"]);
+    expect(
+      projectSidebarViewPresence(false, nativePresence(["experiments"]))
+        .experiments,
+    ).toBe(false);
+  });
+
+  test("offered once to a list that already saw Calendar", () => {
+    const offered = blocksOffers(["calendar"]);
+    expect(offered).toEqual(["experiments"]);
+    expect(
+      selectedProjectSidebarViews(["site-editor"], v8, 1, offered),
+    ).toEqual(["site-editor", "experiments"]);
+  });
+
+  test("once: hidden after a save, it stays hidden", () => {
+    const seen = seenProjectSidebarViewsAfterSave(
+      [...PROJECT_NAV_VIEW_IDS, "calendar"],
+      BLOCKS,
+      ["site-editor"],
+    );
+    expect(seen).toEqual([...PROJECT_NAV_VIEW_IDS, "calendar", "experiments"]);
+    const offered = offeredProjectSidebarViews(seen, BLOCKS);
+    expect(offered).toEqual([]);
+    expect(
+      selectedProjectSidebarViews(["site-editor"], v8, 1, offered),
+    ).toEqual(["site-editor"]);
+  });
+
+  test("a deep link is unavailable at once where it's absent", () => {
+    const none = projectSidebarViewPresence(true, nativePresence([]));
+    expect(
+      projectSidebarViewUnavailable("experiments", none, {
+        assets: true,
+        siteAccess: true,
+      }),
+    ).toBe(true);
+    expect(
+      projectSidebarViewUnavailable("experiments", v8, {
+        assets: false,
+        siteAccess: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("a project's top rows", () => {
+  /** A list saved before the top rows could be hidden. */
+  const saved = ["site-editor", "automations"] as const;
+
+  test("every project is offered them once on top of its saved list", () => {
+    expect(offeredProjectSidebarViews(undefined, NO_SITE)).toEqual([
+      ...PROJECT_NAV_VIEW_IDS,
+    ]);
+    expect([
+      ...selectedProjectNavViews(
+        { sidebarViews: [...saved], sidebarViewsVersion: 1 },
+        undefined,
+      ),
+    ]).toEqual([...PROJECT_NAV_VIEW_IDS]);
+  });
+
+  test("once: after a save, hiding one sticks", () => {
+    const shown = effectiveProjectSidebarViews(
+      saved,
+      1,
+      offeredProjectSidebarViews(undefined, NO_SITE),
+    );
+    const next = toggleProjectSidebarView(shown, "overview", false, 1);
+    const metadata = {
+      sidebarViews: next,
+      sidebarViewsVersion: 1 as const,
+      sidebarViewsSeen: seenProjectSidebarViewsAfterSave(undefined, NO_SITE, [
+        "site-editor",
+      ]),
+    };
+    expect([...selectedProjectNavViews(metadata, undefined)]).toEqual([
+      "context",
+      "monitor",
+      "plan",
+      "board",
+    ]);
+  });
+
+  test("follow an edit in flight before it is saved", () => {
+    expect([
+      ...selectedProjectNavViews(
+        { sidebarViews: [...saved], sidebarViewsVersion: 1 },
+        ["context", "board"],
+      ),
+    ]).toEqual(["context", "board"]);
+  });
+
+  test("all show until the project loads", () => {
+    expect([...selectedProjectNavViews(undefined, undefined)]).toEqual([
+      ...PROJECT_NAV_VIEW_IDS,
+    ]);
+  });
+
+  test("hiding Overview while it is the main view lands on Settings", () => {
+    expect(
+      defaultMainViewAfterSidebarToggle(
+        { type: "overview" },
+        "overview",
+        false,
+      ),
+    ).toEqual({ type: "settings" });
+  });
+});
+
+describe("hosted site views", () => {
+  const HOSTED_NATIVE = nativePresence(["hosting"]);
+  const hosted = projectSidebarViewPresence(true, HOSTED_NATIVE);
+
+  test("Hosting is offered next to the Site Editor on a saved list", () => {
+    const offered = offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, HOSTED);
+    expect(offered).toEqual(["hosting"]);
+    expect(
+      selectedProjectSidebarViews(["site-editor"], hosted, 1, offered),
+    ).toEqual(["site-editor", "hosting"]);
+  });
+
+  test("an unhosted save does not consume the offer", () => {
+    const seen = seenProjectSidebarViewsAfterSave(undefined, NO_SITE, [
+      "site-editor",
+    ]);
+    expect(seen).not.toContain("hosting");
+    expect(offeredProjectSidebarViews(seen, HOSTED)).toEqual(["hosting"]);
+  });
+
+  test("once: hidden after a save, it stays hidden", () => {
+    const seen = seenProjectSidebarViewsAfterSave(undefined, HOSTED, [
+      "site-editor",
+    ]);
+    expect(seen).toContain("hosting");
+    const offered = offeredProjectSidebarViews(seen, HOSTED);
+    expect(offered).toEqual([]);
+    expect(
+      selectedProjectSidebarViews(["site-editor"], hosted, 1, offered),
+    ).toEqual(["site-editor"]);
+  });
+
+  test("not offered beside a hidden Site Editor", () => {
+    const offered = offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, HOSTED);
+    expect(selectedProjectSidebarViews(["board"], hosted, 1, offered)).toEqual([
+      "board",
+    ]);
+    const seen = seenProjectSidebarViewsAfterSave(undefined, HOSTED, ["board"]);
+    expect(seen).not.toContain("hosting");
+  });
+
+  test("not offered without a Site Editor source", () => {
+    const noSource = projectSidebarViewPresence(false, HOSTED_NATIVE);
+    expect(offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, noSource)).toEqual(
+      [],
+    );
+  });
+});
+
+/**
+ * Blog is the org's (`blog_view_enabled`). It arrived after projects could save
+ * an exact list, and a list saved before it existed could not have turned it
+ * off, so it is offered once on top of it, while the org has it on.
+ */
+describe("Blog view", () => {
+  const withBlog = projectSidebarViewPresence(true, nativePresence(["blog"]));
+  const BLOG = offerPresence(["blog"]);
+  const saved = ["overview", "board"] as const;
+  /** A list saved after the top rows became hideable: Blog alone is new. */
+  const offered = offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, BLOG);
+
+  test("a list saved before Blog existed gets it, keeping its other opt-outs", () => {
+    expect(offered).toEqual(["blog"]);
+    expect(selectedProjectSidebarViews(saved, withBlog, 1, offered)).toEqual([
+      "overview",
+      "board",
+      "blog",
+    ]);
+  });
+
+  test("an all-off saved before Blog existed still offers it, once", () => {
+    expect(effectiveProjectSidebarViews([], 1, offered)).toEqual(["blog"]);
+    expect(effectiveProjectSidebarViews(null, 1, offered)).toEqual(["blog"]);
+  });
+
+  test("once: after a save, a hidden Blog stays hidden", () => {
+    const shown = effectiveProjectSidebarViews(saved, 1, offered);
+    const next = toggleProjectSidebarView(shown, "blog", false, 1);
+    const seen = seenProjectSidebarViewsAfterSave(
+      PROJECT_NAV_VIEW_IDS,
+      BLOG,
+      next,
+    );
+    expect(
+      selectedProjectSidebarViews(
+        next,
+        withBlog,
+        1,
+        offeredProjectSidebarViews(seen, BLOG),
+      ),
+    ).toEqual(["overview", "board"]);
+  });
+
+  test("with the org's flag off: no row, no offer, and a save keeps the offer", () => {
+    const off = projectSidebarViewPresence(true, nativePresence([]));
+    expect(off.blog).toBe(false);
+    expect(offeredProjectSidebarViews(PROJECT_NAV_VIEW_IDS, NO_SITE)).toEqual(
+      [],
+    );
+    expect(selectedProjectSidebarViews(["blog"], off, 1)).toEqual([]);
+    const seen = seenProjectSidebarViewsAfterSave(undefined, NO_SITE, [
+      "board",
+    ]);
+    expect(seen).not.toContain("blog");
+    expect(offeredProjectSidebarViews(seen, BLOG)).toEqual(["blog"]);
+  });
+
+  test("needs a source, like the Site Editor", () => {
+    const noSource = projectSidebarViewPresence(
+      false,
+      nativePresence(["blog"]),
+    );
+    expect(noSource.blog).toBe(false);
+    expect(
+      projectSidebarViewUnavailable("blog", noSource, {
+        assets: false,
+        siteAccess: false,
+      }),
+    ).toBe(true);
+  });
+
+  test("a Blog link waits while the org's flags load", () => {
+    const loading = projectSidebarViewPresence(true, nativePresence([]));
+    const settled = { assets: false, siteAccess: false };
+    expect(
+      projectSidebarViewUnavailable("blog", loading, {
+        ...settled,
+        blog: true,
+      }),
+    ).toBe(false);
+    expect(projectSidebarViewUnavailable("blog", loading, settled)).toBe(true);
+    expect(projectSidebarViewUnavailable("blog", withBlog, settled)).toBe(
+      false,
+    );
   });
 });

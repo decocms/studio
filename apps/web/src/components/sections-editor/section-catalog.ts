@@ -53,7 +53,8 @@ function isExcludedSectionResolveType(
   );
 }
 
-function shouldSkipSectionResolveType(
+/** Sections no picker offers: the site theme, lazy/deferred wrappers, previews. */
+export function shouldSkipSectionResolveType(
   resolveType: string,
   meta: LiveMeta,
 ): boolean {

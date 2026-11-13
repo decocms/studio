@@ -6,6 +6,7 @@ import {
 } from "@tiptap/react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { mentionMarkdown } from "@decocms/shared/mentions";
+import { mentionChipClassName } from "./mention-chip";
 
 /**
  * A mentioned member, as a chip. Not editable and not selectable text: the id
@@ -18,11 +19,12 @@ function MentionNodeView({ node, selected }: NodeViewProps) {
     <NodeViewWrapper
       as="span"
       data-testid="mention-chip"
+      // Tinted rather than bordered: an outline would break the line of text around it.
       className={cn(
-        "select-none rounded px-1 font-medium text-primary",
-        // Tinted rather than bordered — a mention sits mid-sentence, and a
-        // chip with an outline would break the line of the text around it.
-        "bg-primary/10",
+        "select-none",
+        mentionChipClassName(
+          typeof node.attrs.id === "string" ? node.attrs.id : null,
+        ),
         selected && "ring-2 ring-ring",
       )}
     >

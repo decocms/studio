@@ -14,6 +14,8 @@ export const RESERVED_ORGANIZATION_SLUGS: ReadonlySet<string> = new Set([
   "auth",
   "choose-editor",
   "cli",
+  // `/api/cms/:site` (the hosted CMS) shadows `/api/cms/...` of an org `cms`.
+  "cms",
   "commerce-onboarding",
   "dbos-queue-depth",
   "health",

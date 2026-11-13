@@ -51,6 +51,15 @@
   border: 1px solid var(--border);
 }
 
+/* The map as the whole card: the card draws the edge, and the map grows to
+   the row it sits in. */
+.globe-wrap.globe-bleed {
+  height: 100%;
+  min-height: clamp(20rem, calc(100vh - 22rem), 46rem);
+  border: 0;
+  border-radius: 0;
+}
+
 /* Darker than `--background` on purpose: the globe is a hole punched in the
    page, and an ocean that matches the panel behind it makes the planet read as
    a flat sticker. */

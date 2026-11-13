@@ -1,7 +1,7 @@
 import type { Ref } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { DEFAULT_SERVE_ENDPOINT } from "@/components/sections-editor/deco-serve-connection";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import type { DecoServeConnectionState } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
 

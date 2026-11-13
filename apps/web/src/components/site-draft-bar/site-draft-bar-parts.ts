@@ -11,11 +11,12 @@ export interface SiteDraftBarInput {
   servingLocally: boolean;
   /** The preview runs from a local tunnel: edits are ephemeral there. */
   localPreview: boolean;
-  /** A saved tunnel is still waiting for main's answer. */
-  tunnelUndecided: boolean;
   /** The agent's repository supports the Publish actions. */
   showsRepositoryActions: boolean;
   runtime: string | null | undefined;
+  /** A Fast Preview session on production, or not yet known not to be
+   *  (`resolveProductionGate`): only the draft select, to move to a draft. */
+  onProduction: boolean;
 }
 
 export interface SiteDraftBarParts {
@@ -29,15 +30,13 @@ export interface SiteDraftBarParts {
 
 export function siteDraftBarParts(input: SiteDraftBarInput): SiteDraftBarParts {
   const hidden = !input.hasEntity && !input.servingLocally;
-  // Local mode edits are ephemeral (nothing to promote) → no Publish. A saved
-  // tunnel waiting for main's answer withholds it too, so a v7 site with a
-  // tunnel never shows it first and hides it after. A connected `deco serve`
-  // edits the working tree: the developer commits.
+  // Local mode edits are ephemeral (nothing to promote) → no Publish. A
+  // connected `deco serve` edits the working tree: the developer commits.
   const publishable =
     input.hasEntity &&
     !input.localPreview &&
-    !input.tunnelUndecided &&
     !input.servingLocally &&
+    !input.onProduction &&
     input.showsRepositoryActions;
   return {
     hidden,

@@ -1,23 +1,17 @@
 import { useState, useSyncExternalStore } from "react";
-import { createContentClient } from "@decocms/blocks/protocol";
+import { probeEndpoint } from "@/cms/use-content-backend";
 import { isLoopbackEndpoint } from "@/components/sections-editor/deco-serve-connection";
 import {
   type DiscoveryState,
   startDiscovery,
 } from "@/components/sections-editor/deco-serve-discovery";
-import { probe } from "@/components/sections-editor/use-content-backend";
 
 /** Probes one endpoint, aborting with `signal`; throws when it can't be used. */
 function probeServeEndpoint(
   endpoint: string,
   signal: AbortSignal,
 ): Promise<unknown> {
-  return probe(
-    createContentClient({
-      endpoint,
-      fetch: (request) => fetch(request, { signal }),
-    }),
-  );
+  return probeEndpoint(endpoint, signal);
 }
 
 /**

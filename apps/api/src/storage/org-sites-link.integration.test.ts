@@ -205,6 +205,22 @@ describe("site slug lifecycle", () => {
       expect(await sites.isOwnedBy("orphan", ORG)).toBe(false);
     });
 
+    it("releasing a site deletes its drafts with it (drafts.site cascades)", async () => {
+      await claim("drafted");
+      await sql`INSERT INTO drafts (site, name, slug, created_by, via)
+        VALUES ('drafted', 'feature/x', 'slug-drafted-1', ${USER}, 'cli')`.execute(
+        database.db,
+      );
+      expect(await sites.releaseSite("drafted", ORG)).toBe(true);
+      const left = await sql<{
+        n: number;
+      }>`SELECT count(*)::int AS n FROM drafts WHERE site = 'drafted'`.execute(
+        database.db,
+      );
+      expect(left.rows[0]?.n).toBe(0);
+      expect(await sites.getBySlug("drafted")).toBeNull();
+    });
+
     it("a used slug can't be released or moved; an unused one can", async () => {
       const id = await newProject("Used");
       await claim("used");

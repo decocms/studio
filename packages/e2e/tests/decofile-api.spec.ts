@@ -32,6 +32,7 @@ import { signUpViaApi } from "../fixtures/auth-api";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { connectDevDb } from "../fixtures/db";
 import {
+  commitStubFiles,
   createFastPreviewProject,
   type FastPreviewProject,
   inspectStubRepo,
@@ -786,10 +787,10 @@ test.describe("decofile API", () => {
         owner,
         repo,
         defaultBranch: "main",
-        branches: { main: { files: {} } },
+        branches: { main: { files: {} }, draft: { files: {} } },
       });
       const project = await createFastPreviewProject(ctx, org, { owner, repo });
-      const url = decofileUrl(project, "main");
+      const url = decofileUrl(project, "draft");
 
       // Deco keys a slash-named page as `pages-Joias%2Fcolecao-<id>`, like `%20` for a space.
       const key = "pages-Joias%2Fcolecao%2Freligiosos%2Fcruz-862158";
@@ -805,7 +806,7 @@ test.describe("decofile API", () => {
       const stem = "pages-Joias%252Fcolecao%252Freligiosos%252Fcruz-862158";
       const inspected = await inspectStubRepo(ctx, owner, repo);
       expect(
-        inspected.branches["main"]?.files[`.deco/blocks/${stem}.json`],
+        inspected.branches["draft"]?.files[`.deco/blocks/${stem}.json`],
       ).toBe(blockFileContent(page));
 
       // The key round-trips back through GET exactly as sent.
@@ -1029,7 +1030,9 @@ test.describe("decofile API", () => {
         expect(res.ok()).toBe(true);
       };
       await writeBlock("draft", "editor");
-      await writeBlock("main", "live");
+      await commitStubFiles(ctx, owner, repo, "main", {
+        ".deco/blocks/Hero.json": blockFileContent({ title: "live" }),
+      });
 
       const publishRes = await ctx.post(
         `${decofileUrl(project, "draft")}/publish`,
@@ -1203,6 +1206,61 @@ test.describe("decofile API", () => {
     }
   });
 
+  test("GET /meta caches large schemas by commit and refreshes after branch changes", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const outsider = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      await signUpViaApi(outsider);
+      const owner = uniqueOwner();
+      const project = await createFastPreviewProject(ctx, user.orgSlug, {
+        owner,
+        repo: "site",
+      });
+      const meta = { schema: { description: "x".repeat(1024 * 1024) } };
+      const bytes = `${JSON.stringify(meta)}\n`;
+      await seedStubRepo(ctx, {
+        owner,
+        repo: "site",
+        branches: { main: { files: { ".deco/meta.gen.json": bytes } } },
+      });
+      const url = `${decofileUrl(project, "main")}/meta`;
+      const firstReads = await Promise.all(
+        Array.from({ length: 4 }, () => ctx.get(url)),
+      );
+      for (const first of firstReads) {
+        expect(first.status()).toBe(200);
+        expect(await first.text()).toBe(bytes);
+      }
+      const cold = await inspectStubRepo(ctx, owner, "site");
+      expect(cold.contentsReads).toBe(1);
+      expect(cold.blobReads).toBe(1);
+
+      const warm = await ctx.get(url);
+      expect(warm.status()).toBe(200);
+      expect(await warm.text()).toBe(bytes);
+      const cached = await inspectStubRepo(ctx, owner, "site");
+      expect(cached.contentsReads).toBe(cold.contentsReads);
+      expect(cached.blobReads).toBe(cold.blobReads);
+      expect((await outsider.get(url)).status()).toBe(403);
+
+      const updated = '{"schema":{"updated":true}}\n';
+      await commitStubFiles(ctx, owner, "site", "main", {
+        ".deco/meta.gen.json": updated,
+      });
+      const changed = await ctx.get(url);
+      expect(changed.status()).toBe(200);
+      expect(await changed.text()).toBe(updated);
+      const refreshed = await inspectStubRepo(ctx, owner, "site");
+      expect(refreshed.contentsReads).toBe(cold.contentsReads + 1);
+    } finally {
+      await outsider.dispose();
+      await ctx.dispose();
+    }
+  });
+
   test("GET /meta serves committed meta.gen.json, falls back to default branch, 404 when absent", async ({
     playwright,
   }) => {
@@ -1241,6 +1299,10 @@ test.describe("decofile API", () => {
       const onFeature = await ctx.get(metaUrl("feature"));
       expect(onFeature.status()).toBe(200);
       expect(await onFeature.json()).toEqual(meta);
+
+      const unmaterialized = await ctx.get(metaUrl("not-created-yet"));
+      expect(unmaterialized.status()).toBe(200);
+      expect(await unmaterialized.json()).toEqual(meta);
 
       // Neither branch nor default commits it: 404 (client falls to production).
       const bare = uniqueOwner();

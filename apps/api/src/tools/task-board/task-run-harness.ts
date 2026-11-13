@@ -7,9 +7,14 @@ import {
   supportsCodex,
 } from "@decocms/shared/harness/codex-models";
 import { ForbiddenError } from "@/core/access-control";
-import { resolveTier, type ResolvedTier } from "@/core/resolve-tier";
+import {
+  resolveTier,
+  TierUnavailableError,
+  type ResolvedTier,
+} from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import type { RunClass } from "@/dispatch-queue/run-priority";
+import { claudeSubscriptionChatModel } from "@/harnesses/claude-code-env";
 import { resolvePlanCredential } from "@/harnesses/plan-credential";
 
 /** Reviewers select their own model independently of the implementer's runtime. */
@@ -26,7 +31,23 @@ export async function resolveTaskRunModel(
   userId: string,
   harnessId: TaskBoardHarnessId,
 ): Promise<ResolvedTier> {
-  if (harnessId === "claude-code") return resolveTier(ctx, "smart");
+  if (harnessId === "claude-code") {
+    return resolveTier(ctx, "smart").catch(async (err) => {
+      // Like a chat, a run on the dispatcher's Claude or Copilot plan needs
+      // no org model; dispatch bills that same plan.
+      if (!(err instanceof TierUnavailableError)) throw err;
+      const plan = await resolvePlanCredential(ctx, organizationId, userId);
+      if (!plan) throw err;
+      const { credentialId, thinking } = claudeSubscriptionChatModel(
+        plan.providerId,
+      );
+      return {
+        credentialId,
+        modelId: thinking.id,
+        modelMeta: { title: thinking.title, providerId: thinking.provider },
+      };
+    });
+  }
 
   const settings = await ctx.storage.organizationSettings.get(organizationId);
   if (!orgFlagEnabled(settings?.flags, "task_board_codex")) {

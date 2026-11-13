@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/decocms/studio/sandbox-daemon/internal/devwatch"
+	"github.com/decocms/studio/sandbox-daemon/internal/events"
 )
 
 // The watchdog must size a respawn's window from the boot this sandbox was
@@ -58,5 +59,24 @@ func TestTailBytes(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "def") {
 		t.Fatalf("a crash's last words must survive, got %q", got)
+	}
+}
+
+func TestProbeResetsOn(t *testing.T) {
+	cases := []struct {
+		prev, next string
+		want       bool
+	}{
+		{events.PhaseInstalling, events.PhaseStarting, true},
+		{events.PhaseStartFailed, events.PhaseStarting, true},
+		{events.PhaseRunning, events.PhaseCheckingOut, true},
+		{events.PhaseStarting, events.PhaseStarting, false},
+		{events.PhaseStarting, events.PhaseRunning, false},
+		{events.PhaseCheckingOut, events.PhaseInstalling, false},
+	}
+	for _, c := range cases {
+		if got := probeResetsOn(c.prev, c.next); got != c.want {
+			t.Errorf("%s -> %s: want %v, got %v", c.prev, c.next, c.want, got)
+		}
 	}
 }

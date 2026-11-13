@@ -6,6 +6,7 @@ import {
   verdictCommentBody,
   verdictMirrorAudience,
 } from "./reviewer-comment";
+import { runRootCommentId } from "@/storage/task-board";
 
 const THREAD = "thrd_reviewer";
 /** Long enough to clear the progress-note floor. */
@@ -162,14 +163,22 @@ describe("nextGapAfterMirror", () => {
 
 describe("verdictMirrorAudience", () => {
   const record = {
+    id: "c-record",
     threadId: THREAD,
     audience: "internal" as const,
     body: `${RECORD}\n${NO_VISUAL_SURFACE} — backend only.`,
   };
   const note = {
+    id: "c-note",
     threadId: THREAD,
     audience: "human" as const,
     body: "The checkout needs a product decision on the discount rule.",
+  };
+  const opening = {
+    id: runRootCommentId(THREAD),
+    threadId: THREAD,
+    audience: "human" as const,
+    body: "Reviewer started reviewing this card.",
   };
 
   it("shows a change request's notes to the person the run never told", () => {
@@ -188,6 +197,12 @@ describe("verdictMirrorAudience", () => {
         "request_changes",
         null,
       ),
+    ).toBe("human");
+  });
+
+  it("does not take the note that opened the run's thread for telling them", () => {
+    expect(
+      verdictMirrorAudience([record, opening], THREAD, "request_changes", null),
     ).toBe("human");
   });
 

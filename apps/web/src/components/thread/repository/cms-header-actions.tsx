@@ -38,9 +38,9 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
-import { useContentBackend } from "../../sections-editor/use-content-backend.ts";
+import { useContentBackend } from "@/cms/use-content-backend.ts";
 import { settleAfterPublish } from "./publish-completion.ts";
-import { useContentChanges } from "../../sections-editor/content-changes.ts";
+import { useContentChanges } from "@/cms/content-changes.ts";
 import { useDecofileCacheKey } from "../../sections-editor/use-decofile.ts";
 import {
   contentSyncScope,
@@ -65,7 +65,6 @@ import { summarizePublishManifest } from "./publish-change-summary.ts";
 import {
   hostedCmsHeaderButton,
   hostedHeaderState,
-  hostedReleaseBehindMain,
   isCmsStateSettling,
   selectCmsHeaderButton,
   type CmsAction,
@@ -80,13 +79,11 @@ import {
 } from "./sandbox-git-api.ts";
 import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
 import { useReleases } from "./use-releases";
-import { useReleases as useHostedReleases } from "@/layouts/main-panel-tabs/releases-api.ts";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import { authClient } from "@/lib/auth-client.ts";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
+import { branchUserLabel } from "@decocms/shared/branch-name";
+import { nextDraftBranch } from "@/lib/draft-kind";
+import { useBlogView } from "@/hooks/use-blog-view";
 
 interface Props {
   virtualMcpId: string;
@@ -110,6 +107,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const queryClient = useQueryClient();
   const vm = useVirtualMCP(virtualMcpId);
   const { data: session } = authClient.useSession();
+  const blogView = useBlogView();
   const { deleteRelease } = useReleases(virtualMcpId);
   const {
     currentBranch: branch,
@@ -164,14 +162,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     branch ? { orgSlug: org.slug, virtualMcpId, branch } : null,
   );
   const changesQuery = useContentChanges(hosted ? backend : null, cacheKey);
-  // What visitors see against main: the Releases screen's read (its first
-  // page), refreshed by a Publish or a "Make current" like that screen. A
-  // release behind main with nothing left to list is "Not live yet".
-  const hostedReleases = useHostedReleases(org.slug, virtualMcpId, {
-    enabled: hosted,
-  });
-  const notLive =
-    hosted && hostedReleaseBehindMain(hostedReleases.data?.pages[0]);
   // A hosted draft's links send the preview frame's `__draft` exactly: its
   // pointer with the frame's forced variants and "Preview as" options.
   const hostedDraftValue = usePreviewDraftValue(
@@ -295,7 +285,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         hosted,
         branch,
         baseBranch,
-        nextBranch: () => generateBranchName(branchUserLabel(session?.user)),
+        // The same kind of draft: a Blog draft stays Blog's.
+        nextBranch: () =>
+          nextDraftBranch(branch, branchUserLabel(session?.user), blogView),
         setCurrentTaskBranch,
         deleteRelease,
       }),
@@ -382,9 +374,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     publishableChangeCount,
     t,
   });
-  const button = hosted
-    ? hostedCmsHeaderButton(selected, { notLive, t })
-    : selected;
+  const button = hosted ? hostedCmsHeaderButton(selected) : selected;
 
   /** Keyed by head so a failed sync isn't retried until the branch moves. */
   const autoGetLatestKey =
@@ -520,7 +510,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           open={surface.open}
           mode={surface.mode}
           fastPreview
-          notLive={notLive}
           onOpenChange={(open) => {
             if (!open) setSurface((current) => ({ ...current, open: false }));
           }}

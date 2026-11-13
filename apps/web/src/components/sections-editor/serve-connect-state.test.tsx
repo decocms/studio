@@ -19,14 +19,14 @@ const render = (ui: Parameters<typeof renderBare>[0]) =>
   renderBare(ui, { wrapper });
 
 describe("ServeConnectState", () => {
-  it("title, lead, numbered steps with a copyable command, footer", () => {
+  it("title, lead, numbered steps, footer; never a command", () => {
     const view = render(
       <ServeConnectState
         waiting
         title="Edit your site"
         lead="What it is."
         steps={[
-          { title: "Start it", body: "Run:", command: "npx x serve" },
+          { title: "Start it", body: "It starts." },
           { title: "It connects", after: <p>Looking…</p> },
         ]}
         footer={<p>Docs</p>}
@@ -40,9 +40,8 @@ describe("ServeConnectState", () => {
     ).toBeInTheDocument();
     expect(view.getAllByRole("listitem")).toHaveLength(2);
     expect(view.getByText("1")).toBeInTheDocument();
-    expect(
-      view.getByRole("button", { name: "Copy command" }),
-    ).toBeInTheDocument();
+    expect(view.container.querySelector("code")).toBeNull();
+    expect(view.queryByRole("button")).toBeNull();
     expect(view.getByText("Looking…")).toBeInTheDocument();
     expect(view.getByText("Docs")).toBeInTheDocument();
   });

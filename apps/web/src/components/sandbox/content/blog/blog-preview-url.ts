@@ -2,7 +2,7 @@ import { withDraftPointer } from "@/components/sections-editor/section-preview-u
 import { extractPathParams } from "@/components/sections-editor/page-path-utils";
 import { isPageResolveTypeOnBlocksSite } from "@/components/sections-editor/page-types";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { scanBlogEntries } from "./blog-data";
+import { blogAppBlocks, scanBlogEntries } from "./blog-data";
 import { categoryPathSegments } from "./category-tree";
 
 const str = (value: unknown): string =>
@@ -16,20 +16,12 @@ const str = (value: unknown): string =>
  * substitute the params so "See preview" buttons can open the live sandbox
  * page for the post/category being edited.
  */
-const BLOG_APP_RESOLVE_TYPE = /\/blog\.tsx?$/;
-
-/** Reads a string prop off the (single) blog app block, if present. */
 function readBlogAppProp(
   decofile: Record<string, unknown>,
   prop: string,
 ): string | null {
-  for (const [key, val] of Object.entries(decofile)) {
-    if (key.includes("/")) continue;
-    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
-    const obj = val as Record<string, unknown>;
-    if (typeof obj.__resolveType !== "string") continue;
-    if (!BLOG_APP_RESOLVE_TYPE.test(obj.__resolveType)) continue;
-    const value = str(obj[prop]);
+  for (const block of blogAppBlocks(decofile)) {
+    const value = str(block[prop]);
     if (value) return value;
   }
   return null;
@@ -261,6 +253,14 @@ export function buildBlogCategoryPreviewUrl({
 }
 
 /**
+ * The blog app's own switch for rendering a post still in planning: with it,
+ * the post page resolves the planning block too. Honoured from `apps` 0.166.2
+ * (Deno) and `@decocms/apps-blog` 7.85.0 (TanStack); an older site ignores it
+ * and answers its not-found page.
+ */
+const BLOG_DRAFT_PARAM = "draft";
+
+/**
  * Builds the absolute preview URL for a post, or `null` when it can't be
  * built (no blog app block, no preview origin, or a missing route param).
  */
@@ -270,6 +270,7 @@ export function buildBlogPostPreviewUrl({
   previewBaseUrl,
   draftPointer,
   meta,
+  planning = false,
 }: {
   decofile: Record<string, unknown>;
   post: Record<string, unknown>;
@@ -278,6 +279,8 @@ export function buildBlogPostPreviewUrl({
   draftPointer?: string | null;
   /** The site's schema, for its page types. */
   meta?: LiveMeta | null;
+  /** The post is still in planning: ask for it with `?draft=true`. */
+  planning?: boolean;
 }): string | null {
   if (!previewBaseUrl) return null;
   const template = findBlogPageSlug(decofile, meta);
@@ -293,7 +296,9 @@ export function buildBlogPostPreviewUrl({
   if (!path) return null;
 
   try {
-    return withDraftPointer(new URL(path, previewBaseUrl).href, draftPointer);
+    const url = new URL(path, previewBaseUrl);
+    if (planning) url.searchParams.set(BLOG_DRAFT_PARAM, "true");
+    return withDraftPointer(url.href, draftPointer);
   } catch {
     return null;
   }

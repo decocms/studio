@@ -77,6 +77,10 @@ type BranchMetaReady struct {
 	AheadOfBase      int    `json:"aheadOfBase"`
 	BehindBase       int    `json:"behindBase"`
 	HeadSha          string `json:"headSha"`
+	// Set while the daemon's last checkpoint push failed and work is still
+	// local only, so the user learns their edits are not on the branch.
+	PushError        string `json:"pushError,omitempty"`
+	PushFailingSince string `json:"pushFailingSince,omitempty"`
 }
 
 type BranchMeta struct {

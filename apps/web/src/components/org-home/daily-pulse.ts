@@ -8,10 +8,6 @@ import {
   isTaskHandedToHuman,
   type TaskBoardItem,
 } from "@/layouts/task-board/config";
-import { projectsForTask, type ProjectIndex } from "@/lib/project-index";
-
-/** The window "this week" means, in days. */
-const PULSE_WINDOW_DAYS = 7;
 
 /** Lanes that mean the work left the board on its own feet: merged and in
  *  production, whether or not someone has confirmed it there yet. `archived`
@@ -25,17 +21,6 @@ const SHIPPED = new Set<TaskBoardItem["status"]>([
  *  `post_deploy_validation` shipped but is still open: someone has to confirm
  *  it works in production. */
 const CLOSED = new Set<TaskBoardItem["status"]>(["done", "archived"]);
-
-const WINDOW_MS = PULSE_WINDOW_DAYS * 86_400_000;
-
-/** Age is clamped at zero so sandbox/browser clock skew cannot push a
- *  just-finished run outside the window. */
-function withinWindow(iso: string | null | undefined, now: number): boolean {
-  if (!iso) return false;
-  const at = Date.parse(iso);
-  if (Number.isNaN(at)) return false;
-  return Math.max(0, now - at) <= WINDOW_MS;
-}
 
 /** When a card shipped, or null if it has not. The board has no ship time, so
  *  its last update in a shipped lane stands in for one. */
@@ -77,85 +62,6 @@ export function attentionReason(task: TaskBoardItem): AttentionReason {
   if (isTaskBlocked(task)) return "answer";
   if (isTaskHandedToHuman(task)) return "review";
   return "assigned";
-}
-
-/** One project's week as ONE headline, ranked waiting › failed › shipped ›
- *  open. The ranking is the feature, hence the test. */
-export type ProjectHeadlineKind =
-  | "waiting"
-  | "failed"
-  | "shipped"
-  | "open"
-  | "quiet";
-
-export interface ProjectSummary {
-  kind: ProjectHeadlineKind;
-  /** The number the headline is about. Zero only for `quiet`. */
-  count: number;
-  /** Open cards, whatever the headline says — the row's constant column. */
-  open: number;
-}
-
-export function projectSummaries(
-  index: ProjectIndex,
-  tasks: readonly TaskBoardItem[],
-  userId: string | undefined,
-  now: number = Date.now(),
-): Map<string, ProjectSummary> {
-  const waiting = new Set(tasksNeedingMe(tasks, userId).map((task) => task.id));
-  const tally = new Map<
-    string,
-    { waiting: number; failed: number; shipped: number; open: number }
-  >();
-
-  const bump = (
-    projectId: string,
-    key: "waiting" | "failed" | "shipped" | "open",
-  ) => {
-    const current = tally.get(projectId) ?? {
-      waiting: 0,
-      failed: 0,
-      shipped: 0,
-      open: 0,
-    };
-    current[key] += 1;
-    tally.set(projectId, current);
-  };
-
-  for (const task of tasks) {
-    const closed = CLOSED.has(task.status);
-    const failed = task.threads.some(
-      (thread) =>
-        thread.status === "failed" && withinWindow(thread.lastActiveAt, now),
-    );
-    const shipped =
-      SHIPPED.has(task.status) && withinWindow(task.updatedAt, now);
-    for (const project of projectsForTask(task, index)) {
-      if (!closed) bump(project.id, "open");
-      if (waiting.has(task.id)) bump(project.id, "waiting");
-      if (failed) bump(project.id, "failed");
-      if (shipped) bump(project.id, "shipped");
-    }
-  }
-
-  const summaries = new Map<string, ProjectSummary>();
-  for (const [projectId, counts] of tally) {
-    const kind: ProjectHeadlineKind = counts.waiting
-      ? "waiting"
-      : counts.failed
-        ? "failed"
-        : counts.shipped
-          ? "shipped"
-          : counts.open
-            ? "open"
-            : "quiet";
-    summaries.set(projectId, {
-      kind,
-      count: kind === "quiet" ? 0 : counts[kind],
-      open: counts.open,
-    });
-  }
-  return summaries;
 }
 
 /** The runs happening right now, newest first — `in_progress` threads already

@@ -39,6 +39,10 @@ type BranchStatusMonitor struct {
 	// onFileChanged reports a changed repo-relative path (slash-separated) for the
 	// `file-changed` SSE event. Debouncing is the caller's.
 	onFileChanged func(path string)
+	// The last checkpoint push failure and when the failures started. Cleared
+	// by the next successful push, or once nothing is left to push.
+	pushError        string
+	pushFailingSince time.Time
 }
 
 func NewBranchStatusMonitor(repoDir string, b branchBroadcaster, onFileChanged func(path string)) *BranchStatusMonitor {
@@ -121,6 +125,23 @@ func (m *BranchStatusMonitor) toRepoRel(path string) string {
 		return ""
 	}
 	return filepath.ToSlash(rel)
+}
+
+// RecordPush reports a checkpoint push result, so a failing push shows up in
+// the branch status instead of only in the daemon's log.
+func (m *BranchStatusMonitor) RecordPush(err error) {
+	m.mu.Lock()
+	if err == nil {
+		m.pushError = ""
+		m.pushFailingSince = time.Time{}
+	} else {
+		if m.pushError == "" {
+			m.pushFailingSince = time.Now()
+		}
+		m.pushError = FormatGitError(err)
+	}
+	m.mu.Unlock()
+	m.Refresh()
 }
 
 func (m *BranchStatusMonitor) Refresh() {
@@ -252,18 +273,28 @@ func (m *BranchStatusMonitor) compute() *events.BranchMeta {
 		}
 	}
 
-	return &events.BranchMeta{
-		Kind: "ready",
-		Ready: &events.BranchMetaReady{
-			Branch:           branch,
-			Base:             div.Base,
-			WorkingTreeDirty: dirty,
-			Unpushed:         div.Unpushed,
-			AheadOfBase:      div.AheadOfBase,
-			BehindBase:       div.BehindBase,
-			HeadSha:          div.HeadSha,
-		},
+	ready := &events.BranchMetaReady{
+		Branch:           branch,
+		Base:             div.Base,
+		WorkingTreeDirty: dirty,
+		Unpushed:         div.Unpushed,
+		AheadOfBase:      div.AheadOfBase,
+		BehindBase:       div.BehindBase,
+		HeadSha:          div.HeadSha,
 	}
+	m.mu.Lock()
+	if !dirty && div.Unpushed == 0 {
+		// Everything reached the remote some other way (a manual publish, the
+		// agent's own push), so the earlier failure no longer puts work at risk.
+		m.pushError = ""
+		m.pushFailingSince = time.Time{}
+	}
+	if m.pushError != "" {
+		ready.PushError = m.pushError
+		ready.PushFailingSince = m.pushFailingSince.UTC().Format(time.RFC3339)
+	}
+	m.mu.Unlock()
+	return &events.BranchMeta{Kind: "ready", Ready: ready}
 }
 
 func equalMeta(a, b events.BranchMeta) bool {

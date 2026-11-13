@@ -1,27 +1,28 @@
 /** The apps a project can launch, and the tile marks the rail and home draw. */
 
 import {
-  ClockRewind,
-  BarChartSquare02,
   Beaker02,
+  ClockRewind,
+  BookOpen01,
   Calendar,
   CheckDone01,
   FileSearch02,
   Image01,
   LayoutAlt01,
   Server01,
-  Speedometer02,
   Zap,
 } from "@untitledui/icons";
 import type { ComponentType, ReactNode } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sidebar-views";
+import type {
+  ProjectNavViewId,
+  ProjectSidebarViewId,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
 
-/** Board and Overview are places, not apps. Reports is a separate
- *  destination and stays launchable. */
-type LaunchableViewId = Exclude<ProjectSidebarViewId, "overview" | "board">;
+/** The top rows are places, not apps; Reports stays launchable. */
+type LaunchableViewId = Exclude<ProjectSidebarViewId, ProjectNavViewId>;
 
 /** `to` values are `PROJECT_ROUTE` literals, so a router rename fails to
  *  compile here. */
@@ -47,6 +48,12 @@ const APPS: Record<
     to: PROJECT_ROUTE.siteEditor,
     tone: "bg-app-site-editor/15 text-app-site-editor",
   },
+  blog: {
+    labelKey: "projects.apps.blog",
+    Icon: BookOpen01,
+    to: PROJECT_ROUTE.blog,
+    tone: "bg-app-blog/15 text-app-blog",
+  },
   assets: {
     labelKey: "projects.apps.assets",
     Icon: Image01,
@@ -71,35 +78,23 @@ const APPS: Record<
     to: PROJECT_ROUTE.e2e,
     tone: "bg-app-e2e/15 text-app-e2e",
   },
-  analytics: {
-    labelKey: "projects.apps.analytics",
-    Icon: BarChartSquare02,
-    to: PROJECT_ROUTE.analytics,
-    tone: "bg-app-analytics/15 text-app-analytics",
-  },
-  cdn: {
-    labelKey: "projects.apps.cdn",
-    Icon: Speedometer02,
-    to: PROJECT_ROUTE.monitor,
-    tone: "bg-app-cdn/15 text-app-cdn",
-  },
   automations: {
     labelKey: "projects.apps.automations",
     Icon: Zap,
     to: PROJECT_ROUTE.automations,
     tone: "bg-app-automations/15 text-app-automations",
   },
-  experiments: {
-    labelKey: "projects.apps.experiments",
-    Icon: Beaker02,
-    to: PROJECT_ROUTE.experiments,
-    tone: "bg-app-experiments/15 text-app-experiments",
-  },
   calendar: {
     labelKey: "projects.apps.calendar",
     Icon: Calendar,
     to: PROJECT_ROUTE.calendar,
     tone: "bg-app-calendar/15 text-app-calendar",
+  },
+  experiments: {
+    labelKey: "projects.apps.experiments",
+    Icon: Beaker02,
+    to: PROJECT_ROUTE.experiments,
+    tone: "bg-app-experiments/15 text-app-experiments",
   },
 };
 

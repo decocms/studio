@@ -5,6 +5,7 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
+import { useBlogView } from "@/hooks/use-blog-view";
 import { useContentSyncBusy } from "@/components/sections-editor/content-sync";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef } from "react";
@@ -15,10 +16,9 @@ import {
   repoToolTarget,
   resolveRepositoryAttachment,
 } from "@/lib/repository-binding.ts";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
+import { branchUserLabel } from "@decocms/shared/branch-name";
+import { draftAfterPublish } from "@/lib/draft-kind";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -56,6 +56,7 @@ import type {
   LifecycleState,
 } from "@/components/sandbox/hooks/sandbox-events-context";
 import { useT, type TFunction } from "@/i18n/use-t";
+import { AlertTriangle } from "@untitledui/icons";
 
 interface Props {
   virtualMcpId: string;
@@ -220,6 +221,8 @@ export function HeaderActions({ virtualMcpId }: Props) {
    */
   const { previewUrl } = useSandboxLifecycle();
   const { previewServerUrl, projectDefault } = useSessionRuntime(virtualMcpId);
+  const draftKind = useViewDraftKind();
+  const blogView = useBlogView();
 
   /** Detached repo: render a reconnect pill, never a blank header. */
   if (attachment.status === "detached") {
@@ -305,12 +308,17 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const switchToFreshBranch = async () => {
     // Always land on a fresh editable draft, never on read-only production.
     const published = branch;
-    const nextBranch = generateBranchName(branchUserLabel(session?.user));
-    // A new branch in this session would boot another sandbox (pods are keyed by branch).
-    if (projectDefault === "cms") {
-      createTask({ runtime: "cms", branch: nextBranch });
+    const next = draftAfterPublish({
+      viewKind: draftKind,
+      branch,
+      projectDefault,
+      userLabel: branchUserLabel(session?.user),
+      blogView,
+    });
+    if (next.kind === "new-thread") {
+      createTask({ runtime: next.runtime, branch: next.branch });
     } else {
-      await setCurrentTaskBranch(nextBranch);
+      await setCurrentTaskBranch(next.branch);
     }
     if (published && published !== baseBranch) {
       await deleteRelease(published);
@@ -416,10 +424,38 @@ export function HeaderActions({ virtualMcpId }: Props) {
     />
   );
 
-  if (!sandboxRouteBranch) return headerButton;
+  const pushWarningLabel =
+    effectiveBranchMeta.kind === "ready" &&
+    effectiveBranchMeta.pushError &&
+    effectiveBranchMeta.pushFailingSince
+      ? t("thread.headerActions.pushFailing", {
+          since: new Date(
+            effectiveBranchMeta.pushFailingSince,
+          ).toLocaleString(),
+          error: effectiveBranchMeta.pushError,
+        })
+      : null;
+  const pushWarning = pushWarningLabel ? (
+    <WithTooltip label={pushWarningLabel}>
+      <AlertTriangle
+        role="img"
+        aria-label={pushWarningLabel}
+        className="size-4 text-warning"
+      />
+    </WithTooltip>
+  ) : null;
+
+  if (!sandboxRouteBranch)
+    return (
+      <>
+        {pushWarning}
+        {headerButton}
+      </>
+    );
 
   return (
     <>
+      {pushWarning}
       {headerButton}
       <PublishDialog
         open={surface.open}

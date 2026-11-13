@@ -84,6 +84,10 @@ export function useTaskBoardLiveSync(): void {
       queryClient.invalidateQueries({
         queryKey: KEYS.taskBoardActivity(locator, item.id),
       });
+      // A card is pushed when a comment lands on it, a run's included.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.taskBoardComments(locator, item.id),
+      });
     },
     // Stream back after a drop — nothing was buffered, so re-read the list.
     onResync: () => {
@@ -127,6 +131,16 @@ export function useTaskBoardLiveSync(): void {
             }
           : prev,
       );
+      // How a card's run failed (stopped or not) isn't on the event; read it
+      // back.
+      const onCard = queryClient
+        .getQueryData<TaskBoardData>(queryKey)
+        ?.items.some((item) =>
+          item.threads.some((t) => t.threadId === threadId),
+        );
+      if (status === "failed" && onCard) {
+        queryClient.invalidateQueries({ queryKey });
+      }
     },
   });
 }

@@ -99,9 +99,13 @@ export const ANALYTICS_INSTALL = defineTool({
       );
     }
 
+    const stored = storedExternalRegistration(project.metadata);
+    // An owned slug the control-plane doesn't host (claimed when its project
+    // was created) registers by domain, like a site deco doesn't host.
+    let hostedRegistration =
+      hosted && !stored ? await readAnalyticsRegistration(site) : null;
     let registration: { id: string; key: string | null; modules: string[] };
-    if (hosted) {
-      let hostedRegistration = await readAnalyticsRegistration(site);
+    if (hostedRegistration && hostedRegistration.status !== "unhosted") {
       // Keyed, because a keyed tag collects on any host; a host registration
       // collects only where `/_dq/*` is routed to the collector, which the
       // control-plane checks before converting one.
@@ -132,7 +136,6 @@ export const ANALYTICS_INSTALL = defineTool({
       }
       registration = hostedRegistration;
     } else {
-      const stored = storedExternalRegistration(project.metadata);
       if (stored) {
         registration = { ...stored, modules: MODULES };
       } else {

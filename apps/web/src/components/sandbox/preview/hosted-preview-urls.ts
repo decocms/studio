@@ -30,6 +30,8 @@ export function hostedPreviewUrls(
     /** The page, with any `:param` values filled in. */
     path: string;
     pointer: string | null;
+    /** A just-published revision shown instead of the emptied draft (preview-draft-link.ts). */
+    heldRevision?: string | null;
     device: PreviewDeviceSize;
   } & PreviewDraftModifiers,
 ): HostedPreviewUrls {

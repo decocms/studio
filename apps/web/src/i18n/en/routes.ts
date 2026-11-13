@@ -1,21 +1,4 @@
 export const routes = {
-  "routes.agentsList.agentsHeading": "Projects",
-  "routes.agentsList.askAdminToCreate":
-    "Ask an organization admin to create one.",
-  "routes.agentsList.cancelButton": "Cancel",
-  "routes.agentsList.createAgent": "New project",
-  "routes.agentsList.createAgentToGetStarted":
-    "Create a project to get started.",
-  "routes.agentsList.deleteAgentDescription":
-    "This action cannot be undone. This will permanently delete",
-  "routes.agentsList.deleteAgentTitle": "Delete Project?",
-  "routes.agentsList.deleteButton": "Delete",
-  "routes.agentsList.deletedAgent": 'Deleted "{title}"',
-  "routes.agentsList.noAgentsFound": "No projects found",
-  "routes.agentsList.noAgentsMatchSearch": 'No projects match "{search}"',
-  "routes.agentsList.noAgentsYet": "No projects yet",
-  "routes.agentsList.searchPlaceholder": "Search for a project...",
-  "routes.agentsList.title": "Projects",
   "routes.reportsOnboarding.authCopy.accountExists":
     "An account with this email already exists. Try signing in instead.",
   "routes.reportsOnboarding.authCopy.alreadyHaveAccount":
@@ -161,6 +144,16 @@ export const routes = {
   "routes.reportsOnboarding.companionSection.retry": "Try again",
   "routes.reportsOnboarding.companionSection.statusUnavailable":
     "We couldn't verify your Google connections right now — sources you already connected may show as disconnected. You can still continue.",
+  "routes.oauthConsent.allow": "Allow",
+  "routes.oauthConsent.deny": "Deny",
+  "routes.oauthConsent.description":
+    "{client} wants to act as you in Studio. Only allow apps you set up yourself.",
+  "routes.oauthConsent.redirectLabel": "Access will be sent to",
+  "routes.oauthConsent.scopesLabel": "Requested access",
+  "routes.oauthConsent.title": "Allow access to your account?",
+  "routes.oauthConsent.unknownClient": "An unnamed app",
+  "routes.oauthConsent.unavailable":
+    "This authorization request is invalid or has expired.",
   "routes.oauthCallback.authenticationComplete": "Authentication complete.",
   "routes.oauthCallback.authenticationFailed": "MCP authentication failed",
   "routes.oauthCallback.authenticationFailedTitle": "Authentication Failed",

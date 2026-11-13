@@ -1,10 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import type { TreeEntry } from "@/git-providers";
+import type { RepoContentClient, TreeEntry } from "@/git-providers";
 import {
   buildDiscardPlan,
   buildMergeReplayPlan,
   buildPublishStatus,
+  DefaultBranchWriteError,
   normalizeCompareStatus,
+  repoGitDiscard,
+  repoGitRebase,
 } from "./git-compat";
 
 describe("buildMergeReplayPlan", () => {
@@ -206,5 +209,25 @@ describe("buildPublishStatus", () => {
     expect(status.staged).toEqual([]);
     expect(status.files).toEqual([]);
     expect(status.unpushed).toBe(0);
+  });
+});
+
+/** The guard reads only the default branch before refusing. */
+const mainRepo = () =>
+  ({ getDefaultBranch: async () => "main" }) as unknown as RepoContentClient;
+
+describe("writes to the default branch", () => {
+  it("repoGitRebase refuses the default branch, even onto another base", async () => {
+    const client = mainRepo();
+    await expect(repoGitRebase(client, "main", "staging")).rejects.toThrow(
+      DefaultBranchWriteError,
+    );
+  });
+
+  it("repoGitDiscard refuses the default branch", async () => {
+    const client = mainRepo();
+    await expect(repoGitDiscard(client, "main", ["a.json"])).rejects.toThrow(
+      DefaultBranchWriteError,
+    );
   });
 });

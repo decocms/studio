@@ -112,6 +112,16 @@ export const harnessStreamInputSchema = z
           .strict(),
       )
       .optional(),
+    /**
+     * Present = the run reaches Studio through the `decocms` CLI instead of a
+     * mounted `studio` MCP server. `mcp` is still sent: the runner turns its
+     * url, bearer and expiry into the CLI session. `org` is the org slug the
+     * CLI's `--org` takes.
+     */
+    studioCli: z
+      .object({ org: z.string().min(1) })
+      .strict()
+      .optional(),
     mode: z.enum([
       "default",
       "plan",

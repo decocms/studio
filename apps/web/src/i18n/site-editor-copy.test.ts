@@ -75,12 +75,8 @@ const EXACT_EXCEPTIONS: Record<"en" | "pt-br", Record<string, string>> = {
     "releases.reapplyTitle": "Make this release current?",
     "releases.reapplyBody":
       "Making it current publishes a new release with the same content as “{title}”. Changes made since will be replaced on your site.",
-    "releases.reapplyUndoHint":
-      "The release marked Latest stays in the list: to go back afterwards, make it current again.",
     "releases.reapplying": "Making current…",
     "releases.reapplied": "Made current. Your site will show it shortly.",
-    "releases.reappliedUndoHint":
-      "If something doesn't look right, make the previous release current again to go back.",
     "releases.reapplyFailed": "Couldn't make this release current.",
     "releases.publishedMeanwhile":
       "Someone published while you were making this release current, so nothing changed. Try again.",
@@ -96,13 +92,9 @@ const EXACT_EXCEPTIONS: Record<"en" | "pt-br", Record<string, string>> = {
     "releases.reapplyTitle": "Tornar esta release atual?",
     "releases.reapplyBody":
       "Ao torná-la atual, publicamos uma nova release com o mesmo conteúdo de “{title}”. As alterações feitas desde então serão substituídas no seu site.",
-    "releases.reapplyUndoHint":
-      "A release marcada como Mais recente continua na lista: para voltar depois, torne-a atual de novo.",
     "releases.reapplying": "Tornando atual…",
     "releases.reapplied":
       "Release tornada atual. Seu site vai mostrá-la em instantes.",
-    "releases.reappliedUndoHint":
-      "Se algo não ficar certo, torne atual de novo a release anterior para voltar.",
     "releases.reapplyFailed": "Não foi possível tornar esta release atual.",
     "releases.publishedMeanwhile":
       "Alguém publicou enquanto você tornava esta release atual, então nada mudou. Tente de novo.",

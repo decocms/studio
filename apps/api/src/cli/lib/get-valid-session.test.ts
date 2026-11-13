@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getValidSession } from "./get-valid-session";
+import { getValidSession, SessionExpiredError } from "./get-valid-session";
 import { readSession, type Session, writeSession } from "./session";
 
 const TARGET = "https://studio.decocms.com";
@@ -103,18 +103,20 @@ describe("getValidSession", () => {
     expect(onDisk?.refreshToken).toBe("rt_new");
   });
 
-  it("returns null when an expired session has no refresh token", async () => {
+  it("throws SessionExpiredError and keeps the file when an expired session has no refresh token", async () => {
     await writeSession(
       dir,
       makeSession({ expiresAt: NOW_S - 60, refreshToken: undefined }),
     );
     const fetchMock = mock(async () => new Response("", { status: 200 }));
-    const result = await getValidSession({
+    const result = getValidSession({
       dataDir: dir,
       fetch: fetchMock as unknown as typeof fetch,
       now: () => FIXED_NOW_MS,
     });
-    expect(result).toBeNull();
+    await expect(result).rejects.toBeInstanceOf(SessionExpiredError);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await readSession(dir))?.accessToken).toBe("at_old");
   });
 
   it("returns null and clears the stale file when refresh fails with invalid_grant", async () => {

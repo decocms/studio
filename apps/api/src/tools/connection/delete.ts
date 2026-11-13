@@ -68,7 +68,7 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     }
 
     // Fetch connection before deleting to return the entity
-    const connection = await ctx.storage.connections.findById(input.id);
+    const connection = await ctx.storage.connections.findPublicById(input.id);
     if (!connection) {
       throw new Error(`Connection not found: ${input.id}`);
     }

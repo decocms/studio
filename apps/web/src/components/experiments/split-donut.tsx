@@ -123,6 +123,7 @@ export function ShareSplit({
   value,
   onChange,
   onCommit,
+  readOnly,
   sliderLabel,
   inTestLabel,
   restLabel,
@@ -132,10 +133,13 @@ export function ShareSplit({
   className,
 }: {
   value: number;
-  onChange: (value: number) => void;
+  /** Required unless `readOnly`. */
+  onChange?: (value: number) => void;
   onCommit?: (value: number) => void;
-  /** The slider's accessible name. */
-  sliderLabel: string;
+  /** Shows the share without the slider (Monitor's read-only view). */
+  readOnly?: boolean;
+  /** The slider's accessible name; required unless `readOnly`. */
+  sliderLabel?: string;
   /** "See the test", beside the in-test share. */
   inTestLabel: string;
   /** "See the page as it is", beside the rest. */
@@ -181,22 +185,32 @@ export function ShareSplit({
           value={share}
           testId="share-split-in"
         />
-        <Slider
-          value={[share]}
-          min={0}
-          max={100}
-          step={1}
-          disabled={disabled}
-          thumbLabel={sliderLabel}
-          thumbValueText={`${share}%`}
-          onValueChange={([next]) => onChange(clampShare(next ?? 0))}
-          onValueCommit={([next]) => onCommit?.(clampShare(next ?? 0))}
-          style={
-            inColor === PRIMARY_COLOR
-              ? undefined
-              : ({ "--primary": inColor } as CSSProperties)
-          }
-        />
+        {readOnly ? (
+          // Where the slider would be: a rule, so the two sides read as one
+          // split rather than two loose lines.
+          <div
+            className="h-px w-full bg-border"
+            aria-hidden="true"
+            data-testid="share-split-divider"
+          />
+        ) : (
+          <Slider
+            value={[share]}
+            min={0}
+            max={100}
+            step={1}
+            disabled={disabled}
+            thumbLabel={sliderLabel}
+            thumbValueText={`${share}%`}
+            onValueChange={([next]) => onChange?.(clampShare(next ?? 0))}
+            onValueCommit={([next]) => onCommit?.(clampShare(next ?? 0))}
+            style={
+              inColor === PRIMARY_COLOR
+                ? undefined
+                : ({ "--primary": inColor } as CSSProperties)
+            }
+          />
+        )}
         <Side
           color={restColor}
           label={restLabel}

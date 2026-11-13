@@ -41,8 +41,8 @@ export interface PreviewDisplay {
   /** Non-blocking "server waking — showing published site" pill. */
   showWakingPill: boolean;
   /**
-   * The editor is still deciding v7 or v8 (see `deciding`): a neutral
-   * loader owns the canvas, nothing else.
+   * A hosted draft's pointer is still being read: a neutral loader owns the
+   * canvas, nothing else.
    */
   showDecidingLoader?: boolean;
 }
@@ -96,14 +96,6 @@ export interface PreviewDisplayInput {
    * the published site first (it would show content the draft has changed).
    */
   hostedPointerPending?: boolean;
-  /**
-   * Not known yet whether this is a v7 or a v8 site (GitHub mode while
-   * main's answer loads or is retried, or a saved Local tunnel waiting for
-   * it). Neither generation's surface may show first and switch: no
-   * published site with a "waking" pill, no tunnel, no boot card. Only a
-   * neutral loader, until the answer lands.
-   */
-  deciding?: boolean;
 }
 
 const NONE: PreviewDisplay = {
@@ -128,11 +120,6 @@ export function resolvePreviewDisplay(
   } = input;
   /** Withheld for a coding session — see `codingSession`. */
   const previewServerUrl = codingSession ? null : input.previewServerUrl;
-
-  // Undecided v7 or v8: neither surface yet (see `deciding`).
-  if (input.deciding) {
-    return { ...NONE, showDecidingLoader: true };
-  }
 
   // Local mode wins outright: the tunnel is already serving, render it now.
   if (input.localPreviewUrl) {

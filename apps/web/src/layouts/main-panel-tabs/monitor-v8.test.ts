@@ -4,27 +4,11 @@ import {
   formatMs,
   formatRate,
   formatShare,
-  monitorKind,
   relativeChange,
   releaseBucket,
   shortRelease,
   sinceLabel,
 } from "./monitor-v8";
-
-describe("monitorKind", () => {
-  test("a v8 site opens the telemetry Monitor, a v7 one keeps the CDN Monitor", () => {
-    expect(monitorKind("v8")).toBe("v8");
-    expect(monitorKind("v7")).toBe("v7");
-  });
-
-  test("a site last found v8 whose main can't be read stays on the v8 Monitor", () => {
-    expect(monitorKind("error")).toBe("v8");
-  });
-
-  test("shows neither while main's schema is being read", () => {
-    expect(monitorKind("loading")).toBe("loading");
-  });
-});
 
 describe("deltas", () => {
   test("relative change, unknown without a previous value", () => {

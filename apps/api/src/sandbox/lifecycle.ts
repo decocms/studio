@@ -173,11 +173,27 @@ async function instantiate(
         image: process.env.STUDIO_SANDBOX_FREESTYLE_IMAGE?.trim() || undefined,
         allowUserNamespaces:
           process.env.STUDIO_SANDBOX_FREESTYLE_USER_NAMESPACES === "true",
+        commitSigning: readCommitSigning(),
         meter,
       }),
     },
     { freestyleShare: readFreestyleShare() },
   );
+}
+
+/** The key Freestyle VMs sign the bot's commits with; pods get theirs from the sandbox-env chart. */
+function readCommitSigning():
+  | { email: string; privateKey: string }
+  | undefined {
+  const email = process.env.STUDIO_SANDBOX_COMMIT_SIGNING_EMAIL?.trim();
+  const privateKey = process.env.STUDIO_SANDBOX_COMMIT_SIGNING_KEY?.trim();
+  if (email && privateKey) return { email, privateKey };
+  if (email || privateKey) {
+    console.warn(
+      "[lifecycle] STUDIO_SANDBOX_COMMIT_SIGNING_EMAIL and STUDIO_SANDBOX_COMMIT_SIGNING_KEY must both be set; commits stay unsigned",
+    );
+  }
+  return undefined;
 }
 
 /** STUDIO_SANDBOX_FREESTYLE_SHARE: 0 to 1, the share of new sandboxes placed on Freestyle. */

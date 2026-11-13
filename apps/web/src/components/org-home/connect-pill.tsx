@@ -8,7 +8,7 @@
  * decorative — the sentence beside them already names the action, so the row
  * is `aria-hidden` and the link's accessible name stays the sentence.
  * Desktop only: it offers to install a CLI on the machine you are sitting at,
- * which is not the phone you are holding.
+ * which is not the phone you are holding. Narrow split panels hide it too.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -57,7 +57,7 @@ export function ConnectPill({ dense = true }: { dense?: boolean }) {
       /* Dense matches Button `sm` (h-7) so the pill and "New project" beside
          it read as one row of controls; at that height it must not wrap. */
       className={cn(
-        "group hidden max-w-full md:inline-flex items-center justify-center rounded-full bg-card text-sm shadow-edge transition-colors hover:bg-accent",
+        "group hidden max-w-full @3xl/panel-header:inline-flex items-center justify-center rounded-full bg-card text-sm shadow-edge transition-colors hover:bg-accent",
         dense
           ? "h-7 shrink-0 gap-x-2 whitespace-nowrap pl-3 pr-1.5"
           : "flex-wrap gap-x-3 gap-y-2 py-1.5 pl-4 pr-2.5",

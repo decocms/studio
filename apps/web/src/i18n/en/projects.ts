@@ -63,14 +63,13 @@ export const projects = {
   "projects.identity.storeUrlDescription":
     "The live storefront. Reports run against this address.",
   "projects.apps.reports": "Report",
+  "projects.apps.blog": "Blog",
   "projects.apps.siteEditor": "Site editor",
   "projects.apps.assets": "Assets",
   "projects.apps.releases": "Releases",
   "projects.apps.hosting": "Hosting",
   "projects.apps.e2e": "End-to-end tests",
-  "projects.apps.analytics": "Analytics",
-  "projects.apps.cdn": "Monitor",
   "projects.apps.automations": "Automations",
-  "projects.apps.experiments": "Experiments",
   "projects.apps.calendar": "Calendar",
+  "projects.apps.experiments": "Experiments",
 } as const;

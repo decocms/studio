@@ -134,6 +134,7 @@ export interface AutomationTrigger {
     | "linked_chat_run"
     | "board_pr_merged"
     | "chat_pr_opened"
+    | "card_mention"
     | "jira_transition";
   cron_expression: string | null;
   connection_id: string | null;

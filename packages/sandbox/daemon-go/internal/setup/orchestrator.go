@@ -226,6 +226,16 @@ func (o *Orchestrator) clearCrashError() {
 	}
 }
 
+// clearCrashErrorFor un-latches a dev-crash error for every transition that
+// queues a step. Each step ends in stepStart, which skips while the status is
+// `error`. A pm/runtime change after a crash used to install, skip the start,
+// and leave the lifecycle in `installing` with nothing running.
+func (o *Orchestrator) clearCrashErrorFor(t config.Transition) {
+	if _, queuesStep := transitionToStep(t); queuesStep {
+		o.clearCrashError()
+	}
+}
+
 func (o *Orchestrator) Handle(t config.Transition) {
 	// EVERY transition, before the kind is even looked at. `Classify` returns the
 	// FIRST kind that matches and the credential checks are last, so credentials
@@ -249,13 +259,7 @@ func (o *Orchestrator) Handle(t config.Transition) {
 		// has to stop working here rather than at the next boot.
 		return
 	}
-	// A fresh claim/reclaim or branch switch is an explicit "start over" — clear
-	// a latched dev-crash error so the pipeline's start step isn't skipped. This
-	// is what makes a SANDBOX_START reclaim onto a VM whose dev server had
-	// crashed actually restart it, instead of reusing the wedged process.
-	if t.Kind == config.KindBootstrap || t.Kind == config.KindBranchChange {
-		o.clearCrashError()
-	}
+	o.clearCrashErrorFor(t)
 	// Secondary checkouts, off the queue. Classify() has no opinion on
 	// `git.repositories` — a patch that only adds one is a no-op transition, so
 	// before this the config push alone cloned nothing and the whole feature

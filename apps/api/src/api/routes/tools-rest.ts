@@ -10,15 +10,35 @@
  *
  *   POST /api/:org/tools/:toolName   call a tool (body = arguments)
  *   GET  /api/:org/tools             list the tools visible to this org
+ *
+ * A caller whose key is bound to a thread (a sandbox run using the `decocms`
+ * CLI) gets that thread's surface, as on the thread MCP (`thread-mcp.ts`).
  */
 import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
+import { ConflictError } from "../../core/conflict-error";
 import { GatewayRefusalError } from "../../ai-providers/adapters/deco-ai-gateway";
 import { OrgBlockedError } from "../../core/org-notice-gate";
-import { resolveToolByName, TOOL_BY_NAME } from "../../tools";
-import { getToolRegistration } from "../../tools/management-registration";
+import { GitProviderError } from "../../git-providers/types";
+import type { StudioContext } from "../../core/studio-context";
+import {
+  managementContextStore,
+  resolveToolByName,
+  TOOL_BY_NAME,
+} from "../../tools";
+import {
+  getToolRegistration,
+  type RegistrableTool,
+} from "../../tools/management-registration";
+import {
+  resolveThreadToolNames,
+  taskRunContextStore,
+} from "../../tools/task-board/task-run-context";
 import type { Env } from "../hono-env";
+
+/** Wait reported when a rate-limited provider named none. */
+const PROVIDER_RATE_LIMIT_DEFAULT_WAIT_MS = 60_000;
 
 const toJsonSchema = (schema: unknown): unknown => {
   if (!schema || typeof schema !== "object") return undefined;
@@ -29,12 +49,30 @@ const toJsonSchema = (schema: unknown): unknown => {
   }
 };
 
+/**
+ * The tools a thread-bound caller may list and call: the thread's surface,
+ * from the key's own thread. Null for every other caller.
+ */
+async function threadSurface(
+  ctx: StudioContext,
+): Promise<{ threadId: string; tools: RegistrableTool[] } | null> {
+  const threadId = ctx.auth.boundThreadId;
+  if (!threadId) return null;
+  const thread = await ctx.storage.threads.get(threadId);
+  const tools = resolveThreadToolNames(thread)
+    .map((name) => resolveToolByName(name))
+    .filter((tool) => tool !== undefined);
+  return { threadId, tools };
+}
+
 export const createToolsRestRoutes = () => {
   const app = new Hono<Env>();
 
   // GET /api/:org/tools — MCP `listTools` parity (tool metadata, not a call).
-  app.get("/", (c) => {
-    const list = [...TOOL_BY_NAME.values()].map((tool) => {
+  app.get("/", async (c) => {
+    const surface = await threadSurface(c.get("studioContext"));
+    const tools = surface ? surface.tools : [...TOOL_BY_NAME.values()];
+    const list = tools.map((tool) => {
       const { config } = getToolRegistration(tool);
       return {
         name: tool.name,
@@ -56,7 +94,8 @@ export const createToolsRestRoutes = () => {
     // Manual tool-identifier check: 404 if the name isn't part of the builtin
     // tool surface.
     const tool = resolveToolByName(toolName);
-    if (!tool) {
+    const surface = await threadSurface(ctx);
+    if (!tool || (surface && !surface.tools.includes(tool))) {
       return c.json({ error: `Unknown tool: ${toolName}` }, 404);
     }
 
@@ -81,11 +120,21 @@ export const createToolsRestRoutes = () => {
     try {
       // `execute` sets the tool name on ctx.access and runs the handler, whose
       // own `ctx.access.check()` enforces the permission for this tool name.
-      const result = await tool.execute(parsed.data, ctx);
+      // A thread-bound call runs in the stores the thread MCP's handlers read.
+      const result = surface
+        ? await managementContextStore.run(ctx, () =>
+            taskRunContextStore.run({ threadId: surface.threadId }, () =>
+              tool.execute(parsed.data, ctx),
+            ),
+          )
+        : await tool.execute(parsed.data, ctx);
       return c.json((result ?? {}) as Record<string, unknown>);
     } catch (error) {
       if (error instanceof UnauthorizedError) {
         return c.json({ error: error.message }, 401);
+      }
+      if (error instanceof ConflictError) {
+        return c.json({ error: error.message }, 409);
       }
       if (error instanceof OrgBlockedError) {
         return c.json({ error: error.message, code: error.code }, 403);
@@ -112,6 +161,20 @@ export const createToolsRestRoutes = () => {
         return c.json(
           { error: error.message, ...(error.code ? { code: error.code } : {}) },
           error.status === 503 ? 503 : 403,
+        );
+      }
+      // The provider's budget is spent, not broken: name the wait so the
+      // client neither retries into it nor polls through it.
+      if (error instanceof GitProviderError && error.isRateLimited) {
+        const retryAfterMs =
+          error.retryAfterMs ?? PROVIDER_RATE_LIMIT_DEFAULT_WAIT_MS;
+        c.header(
+          "Retry-After",
+          String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
+        );
+        return c.json(
+          { error: error.message, code: "provider_rate_limited", retryAfterMs },
+          429,
         );
       }
       const message = error instanceof Error ? error.message : "Tool failed";

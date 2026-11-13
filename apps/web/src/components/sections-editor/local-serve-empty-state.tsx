@@ -2,7 +2,7 @@
  * The ONE empty state of the site editor while it waits for `deco serve` on
  * this computer: `/site-editor` before its editor opens, and a project's
  * Preview with Localhost chosen. Both render `LocalServeEmptyState`, with
- * the same copy, steps, links and animation; only where things stand
+ * the same copy, step, links and animation; only where things stand
  * (`LocalServeWait`) changes what it shows, the same way in both places.
  */
 
@@ -13,7 +13,7 @@ import {
 } from "@decocms/ui/components/alert.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t.ts";
-import { SERVE_COMMAND, type ServeProblem } from "./deco-serve-connection";
+import type { ServeProblem } from "./deco-serve-connection";
 import {
   DocsLinks,
   LocalNetworkDeniedAlert,
@@ -97,13 +97,8 @@ export function LocalServeEmptyState({
       }
       steps={[
         {
-          title: t("decoServe.guide.step1.title"),
-          body: <RichCode text={t("decoServe.guide.step1.body")} />,
-          command: SERVE_COMMAND,
-        },
-        {
-          title: t("decoServe.waiting.step2.title"),
-          body: t("decoServe.waiting.step2.body"),
+          title: t("decoServe.waiting.connect.title"),
+          body: t("decoServe.waiting.connect.body"),
           after:
             wait.kind === "needs-gesture" ? (
               <Button
@@ -111,14 +106,14 @@ export function LocalServeEmptyState({
                 className="self-start"
                 onClick={wait.onStart}
               >
-                {t("decoServe.guide.step2.start")}
+                {t("decoServe.guide.start")}
               </Button>
             ) : (
               looking && (
                 <p role="status" className="text-sm text-muted-foreground">
                   {wait.paused
-                    ? t("decoServe.guide.step2.paused")
-                    : t("decoServe.guide.step2.looking", { hosts })}
+                    ? t("decoServe.guide.paused")
+                    : t("decoServe.guide.looking", { hosts })}
                 </p>
               )
             ),

@@ -2,9 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { featureForTab } from "./tab-feature";
 
 describe("featureForTab", () => {
-  it("gates the three plan-gated views", () => {
+  it("gates the plan-gated views", () => {
     expect(featureForTab("board")).toBe("kanban");
-    expect(featureForTab("cdn")).toBe("monitoring");
     expect(featureForTab("site-editor")).toBe("cms");
   });
 

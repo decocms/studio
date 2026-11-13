@@ -9,6 +9,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { ForbiddenError } from "@/core/access-control";
 import { TASK_RUN_INSTRUCTIONS_KEY } from "@/harnesses/claude-code-env";
 import {
   MANAGEMENT_TOOLS,
@@ -45,7 +46,7 @@ export function isBoardRunThread(
 export function requireTaskRunContext(): TaskRunContext {
   const ctx = taskRunContextStore.getStore();
   if (!ctx) {
-    throw new Error(
+    throw new ForbiddenError(
       "This tool is only available on a thread's MCP endpoint " +
         "(/api/<org>/mcp/thread/<threadId>).",
     );

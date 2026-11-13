@@ -191,6 +191,7 @@ export function LiveGlobe({
   rows,
   history = NO_ROWS,
   rangeLabel,
+  title,
 }: {
   base: string;
   orgSlug: string;
@@ -202,6 +203,8 @@ export function LiveGlobe({
   history?: readonly LiveGeoRow[];
   /** The selected range, named in the replay caption. */
   rangeLabel?: string;
+  /** Given, the map is the whole card, with its name, toggle and caption on it. */
+  title?: string;
 }) {
   const t = useT();
   const [preferences] = usePreferences();
@@ -309,63 +312,80 @@ export function LiveGlobe({
   };
   const current = mode ?? api?.defaultMode() ?? "globe";
 
+  const toggle = (
+    <div className="flex items-center gap-0.5 rounded-lg border border-border bg-background/80 p-0.5 backdrop-blur">
+      <button
+        type="button"
+        onClick={() => show("globe")}
+        aria-pressed={current === "globe"}
+        className={cn(SEG, current === "globe" ? SEG_ON : SEG_OFF)}
+      >
+        {t(k("modeGlobe"))}
+      </button>
+      <button
+        type="button"
+        onClick={() => show("map")}
+        aria-pressed={current === "map"}
+        className={cn(SEG, current === "map" ? SEG_ON : SEG_OFF)}
+      >
+        {t(k("modeMap"))}
+      </button>
+    </div>
+  );
+  const footer = bundle.error ? (
+    <p className="text-xs text-muted-foreground">{t(k("loadError"))}</p>
+  ) : (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <ul
+        aria-label={t(k("legend"))}
+        className="flex flex-wrap items-center gap-x-4 gap-y-1"
+      >
+        {LEGEND.map(({ kind, label }) => (
+          <li key={kind} className="flex items-center gap-1.5 text-xs">
+            <LegendMark kind={kind} />
+            {t(k(label))}
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        {replaying && (
+          <p className="text-xs text-muted-foreground">
+            {t(k("replaying"), { range: rangeLabel ?? "" })}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {t(k("caption"), {
+            places: nf.format(stats.places),
+            approximate: nf.format(stats.approximate),
+            unplaced: nf.format(stats.unplaced),
+          })}
+        </p>
+      </div>
+    </div>
+  );
+
+  // The host stays mounted when the bundle fails, so it reads as "no map", not "no data".
+  if (title) {
+    return (
+      <section className="surface relative h-full overflow-hidden">
+        <div ref={hostRef} className="globe-wrap globe-bleed" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-4">
+          <h3 className="text-sm text-foreground/70">{title}</h3>
+          <div className="pointer-events-auto">{toggle}</div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4">
+          {footer}
+        </div>
+      </section>
+    );
+  }
   return (
     <div className="flex flex-col gap-2">
       <div className="relative">
-        {/* The host the renderer draws into and appends its hover card to. Kept
-            mounted even when the bundle failed, so the failure reads as "no
-            map" rather than "no data". */}
         <div ref={hostRef} className="globe-wrap" />
-        <div className="absolute top-3 right-3 flex items-center gap-0.5 rounded-lg border border-border bg-background/80 p-0.5 backdrop-blur">
-          <button
-            type="button"
-            onClick={() => show("globe")}
-            aria-pressed={current === "globe"}
-            className={cn(SEG, current === "globe" ? SEG_ON : SEG_OFF)}
-          >
-            {t(k("modeGlobe"))}
-          </button>
-          <button
-            type="button"
-            onClick={() => show("map")}
-            aria-pressed={current === "map"}
-            className={cn(SEG, current === "map" ? SEG_ON : SEG_OFF)}
-          >
-            {t(k("modeMap"))}
-          </button>
-        </div>
+        <div className="absolute top-3 right-3">{toggle}</div>
       </div>
-      {bundle.error ? (
-        <p className="text-xs text-muted-foreground">{t(k("loadError"))}</p>
-      ) : (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <ul
-            aria-label={t(k("legend"))}
-            className="flex flex-wrap items-center gap-x-4 gap-y-1"
-          >
-            {LEGEND.map(({ kind, label }) => (
-              <li key={kind} className="flex items-center gap-1.5 text-xs">
-                <LegendMark kind={kind} />
-                {t(k(label))}
-              </li>
-            ))}
-          </ul>
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            {replaying && (
-              <p className="text-xs text-muted-foreground">
-                {t(k("replaying"), { range: rangeLabel ?? "" })}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground tabular-nums">
-              {t(k("caption"), {
-                places: nf.format(stats.places),
-                approximate: nf.format(stats.approximate),
-                unplaced: nf.format(stats.unplaced),
-              })}
-            </p>
-          </div>
-        </div>
-      )}
+      {footer}
     </div>
   );
 }

@@ -267,6 +267,7 @@ export async function enqueueReviewerForTask(
     agent: { instructions },
     ...(repo ? { repo } : {}),
     fence: { threadId: fenceThreadId, workflowID: fenceKey },
+    runRoot: `${REVIEWER_LABEL[kind]} started reviewing this card.`,
   }).catch(async (err) => {
     // Nothing was dispatched, but the fence thread may already exist — and
     // `reviewerHandledThisCycle` would then read it as this cycle's reviewer

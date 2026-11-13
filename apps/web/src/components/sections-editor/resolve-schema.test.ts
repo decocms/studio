@@ -1555,6 +1555,7 @@ describe("resolveSchema – __SECTION_REF__ falls back to root.sections", () => 
     for (const field of ["children", "fallback"] as const) {
       const prop = resolved?.properties?.[field];
       expect(prop?.type).toBe("block-ref");
+      expect(prop?.acceptsAnySection).toBe(true);
       // Every real section is offered; the Resolvable fallback ref is excluded.
       expect(prop?.anyOfRefs?.length).toBe(110);
       expect(prop?.anyOfRefs?.some((r) => r.resolveType === "Resolvable")).toBe(
@@ -2833,5 +2834,71 @@ describe("resolveSchema – loader-or-list prop whose loader returns an inline o
       inferInlineUnionIndex({ promotion: [{ label: "Off" }] }, branches),
     ).toBe(0);
     expect(inferInlineUnionIndex([{ label: "Off" }], branches)).toBe(1);
+  });
+});
+
+describe("resolveSchema – plain Section vs Section<T>", () => {
+  // Shapes a deco v7 runtime emits for `Section` and `Section<Alert>`.
+  const sectionBranch = (rt: string) => ({
+    title: rt,
+    type: "object",
+    required: ["__resolveType"],
+    properties: { __resolveType: { type: "string", enum: [rt] } },
+  });
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: {
+        sections: {
+          "site/sections/Header.tsx": { $ref: "#/definitions/Host" },
+        },
+      },
+    },
+    schema: {
+      definitions: {
+        "section.ts@sections": { $ref: "#/root/sections", title: "sections" },
+        "section.ts@Section": {
+          anyOf: [
+            { $ref: "#/definitions/section.ts@sections", title: "Section" },
+            sectionBranch("website/flags/multivariate/section.ts"),
+          ],
+        },
+        "types.ts@Alert": {
+          anyOf: [
+            { type: "object", title: "types.ts@Alert" },
+            sectionBranch("site/sections/Header/Alert.tsx"),
+            sectionBranch("site/sections/Header/PromoBar.tsx"),
+            sectionBranch("site/flags/Alert.ts"),
+          ],
+        },
+        Host: {
+          type: "object",
+          properties: {
+            anySection: { $ref: "#/definitions/section.ts@Section" },
+            alert: { $ref: "#/definitions/types.ts@Alert" },
+          },
+        },
+      },
+      root: {
+        sections: {
+          anyOf: [sectionBranch("site/sections/Header/Alert.tsx")],
+        },
+      },
+    },
+  };
+  const props = resolveSchema("site/sections/Header.tsx", meta)?.properties;
+
+  test("a plain Section field accepts any section", () => {
+    expect(props?.anySection?.type).toBe("block-ref");
+    expect(props?.anySection?.acceptsAnySection).toBe(true);
+  });
+
+  test("a Section<T> field accepts only the sections it names", () => {
+    expect(props?.alert?.type).toBe("block-ref");
+    expect(props?.alert?.acceptsAnySection).toBeUndefined();
+    expect(props?.alert?.anyOfRefs?.map((r) => r.resolveType)).toEqual([
+      "site/sections/Header/Alert.tsx",
+      "site/sections/Header/PromoBar.tsx",
+      "site/flags/Alert.ts",
+    ]);
   });
 });

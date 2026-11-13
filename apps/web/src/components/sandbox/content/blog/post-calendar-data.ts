@@ -55,7 +55,10 @@ export function parsePostDay(date: string): Date | null {
  * {@link DEFAULT_SCHEDULE_HOUR} local time on that day, with the editorial
  * `date` matching so the site shows the day it goes live.
  */
-export function scheduledPostPayload(day: Date): Record<string, unknown> {
+export function scheduledPostPayload(
+  day: Date,
+  { legacyContent = false }: { legacyContent?: boolean } = {},
+): Record<string, unknown> {
   const goLive = new Date(
     day.getFullYear(),
     day.getMonth(),
@@ -63,7 +66,7 @@ export function scheduledPostPayload(day: Date): Record<string, unknown> {
     DEFAULT_SCHEDULE_HOUR,
   );
   return {
-    ...emptyBlogPayload("posts"),
+    ...emptyBlogPayload("posts", { legacyContent }),
     status: "scheduled",
     scheduledDatetime: goLive.toISOString(),
     date: dayKey(day),

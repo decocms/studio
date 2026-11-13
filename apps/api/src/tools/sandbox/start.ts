@@ -84,7 +84,10 @@ import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
 import { lookupRecordedSandbox } from "./recorded-sandbox";
-import { rotateReusedSandboxGitCredential } from "./sync-git-credentials";
+import {
+  rotateReusedSandboxGitCredential,
+  SandboxTokenRejectedError,
+} from "./sync-git-credentials";
 import {
   cloneInfoForRepository,
   findRepositoryForBinding,
@@ -250,6 +253,8 @@ export const SANDBOX_START = defineTool({
 /**
  * Reuse returns before `provider.ensure`, the only place a sandbox otherwise
  * gets a fresh git token. Best-effort: the turn still runs on the old token.
+ * Returns false when the daemon rejected Studio's token, so the caller rebinds
+ * the sandbox through `provider.ensure` instead of reusing it.
  */
 async function rotateGitCredentialOnReuse(
   ctx: StudioContext,
@@ -257,20 +262,22 @@ async function rotateGitCredentialOnReuse(
   handle: string,
   threadId: string | undefined,
   metadata: Record<string, unknown>,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const repository =
       (await getThreadRepository(ctx, threadId)) ??
       (metadata as RepositoryMetadata).repository ??
       null;
-    if (!repository) return;
+    if (!repository) return true;
     await rotateReusedSandboxGitCredential(ctx, runner, handle, repository);
   } catch (err) {
+    if (err instanceof SandboxTokenRejectedError) return false;
     console.warn(
       "[ensureSandbox] git credential rotation on reuse failed",
       err instanceof Error ? err.message : String(err),
     );
   }
+  return true;
 }
 
 /**
@@ -336,22 +343,23 @@ export async function ensureSandbox(
   // A recorded entry is trusted only if a pod actually answers at it. Nothing
   // but SANDBOX_DELETE removes a cell, so an evicted pod leaves one behind
   // forever; probing it is what makes that self-healing rather than sticky.
-  if (existing && !input.revalidate) {
+  let revalidate = input.revalidate === true;
+  if (existing && !revalidate) {
     // A probe that ERRORS is not evidence the pod is gone — treat it as alive,
     // the same way the events handler does. Reaping on a throttled control-plane
     // call would tear down a healthy sandbox and re-clone it from scratch.
     const alive = await runner.alive(existing.sandboxHandle).catch(() => true);
     if (alive) {
-      await rotateGitCredentialOnReuse(
+      const accepted = await rotateGitCredentialOnReuse(
         ctx,
         runner,
         existing.sandboxHandle,
         recordThreadId,
         metadata,
       );
-      return existing;
-    }
-    if (agentEntry) {
+      if (accepted) return existing;
+      revalidate = true;
+    } else if (agentEntry) {
       await removeSandboxMapEntry(
         ctx.storage.virtualMcps,
         input.virtualMcpId,
@@ -408,7 +416,7 @@ export async function ensureSandbox(
       metadata,
       repository: primary,
       threadRepos,
-      existing: input.revalidate ? existing : null,
+      existing: revalidate ? existing : null,
       runner,
       ...(input.purpose ? { purpose: input.purpose } : {}),
     });

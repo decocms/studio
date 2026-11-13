@@ -193,7 +193,8 @@ jobs:
   web-component-tests:
     needs: changes
     if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
+    # Playwright has no Chromium build for ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     # Headroom for the worst case of the mirror fallback below: 5 min for the
     # browser download plus 3 mirrors x 2 min for the system deps.
     timeout-minutes: 20

@@ -12,7 +12,6 @@ import { useProjectContext } from "@/sdk";
 import { useDecoCredits } from "@/hooks/use-deco-credits";
 import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
 import { useT } from "@/i18n/use-t.ts";
-import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   SidebarFooterIcon,
@@ -86,13 +85,6 @@ function CreditChip() {
   );
 }
 
-/** The donut's arc, on the rail. Same three states as the bar below. */
-const RING_COLORS = {
-  ok: "stroke-brand-purple",
-  warn: "stroke-warning",
-  exhausted: "stroke-destructive",
-} as const;
-
 /** Mirrors the plan card's bar, which is the same number from the same read. */
 const BAR_COLORS = {
   ok: "bg-brand-purple",
@@ -106,7 +98,6 @@ const BAR_COLORS = {
  */
 function UsageChip() {
   const t = useT();
-  const isCollapsed = useSidebarCollapsed();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { data } = useEntitlements();
@@ -135,12 +126,8 @@ function UsageChip() {
             })
           }
         >
-          <SidebarFooterIcon className={cn(!isCollapsed && "-ml-px")}>
-            {isCollapsed ? (
-              <UsageDonut percent={percent} state={data.usage.state} />
-            ) : (
-              <PlanIcon planId={data.plan.id} />
-            )}
+          <SidebarFooterIcon className="-ml-px">
+            <PlanIcon planId={data.plan.id} />
           </SidebarFooterIcon>
           <span className="flex min-w-0 flex-1 flex-col gap-1.5">
             <span className="flex items-baseline justify-between gap-2">
@@ -172,50 +159,6 @@ function PlanIcon({ planId }: { planId: string }) {
   const index = plans?.findIndex((p) => p.id === planId) ?? -1;
   if (index < 0) return <Lightning01 className={SIDEBAR_FOOTER_ICON_SIZE} />;
   return <PlanPlant index={index} className={SIDEBAR_FOOTER_ICON_SIZE} />;
-}
-
-/**
- * The bar, as a ring — what the rail has room for.
- *
- * A collapsed sidebar drops the label and the bar, so the plant alone said
- * which tier the org was on and nothing about what it had spent. The ring is
- * the same number the bar draws, in the same three colours.
- */
-function UsageDonut({
-  percent,
-  state,
-}: {
-  percent: number;
-  state: keyof typeof RING_COLORS;
-}) {
-  const radius = 8;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("-rotate-90", SIDEBAR_FOOTER_ICON_SIZE)}
-      aria-hidden="true"
-    >
-      <circle
-        cx="10"
-        cy="10"
-        r={radius}
-        fill="none"
-        strokeWidth="3"
-        className="stroke-muted"
-      />
-      <circle
-        cx="10"
-        cy="10"
-        r={radius}
-        fill="none"
-        strokeWidth="3"
-        strokeLinecap="round"
-        className={RING_COLORS[state]}
-        strokeDasharray={`${(circumference * percent) / 100} ${circumference}`}
-      />
-    </svg>
-  );
 }
 
 function TopChip() {

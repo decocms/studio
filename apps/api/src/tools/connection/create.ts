@@ -21,6 +21,7 @@ import {
   validateConfiguration,
 } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { toPublicConnection } from "./public-connection";
 import {
   buildVirtualUrl,
   ConnectionCreateDataSchema,
@@ -234,7 +235,7 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
     });
 
     return {
-      item: connection,
+      item: toPublicConnection(connection),
     };
   },
 });

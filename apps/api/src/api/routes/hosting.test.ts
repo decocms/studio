@@ -1,11 +1,23 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ANALYTICS_PAYLOAD_KEYS,
   ANALYTICS_VIEWS,
+  segmentParams,
   toTenantAnalyticsPayload,
 } from "./hosting";
+
+const WEB_SRC = join(import.meta.dir, "../../../../web/src");
+
+/** Every Monitor analytics section's source, where the payload is read. */
+function monitorAnalyticsSource(): string {
+  const dir = join(WEB_SRC, "components/monitor/analytics");
+  return readdirSync(dir)
+    .filter((f) => /\.tsx?$/.test(f) && !f.includes(".test."))
+    .map((f) => readFileSync(join(dir, f), "utf8"))
+    .join("\n");
+}
 
 describe("toTenantAnalyticsPayload", () => {
   const upstream = {
@@ -56,28 +68,25 @@ describe("toTenantAnalyticsPayload", () => {
     expect(out.usageScope).toEqual({ site: "site-a", tenantScoped: true });
   });
 
-  // The allow-list must track the web code: a key the tab reads but the proxy
+  // The allow-list must track the web code: a key Monitor reads but the proxy
   // drops renders as an empty panel with no error anywhere.
-  it("allows every payload key the web tab reads", () => {
-    const dir = join(
-      import.meta.dir,
-      "../../../../web/src/layouts/main-panel-tabs",
+  it("allows every payload key Monitor's analytics sections read", () => {
+    const sections = monitorAnalyticsSource();
+    const model = readFileSync(
+      join(WEB_SRC, "layouts/main-panel-tabs/analytics-heatmap-model.ts"),
+      "utf8",
     );
-    const tab = readFileSync(join(dir, "analytics-tab.tsx"), "utf8");
-    const model = readFileSync(join(dir, "analytics-heatmap-model.ts"), "utf8");
-    const meta = tab.match(/const META_KEYS = new Set\(\[([^\]]*)\]/)?.[1];
-    const panels = tab.match(/const PANEL_NAMES = \[([^\]]*)\]/)?.[1];
     const read = [
-      ...[...(meta ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]),
-      ...[...(panels ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]),
-      ...[...tab.matchAll(/rowsOf\("(\w+)"\)/g)].map((m) => m[1]),
+      ...[...sections.matchAll(/rowsOf\(\w+, "(\w+)"\)/g)].map((m) => m[1]),
+      ...[...sections.matchAll(/\bdata\??\.(\w+)/g)].map((m) => m[1]),
       ...[...model.matchAll(/\bdata\.(\w+)/g)].map((m) => m[1]),
     ];
-    expect(read.length).toBeGreaterThan(40);
+    expect(read.length).toBeGreaterThan(30);
     // The globe's rows ride on the Realtime payload. An allow-list is silent: a
     // dropped key is a map with no dots on it and no error in any log.
     expect(read).toContain("liveGeo");
-    const handledApart = new Set(["sites", "usageScope"]);
+    // `data` is the BFF envelope's own field; the rest are handled apart.
+    const handledApart = new Set(["data", "sites", "usageScope"]);
     const missing = read.filter(
       (k) => k && !ANALYTICS_PAYLOAD_KEYS.has(k) && !handledApart.has(k),
     );
@@ -85,30 +94,51 @@ describe("toTenantAnalyticsPayload", () => {
   });
 });
 
-// A view the tab asks for but the proxy rejects is a 400 the moment someone
-// clicks the tab — the one failure that is invisible until a user finds it.
+// A view Monitor asks for but the proxy rejects is a 400 the moment someone
+// opens the section — the one failure that is invisible until a user finds it.
 describe("ANALYTICS_VIEWS", () => {
-  it("accepts every view the tab asks for", () => {
-    const tab = readFileSync(
-      join(
-        import.meta.dir,
-        "../../../../web/src/layouts/main-panel-tabs/analytics-tab.tsx",
-      ),
+  it("accepts every view Monitor asks for", () => {
+    const sections = monitorAnalyticsSource();
+    const heatmap = readFileSync(
+      join(WEB_SRC, "layouts/main-panel-tabs/analytics-heatmap-tab.tsx"),
       "utf8",
     );
-    const block = tab.match(/const DATA_VIEWS[^=]*=\s*\[([\s\S]*?)\n\];/)?.[1];
     const views = [
-      ...[...(block ?? "").matchAll(/view:\s*"(\w+)"/g)].flatMap(
+      ...[...sections.matchAll(/useSectionView\(\w+, "(\w+)"\)/g)].flatMap(
         (m) => m[1] ?? [],
       ),
-      ...[...tab.matchAll(/analytics\/data\?view=(\w+)/g)].flatMap(
+      ...[...sections.matchAll(/view: "(\w+)"/g)].flatMap((m) => m[1] ?? []),
+      ...[...heatmap.matchAll(/analytics\/data\?view=(\w+)/g)].flatMap(
         (m) => m[1] ?? [],
       ),
     ];
     expect(views).toContain("overview");
-    // Overview polls these itself; neither is a tab any more.
     expect(views).toContain("live");
-    expect(views).toContain("globe");
+    expect(views).toContain("heatmap");
     expect(views.filter((v) => !ANALYTICS_VIEWS.has(v))).toEqual([]);
+  });
+});
+
+describe("segmentParams", () => {
+  it("forwards valid filters, currency and prop", () => {
+    expect(
+      segmentParams(["path:is:/a:b", "country:not:BR"], "BRL", "sku"),
+    ).toEqual([
+      ["f", "path:is:/a:b"],
+      ["f", "country:not:BR"],
+      ["currency", "BRL"],
+      ["prop", "sku"],
+    ]);
+    expect(segmentParams([], undefined, undefined)).toEqual([]);
+  });
+  it("rejects malformed values", () => {
+    expect(segmentParams(["path:eq:/"], undefined, undefined)).toBeNull();
+    expect(segmentParams(["path:is:"], undefined, undefined)).toBeNull();
+    expect(segmentParams(["path:is:a\nb"], undefined, undefined)).toBeNull();
+    expect(
+      segmentParams(Array(21).fill("os:is:x"), undefined, undefined),
+    ).toBeNull();
+    expect(segmentParams([], "R$", undefined)).toBeNull();
+    expect(segmentParams([], undefined, "x".repeat(129))).toBeNull();
   });
 });

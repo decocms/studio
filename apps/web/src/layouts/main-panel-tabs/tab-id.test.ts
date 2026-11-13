@@ -16,6 +16,7 @@ import {
   parseFileTabId,
   parseLibraryFileTabId,
   resolveDefaultTabId,
+  resolveProjectLandingTabId,
   resolveActiveTabAndOpen,
   resolveTabClickTarget,
   isAutomationsPillActive,
@@ -188,6 +189,39 @@ describe("isLegacySettingsTab", () => {
     expect(isLegacySettingsTab("preview")).toBe(false);
     expect(isLegacySettingsTab("git")).toBe(false);
     expect(isLegacySettingsTab(undefined)).toBe(false);
+  });
+});
+
+describe("resolveProjectLandingTabId", () => {
+  test("no main view, chat, or overview → stay on the Overview", () => {
+    expect(resolveProjectLandingTabId(null)).toBeNull();
+    expect(resolveProjectLandingTabId({ defaultMainView: null })).toBeNull();
+    expect(
+      resolveProjectLandingTabId({ defaultMainView: { type: "chat" } }),
+    ).toBeNull();
+    expect(
+      resolveProjectLandingTabId({ defaultMainView: { type: "overview" } }),
+    ).toBeNull();
+  });
+
+  test("a configured view → that view, with legacy names normalised", () => {
+    expect(
+      resolveProjectLandingTabId({ defaultMainView: { type: "site-editor" } }),
+    ).toBe("site-editor");
+    expect(
+      resolveProjectLandingTabId({ defaultMainView: { type: "preview" } }),
+    ).toBe("site-editor");
+    expect(
+      resolveProjectLandingTabId({ defaultMainView: { type: "connections" } }),
+    ).toBe("settings");
+  });
+
+  test("a pinned app → its pinned-view tab id", () => {
+    expect(
+      resolveProjectLandingTabId({
+        defaultMainView: { type: "ext-apps", id: "conn_1", toolName: "board" },
+      }),
+    ).toBe("app:conn_1:board");
   });
 });
 

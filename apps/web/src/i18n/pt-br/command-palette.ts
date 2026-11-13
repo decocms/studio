@@ -15,4 +15,13 @@ export const commandPalette = {
   "commandPalette.inviteTeammate": "Convidar algu\u00e9m do time",
   "commandPalette.addConnection": "Adicionar uma conex\u00e3o",
   "commandPalette.settings": "Configura\u00e7\u00f5es",
+  "commandPalette.placeholderScoped": "Pesquisar {scope}\u2026",
+  "commandPalette.organizations": "Organiza\u00e7\u00f5es",
+  "commandPalette.scope.label": "Filtrar resultados",
+  "commandPalette.scope.all": "Tudo",
+  "commandPalette.scope.chats": "Chats e tarefas",
+  "commandPalette.hint.navigate": "Navegar",
+  "commandPalette.hint.open": "Abrir",
+  "commandPalette.hint.filter": "Filtrar",
+  "commandPalette.hint.close": "Fechar",
 } satisfies Record<keyof typeof en, string>;

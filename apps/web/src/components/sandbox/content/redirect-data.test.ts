@@ -176,7 +176,9 @@ describe("flat redirects (next-major `redirect`)", () => {
     const read = (block: Record<string, unknown>) =>
       redirectStatus(getRedirectPayload(block));
     expect(read(flat)).toBe(308);
-    expect(read({ ...flat, status: undefined })).toBe(302);
+    // A flat temporary redirect is a 307, as the Blocks SDK serves it.
+    expect(read({ ...flat, status: undefined })).toBe(307);
+    expect(read({ ...flat, status: undefined, permanent: true })).toBe(301);
     expect(read({ ...flat, status: 418, permanent: true })).toBe(301);
     expect(read(redirectBlock({ from: "/a", to: "/b" }))).toBe(307);
     expect(

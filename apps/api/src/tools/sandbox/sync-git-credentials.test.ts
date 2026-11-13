@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { sleep } from "@decocms/shared/std";
 import {
   encodeSandboxStartError,
   SANDBOX_START_ERROR_CODES,
@@ -26,6 +27,7 @@ const {
   GitPushAuthError,
   parseRepositoryBinding,
   refreshSandboxGitCredentials,
+  rotateGitCredentialWhileRunning,
   rotateReusedSandboxGitCredential,
 } = await import("./sync-git-credentials");
 
@@ -178,5 +180,38 @@ describe("rotateReusedSandboxGitCredential", () => {
         legacyRepo,
       ),
     ).rejects.toThrow("(410)");
+  });
+});
+
+describe("rotateGitCredentialWhileRunning", () => {
+  test("keeps rotating until stopped, and survives a failed rotation", async () => {
+    buildCloneInfo.mockImplementation(async () => ({
+      cloneUrl: "https://x-access-token:fresh@github.com/acme/site.git",
+      gitUserName: "someone",
+      gitUserEmail: "someone@example.com",
+    }));
+    let puts = 0;
+    const runner = {
+      proxyDaemonRequest: async () =>
+        ++puts === 1
+          ? new Response("busy", { status: 503 })
+          : new Response("{}"),
+    } as unknown as Parameters<typeof rotateGitCredentialWhileRunning>[1];
+
+    const stop = rotateGitCredentialWhileRunning(
+      legacyRepoCtx,
+      runner,
+      "handle_1",
+      legacyRepo,
+      5,
+    );
+    await sleep(40);
+    stop();
+    const atStop = puts;
+    await sleep(30);
+
+    expect(atStop).toBeGreaterThanOrEqual(2);
+    expect(puts).toBe(atStop);
+    buildCloneInfo.mockReset();
   });
 });

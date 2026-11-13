@@ -254,13 +254,37 @@ export function getMultivariateSectionObject(
   return raw as Record<string, unknown>;
 }
 
+/**
+ * Labels as a variants list shows them: a label several variants share gets
+ * their order among them ("Default 1", "Default 2"), as a page's variants
+ * are named (`parsePageVariants`).
+ */
+export function numberRepeatedLabels(labels: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  return labels.map((label) => {
+    if ((counts.get(label) ?? 0) < 2) return label;
+    const n = (seen.get(label) ?? 0) + 1;
+    seen.set(label, n);
+    return `${label} ${n}`;
+  });
+}
+
+/**
+ * A section's variants with their labels. On a Blocks v8 site (`v8`), the
+ * labels several variants share are numbered as a page's are: a variant just
+ * added (a catch-all, until a rule is chosen) is "Default 1" above "Default
+ * 2", never a second "Default". Any other site keeps v7's labels.
+ */
 export function parseSectionFlagVariants(
   mvObj: Record<string, unknown>,
   formatMatcher: (rule?: Record<string, unknown>) => string,
+  v8 = false,
 ): SectionFlagVariant[] {
   if (!Array.isArray(mvObj.variants)) return [];
 
-  return (mvObj.variants as Array<Record<string, unknown>>).map(
+  const variants = (mvObj.variants as Array<Record<string, unknown>>).map(
     (variant, index) => ({
       label:
         formatMatcher(variant.rule as Record<string, unknown> | undefined) ||
@@ -269,6 +293,9 @@ export function parseSectionFlagVariants(
       rule: variant.rule as Record<string, unknown> | undefined,
     }),
   );
+  if (!v8) return variants;
+  const labels = numberRepeatedLabels(variants.map((v) => v.label));
+  return variants.map((variant, i) => ({ ...variant, label: labels[i]! }));
 }
 
 export function unwrapVariantSectionValue(

@@ -1,9 +1,12 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { useEffect, useEffectEvent } from "react";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
 import {
   copyScope,
   useCopyEpochs,
 } from "@/components/sections-editor/held-copy";
+import { cmsSiteOf } from "@/cms/cms-api";
+import { useVirtualMCP } from "@/sdk";
 import { SchemalessContent } from "./schemaless-content";
 
 /**
@@ -27,8 +30,10 @@ export function SchemalessEditor({
   initialKey?: string | null;
   compact?: boolean;
 }) {
+  // The Studio site the banner's agent prompt names (`DECO_SITE`).
+  const site = cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
   // Each block's form keeps its own copy: hosted saves are guarded by it.
-  const { save, flush, hold } = useDebouncedSaveBlock(
+  const { save, flush, hold, v8 } = useDebouncedSaveBlock(
     { orgSlug, virtualMcpId, branch },
     { holdsCopy: true },
   );
@@ -43,9 +48,24 @@ export function SchemalessEditor({
   return (
     <SchemalessContent
       decofile={decofile}
+      site={site}
       onChange={(blockKey, next) => save(blockKey, next)}
       onLeaveBlock={flush}
       onOpenBlock={hold}
+      v8={v8}
+      wrapEditor={
+        v8
+          ? (blockKey, editor) => (
+              <CmsBlockBoundary
+                listing={decofile}
+                scope={{ orgSlug, virtualMcpId, branch }}
+                names={[blockKey]}
+              >
+                {editor}
+              </CmsBlockBoundary>
+            )
+          : undefined
+      }
       copyEpochOf={copyEpochOf}
       initialKey={initialKey}
       compact={compact}

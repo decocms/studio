@@ -1,11 +1,9 @@
 /**
  * Pure pieces of the Blocks v8 Monitor (`monitor-v8-tab.tsx`): the answer
  * shapes of `/api/:org/monitor/:site/site/data` (apps/api
- * `monitor-site.ts`), which view a project opens, and the formatting the
- * tiles, tables and charts share.
+ * `monitor-site.ts`) and the formatting the tiles, tables and charts share.
+ * A v8 project (its switch on) opens this Monitor; any other, the CDN one.
  */
-import type { MainSchemaAnswer } from "@/hooks/use-main-schema-v8";
-
 export const SITE_RANGES = ["1h", "24h", "7d"] as const;
 export type SiteRange = (typeof SITE_RANGES)[number];
 
@@ -84,18 +82,6 @@ export interface SiteViewAnswer<T> {
   data: T | null;
   reason?: EmptyReason;
   window?: SiteWindow;
-}
-
-/**
- * Which Monitor a project opens. Main's schema decides (the same answer as
- * the editor's): a v8 site gets the telemetry Monitor, and so does a site
- * last found v8 whose main can't be read right now (`"error"`); a v7 site
- * keeps the CDN Monitor. While main is being read, neither is shown, so a
- * v8 site never flashes the CDN view first.
- */
-export function monitorKind(answer: MainSchemaAnswer): "v8" | "v7" | "loading" {
-  if (answer === "loading") return "loading";
-  return answer === "v7" ? "v7" : "v8";
 }
 
 /** The relative change from `previous` to `current`, or null when it can't be said. */

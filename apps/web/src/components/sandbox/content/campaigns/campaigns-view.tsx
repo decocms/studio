@@ -1,15 +1,15 @@
 /**
  * Campaigns (the content browser's view on a Blocks v8 site, in place of v7's
  * Calendar view): every campaign of the saved block `campaigns` (type
- * `calendar`) in the draft, with its window, its status and "Used by". Every
- * dated variant names a campaign (`campaign { name }`), so these are all the
- * dates of the site; nothing is left out.
+ * `calendar`) in the draft, with its window and its status. Every dated
+ * variant names a campaign (`campaign { name }`), so these are all the dates
+ * of the site; nothing is left out.
  *
- * List → detail: change the window, rename (every rule that names it is
- * rewritten in the same change), delete (never blocked, with an Undo; pages
- * that still use a campaign that isn't there are listed under the
- * campaigns). A timeline shows one row per campaign. Each change is one
- * guarded `blocks.apply` into the draft and goes live with the normal Publish.
+ * List → detail: change the window, or delete (it just deletes, with an
+ * Undo; `deco check` reports a rule that names a campaign that isn't there).
+ * The view doesn't say where a campaign is used and doesn't rename one. A
+ * timeline shows one row per campaign. Each change is one guarded
+ * `blocks.apply` into the draft and goes live with the normal Publish.
  */
 
 import { useState } from "react";
@@ -41,8 +41,6 @@ import {
   windowFromInputs,
 } from "@/components/sections-editor/named-rule-picker";
 import { CampaignWindowInputs } from "@/components/sections-editor/named-rule-step";
-import { NamedRuleUsedBy } from "@/components/sections-editor/named-rule-used-by";
-import type { NamedRuleUseRow } from "@/components/sections-editor/named-rule-uses";
 import {
   NamedRuleCreateDialog,
   NamedRuleDetailDelete,
@@ -50,11 +48,7 @@ import {
   NamedRuleDetailTitle,
   NamedRuleDraftNotes,
   NamedRuleEntryBadge,
-  NamedRuleRenameSection,
   namedRuleDetailProps,
-  namedRuleDetailUses,
-  namedRuleUsesLabel,
-  useNamedRuleRename,
   useNamedRuleView,
 } from "@/components/sections-editor/named-rule-view";
 import {
@@ -155,7 +149,6 @@ export function CampaignsView({
   branch,
   decofile,
   meta,
-  onOpenUse,
   initialView = "list",
 }: {
   orgSlug: string;
@@ -163,8 +156,6 @@ export function CampaignsView({
   branch: string;
   decofile: Record<string, unknown>;
   meta: LiveMeta | null | undefined;
-  /** Open a page or section that uses a campaign. */
-  onOpenUse: (row: NamedRuleUseRow) => void;
   /** The Calendar view opens on the timeline; the content browser, the list. */
   initialView?: ViewMode;
 }) {
@@ -203,15 +194,15 @@ export function CampaignsView({
     return <Guide {...guide} />;
   }
 
-  const rows = campaignRows(decofile, view.uses, now);
-  const removed = removedCampaigns(decofile, view.uses);
+  const rows = campaignRows(decofile, view.published, now);
+  const removed = removedCampaigns(decofile, view.published);
 
   const opened = rows.find((row) => row.name === view.openName) ?? null;
   if (opened) {
     return (
       <CampaignDetail
         key={`${opened.name}:${copyEpoch}`}
-        {...namedRuleDetailProps(view, opened, { decofile, meta, onOpenUse })}
+        {...namedRuleDetailProps(view, opened, { decofile, meta })}
       />
     );
   }
@@ -264,13 +255,7 @@ export function CampaignsView({
           ) : (
             <CampaignTimeline rows={rows} now={now} onOpen={view.setOpenName} />
           )}
-          <NamedRuleDraftNotes
-            kind="campaigns"
-            missing={view.missing}
-            missingNames={view.missingNames}
-            removed={removed}
-            onOpenUse={onOpenUse}
-          />
+          <NamedRuleDraftNotes kind="campaigns" removed={removed} />
         </div>
       </ScrollArea>
       <NamedRuleCreateDialog
@@ -317,8 +302,6 @@ function CampaignList({
                 row.window,
                 t("sectionsEditor.namedRulePicker.alwaysRunning"),
               )}
-              {" · "}
-              {namedRuleUsesLabel(t, "campaigns", row.uses)}
             </span>
           </div>
           <div className="hidden w-40 shrink-0 md:flex">
@@ -497,17 +480,7 @@ function CampaignTimeline({
 }
 
 function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
-  const {
-    row,
-    decofile,
-    meta,
-    uses,
-    pending,
-    holdsCopy,
-    onBack,
-    onOpenUse,
-    onSave,
-  } = props;
+  const { row, decofile, pending, holdsCopy, onBack, onSave } = props;
   const t = useT();
   const stored = {
     block: decofile[CAMPAIGNS_BLOCK],
@@ -531,19 +504,10 @@ function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
     setStart(stored.start);
     setEnd(stored.end);
   }
-  const rename = useNamedRuleRename("campaigns", props);
   const window = windowFromInputs(start, end);
   const seeded = holdsCopy ? shown : stored;
   const windowChanged =
     "window" in window && (start !== seeded.start || end !== seeded.end);
-
-  const { useRows, wholeRows } = namedRuleDetailUses(
-    "campaigns",
-    row.name,
-    uses,
-    decofile,
-    meta,
-  );
 
   const saveWindow = () => {
     if (!("window" in window)) return;
@@ -629,23 +593,6 @@ function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
               </Button>
             </div>
           </section>
-
-          <NamedRuleRenameSection
-            kind="campaigns"
-            id="campaign-name"
-            rename={rename}
-            pending={pending}
-            wholeUses={wholeRows.length}
-          />
-
-          <NamedRuleUsedBy
-            kind="campaigns"
-            rows={useRows}
-            wholeRows={wholeRows}
-            loading={!uses}
-            marked={!!uses?.published}
-            onOpen={onOpenUse}
-          />
         </div>
       </ScrollArea>
     </div>

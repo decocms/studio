@@ -11,7 +11,6 @@ import {
 import {
   hostedPublishFailure,
   notifyHostedPublish,
-  notifySavedNotPublished,
 } from "./hosted-publish-feedback.ts";
 
 const t: TFunction = (key, vars) => interpolate(en[key], vars);
@@ -34,32 +33,21 @@ const total = () => toast.getToasts().length;
 const JARGON = [/\bCDN\b/i, /merged?/i, /\bcurrent\b/i, /\bmain\b/i, /commit/i];
 
 describe("hosted Publish: one toast per Publish", () => {
-  const cases: [HostedPublishResult, string, boolean][] = [
+  const cases: [HostedPublishResult, string][] = [
     [
-      { result: "merged", sha: "a".repeat(40), release: "current" },
+      {
+        result: "merged",
+        sha: "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55",
+      },
       "Published. Your site will show it shortly.",
-      false,
     ],
-    [
-      { result: "merged", sha: "a".repeat(40), release: "created" },
-      "Saved, but not published yet",
-      true,
-    ],
-    [
-      { result: "merged", sha: "a".repeat(40), release: "none" },
-      "Saved, but not published yet",
-      true,
-    ],
-    [{ result: "up-to-date" }, "Nothing to publish", false],
+    [{ result: "up-to-date" }, "Nothing to publish"],
   ];
 
-  for (const [result, title, offersRetry] of cases) {
-    test(`${result.result}${"release" in result ? `/${result.release}` : ""} → "${title}"`, () => {
-      let retries = 0;
+  for (const [result, title] of cases) {
+    test(`${result.result} → "${title}"`, () => {
       const before = total();
-      notifyHostedPublish(t, result, () => {
-        retries++;
-      });
+      notifyHostedPublish(t, result);
       expect(total() - before).toBeLessThanOrEqual(1);
       const toasts = shown();
       expect(toasts).toHaveLength(1);
@@ -70,39 +58,17 @@ describe("hosted Publish: one toast per Publish", () => {
       // A publish toast never says "live": the site shows it shortly.
       expect(String(toasts[0]!.title)).not.toMatch(/live/i);
       expect(String(toasts[0]!.description ?? "")).not.toMatch(/live/i);
-      if (offersRetry) {
-        expect(toasts[0]!.action?.label).toBe("Try again");
-        toasts[0]!.action!.onClick({ preventDefault: () => {} });
-        expect(retries).toBe(1);
-        // The same toast stays, as "Publishing…", until the outcome.
-        expect(shown()).toHaveLength(1);
-        expect(shown()[0]!.title).toBe("Publishing…");
-      } else {
-        expect(toasts[0]!.action).toBeUndefined();
-      }
+      // Live once it answers: no "Try again".
+      expect(toasts[0]!.action).toBeUndefined();
     });
   }
-
-  test("a failed Try again replaces the toast, it doesn't stack", () => {
-    const retry = () => {};
-    const before = total();
-    notifyHostedPublish(
-      t,
-      { result: "merged", sha: "a".repeat(40), release: "created" },
-      retry,
-    );
-    notifySavedNotPublished(t, new HostedPublishError("HTTP 502", null), retry);
-    expect(total() - before).toBeLessThanOrEqual(1);
-    expect(shown()).toHaveLength(1);
-    expect(shown()[0]!.title).toBe("Saved, but not published yet");
-  });
 });
 
 describe("hosted Publish: the dialog's error", () => {
   test("someone else published meanwhile", () => {
     const failure = hostedPublishFailure(
       t,
-      new HostedPublishError("main-moved", "main-moved"),
+      new HostedPublishError("production moved", "production_moved"),
     );
     expect(failure.message).toMatch(/Someone else published/);
     expect(failure.detail).toBeNull();

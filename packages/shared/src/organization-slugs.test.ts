@@ -14,6 +14,7 @@ describe("reserved organization slugs", () => {
       "auth",
       "choose-editor",
       "cli",
+      "cms",
       "commerce-onboarding",
       "dbos-queue-depth",
       "health",
@@ -33,6 +34,12 @@ describe("reserved organization slugs", () => {
     expect(isReservedOrganizationSlug(" Report ")).toBe(true);
     expect(isReservedOrganizationSlug("API")).toBe(true);
     expect(isReservedOrganizationSlug("_users")).toBe(true);
+  });
+
+  test("reserves cms: /api/cms/:site would shadow an org named cms", () => {
+    expect(isReservedOrganizationSlug("cms")).toBe(true);
+    expect(isReservedOrganizationSlug(" CMS ")).toBe(true);
+    expect(isReservedOrganizationSlug("cms-team")).toBe(false);
   });
 
   test("does not reject similar organization slugs", () => {

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { ContentClient, DescribeResult } from "@decocms/blocks/protocol";
+import { QueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/lib/query-keys";
 import {
   conflictAuthorDraft,
   draftChangeFor,
+  heldBlockTag,
+  rememberConflictEditor,
   resolveDraftChange,
   versionTag,
 } from "./conflict-author";
@@ -107,5 +111,38 @@ describe("versionTag", () => {
   test("stable for one version, different for another", () => {
     expect(versionTag('{"a":1}')).toBe(versionTag('{"a":1}'));
     expect(versionTag('{"a":1}')).not.toBe(versionTag('{"a":2}'));
+  });
+});
+
+describe("heldBlockTag (the version a section form's dialog shows)", () => {
+  // The page block a refused save carried: an inline section is a part of it.
+  const page = {
+    name: "Home Page",
+    path: "/",
+    sections: [{ __resolveType: "site/sections/Hero.tsx", title: "theirs" }],
+  };
+
+  test("finds the editor the refusal recorded for the block it carried, though the dialog shows only the section's values", () => {
+    const queryClient = new QueryClient();
+    rememberConflictEditor(queryClient, "pages-home", {
+      block: page,
+      editor: { userId: "u-ana", at: 1793800000 },
+    });
+    const tag = heldBlockTag({ "pages-home": page }, "pages-home");
+    expect(tag).not.toBeNull();
+    expect(
+      queryClient.getQueryData<unknown>(
+        KEYS.conflictEditor("pages-home", tag!),
+      ),
+    ).toEqual({
+      userId: "u-ana",
+      at: new Date(1793800000 * 1000).toISOString(),
+    });
+  });
+
+  test("none for a block the editor doesn't hold", () => {
+    expect(heldBlockTag({}, "pages-home")).toBeNull();
+    expect(heldBlockTag(undefined, "pages-home")).toBeNull();
+    expect(heldBlockTag({ "pages-home": page }, null)).toBeNull();
   });
 });

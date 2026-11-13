@@ -1487,6 +1487,7 @@ export type AutomationTriggerType =
   | "linked_chat_run"
   | "board_pr_merged"
   | "chat_pr_opened"
+  | "card_mention"
   | "jira_transition";
 
 /**
@@ -1625,6 +1626,59 @@ export interface OrgSite {
   createdAt: string;
   updatedBy: string;
   updatedAt: string;
+}
+
+// ============================================================================
+// Hosted CMS named drafts (migration 263)
+// ============================================================================
+
+/** How a draft or revision was made, set by the server from the auth method. */
+export type CmsVia = "studio" | "cli" | "token" | "studio-agent";
+
+export interface CmsDraftTable {
+  /** The `org_sites` slug. */
+  site: string;
+  /** Unique within the site; the Studio editor's draft is its thread's branch. */
+  name: string;
+  /** The random slug of the draft folder `sites/<site>/drafts/<slug>/`; never changes. */
+  slug: string;
+  created_by: string;
+  via: CmsVia;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface CmsDraftRow {
+  site: string;
+  name: string;
+  slug: string;
+  createdBy: string;
+  via: CmsVia;
+  createdAt: string;
+}
+
+// ============================================================================
+// Fast Preview saves held in Studio (migration 264)
+// ============================================================================
+
+export interface DecofilePendingBlockTable {
+  organization_id: string;
+  virtual_mcp_id: string;
+  branch: string;
+  block_key: string;
+  /** The block's JSON text (key order kept); null when the save deleted it. */
+  content: string | null;
+  /** Reassigned on every write; bigint comes back as a string. */
+  revision: ColumnType<string, never, string>;
+  updated_by: string | null;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One block saved on a branch and not committed yet. */
+export interface DecofilePendingBlock {
+  blockKey: string;
+  /** The block's new content, or null when it was deleted. */
+  content: Record<string, unknown> | null;
+  revision: string;
 }
 
 // ============================================================================
@@ -2558,6 +2612,8 @@ export interface Database {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  drafts: CmsDraftTable;
+  decofile_pending_blocks: DecofilePendingBlockTable;
   experiments: ExperimentTable;
 
   // Deployment-admin billing warning / block pinned on an org

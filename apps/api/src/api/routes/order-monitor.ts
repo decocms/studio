@@ -194,7 +194,7 @@ export const createOrderMonitorRoutes = () => {
             502,
           );
         }
-        if (registration.status === "unregistered")
+        if (registration.status !== "registered")
           return c.json({ traffic: null });
         siteId = registration.id;
       }

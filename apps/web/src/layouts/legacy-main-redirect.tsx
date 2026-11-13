@@ -231,10 +231,10 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
-    case PROJECT_ROUTE.analytics:
+    case PROJECT_ROUTE.calendar:
       return (
         <Navigate
-          to={PROJECT_ROUTE.analytics}
+          to={PROJECT_ROUTE.calendar}
           params={route.params}
           search={search}
           hash={true}
@@ -251,30 +251,30 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
-    case PROJECT_ROUTE.calendar:
-      return (
-        <Navigate
-          to={PROJECT_ROUTE.calendar}
-          params={route.params}
-          search={search}
-          hash={true}
-          replace
-        />
-      );
-    case PROJECT_ROUTE.monitor:
-      return (
-        <Navigate
-          to={PROJECT_ROUTE.monitor}
-          params={route.params}
-          search={search}
-          hash={true}
-          replace
-        />
-      );
     case PROJECT_ROUTE.automations:
       return (
         <Navigate
           to={PROJECT_ROUTE.automations}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case PROJECT_ROUTE.blog:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.blog}
+          params={route.params}
+          search={search}
+          hash={true}
+          replace
+        />
+      );
+    case PROJECT_ROUTE.blogPost:
+      return (
+        <Navigate
+          to={PROJECT_ROUTE.blogPost}
           params={route.params}
           search={search}
           hash={true}

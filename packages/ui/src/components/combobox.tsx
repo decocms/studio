@@ -43,6 +43,8 @@ export interface ComboboxProps {
   /** The search text as typed, for options fetched by query. Reset to "" on
    *  close, since the input starts empty when the popover reopens. */
   onSearchChange?: (search: string) => void;
+  /** The trigger's accessible name, for a combobox without a visible label. */
+  ariaLabel?: string;
 }
 
 export function Combobox({
@@ -60,6 +62,7 @@ export function Combobox({
   filter,
   renderSearchAction,
   onSearchChange,
+  ariaLabel,
 }: ComboboxProps) {
   const selectedOption = options.find((option) => option.value === value);
   const [open, setOpenState] = useState(false);
@@ -79,6 +82,7 @@ export function Combobox({
           <Button
             variant="outline"
             role="combobox"
+            aria-label={ariaLabel}
             className={cn(
               "justify-between rounded-[var(--studio-control-radius,var(--radius-lg))]",
               width,

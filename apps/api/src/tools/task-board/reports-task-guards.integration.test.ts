@@ -1,6 +1,6 @@
 /**
  * Real-Postgres coverage for the reports-task guards in the board tools:
- * content immutability (UPDATE) and delete-dismisses.
+ * content preservation on import and delete-dismisses.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -76,38 +76,22 @@ describe("reports-task guards", () => {
     await closeTestPgDatabase(database);
   });
 
-  it("rejects content edits on a reports task; user tasks stay editable", async () => {
-    const reportsTask = await taskBoard.create({
+  it("allows editing system-created task content", async () => {
+    const item = await taskBoard.create({
       organizationId: ORG,
       title: "finding",
+      description: "original",
       by: "system",
     });
-    for (const patch of [
-      { title: "renamed" },
-      { description: "rewritten" },
-      { priority: "high" as const },
-    ]) {
-      await expect(
-        TASK_BOARD_ITEM_UPDATE.handler({ id: reportsTask.id, ...patch }, ctx),
-      ).rejects.toThrow(/generated from your report/);
-    }
-    // Board interactions stay free: status/drag and due date.
-    const moved = await TASK_BOARD_ITEM_UPDATE.handler(
-      { id: reportsTask.id, status: "in_progress", sortOrder: 1 },
-      ctx,
+    const edited = await taskBoard.update(
+      item.id,
+      ORG,
+      { title: "renamed", description: "human notes", priority: "high" },
+      USER,
     );
-    expect(moved.item.status).toBe("in_progress");
-
-    const userTask = await taskBoard.create({
-      organizationId: ORG,
-      title: "mine",
-      by: USER,
-    });
-    const renamed = await TASK_BOARD_ITEM_UPDATE.handler(
-      { id: userTask.id, title: "renamed" },
-      ctx,
-    );
-    expect(renamed.item.title).toBe("renamed");
+    expect(edited.title).toBe("renamed");
+    expect(edited.description).toBe("human notes");
+    expect(edited.priority).toBe("high");
   });
 
   it("persists a task's repo through create and update", async () => {

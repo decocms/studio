@@ -3,7 +3,7 @@ setupComponentTest();
 import { afterAll, describe, expect, mock, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import * as realBackend from "@/components/sections-editor/use-content-backend";
+import * as realBackend from "@/cms/use-content-backend";
 import * as realSdk from "@/sdk";
 import * as realSaveBlock from "@/components/sections-editor/use-save-block";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
@@ -13,10 +13,7 @@ const backendModule = { ...realBackend };
 const sdkModule = { ...realSdk };
 const saveBlockModule = { ...realSaveBlock };
 afterAll(() => {
-  mock.module(
-    "@/components/sections-editor/use-content-backend",
-    () => backendModule,
-  );
+  mock.module("@/cms/use-content-backend", () => backendModule);
   mock.module("@/sdk", () => sdkModule);
   mock.module(
     "@/components/sections-editor/use-save-block",
@@ -32,7 +29,7 @@ mock.module("@/components/sections-editor/use-save-block", () => ({
     isPending: false,
   }),
 }));
-mock.module("@/components/sections-editor/use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   ...realBackend,
   useContentBackend: () => project.backend,
 }));

@@ -58,8 +58,8 @@ const jiraStubPort = process.env.JIRA_STUB_PORT || "4103";
 // the config isn't a spec module).
 // The hosted Deco CMS (Blocks v8) writes to the delivery bucket through the
 // S3 API; delivery-stub-server.ts stands in for both that API and the public
-// origin sites read (DELIVERY_PUBLIC_ORIGIN). The site-token signing key is
-// minted per run.
+// origin sites read (DELIVERY_PUBLIC_ORIGIN); the schema `deco schema push`
+// sends is stored there too. The site-token signing key is minted per run.
 const deliveryStubPort = process.env.DELIVERY_STUB_PORT || "4104";
 const deliveryStubOrigin = `http://127.0.0.1:${deliveryStubPort}`;
 const siteTokenSigningKey = generateKeyPairSync("ed25519")
@@ -74,7 +74,7 @@ const subscriptionUsageStubPort =
   process.env.SUBSCRIPTION_USAGE_STUB_PORT || "4105";
 const subscriptionUsageStubOrigin = `http://127.0.0.1:${subscriptionUsageStubPort}`;
 
-const apiServerCommand = `bun run --cwd=../../packages/sandbox build && bun run migrate && bun run migrate:dbos && ${hostedEnv} CODEX_USAGE_URL=${subscriptionUsageStubOrigin}/codex CLAUDE_USAGE_URL=${subscriptionUsageStubOrigin}/claude MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} GITHUB_GRAPHQL_URL=${githubStubOrigin}/graphql JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BOARD_TRANSITION_SETTLE_SECONDS=5 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const apiServerCommand = `bun run --cwd=../../packages/sandbox build && bun run migrate && bun run migrate:dbos && ${hostedEnv} CODEX_USAGE_URL=${subscriptionUsageStubOrigin}/codex CLAUDE_USAGE_URL=${subscriptionUsageStubOrigin}/claude MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} GITHUB_GRAPHQL_URL=${githubStubOrigin}/graphql JIRA_ALLOW_LOCAL_SITE_URL=1 JIRA_SETTLE_SECONDS=2 BOARD_TRANSITION_SETTLE_SECONDS=5 DECOFILE_COMMIT_GAP_SECONDS=1 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy

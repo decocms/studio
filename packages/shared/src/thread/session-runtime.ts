@@ -43,10 +43,10 @@ export interface VmcpRuntimeMetadata {
   previewServerUrl?: string | null;
   productionUrl?: string | null;
   fastPreview?: boolean | null;
-  /** Server-managed: `8` when main's schema is a Blocks v8 one (see
-   *  `isBlocksV8Project` in `@decocms/shared/blocks-major`). Absent on every
-   *  v7 site. */
-  blocksMajor?: number | null;
+  /** Server-managed: the "Blocks v8 site" switch (`isBlocksV8Project` in
+   *  `@decocms/shared/blocks-major`), which only an org admin turns on.
+   *  Absent on every v7 site. */
+  blocksV8?: boolean | null;
 }
 
 /**

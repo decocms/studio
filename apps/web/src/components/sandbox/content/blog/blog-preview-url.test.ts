@@ -380,7 +380,7 @@ describe("buildBlogPostPreviewUrl", () => {
       forcedVariants: ["pages-home@sections=1"],
       previewOptions: { at: "2026-10-23T10:00:00-03:00" },
     };
-    const pointer = "delivery.decocms.com/sites/acme/drafts/s1.json@e2";
+    const pointer = "delivery.decocms.com/sites/acme/drafts/s1/index.json@e2";
     const frame = hostedPreviewUrls({
       display: {
         mode: "production",
@@ -414,6 +414,43 @@ describe("buildBlogPostPreviewUrl", () => {
         draftPointer: null,
       }),
     ).toBe("https://abc.preview.example.com/blogteste/news/my-post");
+  });
+
+  /** A planning block has no `__resolveType`: only the blog app's own
+   *  `?draft=true` makes the post page resolve it. */
+  it("asks for a post still in planning with ?draft=true", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile,
+        post: { slug: "my-post", categories: [{ slug: "news" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+        planning: true,
+      }),
+    ).toBe("https://abc.preview.example.com/blogteste/news/my-post?draft=true");
+  });
+
+  it("never asks for a draft of a live post", () => {
+    const url = buildBlogPostPreviewUrl({
+      decofile,
+      post: { slug: "my-post", categories: [{ slug: "news" }] },
+      previewBaseUrl: "https://abc.preview.example.com",
+      draftPointer: DRAFT_POINTER,
+    });
+    expect(new URL(url!).searchParams.has("draft")).toBe(false);
+  });
+
+  it("a planning post in Fast Preview carries both ?draft=true and the pointer", () => {
+    const url = new URL(
+      buildBlogPostPreviewUrl({
+        decofile,
+        post: { slug: "my-post", categories: [{ slug: "news" }] },
+        previewBaseUrl: "https://abc.preview.example.com",
+        draftPointer: DRAFT_POINTER,
+        planning: true,
+      })!,
+    );
+    expect(url.searchParams.get("draft")).toBe("true");
+    expect(url.searchParams.get("__draft")).toBe(DRAFT_POINTER);
   });
 });
 

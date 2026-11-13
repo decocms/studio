@@ -10,7 +10,7 @@ export interface AuthenticateAndPersistParams {
 
 /** Authenticate a connection via OAuth if it needs it, and persist the token.
  * Returns { ran:false } when no OAuth was required (already authed / no OAuth support).
- * Mirrors the tail shared by handleConnectAndAdd / useAutoInstallGitHub. */
+ * Mirrors the tail of handleConnectAndAdd. */
 export async function authenticateAndPersistOAuth({
   connectionId,
   orgId,

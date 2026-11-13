@@ -179,6 +179,14 @@ RUN apt-get update \
 COPY --chown=sandbox:sandbox dist/typegen.tgz /opt/sandbox-daemon/typegen.tgz
 RUN npm install -g /opt/sandbox-daemon/typegen.tgz
 
+# The `decocms` CLI from this revision (scripts/build-studio-cli.ts), and its
+# decocms-studio skill as a plugin dir. Not in /mnt/skills/public: runs that
+# reach Studio through the CLI load the plugin, other runs never see it.
+COPY --chown=sandbox:sandbox dist/decocms /opt/decocms
+COPY --chown=sandbox:sandbox image/bin/decocms /usr/local/bin/decocms
+RUN chmod +x /usr/local/bin/decocms && decocms --version
+ENV DECOCMS_STUDIO_PLUGIN_DIR=/opt/decocms/plugin
+
 COPY --chown=sandbox:sandbox image/skills /mnt/skills/public
 
 # Expose skill helper scripts as bare commands. Wrappers in skills/_bin/

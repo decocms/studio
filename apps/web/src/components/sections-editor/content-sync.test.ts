@@ -15,8 +15,9 @@ import type { ContentBackend, ProtocolBackend } from "./content-backend";
 import {
   applyProtocolPatch,
   pollProtocolContent,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import { decofileWriteScope } from "./decofile-api";
+import { getHeldPreviewRevision } from "./preview-draft-link";
 import {
   confirmPreviewReloaded,
   contentSyncScope,
@@ -184,11 +185,11 @@ describe("content-sync pending state", () => {
     registerContentPreview(SCOPE);
     const before = { ...reads };
     const gate = deferred<void>();
-    // As Studio's hosted save answers: the draft's new ETag, no main part.
+    // As the hosted CMS's save answers: the draft's new ETag.
     backend.client.blocksApply = async (patch) => {
       state.applied.push(patch);
       await gate.promise;
-      return { revision: "~e2", versions: { Home: "v2" } };
+      return { revision: "e2", versions: { Home: "v2" } };
     };
 
     const saving = applyProtocolPatch(
@@ -242,7 +243,7 @@ describe("content-sync pending state", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     registerContentPreview(SCOPE);
     backend.client.blocksApply = async () => ({
-      revision: "~e2",
+      revision: "e2",
       versions: {},
     });
     await applyProtocolPatch(
@@ -509,6 +510,73 @@ describe("content-sync refresh (contentChanged)", () => {
     expect(getContentSyncState(SCOPE).epoch).toBe(2);
   });
 
+  it("a publish's previews show its revision until the next change; a failed write keeps it", async () => {
+    const queryClient = new QueryClient();
+    const { pointer } = editorQueries(queryClient);
+    await settle();
+    const { backend } = fakeBackend();
+    const REV = "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55";
+    const seen: (string | null)[] = [];
+    // What the preview would render when the refresh moves the pointer.
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.protocolDraftRead(ORG, VM, BRANCH),
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => seen.push(getHeldPreviewRevision(SCOPE)));
+    pointer.version = "e-empty";
+    await runContentChange(target(queryClient, backend), {
+      kind: "publish",
+      reread: true,
+      write: async () => ({ result: "merged" as const, sha: REV }),
+      shownRevision: (r) => (r.result === "merged" ? r.sha : null),
+    });
+    expect(getHeldPreviewRevision(SCOPE)).toBe(REV);
+    // Held before the emptied draft's pointer reached the preview.
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((held) => held === REV)).toBe(true);
+
+    await expect(
+      runContentChange(target(queryClient, backend), {
+        kind: "edit",
+        write: async () => {
+          throw new Error("offline");
+        },
+      }),
+    ).rejects.toThrow("offline");
+    expect(getHeldPreviewRevision(SCOPE)).toBe(REV);
+
+    await runContentChange(target(queryClient, backend), {
+      kind: "edit",
+      adopted: true,
+      write: async () => "saved",
+    });
+    expect(getHeldPreviewRevision(SCOPE)).toBeNull();
+  });
+
+  it("someone else's change lets a held revision go; an up-to-date publish holds none", async () => {
+    const queryClient = new QueryClient();
+    const { state, backend } = fakeBackend();
+    editorQueries(queryClient);
+    await settle();
+    const REV = "fe6c5e0d97ff-0193a1f2-6800-7c3e-9d2a-4b8e1f0c7a55";
+    await runContentChange(target(queryClient, backend), {
+      kind: "reapply",
+      write: async () => ({ revision: REV }),
+      shownRevision: (r) => r.revision,
+    });
+    expect(getHeldPreviewRevision(SCOPE)).toBe(REV);
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    state.revision = "r-other";
+    await pollProtocolContent(queryClient, backend, params, CACHE_KEY);
+    await settle();
+    expect(getHeldPreviewRevision(SCOPE)).toBeNull();
+    await runContentChange(target(queryClient, backend), {
+      kind: "publish",
+      write: async () => ({ result: "up-to-date" as const }),
+      shownRevision: () => null,
+    });
+    expect(getHeldPreviewRevision(SCOPE)).toBeNull();
+  });
+
   it("a release made current refreshes the releases whatever the backend", async () => {
     const queryClient = new QueryClient();
     const { reads } = editorQueries(queryClient);
@@ -539,6 +607,31 @@ describe("content-sync refresh (contentChanged)", () => {
     expect(getContentSyncState(SCOPE)).toMatchObject({
       phase: "idle",
       epoch: 0,
+    });
+  });
+
+  it("a v7 (legacy) discard re-reads the blocks and has the open form re-read its block", async () => {
+    const queryClient = new QueryClient();
+    const { reads } = editorQueries(queryClient);
+    let blockReads = 0;
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.decofile(CACHE_KEY),
+      queryFn: async () => ({ read: ++blockReads }),
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => {});
+    await settle();
+    const before = { ...reads };
+    await runContentChange(target(queryClient, { kind: "legacy" }), {
+      kind: "discard",
+      reread: true,
+      write: async () => {},
+    });
+    expect(blockReads).toBe(2);
+    // Nothing of the content protocol is read for a v7 site.
+    expect(reads).toEqual(before);
+    expect(getContentSyncState(SCOPE)).toMatchObject({
+      phase: "idle",
+      epoch: 1,
     });
   });
 
