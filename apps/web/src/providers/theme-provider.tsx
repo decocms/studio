@@ -94,6 +94,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     injectThemeVariables(publicConfig.theme);
   }, [publicConfig.theme]);
 
+  // Tell the browser the page's real language (index.html sets it before paint).
+  useLayoutEffect(() => {
+    document.documentElement.lang = preferences.language;
+  }, [preferences.language]);
+
   // Apply dark/light class based on user preference
   useLayoutEffect(() => {
     const root = document.documentElement;
