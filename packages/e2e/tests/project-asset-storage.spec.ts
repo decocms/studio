@@ -11,7 +11,7 @@ async function createStorage(request: APIRequestContext, orgSlug: string) {
     orgSlug,
     "FILE_CONFIG_CREATE",
     {
-      name: `Media ${crypto.randomUUID()}`,
+      name: `media-${crypto.randomUUID()}`,
       bucket: "example-media",
       region: "us-east-1",
       accessKeyId: "example-access-key",

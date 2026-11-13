@@ -45,7 +45,7 @@ export function AssetStorageSettings({
               configs.isSuccess &&
               !configs.data.configs.some((config) => config.id === field.value);
             return (
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 <Select
                   value={field.value ?? "automatic"}
                   disabled={!configs.isSuccess}
@@ -54,7 +54,10 @@ export function AssetStorageSettings({
                     void onCommit();
                   }}
                 >
-                  <SelectTrigger id={id}>
+                  <SelectTrigger
+                    id={id}
+                    className="w-full [&_[data-slot=select-value]]:block [&_[data-slot=select-value]]:truncate"
+                  >
                     <SelectValue
                       placeholder={t(
                         "virtualMcp.settings.assetStorage.loading",
