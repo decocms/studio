@@ -13,7 +13,11 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { FeatureNotInPlanError, orgHasFeature } from "@/core/plan-feature-gate";
 import { resolveTier } from "@/core/resolve-tier";
-import { requireAuth, requireOrganization } from "@/core/studio-context";
+import {
+  requireAuth,
+  requireOrganization,
+  type StudioContext,
+} from "@/core/studio-context";
 import {
   GENERATE_IMAGE_DESCRIPTION,
   GenerateImageInputSchema,
@@ -22,13 +26,21 @@ import {
 import { getSettings } from "@/settings";
 
 const GenerateImageToolInputSchema = GenerateImageInputSchema.extend({
+  provider: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe(
+      "Run on the organization's key of this AI provider (e.g. openrouter) instead of the image tier's. Needs `model`.",
+    ),
   model: z
     .string()
     .min(1)
     .max(200)
     .optional()
     .describe(
-      "Image model id on the provider of the organization's image tier, e.g. an OpenRouter slug. Defaults to the tier's model.",
+      "Image model id on that provider, e.g. an OpenRouter slug. Defaults to the image tier's model.",
     ),
   size: z
     .string()
@@ -41,6 +53,22 @@ const GenerateImageToolInputSchema = GenerateImageInputSchema.extend({
     .optional()
     .describe("Moderation strictness of OpenAI image models."),
 });
+
+/** The organization's newest key of `providerId`. */
+async function providerKeyId(
+  ctx: StudioContext,
+  organizationId: string,
+  providerId: string,
+): Promise<string> {
+  const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
+  const key = keys.find((k) => k.providerId === providerId);
+  if (!key) {
+    throw new Error(
+      `This organization has no ${providerId} key. Add one in Settings → AI providers.`,
+    );
+  }
+  return key.id;
+}
 
 /** OpenRouter (and the deco gateway, built on it) copies these into the request body. */
 const OPENROUTER_PROVIDER_IDS = new Set(["openrouter", "deco"]);
@@ -101,15 +129,26 @@ export const GENERATE_IMAGE = defineTool({
         "Object storage is unavailable; cannot persist the generated image.",
       );
     }
-    const tier = await resolveTier(ctx, "image");
+    let credentialId: string;
+    let modelId: string;
+    let tierModelId: string | null = null;
+    if (input.provider) {
+      if (!input.model) throw new Error("provider needs a model");
+      credentialId = await providerKeyId(ctx, organization.id, input.provider);
+      modelId = input.model;
+    } else {
+      const tier = await resolveTier(ctx, "image");
+      credentialId = tier.credentialId;
+      tierModelId = tier.modelId;
+      modelId = input.model ?? tier.modelId;
+    }
     const provider = await ctx.aiProviders.activate(
-      tier.credentialId,
+      credentialId,
       organization.id,
     );
-    const modelId = input.model ?? tier.modelId;
     // Below Ultra deco picks the model run on its gateway key.
     if (
-      modelId !== tier.modelId &&
+      modelId !== tierModelId &&
       provider.info.id === "deco" &&
       !(await orgHasFeature(ctx, organization.id, "model_choice"))
     ) {

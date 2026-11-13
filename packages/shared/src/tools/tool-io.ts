@@ -1028,6 +1028,7 @@ export interface StudioToolIO {
         | "5:4"
         | undefined;
       n?: number | undefined;
+      provider?: string | undefined;
       model?: string | undefined;
       size?: string | undefined;
       quality?: "low" | "medium" | "high" | "auto" | undefined;
