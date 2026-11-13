@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { ProviderKeyCache } from "./provider-key-cache";
 import type { Database, ProviderKeyInfo } from "./types";
@@ -159,7 +159,13 @@ export class AIProviderKeyStorage {
       query = query.where("provider_id", "=", params.providerId);
     }
 
-    const rows = await query.orderBy("created_at", "desc").execute();
+    // Callers default to the first key (tier auto-pick, pickers), so the deco
+    // gateway leads: adding a key of their own must not move an org's AI
+    // spend to that account unless an admin picks it.
+    const rows = await query
+      .orderBy(sql`case when provider_id = 'deco' then 0 else 1 end`)
+      .orderBy("created_at", "desc")
+      .execute();
 
     return rows.map((row) => this.rowToKeyInfo(row));
   }
