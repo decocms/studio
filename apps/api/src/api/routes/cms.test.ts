@@ -14,6 +14,7 @@ import {
   deliveryKeys,
 } from "@/hosted/delivery-store";
 import { newRevisionId } from "@/hosted/revision-id";
+import { createSiteTokens, importSigningKey } from "@/hosted/site-token";
 import { SCHEMA_TEXT } from "@/hosted/hosted-test-helpers";
 import { cmsTestApp } from "./cms-test-app";
 
@@ -352,6 +353,215 @@ describe("schema push", () => {
     expect((await t.call("PUT", "acme/schema", undefined, "nope")).status).toBe(
       400,
     );
+  });
+});
+
+describe("schema push with a site token", () => {
+  async function signingKey() {
+    const pair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+      "sign",
+      "verify",
+    ])) as CryptoKeyPair;
+    return Buffer.from(
+      await crypto.subtle.exportKey("pkcs8", pair.privateKey),
+    ).toString("base64");
+  }
+
+  /** A site token issued through the route, then the caller is only it. */
+  async function setup(options: Parameters<typeof cmsTestApp>[0] = {}) {
+    const key = await signingKey();
+    const t = cmsTestApp({
+      sites: { acme: "org_1", beta: "org_1" },
+      siteProjects: { acme: "p1", beta: "p1" },
+      ...options,
+      siteTokenSigningKey: key,
+    });
+    // Issues into the app's KV, then calls as the token alone.
+    const issue = async (site: string, organizationId = "org_1") => {
+      const issued = await createSiteTokens({
+        kv: t.kv,
+        signingKey: () => importSigningKey(key),
+      }).issue(organizationId, site);
+      t.as({ userId: null });
+      return issued;
+    };
+    const push = (site: string, token: string) =>
+      t.call("PUT", `${site}/schema`, undefined, SCHEMA_TEXT, token);
+    return { t, key, issue, push };
+  }
+
+  const INVALID = { error: "Invalid site token", code: "invalid_site_token" };
+
+  it("pushes with the site's token, logged as via site-token with the kid", async () => {
+    const { t, issue, push } = await setup();
+    const { token, record } = await issue("acme");
+    const info = spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const res = await push("acme", token);
+      expect(res.status).toBe(200);
+      expect(res.body.blocksMajor).toBe(8);
+      expect(t.delivery.objects.get("sites/acme/schema.json")?.text).toBe(
+        SCHEMA_TEXT,
+      );
+      expect(info).toHaveBeenCalledWith("cms: schema pushed", {
+        site: "acme",
+        organizationId: "org_1",
+        etag: res.body.etag,
+        via: "site-token",
+        kid: record.kid,
+      });
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("401s a token of another site with the same answer as an unknown site", async () => {
+    const { t, issue, push } = await setup();
+    const { token } = await issue("beta");
+    const other = await push("acme", token);
+    const unknown = await push("nope", token);
+    expect(other.status).toBe(401);
+    expect(other.body).toEqual(INVALID);
+    expect(unknown.status).toBe(401);
+    expect(unknown.body).toEqual(other.body);
+    expect(t.delivery.objects.has("sites/acme/schema.json")).toBe(false);
+  });
+
+  it("401s a revoked token; revoking is a user route and answers 404 the second time", async () => {
+    const { t, issue, push } = await setup();
+    const { token, record } = await issue("acme");
+    const kept = await issue("acme");
+    // A site token can't revoke, even its own.
+    expect(
+      (
+        await t.call(
+          "DELETE",
+          `acme/site-tokens/${record.kid}`,
+          undefined,
+          undefined,
+          token,
+        )
+      ).status,
+    ).toBe(401);
+    t.as({ userId: "usr_ana", method: "session" });
+    const revoked = await t.call("DELETE", `acme/site-tokens/${record.kid}`);
+    expect(revoked).toEqual({ status: 200, body: { revoked: true } });
+    const again = await t.call("DELETE", `acme/site-tokens/${record.kid}`);
+    expect(again.status).toBe(404);
+    expect(again.body.code).toBe("site_token_not_found");
+    const listed = await t.call("GET", "acme/site-tokens");
+    expect(listed.body.tokens).toEqual([kept.record]);
+    t.as({ userId: null });
+    const res = await push("acme", token);
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual(INVALID);
+    expect((await push("acme", kept.token)).status).toBe(200);
+  });
+
+  it("401s a kid the site never issued, even with a valid signature", async () => {
+    const { issue, push } = await setup();
+    // Signed with Studio's key, but recorded in another org's KV.
+    const { token } = await issue("acme", "org_2");
+    expect((await push("acme", token)).body).toEqual(INVALID);
+  });
+
+  it("401s a bad signature, a tampered payload, and a token that isn't one", async () => {
+    const { issue, push } = await setup();
+    const { token } = await issue("acme");
+    const [h, p, sig] = token.split(".") as [string, string, string];
+    const foreign = await setup();
+    const { token: foreignToken } = await foreign.issue("acme");
+    const tampered = `${h}.${Buffer.from(
+      JSON.stringify({
+        ...JSON.parse(Buffer.from(p, "base64url").toString()),
+        iat: 1,
+      }),
+    ).toString("base64url")}.${sig}`;
+    for (const bad of [
+      foreignToken,
+      tampered,
+      `${h}.${p}.${sig.slice(0, 10)}${sig[10] === "A" ? "B" : "A"}${sig.slice(11)}`,
+      "not-a-token",
+      `${h}.${p}`,
+    ]) {
+      const res = await push("acme", bad);
+      expect({ bad, status: res.status }).toEqual({ bad, status: 401 });
+    }
+  });
+
+  it("401s a site token on every other route", async () => {
+    const { t, issue } = await setup();
+    const { token } = await issue("acme");
+    const r = newRevisionId(Date.parse("2026-11-01T00:00:00.000Z"));
+    await seedRelease(t.delivery.store, "acme", r, { a: { id: "a" } });
+    for (const [method, path, body] of [
+      ["GET", "acme/drafts"],
+      ["POST", "acme/drafts", { name: "d" }],
+      ["GET", "acme/drafts/d"],
+      ["DELETE", "acme/drafts/d"],
+      ["POST", "acme/drafts/d/rpc", { jsonrpc: "2.0", id: 1, method: "x" }],
+      ["POST", "acme/drafts/d/publish", {}],
+      ["PUT", "acme/drafts/schema/schema", {}],
+      ["GET", "acme/releases"],
+      ["POST", `acme/releases/${r}/rollback`, {}],
+      ["GET", "acme/site-tokens"],
+      ["POST", "acme/site-tokens"],
+      ["GET", "acme/schema"],
+    ] as Array<[string, string, unknown?]>) {
+      const res = await t.call(method, path, body, undefined, token);
+      expect({ method, path, status: res.status }).toEqual({
+        method,
+        path,
+        status: 401,
+      });
+    }
+    expect(t.table.rows.size).toBe(0);
+  });
+
+  it("keeps the other checks: v8 switch, size, blocked org, plan; an archived org is refused", async () => {
+    const off = await setup({ blocksV8: false });
+    const offRes = await off.push("acme", (await off.issue("acme")).token);
+    expect(offRes.status).toBe(409);
+    expect(offRes.body.code).toBe("not_blocks_v8_site");
+
+    const big = await setup();
+    const bigToken = (await big.issue("acme")).token;
+    const huge = `{"x":"${"a".repeat(16 * 1024 * 1024)}"}`;
+    expect(
+      (await big.t.call("PUT", "acme/schema", undefined, huge, bigToken))
+        .status,
+    ).toBe(413);
+
+    const blocked = await setup({ blocked: ["org_1"] });
+    const blockedToken = (await blocked.issue("acme")).token;
+    const blockedRes = await blocked.push("acme", blockedToken);
+    expect(blockedRes.status).toBe(403);
+    expect(blockedRes.body.code).toBe("org_blocked");
+
+    const noPlan = await setup({ hasCms: false });
+    const noPlanRes = await noPlan.push(
+      "acme",
+      (await noPlan.issue("acme")).token,
+    );
+    expect(noPlanRes.status).toBe(403);
+    expect(noPlanRes.body.code).toBe("feature_not_in_plan");
+
+    const archived = await setup({ archived: ["org_1"] });
+    const archivedToken = (await archived.issue("acme")).token;
+    const archivedRes = await archived.push("acme", archivedToken);
+    expect(archivedRes.status).toBe(401);
+    expect(archivedRes.body).toEqual(INVALID);
+    expect(archived.t.delivery.objects.has("sites/acme/schema.json")).toBe(
+      false,
+    );
+  });
+
+  it("401s without a bearer, as before", async () => {
+    const { t } = await setup();
+    t.as({ userId: null });
+    const res = await t.call("PUT", "acme/schema", undefined, SCHEMA_TEXT);
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: "Unauthorized" });
   });
 });
 

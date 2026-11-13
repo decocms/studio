@@ -5,6 +5,7 @@ import {
   act,
   fireEvent,
   render as renderBare,
+  waitFor,
   within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
@@ -35,10 +36,14 @@ describe("SiteTokenSection", () => {
   );
   let written: string[];
   let requested: string[];
+  let methods: string[];
+  let listed: Array<{ kid: string; iat: number }>;
 
   beforeEach(() => {
     written = [];
     requested = [];
+    methods = [];
+    listed = [];
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
@@ -49,11 +54,17 @@ describe("SiteTokenSection", () => {
     });
     globalThis.fetch = (async (url: string, init?: RequestInit) => {
       requested.push(url);
+      methods.push(init?.method ?? "GET");
+      if (init?.method === "DELETE") {
+        const kid = decodeURIComponent(url.split("/").at(-1)!);
+        listed = listed.filter((r) => r.kid !== kid);
+        return new Response(JSON.stringify({ revoked: true }));
+      }
       return new Response(
         JSON.stringify(
           init?.method === "POST"
             ? { token: TOKEN }
-            : { site: "acme-store", tokens: [] },
+            : { site: "acme-store", tokens: listed },
         ),
         { status: init?.method === "POST" ? 201 : 200 },
       );
@@ -136,5 +147,35 @@ describe("SiteTokenSection", () => {
       screen().getByText("Site token copied to the clipboard"),
     ).toBeInTheDocument();
     expect(button.querySelector("svg")).toHaveClass("text-success");
+  });
+
+  it("revokes a listed token by kid after confirming", async () => {
+    listed = [{ kid: "kid_a", iat: 1_700_000_000 }];
+    renderBare(
+      <SiteTokenSection
+        orgSlug="acme"
+        virtualMcpId="vir_1"
+        site="acme-store"
+      />,
+      {
+        wrapper,
+      },
+    );
+    const revoke = await screen().findByRole("button", {
+      name: "Revoke site token kid_a",
+    });
+    await act(async () => {
+      fireEvent.click(revoke);
+    });
+    expect(screen().getByText("Revoke this site token?")).toBeInTheDocument();
+    expect(methods).not.toContain("DELETE");
+    await act(async () => {
+      fireEvent.click(screen().getByRole("button", { name: "Revoke" }));
+    });
+    expect(requested).toContain("/api/cms/acme-store/site-tokens/kid_a");
+    await waitFor(() =>
+      expect(screen().queryByText("kid_a")).not.toBeInTheDocument(),
+    );
+    expect(screen().queryByText("Revoke this site token?")).toBeNull();
   });
 });
