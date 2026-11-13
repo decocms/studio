@@ -89,9 +89,7 @@ export function SecretsSection({
       // Stored, but the Cloudflare worker push failed: the site doesn't see the
       // value yet — say so instead of a plain "saved".
       if (res?.workerSync?.status === "failed") {
-        toast.warning(t("mainPanelTabs.hostingTab.toastSecretNotOnWorker"), {
-          description: res.workerSync.error,
-        });
+        toast.warning(t("mainPanelTabs.hostingTab.toastSecretNotOnWorker"));
       } else {
         toast.success(t("mainPanelTabs.hostingTab.toastSecretSaved"));
       }

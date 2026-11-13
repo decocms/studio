@@ -89,12 +89,12 @@ export interface Secret {
 }
 
 /** PUT /secrets response. `workerSync` is present for a Cloudflare worker
- *  site's runtime secret: whether the worker actually received it. */
+ *  site's runtime secret: whether the worker actually received it. Status
+ *  only — the control-plane keeps the CF error detail (substrate) server-side. */
 export interface SecretPutResult {
   name: string;
   workerSync?: {
     status: "pushed" | "skipped-no-cf-config" | "failed";
-    error?: string;
   };
 }
 
