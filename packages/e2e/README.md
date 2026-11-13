@@ -62,6 +62,17 @@ fresh API and web servers on ports 3001 and 4001. Set the same
 `BETTER_AUTH_SECRET` for both runs when reusing a database, so the second server
 can decrypt persisted authentication keys. CI runs both suites.
 
+Authentication token-isolation regressions also use a dedicated server:
+
+```bash
+bun run --cwd=packages/e2e test:e2e:auth-token-isolation
+```
+
+This enables synthetic social-login and email-provider settings to check that
+OAuth state cannot authenticate through magic-link verification. The tests
+never authorize with GitHub or send email. Use the same `BETTER_AUTH_SECRET`
+when reusing a database. CI runs this suite after the other dedicated suites.
+
 ## Architecture
 
 `playwright.config.ts` runs the commerce-upgrade mock, `apps/api`, and

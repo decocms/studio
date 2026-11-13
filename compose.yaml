@@ -75,6 +75,8 @@ services:
         - action: rebuild
           path: bun.lock
         - action: rebuild
+          path: patches
+        - action: rebuild
           path: package.json
         - action: rebuild
           path: deploy/docker-compose/Dockerfile.dev
@@ -119,6 +121,8 @@ services:
           path: apps/api/package.json
         - action: rebuild
           path: bun.lock
+        - action: rebuild
+          path: patches
         - action: rebuild
           path: package.json
         - action: rebuild
