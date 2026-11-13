@@ -82,6 +82,20 @@ export interface Secret {
    *  (mounted by the build Job only). Absent ⇒ runtime. */
   scope?: EnvScope;
   boundOnWorker?: boolean;
+  /** Control-plane runtime secret on a Cloudflare worker site, when the worker
+   *  could be read: `missing` = stored but NOT on the worker yet (the push
+   *  failed), so the site does not see it. Absent = n/a or unknown. */
+  workerSync?: "synced" | "missing";
+}
+
+/** PUT /secrets response. `workerSync` is present for a Cloudflare worker
+ *  site's runtime secret: whether the worker actually received it. */
+export interface SecretPutResult {
+  name: string;
+  workerSync?: {
+    status: "pushed" | "skipped-no-cf-config" | "failed";
+    error?: string;
+  };
 }
 
 export interface Redirect {
