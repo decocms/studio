@@ -69,6 +69,10 @@ export const siteEditor = {
   "siteEditor.contentTypes.status.deleted": "Excluído no rascunho",
   "siteEditor.contentTypes.restore": "Restaurar",
   "siteEditor.contentTypes.restored": '"{name}" restaurado',
+  "siteEditor.contentTypes.discardTitle": 'Descartar alterações em "{name}"?',
+  "siteEditor.contentTypes.discardDescription":
+    "Volta para a versão publicada. As alterações no seu rascunho são perdidas.",
+  "siteEditor.contentTypes.discarded": 'Alterações em "{name}" descartadas',
   "siteEditor.contentTypes.back": "Voltar para {type}",
   "siteEditor.contentTypes.empty": "Nada aqui ainda.",
   "siteEditor.contentTypes.noMatch": "Nada corresponde à sua busca.",

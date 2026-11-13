@@ -551,6 +551,11 @@ function ContentBrowserReady({
     from: ContentTypesView | null;
   } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
+  // A changed entry whose discard is being confirmed: kept after the dialog
+  // closes, so its title doesn't empty while the dialog animates out.
+  const [discardTarget, setDiscardTarget] = useState<ContentEntry | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
@@ -1119,19 +1124,42 @@ function ContentBrowserReady({
     }
   };
 
-  /** A deleted entry back as published: its deletion is discarded. */
-  const restoreTypeEntry = async (entry: ContentEntry) => {
+  /** An entry back as published: the draft's change to it is discarded. */
+  const discardTypeEntry = async (entry: ContentEntry, success: string) => {
     const change = draftChanges.data?.changes[entry.key];
     if (!typesBackend || !change) return;
+    await discardChanges(
+      typesBackend,
+      [{ name: entry.key, version: change.version }],
+      success,
+    );
+  };
+
+  const restoreTypeEntry = async (entry: ContentEntry) => {
     setRestoring(entry.key);
     try {
-      await discardChanges(
-        typesBackend,
-        [{ name: entry.key, version: change.version }],
+      await discardTypeEntry(
+        entry,
         t("siteEditor.contentTypes.restored", { name: entryName(entry) }),
       );
     } finally {
       setRestoring(null);
+    }
+  };
+
+  const confirmDiscard = async () => {
+    if (!discardTarget) return;
+    setIsDiscarding(true);
+    try {
+      await discardTypeEntry(
+        discardTarget,
+        t("siteEditor.contentTypes.discarded", {
+          name: entryName(discardTarget),
+        }),
+      );
+    } finally {
+      setIsDiscarding(false);
+      setDiscardOpen(false);
     }
   };
 
@@ -1170,6 +1198,14 @@ function ContentBrowserReady({
   };
 
   const typeRowMenu = (type: ContentType, entry: ContentEntry) => {
+    // A new entry has no published copy: deleting it already drops it.
+    const onDiscard =
+      typesBackend && entry.status === "changed"
+        ? () => {
+            setDiscardTarget(entry);
+            setDiscardOpen(true);
+          }
+        : undefined;
     if (type.group === "pages") {
       const page: PageEntry = {
         key: entry.key,
@@ -1180,6 +1216,7 @@ function ContentBrowserReady({
         <ItemActions
           onDuplicate={() => openDuplicatePage(page)}
           onRename={() => openRenamePage(page)}
+          onDiscard={onDiscard}
           onDelete={() =>
             setDeleteTarget({ kind: "page", key: page.key, label: page.name })
           }
@@ -1189,6 +1226,7 @@ function ContentBrowserReady({
     if (type.group === "redirects") {
       return (
         <ItemActions
+          onDiscard={onDiscard}
           onDelete={() =>
             requestRedirectDeletion(
               entry.key,
@@ -1201,6 +1239,7 @@ function ContentBrowserReady({
     if (type.group === "sections") {
       return (
         <ItemActions
+          onDiscard={onDiscard}
           onDelete={() =>
             setDeleteTarget({
               kind: "section",
@@ -1211,7 +1250,7 @@ function ContentBrowserReady({
         />
       );
     }
-    return null;
+    return onDiscard ? <ItemActions onDiscard={onDiscard} /> : null;
   };
 
   // ------------------ Variant ------------------
@@ -2396,6 +2435,43 @@ function ContentBrowserReady({
                 ) : (
                   t("sandbox.contentBrowser.deleteDialog.delete")
                 )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={discardOpen}
+          onOpenChange={(next) => {
+            if (!next && !isDiscarding) setDiscardOpen(false);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {discardTarget &&
+                  t("siteEditor.contentTypes.discardTitle", {
+                    name: entryName(discardTarget),
+                  })}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("siteEditor.contentTypes.discardDescription")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDiscarding}>
+                {t("sandbox.contentBrowser.deleteDialog.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  void confirmDiscard();
+                }}
+                disabled={isDiscarding}
+                className={cn(buttonVariants({ variant: "destructive" }))}
+              >
+                {isDiscarding && <Spinner className="size-3.5" />}
+                {t("sandbox.itemActions.discardChanges")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
