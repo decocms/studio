@@ -1,4 +1,4 @@
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 import { useState } from "react";
 import { toast } from "sonner";
 import { LAST_CONFIG_KEY } from "@/components/file-picker/file-picker-dialog";

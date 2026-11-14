@@ -1,4 +1,4 @@
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { useFileConfigsQuery } from "@/hooks/use-file-configs";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";

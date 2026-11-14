@@ -1,4 +1,4 @@
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 import { useRef, useState } from "react";
 import { File02, Film01, Trash01, Upload01 } from "@untitledui/icons";
 import { toast } from "sonner";

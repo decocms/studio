@@ -1,4 +1,4 @@
-import { useVirtualMCP } from "@/sdk";
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
 import { cmsRequestSignal } from "./request-deadline";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
 import { useT } from "@/i18n/use-t.ts";
