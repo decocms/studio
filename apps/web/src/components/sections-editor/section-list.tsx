@@ -7,6 +7,8 @@ import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
+  ArrowNarrowDown,
+  ArrowNarrowUp,
   Copy01,
   Cube01,
   LayersThree01,
@@ -295,6 +297,8 @@ function SortableSectionItem({
   onToggleLazy,
   onAddVariant,
   onDetach,
+  onAddSectionAbove,
+  onAddSectionBelow,
 }: {
   section: ParsedSection;
   raw: RawSection | undefined;
@@ -311,6 +315,9 @@ function SortableSectionItem({
   onToggleLazy?: () => void;
   onAddVariant: () => void;
   onDetach: () => void;
+  /** Unset when sections can't be added: no insert items are offered. */
+  onAddSectionAbove?: () => void;
+  onAddSectionBelow?: () => void;
 }) {
   const t = useT();
   const compact = useNewBlocksEditor();
@@ -488,6 +495,28 @@ function SortableSectionItem({
             <Copy01 className="h-4 w-4" />
             {t("sectionsEditor.sectionList.duplicateMenuItem")}
           </DropdownMenuItem>
+          {onAddSectionAbove && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddSectionAbove();
+              }}
+            >
+              <ArrowNarrowUp className="h-4 w-4" />
+              {t("sectionsEditor.sectionList.addSectionAboveMenuItem")}
+            </DropdownMenuItem>
+          )}
+          {onAddSectionBelow && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddSectionBelow();
+              }}
+            >
+              <ArrowNarrowDown className="h-4 w-4" />
+              {t("sectionsEditor.sectionList.addSectionBelowMenuItem")}
+            </DropdownMenuItem>
+          )}
           {enableAddVariant && (
             <DropdownMenuItem
               className={cn(!compact && VARIANT_MENU_ITEM_CLASS)}
@@ -596,6 +625,7 @@ export function SectionList({
   onAddVariant,
   onDetach,
   onAddSection,
+  onAddSectionAt,
   canAddSection = true,
 }: {
   listKey: string;
@@ -616,6 +646,8 @@ export function SectionList({
   onDetach: (index: number) => void;
   /** Classic only: compact pins the add button to the panel's foot instead. */
   onAddSection: () => void;
+  /** Opens the picker to insert at `index` ("Add section above/below"). */
+  onAddSectionAt?: (index: number) => void;
   canAddSection?: boolean;
 }) {
   const t = useT();
@@ -744,6 +776,16 @@ export function SectionList({
                   }
                   onAddVariant={() => onAddVariant(entry.index)}
                   onDetach={() => onDetach(entry.index)}
+                  onAddSectionAbove={
+                    onAddSectionAt && canAddSection
+                      ? () => onAddSectionAt(entry.index)
+                      : undefined
+                  }
+                  onAddSectionBelow={
+                    onAddSectionAt && canAddSection
+                      ? () => onAddSectionAt(entry.index + 1)
+                      : undefined
+                  }
                 />
               );
             })}
