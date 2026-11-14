@@ -21,8 +21,7 @@ export const FILE_OBJECTS_LIST = defineTool({
     // Bounded to keep an authenticated caller from forcing pathologically long
     // substring scans; the scan itself is also page-capped server-side.
     search: z.string().max(256).nullable().optional(),
-    // When true, the search scan keeps only image-extension keys so the image
-    // picker doesn't match (then discard) non-image files.
+    // Filter before pagination so non-image files cannot fill an image page.
     imageOnly: z.boolean().optional(),
   }),
   outputSchema: z.object({
