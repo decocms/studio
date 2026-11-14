@@ -370,7 +370,12 @@ export async function listObjects(params: {
     LIST_MAX_PAGES,
   );
   const sorted = raw
-    .filter((obj) => obj.Key && !obj.Key.endsWith("/"))
+    .filter(
+      (obj) =>
+        obj.Key &&
+        !obj.Key.endsWith("/") &&
+        (!params.imageOnly || isImageKey(obj.Key)),
+    )
     .map((obj) => toListedObject(obj, params.ctx))
     .sort(byLastModifiedDesc);
 
