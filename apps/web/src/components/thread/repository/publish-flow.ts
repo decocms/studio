@@ -16,6 +16,8 @@ import {
   type CreatedPullRequest,
 } from "./change-request-api.ts";
 import {
+  BlocksDeletedOnBaseError,
+  type DeletedBlockResolution,
   fetchGitStatus,
   fetchPublishDiff,
   publishGitChanges,
@@ -170,6 +172,8 @@ async function runStep<T>(
   try {
     return await run();
   } catch (error) {
+    // The editor answers this one; it is not a failed step.
+    if (error instanceof BlocksDeletedOnBaseError) throw error;
     throw new PublishStepError(
       error instanceof Error ? error.message : fallback,
       step,
@@ -222,20 +226,23 @@ function openPullRequest(
 
 /**
  * push → sync → open (or update) the pull request → squash-merge. Every failure
- * arrives as a {@link PublishStepError}; read it with
- * {@link describePublishFailure}.
+ * arrives as a {@link PublishStepError}, read with
+ * {@link describePublishFailure}, except a sync stopped by blocks the base
+ * deleted: a {@link BlocksDeletedOnBaseError}, answered by publishing again
+ * with `resolutions`.
  */
 export async function runPublishFlow(
   target: PublishTarget,
   parts: PublishMessage,
   t: TFunction,
+  resolutions?: Readonly<Record<string, DeletedBlockResolution>>,
 ): Promise<CreatedPullRequest> {
   await assertHeadUnchanged(target);
   await runStep("push", t("thread.publishDialog.failedPushChanges"), () =>
     pushChanges(target, parts.message),
   );
   await runStep("sync", t("thread.publishDialog.failedRebase"), () =>
-    rebaseGitBranch(sandboxRef(target), target.baseBranch),
+    rebaseGitBranch(sandboxRef(target), target.baseBranch, resolutions),
   );
   const pr = await runStep(
     "open-pr",

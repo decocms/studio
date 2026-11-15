@@ -70,6 +70,9 @@ import {
   type CmsAction,
 } from "./cms-panel-state.ts";
 import {
+  type BlockDeletedOnBase,
+  BlocksDeletedOnBaseError,
+  type DeletedBlockResolution,
   hasPublishableLocalWork,
   normalizePublishPolicy,
   readGitHeadBranch,
@@ -77,6 +80,7 @@ import {
   sandboxGitStatusQueryKey,
   sandboxGitStatusQueryOptions,
 } from "./sandbox-git-api.ts";
+import { DeletedBlocksDialog } from "./deleted-blocks-dialog.tsx";
 import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
 import { useReleases } from "./use-releases";
 import { usePrReviews } from "./use-pr-reviews.ts";
@@ -298,8 +302,19 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     },
   });
 
+  /** A sync stopped by blocks the base deleted, waiting for the editor's choice. */
+  const [deletedBlocks, setDeletedBlocks] = useState<{
+    branch: string;
+    base: string;
+    blocks: BlockDeletedOnBase[];
+  } | null>(null);
+
   const getLatest = useMutation({
-    mutationFn: async (target: { branch: string; base: string }) => {
+    mutationFn: async (target: {
+      branch: string;
+      base: string;
+      resolutions?: Record<string, DeletedBlockResolution>;
+    }) => {
       await rebaseGitBranch(
         {
           orgSlug: org.slug,
@@ -308,11 +323,13 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           threadId: taskId ?? null,
         },
         target.base,
+        target.resolutions,
       );
       return target;
     },
     /** Invalidates drift AND the editor's content: the merge moved the head. */
     onSuccess: async (target) => {
+      setDeletedBlocks(null);
       toast.success(
         t("thread.headerActions.syncedWithBase", { base: target.base }),
       );
@@ -333,7 +350,11 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         queryClient.invalidateQueries({ queryKey: contentKey }),
       ]);
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, target) => {
+      if (err instanceof BlocksDeletedOnBaseError) {
+        setDeletedBlocks({ ...target, blocks: err.blocks });
+        return;
+      }
       toast.error(err instanceof Error ? err.message : String(err));
     },
   });
@@ -506,6 +527,22 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         </span>
       ) : null}
       {splitButton}
+      {deletedBlocks ? (
+        <DeletedBlocksDialog
+          key={deletedBlocks.blocks.map((block) => block.path).join("\n")}
+          blocks={deletedBlocks.blocks}
+          base={deletedBlocks.base}
+          pending={getLatest.isPending}
+          onCancel={() => setDeletedBlocks(null)}
+          onConfirm={(resolutions) =>
+            getLatest.mutate({
+              branch: deletedBlocks.branch,
+              base: deletedBlocks.base,
+              resolutions,
+            })
+          }
+        />
+      ) : null}
       {branch ? (
         <PublishDialog
           open={surface.open}

@@ -117,6 +117,16 @@ export const thread = {
   "thread.headerActions.reconnectGithub": "Reconnect GitHub",
   "thread.headerActions.review": "Review",
   "thread.headerActions.saving": "Saving…",
+  "thread.deletedBlocks.title": "Blocks deleted on {base}",
+  "thread.deletedBlocks.description":
+    "This draft edited them. Choose what happens to each one.",
+  "thread.deletedBlocks.renamed": "Renamed to {name}",
+  "thread.deletedBlocks.missingRefs":
+    "Points to {names}, which no longer exist",
+  "thread.deletedBlocks.drop": "Accept deletion",
+  "thread.deletedBlocks.restore": "Restore my version",
+  "thread.deletedBlocks.cancel": "Cancel",
+  "thread.deletedBlocks.continue": "Continue",
   "thread.headerActions.syncedWithBase": "Synced with {base}",
   "thread.headerActions.reopenPr": "Reopen PR",
   "thread.headerActions.reopenPrTooltip": "Reopen PR #{prNumber}",
