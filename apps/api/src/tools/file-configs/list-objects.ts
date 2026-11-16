@@ -35,6 +35,7 @@ export const FILE_OBJECTS_LIST = defineTool({
       }),
     ),
     nextCursor: z.string().nullable(),
+    listingError: z.literal("access_denied").optional(),
   }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -48,12 +49,25 @@ export const FILE_OBJECTS_LIST = defineTool({
       org.id,
     );
 
-    return listObjects({
-      ctx: fileCfg,
-      cursor: input.cursor,
-      maxKeys: input.maxKeys,
-      search: input.search,
-      imageOnly: input.imageOnly,
-    });
+    try {
+      return await listObjects({
+        ctx: fileCfg,
+        cursor: input.cursor,
+        maxKeys: input.maxKeys,
+        search: input.search,
+        imageOnly: input.imageOnly,
+      });
+    } catch (error) {
+      // Only S3's listing denial becomes an upload-only state. Authentication,
+      // config resolution and other storage failures must remain errors.
+      if (error instanceof Error && error.name === "AccessDenied") {
+        return {
+          items: [],
+          nextCursor: null,
+          listingError: "access_denied" as const,
+        };
+      }
+      throw error;
+    }
   },
 });

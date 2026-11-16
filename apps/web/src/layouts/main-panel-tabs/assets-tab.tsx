@@ -52,6 +52,7 @@ import {
   useFilePickerObjects,
   useFilePickerUpload,
 } from "@/hooks/use-file-picker";
+import { BucketListingError } from "@/components/file-picker/bucket-listing-error";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import {
@@ -182,6 +183,9 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
 
   const [gridWidth, gridRef] = useElementWidth();
   const pages = objectsQuery.data?.pages ?? [];
+  const listingDenied = pages.some(
+    (page) => page.listingError === "access_denied",
+  );
   const items = pages.flatMap((p) => p.items);
   const columns = distributeIntoColumns(items, assetColumnCount(gridWidth));
   const activeSearch = debouncedSearch.trim();
@@ -255,8 +259,17 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
       </button>
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {listingDenied || objectsQuery.isError ? (
+          <BucketListingError
+            denied={listingDenied}
+            retrying={objectsQuery.isFetching}
+            onRetry={() => void objectsQuery.refetch()}
+          />
+        ) : null}
         {items.length === 0 ? (
-          activeSearch ? (
+          objectsQuery.isPending ||
+          objectsQuery.isError ||
+          listingDenied ? null : activeSearch ? (
             <EmptyNote
               title={t("filePicker.filePickerDialog.noMatches", {
                 query: activeSearch,
