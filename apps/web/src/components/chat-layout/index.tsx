@@ -284,12 +284,15 @@ function MainPanelControls() {
           <Maximize01 size={16} />
         </LayoutButton>
       )}
-      <LayoutButton
-        label={t("page.closeMainPanel")}
-        onClick={layout.toggleContent}
-      >
-        <XClose size={16} />
-      </LayoutButton>
+      {/* Closing while expanded would leave neither panel open. */}
+      {!expanded && (
+        <LayoutButton
+          label={t("page.closeMainPanel")}
+          onClick={layout.toggleContent}
+        >
+          <XClose size={16} />
+        </LayoutButton>
+      )}
     </div>
   );
 }
