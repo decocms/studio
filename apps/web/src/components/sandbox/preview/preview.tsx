@@ -44,7 +44,6 @@ import {
   LinkExternal01,
   ChevronDown,
   Database01,
-  File06,
   Globe01,
   Plus,
   Monitor04,
@@ -52,6 +51,7 @@ import {
   Tablet01,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
 import {
   Tooltip,
   TooltipContent,
@@ -2018,240 +2018,272 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         : visibleFrameworkRoutes.includes(normPath(currentPath))
           ? `route:${normPath(currentPath)}`
           : undefined;
+  const deviceLabel = t(DEVICE_LABEL_KEYS[previewDeviceSize]);
+  const deviceIcon =
+    previewDeviceSize === "mobile" ? (
+      <Phone02 size={16} />
+    ) : previewDeviceSize === "tablet" ? (
+      <Tablet01 size={16} />
+    ) : (
+      <Monitor04 size={16} />
+    );
   const urlControls = showPreviewToolbar ? (
     pageSelectorVisible ? (
-      <Popover
-        open={pagesOpen}
-        onOpenChange={(open) => {
-          setPagesOpen(open);
-          if (!open) setPagesSearch("");
-        }}
-      >
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label={t("sandbox.preview.choosePage")}
-            data-testid="preview-page-picker"
-            title={
-              blocksLoading
-                ? (pagePickerLabel ?? undefined)
-                : activeGlobalSection || activeLoader
-                  ? pageName
-                  : [pageName, currentPath].filter(Boolean).join(" · ")
-            }
-            className="group/page-picker flex h-7 w-80 min-w-0 shrink items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-ring md:@max-[40rem]/panel-toolbar:w-7 md:@max-[40rem]/panel-toolbar:shrink-0 md:@max-[40rem]/panel-toolbar:border-transparent md:@max-[40rem]/panel-toolbar:bg-transparent"
-          >
-            <span className="hidden flex-1 items-center justify-center text-sidebar-foreground/60 transition-colors group-hover/page-picker:bg-sidebar-accent group-hover/page-picker:text-sidebar-foreground group-data-[state=open]/page-picker:bg-sidebar-accent group-data-[state=open]/page-picker:text-sidebar-foreground md:@max-[40rem]/panel-toolbar:flex">
-              <File06 size={16} />
-            </span>
-            <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50 md:@max-[40rem]/panel-toolbar:hidden">
-              {activeGlobalSection && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-2xs font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                  <Globe01 size={11} />
-                  {t("sandbox.preview.globalBadge")}
-                </span>
+      <div className="flex h-7 min-w-36 flex-1 items-stretch overflow-hidden rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background transition-colors hover:border-border">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleDeviceToggle}
+              aria-label={deviceLabel}
+              className={cn(
+                "flex w-7 shrink-0 items-center justify-center border-r border-border/60 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground",
+                INSET_FOCUS_RING,
               )}
-              {activeLoader && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
-                  <Database01 size={11} />
-                  {t("sandbox.preview.loaderBadge")}
-                </span>
-              )}
-              {pagePickerLabel && (
-                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                  {pagePickerLabel}
-                </span>
-              )}
-              {!blocksLoading && !activeGlobalSection && !activeLoader && (
-                <span
-                  data-testid="preview-page-path"
-                  className={cn(
-                    "min-w-0 truncate font-mono",
-                    pagePickerLabel
-                      ? "ml-auto shrink-[2] text-right text-muted-foreground"
-                      : "flex-1 text-foreground",
-                  )}
-                >
-                  {currentPath}
-                </span>
-              )}
-              <ChevronDown
-                size={12}
-                className={cn(
-                  "shrink-0 transition-transform",
-                  pagesOpen && "rotate-180",
-                )}
-              />
-            </span>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          className="w-112 max-w-[calc(100vw-2rem)] p-0"
-          align="center"
-          sideOffset={8}
+            >
+              {deviceIcon}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{deviceLabel}</TooltipContent>
+        </Tooltip>
+        <Popover
+          open={pagesOpen}
+          onOpenChange={(open) => {
+            setPagesOpen(open);
+            if (!open) setPagesSearch("");
+          }}
         >
-          <Command shouldFilter={false} defaultValue={currentPickerValue}>
-            <CommandInput
-              value={pagesSearch}
-              onValueChange={(value) => {
-                setPagesSearch(value);
-                // cmdk skips scrolling when the highlighted item is unchanged.
-                pagesListRef.current?.scrollTo({ top: 0 });
-              }}
-              placeholder={t("sandbox.preview.searchPagesAndComponents")}
-            />
-            <CommandList ref={pagesListRef} className="max-h-80">
-              <CommandEmpty>
-                {(!contentEditingEnabled || pages.length === 0) &&
-                visibleFrameworkRoutes.length === 0 &&
-                (!contentEditingEnabled || globalSections.length === 0) &&
-                visibleGlobalLoaders.length === 0
-                  ? t("sandbox.preview.noPagesFound")
-                  : t("sandbox.preview.noSearchResults")}
-              </CommandEmpty>
-              {pickerPages.length > 0 && (
-                <CommandGroup>
-                  {pickerPages.map((page) => (
-                    <CommandItem
-                      key={page.key}
-                      value={`page:${page.key}`}
-                      aria-current={
-                        currentPickerValue === `page:${page.key}` || undefined
-                      }
-                      title={`${page.name} · ${page.path}`}
-                      onSelect={() => {
-                        closePagePicker();
-                        navigatePreviewToPage(page);
-                      }}
-                      className="gap-3 px-3 py-2.5 aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm">
-                        {page.name}
-                      </span>
-                      <span className="min-w-0 max-w-1/2 truncate text-right font-mono text-xs text-muted-foreground">
-                        {page.path}
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("sandbox.preview.choosePage")}
+              data-testid="preview-page-picker"
+              title={
+                blocksLoading
+                  ? (pagePickerLabel ?? undefined)
+                  : activeGlobalSection || activeLoader
+                    ? pageName
+                    : [pageName, currentPath].filter(Boolean).join(" · ")
+              }
+              className={cn(
+                "group/page-picker flex min-w-0 flex-1 items-stretch whitespace-nowrap text-left text-xs text-muted-foreground",
+                INSET_FOCUS_RING,
               )}
-              {filteredFrameworkRoutes.length > 0 && (
-                <CommandGroup heading={t("sandbox.preview.siteRoutes")}>
-                  {filteredFrameworkRoutes.map((route) => (
-                    <CommandItem
-                      key={route}
-                      value={`route:${route}`}
-                      aria-current={
-                        currentPickerValue === `route:${route}` || undefined
-                      }
-                      title={route}
-                      onSelect={() => {
-                        closePagePicker();
-                        navigatePreviewToAgentPath(route);
-                      }}
-                      className="px-3 py-2.5 aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
-                    >
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                        {route}
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
+                {activeGlobalSection && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-2xs font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                    <Globe01 size={11} />
+                    {t("sandbox.preview.globalBadge")}
+                  </span>
+                )}
+                {activeLoader && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+                    <Database01 size={11} />
+                    {t("sandbox.preview.loaderBadge")}
+                  </span>
+                )}
+                {pagePickerLabel && (
+                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                    {pagePickerLabel}
+                  </span>
+                )}
+                {!blocksLoading && !activeGlobalSection && !activeLoader && (
+                  <span
+                    data-testid="preview-page-path"
+                    // The end of a path tells pages apart, so it truncates from the left.
+                    className={cn(
+                      "min-w-0 truncate font-mono [direction:rtl]",
+                      pagePickerLabel
+                        ? "ml-auto shrink-[2] text-right text-muted-foreground md:@max-[40rem]/panel-toolbar:hidden"
+                        : "flex-1 text-left text-foreground",
+                    )}
+                  >
+                    <bdi dir="ltr">{currentPath}</bdi>
+                  </span>
+                )}
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    "shrink-0 transition-transform",
+                    pagesOpen && "rotate-180",
+                  )}
+                />
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-112 max-w-[calc(100vw-2rem)] p-0"
+            align="center"
+            sideOffset={8}
+          >
+            <Command shouldFilter={false} defaultValue={currentPickerValue}>
+              <CommandInput
+                value={pagesSearch}
+                onValueChange={(value) => {
+                  setPagesSearch(value);
+                  // cmdk skips scrolling when the highlighted item is unchanged.
+                  pagesListRef.current?.scrollTo({ top: 0 });
+                }}
+                placeholder={t("sandbox.preview.searchPagesAndComponents")}
+              />
+              <CommandList ref={pagesListRef} className="max-h-80">
+                <CommandEmpty>
+                  {(!contentEditingEnabled || pages.length === 0) &&
+                  visibleFrameworkRoutes.length === 0 &&
+                  (!contentEditingEnabled || globalSections.length === 0) &&
+                  visibleGlobalLoaders.length === 0
+                    ? t("sandbox.preview.noPagesFound")
+                    : t("sandbox.preview.noSearchResults")}
+                </CommandEmpty>
+                {pickerPages.length > 0 && (
+                  <CommandGroup>
+                    {pickerPages.map((page) => (
+                      <CommandItem
+                        key={page.key}
+                        value={`page:${page.key}`}
+                        aria-current={
+                          currentPickerValue === `page:${page.key}` || undefined
+                        }
+                        title={`${page.name} · ${page.path}`}
+                        onSelect={() => {
+                          closePagePicker();
+                          navigatePreviewToPage(page);
+                        }}
+                        className="gap-3 px-3 py-2.5 aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {page.name}
+                        </span>
+                        <span className="min-w-0 max-w-1/2 truncate text-right font-mono text-xs text-muted-foreground">
+                          {page.path}
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+                {filteredFrameworkRoutes.length > 0 && (
+                  <CommandGroup heading={t("sandbox.preview.siteRoutes")}>
+                    {filteredFrameworkRoutes.map((route) => (
+                      <CommandItem
+                        key={route}
+                        value={`route:${route}`}
+                        aria-current={
+                          currentPickerValue === `route:${route}` || undefined
+                        }
+                        title={route}
+                        onSelect={() => {
+                          closePagePicker();
+                          navigatePreviewToAgentPath(route);
+                        }}
+                        className="px-3 py-2.5 aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
+                      >
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                          {route}
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+                {pickerGlobalSections.length > 0 && (
+                  <CommandGroup heading={t("sandbox.preview.globalComponents")}>
+                    {pickerGlobalSections.map((section) => (
+                      <CommandItem
+                        key={section.key}
+                        value={`section:${section.key}`}
+                        aria-current={
+                          currentPickerValue === `section:${section.key}` ||
+                          undefined
+                        }
+                        className="aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
+                        onSelect={() => {
+                          closePagePicker();
+                          navigatePreviewToGlobalSection(section);
+                        }}
+                      >
+                        <span className="truncate">{section.name}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+                {filteredGlobalLoaders.length > 0 && (
+                  <CommandGroup heading={t("sandbox.preview.globalLoaders")}>
+                    {filteredGlobalLoaders.map((loader) => (
+                      <CommandItem
+                        key={loader.key}
+                        value={`loader:${loader.key}`}
+                        aria-current={
+                          currentPickerValue === `loader:${loader.key}` ||
+                          undefined
+                        }
+                        className="aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
+                        onSelect={() => {
+                          closePagePicker();
+                          navigatePreviewToLoader(loader);
+                        }}
+                      >
+                        <span className="truncate">{loader.title}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+              </CommandList>
+            </Command>
+            {contentEditingEnabled &&
+              !activeGlobalSection &&
+              !activeLoaderKey &&
+              splitPathTemplate(currentPath).some(
+                (token) => token.type !== "text",
+              ) && (
+                <div className="flex flex-wrap items-center gap-1 border-t px-3 py-3 text-xs text-muted-foreground">
+                  {splitPathTemplate(currentPath).map((token, i) => {
+                    if (token.type === "text")
+                      return <span key={`text-${i}`}>{token.text}</span>;
+                    const sources = pathParamSources[token.name];
+                    return sources && pickerSandboxRef ? (
+                      <PathParamPickerChip
+                        key={`${currentPageKey}:${token.name}`}
+                        sources={sources}
+                        template={currentPath}
+                        paramName={token.name}
+                        value={pathParamValues[token.name] ?? ""}
+                        sandboxRef={pickerSandboxRef}
+                        onCommit={(value) =>
+                          setPathParamValue(token.name, value)
+                        }
+                      />
+                    ) : (
+                      <PathParamInput
+                        key={`${currentPageKey}:${token.name}`}
+                        name={token.name}
+                        value={pathParamValues[token.name] ?? ""}
+                        onCommit={(value) =>
+                          setPathParamValue(token.name, value)
+                        }
+                      />
+                    );
+                  })}
+                </div>
               )}
-              {pickerGlobalSections.length > 0 && (
-                <CommandGroup heading={t("sandbox.preview.globalComponents")}>
-                  {pickerGlobalSections.map((section) => (
-                    <CommandItem
-                      key={section.key}
-                      value={`section:${section.key}`}
-                      aria-current={
-                        currentPickerValue === `section:${section.key}` ||
-                        undefined
-                      }
-                      className="aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
-                      onSelect={() => {
-                        closePagePicker();
-                        navigatePreviewToGlobalSection(section);
-                      }}
-                    >
-                      <span className="truncate">{section.name}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
-              {filteredGlobalLoaders.length > 0 && (
-                <CommandGroup heading={t("sandbox.preview.globalLoaders")}>
-                  {filteredGlobalLoaders.map((loader) => (
-                    <CommandItem
-                      key={loader.key}
-                      value={`loader:${loader.key}`}
-                      aria-current={
-                        currentPickerValue === `loader:${loader.key}` ||
-                        undefined
-                      }
-                      className="aria-[current=true]:bg-accent aria-[current=true]:text-accent-foreground"
-                      onSelect={() => {
-                        closePagePicker();
-                        navigatePreviewToLoader(loader);
-                      }}
-                    >
-                      <span className="truncate">{loader.title}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
-            </CommandList>
-          </Command>
-          {contentEditingEnabled &&
-            !activeGlobalSection &&
-            !activeLoaderKey &&
-            splitPathTemplate(currentPath).some(
-              (token) => token.type !== "text",
-            ) && (
-              <div className="flex flex-wrap items-center gap-1 border-t px-3 py-3 text-xs text-muted-foreground">
-                {splitPathTemplate(currentPath).map((token, i) => {
-                  if (token.type === "text")
-                    return <span key={`text-${i}`}>{token.text}</span>;
-                  const sources = pathParamSources[token.name];
-                  return sources && pickerSandboxRef ? (
-                    <PathParamPickerChip
-                      key={`${currentPageKey}:${token.name}`}
-                      sources={sources}
-                      template={currentPath}
-                      paramName={token.name}
-                      value={pathParamValues[token.name] ?? ""}
-                      sandboxRef={pickerSandboxRef}
-                      onCommit={(value) => setPathParamValue(token.name, value)}
-                    />
-                  ) : (
-                    <PathParamInput
-                      key={`${currentPageKey}:${token.name}`}
-                      name={token.name}
-                      value={pathParamValues[token.name] ?? ""}
-                      onCommit={(value) => setPathParamValue(token.name, value)}
-                    />
-                  );
-                })}
+            {contentEditingEnabled && (
+              <div className="border-t p-1.5">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    closePagePicker();
+                    setCreatePageError(undefined);
+                    setCreatePageDialogOpen(true);
+                  }}
+                >
+                  <Plus size={16} />
+                  {t("sandbox.preview.createNewPage")}
+                </Button>
               </div>
             )}
-          {contentEditingEnabled && (
-            <div className="border-t p-1.5">
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  closePagePicker();
-                  setCreatePageError(undefined);
-                  setCreatePageDialogOpen(true);
-                }}
-              >
-                <Plus size={16} />
-                {t("sandbox.preview.createNewPage")}
-              </Button>
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
+          </PopoverContent>
+        </Popover>
+      </div>
     ) : (
       <span className="min-w-0 truncate text-xs text-muted-foreground">
         {previewLabel}
@@ -2261,26 +2293,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const previewNavigation =
     showPreviewToolbar || contentEditingEnabled ? (
-      <div className="flex min-w-0 items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-            >
-              {previewDeviceSize === "mobile" ? (
-                <Phone02 size={16} />
-              ) : previewDeviceSize === "tablet" ? (
-                <Tablet01 size={16} />
-              ) : (
-                <Monitor04 size={16} />
-              )}
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-          </TooltipContent>
-        </Tooltip>
+      <div className="flex min-w-0 max-w-[24rem] flex-1 items-center justify-center gap-1">
+        {/* With the page picker, the device toggle sits inside its pill. */}
+        {!(showPreviewToolbar && pageSelectorVisible) && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={handleDeviceToggle}
+                aria-label={deviceLabel}
+              >
+                {deviceIcon}
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent>{deviceLabel}</TooltipContent>
+          </Tooltip>
+        )}
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
           {previewAsAvailable && (
