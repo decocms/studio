@@ -223,6 +223,9 @@ export const KEYS = {
   // e.g. after an MCP connection re-authenticates.
   mcpClientPrefix: () => ["mcp", "client"] as const,
 
+  agentEntryThreads: (orgId: string, userId: string, virtualMcpId: string) =>
+    ["agent-entry-threads", orgId, userId, virtualMcpId] as const,
+
   // Most recent thread per agent.
   virtualMcpLastUsed: (orgId: string, ids: string[]) =>
     ["virtual-mcp", "last-used", orgId, ids] as const,

@@ -10,6 +10,14 @@ import {
 } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Chat, useChatTask } from "@/components/chat/index";
+import {
+  ChatTaskValueProvider,
+  type ChatTaskContextValue,
+} from "@/components/chat/context";
+import type { Task } from "@/components/chat/task/types";
+import { findAgentEntryThread } from "@/lib/reusable-new-chat";
+import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import { useAgentEntryThreads } from "@/hooks/use-agent-entry-threads";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ChatVoiceProvider } from "@/components/chat/voice";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -418,6 +426,113 @@ function VmEventsBridge({
 }
 
 // ---------------------------------------------------------------------------
+// The project's main panel keeps its own thread and sandbox when the chat
+// beside it belongs to another agent, so Site Editor, Content and Code edit the
+// project's draft instead of the chat's branch.
+// ---------------------------------------------------------------------------
+
+function ProjectPanelSession({ children }: { children: ReactNode }) {
+  const { org } = useProjectContext();
+  const { virtualMcpId, activeTask } = useChatTask();
+  const isProject = virtualMcpId !== getWellKnownDecopilotVirtualMCP(org.id).id;
+  if (!isProject || activeTask?.virtual_mcp_id === virtualMcpId) {
+    return children;
+  }
+  return <ProjectPanelThread key={virtualMcpId}>{children}</ProjectPanelThread>;
+}
+
+function ProjectPanelThread({ children }: { children: ReactNode }) {
+  const chat = useChatTask();
+  const projectId = chat.virtualMcpId;
+  const entity = useVirtualMCP(projectId);
+  const hasActiveRepository = !!(entity && getActiveRepository(entity));
+  const baseBranch = useBaseBranch(entity, null);
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id;
+  const threadActions = useThreadActions();
+  const threadManager = useThreadManager();
+  const threads = useSyncExternalStore(
+    threadManager.threads.subscribe,
+    threadManager.threads.get,
+  );
+  const threadsLoading =
+    useSyncExternalStore(
+      threadManager.threadsStatus.subscribe,
+      threadManager.threadsStatus.get,
+    ).kind === "loading";
+
+  /** Resolved once per project: a chat started meanwhile must not move the open draft. */
+  const [panel, setPanel] = useState<{
+    threadId: string | null;
+    branch?: string;
+  } | null>(null);
+  const findEntry = (candidates: Task[]) =>
+    findAgentEntryThread(
+      candidates,
+      projectId,
+      userId,
+      defaultThreadRuntime(entity?.metadata),
+      hasActiveRepository,
+      { baseBranch, releases: entity?.metadata?.releases ?? undefined },
+    );
+  const localEntry = panel || threadsLoading ? undefined : findEntry(threads);
+  // The shared feed is the org-wide latest page; read the project's own threads before minting a duplicate draft.
+  const scopedEntry = useAgentEntryThreads(
+    projectId,
+    !panel && !threadsLoading && !localEntry,
+  );
+  if (!panel && !threadsLoading && scopedEntry.status !== "loading") {
+    const entry =
+      localEntry ??
+      (scopedEntry.status === "ready"
+        ? findEntry(scopedEntry.threads)
+        : undefined);
+    setPanel(
+      entry
+        ? { threadId: entry.id }
+        : hasActiveRepository
+          ? {
+              threadId: crypto.randomUUID(),
+              branch: generateBranchName(
+                session?.user?.name || session?.user?.email?.split("@")[0],
+              ),
+            }
+          : { threadId: null },
+    );
+  }
+
+  const ensured = useEnsureTask(
+    panel?.threadId ?? null,
+    projectId,
+    panel?.branch,
+  );
+  const task = ensured.status === "ready" ? ensured.task : null;
+  const value: ChatTaskContextValue = {
+    ...chat,
+    activeTask: task,
+    isThreadLocked: task?.harness_id != null,
+    lockedHarness: task?.harness_id ?? null,
+    lockedBranch: task?.branch ?? null,
+    currentBranch: task?.branch ?? null,
+    setCurrentTaskBranch: (branch) => {
+      if (task) threadActions.setBranch(task.id, branch);
+    },
+  };
+
+  return (
+    <ChatTaskValueProvider value={value}>
+      <VmEventsBridge
+        virtualMcpId={projectId}
+        hasActiveRepository={hasActiveRepository}
+        sandboxMap={entity?.metadata?.sandboxMap}
+      >
+        {children}
+      </VmEventsBridge>
+    </ChatTaskValueProvider>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Thread presentation stays under the selected runtime; layout state contains no
 // project entity or thread identity.
 // ---------------------------------------------------------------------------
@@ -481,7 +596,9 @@ function ThreadSessionContent({
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
         }
       >
-        <Outlet />
+        <ProjectPanelSession>
+          <Outlet />
+        </ProjectPanelSession>
         <ChatLayout.Thread topbar={<ThreadTopbar />}>
           {/* The conversation is per thread; the app beside it is not. */}
           <ActiveTaskBoundary key={taskId ?? "threadless"} />
