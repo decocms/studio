@@ -208,11 +208,6 @@ export function PostsWorkspace({
       decofile[key] as Record<string, unknown> | undefined,
       "posts",
     );
-  // List mode shows the first post by default, so the detail pane is never empty.
-  const detailKey =
-    selectedKey && posts.some((p) => p.key === selectedKey)
-      ? selectedKey
-      : (posts[0]?.key ?? null);
 
   /**
    * Delete is a soft delete: the post moves to Archived, off every working
@@ -289,6 +284,12 @@ export function PostsWorkspace({
       );
       return sort === "date-asc" ? cmp : -cmp;
     });
+
+  // Default to the currently-visible list's first post, not the unfiltered one.
+  const detailKey =
+    selectedKey && posts.some((p) => p.key === selectedKey)
+      ? selectedKey
+      : (listedPosts[0]?.key ?? null);
 
   const selectionActive = selectedKeys.size > 0;
   const toggleSelect = (key: string) =>
