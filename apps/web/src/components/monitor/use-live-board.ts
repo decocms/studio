@@ -31,6 +31,7 @@ import {
   type Kpi,
   type MetricPoint,
   type MonitorBoard,
+  ordersSourceState,
   type ProjectRow,
   measureDeploy,
   type Signal,
@@ -58,11 +59,11 @@ export function useLiveBoard(
   const config = usePublicConfig();
   // Off the plan, the order monitor answers 403: no stores, not a broken page.
   const monitoring = useFeature("monitoring");
-  const storesQuery = useOrderMonitorStores(
-    orgSlug,
-    config.orderMonitorEnabled === true && monitoring,
-  );
+  const storesEnabled = config.orderMonitorEnabled === true && monitoring;
+  const storesQuery = useOrderMonitorStores(orgSlug, storesEnabled);
   const allStores = monitoring ? (storesQuery.data ?? []) : [];
+  // Empty means "no store" only once the read answered; disabled keeps its old upsell meaning. See ordersSourceState.
+  const storesConfirmed = !storesEnabled || storesQuery.isSuccess;
   const stores = scopeId
     ? allStores.filter((s) => s.agentIds.includes(scopeId))
     : allStores;
@@ -166,7 +167,7 @@ export function useLiveBoard(
       : {
           // A store connected without the order ingest isn't in the lake yet.
           id: "orders",
-          state: vtex.length > 0 ? "partial" : "off",
+          state: ordersSourceState(0, vtex.length, storesConfirmed),
           detail:
             vtex.length > 0 ? { provider: "VTEX", count: vtex.length } : null,
           lastEventAt: null,

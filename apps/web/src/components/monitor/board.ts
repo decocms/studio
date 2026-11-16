@@ -182,6 +182,23 @@ export interface ExperimentRow {
 
 export type SourceState = "live" | "partial" | "off";
 
+/**
+ * The orders source's state. `storesConfirmed` is false while the store list is
+ * still loading or came back an error — then an empty list is NOT authoritative,
+ * so a VTEX connection whose ingest store simply wasn't fetched is not mistaken
+ * for one that was never installed. Fail open to "live" in that case rather than
+ * nag a connected store to reconnect; only a confirmed-empty read is "partial".
+ */
+export function ordersSourceState(
+  storeCount: number,
+  vtexCount: number,
+  storesConfirmed: boolean,
+): SourceState {
+  if (storeCount > 0) return "live";
+  if (vtexCount === 0) return "off";
+  return storesConfirmed ? "partial" : "live";
+}
+
 export interface SourceRow {
   id: SourceId;
   state: SourceState;
