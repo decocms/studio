@@ -758,6 +758,7 @@ export interface OrganizationJoinRequestStoragePort {
   /** Atomic pending→decided transition; null if it was already decided. */
   decide(
     id: string,
+    organizationId: string,
     status: Exclude<JoinRequestStatus, "pending">,
     decidedBy: string,
   ): Promise<OrganizationJoinRequest | null>;
