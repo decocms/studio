@@ -1185,6 +1185,55 @@ describe("maskSecrets", () => {
       c: "plain",
     });
   });
+
+  it("masks a v7 secret loader's fromJson/toJson in summarizePublishChanges", () => {
+    const path = ".deco/blocks/api-key.json";
+    const summary = summarizePublishChanges(
+      diffOf({
+        [path]: {
+          from: JSON.stringify({
+            __resolveType: "website/loaders/secret.ts",
+            name: "API_KEY",
+            encrypted: "0a1b2c",
+          }),
+          to: JSON.stringify({
+            __resolveType: "website/loaders/secret.ts",
+            name: "API_KEY",
+            encrypted: "ffeedd",
+          }),
+        },
+      }),
+    );
+    const block = summary.blocks[0]!;
+    expect(block.fromJson).toMatchObject({ encrypted: SECRET_MASK });
+    expect(block.toJson).toMatchObject({ encrypted: SECRET_MASK });
+  });
+
+  it("masks a v7 secret loader's fromJson/toJson in summarizePublishManifest", () => {
+    const path = ".deco/blocks/api-key.json";
+    const after = {
+      __resolveType: "website/loaders/secret.ts",
+      name: "API_KEY",
+      encrypted: "ffeedd",
+    };
+    const summary = summarizePublishManifest({
+      files: [{ path, status: "modified" }],
+      lookup: { "api-key": after },
+      diff: diffOf({
+        [path]: {
+          from: JSON.stringify({
+            __resolveType: "website/loaders/secret.ts",
+            name: "API_KEY",
+            encrypted: "0a1b2c",
+          }),
+          to: JSON.stringify(after),
+        },
+      }),
+    });
+    const block = summary.blocks[0]!;
+    expect(block.fromJson).toMatchObject({ encrypted: SECRET_MASK });
+    expect(block.toJson).toMatchObject({ encrypted: SECRET_MASK });
+  });
 });
 
 describe("the A/B tests and Campaign dates cards (v8)", () => {

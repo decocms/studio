@@ -48,7 +48,10 @@ import {
   type CompareDraft,
 } from "./cms-publish-compare-path.ts";
 import { blockFileName } from "@decocms/blocks/protocol";
-import type { PublishChange } from "./publish-change-summary.ts";
+import {
+  isSecretChange,
+  type PublishChange,
+} from "./publish-change-summary.ts";
 import type { GitDiffResult } from "./sandbox-git-api.ts";
 
 /**
@@ -123,6 +126,24 @@ function entryDiff(change: PublishChange, unreadable: string): GitDiffResult {
   };
 }
 
+/**
+ * A v7 secret block's raw diff entry, with its ciphertext masked. The diff
+ * reads the git blob's own text, bypassing `fromJson`/`toJson`'s masking
+ * (see {@link isSecretChange}), so it is re-rendered from the already-masked
+ * parsed sides instead of the raw blob.
+ */
+function redactedSecretEntry(
+  change: PublishChange,
+  raw: GitDiffResult["diffs"][string],
+) {
+  return {
+    from: change.fromJson
+      ? `${JSON.stringify(change.fromJson, null, 2)}\n`
+      : raw.from,
+    to: change.toJson ? `${JSON.stringify(change.toJson, null, 2)}\n` : raw.to,
+  };
+}
+
 export function PublishCompare({
   change,
   diff,
@@ -173,13 +194,17 @@ export function PublishCompare({
   /** "Open draft": the preview frame's `__draft` (compareDraftLink). */
   const afterLink = url ? compareDraftLink(url, draft) : null;
 
+  const isSecret = isSecretChange(change);
   const rawDiff: GitDiffResult = change.entry
     ? entryDiff(change, t("thread.publishCompare.sideUnreadable"))
     : {
         diffs: Object.fromEntries(
           change.filepaths.flatMap((p) => {
             const entry = diff?.diffs[p];
-            return entry ? [[p, entry] as const] : [];
+            if (!entry) return [];
+            return [
+              [p, isSecret ? redactedSecretEntry(change, entry) : entry],
+            ] as const;
           }),
         ),
       };

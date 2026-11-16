@@ -652,9 +652,15 @@ export function summarizePublishChanges(
         isSiteApp: false,
         status,
         filepaths: [path],
-        sections: status === "edited" ? diffPageSections(fromJson, toJson) : [],
-        fromJson,
-        toJson,
+        sections:
+          status === "edited"
+            ? diffPageSections(fromJson, toJson).map((section) => ({
+                ...section,
+                fields: maskFields(section.fields),
+              }))
+            : [],
+        fromJson: maskSecrets(fromJson),
+        toJson: maskSecrets(toJson),
       });
       continue;
     }
@@ -675,12 +681,12 @@ export function summarizePublishChanges(
                 name: globalSectionLabel(blockKey, shape),
                 kind: "section" as const,
                 status: "edited" as const,
-                fields: shallowFieldDiff(fromJson, toJson, []),
+                fields: maskFields(shallowFieldDiff(fromJson, toJson, [])),
               },
             ].filter((s) => s.fields.length > 0)
           : [],
-      fromJson,
-      toJson,
+      fromJson: maskSecrets(fromJson),
+      toJson: maskSecrets(toJson),
     });
   }
 
@@ -798,10 +804,16 @@ export function summarizePublishManifest(
         isSiteApp: false,
         status,
         filepaths: [path],
-        sections: status === "edited" ? diffPageSections(fromJson, toJson) : [],
-        fromJson,
+        sections:
+          status === "edited"
+            ? diffPageSections(fromJson, toJson).map((section) => ({
+                ...section,
+                fields: maskFields(section.fields),
+              }))
+            : [],
+        fromJson: maskSecrets(fromJson),
         // `new` never diffs sections, so the head shape is a safe stand-in.
-        toJson: toJson ?? (status === "new" ? headShape : null),
+        toJson: maskSecrets(toJson ?? (status === "new" ? headShape : null)),
       });
       continue;
     }
@@ -822,12 +834,12 @@ export function summarizePublishManifest(
                 name: label,
                 kind: "section" as const,
                 status: "edited" as const,
-                fields: shallowFieldDiff(fromJson, toJson, []),
+                fields: maskFields(shallowFieldDiff(fromJson, toJson, [])),
               },
             ].filter((s) => s.fields.length > 0)
           : [],
-      fromJson,
-      toJson,
+      fromJson: maskSecrets(fromJson),
+      toJson: maskSecrets(toJson),
     });
   }
 
@@ -1037,6 +1049,21 @@ export function maskSecrets<T>(value: T): T {
     out.encrypted = SECRET_MASK;
   }
   return out as T;
+}
+
+/**
+ * Whether a change's block is a secret (either side): the review pane's raw
+ * diff reads the git blob directly rather than `fromJson`/`toJson`, so it
+ * must redact the same fields this file already masks, by its own means.
+ */
+export function isSecretChange(
+  change: Pick<PublishChange, "fromJson" | "toJson">,
+): boolean {
+  const shape = change.toJson ?? change.fromJson;
+  return (
+    !!shape &&
+    (shape.__resolveType === SECRET_BLOCK_TYPE || isLegacySecretBlock(shape))
+  );
 }
 
 function maskFields(fields: PublishFieldChange[]): PublishFieldChange[] {
