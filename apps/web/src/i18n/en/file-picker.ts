@@ -1,4 +1,9 @@
 export const filePicker = {
+  "filePicker.filePickerDialog.listingDenied":
+    "Your bucket permissions do not allow listing existing files. You can still try uploading a new file.",
+  "filePicker.filePickerDialog.listingFailed":
+    "Could not load files from this bucket. Try again. You can still try uploading a new file.",
+  "filePicker.filePickerDialog.retryListing": "Retry listing",
   "filePicker.filePickerDialog.assetActions": "Asset actions",
   "filePicker.filePickerDialog.commonMediaTypes":
     "Common image, video, audio, and document types.",

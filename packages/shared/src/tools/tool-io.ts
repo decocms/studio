@@ -8020,6 +8020,7 @@ export interface StudioToolIO {
         publicUrl: string;
       }[];
       nextCursor: string | null;
+      listingError?: "access_denied" | undefined;
     };
   };
   FILE_OBJECT_DELETE: {

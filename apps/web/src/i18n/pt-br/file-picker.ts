@@ -1,6 +1,11 @@
 import type { filePicker as filePickerEn } from "../en/file-picker.ts";
 
 export const filePicker = {
+  "filePicker.filePickerDialog.listingDenied":
+    "As permissões do bucket não permitem listar os arquivos existentes. Você ainda pode tentar enviar um novo arquivo.",
+  "filePicker.filePickerDialog.listingFailed":
+    "Não foi possível carregar os arquivos deste bucket. Tente novamente. Você ainda pode tentar enviar um novo arquivo.",
+  "filePicker.filePickerDialog.retryListing": "Tentar listar novamente",
   "filePicker.filePickerDialog.assetActions": "Ações do ativo",
   "filePicker.filePickerDialog.commonMediaTypes":
     "Tipos comuns de imagem, vídeo, áudio e documentos.",
