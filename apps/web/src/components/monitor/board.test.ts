@@ -1,5 +1,20 @@
 import { describe, expect, it } from "bun:test";
-import { measureDeploy, type StoreHours } from "./board";
+import { measureDeploy, ordersSourceState, type StoreHours } from "./board";
+
+describe("ordersSourceState", () => {
+  it("is live when a store came back", () => {
+    expect(ordersSourceState(1, 1, true)).toBe("live");
+  });
+  it("is off with no VTEX connection", () => {
+    expect(ordersSourceState(0, 0, true)).toBe("off");
+  });
+  it("is partial only when a confirmed-empty read has no store", () => {
+    expect(ordersSourceState(0, 1, true)).toBe("partial");
+  });
+  it("fails open to live when the store read hasn't answered (the bug)", () => {
+    expect(ordersSourceState(0, 1, false)).toBe("live");
+  });
+});
 
 const HOUR = 3_600_000;
 const START = Date.parse("2026-10-20T03:00:00.000Z");
