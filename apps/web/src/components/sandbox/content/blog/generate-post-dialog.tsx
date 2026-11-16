@@ -83,13 +83,11 @@ export function GeneratePostDialog({
   const t = useT();
   const configsQuery = useFileConfigsQuery();
   const project = useVirtualMCP(virtualMcpId);
-  const explicitConfigId = project?.metadata?.assetStorageConfigId;
-  const lockedConfigId =
-    explicitConfigId ??
-    matchSiteSlugConfig(
-      configsQuery.data?.configs ?? [],
-      resolveAgentSiteSlug(project),
-    )?.id;
+  const lockedConfigId = matchSiteSlugConfig(
+    configsQuery.data?.configs ?? [],
+    resolveAgentSiteSlug(project),
+    project?.metadata?.assetStorageConfigId,
+  )?.id;
 
   const [step, setStep] = useState<StepId>("campaign");
   const [campaignKey, setCampaignKey] = useState("");

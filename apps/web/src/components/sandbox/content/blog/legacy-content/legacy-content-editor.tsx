@@ -73,12 +73,11 @@ function ImageControls({
 }) {
   const project = useVirtualMCP(virtualMcpId);
   const configs = useFileConfigsQuery();
-  const lockedConfigId =
-    project?.metadata?.assetStorageConfigId ??
-    matchSiteSlugConfig(
-      configs.data?.configs ?? [],
-      resolveAgentSiteSlug(project),
-    )?.id;
+  const lockedConfigId = matchSiteSlugConfig(
+    configs.data?.configs ?? [],
+    resolveAgentSiteSlug(project),
+    project?.metadata?.assetStorageConfigId,
+  )?.id;
   const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState<string | null>(null);
