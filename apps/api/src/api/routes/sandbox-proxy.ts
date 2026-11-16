@@ -168,6 +168,14 @@ const DAEMON_FILE_CALL_TIMEOUT_MS = 30_000;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 /** `base` plus one resolution per conflicting block: never a large body. */
 const REBASE_MAX_BODY_BYTES = 64 * 1024;
+/** unlink/mkdir/rename/read/glob/grep bodies are a handful of path/pattern
+ *  strings: nothing legitimate approaches this. */
+const QUICK_FILE_OP_MAX_BODY_BYTES = 64 * 1024;
+/** A file's content, same cap as the content protocol's own write path. */
+const FILE_WRITE_MAX_BODY_BYTES = CONTENT_RPC_MAX_BODY_BYTES;
+/** One shell command plus its env/cwd: generous for a real command, still far
+ *  short of what would buffer unboundedly in this process before proxying. */
+const BASH_MAX_BODY_BYTES = 256 * 1024;
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
@@ -930,44 +938,61 @@ export const createSandboxRoutes = () => {
   app.use("/:virtualMcpId/:branch/*", resolveVmClaim);
   app.use("/:virtualMcpId/:branch/git/*", hostedV8GitGone);
 
+  const quickFileOpBodyLimit = bodyLimit({
+    maxSize: QUICK_FILE_OP_MAX_BODY_BYTES,
+    onError: (c) =>
+      c.json({ error: "Payload too large" }, 413, SANDBOX_PROXY_CACHE_HEADERS),
+  });
+
   // -- File write/read (base64-encoded body) --------------------------------
-  app.post("/:virtualMcpId/:branch/write", (c) =>
-    proxyDaemon(c, "/_sandbox/write", {
-      forwardJsonBody: true,
-      signal: quickFileOpSignal(c),
+  app.post(
+    "/:virtualMcpId/:branch/write",
+    bodyLimit({
+      maxSize: FILE_WRITE_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
     }),
+    (c) =>
+      proxyDaemon(c, "/_sandbox/write", {
+        forwardJsonBody: true,
+        signal: quickFileOpSignal(c),
+      }),
   );
-  app.post("/:virtualMcpId/:branch/unlink", (c) =>
+  app.post("/:virtualMcpId/:branch/unlink", quickFileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/unlink", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/mkdir", (c) =>
+  app.post("/:virtualMcpId/:branch/mkdir", quickFileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/mkdir", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/rename", (c) =>
+  app.post("/:virtualMcpId/:branch/rename", quickFileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/rename", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/read", (c) =>
+  app.post("/:virtualMcpId/:branch/read", quickFileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/read", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/glob", (c) =>
+  app.post("/:virtualMcpId/:branch/glob", quickFileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/glob", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
     }),
   );
-  app.post("/:virtualMcpId/:branch/grep", (c) =>
+  app.post("/:virtualMcpId/:branch/grep", quickFileOpBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/grep", {
       forwardJsonBody: true,
       signal: quickFileOpSignal(c),
@@ -975,11 +1000,22 @@ export const createSandboxRoutes = () => {
   );
 
   // One shell command, awaited: no stdin, no TTY, the daemon caps it at 120s.
-  app.post("/:virtualMcpId/:branch/bash", (c) =>
-    proxyDaemon(c, "/_sandbox/bash", {
-      forwardJsonBody: true,
-      signal: c.req.raw.signal,
+  app.post(
+    "/:virtualMcpId/:branch/bash",
+    bodyLimit({
+      maxSize: BASH_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
     }),
+    (c) =>
+      proxyDaemon(c, "/_sandbox/bash", {
+        forwardJsonBody: true,
+        signal: c.req.raw.signal,
+      }),
   );
 
   // -- Script exec/kill -----------------------------------------------------
