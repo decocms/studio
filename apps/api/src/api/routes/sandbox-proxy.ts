@@ -168,6 +168,9 @@ const DAEMON_FILE_CALL_TIMEOUT_MS = 30_000;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 /** `base` plus one resolution per conflicting block: never a large body. */
 const REBASE_MAX_BODY_BYTES = 64 * 1024;
+/** A TenantConfig (git/operator/application) or a `{ base }` / `{ filepaths }`
+ *  git request: a handful of strings, never a large body. */
+const SMALL_SANDBOX_REQUEST_MAX_BODY_BYTES = 64 * 1024;
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
@@ -621,6 +624,12 @@ const SANDBOX_PROXY_CACHE_HEADERS = {
   Pragma: "no-cache",
 } as const;
 
+const smallSandboxRequestBodyLimit = bodyLimit({
+  maxSize: SMALL_SANDBOX_REQUEST_MAX_BODY_BYTES,
+  onError: (c) =>
+    c.json({ error: "Payload too large" }, 413, SANDBOX_PROXY_CACHE_HEADERS),
+});
+
 async function proxyDaemon(
   c: Context<VmEnv>,
   daemonPath: string,
@@ -1023,7 +1032,7 @@ export const createSandboxRoutes = () => {
       redactRepoDir: true,
     }),
   );
-  app.put("/:virtualMcpId/:branch/config", (c) =>
+  app.put("/:virtualMcpId/:branch/config", smallSandboxRequestBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
@@ -1175,25 +1184,29 @@ export const createSandboxRoutes = () => {
       ]),
     });
   });
-  app.post("/:virtualMcpId/:branch/git/diff", async (c) => {
-    const claim = c.get("vmClaim");
-    if (claim.runtime === "cms") {
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          base?: string;
-        };
-        const client = await fastPreviewGitClient(c);
-        const diff = await fastPreviewDiffPayload(c, client, body.base);
-        return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
-      } catch (err) {
-        return fastPreviewGitError(c, err);
+  app.post(
+    "/:virtualMcpId/:branch/git/diff",
+    smallSandboxRequestBodyLimit,
+    async (c) => {
+      const claim = c.get("vmClaim");
+      if (claim.runtime === "cms") {
+        try {
+          const body = (await c.req.json().catch(() => ({}))) as {
+            base?: string;
+          };
+          const client = await fastPreviewGitClient(c);
+          const diff = await fastPreviewDiffPayload(c, client, body.base);
+          return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
+        } catch (err) {
+          return fastPreviewGitError(c, err);
+        }
       }
-    }
-    return proxyDaemon(c, "/_sandbox/git/diff", {
-      forwardJsonBody: true,
-      map404to410: true,
-    });
-  });
+      return proxyDaemon(c, "/_sandbox/git/diff", {
+        forwardJsonBody: true,
+        map404to410: true,
+      });
+    },
+  );
   app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
     // Sandbox-less: "sync local work" only commits the saves held in Studio.
     //
@@ -1263,68 +1276,72 @@ export const createSandboxRoutes = () => {
       });
     });
   });
-  app.post("/:virtualMcpId/:branch/git/discard", async (c) => {
-    const claim = c.get("vmClaim");
-    if (claim.runtime === "cms") {
-      // No working tree: discarding a COMMITTED change is itself a commit.
-      return withClaimGitLock(claim.claimName, async () => {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          filepaths?: unknown;
-        };
-        const filepaths = Array.isArray(body.filepaths)
-          ? body.filepaths.filter((p): p is string => typeof p === "string")
-          : [];
-        if (filepaths.length === 0) {
-          return c.json(
-            { error: "filepaths is required" },
-            400,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-        try {
-          const client = await fastPreviewGitClient(c);
-          // A held save is discarded by dropping it; a committed one below.
-          const head = await client.getBranch(claim.branch);
-          if (head) {
-            const { files } = await fastPreviewPendingFiles(
-              c,
-              client,
-              head.sha,
-            );
-            const wanted = new Set(filepaths);
-            await c.var.studioContext.storage.decofilePendingBlocks.deleteKeys(
-              fastPreviewPendingScope(c),
-              files
-                .filter((f) => wanted.has(f.path))
-                .map((f) => f.block.blockKey),
+  app.post(
+    "/:virtualMcpId/:branch/git/discard",
+    smallSandboxRequestBodyLimit,
+    async (c) => {
+      const claim = c.get("vmClaim");
+      if (claim.runtime === "cms") {
+        // No working tree: discarding a COMMITTED change is itself a commit.
+        return withClaimGitLock(claim.claimName, async () => {
+          const body = (await c.req.json().catch(() => ({}))) as {
+            filepaths?: unknown;
+          };
+          const filepaths = Array.isArray(body.filepaths)
+            ? body.filepaths.filter((p): p is string => typeof p === "string")
+            : [];
+          if (filepaths.length === 0) {
+            return c.json(
+              { error: "filepaths is required" },
+              400,
+              SANDBOX_PROXY_CACHE_HEADERS,
             );
           }
-          await repoGitDiscard(client, claim.branch, filepaths);
-          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
-        } catch (err) {
-          if (err instanceof DefaultBranchWriteError) {
-            return fastPreviewGitError(c, err);
+          try {
+            const client = await fastPreviewGitClient(c);
+            // A held save is discarded by dropping it; a committed one below.
+            const head = await client.getBranch(claim.branch);
+            if (head) {
+              const { files } = await fastPreviewPendingFiles(
+                c,
+                client,
+                head.sha,
+              );
+              const wanted = new Set(filepaths);
+              await c.var.studioContext.storage.decofilePendingBlocks.deleteKeys(
+                fastPreviewPendingScope(c),
+                files
+                  .filter((f) => wanted.has(f.path))
+                  .map((f) => f.block.blockKey),
+              );
+            }
+            await repoGitDiscard(client, claim.branch, filepaths);
+            return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+          } catch (err) {
+            if (err instanceof DefaultBranchWriteError) {
+              return fastPreviewGitError(c, err);
+            }
+            const status =
+              repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
+                ? 409
+                : 502;
+            const message = err instanceof Error ? err.message : String(err);
+            return c.json(
+              { error: message },
+              status,
+              SANDBOX_PROXY_CACHE_HEADERS,
+            );
           }
-          const status =
-            repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
-              ? 409
-              : 502;
-          const message = err instanceof Error ? err.message : String(err);
-          return c.json(
-            { error: message },
-            status,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-      });
-    }
-    return withClaimGitLock(claim.claimName, () =>
-      proxyDaemon(c, "/_sandbox/git/discard", {
-        forwardJsonBody: true,
-        map404to410: true,
-      }),
-    );
-  });
+        });
+      }
+      return withClaimGitLock(claim.claimName, () =>
+        proxyDaemon(c, "/_sandbox/git/discard", {
+          forwardJsonBody: true,
+          map404to410: true,
+        }),
+      );
+    },
+  );
   app.post(
     "/:virtualMcpId/:branch/git/rebase",
     bodyLimit({
