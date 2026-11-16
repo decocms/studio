@@ -1182,6 +1182,8 @@ export const sandbox = {
     "An explicit status code wins over the type.",
   "sandbox.redirectEditor.statusFromType": "Follow the type ({status})",
   "sandbox.redirectEditor.statusLabel": "Status code",
+  "sandbox.redirectEditor.typeHint":
+    "Use **Temporary** when the redirect may change; **Permanent** lets browsers cache it.",
   "sandbox.redirectEditor.title": "Redirect",
   "sandbox.redirectEditor.toDescription":
     "The destination — a relative path or an absolute URL.",
