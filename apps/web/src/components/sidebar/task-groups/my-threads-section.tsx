@@ -1,16 +1,25 @@
 import { Inbox01 } from "@untitledui/icons";
 import { TaskRow } from "@/layouts/tasks-panel/task-row";
 import type { Task } from "@/components/chat/task/types";
-import { groupThreadsByStatus } from "./group-threads";
+import { groupThreadsByDate, groupThreadsByStatus } from "./group-threads";
 import { StatusGroup } from "./task-group";
 import { ShowMoreButton } from "./show-more-button";
 import type { SidebarFilters } from "./next-page-offset";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/i18n/use-t.ts";
+import type { DateBucket } from "./group-threads";
+
+const DATE_BUCKET_LABEL_KEYS: Record<DateBucket, TranslationKey> = {
+  today: "sidebar.myThreadsSection.today",
+  yesterday: "sidebar.myThreadsSection.yesterday",
+  week: "sidebar.myThreadsSection.previousWeek",
+  month: "sidebar.myThreadsSection.previousMonth",
+  older: "sidebar.myThreadsSection.older",
+};
 
 /**
  * The current user's threads, all agents mixed. Two renderings toggled by the
  * sidebar's group-by control:
- *  - "flat": a single chronological list (each row shows its agent icon).
+ *  - "flat": a chronological list under date headings (Today, Yesterday, …).
  *  - "status": collapsible groups by thread status.
  *
  * In flat mode, pagination piggybacks on the global thread store's
@@ -80,20 +89,25 @@ export function MyThreadsSection({
 
   return (
     <>
-      {threads.map((task) => (
-        <TaskRow
-          key={task.id}
-          task={task}
-          isActive={activeTaskId === task.id}
-          onClick={() => onSelectTask(task)}
-          onArchive={
-            canArchive && task.created_by === filters.currentUserId
-              ? () => onArchiveTask(task)
-              : undefined
-          }
-          showAutomationBadge={Boolean(task.trigger_id)}
-          showAgentIcon
-        />
+      {groupThreadsByDate(threads, new Date()).map((group) => (
+        <section key={group.bucket} className="flex flex-col gap-0.5">
+          <h3 className="px-2.5 pt-3 pb-1 text-xs font-medium text-muted-foreground first:pt-1">
+            {t(DATE_BUCKET_LABEL_KEYS[group.bucket])}
+          </h3>
+          {group.threads.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              isActive={activeTaskId === task.id}
+              onClick={() => onSelectTask(task)}
+              onArchive={
+                canArchive && task.created_by === filters.currentUserId
+                  ? () => onArchiveTask(task)
+                  : undefined
+              }
+            />
+          ))}
+        </section>
       ))}
       {(hasMore || isFetchingMore) && (
         <ShowMoreButton onClick={onLoadMore} isFetching={isFetchingMore} />

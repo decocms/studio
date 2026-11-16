@@ -62,6 +62,12 @@ test.describe("task board drop hint", () => {
     const unowned = page.locator('button:has-text("Nobody owns this")');
     // The first board load of a fresh org can outlast the default 5 s.
     await expect(unowned).toBeVisible({ timeout: 30_000 });
+    // The board at full width: beside the chat its lanes fold to icons.
+    await page
+      .getByTestId("main-panel")
+      .getByRole("button", { name: "Expand", exact: true })
+      .click();
+    await expect(page.getByTestId("chat-panel")).toHaveCount(0);
     const inProgress = page.locator('[data-lane="in_progress"]');
     const hint = inProgress.getByRole("status");
 

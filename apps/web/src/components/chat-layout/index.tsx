@@ -4,9 +4,16 @@ import { createContext, isValidElement, use, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import { Maximize01, Minimize01, XClose } from "@untitledui/icons";
 import { Panel } from "@/components/panel";
 import { Page } from "@/components/page";
 import { SidebarThreadButtonPortal } from "@/components/sidebar/thread-button";
+import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
   ResizableHandle,
@@ -28,6 +35,7 @@ import { RoutePageHeader } from "@/layouts/route-page-header";
 
 const THREAD_PANEL_ID = "chat-layout-thread";
 const CONTENT_PANEL_ID = "chat-layout-content";
+const PANEL_MIN_SIZE = "320px";
 
 interface ChatLayoutProps extends ChatLayoutState, ChatLayoutActions {
   children: ReactNode;
@@ -101,32 +109,25 @@ function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
   const value = {
     ...layout,
     isMobile,
-    mobileSurface: resolveMobileSurface({
-      visibility: layout,
-      threadVisibilityExplicit: layout.threadVisibilityExplicit,
-    }),
+    mobileSurface: resolveMobileSurface(layout),
   };
 
   return (
     <ChatLayoutContext value={value}>
-      {!layout.threadless && (
+      {isMobile && !layout.threadless && (
         <SidebarThreadButtonPortal
-          open={isMobile ? value.mobileSurface === "chat" : threadOpen}
+          open={value.mobileSurface === "chat"}
           onToggle={() => {
-            if (isMobile) {
-              void navigate({
-                to: ".",
-                search: (prev) => ({
-                  ...prev,
-                  ...mobileSurfaceSearch(
-                    value.mobileSurface === "chat" ? "main" : "chat",
-                  ),
-                }),
-                replace: true,
-              });
-            } else {
-              layout.toggleThread();
-            }
+            void navigate({
+              to: ".",
+              search: (prev) => ({
+                ...prev,
+                ...mobileSurfaceSearch(
+                  value.mobileSurface === "chat" ? "main" : "chat",
+                ),
+              }),
+              replace: true,
+            });
           }}
         />
       )}
@@ -158,7 +159,7 @@ function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
           }}
           orientation="horizontal"
           data-slot="chat-layout"
-          className="flex-1 min-h-0 pt-1 pb-1 pr-1 pl-0 [&>[data-chat-layout-panel-open]]:!min-w-[320px]"
+          className="flex-1 min-h-0 pt-1 pb-1 pr-1 pl-0"
           style={{ overflow: "visible" }}
           onLayoutChanged={(nextLayout, { isUserInteraction }) => {
             if (!isUserInteraction) {
@@ -203,32 +204,137 @@ function ChatLayoutThread({
     ) : null;
   }
 
+  // Full screen unmounts the chat panel, so no drag can ever close it.
+  if (!layout.threadOpen) return null;
+
   return (
     <>
+      {layout.contentOpen && <ResizableHandle className="bg-sidebar" />}
       <ResizablePanel
         id={THREAD_PANEL_ID}
         defaultSize="33%"
-        minSize="20%"
-        collapsible
-        collapsedSize="0%"
-        data-chat-layout-panel-open={layout.threadOpen ? "" : undefined}
+        minSize={PANEL_MIN_SIZE}
         className="min-w-0 overflow-hidden bg-sidebar"
       >
         <div className="h-full min-h-0 p-0.5">
           <Panel data-testid="side-panel">
-            {layout.threadOpen && (
-              <>
-                {topbar}
-                <Panel.Content data-testid="chat-panel">
-                  {children}
-                </Panel.Content>
-              </>
-            )}
+            {topbar}
+            <Panel.Content data-testid="chat-panel">{children}</Panel.Content>
           </Panel>
         </div>
       </ResizablePanel>
-      <ResizableHandle className="bg-sidebar" />
     </>
+  );
+}
+
+function LayoutButton({
+  label,
+  pressed,
+  onClick,
+  children,
+}: {
+  label: string;
+  pressed?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          aria-label={label}
+          aria-pressed={pressed}
+          onClick={onClick}
+        >
+          {children}
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Like an artifact: expand over the chat, or close back into it. */
+function MainPanelControls() {
+  const t = useT();
+  const layout = useChatLayoutContext();
+  if (layout.isMobile || layout.threadless) return null;
+  const expanded = !layout.threadOpen;
+  return (
+    <div className="flex items-center gap-0.5">
+      {/* Window controls sit apart from the page's own actions. */}
+      <span aria-hidden className="mr-1.5 h-4 w-px shrink-0 bg-border" />
+      {/* Labeled once expanded: it is the only way back to the chat. */}
+      {expanded ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed
+          className="h-7 gap-1.5 px-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          onClick={layout.toggleFullscreen}
+        >
+          <Minimize01 size={16} />
+          {t("page.exitFullscreen")}
+        </Button>
+      ) : (
+        <LayoutButton
+          label={t("page.enterFullscreen")}
+          onClick={layout.toggleFullscreen}
+        >
+          <Maximize01 size={16} />
+        </LayoutButton>
+      )}
+      <LayoutButton
+        label={t("page.closeMainPanel")}
+        onClick={layout.toggleContent}
+      >
+        <XClose size={16} />
+      </LayoutButton>
+    </div>
+  );
+}
+
+/** The chat never closes, so a closed main panel reopens from its header. */
+export function OpenMainPanelButton() {
+  const t = useT();
+  const isMobile = useIsMobile();
+  const layout = useOptionalChatLayout();
+  if (isMobile || !layout || layout.threadless || layout.contentOpen) {
+    return null;
+  }
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1.5 px-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        onClick={layout.toggleContent}
+      >
+        <PanelOpenIcon />
+        {t("page.openMainPanel")}
+      </Button>
+      <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+    </>
+  );
+}
+
+/** A bar with an arrow leaving it: the panel slides out from the left. */
+function PanelOpenIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className="shrink-0"
+    >
+      <path d="M4 5v14M8 12h12m0 0-6-6m6 6-6 6" />
+    </svg>
   );
 }
 
@@ -277,6 +383,7 @@ function ChatLayoutContent({
         <RoutePageHeader
           navigation={layout.contentNavigation}
           actions={actions}
+          trailingActions={<MainPanelControls />}
         />
         <Panel.Content>
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -294,16 +401,14 @@ function ChatLayoutContent({
     </Panel>
   );
 
-  return layout.isMobile ? (
-    panel
-  ) : (
+  if (layout.isMobile) return panel;
+  if (!layout.contentOpen) return null;
+
+  return (
     <ResizablePanel
       id={CONTENT_PANEL_ID}
       defaultSize="67%"
-      minSize="20%"
-      collapsible
-      collapsedSize="0%"
-      data-chat-layout-panel-open={layout.contentOpen ? "" : undefined}
+      minSize={PANEL_MIN_SIZE}
       className="min-w-0 overflow-hidden bg-sidebar"
     >
       {/* Flex, not a nested resizable group: that one sized itself after

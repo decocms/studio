@@ -24,7 +24,7 @@ const BOOT_TIMEOUT_MS = 60_000;
 
 async function openChat(page: Page): Promise<void> {
   const input = page.locator(CHAT_INPUT);
-  const toggle = page.getByRole("button", { name: "Open chat" }).first();
+  const toggle = page.getByRole("button", { name: "Show chat" }).first();
   await expect(async () => {
     if (!(await input.isVisible())) await toggle.click();
     await expect(input).toBeVisible({ timeout: 2_000 });

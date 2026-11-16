@@ -31,6 +31,7 @@ import {
   type ChangesListResult,
   type ContentClient,
   ContentProtocolError,
+  createContentClient,
   ErrorCode,
   type UnsupportedEndpointData,
 } from "@decocms/blocks/protocol";
@@ -139,6 +140,22 @@ export async function readContentChanges(
     );
   }
   return complete;
+}
+
+/** How many entries a project draft changes, read from its hosted decofile. */
+export async function readDraftChangeCount(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+): Promise<number> {
+  const client = createContentClient({
+    endpoint: new URL(
+      `/api/${orgSlug}/decofile/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/rpc`,
+      window.location.origin,
+    ).href,
+  });
+  const result = await client.changesList();
+  return result.notModified ? 0 : Object.keys(result.changes).length;
 }
 
 /** Both sides of `names`, 20 per call, a few calls per request. */

@@ -26,7 +26,7 @@ export function MessageTimestamp({
   return (
     <span
       title={date.toLocaleString()}
-      className={cn("text-2xs text-muted-foreground/60 select-none", className)}
+      className={cn("text-sm text-muted-foreground select-none", className)}
     >
       {date.toLocaleTimeString(undefined, {
         hour: "numeric",

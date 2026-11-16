@@ -44,7 +44,7 @@ function RichMessageContent({
     editable: false,
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none focus:outline-none",
+        class: "prose prose-sm max-w-none text-[14px]! focus:outline-none",
       },
     },
   });
@@ -93,70 +93,67 @@ export function MessageUser<T extends Metadata>({
     <>
       <div
         className={cn(
-          "message-block w-full min-w-0 relative flex items-start gap-4 px-2.5 text-foreground flex-row-reverse",
+          "message-block flex w-full min-w-0 flex-col items-end px-2.5 text-foreground",
           className,
         )}
       >
-        <div className="w-full min-w-0 flex flex-col">
+        <div
+          tabIndex={0}
+          onClick={handleClick}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          className="max-w-[85%] min-w-0 cursor-pointer rounded-2xl bg-muted text-sm wrap-break-word overflow-wrap-anywhere outline-none"
+        >
           <div
-            tabIndex={0}
-            onClick={handleClick}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-sm wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
+            ref={setContentRef}
+            className={cn(
+              "px-4 py-2.5 transition-[max-height,opacity] duration-300 ease-out",
+              isFocused
+                ? "max-h-[50vh] overflow-auto opacity-100"
+                : cn(
+                    "max-h-[168px] overflow-hidden opacity-99",
+                    isOverflowing && "mask-b-from-1%",
+                  ),
+            )}
           >
-            <div className="absolute inset-0 bg-muted/75 rounded-lg pointer-events-none" />
-            <div
-              ref={setContentRef}
-              className={cn(
-                "z-10 px-4 py-2 flex-1 transition-[max-height,opacity] duration-300 ease-out",
-                isFocused
-                  ? "max-h-[50vh] overflow-auto opacity-100"
-                  : cn(
-                      "max-h-[84px] overflow-hidden opacity-99",
-                      isOverflowing && "mask-b-from-1%",
-                    ),
+            <div className="flex flex-col gap-2">
+              {/* Trigger-event cards always render from `parts`, even when the
+                message also carries a tiptapDoc (automation runs do). */}
+              {parts.map((part, index) =>
+                part.type === "data-trigger-event" ? (
+                  <TriggerEventPart
+                    key={`${id}-${index}`}
+                    event={(part as { data: TriggerEventData }).data}
+                  />
+                ) : null,
               )}
-            >
-              <div className="flex flex-col gap-2">
-                {/* Trigger-event cards always render from `parts`, even when the
-                  message also carries a tiptapDoc (automation runs do). */}
-                {parts.map((part, index) =>
-                  part.type === "data-trigger-event" ? (
-                    <TriggerEventPart
-                      key={`${id}-${index}`}
-                      event={(part as { data: TriggerEventData }).data}
-                    />
-                  ) : null,
-                )}
-                {hasTiptapDoc ? (
-                  <RichMessageContent tiptapDoc={metadata.tiptapDoc} />
-                ) : (
-                  parts.map((part, index) => {
-                    if (part.type === "text") {
-                      // The guard-wrapped event text the model reads sits
-                      // directly after its `data-trigger-event` card — render the
-                      // card, not the raw JSON. The automation's own instruction
-                      // text (no card before it) still renders.
-                      if (parts[index - 1]?.type === "data-trigger-event") {
-                        return null;
-                      }
-                      return (
-                        <MessageTextPart
-                          key={`${id}-${index}`}
-                          id={id}
-                          part={part}
-                        />
-                      );
+              {hasTiptapDoc ? (
+                <RichMessageContent tiptapDoc={metadata.tiptapDoc} />
+              ) : (
+                parts.map((part, index) => {
+                  if (part.type === "text") {
+                    // The guard-wrapped event text the model reads sits
+                    // directly after its `data-trigger-event` card — render the
+                    // card, not the raw JSON. The automation's own instruction
+                    // text (no card before it) still renders.
+                    if (parts[index - 1]?.type === "data-trigger-event") {
+                      return null;
                     }
-                    return null;
-                  })
-                )}
-              </div>
+                    return (
+                      <MessageTextPart
+                        key={`${id}-${index}`}
+                        id={id}
+                        part={part}
+                      />
+                    );
+                  }
+                  return null;
+                })
+              )}
             </div>
           </div>
-          <MessageTimestamp message={message} className="mt-1 mr-1 self-end" />
         </div>
+        <MessageTimestamp message={message} className="mt-1 mr-1" />
       </div>
     </>
   );

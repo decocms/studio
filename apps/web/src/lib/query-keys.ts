@@ -223,7 +223,6 @@ export const KEYS = {
   // e.g. after an MCP connection re-authenticates.
   mcpClientPrefix: () => ["mcp", "client"] as const,
 
-  // The user's recent threads on one agent, for resolving its entry thread.
   agentEntryThreads: (orgId: string, userId: string, virtualMcpId: string) =>
     ["agent-entry-threads", orgId, userId, virtualMcpId] as const,
 
@@ -913,6 +912,9 @@ export const KEYS = {
   // A protocol project's changes against its base (`changes.list`); the
   // prefix of its sides too, so one invalidation refreshes both.
   contentChanges: (cacheKey: string) => ["content-changes", cacheKey] as const,
+  /** A chat's hosted draft changes, read without the editor's backend. */
+  chatDraftChanges: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["chat-draft-changes", orgSlug, virtualMcpId, branch] as const,
   // A hosted v8 draft's deletions of blocks main doesn't have (its changes
   // don't list them), by spelling key: their guard is the tombstone's.
   contentDraftTombstones: (cacheKey: string) =>

@@ -7,12 +7,12 @@ import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
 
 import { Chat } from "./index";
+import { ChatEmptyState } from "./empty-state";
 import { useChatStream } from "./context";
 import { useOptionalChatTask } from "./chat-context";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useNeedsRuntimeSetup } from "./use-needs-runtime-setup";
 import { ChatContextPanel } from "./context-panel";
-import { AgentHome } from "./agent-home";
 import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
@@ -103,7 +103,14 @@ function ChatSidePanelBody() {
           )}
         >
           {isChatEmpty && runtime !== "cms" ? (
-            <AgentHome onOpenContextPanel={() => setActivePanel("context")} />
+            <>
+              <ChatEmptyState />
+              <Chat.Footer>
+                <Chat.Input
+                  onOpenContextPanel={() => setActivePanel("context")}
+                />
+              </Chat.Footer>
+            </>
           ) : (
             <>
               {/* @container: the files panel floats in the right gutter on

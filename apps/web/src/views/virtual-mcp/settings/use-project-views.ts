@@ -179,7 +179,7 @@ export function useProjectViews({
   const pinnedViews = form.watch("metadata.ui.pinnedViews") ?? [];
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
-  const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? false;
+  const chatDefaultOpen = layoutMeta?.chatDefaultOpen ?? true;
   /**
    * Preview is available whenever the agent has a clonable source —
    * either a Start Website template or a connected GitHub repo — matching

@@ -39,11 +39,8 @@ export function ChatVoiceProvider({
 }: PropsWithChildren<{ layout: ChatLayoutState }>) {
   const isMobile = useIsMobile();
   const visible = isMobile
-    ? resolveMobileSurface({
-        visibility: layout,
-        threadVisibilityExplicit: layout.threadVisibilityExplicit,
-      }) === "chat"
-    : layout.threadOpen || !layout.contentOpen;
+    ? resolveMobileSurface(layout) === "chat"
+    : layout.threadOpen;
   return <VoiceProvider visible={visible}>{children}</VoiceProvider>;
 }
 

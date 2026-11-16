@@ -214,8 +214,7 @@ function ServeLostWatcher({ onLost }: { onLost: () => void }) {
 const NO_CHAT = {
   threadOpen: false,
   contentOpen: true,
-  threadVisibilityExplicit: false,
-  toggleThread: () => {},
+  toggleFullscreen: () => {},
   toggleContent: () => {},
 };
 
@@ -234,8 +233,8 @@ function LocalSiteEditor() {
           contentKey={view ?? "preview"}
           contentNavigation={<SiteEditorTabs />}
         >
-          <ChatLayout.Thread>{null}</ChatLayout.Thread>
           <SiteEditorApp />
+          <ChatLayout.Thread>{null}</ChatLayout.Thread>
         </ChatLayout>
       </Layout.Content>
     </Layout>
@@ -249,8 +248,8 @@ function LocalSiteEditorGuide({ children }: { children: ReactNode }) {
     <Layout outsideOrg={{ rail: !!session?.user }}>
       <Layout.Content>
         <ChatLayout {...NO_CHAT} threadless contentKey="guide">
-          <ChatLayout.Thread>{null}</ChatLayout.Thread>
           <ChatLayout.Content>{children}</ChatLayout.Content>
+          <ChatLayout.Thread>{null}</ChatLayout.Thread>
         </ChatLayout>
       </Layout.Content>
     </Layout>
