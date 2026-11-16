@@ -13,6 +13,13 @@ import * as jose from "jose";
 import { getSettings } from "../../settings";
 import type { StudioContext } from "../../core/studio-context";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
+import {
+  createNoRedirectFetch,
+  guardAgainstPrivateUrl,
+} from "../../mcp-clients/url-security";
+
+// Refuses 3xx so a validated OIDC host can't redirect the fetch to a private address.
+const ssoFetch = createNoRedirectFetch();
 
 type Variables = {
   studioContext: StudioContext;
@@ -216,8 +223,9 @@ function registerSsoRoutes(app: SsoApp) {
       ssoConfig.discoveryEndpoint,
     );
 
-    // Exchange code for tokens
-    const tokenResponse = await fetch(discovery.token_endpoint, {
+    // Re-validate at fetch time: token_endpoint was vetted against the cached discovery doc.
+    await validateOIDCUrl(discovery.token_endpoint);
+    const tokenResponse = await ssoFetch(discovery.token_endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -483,10 +491,13 @@ const discoveryCache = new Map<
 
 /**
  * Validate that a URL is safe for server-side fetching (SSRF prevention).
- * Enforces HTTPS and blocks private/link-local IP ranges. Local mode opts
- * in to HTTP and loopback so developers can point at a local Keycloak/etc.
+ * Enforces HTTPS and delegates private-network checks to the canonical
+ * `guardAgainstPrivateUrl`, which resolves DNS before vetting the address so a
+ * public hostname that resolves to a private/metadata IP (DNS rebinding) is
+ * caught — the previous literal-hostname regex was not. Local mode opts in to
+ * HTTP and loopback so developers can point at a local Keycloak/etc.
  */
-function validateOIDCUrl(url: string): void {
+export async function validateOIDCUrl(url: string): Promise<void> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -494,7 +505,6 @@ function validateOIDCUrl(url: string): void {
     throw new Error(`Invalid URL: ${url}`);
   }
 
-  // Local mode opts in to HTTP + loopback for local OIDC providers.
   const allowHttp = getSettings().localMode;
   if (
     parsed.protocol !== "https:" &&
@@ -503,33 +513,15 @@ function validateOIDCUrl(url: string): void {
     throw new Error(`OIDC URL must use HTTPS: ${url}`);
   }
 
-  // Block private and link-local IP ranges
-  const host = parsed.hostname;
-  const privatePatterns = [
-    /^127\./, // loopback (allowed in local mode below)
-    /^10\./, // 10.0.0.0/8
-    /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
-    /^192\.168\./, // 192.168.0.0/16
-    /^169\.254\./, // link-local (cloud metadata)
-    /^0\./, // 0.0.0.0/8
-    /^\[::1\]$/, // IPv6 loopback
-    /^\[fd/, // IPv6 unique local
-    /^\[fe80:/, // IPv6 link-local
-    /^localhost$/i, // localhost hostname
-  ];
-
-  // Allow loopback in local mode for local OIDC providers (e.g. Keycloak)
-  const isLoopback = /^127\.|^\[::1\]$|^localhost$/i.test(host);
+  // Local mode opts in to loopback for a developer's local OIDC provider.
+  const isLoopback = /^127\.|^\[::1\]$|^localhost$/i.test(parsed.hostname);
   if (allowHttp && isLoopback) {
     return;
   }
 
-  for (const pattern of privatePatterns) {
-    if (pattern.test(host)) {
-      throw new Error(
-        `OIDC URL must not point to a private network address: ${host}`,
-      );
-    }
+  const blocked = await guardAgainstPrivateUrl(url);
+  if (blocked) {
+    throw new Error(`OIDC URL rejected: ${blocked}`);
   }
 }
 
@@ -547,9 +539,9 @@ async function discoverOIDC(
     discoveryEndpoint ||
     `${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
 
-  validateOIDCUrl(url);
+  await validateOIDCUrl(url);
 
-  const response = await fetch(url, {
+  const response = await ssoFetch(url, {
     signal: AbortSignal.timeout(SSO_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -565,9 +557,9 @@ async function discoverOIDC(
   }
 
   // Validate all endpoints from the discovery document against SSRF
-  validateOIDCUrl(doc.authorization_endpoint);
-  validateOIDCUrl(doc.token_endpoint);
-  validateOIDCUrl(doc.jwks_uri);
+  await validateOIDCUrl(doc.authorization_endpoint);
+  await validateOIDCUrl(doc.token_endpoint);
+  await validateOIDCUrl(doc.jwks_uri);
 
   // Cache for 1 hour
   discoveryCache.set(cacheKey, {

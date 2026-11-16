@@ -322,6 +322,12 @@ export function resolveConfig(
       20,
       3600,
     ),
+    decofileCommitGapSeconds: toPositiveIntegerOrDefault(
+      "DECOFILE_COMMIT_GAP_SECONDS",
+      envVars.DECOFILE_COMMIT_GAP_SECONDS,
+      5,
+      60,
+    ),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",
       envVars.SANDBOX_MAX_CONCURRENT_HOSTED_RUNS,

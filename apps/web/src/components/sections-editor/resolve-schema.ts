@@ -675,6 +675,8 @@ function buildSchema(
     // would be silently dropped.
     let type: string | undefined;
     let unionLeaf: RawSchema | undefined;
+    // Items of a nullable union's array leaf: deco emits `T[] | null` as `anyOf: [{ $ref: "[T]" }, null]`, so the items live on the referenced def.
+    let unionLeafItems: RawSchema | undefined;
     // When set, `resolved.title` is a machine-generated intersection name, not a label.
     let suppressResolvedTitle = false;
     if (resolved.type) {
@@ -692,13 +694,19 @@ function buildSchema(
       } else if (nonNull.length === 1) {
         const first = nonNull[0]!;
         unionLeaf = first;
-        type = first.type
-          ? Array.isArray(first.type)
-            ? String(first.type[0])
-            : String(first.type)
-          : typeof first.$ref === "string"
-            ? "object"
-            : "string";
+        const leafDef = unwrapRefAliases(first);
+        if (typeof first.$ref === "string" && isArraySchemaBranch(leafDef)) {
+          type = "array";
+          unionLeafItems = leafDef.items as RawSchema | undefined;
+        } else {
+          type = first.type
+            ? Array.isArray(first.type)
+              ? String(first.type[0])
+              : String(first.type)
+            : typeof first.$ref === "string"
+              ? "object"
+              : "string";
+        }
       } else {
         // const-only branches: TypeScript string/number enum
         if (enumFromConsts) {
@@ -1345,7 +1353,8 @@ function buildSchema(
       depth < MAX_STRUCTURE_DEPTH &&
       !cyclicRef
     ) {
-      const rawItems = resolved.items as RawSchema | undefined;
+      const rawItems =
+        (resolved.items as RawSchema | undefined) ?? unionLeafItems;
       if (rawItems) {
         // Pass the `$ref` itself so the cycle guard sees the item type.
         itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);

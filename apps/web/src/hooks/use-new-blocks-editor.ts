@@ -9,7 +9,7 @@ import {
   type ContentBackend,
   newBlocksEditorEnabled,
 } from "@/components/sections-editor/content-backend";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useOrgFlagState } from "@/hooks/use-organization-settings";
 import { useProjectContext } from "@/sdk";
 

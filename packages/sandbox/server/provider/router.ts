@@ -49,6 +49,8 @@ export interface SandboxProviderRouterOptions {
    * did. Default 0.
    */
   freestyleShare?: number;
+  /** Clock for the Kubernetes probe breaker; tests only. */
+  now?: () => number;
 }
 
 /** Where `handle` falls in [0, 1), the same on every replica. */
@@ -68,6 +70,37 @@ interface Placement {
 
 const other = (kind: SandboxProviderKind): SandboxProviderKind =>
   kind === "kubernetes" ? "freestyle" : "kubernetes";
+
+const PROBE_FAILURES_TO_OPEN = 3;
+const PROBE_OPEN_MS = 30_000;
+
+/**
+ * Skips the Kubernetes probes that only steer placement while its API keeps
+ * failing. A failed probe already reads as "not there", but an unreachable API
+ * fails each one only after a dial timeout (~30s), so every new sandbox waited
+ * that long before landing on Freestyle anyway.
+ */
+class ProbeBreaker {
+  private failures = 0;
+  private openUntil = 0;
+
+  constructor(private readonly now: () => number = Date.now) {}
+
+  async probe<T>(fn: () => Promise<T>, onFailure: T): Promise<T> {
+    if (this.now() < this.openUntil) return onFailure;
+    try {
+      const value = await fn();
+      this.failures = 0;
+      return value;
+    } catch {
+      this.failures++;
+      if (this.failures >= PROBE_FAILURES_TO_OPEN) {
+        this.openUntil = this.now() + PROBE_OPEN_MS;
+      }
+      return onFailure;
+    }
+  }
+}
 
 /** Errors the other provider would repeat, or that already have a retry path (the 401 re-auth). */
 function repeatsElsewhere(err: unknown): boolean {
@@ -96,10 +129,13 @@ export class SandboxProviderRouter implements SandboxProvider {
 
   private readonly freestyleShare: number;
 
+  private readonly kubernetesProbe: ProbeBreaker;
+
   constructor(
     readonly providers: SandboxProviders,
     opts: SandboxProviderRouterOptions = {},
   ) {
+    this.kubernetesProbe = new ProbeBreaker(opts.now);
     if (!providers.kubernetes && !providers.freestyle) {
       throw new Error("SandboxProviderRouter needs at least one provider");
     }
@@ -158,7 +194,7 @@ export class SandboxProviderRouter implements SandboxProvider {
     // Kubernetes first, so a Freestyle outage never touches its sandboxes.
     if (
       stray !== "kubernetes" &&
-      (await kubernetes.alive(handle).catch(() => false))
+      (await this.kubernetesProbe.probe(() => kubernetes.alive(handle), false))
     ) {
       return { kind: "kubernetes", reason: "existing" };
     }
@@ -174,7 +210,10 @@ export class SandboxProviderRouter implements SandboxProvider {
     if (handleShare(handle) < this.freestyleShare) {
       return { kind: "freestyle", reason: "split" };
     }
-    const roomy = await kubernetes.hasSchedulableCapacity().catch(() => false);
+    const roomy = await this.kubernetesProbe.probe(
+      () => kubernetes.hasSchedulableCapacity(),
+      false,
+    );
     return roomy
       ? { kind: "kubernetes", reason: "split" }
       : { kind: "freestyle", reason: "capacity" };

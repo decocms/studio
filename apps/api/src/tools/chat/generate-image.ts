@@ -4,18 +4,99 @@
  *
  * The model gets the result JSON with each image's `studio-storage://` URI, as
  * Decopilot's did; the chat UI renders the image from it.
+ *
+ * Over MCP an app may also pick the model, an exact size and the provider's
+ * quality and moderation. The chat built-in keeps the tier's model.
  */
 
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import { FeatureNotInPlanError, orgHasFeature } from "@/core/plan-feature-gate";
 import { resolveTier } from "@/core/resolve-tier";
-import { requireAuth, requireOrganization } from "@/core/studio-context";
+import {
+  requireAuth,
+  requireOrganization,
+  type StudioContext,
+} from "@/core/studio-context";
 import {
   GENERATE_IMAGE_DESCRIPTION,
   GenerateImageInputSchema,
   generateImageCore,
 } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 import { getSettings } from "@/settings";
+
+const GenerateImageToolInputSchema = GenerateImageInputSchema.extend({
+  provider: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe(
+      "Run on the organization's key of this AI provider (e.g. openrouter) instead of the image tier's. Needs `model`.",
+    ),
+  model: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe(
+      "Image model id on that provider, e.g. an OpenRouter slug. Defaults to the image tier's model.",
+    ),
+  size: z
+    .string()
+    .regex(/^\d{2,4}x\d{2,4}$/)
+    .optional()
+    .describe("Exact output size, e.g. 1536x1920. Replaces aspectRatio."),
+  quality: z.enum(["low", "medium", "high", "auto"]).optional(),
+  moderation: z
+    .enum(["low", "auto"])
+    .optional()
+    .describe("Moderation strictness of OpenAI image models."),
+});
+
+/** The organization's newest key of `providerId`. */
+async function providerKeyId(
+  ctx: StudioContext,
+  organizationId: string,
+  providerId: string,
+): Promise<string> {
+  const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
+  const key = keys.find((k) => k.providerId === providerId);
+  if (!key) {
+    throw new Error(
+      `This organization has no ${providerId} key. Add one in Settings → AI providers.`,
+    );
+  }
+  return key.id;
+}
+
+/** OpenRouter (and the deco gateway, built on it) copies these into the request body. */
+const OPENROUTER_PROVIDER_IDS = new Set(["openrouter", "deco"]);
+
+function imageProviderOptions(
+  providerId: string,
+  modelId: string,
+  { quality, moderation }: { quality?: string; moderation?: string },
+) {
+  if (!quality && !moderation) return undefined;
+  if (!OPENROUTER_PROVIDER_IDS.has(providerId)) {
+    throw new Error(
+      `quality and moderation need an OpenRouter image tier, not ${providerId}`,
+    );
+  }
+  if (moderation && !modelId.startsWith("openai/")) {
+    throw new Error("moderation applies to OpenAI image models only");
+  }
+  return {
+    openrouter: {
+      ...(quality ? { quality } : {}),
+      // OpenRouter ignores a top-level `moderation`; OpenAI reads it here.
+      ...(moderation
+        ? { provider: { options: { openai: { moderation } } } }
+        : {}),
+    },
+  };
+}
 
 const GenerateImageOutputSchema = z.object({
   success: z.literal(true),
@@ -36,7 +117,7 @@ export const GENERATE_IMAGE = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  inputSchema: GenerateImageInputSchema,
+  inputSchema: GenerateImageToolInputSchema,
   outputSchema: GenerateImageOutputSchema,
   requiresAiBudget: true,
   handler: async (input, ctx, call) => {
@@ -48,15 +129,45 @@ export const GENERATE_IMAGE = defineTool({
         "Object storage is unavailable; cannot persist the generated image.",
       );
     }
-    const tier = await resolveTier(ctx, "image");
+    let credentialId: string;
+    let modelId: string;
+    let tierModelId: string | null = null;
+    if (input.provider) {
+      if (!input.model) throw new Error("provider needs a model");
+      credentialId = await providerKeyId(ctx, organization.id, input.provider);
+      modelId = input.model;
+    } else {
+      const tier = await resolveTier(ctx, "image");
+      credentialId = tier.credentialId;
+      tierModelId = tier.modelId;
+      modelId = input.model ?? tier.modelId;
+    }
     const provider = await ctx.aiProviders.activate(
-      tier.credentialId,
+      credentialId,
       organization.id,
+    );
+    // Below Ultra deco picks the model run on its gateway key.
+    if (
+      modelId !== tierModelId &&
+      provider.info.id === "deco" &&
+      !(await orgHasFeature(ctx, organization.id, "model_choice"))
+    ) {
+      throw new FeatureNotInPlanError(
+        "Choosing the image model needs the model_choice feature, which this organization's plan does not include",
+        "model_choice",
+      );
+    }
+    const providerOptions = imageProviderOptions(
+      provider.info.id,
+      modelId,
+      input,
     );
     return generateImageCore(input, {
       provider,
-      imageModelInfo: { id: tier.modelId },
+      imageModelInfo: { id: modelId },
       objectStorage: ctx.objectStorage,
+      ...(input.size ? { size: input.size as `${number}x${number}` } : {}),
+      ...(providerOptions ? { providerOptions } : {}),
       allowHttpExternalUrls: getSettings().localMode,
       ...(call?.signal ? { abortSignal: call.signal } : {}),
     });

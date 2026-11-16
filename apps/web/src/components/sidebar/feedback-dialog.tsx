@@ -1,13 +1,15 @@
 /**
- * "Send feedback" in the sidebar footer: a message plus screenshots, sent as
- * multipart to `POST /api/:org/feedback` (`message`, `pageUrl`, `screenshot`×n).
+ * "Send feedback" and "Report a problem" in the Help menu: a message plus
+ * screenshots, sent as multipart to `POST /api/:org/feedback` (`kind`,
+ * `message`, `pageUrl`, `screenshot`×n).
  */
 
 import { useState, type ClipboardEvent } from "react";
 import { toast } from "sonner";
 import { useMutation } from "@tanstack/react-query";
-import { Camera01, MessageChatSquare, XClose } from "@untitledui/icons";
+import { Camera01, XClose } from "@untitledui/icons";
 import {
+  type FeedbackKind,
   FEEDBACK_MAX_MESSAGE_CHARS,
   FEEDBACK_MAX_SCREENSHOT_BYTES,
   FEEDBACK_MAX_SCREENSHOTS,
@@ -21,14 +23,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import {
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@decocms/ui/components/sidebar.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { useT } from "@/i18n/use-t";
 import { useProjectContext } from "@/sdk";
-import { SidebarFooterIcon, SIDEBAR_FOOTER_ICON_SIZE } from "./icon-slot";
 
 /** Long enough for the dialog's exit animation to leave the frame. */
 const DIALOG_EXIT_MS = 250;
@@ -89,14 +86,30 @@ async function captureScreenFrame(): Promise<File> {
   }
 }
 
-function FeedbackDialog({
+export function FeedbackDialog({
+  kind,
   open,
   onOpenChange,
 }: {
+  kind: FeedbackKind;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useT();
+  const copy =
+    kind === "problem"
+      ? {
+          title: t("sidebar.problem.title"),
+          placeholder: t("sidebar.problem.placeholder"),
+          sent: t("sidebar.problem.sent"),
+          failed: t("sidebar.problem.failed"),
+        }
+      : {
+          title: t("sidebar.feedback.title"),
+          placeholder: t("sidebar.feedback.placeholder"),
+          sent: t("sidebar.feedback.sent"),
+          failed: t("sidebar.feedback.failed"),
+        };
   const { org } = useProjectContext();
   const [message, setMessage] = useState("");
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
@@ -166,6 +179,7 @@ function FeedbackDialog({
   const send = useMutation({
     mutationFn: async () => {
       const body = new FormData();
+      body.set("kind", kind);
       body.set("message", message.trim());
       body.set("pageUrl", window.location.href);
       for (const shot of screenshots) body.append("screenshot", shot.file);
@@ -176,11 +190,11 @@ function FeedbackDialog({
       if (!res.ok) throw new Error(`Feedback failed: ${res.status}`);
     },
     onSuccess: () => {
-      toast.success(t("sidebar.feedback.sent"));
+      toast.success(copy.sent);
       reset();
       onOpenChange(false);
     },
-    onError: () => toast.error(t("sidebar.feedback.failed")),
+    onError: () => toast.error(copy.failed),
   });
 
   const canSend = message.trim().length > 0 && !send.isPending;
@@ -189,7 +203,7 @@ function FeedbackDialog({
     <Dialog open={open && !capturing} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>{t("sidebar.feedback.title")}</DialogTitle>
+          <DialogTitle>{copy.title}</DialogTitle>
         </DialogHeader>
         <Textarea
           autoFocus
@@ -202,7 +216,7 @@ function FeedbackDialog({
               if (canSend) send.mutate();
             }
           }}
-          placeholder={t("sidebar.feedback.placeholder")}
+          placeholder={copy.placeholder}
           className="min-h-32 max-h-80"
           maxLength={FEEDBACK_MAX_MESSAGE_CHARS}
         />
@@ -260,25 +274,5 @@ function FeedbackDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-export function SidebarFeedback() {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        tooltip={t("sidebar.feedback.button")}
-        onClick={() => setOpen(true)}
-      >
-        <SidebarFooterIcon>
-          <MessageChatSquare className={SIDEBAR_FOOTER_ICON_SIZE} />
-        </SidebarFooterIcon>
-        <span>{t("sidebar.feedback.button")}</span>
-      </SidebarMenuButton>
-      <FeedbackDialog open={open} onOpenChange={setOpen} />
-    </SidebarMenuItem>
   );
 }

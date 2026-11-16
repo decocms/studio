@@ -18,6 +18,8 @@ const GITHUB_STUB_ORIGIN = `http://localhost:${process.env.GITHUB_STUB_PORT ?? "
 export interface StubRepoInspection {
   defaultBranch: string;
   mergeMode: string;
+  contentsReads: number;
+  blobReads: number;
   refs: Record<string, string>;
   commits: Array<{ sha: string; message: string; parents: string[] }>;
   branches: Record<string, { headSha: string; files: Record<string, string> }>;
@@ -34,6 +36,11 @@ export async function seedStubRepo(
     branches?: Record<string, { files?: Record<string, string> } | null>;
     mergeMode?: "merge" | "conflict" | "blocked";
     truncateRecursive?: boolean;
+    rateLimit?: {
+      status: 403 | 429;
+      retryAfterSeconds?: number;
+      resetAfterSeconds?: number;
+    };
   },
 ): Promise<void> {
   const res = await ctx.post(`${GITHUB_STUB_ORIGIN}/__admin/repos`, {

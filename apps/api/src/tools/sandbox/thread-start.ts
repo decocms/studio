@@ -35,6 +35,26 @@ export function findRepoChoice(choices: RepoChoice[], ref: string): RepoChoice {
   );
 }
 
+async function resolveRepository(
+  ctx: StudioContext,
+  agentId: string,
+  organizationId: string,
+  ref: string,
+) {
+  if (!isDecopilot(agentId)) {
+    throw new Error(
+      "Only chats on the default agent can load a repository; this agent uses the one it is configured with.",
+    );
+  }
+  const userId = getUserId(ctx);
+  if (!userId) throw new Error("User ID required to load a repository");
+  const choice = findRepoChoice(
+    await listOrgRepoChoices(ctx, organizationId),
+    ref,
+  );
+  return { choice, userId };
+}
+
 async function createSandboxChat(ctx: StudioContext, agentId: string) {
   const { item } = await COLLECTION_THREADS_CREATE.execute(
     { data: { virtual_mcp_id: agentId, runtime: "sandbox" } },
@@ -121,27 +141,20 @@ export const THREAD_SANDBOX_START = defineTool({
       existing?.virtual_mcp_id ??
       input.virtualMcpId ??
       getDecopilotId(organization.id);
-    // Same rule as `load_repo`: an agent with its own repository is scoped to
-    // it. Checked before a new chat is created for it.
-    if (input.repository && !isDecopilot(agentId)) {
-      throw new Error(
-        "Only chats on the default agent can load a repository; this agent uses the one it is configured with.",
-      );
-    }
+    // Every refusal comes before a new chat is created, so none leaves one
+    // behind. Same rule as `load_repo`: an agent with its own repository is
+    // scoped to it.
+    const repo = input.repository
+      ? await resolveRepository(ctx, agentId, organization.id, input.repository)
+      : null;
 
     let target = existing ?? (await createSandboxChat(ctx, agentId));
-    if (input.repository) {
-      const userId = getUserId(ctx);
-      if (!userId) throw new Error("User ID required to load a repository");
-      const repo = findRepoChoice(
-        await listOrgRepoChoices(ctx, organization.id),
-        input.repository,
-      );
+    if (repo) {
       const { branch } = await bindThreadRepository(
         ctx,
         target.id,
-        repo,
-        userId,
+        repo.choice,
+        repo.userId,
       );
       target = { ...target, branch };
     }

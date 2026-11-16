@@ -4,7 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@decocms/ui/components/tooltip.tsx";
-import type { HostedBlocksLoad } from "@/components/sections-editor/hosted-content";
+import type { HostedBlocksLoad } from "@/cms/hosted-content";
 import type { PreviewOptions } from "@/components/sections-editor/preview-link";
 import { PreviewAsControl } from "./preview-as-control";
 

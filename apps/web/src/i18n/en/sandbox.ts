@@ -491,6 +491,9 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.offDescription":
     "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
+  "sandbox.blogWorkspace.noBlogApp": "This site has no blog",
+  "sandbox.blogWorkspace.noBlogAppHint":
+    "Install the blog app, or add a page with the blog post section, and your posts, authors and categories show up here.",
   "sandbox.collectionsSidebar.actions": "Actions",
   "sandbox.collectionsSidebar.advanced": "Advanced",
   "sandbox.collectionsSidebar.apps": "Apps",
@@ -757,6 +760,7 @@ export const sandbox = {
   "sandbox.generatePost.title": "Generate posts",
   "sandbox.itemActions.addVariant": "Add variant",
   "sandbox.itemActions.delete": "Delete",
+  "sandbox.itemActions.discardChanges": "Discard changes",
   "sandbox.itemActions.duplicate": "Duplicate",
   "sandbox.itemActions.editSeo": "Edit SEO",
   "sandbox.itemActions.moreActions": "More actions",
@@ -958,6 +962,14 @@ export const sandbox = {
   "sandbox.postEditor.issuePlural": "issues",
   "sandbox.postEditor.issueSingular": "issue",
   "sandbox.postEditor.keyPlaceholder": "key",
+  "sandbox.postEditor.legacyCodeBlock": "Code block",
+  "sandbox.postEditor.legacyContentPlaceholder": "Write the post…",
+  "sandbox.postEditor.legacyImageDataUrl":
+    "Pasted image data isn't kept in the post. Upload the image or use its address.",
+  "sandbox.postEditor.legacyInsertImage": "Insert image from the library",
+  "sandbox.postEditor.legacyInsertImageUrl": "Insert image from a URL",
+  "sandbox.postEditor.legacySectionsNotice":
+    "This post also has {count} blocks from the block editor. They are kept as they are; this editor only changes the HTML body.",
   "sandbox.postEditor.missingFieldPlural": "Missing required fields: {fields}",
   "sandbox.postEditor.missingFieldSingular": "Missing required field: {fields}",
   "sandbox.postEditor.noAuthorsYet":
@@ -966,6 +978,28 @@ export const sandbox = {
     "No categories yet — create some in the categories collection.",
   "sandbox.postEditor.noContentYet":
     "This post has no content yet. Use ⊕ to add your first block.",
+  "sandbox.postEditScreen.notFound": "This post no longer exists",
+  "sandbox.postEditScreen.notFoundHint":
+    "It may have been deleted, or the link points at an id this site does not have.",
+  "sandbox.postEditScreen.edit": "Edit",
+  "sandbox.postEditScreen.preview": "Preview",
+  "sandbox.postEditScreen.resizeSplit": "Resize the editor and the preview",
+  "sandbox.postEditScreen.resizeSplitHint":
+    "Drag to resize. Double-click to reset.",
+  "sandbox.postPreview.desktop": "Desktop",
+  "sandbox.postPreview.frameTitle": "Post preview",
+  "sandbox.postPreview.missingParams": "Not enough to build the URL",
+  "sandbox.postPreview.missingParamsHint":
+    "Set the post's slug, and its category when the blog route uses one.",
+  "sandbox.postPreview.mobile": "Mobile",
+  "sandbox.postPreview.noOrigin": "Waiting for the site",
+  "sandbox.postPreview.noOriginHint":
+    "The preview appears once this project's site is serving.",
+  "sandbox.postPreview.noRoute": "This site has no blog post page",
+  "sandbox.postPreview.noRouteHint":
+    "Add a page with the blog post section, or set the blog app's pageSlug, and the preview can render.",
+  "sandbox.postPreview.openInNewTab": "Open in new tab",
+  "sandbox.postPreview.refresh": "Refresh",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
   "sandbox.postEditor.readTimeLabel": "Read time (minutes)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
@@ -1190,6 +1224,9 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Compact descriptions",
   "sandbox.fieldDescriptionTooltipsField.description":
     "In the blocks form, show a field's description as a hover tooltip on its title instead of text below the title.",
+  "sandbox.legacyBlogPostFormatField.label": "Legacy blog post editor",
+  "sandbox.legacyBlogPostFormatField.description":
+    "Edit a blog post's body via HTML, in one rich-text editor saved to its content field, the format older blog templates read, instead of as blocks.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",

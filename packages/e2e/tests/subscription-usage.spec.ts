@@ -133,7 +133,7 @@ test("personal usage is isolated, sanitized, cached, and handles provider failur
   expect((await read("codex")).status).toBe("disconnected");
 });
 
-test("a Claude token without usage permission shows an explanation and provider link", async ({
+test("a Claude token without usage permission links to the provider's usage page", async ({
   authedPage,
 }, testInfo) => {
   const { page, orgSlug } = authedPage;
@@ -144,9 +144,9 @@ test("a Claude token without usage permission shows an explanation and provider 
     });
   await page.goto(`/${orgSlug}/settings/ai-providers`);
   const row = page.getByRole("group", { name: "Claude Pro or Max" });
-  await row.getByText("Usage unavailable", { exact: true }).hover();
-  await expect(page.getByRole("tooltip")).toContainText(
-    "This token cannot read usage limits",
+  await expect(row.getByRole("link", { name: "View usage" })).toHaveAttribute(
+    "href",
+    "https://claude.ai/settings/usage",
   );
   await expect(row.getByRole("progressbar")).toHaveCount(0);
   await row.screenshot({

@@ -4,6 +4,7 @@ import * as migration259repositorymonitordeploys from "./259-repository-monitor-
 import * as migration260demoboardsnapshots from "./260-demo-board-snapshots";
 import * as migration261removeuserregisteredssoproviders from "./261-remove-user-registered-sso-providers";
 import * as migration263cmsdrafts from "./263-cms-drafts";
+import * as migration264decofilependingblocks from "./264-decofile-pending-blocks";
 import * as migration254codexsubscriptions from "./254-codex-subscriptions";
 import * as migration255ordermonitor from "./255-order-monitor";
 import * as migration228orgvoiceconfig from "./228-org-voice-config";
@@ -566,6 +567,7 @@ const migrations: Record<string, Migration> = {
   "262-automation-card-mention-trigger":
     migration262automationcardmentiontrigger,
   "263-cms-drafts": migration263cmsdrafts,
+  "264-decofile-pending-blocks": migration264decofilependingblocks,
 };
 
 export default migrations;

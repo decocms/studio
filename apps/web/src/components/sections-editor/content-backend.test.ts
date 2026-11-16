@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { isBlocksV8Project } from "@decocms/shared/blocks-major";
 import {
   blockKeysOfWrite,
   contentMode,
@@ -208,6 +209,85 @@ describe("selectContentBackend: the Blocks v8 site switch decides, in every mode
           }),
         ).toBe("legacy");
       }
+    }
+  });
+});
+
+describe("project setting to legacy backend: gate-off isolation", () => {
+  const offMetadata = [
+    undefined,
+    null,
+    {},
+    { blocksV8: false },
+    { blocksV8: null },
+    { blocksV8: "true" },
+    { blocksV8: 1 },
+    { blocksMajor: 8 },
+    { blocksV8: false, blocksMajor: 8 },
+  ];
+
+  test("non-opted-in metadata cannot select v8 through cached probe answers", () => {
+    for (const metadata of offMetadata) {
+      const v8 = isBlocksV8Project(metadata);
+      expect(v8).toBe(false);
+      for (const runtime of ["cms", "sandbox"] as const) {
+        for (const githubSite of [...PROBES, "not-owned"] as const) {
+          for (const sandboxSite of [
+            ...PROBES,
+            "unavailable",
+            undefined,
+          ] as const) {
+            // The unchanged connection hook suppresses stored protocol
+            // connections with the project setting off. V7's Advanced Local
+            // tunnel is independent of this protocol connection.
+            const input: Input = {
+              hasProject: true,
+              hasServeConnection: false,
+              runtime,
+              v8,
+              githubSite,
+              sandboxSite,
+            };
+            const kind = decisionKind(selectContentBackend(input));
+            expect(kind).toBe("legacy");
+            for (const workingTreeReady of [false, true]) {
+              expect(
+                contentProbesEnabled({
+                  mode: contentMode(input),
+                  v8,
+                  workingTreeReady,
+                }),
+              ).toEqual({ github: false, sandbox: false });
+            }
+            for (const orgFlag of [undefined, false, true]) {
+              expect(
+                newBlocksEditorEnabled({
+                  backend: kind,
+                  hasOrg: true,
+                  orgFlag,
+                }),
+              ).toBe(orgFlag);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  test("strict opt-in still reaches v8, so a permanently disabled gate cannot pass", () => {
+    const v8 = isBlocksV8Project({ blocksV8: true, blocksMajor: 7 });
+    expect(v8).toBe(true);
+    for (const runtime of ["cms", "sandbox"] as const) {
+      expect(
+        selectContentBackend({
+          hasProject: true,
+          hasServeConnection: false,
+          runtime,
+          v8,
+          githubSite: "ready",
+          sandboxSite: "ready",
+        }),
+      ).toBe(runtime === "cms" ? "protocol-github" : "protocol-sandbox");
     }
   });
 });

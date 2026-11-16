@@ -87,16 +87,16 @@ describe("ban-cms-git-imports", () => {
 
   test("bans the git decofile client from the web cms client", async () => {
     const f = fixture(
-      "apps/web/src/components/sections-editor/cms-api.ts",
-      `import { fetchDecofile } from "./decofile-api";\nexport const x = fetchDecofile;\n`,
+      "apps/web/src/cms/cms-api.ts",
+      `import { fetchDecofile } from "../components/sections-editor/decofile-api";\nexport const x = fetchDecofile;\n`,
     );
     expect(await lint(f)).toHaveLength(1);
   });
 
   test("covers the web editor's content backend and the hosted Publish and Releases clients", async () => {
     for (const file of [
-      "apps/web/src/components/sections-editor/use-content-backend.ts",
-      "apps/web/src/components/sections-editor/content-protocol-api.ts",
+      "apps/web/src/cms/use-content-backend.ts",
+      "apps/web/src/cms/content-protocol-api.ts",
       "apps/web/src/components/thread/repository/hosted-publish-api.ts",
       "apps/web/src/layouts/main-panel-tabs/releases-api.ts",
     ]) {

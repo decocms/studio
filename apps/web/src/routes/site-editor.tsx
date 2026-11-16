@@ -51,7 +51,7 @@ import {
   LocalServeSwitch,
 } from "@/components/sections-editor/site-editor-guide";
 import { ServeConnectState } from "@/components/sections-editor/serve-connect-state";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   TabDecoServeConnectionContext,
   useDecoServeConnection,

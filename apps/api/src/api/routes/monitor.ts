@@ -52,6 +52,12 @@ import {
 } from "../../deco-legacy/clickhouse-analytics";
 import { toOneDollarHostname } from "../../deco-legacy/onedollarstats";
 import { querySiteView, resolveSiteWindow, SITE_VIEWS } from "./monitor-site";
+import {
+  decodeSiteEventsCursor,
+  parseSiteEventFilters,
+  querySiteEvents,
+  SiteEventsInputError,
+} from "./monitor-site-events";
 import { ownedAnalyticsSiteId } from "@/analytics/access";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import {
@@ -1060,6 +1066,53 @@ export const createMonitorRoutes = () => {
     } catch (err) {
       console.error(
         `[monitor] site ${view} query failed for site="${slug}":`,
+        err,
+      );
+      return c.json({ error: "Failed to query monitor warehouse" }, 502);
+    }
+  });
+
+  // GET /api/:org/monitor/:site/site/events?range&kinds&levels&services&q&cursor
+  // — the Logs tab: the site's own logs and spans, newest first
+  // (monitor-site-events.ts). Same guard and warehouse as /site/data.
+  app.get("/:site/site/events", async (c) => {
+    const guard = await requireOwnedSite(c);
+    if (guard instanceof Response) return guard;
+
+    if (!isAnalyticsConfigured()) {
+      return c.json({ available: false, error: "Monitor is not configured" });
+    }
+
+    const window = resolveSiteWindow(c.req.query("range") ?? "24h", Date.now());
+    if (!window) {
+      return c.json({ error: `unknown range: ${c.req.query("range")}` }, 400);
+    }
+    let filters: ReturnType<typeof parseSiteEventFilters>;
+    let cursor: ReturnType<typeof decodeSiteEventsCursor> | null;
+    try {
+      filters = parseSiteEventFilters({
+        kinds: c.req.query("kinds"),
+        levels: c.req.query("levels"),
+        services: c.req.query("services"),
+        q: c.req.query("q"),
+      });
+      const raw = c.req.query("cursor");
+      cursor = raw ? decodeSiteEventsCursor(raw) : null;
+    } catch (err) {
+      if (err instanceof SiteEventsInputError) {
+        return c.json({ error: err.message }, 400);
+      }
+      throw err;
+    }
+
+    const { slug } = guard;
+    try {
+      return c.json(
+        await querySiteEvents(analyticsQuery, slug, window, filters, cursor),
+      );
+    } catch (err) {
+      console.error(
+        `[monitor] site events query failed for site="${slug}":`,
         err,
       );
       return c.json({ error: "Failed to query monitor warehouse" }, 502);

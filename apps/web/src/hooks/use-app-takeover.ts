@@ -4,13 +4,17 @@ import { useRouterState } from "@tanstack/react-router";
 import { LAUNCHABLE_VIEW_IDS } from "@/components/projects/project-apps";
 
 export function useAppTakeover(): boolean {
-  /** The site editor's Content and Code tabs are routes of their own, with
-   *  their own `mainView`, but they are still the same app: one takeover. */
+  /** The site editor's Content and Code tabs, and one blog post's screen, are
+   *  routes of their own, with their own `mainView`, but they are still the
+   *  same app: one takeover. */
   const mainView = useRouterState({
     select: (state) => {
       const { staticData } =
         state.matches.findLast((match) => match.staticData.mainView) ?? {};
-      return staticData?.siteEditorView ? "site-editor" : staticData?.mainView;
+      if (staticData?.siteEditorView) return "site-editor";
+      return staticData?.mainView === "blog-post"
+        ? "blog"
+        : staticData?.mainView;
     },
   });
   if (!mainView) return false;

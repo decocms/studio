@@ -13,6 +13,9 @@ import {
   useRouteVirtualMcpId,
 } from "@/layouts/thread-route";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
+import { useOptionalThreadManager } from "@/components/chat/store/hooks";
+import { tabForThread } from "@/layouts/main-panel-tabs/tab-draft-kind";
+import { useBlogView } from "@/hooks/use-blog-view";
 
 export interface ChatNavigation {
   /** The agent this chat dispatches to: the route's, via {@link useRouteVirtualMcpId}. */
@@ -47,6 +50,8 @@ export function useChatNavigation(): ChatNavigation {
   const routeAgentId = useRouteAgentId();
   const activeTabId = useActivePanelTabId();
   const search = useSearch({ strict: false }) as { sidepanel?: boolean };
+  const manager = useOptionalThreadManager();
+  const blogView = useBlogView();
 
   const navigateToTask = (
     taskId: string,
@@ -87,7 +92,12 @@ export function useChatNavigation(): ChatNavigation {
       targetAgentId === virtualMcpId &&
       carried &&
       tabRouteLocation(carried).kind !== "org-destination"
-        ? carried
+        ? // A carried view that can't show the thread gives way to one that can.
+          (tabForThread(
+            carried,
+            manager?.threads.get().find((thread) => thread.id === taskId),
+            blogView,
+          ) ?? carried)
         : "overview";
     const target = canonicalThreadRouteTarget({
       org: org.slug,

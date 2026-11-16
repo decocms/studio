@@ -3,6 +3,7 @@
 import {
   Beaker02,
   ClockRewind,
+  BookOpen01,
   Calendar,
   CheckDone01,
   FileSearch02,
@@ -15,11 +16,13 @@ import type { ComponentType, ReactNode } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import type { TranslationKey } from "@/i18n/use-t.ts";
-import type { ProjectSidebarViewId } from "@/layouts/main-panel-tabs/project-sidebar-views";
+import type {
+  ProjectNavViewId,
+  ProjectSidebarViewId,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
 
-/** Board and Overview are places, not apps. Reports is a separate
- *  destination and stays launchable. */
-type LaunchableViewId = Exclude<ProjectSidebarViewId, "overview" | "board">;
+/** The top rows are places, not apps; Reports stays launchable. */
+type LaunchableViewId = Exclude<ProjectSidebarViewId, ProjectNavViewId>;
 
 /** `to` values are `PROJECT_ROUTE` literals, so a router rename fails to
  *  compile here. */
@@ -44,6 +47,12 @@ const APPS: Record<
     Icon: LayoutAlt01,
     to: PROJECT_ROUTE.siteEditor,
     tone: "bg-app-site-editor/15 text-app-site-editor",
+  },
+  blog: {
+    labelKey: "projects.apps.blog",
+    Icon: BookOpen01,
+    to: PROJECT_ROUTE.blog,
+    tone: "bg-app-blog/15 text-app-blog",
   },
   assets: {
     labelKey: "projects.apps.assets",

@@ -27,6 +27,7 @@ import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycl
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
+import { PreviewProgressBar } from "./preview-progress-bar";
 import { watchServeContentReload } from "./serve-content-reload";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -181,12 +182,12 @@ import {
   isProtocolProject,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import {
   useContentRevision,
   useProtocolDraftRead,
-} from "@/components/sections-editor/content-protocol-api";
+} from "@/cms/content-protocol-api";
 import {
   publishPreviewDraft,
   useHeldPreviewRevision,
@@ -2416,6 +2417,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {jsonPanelOpen && jsonBlockKey && (
               <div className="absolute inset-0 z-10">
                 <PageJsonPanel
+                  key={
+                    contentBackend.kind === "legacy"
+                      ? undefined
+                      : JSON.stringify([contentCacheKey, v8])
+                  }
                   ref={jsonPanelHandleRef}
                   virtualMcpId={virtualMcpId}
                   pageKey={jsonBlockKey}
@@ -2490,16 +2496,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       previewSurfaceActive && !previewFluid && "bg-muted/30",
                     )}
                   >
-                    {/* Asymptotic "commit ramp" progress: brand lime fill over a
-                    transparent track — no strip across the site, just the
-                    moving edge itself, with a soft same-color glow for
-                    presence on busy content. */}
                     {(navigating || contentSyncBusy) &&
-                      previewSurfaceActive && (
-                        <div className="absolute inset-x-0 top-0 z-40 h-1 overflow-hidden">
-                          <div className="absolute inset-y-0 left-0 rounded-r-full bg-brand shadow-[0_0_6px] shadow-brand/60 animate-preview-ramp" />
-                        </div>
-                      )}
+                      previewSurfaceActive && <PreviewProgressBar />}
 
                     {display.showDecidingLoader && (
                       <div
@@ -2689,6 +2687,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       className="min-w-0 overflow-hidden"
                     >
                       <PageJsonPanel
+                        key={
+                          contentBackend.kind === "legacy"
+                            ? undefined
+                            : JSON.stringify([contentCacheKey, v8])
+                        }
                         ref={jsonPanelHandleRef}
                         virtualMcpId={virtualMcpId}
                         pageKey={jsonBlockKey}

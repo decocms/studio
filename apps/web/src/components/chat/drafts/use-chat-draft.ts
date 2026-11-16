@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createContentClient } from "@decocms/blocks/protocol";
+import { readDraftChangeCount } from "@/cms/content-changes";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCPNonBlocking } from "@/sdk";
@@ -30,16 +30,7 @@ export function useDraftChanges(
     !!virtualMcpId && !!branch && agentHasClonableSource(project?.metadata);
   const { data: changeCount = 0 } = useQuery({
     queryKey: KEYS.chatDraftChanges(org.slug, virtualMcpId ?? "", branch ?? ""),
-    queryFn: async () => {
-      const client = createContentClient({
-        endpoint: new URL(
-          `/api/${org.slug}/decofile/${encodeURIComponent(virtualMcpId!)}/${encodeURIComponent(branch!)}/rpc`,
-          window.location.origin,
-        ).href,
-      });
-      const result = await client.changesList();
-      return result.notModified ? 0 : Object.keys(result.changes).length;
-    },
+    queryFn: () => readDraftChangeCount(org.slug, virtualMcpId!, branch!),
     enabled,
     refetchInterval: options.poll === false ? false : POLL_MS,
     // A site that isn't v8, or not hosted, simply has no draft to show.

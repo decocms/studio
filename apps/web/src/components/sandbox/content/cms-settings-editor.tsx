@@ -1,3 +1,4 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { AlertCircle, InfoCircle } from "@untitledui/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -12,6 +13,20 @@ import { AppEditor } from "./app-editor";
 import { CMS_SETTINGS_BLOCK_KEY, readCmsSettingsBlock } from "./cms-settings";
 import { CmsSettingsPage } from "./cms-settings-page";
 import { EmptyMessage } from "./empty-message";
+
+export function CmsSettingsEditor(
+  props: Parameters<typeof LoadedCmsSettingsEditor>[0],
+) {
+  return (
+    <CmsBlockBoundary
+      listing={props.decofile}
+      scope={props}
+      names={[CMS_SETTINGS_BLOCK_KEY]}
+    >
+      <LoadedCmsSettingsEditor {...props} />
+    </CmsBlockBoundary>
+  );
+}
 
 /**
  * Settings: the form of the site's `CMS` block (type `cms-settings`), from the
@@ -28,7 +43,7 @@ import { EmptyMessage } from "./empty-message";
  * click away for what the page shows read-only (a field set with variants).
  * Both share the guard above.
  */
-export function CmsSettingsEditor({
+function LoadedCmsSettingsEditor({
   orgSlug,
   virtualMcpId,
   branch,
@@ -115,6 +130,7 @@ export function CmsSettingsEditor({
         virtualMcpId={virtualMcpId}
         branch={branch}
         block={target.block}
+        decofile={decofile}
         saveGuard={guard}
         onOpenForm={() => setShowForm(true)}
       />

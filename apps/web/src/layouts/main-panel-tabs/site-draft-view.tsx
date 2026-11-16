@@ -11,7 +11,7 @@ import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Page } from "@/components/page";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useConflictMembers } from "@/components/sections-editor/conflict-author";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { NAMED_RULE_BLOCKS } from "@/components/sections-editor/named-rules";
 import {
   useDecofile,
@@ -133,7 +133,7 @@ export function SiteDraftView({
   }
   return (
     <SiteDraftLoaded
-      key={branch}
+      key={JSON.stringify([org.slug, virtualMcpId, branch])}
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
       branch={branch}

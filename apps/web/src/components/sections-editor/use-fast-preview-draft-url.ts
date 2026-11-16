@@ -1,7 +1,7 @@
 import { buildDraftPointer, withDraftPointer } from "./section-preview-url";
 import { useDecofileDraft } from "./decofile-api";
-import { useProtocolDraft } from "./content-protocol-api";
-import { useContentBackend } from "./use-content-backend";
+import { useProtocolDraft } from "@/cms/content-protocol-api";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { contentSyncScope } from "./content-sync";
 import { usePreviewDraftValue } from "./preview-draft-link";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";

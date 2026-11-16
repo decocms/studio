@@ -1,5 +1,6 @@
 import { stripLineNumbers } from "@/components/sandbox/preview/file-explorer/utils";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
+import { throwContentResponseError } from "./content-response-error";
 import { classifyCommittedReadStatus } from "./decofile-read-status";
 
 export interface RepoFileParams {
@@ -105,9 +106,7 @@ export async function readCommittedMetaViaGit<T>(params: {
   const res = await fetch(url, { cache: "no-store" });
   if (res.status === 404) return { kind: "absent" };
   if (!res.ok) {
-    const err = new Error(`Failed to read committed meta: ${res.status}`);
-    (err as { status?: number }).status = res.status;
-    throw err;
+    return throwContentResponseError(res, "Read committed meta");
   }
   try {
     return { kind: "data", data: (await res.json()) as T };

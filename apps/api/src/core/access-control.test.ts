@@ -432,4 +432,75 @@ describe("AccessControl", () => {
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
     });
   });
+
+  describe("canGrant", () => {
+    /** Mock whose hasPermission enforces true subset semantics (every entry must be covered). */
+    const subsetBoundAuth = (
+      granted: Permission,
+      isApiKeyPrincipal = false,
+    ): BoundAuthClient =>
+      ({
+        isApiKeyPrincipal,
+        hasPermission: vi.fn(async (requested: Permission) => {
+          for (const [res, tools] of Object.entries(requested)) {
+            const allowed = granted[res] ?? [];
+            for (const tool of tools as string[]) {
+              if (!(allowed.includes(tool) || allowed.includes("*"))) {
+                return false;
+              }
+            }
+          }
+          return true;
+        }),
+      }) as unknown as BoundAuthClient;
+
+    it("denies when there is no bound auth", async () => {
+      const ac = new AccessControl("user_1", "API_KEY_CREATE");
+      expect(await ac.canGrant({ self: ["X"] })).toBe(false);
+    });
+
+    it("lets admin/owner grant anything without consulting permissions", async () => {
+      const boundAuth = subsetBoundAuth({});
+      const ac = new AccessControl(
+        "user_1",
+        "API_KEY_CREATE",
+        boundAuth,
+        "owner",
+        "self",
+        undefined,
+        "org_1",
+      );
+      expect(await ac.canGrant({ self: ["*"] })).toBe(true);
+      expect(boundAuth.hasPermission).not.toHaveBeenCalled();
+    });
+
+    it("bounds an API-key principal by its own allowlist even if its owner role is owner", async () => {
+      const ac = new AccessControl(
+        "user_1",
+        "API_KEY_CREATE",
+        subsetBoundAuth({ self: ["API_KEY_CREATE"] }, true),
+        "owner",
+        "self",
+        undefined,
+        "org_1",
+      );
+      expect(await ac.canGrant({ self: ["API_KEY_CREATE"] })).toBe(true);
+      expect(await ac.canGrant({ self: ["*"] })).toBe(false);
+    });
+
+    it("stops a non-admin member from granting beyond their role", async () => {
+      const ac = new AccessControl(
+        "user_1",
+        "API_KEY_CREATE",
+        subsetBoundAuth({ self: ["ORGANIZATION_GET"] }),
+        "custom-role",
+        "self",
+        undefined,
+        "org_1",
+      );
+      expect(await ac.canGrant({ self: ["ORGANIZATION_GET"] })).toBe(true);
+      expect(await ac.canGrant({ self: ["*"] })).toBe(false);
+      expect(await ac.canGrant({ self: ["API_KEY_CREATE"] })).toBe(false);
+    });
+  });
 });

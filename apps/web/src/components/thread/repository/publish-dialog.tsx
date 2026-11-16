@@ -86,12 +86,13 @@ import {
 } from "./use-content-publish-state.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend.ts";
+import { useContentBackend } from "@/cms/use-content-backend.ts";
 import { useDecofileCacheKey } from "@/components/sections-editor/use-decofile.ts";
 import type { ProtocolBackend } from "@/components/sections-editor/content-backend.ts";
 import { useContentSyncState } from "@/components/sections-editor/content-sync.ts";
 import { ErrorDetails } from "@/components/sections-editor/site-editor-toast.tsx";
 import { publishTitle } from "./publish-title.ts";
+import { DeletedBlocksDialog } from "./deleted-blocks-dialog.tsx";
 import { REVIEW_PANE_READY_MS, shownReviewPane } from "./review-pane-swap.ts";
 
 export type { CmsPublishMode };
@@ -808,6 +809,9 @@ function CmsPublishView({
     submit,
     discardChange,
     discardAll,
+    deletedBlocks,
+    publishWithResolutions,
+    dismissDeletedBlocks,
   } = useCmsPublishActions({
     mode: isReview ? "review" : "publish",
     target,
@@ -1149,6 +1153,18 @@ function CmsPublishView({
                     />
                   ) : null}
                 </div>
+              ) : null}
+              {deletedBlocks ? (
+                <DeletedBlocksDialog
+                  key={deletedBlocks.map((block) => block.path).join("\n")}
+                  blocks={deletedBlocks}
+                  base={baseBranch}
+                  pending={isPublishing}
+                  onCancel={dismissDeletedBlocks}
+                  onConfirm={(resolutions) =>
+                    void publishWithResolutions(resolutions)
+                  }
+                />
               ) : null}
             </>
           }

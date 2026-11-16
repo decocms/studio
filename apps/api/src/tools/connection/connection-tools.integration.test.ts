@@ -115,6 +115,7 @@ describe("Connection Tools", () => {
         orgFileConfigs: null as never,
         orgSites: null as never,
         cmsDrafts: null as never,
+        decofilePendingBlocks: null as never,
         orgRepoSyncs: null as never,
         gitProviderAccounts: null as never,
         gitProviderAccountCredentials: null as never,

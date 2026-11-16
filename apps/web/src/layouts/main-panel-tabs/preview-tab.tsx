@@ -28,7 +28,7 @@ import {
 } from "@/components/sections-editor/local-serve-empty-state";
 import { ServeConnectState } from "@/components/sections-editor/serve-connect-state";
 import { useLocalNetworkAccess } from "@/hooks/use-deco-serve-discovery";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useTaskMetadata } from "./use-task-metadata";
 
 export function PreviewTab({ virtualMcpId }: { virtualMcpId: string }) {

@@ -99,6 +99,15 @@ describe("page-list", () => {
     expect(findPageForPathOrFirst([], "/")).toBeNull();
   });
 
+  it("findPageForPathOrFirst opens the page every other page sits under", () => {
+    const pages = [
+      { key: "pages-404", name: "Blog — 404", path: "/blog/404" },
+      { key: "pages-post", name: "Blog — Post", path: "/blog/:cat/:slug" },
+      { key: "pages-home", name: "Blog — Home", path: "/blog" },
+    ];
+    expect(findPageForPathOrFirst(pages, "/")?.key).toBe("pages-home");
+  });
+
   it("findPageForPathOrFirst keeps the home page when one exists", () => {
     const pages = [
       { key: "pages-about", name: "About", path: "/about" },

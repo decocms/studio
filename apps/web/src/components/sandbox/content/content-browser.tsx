@@ -1,4 +1,8 @@
+import { isBlockBody } from "@/cms/block-body";
+import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useBlogView } from "@/hooks/use-blog-view";
+import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -128,6 +132,9 @@ import {
   type BlogEntry,
   type BlogKind,
   BLOG_KINDS,
+  BRAND_BLOCK_KEY,
+  CONTEXT_BLOCK_KEY,
+  FORMATS_BLOCK_KEY,
   BLOG_SINGULAR,
   buildBlogBlock,
   emptyBlogPayload,
@@ -135,7 +142,7 @@ import {
   uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
-  kindOfResolveType,
+  isBlogRecordType,
   listAllPostPayloads,
   missingFieldsLabel,
   postIdOfKey,
@@ -166,9 +173,10 @@ import {
   SiteNotOwnedState,
 } from "@/layouts/main-panel-tabs/blocks-tab-states";
 import { deleteConfirmKey } from "./delete-copy";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   isProtocolProject,
+  contentBackendScopeKey,
   servePreviewUrl,
 } from "@/components/sections-editor/content-backend";
 import {
@@ -181,10 +189,7 @@ import {
   groupSavedSectionsByResolveType,
 } from "./section-group-header";
 import { protocolDecofileCacheKey } from "@/components/sections-editor/use-decofile";
-import {
-  useContentChanges,
-  useDeletedCopies,
-} from "@/components/sections-editor/content-changes";
+import { useContentChanges, useDeletedCopies } from "@/cms/content-changes";
 import { useContentDiscard } from "@/components/thread/repository/use-cms-publish-actions";
 import {
   buildContentTypes,
@@ -257,8 +262,12 @@ const RedirectEditor = lazy(() =>
 
 /** Types whose list rows show fields of the body: loaded with the list (hosted v8). */
 function isBodyListedType(type: string): boolean {
+  return isBlogRecordType(type) || isSiteBodyListedType(type);
+}
+
+/** {@link isBodyListedType} when the blog is the Blog view's, not listed here. */
+function isSiteBodyListedType(type: string): boolean {
   return (
-    kindOfResolveType(type) !== null ||
     type === REDIRECTS_RESOLVE_TYPE ||
     type === "redirect" ||
     REDIRECT_LOADER_RESOLVE_TYPES.has(type)
@@ -294,23 +303,35 @@ export function visibleCollection(
   blogAi: boolean,
   /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
+  /** The org's Blog view (`blog_view_enabled`) holds the blog instead. */
+  blogView = false,
 ): CollectionId {
+  if (blogView && isBlogCollection(active)) return "pages";
   if (active === "context" && !blogAi) return "posts";
   if (blocksV8 && active === "calendar") return "pages";
   return active;
 }
 
+/** The blog's collections: its records, its schedule and its brand context. */
+function isBlogCollection(id: CollectionId): boolean {
+  return isBlogKind(id) || id === "post-schedule" || id === "context";
+}
+
 /**
  * A `?contentCollection=` deep link's collection: a blog collection (the Blog
- * Manager's "Editar no Studio") and, on a Blocks v8 site, Sections (the
- * Experiments tab's links). Anything else opens Pages.
+ * Manager's "Editar no Studio"), unless the org's Blog view takes those, and,
+ * on a Blocks v8 site, Sections (the Experiments tab's links). Anything else
+ * opens Pages.
  */
 export function deepLinkCollection(
   param: string | undefined,
   blocksV8: boolean,
+  blogView = false,
 ): CollectionId | null {
   if (!param) return null;
-  if (isBlogKind(param as CollectionId)) return param as CollectionId;
+  if (isBlogKind(param as CollectionId)) {
+    return blogView ? null : (param as CollectionId);
+  }
   if (!blocksV8) return null;
   return param === "sections" ? param : null;
 }
@@ -360,7 +381,16 @@ type PageDialogState = {
 type DeleteTarget =
   | { kind: "page"; key: string; label: string }
   | { kind: "section"; key: string; label: string }
-  | { kind: "redirect"; key: string; label: string }
+  | {
+      kind: "redirect";
+      key: string;
+      label: string;
+      rule?: {
+        block: string;
+        index: number;
+        body: Record<string, unknown>;
+      } | null;
+    }
   | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
   | null;
 
@@ -416,6 +446,16 @@ export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
 
   return (
     <ContentBrowserReady
+      key={
+        contentBackend.kind === "legacy"
+          ? undefined
+          : JSON.stringify([
+              org.slug,
+              virtualMcpId,
+              branch,
+              contentBackendScopeKey(contentBackend),
+            ])
+      }
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
       branch={branch}
@@ -469,6 +509,7 @@ function ContentBrowserReady({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
   const contentBackend = useContentBackend(virtualMcpId, branch);
+  const v8 = contentBackend.kind !== "legacy";
   // The protocol never runs site code: no app install, no Run.
   const runsSiteCode = !isProtocolProject(contentBackend);
   /** A hosted v8 draft: a delete is a draft change, undone by discarding it. */
@@ -510,6 +551,11 @@ function ContentBrowserReady({
     from: ContentTypesView | null;
   } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
+  // A changed entry whose discard is being confirmed: kept after the dialog
+  // closes, so its title doesn't empty while the dialog animates out.
+  const [discardTarget, setDiscardTarget] = useState<ContentEntry | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
@@ -522,11 +568,16 @@ function ContentBrowserReady({
   // show fields of the body (blog records, redirect rules, the site app)
   // load their blocks.
   const scope = { orgSlug, virtualMcpId, branch };
+  // With the org's Blog view on, the blog isn't listed here.
+  const blogView = useBlogView();
   const typeListNames = useIndexNamesOfType(
     hostedDraft ? scope : null,
-    isBodyListedType,
+    blogView ? isSiteBodyListedType : isBodyListedType,
   );
-  useEnsureDecofileBlocks(hostedDraft ? scope : null, typeListNames);
+  const typeListLoad = useEnsureDecofileBlocks(
+    hostedDraft ? scope : null,
+    typeListNames,
+  );
 
   // Blog Manager's "Editar no Studio" redirect: ?contentCollection=posts&
   // contentItem=<blockKey> pre-selects a blog collection and opens a specific
@@ -536,14 +587,19 @@ function ContentBrowserReady({
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
-      deepLinkCollection(contentDeepLink.contentCollection, !runsSiteCode) ??
-      "pages",
+      deepLinkCollection(
+        contentDeepLink.contentCollection,
+        !runsSiteCode,
+        blogView,
+      ) ?? "pages",
   );
   const blogAi = useBlogAi();
+  const legacyContent = useLegacyBlogPostFormat(virtualMcpId);
   const activeCollection = visibleCollection(
     storedCollection,
     blogAi,
     !runsSiteCode,
+    blogView,
   );
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
@@ -574,9 +630,22 @@ function ContentBrowserReady({
       : [redirectRuleOf(openBlockKey, decofile ?? {})?.block ?? openBlockKey];
   const openBlockLoad = useEnsureDecofileBlocks(
     hostedDraft ? scope : null,
-    openBlockNames,
+    [
+      ...openBlockNames,
+      ...(activeCollection === "context"
+        ? [BRAND_BLOCK_KEY, CONTEXT_BLOCK_KEY, FORMATS_BLOCK_KEY]
+        : []),
+    ],
     { withRefs: true },
   );
+  const editorLoad = {
+    ready: typeListLoad.ready && openBlockLoad.ready,
+    failed: typeListLoad.failed || openBlockLoad.failed,
+    retry: () => {
+      typeListLoad.retry();
+      openBlockLoad.retry();
+    },
+  };
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   /**
@@ -794,6 +863,25 @@ function ContentBrowserReady({
   >();
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
+  const requestRedirectDeletion = (key: string, label: string) => {
+    if (!v8) {
+      setDeleteTarget({ kind: "redirect", key, label });
+      return;
+    }
+    const rule = redirectRuleOf(key, decofile ?? {});
+    const body = rule ? decofile?.[rule.block] : undefined;
+    if (rule && !isBlockBody(body)) {
+      toast.error(t("sectionsEditor.hosted.blockLoadFailed"));
+      return;
+    }
+    setDeleteTarget({
+      kind: "redirect",
+      key,
+      label,
+      // Rule positions belong to the body the confirmation opened from.
+      rule: rule && isBlockBody(body) ? { ...rule, body } : null,
+    });
+  };
   const deleteNoun =
     deleteTarget?.kind === "blog"
       ? BLOG_SINGULAR[deleteTarget.blogKind]
@@ -877,7 +965,8 @@ function ContentBrowserReady({
     activeCollection === "sections" ? listAvailableSections(meta) : [];
   const siteApp = findSiteAppEntry(decofile, meta);
   const allBlogEntries = scanBlogEntries(decofile);
-  const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
+  const showBlog =
+    !blogView && BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
   const blogEntries = isBlogKind(activeCollection)
     ? allBlogEntries[activeCollection]
     : [];
@@ -1035,19 +1124,42 @@ function ContentBrowserReady({
     }
   };
 
-  /** A deleted entry back as published: its deletion is discarded. */
-  const restoreTypeEntry = async (entry: ContentEntry) => {
+  /** An entry back as published: the draft's change to it is discarded. */
+  const discardTypeEntry = async (entry: ContentEntry, success: string) => {
     const change = draftChanges.data?.changes[entry.key];
     if (!typesBackend || !change) return;
+    await discardChanges(
+      typesBackend,
+      [{ name: entry.key, version: change.version }],
+      success,
+    );
+  };
+
+  const restoreTypeEntry = async (entry: ContentEntry) => {
     setRestoring(entry.key);
     try {
-      await discardChanges(
-        typesBackend,
-        [{ name: entry.key, version: change.version }],
+      await discardTypeEntry(
+        entry,
         t("siteEditor.contentTypes.restored", { name: entryName(entry) }),
       );
     } finally {
       setRestoring(null);
+    }
+  };
+
+  const confirmDiscard = async () => {
+    if (!discardTarget) return;
+    setIsDiscarding(true);
+    try {
+      await discardTypeEntry(
+        discardTarget,
+        t("siteEditor.contentTypes.discarded", {
+          name: entryName(discardTarget),
+        }),
+      );
+    } finally {
+      setIsDiscarding(false);
+      setDiscardOpen(false);
     }
   };
 
@@ -1086,6 +1198,14 @@ function ContentBrowserReady({
   };
 
   const typeRowMenu = (type: ContentType, entry: ContentEntry) => {
+    // A new entry has no published copy: deleting it already drops it.
+    const onDiscard =
+      typesBackend && entry.status === "changed"
+        ? () => {
+            setDiscardTarget(entry);
+            setDiscardOpen(true);
+          }
+        : undefined;
     if (type.group === "pages") {
       const page: PageEntry = {
         key: entry.key,
@@ -1096,6 +1216,7 @@ function ContentBrowserReady({
         <ItemActions
           onDuplicate={() => openDuplicatePage(page)}
           onRename={() => openRenamePage(page)}
+          onDiscard={onDiscard}
           onDelete={() =>
             setDeleteTarget({ kind: "page", key: page.key, label: page.name })
           }
@@ -1105,12 +1226,12 @@ function ContentBrowserReady({
     if (type.group === "redirects") {
       return (
         <ItemActions
+          onDiscard={onDiscard}
           onDelete={() =>
-            setDeleteTarget({
-              kind: "redirect",
-              key: entry.key,
-              label: redirectRowOf(entry).from || entry.key,
-            })
+            requestRedirectDeletion(
+              entry.key,
+              redirectRowOf(entry).from || entry.key,
+            )
           }
         />
       );
@@ -1118,6 +1239,7 @@ function ContentBrowserReady({
     if (type.group === "sections") {
       return (
         <ItemActions
+          onDiscard={onDiscard}
           onDelete={() =>
             setDeleteTarget({
               kind: "section",
@@ -1128,30 +1250,41 @@ function ContentBrowserReady({
         />
       );
     }
-    return null;
+    return onDiscard ? <ItemActions onDiscard={onDiscard} /> : null;
   };
 
   // ------------------ Variant ------------------
   const handleAddPageVariant = async (page: PageEntry) => {
-    const fullPageData = decofile[page.key] as Record<string, unknown>;
-    if (!fullPageData) return;
-    const variantCount = getPageVariantCount(decofile, page.key);
-    const seedSections = getPageVariantSectionsAt(
-      decofile,
-      page.key,
-      Math.max(0, variantCount - 1),
-    );
-    const added = appendPageVariantSections(
-      fullPageData.sections,
-      seedSections,
-      meta,
-      !runsSiteCode,
-    );
-    if (!added) return;
+    const prepare = (fullPageData: Record<string, unknown> | undefined) => {
+      if (!fullPageData) return null;
+      const loaded = v8 ? { ...decofile, [page.key]: fullPageData } : decofile;
+      const variantCount = getPageVariantCount(loaded, page.key);
+      const seedSections = getPageVariantSectionsAt(
+        loaded,
+        page.key,
+        Math.max(0, variantCount - 1),
+      );
+      const added = appendPageVariantSections(
+        fullPageData.sections,
+        seedSections,
+        meta,
+        !runsSiteCode,
+      );
+      return added ? { fullPageData, added } : null;
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[page.key] as Record<string, unknown> | undefined);
     try {
+      const prepared = v8
+        ? prepare(await loadBlock(decofile, page.key))
+        : legacy;
+      if (!prepared) return;
+      const { fullPageData, added } = prepared;
       const saved = await saveBlock.mutateAsync({
         blockKey: page.key,
         data: { ...fullPageData, sections: added.sections },
+        ...(v8 ? { base: { value: fullPageData, fromCache: true } } : {}),
       });
       // Kept as the draft holds it (hosted v8): its own toast said so.
       if (!keptTheirVersion(saved)) {
@@ -1218,7 +1351,11 @@ function ContentBrowserReady({
           );
         }
         const key = generateUniquePageBlockKey(decofile, values.name);
-        const created = await saveBlock.mutateAsync({ blockKey: key, data });
+        const created = await saveBlock.mutateAsync({
+          blockKey: key,
+          data,
+          ...(v8 ? { create: true } : {}),
+        });
         // Kept as the draft holds it (hosted v8): its own toast said so.
         if (!keptTheirVersion(created)) {
           toast.success(`Created "${values.name}"`);
@@ -1233,7 +1370,11 @@ function ContentBrowserReady({
           newName: values.name,
           newPath: values.path,
         });
-        const duplicated = await saveBlock.mutateAsync({ blockKey: key, data });
+        const duplicated = await saveBlock.mutateAsync({
+          blockKey: key,
+          data,
+          ...(v8 ? { create: true } : {}),
+        });
         if (!keptTheirVersion(duplicated)) {
           toast.success(`Duplicated as "${values.name}"`);
         }
@@ -1249,6 +1390,7 @@ function ContentBrowserReady({
         const updated = await saveBlock.mutateAsync({
           blockKey: sourceKey,
           data,
+          ...(v8 ? { base: { value: source, fromCache: true } } : {}),
         });
         if (!keptTheirVersion(updated)) toast.success("Page updated");
         if (selection?.collection === "pages" && selection.key === sourceKey) {
@@ -1307,20 +1449,32 @@ function ContentBrowserReady({
   };
 
   // Persist nested saved-block references created from within the section form.
-  const saveReferencedBlock = createReferencedBlockSaver((blockKey, data) =>
-    saveBlock.mutate({ blockKey, data }),
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => saveBlock.mutate(write),
+    decofile,
+    saveBlock.v8,
   );
 
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
-    const source = decofile[section.key] as Record<string, unknown> | undefined;
-    if (!source) {
-      toast.error(t("sandbox.contentBrowser.sectionNotFound"));
-      return;
-    }
-    const newKey = nextUniqueBlockKey(decofile, section.key);
-    const newName = nextUniqueName(takenSectionNames, section.name);
-    const data: Record<string, unknown> = { ...source, name: newName };
+    const prepare = (source: Record<string, unknown> | undefined) => {
+      if (!source) {
+        toast.error(t("sandbox.contentBrowser.sectionNotFound"));
+        return null;
+      }
+      const newKey = nextUniqueBlockKey(decofile, section.key);
+      const newName = nextUniqueName(takenSectionNames, section.name);
+      const data: Record<string, unknown> = { ...source, name: newName };
+      return { newKey, data };
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[section.key] as Record<string, unknown> | undefined);
     try {
+      const prepared = v8
+        ? prepare(await loadBlock(decofile, section.key))
+        : legacy;
+      if (!prepared) return;
+      const { newKey, data } = prepared;
       const copied = await saveBlock.mutateAsync({
         blockKey: newKey,
         data,
@@ -1343,17 +1497,25 @@ function ContentBrowserReady({
 
   const handleRenameSection = async (newName: string) => {
     if (!renameSectionKey) return;
-    const source = decofile[renameSectionKey] as
-      | Record<string, unknown>
-      | undefined;
-    if (!source) {
+    const legacySource = v8
+      ? undefined
+      : (decofile[renameSectionKey] as Record<string, unknown> | undefined);
+    if (!v8 && !legacySource) {
       toast.error(t("sandbox.contentBrowser.sectionNotFound"));
       return;
     }
     try {
+      const source = v8
+        ? await loadBlock(decofile, renameSectionKey)
+        : legacySource;
+      if (!source) {
+        toast.error(t("sandbox.contentBrowser.sectionNotFound"));
+        return;
+      }
       const renamed = await saveBlock.mutateAsync({
         blockKey: renameSectionKey,
         data: { ...source, name: newName },
+        ...(v8 ? { base: { value: source, fromCache: true } } : {}),
       });
       // Left as the draft holds it (hosted v8): its own toast said so.
       if (!keptTheirVersion(renamed)) {
@@ -1379,21 +1541,47 @@ function ContentBrowserReady({
   };
 
   const submitRedirectDialog = async (values: RedirectPayload) => {
-    // Hosted v8 routes only the redirects block: a new rule is appended to
-    // it (created when absent).
-    const holder = hostedDraft ? redirectsBlockName(decofile) : null;
-    const rules =
-      holder === null ? null : extractRedirectRules(decofile, holder).length;
-    const key =
-      holder === null
-        ? generateRedirectBlockKey(decofile, values.from)
-        : holder;
-    const data =
-      holder === null
-        ? buildRedirectBlock(values)
-        : appendRedirectRule(decofile[holder], values);
+    const prepare = (
+      holder: string | null,
+      body: Record<string, unknown> | undefined,
+    ) => {
+      const rules =
+        holder === null
+          ? null
+          : extractRedirectRules({ ...decofile, [holder]: body }, holder)
+              .length;
+      const key =
+        holder === null
+          ? generateRedirectBlockKey(decofile, values.from)
+          : holder;
+      const data =
+        holder === null
+          ? buildRedirectBlock(values)
+          : appendRedirectRule(body, values);
+      return { key, data, rules, body };
+    };
+    const legacy = v8 ? null : prepare(null, undefined);
     try {
-      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      // Hosted v8 routes only the redirects block: a new rule is appended to
+      // it (created when absent).
+      let prepared = legacy;
+      if (v8) {
+        const holder = hostedDraft ? redirectsBlockName(decofile) : null;
+        const body =
+          holder === null ? undefined : await loadBlock(decofile, holder);
+        if (holder !== null && decofile[holder] !== undefined && !body) {
+          throw new Error(t("sectionsEditor.hosted.blockLoadFailed"));
+        }
+        prepared = prepare(holder, body);
+      }
+      if (!prepared) return;
+      const { key, data, rules, body } = prepared;
+      const created = await saveBlock.mutateAsync({
+        blockKey: key,
+        data,
+        ...(v8 ? { base: { value: body, fromCache: true } } : {}),
+        ...(v8 ? { create: body === undefined } : {}),
+      });
       if (!keptTheirVersion(created)) toast.success("Created redirect");
       setRedirectDialogOpen(false);
       setSelection({
@@ -1410,9 +1598,17 @@ function ContentBrowserReady({
   // ------------------ Blog CRUD ------------------
   const handleCreateBlog = async (kind: BlogKind) => {
     const key = generateBlogKey(decofile, kind);
-    const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
+    const data = buildBlogBlock(
+      key,
+      kind,
+      emptyBlogPayload(kind, { legacyContent }),
+    );
     try {
-      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      const created = await saveBlock.mutateAsync({
+        blockKey: key,
+        data,
+        ...(v8 ? { create: true } : {}),
+      });
       if (!keptTheirVersion(created)) {
         toast.success(`Created ${BLOG_SINGULAR[kind]}`);
       }
@@ -1425,9 +1621,17 @@ function ContentBrowserReady({
   /** Calendar "+" on a day: a post scheduled for that day, opened to edit. */
   const handleCreateScheduledPost = async (day: Date) => {
     const key = generateBlogKey(decofile, "posts");
-    const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
+    const data = buildBlogBlock(
+      key,
+      "posts",
+      scheduledPostPayload(day, { legacyContent }),
+    );
     try {
-      const created = await saveBlock.mutateAsync({ blockKey: key, data });
+      const created = await saveBlock.mutateAsync({
+        blockKey: key,
+        data,
+        ...(v8 ? { create: true } : {}),
+      });
       if (!keptTheirVersion(created)) {
         toast.success(t("sandbox.postCalendar.createdScheduledPost"));
       }
@@ -1446,18 +1650,27 @@ function ContentBrowserReady({
 
   /** Calendar drag: move an already-scheduled post to another day. */
   const handleReschedulePost = async (key: string, day: Date) => {
-    const source = decofile[key] as Record<string, unknown> | undefined;
-    const payload = source
-      ? rescheduleToDay(getBlogPayload(source, "posts"), day)
-      : null;
-    if (!payload) {
-      toast.error(t("sandbox.postCalendar.onlyScheduledCanMove"));
-      return;
-    }
+    const prepare = (source: Record<string, unknown> | undefined) => {
+      const payload = source
+        ? rescheduleToDay(getBlogPayload(source, "posts"), day)
+        : null;
+      if (!payload) {
+        toast.error(t("sandbox.postCalendar.onlyScheduledCanMove"));
+        return null;
+      }
+      return { source, payload };
+    };
+    const legacy = v8
+      ? null
+      : prepare(decofile[key] as Record<string, unknown> | undefined);
     try {
+      const prepared = v8 ? prepare(await loadBlock(decofile, key)) : legacy;
+      if (!prepared) return;
+      const { source, payload } = prepared;
       await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, "posts", payload),
+        ...(v8 ? { base: { value: source, fromCache: true } } : {}),
       });
     } catch (err) {
       toast.error(
@@ -1469,29 +1682,40 @@ function ContentBrowserReady({
   };
 
   const handleDuplicateBlog = async (entry: BlogEntry) => {
-    const source = decofile[entry.key] as Record<string, unknown> | undefined;
-    if (!source) {
-      toast.error("Record not found.");
-      return;
-    }
-    const key = generateBlogKey(decofile, entry.kind);
-    const labelKey = entry.kind === "posts" ? "title" : "name";
-    const payload: Record<string, unknown> = {
-      ...structuredClone(getBlogPayload(source, entry.kind)),
-      [labelKey]: `${entry.label} (copy)`,
+    const prepare = (source: Record<string, unknown> | undefined) => {
+      if (!source) {
+        toast.error("Record not found.");
+        return null;
+      }
+      const key = generateBlogKey(decofile, entry.kind);
+      const labelKey = entry.kind === "posts" ? "title" : "name";
+      const payload: Record<string, unknown> = {
+        ...structuredClone(getBlogPayload(source, entry.kind)),
+        [labelKey]: `${entry.label} (copy)`,
+      };
+      // A clone keeping the slug would answer for the original. Categories
+      // only: a duplicated post still carries the source slug.
+      if (entry.kind === "categories") {
+        const taken = allBlogEntries.categories
+          .map((c) => c.slug ?? "")
+          .filter(Boolean);
+        payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
+      }
+      return { key, payload };
     };
-    // A clone keeping the slug would answer for the original. Categories
-    // only: a duplicated post still carries the source slug.
-    if (entry.kind === "categories") {
-      const taken = allBlogEntries.categories
-        .map((c) => c.slug ?? "")
-        .filter(Boolean);
-      payload.slug = uniqueCategorySlug(String(payload.slug ?? ""), taken);
-    }
+    const legacy = v8
+      ? null
+      : prepare(decofile[entry.key] as Record<string, unknown> | undefined);
     try {
+      const prepared = v8
+        ? prepare(await loadBlock(decofile, entry.key))
+        : legacy;
+      if (!prepared) return;
+      const { key, payload } = prepared;
       const duplicated = await saveBlock.mutateAsync({
         blockKey: key,
         data: buildBlogBlock(key, entry.kind, payload),
+        ...(v8 ? { create: true } : {}),
       });
       if (!keptTheirVersion(duplicated)) {
         toast.success(`Duplicated "${entry.label}"`);
@@ -1518,41 +1742,74 @@ function ContentBrowserReady({
     try {
       const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
+        const source = v8
+          ? await loadBlock(decofile, key)
+          : deleteTarget.blogKind === "categories"
+            ? (decofile[key] as Record<string, unknown> | undefined)
+            : undefined;
+        if (v8 && !source)
+          throw new Error(t("sectionsEditor.hosted.blockLoadFailed"));
         // Deleting a category cascades to posts: they carry a denormalized
         // copy of the category slug, so drop it everywhere first — otherwise
         // posts keep a reference to a category that no longer exists. Posts
         // first, then the category, so a failed cascade leaves it recoverable.
         if (deleteTarget.blogKind === "categories") {
-          const slugValue = getBlogPayload(
-            decofile[key] as Record<string, unknown> | undefined,
-            "categories",
-          ).slug;
+          const slugValue = getBlogPayload(source, "categories").slug;
           const slug = typeof slugValue === "string" ? slugValue : "";
           if (slug) {
             // Both forms: a draft denormalizes the category too, and
             // writing it back as a live block would publish it.
+            const loaded = v8 ? { ...decofile } : decofile;
+            if (v8) {
+              const bodies = await Promise.all(
+                typeListNames.map(
+                  async (name) =>
+                    [name, await loadBlock(decofile, name)] as const,
+                ),
+              );
+              for (const [name, body] of bodies) {
+                if (body) loaded[name] = body;
+                else delete loaded[name];
+              }
+            }
             for (const { key: postKey, payload } of listAllPostPayloads(
-              decofile,
+              loaded,
             )) {
               const next = removeCategoryFromPost(payload, slug);
               if (next === payload) continue;
               await saveBlock.mutateAsync({
                 blockKey: postKey,
                 data: buildPostBlock(postKey, stampPostModified(next)),
+                ...(v8
+                  ? { base: { value: loaded[postKey], fromCache: true } }
+                  : {}),
               });
             }
           }
         }
-        deleted = await deleteBlock.mutateAsync({ blockKey: key });
-      } else if (redirectRuleOf(key, decofile)) {
-        // A rule of the redirects block: the block, without it.
+        deleted = await deleteBlock.mutateAsync({
+          blockKey: key,
+          ...(v8 ? { base: { value: source } } : {}),
+        });
+      } else if (!v8 && redirectRuleOf(key, decofile)) {
         const rule = redirectRuleOf(key, decofile)!;
         deleted = await saveBlock.mutateAsync({
           blockKey: rule.block,
           data: removeRedirectRule(decofile[rule.block], rule.index),
         });
       } else {
-        deleted = await deleteBlock.mutateAsync({ blockKey: key });
+        const rule =
+          v8 && deleteTarget.kind === "redirect" ? deleteTarget.rule : null;
+        if (rule) {
+          const body = rule.body;
+          deleted = await saveBlock.mutateAsync({
+            blockKey: rule.block,
+            data: removeRedirectRule(body, rule.index),
+            ...(v8 ? { base: { value: body, fromCache: true } } : {}),
+          });
+        } else {
+          deleted = await deleteBlock.mutateAsync({ blockKey: key });
+        }
       }
       setDeleteTarget(null);
       // The user kept their version (the hook said so in its own toast).
@@ -1572,17 +1829,17 @@ function ContentBrowserReady({
     selectedKey === null ? null : redirectRuleOf(selectedKey, decofile);
   // The editor side, as every collection shows it (hosted v8: once the open
   // block is loaded; a load that failed says so and is tried again).
-  const editorPane = openBlockLoad.failed ? (
+  const editorPane = editorLoad.failed ? (
     <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-6 text-center">
       <EmptyMessage
         title={t("sectionsEditor.hosted.blockLoadFailed")}
         description={t("sectionsEditor.hosted.blockLoadFailedHint")}
       />
-      <Button variant="outline" size="sm" onClick={openBlockLoad.retry}>
+      <Button variant="outline" size="sm" onClick={editorLoad.retry}>
         {t("sectionsEditor.namedRules.tryAgain")}
       </Button>
     </div>
-  ) : !openBlockLoad.ready ? (
+  ) : !editorLoad.ready ? (
     <div className="h-full w-full flex items-center justify-center">
       <Spinner className="size-5 text-muted-foreground" />
     </div>
@@ -1919,7 +2176,7 @@ function ContentBrowserReady({
             counts={counts}
             hidden={hiddenCollections}
             showBlog={showBlog}
-            showContext={blogAi}
+            showContext={blogAi && !blogView}
             onSelect={(id) => {
               setActiveCollection(id);
               setSelection(null);
@@ -1991,11 +2248,7 @@ function ContentBrowserReady({
                 setDeleteTarget({ kind: "section", key: s.key, label: s.name })
               }
               onDeleteRedirect={(entry) =>
-                setDeleteTarget({
-                  kind: "redirect",
-                  key: entry.key,
-                  label: entry.from || entry.key,
-                })
+                requestRedirectDeletion(entry.key, entry.from || entry.key)
               }
               onDuplicateBlog={handleDuplicateBlog}
               onDeleteBlog={(e) =>
@@ -2129,15 +2382,21 @@ function ContentBrowserReady({
 
         {/* Page JSON dialog */}
         {jsonPageKey && (
-          <SavedPageJsonDialog
-            open={!!jsonPageKey}
-            onOpenChange={(open) => {
-              if (!open) setJsonPageKey(null);
-            }}
-            pageKey={jsonPageKey}
-            decofile={decofile}
-            params={fetchParams}
-          />
+          <CmsBlockBoundary
+            listing={decofile}
+            scope={fetchParams}
+            names={[jsonPageKey]}
+          >
+            <SavedPageJsonDialog
+              open={!!jsonPageKey}
+              onOpenChange={(open) => {
+                if (!open) setJsonPageKey(null);
+              }}
+              pageKey={jsonPageKey}
+              decofile={decofile}
+              params={fetchParams}
+            />
+          </CmsBlockBoundary>
         )}
 
         {/* Delete confirmation */}
@@ -2176,6 +2435,43 @@ function ContentBrowserReady({
                 ) : (
                   t("sandbox.contentBrowser.deleteDialog.delete")
                 )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={discardOpen}
+          onOpenChange={(next) => {
+            if (!next && !isDiscarding) setDiscardOpen(false);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {discardTarget &&
+                  t("siteEditor.contentTypes.discardTitle", {
+                    name: entryName(discardTarget),
+                  })}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("siteEditor.contentTypes.discardDescription")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDiscarding}>
+                {t("sandbox.contentBrowser.deleteDialog.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  void confirmDiscard();
+                }}
+                disabled={isDiscarding}
+                className={cn(buttonVariants({ variant: "destructive" }))}
+              >
+                {isDiscarding && <Spinner className="size-3.5" />}
+                {t("sandbox.itemActions.discardChanges")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

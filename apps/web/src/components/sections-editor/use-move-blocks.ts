@@ -15,11 +15,12 @@ import {
 } from "./decofile-api";
 import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   applyProtocolPatch,
+  protocolUnavailableError,
   neverPublishedBlock,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import { applyHostedChange, HostedKeptTheirsError } from "./hosted-reconcile";
 import {
   HostedKeptChangingError,
@@ -147,6 +148,9 @@ export function useMoveBlocks({
       copies?: Record<string, unknown>;
       shown?: () => Record<string, HeldCopy>;
     }) => {
+      if (backend.kind === "pending" || backend.kind === "unavailable") {
+        throw protocolUnavailableError("CMS storage");
+      }
       // A hosted save checks nothing (the site's CI runs `deco check`).
       const writes =
         protocol?.source === "github"

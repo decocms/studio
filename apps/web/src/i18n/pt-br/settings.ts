@@ -7,16 +7,7 @@ export const settings = {
   "settings.subscriptionUsage.secondary": "Limite secundário",
   "settings.subscriptionUsage.resets": "Renova em {date}",
   "settings.subscriptionUsage.limitReached": "Limite atingido",
-  "settings.subscriptionUsage.permission":
-    "Este token não permite consultar limites. Veja o uso no site do provedor.",
-  "settings.subscriptionUsage.authorization":
-    "O provedor não autorizou a consulta. Vincule seu plano novamente para atualizar as credenciais.",
-  "settings.subscriptionUsage.rateLimited":
-    "O provedor está limitando as consultas. Tente novamente após o horário abaixo.",
-  "settings.subscriptionUsage.disconnected":
-    "Vincule seu plano para consultar os limites.",
-  "settings.subscriptionUsage.unavailable":
-    "Os limites estão indisponíveis agora. Consulte o provedor para ver o status atual.",
+  "settings.subscriptionUsage.viewUsage": "Ver uso",
   "settings.subscriptionUsage.openProvider": "Ver no provedor",
 
   "settings.voice.title": "Modo voz",
@@ -373,6 +364,9 @@ export const settings = {
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "View Blog",
+  "settings.blogView.description":
+    "O Blog como uma view própria do projeto, com cada post ao lado de como o site o mostra. Desligado, o blog é editado na aba Conteúdo do Site Editor.",
   "settings.blog.aiTitle": "Blog com IA",
   "settings.blog.aiDescription":
     "Contexto da marca, campanhas e geração de posts. Desligado, os posts são escritos à mão.",
@@ -388,6 +382,9 @@ export const settings = {
   "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
   "settings.multiAppPreview.description":
     "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",
+  "settings.cmsAutoCommit.title": "Commitar cada salvamento na branch",
+  "settings.cmsAutoCommit.description":
+    "No Fast Preview, cada salvamento vira um commit na branch em edição. Desligado, os salvamentos ficam no Studio: o editor e o preview mostram as mudanças, mas elas só chegam na branch quando alguém publica ou envia para revisão, em um único commit. Até lá elas não estão no repositório, então um pull request, um deploy preview ou quem trabalha na branch fora do Studio não as vê.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeLight": "Tema claro",
   "settings.preferences.themeDark": "Tema escuro",
@@ -678,7 +675,6 @@ export const settings = {
     "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
-  "settings.subscriptionUsage.unavailableShort": "Uso indisponível",
   "settings.ownAccounts.more": "Mais ações",
   "settings.providerKeyRow.edit": "Editar",
   "settings.ownAccounts.title": "Suas contas",

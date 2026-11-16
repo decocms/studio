@@ -51,6 +51,7 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   branchUserLabel,
   generateBranchName,
+  isBlogDraftBranch,
 } from "@decocms/shared/branch-name";
 import { AGENT_SANDBOX_KIND } from "../sandbox/sandbox-map";
 import {
@@ -81,15 +82,19 @@ type SandboxMapMeta = {
 /**
  * Pick the user's most-recently-touched hosted branch from sandboxMap. Native
  * desktop siblings are not routable by the API and cannot warm a hosted chat.
+ * A Blog draft is never offered: a chat that names no branch is not Blog work.
  */
-function pickWarmBranchFromSandboxMap(
+export function pickWarmBranchFromSandboxMap(
   sandboxMap: SandboxMapMeta["sandboxMap"],
   userId: string,
 ): string | undefined {
   const branchMap = sandboxMap?.[userId];
   if (!branchMap) return undefined;
   const sorted = Object.entries(branchMap)
-    .filter(([, kinds]) => AGENT_SANDBOX_KIND in kinds)
+    .filter(
+      ([branch, kinds]) =>
+        AGENT_SANDBOX_KIND in kinds && !isBlogDraftBranch(branch),
+    )
     .sort(
       ([, aKinds], [, bKinds]) =>
         (bKinds[AGENT_SANDBOX_KIND]?.createdAt ?? 0) -

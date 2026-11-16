@@ -15,7 +15,7 @@ import type { ContentBackend, ProtocolBackend } from "./content-backend";
 import {
   applyProtocolPatch,
   pollProtocolContent,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import { decofileWriteScope } from "./decofile-api";
 import { getHeldPreviewRevision } from "./preview-draft-link";
 import {
@@ -607,6 +607,31 @@ describe("content-sync refresh (contentChanged)", () => {
     expect(getContentSyncState(SCOPE)).toMatchObject({
       phase: "idle",
       epoch: 0,
+    });
+  });
+
+  it("a v7 (legacy) discard re-reads the blocks and has the open form re-read its block", async () => {
+    const queryClient = new QueryClient();
+    const { reads } = editorQueries(queryClient);
+    let blockReads = 0;
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.decofile(CACHE_KEY),
+      queryFn: async () => ({ read: ++blockReads }),
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => {});
+    await settle();
+    const before = { ...reads };
+    await runContentChange(target(queryClient, { kind: "legacy" }), {
+      kind: "discard",
+      reread: true,
+      write: async () => {},
+    });
+    expect(blockReads).toBe(2);
+    // Nothing of the content protocol is read for a v7 site.
+    expect(reads).toEqual(before);
+    expect(getContentSyncState(SCOPE)).toMatchObject({
+      phase: "idle",
+      epoch: 1,
     });
   });
 

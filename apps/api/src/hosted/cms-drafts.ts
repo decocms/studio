@@ -13,7 +13,9 @@
  * The file is the truth: a listed name whose file is missing, or holds a
  * `published` marker, is not in the draft. A name new to the draft goes into
  * the index first, then its file is written, so nothing written is ever
- * invisible. Every write is conditional on the object as read
+ * invisible. A discard runs the other way: it empties the index first, then
+ * deletes the files it listed (putting back the names it couldn't delete),
+ * so a reader never meets a listed name whose file is gone. Every write is conditional on the object as read
  * (`If-None-Match: *` to create, `If-Match` on its ETag otherwise); only the
  * index's read-modify-write is retried here (on 412, up to 3 attempts).
  * Draft folders are never listed: every reader goes index → name → key.
@@ -401,8 +403,12 @@ export interface CmsDrafts {
     by: { userId: string; via: CmsVia },
   ): Promise<{ row: CmsDraftRow; created: boolean; state: DraftState }>;
   /**
-   * Deletes every listed file, then the index, then the row; false when
-   * there was no row. A failed delete keeps the row, so it can be retried.
+   * Empties the index (`{ names: [] }`), then deletes every file it listed,
+   * then the index, then the row; false when there was no row. Readers see
+   * the draft hold nothing before any file goes, never a listed name whose
+   * file is gone. A failed delete keeps the row, so it can be retried, and
+   * puts the names not yet deleted back into the index (best effort), so
+   * the files left behind stay listed rather than hidden.
    */
   discard(site: string, name: string): Promise<boolean>;
 }
@@ -456,8 +462,36 @@ export function createCmsDrafts(deps: {
       const row = await table.get(site, name);
       if (!row) return false;
       const index = await readDraftIndex(store, site, row.slug);
-      for (const listed of index.names) {
-        await store.delete(deliveryKeys.draftFile(site, row.slug, listed));
+      // The names as the emptying write found them: a save that listed a
+      // name between our read and that write is deleted along with the rest.
+      let names: readonly string[] = index.names;
+      if (names.length > 0) {
+        await updateDraftIndex(
+          store,
+          site,
+          row.slug,
+          (current) => {
+            names = current;
+            return [];
+          },
+          index,
+        );
+      }
+      for (const [i, listed] of names.entries()) {
+        try {
+          await store.delete(deliveryKeys.draftFile(site, row.slug, listed));
+        } catch (error) {
+          // The names not yet deleted go back into the index, so the files
+          // that are left stay listed (a save then guards against them, and
+          // a retried discard deletes them) instead of hiding as unlisted
+          // files a later save's `ifMatch: null` trips over.
+          const left = names.slice(i);
+          await updateDraftIndex(store, site, row.slug, (current) => [
+            ...current,
+            ...left,
+          ]).catch(() => {});
+          throw error;
+        }
       }
       await store.delete(deliveryKeys.draftIndex(site, row.slug));
       await table.delete(site, name);

@@ -230,11 +230,13 @@ export function formSaveGuard({
   formBase,
   rebased,
   versionOf,
+  productionVersionOf,
   copy,
 }: {
   formBase: FormBase | null;
   rebased: boolean;
   versionOf: (blockKey: string) => string | null | undefined;
+  productionVersionOf?: (blockKey: string) => string | null | undefined;
   /**
    * Hosted v8: the block (the saved block, or the page) as the cache held
    * it when the save was built, the copy the form's check read.
@@ -251,9 +253,21 @@ export function formSaveGuard({
       ifMatch: async (blockKey) => {
         guarded = blockKey;
         if (formBase && formBase.version !== undefined && !rebased) {
-          return guardOf(formBase.version);
+          return guardOf(
+            formBase.version === null
+              ? await copyDraftVersion(
+                  null,
+                  copy.value,
+                  productionVersionOf?.(blockKey),
+                )
+              : formBase.version,
+          );
         }
-        const version = await copyDraftVersion(versionOf(blockKey), copy.value);
+        const version = await copyDraftVersion(
+          versionOf(blockKey),
+          copy.value,
+          productionVersionOf?.(blockKey),
+        );
         if (formBase) formBase.version = version;
         return guardOf(version);
       },

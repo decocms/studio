@@ -18,14 +18,14 @@ import {
   reloadProtocolBlock,
   rereadProtocolContent,
   savingBlockKeys,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 import {
   type DecofilePatchBody,
   decofileWriteMutationKey,
   decofileWriteScope,
 } from "./decofile-api";
 import { conflictAuthorDraft } from "./conflict-author";
-import { copyDraftVersion } from "./draft-version";
+import { copyDraftVersion, cachedProductionVersion } from "./draft-version";
 import { formatCampaignDate, formatCampaignWindow } from "./format-matcher";
 import { bumpCopyEpoch, copyScope } from "./held-copy";
 import { type ConflictField, resolveFormConflict } from "./form-conflict";
@@ -42,7 +42,7 @@ import {
   type ContentIndex,
   ensureHostedBlocks,
   listingOf,
-} from "./hosted-content";
+} from "@/cms/hosted-content";
 import {
   type CampaignWindow,
   NAMED_RULE_BLOCKS,
@@ -52,7 +52,7 @@ import { canAskNamedRuleConflict } from "./named-rule-conflict";
 import type { SchemaProperty } from "./resolve-schema";
 import { isSaveConflict } from "./serve-save-error";
 import { SAVE_TOAST, toastSaveError } from "./site-editor-toast";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useDecofileCacheKey } from "./use-decofile";
 import { applyMoveToDecofile } from "./use-move-blocks";
 
@@ -510,7 +510,11 @@ export function useApplyNamedRule({
     copies: Record<string, unknown>,
   ): Promise<string | null | undefined> => {
     if (!hosted || !Object.hasOwn(copies, blockKey)) return listed;
-    return copyDraftVersion(listed, copies[blockKey]);
+    return copyDraftVersion(
+      listed,
+      copies[blockKey],
+      cachedProductionVersion(queryClient, cacheKey, blockKey),
+    );
   };
 
   /**

@@ -1,3 +1,6 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
+import { isIndexStub } from "@/cms/block-body";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { useState, type ReactNode } from "react";
 import {
   ChevronDown,
@@ -49,7 +52,7 @@ import { crumbLabel, type Crumb } from "../schema-form-breadcrumb";
 import { suggestBlockId, validateBlockId } from "../page-sections";
 import type { SchemaProperty } from "../resolve-schema";
 import { FieldLabel } from "./field-label";
-import type { FieldProps } from "./field-props";
+import type { FieldProps, SandboxConfig } from "./field-props";
 
 import { toast } from "sonner";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
@@ -195,7 +198,7 @@ function CollapsibleLoaderConfig({
   );
 }
 
-export function AnyOfField({
+function LoadedAnyOfField({
   schema,
   value,
   onChange,
@@ -708,5 +711,37 @@ export function AnyOfField({
         placeholder={schema.description ?? ""}
       />
     </div>
+  );
+}
+
+function ConnectedAnyOfField(props: FieldProps & { sandbox: SandboxConfig }) {
+  const backend = useContentBackend(
+    props.sandbox.virtualMcpId,
+    props.sandbox.branch,
+  );
+  const reference =
+    backend.kind !== "legacy" && props.decofile && props.value
+      ? unwrapBlockReference(props.value, props.decofile)
+      : null;
+  if (reference && isIndexStub(reference.data)) {
+    return (
+      <CmsBlockBoundary
+        listing={props.decofile ?? {}}
+        scope={props.sandbox}
+        names={[reference.blockKey]}
+      >
+        <LoadedAnyOfField {...props} />
+      </CmsBlockBoundary>
+    );
+  }
+  return <LoadedAnyOfField {...props} />;
+}
+
+/** Saved references can be selected without their parent page referencing them yet. */
+export function AnyOfField(props: FieldProps) {
+  return props.sandbox ? (
+    <ConnectedAnyOfField {...props} sandbox={props.sandbox} />
+  ) : (
+    <LoadedAnyOfField {...props} />
   );
 }

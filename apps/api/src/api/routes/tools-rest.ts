@@ -20,6 +20,7 @@ import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
 import { ConflictError } from "../../core/conflict-error";
 import { GatewayRefusalError } from "../../ai-providers/adapters/deco-ai-gateway";
 import { OrgBlockedError } from "../../core/org-notice-gate";
+import { GitProviderError } from "../../git-providers/types";
 import type { StudioContext } from "../../core/studio-context";
 import {
   managementContextStore,
@@ -35,6 +36,9 @@ import {
   taskRunContextStore,
 } from "../../tools/task-board/task-run-context";
 import type { Env } from "../hono-env";
+
+/** Wait reported when a rate-limited provider named none. */
+const PROVIDER_RATE_LIMIT_DEFAULT_WAIT_MS = 60_000;
 
 const toJsonSchema = (schema: unknown): unknown => {
   if (!schema || typeof schema !== "object") return undefined;
@@ -157,6 +161,20 @@ export const createToolsRestRoutes = () => {
         return c.json(
           { error: error.message, ...(error.code ? { code: error.code } : {}) },
           error.status === 503 ? 503 : 403,
+        );
+      }
+      // The provider's budget is spent, not broken: name the wait so the
+      // client neither retries into it nor polls through it.
+      if (error instanceof GitProviderError && error.isRateLimited) {
+        const retryAfterMs =
+          error.retryAfterMs ?? PROVIDER_RATE_LIMIT_DEFAULT_WAIT_MS;
+        c.header(
+          "Retry-After",
+          String(Math.max(1, Math.ceil(retryAfterMs / 1000))),
+        );
+        return c.json(
+          { error: error.message, code: "provider_rate_limited", retryAfterMs },
+          429,
         );
       }
       const message = error instanceof Error ? error.message : "Tool failed";

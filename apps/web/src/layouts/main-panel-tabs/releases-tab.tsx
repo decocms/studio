@@ -44,7 +44,7 @@ import {
   errorDetail,
   toastPublishFailed,
 } from "@/components/sections-editor/site-editor-toast.tsx";
-import { CmsRequestError } from "@/components/sections-editor/cms-api";
+import { CmsRequestError } from "@/cms/cms-api";
 import type { OrgMemberRow } from "@/components/sections-editor/conflict-author";
 import { useMembersQuery } from "@/hooks/use-members";
 import {

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
   type ChangeSources,
+  GithubContentClient,
   mapGithubPull,
   resolveEntriesAtPaths,
   treeWriteEntries,
@@ -299,5 +300,87 @@ describe("mapGithubPull", () => {
         merged: false,
       }).state,
     ).toBe("closed");
+  });
+});
+
+describe("GithubContentClient.commitFiles with inline content", () => {
+  const blobUploads: number[] = [];
+  let treeBody: { tree: Array<Record<string, unknown>> } | null = null;
+  let server: ReturnType<typeof Bun.serve>;
+  const previousBase = process.env.GITHUB_API_BASE_URL;
+
+  beforeAll(() => {
+    server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const { pathname } = new URL(req.url);
+        const body = req.method === "GET" ? null : await req.json();
+        if (pathname.endsWith("/git/blobs")) {
+          blobUploads.push((body as { content: string }).content.length);
+          return Response.json({ sha: `blob${blobUploads.length}` });
+        }
+        if (pathname.endsWith("/git/trees")) {
+          treeBody = body as typeof treeBody;
+          return Response.json({ sha: "tree1" });
+        }
+        if (pathname.endsWith("/git/commits")) {
+          return Response.json({ sha: "commit1" });
+        }
+        if (pathname.includes("/git/commits/")) {
+          return Response.json({ tree: { sha: "tree0" } });
+        }
+        if (pathname.includes("/git/refs/heads/")) return Response.json({});
+        return new Response(null, { status: 404 });
+      },
+    });
+    process.env.GITHUB_API_BASE_URL = server.url.origin;
+  });
+
+  afterAll(() => {
+    server.stop(true);
+    if (previousBase === undefined) delete process.env.GITHUB_API_BASE_URL;
+    else process.env.GITHUB_API_BASE_URL = previousBase;
+  });
+
+  it("uploads only a file over the inline cap as its own blob", async () => {
+    const client = new GithubContentClient({
+      repo: { provider: "github", host: "github.com", path: "acme/site" },
+      tokenSource: {
+        kind: "installation",
+        get: async () => ({
+          token: "t",
+          kind: "installation",
+          expiresAt: null,
+        }),
+      },
+    });
+    const big = "x".repeat(1024 * 1024 + 1);
+    const { sha } = await client.commitFiles({
+      branch: "feature",
+      message: "save",
+      expectedHead: "head0",
+      inlineContent: true,
+      changes: [
+        { path: ".deco/blocks/Header.json", content: '{"a":1}' },
+        { path: ".deco/blocks.gen.json", content: big },
+      ],
+    });
+
+    expect(sha).toBe("commit1");
+    expect(blobUploads).toEqual([big.length]);
+    expect(treeBody?.tree).toEqual([
+      {
+        path: ".deco/blocks/Header.json",
+        mode: "100644",
+        type: "blob",
+        content: '{"a":1}',
+      },
+      {
+        path: ".deco/blocks.gen.json",
+        mode: "100644",
+        type: "blob",
+        sha: "blob1",
+      },
+    ]);
   });
 });

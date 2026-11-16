@@ -25,6 +25,7 @@ export const sidebar = {
   "sidebar.myThreadsSection.older": "Mais antigos",
   "sidebar.projectNav.automations": "Automações",
   "sidebar.projectNav.apps": "Apps",
+  "sidebar.projectNav.blog": "Blog",
   "sidebar.projectNav.siteEditor": "Editor do site",
   "sidebar.projects.pinned": "Fixados",
   "sidebar.projects.waiting": "{count} esperando por você",
@@ -76,7 +77,7 @@ export const sidebar = {
   "sidebar.rail.unpinOrganization": "Desafixar da barra lateral",
   "sidebar.rail.searchEmpty": "Nenhuma organização corresponde.",
   "sidebar.rail.searchFailed": "Não foi possível buscar organizações.",
-  "sidebar.rail.searchMoreOrganizations": "Buscar organizações (mais {count})",
+  "sidebar.rail.search": "Pesquisar tudo",
   "sidebar.rail.searchOrganizations": "Buscar organizações",
   "sidebar.rail.searchPlaceholder": "Busque por nome ou URL",
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
@@ -97,6 +98,16 @@ export const sidebar = {
   "sidebar.feedback.sent": "Valeu! Seu feedback foi enviado.",
   "sidebar.feedback.failed":
     "Não foi possível enviar seu feedback. Tente de novo.",
+  "sidebar.help.button": "Ajuda",
+  "sidebar.help.guides": "Guias",
+  "sidebar.help.discord": "Entrar no Discord",
+  "sidebar.help.reportProblem": "Reportar um problema",
+  "sidebar.problem.title": "Reportar um problema",
+  "sidebar.problem.placeholder":
+    "O que deu errado? O que você esperava que acontecesse?",
+  "sidebar.problem.sent": "Valeu! Nosso time de suporte vai analisar.",
+  "sidebar.problem.failed":
+    "Não foi possível enviar seu relato. Tente de novo.",
   "sidebar.linkClaude.button": "Conectar Claude",
   "sidebar.linkClaude.relink": "Reconectar Claude",
   "sidebar.sidebarResizeHandle.ariaLabel": "Redimensionar barra lateral",

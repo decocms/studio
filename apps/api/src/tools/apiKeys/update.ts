@@ -66,6 +66,13 @@ export const API_KEY_UPDATE = defineTool({
       throw new Error("Cannot update API key from another organization");
     }
 
+    // A key must not grant permissions beyond what the caller can exercise.
+    if (input.permissions && !(await ctx.access.canGrant(input.permissions))) {
+      throw new Error(
+        "Insufficient privileges: an API key cannot grant permissions beyond your own.",
+      );
+    }
+
     // Update the API key via Better Auth
     // Preserve the organization in metadata to prevent org change
     const result = await ctx.boundAuth.apiKey.update({

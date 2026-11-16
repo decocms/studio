@@ -44,6 +44,7 @@ type Props = {
   branch: string;
   /** The `CMS` block, or a stand-in holding only its type when absent. */
   block: Record<string, unknown>;
+  decofile: Record<string, unknown>;
   saveGuard: SaveGuard;
   /** The block's generic form, for what this page shows read-only. */
   onOpenForm: () => void;
@@ -64,6 +65,7 @@ export function CmsSettingsPage(props: Props) {
   });
   return (
     <HeldBlockView
+      listing={props.decofile}
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}

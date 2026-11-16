@@ -9,13 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { PROTOCOL_NAME, PROTOCOL_VERSION } from "@decocms/blocks/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import { publishHostedDraft } from "@/components/thread/repository/hosted-publish-api";
-import { cmsDraftRpcEndpoint, ensureCmsDraft } from "./cms-api";
+import { cmsDraftRpcEndpoint, ensureCmsDraft } from "@/cms/cms-api";
 import type { ProtocolBackend } from "./content-backend";
 import {
   applyProtocolPatch,
   pollProtocolContent,
-} from "./content-protocol-api";
-import { probeHosted } from "./use-content-backend";
+} from "@/cms/content-protocol-api";
+import { probeHosted } from "@/cms/use-content-backend";
 
 const ORIGIN = "http://studio.test";
 const SITE = "acme";

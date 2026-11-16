@@ -1,14 +1,15 @@
+import { decofileCacheKey } from "@/cms/cache-key";
+import { useCmsBlocks } from "@/cms/use-blocks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type HostedBlocksLoad,
   listingOf,
   loadBlockBody,
   useContentIndex,
-  useEnsureHostedBlocks,
-} from "./hosted-content";
+} from "@/cms/hosted-content";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
-import { exponentialBackoffWithJitter } from "@decocms/shared/std";
+import { contentReadRetryDelay } from "./content-response-error";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
 import { parseDecofileBody } from "./decofile-body";
@@ -26,12 +27,12 @@ import { buildDecofileFetchUrl } from "./preview-fetch-url";
 import { readCommittedJson } from "./read-committed-file";
 import { decofileErrorStatus } from "./decofile-read-status";
 import { usePackagePath } from "./use-package-path";
-import { useContentBackend } from "./use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   pollProtocolContent,
   protocolUnavailableError,
   useRereadOnWriteElsewhere,
-} from "./content-protocol-api";
+} from "@/cms/content-protocol-api";
 
 interface UseDecofileParams {
   orgSlug: string;
@@ -42,42 +43,7 @@ interface UseDecofileParams {
   previewUrl?: string | null;
 }
 
-/**
- * The `KEYS.decofile` cache key. Local mode reads a different source (the
- * tunnel) than the branch's git/sandbox, so it gets its own key suffix —
- * shared with `useSaveBlock` so its optimistic writes land where the read
- * looks. Same string ⇒ shared cache; a Local edit never bleeds into the real
- * branch's decofile and vice-versa.
- */
-function decofileCacheKey(input: {
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  localPreviewUrl?: string | null;
-  /** A content-protocol backend's suffix (a `deco serve` endpoint), if any. */
-  protocolSuffix?: string | null;
-}): string {
-  const base = `${input.orgSlug}/${input.virtualMcpId}/${input.branch}`;
-  if (input.protocolSuffix) return `${base}${input.protocolSuffix}`;
-  return input.localPreviewUrl
-    ? `${base}:local:${input.localPreviewUrl}`
-    : base;
-}
-
-/**
- * The decofile cache key of a content-protocol backend's project (what
- * {@link useDecofileCacheKey} answers for it), for a reader that already
- * holds the backend.
- */
-export function protocolDecofileCacheKey(
-  params: { orgSlug: string; virtualMcpId: string; branch: string },
-  backend: { cacheKeySuffix: string },
-): string {
-  return decofileCacheKey({
-    ...params,
-    protocolSuffix: backend.cacheKeySuffix,
-  });
-}
+export { protocolDecofileCacheKey } from "@/cms/cache-key";
 
 /**
  * The decofile cache key for a project, given its content backend. Pass
@@ -90,7 +56,7 @@ export function useDecofileCacheKey(
   const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
   const backend = useContentBackend(params?.virtualMcpId, params?.branch);
   if (!params) return "";
-  return backend.kind === "protocol"
+  return backend.kind !== "legacy" && backend.cacheKeySuffix !== undefined
     ? decofileCacheKey({ ...params, protocolSuffix: backend.cacheKeySuffix })
     : decofileCacheKey({
         ...params,
@@ -281,9 +247,9 @@ export function useDecofile(
     // waiting for `running` would strand it behind the install it skips.
     //
     // Sandbox-less Fast Preview inverts the rule: there is no lifecycle event
-    // coming, and the API maps transient GitHub failures (rate limits,
-    // upstream 5xx) to 502 — so a single hiccup would otherwise stick as a
-    // terminal error card. Bounded retries with backoff ARE the recovery.
+    // coming, so transient provider failures need bounded retries. Rate limits
+    // carry a retry deadline; contentReadRetryDelay preserves it instead of
+    // applying the normal five-second cap.
     // 404 = no decofile route on this repo (not a deco site) — as terminal as
     // 502 for retry purposes.
     retry: (failureCount, error) => {
@@ -293,8 +259,7 @@ export function useDecofile(
       const status = (error as { status?: number }).status;
       return status !== 502 && status !== 404 && failureCount < 2;
     },
-    retryDelay: (attempt) =>
-      exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
+    retryDelay: contentReadRetryDelay,
   });
   const hostedListing =
     hostedIndex && query.data
@@ -315,12 +280,9 @@ export function useDecofile(
 export function useEnsureDecofileBlocks(
   params: { orgSlug: string; virtualMcpId: string; branch: string } | null,
   names: readonly string[],
-  options?: { withRefs?: boolean },
+  options?: { withRefs?: boolean; listing?: Record<string, unknown> },
 ): HostedBlocksLoad {
-  const backend = useContentBackend(params?.virtualMcpId, params?.branch);
-  const key = useDecofileCacheKey(params);
-  const rpc = backend.kind === "protocol" ? backend.hosted : undefined;
-  return useEnsureHostedBlocks(rpc, key, names, options);
+  return useCmsBlocks(params, names, options);
 }
 
 /**

@@ -12,4 +12,13 @@ export const commandPalette = {
   "commandPalette.inviteTeammate": "Invite a teammate",
   "commandPalette.addConnection": "Add a connection",
   "commandPalette.settings": "Settings",
+  "commandPalette.placeholderScoped": "Search {scope}\u2026",
+  "commandPalette.organizations": "Organizations",
+  "commandPalette.scope.label": "Filter results",
+  "commandPalette.scope.all": "All",
+  "commandPalette.scope.chats": "Chats & tasks",
+  "commandPalette.hint.navigate": "Navigate",
+  "commandPalette.hint.open": "Open",
+  "commandPalette.hint.filter": "Filter",
+  "commandPalette.hint.close": "Close",
 } as const;

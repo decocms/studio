@@ -6,20 +6,29 @@ import { chatToolContext } from "./test-helpers";
 
 const PNG_BASE64 = Buffer.from("png-bytes").toString("base64");
 
-function contextWithImageModel(calls: string[]) {
+function contextWithImageModel(
+  calls: string[],
+  requests: unknown[] = [],
+  overrides: Record<string, unknown> = {},
+) {
   return chatToolContext({
+    ...overrides,
     aiProviders: {
       listModels: async () => [],
       activate: async (credentialId: string) => ({
+        info: { id: "openrouter" },
         aiSdk: {
           imageModel: (modelId: string) => {
             calls.push(`${credentialId}/${modelId}`);
             return new MockImageModelV4({
-              doGenerate: async () => ({
-                images: [PNG_BASE64],
-                warnings: [],
-                response: { timestamp: new Date(), modelId, headers: {} },
-              }),
+              doGenerate: async (options) => {
+                requests.push(options);
+                return {
+                  images: [PNG_BASE64],
+                  warnings: [],
+                  response: { timestamp: new Date(), modelId, headers: {} },
+                };
+              },
             });
           },
         },
@@ -39,6 +48,43 @@ describe("generate_image", () => {
     expect(result.images).toHaveLength(1);
     const key = parseStudioStorageKey(result.images[0]!.uri);
     expect(key).toStartWith("generated-images/");
+  });
+
+  it("runs the requested model, size and OpenAI options on the OpenRouter key", async () => {
+    const calls: string[] = [];
+    const requests: unknown[] = [];
+    const keys = [
+      { id: "key_deco", providerId: "deco" },
+      { id: "key_or", providerId: "openrouter" },
+    ];
+    const ctx = contextWithImageModel(calls, requests, {
+      storage: { aiProviderKeys: { list: async () => keys } },
+    });
+    const result = await GENERATE_IMAGE.handler(
+      {
+        prompt: "a red fox",
+        provider: "openrouter",
+        model: "openai/gpt-image",
+        size: "1536x1920",
+        aspectRatio: "1:1",
+        quality: "high",
+        moderation: "low",
+      },
+      ctx,
+    );
+
+    expect(calls).toEqual(["key_or/openai/gpt-image"]);
+    expect(result.model).toBe("openai/gpt-image");
+    expect(requests[0]).toMatchObject({
+      size: "1536x1920",
+      aspectRatio: undefined,
+      providerOptions: {
+        openrouter: {
+          quality: "high",
+          provider: { options: { openai: { moderation: "low" } } },
+        },
+      },
+    });
   });
 
   it("refuses a reference image on a private address", async () => {

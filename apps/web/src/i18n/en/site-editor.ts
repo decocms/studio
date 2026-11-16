@@ -70,6 +70,10 @@ export const siteEditor = {
   "siteEditor.contentTypes.status.deleted": "Deleted in draft",
   "siteEditor.contentTypes.restore": "Restore",
   "siteEditor.contentTypes.restored": 'Restored "{name}"',
+  "siteEditor.contentTypes.discardTitle": 'Discard changes to "{name}"?',
+  "siteEditor.contentTypes.discardDescription":
+    "It goes back to its published version. The changes in your draft are lost.",
+  "siteEditor.contentTypes.discarded": 'Discarded changes to "{name}"',
   "siteEditor.contentTypes.back": "Back to {type}",
   "siteEditor.contentTypes.empty": "Nothing here yet.",
   "siteEditor.contentTypes.noMatch": "Nothing matches your search.",

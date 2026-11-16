@@ -1,3 +1,4 @@
+import { cmsRequestSignal } from "./request-deadline";
 /**
  * The web editor's client for the hosted CMS on R2
  * (`/api/cms/:site/...`): the site-keyed routes that replace the v8 git
@@ -8,6 +9,7 @@
  * its thread's branch, as today.
  */
 
+import { z } from "zod";
 import { canonicalJson } from "@decocms/blocks/protocol";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 
@@ -46,17 +48,70 @@ export class CmsRequestError extends Error {
 
 /** The JSON answer, or a {@link CmsRequestError} carrying its `code`. */
 export async function cmsJson<T>(res: Response): Promise<T> {
-  const json = (await res.json().catch(() => ({}))) as {
-    error?: unknown;
-    code?: unknown;
-  };
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    if (res.ok) {
+      throw new CmsRequestError(
+        "The CMS returned invalid JSON",
+        res.status,
+        "invalid_response",
+      );
+    }
+  }
   if (!res.ok) {
-    const code = typeof json.code === "string" ? json.code : null;
+    const body = json !== null && typeof json === "object" ? json : {};
+    const code =
+      "code" in body && typeof body.code === "string" ? body.code : null;
     const message =
-      typeof json.error === "string" ? json.error : `HTTP ${res.status}`;
+      "error" in body && typeof body.error === "string"
+        ? body.error
+        : `HTTP ${res.status}`;
     throw new CmsRequestError(message, res.status, code);
   }
   return json as T;
+}
+
+/** All hosted REST traffic shares credentials, freshness and error handling. */
+export async function cmsRequest<T>(
+  site: string,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  return cmsJson<T>(
+    await fetch(cmsUrl(site, path), {
+      cache: "no-store",
+      credentials: "same-origin",
+      ...init,
+      signal: cmsRequestSignal(init?.signal),
+    }),
+  );
+}
+
+const cmsPublicationSchema = z.discriminatedUnion("result", [
+  z.object({
+    result: z.literal("published"),
+    revision: z.string().min(1),
+    previous: z.string().min(1).nullable(),
+  }),
+  z.object({
+    result: z.literal("up-to-date"),
+    revision: z.string().min(1).nullable(),
+  }),
+]);
+
+/** Publish and rollback can acknowledge only an explicit, versioned result. */
+export function parseCmsPublicationResult(value: unknown) {
+  const answer = cmsPublicationSchema.safeParse(value);
+  if (!answer.success) {
+    throw new CmsRequestError(
+      "The CMS returned an invalid publication response",
+      200,
+      "invalid_response",
+    );
+  }
+  return answer.data;
 }
 
 /** A draft as the CMS answers it (contract §4.4). */
@@ -81,14 +136,11 @@ export async function ensureCmsDraft(
   site: string,
   name: string,
 ): Promise<CmsDraft> {
-  return cmsJson<CmsDraft>(
-    await fetch(cmsUrl(site, "drafts"), {
-      method: "POST",
-      cache: "no-store",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
-    }),
-  );
+  return cmsRequest<CmsDraft>(site, "drafts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
 }
 
 /**

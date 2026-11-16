@@ -498,6 +498,9 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.offDescription":
     "Sem a visão Conteúdo nem o formulário de Blocos no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
+  "sandbox.blogWorkspace.noBlogApp": "Este site não tem blog",
+  "sandbox.blogWorkspace.noBlogAppHint":
+    "Instale o app de blog, ou crie uma página com a seção de post, e seus posts, autores e categorias aparecem aqui.",
   "sandbox.collectionsSidebar.actions": "Ações",
   "sandbox.collectionsSidebar.advanced": "Avançado",
   "sandbox.collectionsSidebar.apps": "Apps",
@@ -772,6 +775,7 @@ export const sandbox = {
   "sandbox.generatePost.title": "Gerar posts",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
+  "sandbox.itemActions.discardChanges": "Descartar alterações",
   "sandbox.itemActions.duplicate": "Duplicar",
   "sandbox.itemActions.editSeo": "Editar SEO",
   "sandbox.itemActions.moreActions": "Mais ações",
@@ -975,6 +979,14 @@ export const sandbox = {
   "sandbox.postEditor.issuePlural": "problemas",
   "sandbox.postEditor.issueSingular": "problema",
   "sandbox.postEditor.keyPlaceholder": "chave",
+  "sandbox.postEditor.legacyCodeBlock": "Bloco de código",
+  "sandbox.postEditor.legacyContentPlaceholder": "Escreva o post…",
+  "sandbox.postEditor.legacyImageDataUrl":
+    "Dados de imagem colados não ficam no post. Envie a imagem ou use o endereço dela.",
+  "sandbox.postEditor.legacyInsertImage": "Inserir imagem da biblioteca",
+  "sandbox.postEditor.legacyInsertImageUrl": "Inserir imagem por URL",
+  "sandbox.postEditor.legacySectionsNotice":
+    "Este post também tem {count} blocos do editor de blocos. Eles são mantidos como estão; este editor só altera o corpo em HTML.",
   "sandbox.postEditor.missingFieldPlural":
     "Campos obrigatórios faltando: {fields}",
   "sandbox.postEditor.missingFieldSingular":
@@ -985,6 +997,29 @@ export const sandbox = {
     "Nenhuma categoria ainda — crie algumas na coleção de categorias.",
   "sandbox.postEditor.noContentYet":
     "Este post ainda não tem conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
+  "sandbox.postEditScreen.notFound": "Este post não existe mais",
+  "sandbox.postEditScreen.notFoundHint":
+    "Ele pode ter sido excluído, ou o link aponta para um id que este site não tem.",
+  "sandbox.postEditScreen.edit": "Editar",
+  "sandbox.postEditScreen.preview": "Visualizar",
+  "sandbox.postEditScreen.resizeSplit":
+    "Redimensionar o editor e a visualização",
+  "sandbox.postEditScreen.resizeSplitHint":
+    "Arraste para redimensionar. Clique duas vezes para voltar ao padrão.",
+  "sandbox.postPreview.desktop": "Desktop",
+  "sandbox.postPreview.frameTitle": "Visualização do post",
+  "sandbox.postPreview.missingParams": "Falta dado para montar a URL",
+  "sandbox.postPreview.missingParamsHint":
+    "Defina o slug do post e, quando a rota do blog usa uma, a categoria.",
+  "sandbox.postPreview.mobile": "Celular",
+  "sandbox.postPreview.noOrigin": "Esperando o site",
+  "sandbox.postPreview.noOriginHint":
+    "A visualização aparece assim que o site deste projeto estiver no ar.",
+  "sandbox.postPreview.noRoute": "Este site não tem página de post",
+  "sandbox.postPreview.noRouteHint":
+    "Crie uma página com a seção de post do blog, ou defina o pageSlug do app de blog, e a visualização passa a renderizar.",
+  "sandbox.postPreview.openInNewTab": "Abrir em nova aba",
+  "sandbox.postPreview.refresh": "Atualizar",
   "sandbox.postEditor.postTitlePlaceholder": "Título do post",
   "sandbox.postEditor.readTimeLabel": "Tempo de leitura (minutos)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
@@ -1218,6 +1253,9 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
+  "sandbox.legacyBlogPostFormatField.label": "Editor de blogpost legado",
+  "sandbox.legacyBlogPostFormatField.description":
+    "Edita o corpo do post via HTML, num único editor de texto rico salvo no campo content, o formato que templates de blog mais antigos leem, em vez de em blocos.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",

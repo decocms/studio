@@ -19,8 +19,8 @@ import {
   probeSandbox,
   sandboxSiteAnswer,
   V8_PROBE_RETRY,
-} from "./use-content-backend";
-import { cmsUrl } from "./cms-api";
+} from "@/cms/use-content-backend";
+import { cmsUrl } from "@/cms/cms-api";
 
 const deco1 = {
   manifest: { blocks: {} },

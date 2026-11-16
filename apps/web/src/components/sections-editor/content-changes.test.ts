@@ -14,7 +14,7 @@ import {
   isOutdatedServerError,
   readChangeSides,
   readContentChanges,
-} from "./content-changes";
+} from "@/cms/content-changes";
 
 const BASE = { revision: "m1", resolvedRef: "main" };
 const CACHE_KEY = "acme/p1/feat";

@@ -4,18 +4,15 @@ setupComponentTest();
 import { afterAll, describe, expect, mock, test } from "bun:test";
 import { render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import * as realBackend from "@/components/sections-editor/use-content-backend.ts";
+import * as realBackend from "@/cms/use-content-backend.ts";
 
 /** How many times a render asked for the content backend. */
 const asked = { count: 0 };
 const backendModule = { ...realBackend };
 afterAll(() => {
-  mock.module(
-    "@/components/sections-editor/use-content-backend.ts",
-    () => backendModule,
-  );
+  mock.module("@/cms/use-content-backend.ts", () => backendModule);
 });
-mock.module("@/components/sections-editor/use-content-backend.ts", () => ({
+mock.module("@/cms/use-content-backend.ts", () => ({
   ...realBackend,
   useContentBackend: () => {
     asked.count++;

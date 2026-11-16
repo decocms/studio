@@ -618,6 +618,7 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { DraftStorage } from "@/storage/cms-drafts";
+import { DecofilePendingBlockStorage } from "@/storage/decofile-pending-blocks";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
@@ -1577,6 +1578,7 @@ export async function createStudioContextFactory(
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
     cmsDrafts: new DraftStorage(config.db),
+    decofilePendingBlocks: new DecofilePendingBlockStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
     gitProviderAccounts: new GitProviderAccountStorage(config.db),
     gitProviderAccountCredentials: new GitProviderAccountCredentialStorage(

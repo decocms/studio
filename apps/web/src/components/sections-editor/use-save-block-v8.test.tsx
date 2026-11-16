@@ -15,7 +15,7 @@ import { en } from "@/i18n/en/index.ts";
 import type { ProtocolBackend } from "./content-backend";
 import { resetContentSync } from "./content-sync";
 import { BlockConflictError } from "./decofile-api";
-import * as realBackend from "./use-content-backend";
+import * as realBackend from "@/cms/use-content-backend";
 import * as realDecofile from "./use-decofile";
 import * as realSessionRuntime from "@/hooks/use-session-runtime";
 import * as realNamedRuleConflict from "./named-rule-conflict";
@@ -117,7 +117,7 @@ const backend: ProtocolBackend = {
   cacheKeySuffix: "",
 };
 
-mock.module("./use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   ...realBackend,
   useContentBackend: () => backend,
 }));
@@ -189,7 +189,7 @@ const { useSaveBlock, useDebouncedSaveBlock } = await import(
 );
 const { useCopyEpochs } = await import("./held-copy");
 const { protocolMetaQueryKey, protocolBlockVersion } = await import(
-  "./content-protocol-api"
+  "@/cms/content-protocol-api"
 );
 const { formSaveGuard } = await import("./form-base");
 const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
@@ -1317,7 +1317,7 @@ describe("a hosted move refused until it gave up", () => {
 
 describe("every hosted blocks.apply carries a precondition per block", () => {
   it("a patch missing one is refused before it is sent", async () => {
-    const { applyProtocolPatch } = await import("./content-protocol-api");
+    const { applyProtocolPatch } = await import("@/cms/content-protocol-api");
     const { queryClient } = setup();
     const params = { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH };
     for (const ifMatch of [undefined, { Hero: "h2" }]) {
@@ -1532,8 +1532,10 @@ describe("hosted v8 deletes and moves are guarded by the draft too", () => {
           // Never brought back under its new name.
           expect(failure).toBeDefined();
           expect(server.blocks).toEqual({});
-          // Only the refused attempt (nothing written), or nothing at all.
-          expect(server.applied).toHaveLength(when === "refused" ? 1 : 0);
+          // The loaded copy is refused even when the poll already knows
+          // its tombstone; no request is allowed to resurrect it unasked.
+          expect(server.applied).toHaveLength(1);
+          expect(server.applied[0]?.ifMatch?.Hero).toBe(LOADED_VERSION);
           expect(cached?.Banner).toBeUndefined();
           expect(cached?.Hero).toBeUndefined();
         }

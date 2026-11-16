@@ -4,17 +4,14 @@ setupComponentTest();
 import { afterAll, describe, expect, mock, test } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import * as realBackend from "@/components/sections-editor/use-content-backend";
+import * as realBackend from "@/cms/use-content-backend";
 import * as realSaveBlock from "@/components/sections-editor/use-save-block";
 
 const saves: Array<[string, unknown]> = [];
 const backendModule = { ...realBackend };
 const saveBlockModule = { ...realSaveBlock };
 afterAll(() => {
-  mock.module(
-    "@/components/sections-editor/use-content-backend",
-    () => backendModule,
-  );
+  mock.module("@/cms/use-content-backend", () => backendModule);
   mock.module(
     "@/components/sections-editor/use-save-block",
     () => saveBlockModule,
@@ -29,7 +26,7 @@ mock.module("@/components/sections-editor/use-save-block", () => ({
     isPending: false,
   }),
 }));
-mock.module("@/components/sections-editor/use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   ...realBackend,
   useContentBackend: () => ({ kind: "legacy" }),
 }));
@@ -49,6 +46,7 @@ function renderPage(block: Record<string, unknown>) {
         virtualMcpId="vm"
         branch="draft"
         block={block}
+        decofile={{ CMS: block }}
         saveGuard={{ ifMatch: () => undefined }}
         onOpenForm={onOpenForm}
       />
@@ -223,6 +221,7 @@ describe("CmsSettingsPage", () => {
           virtualMcpId="vm"
           branch="draft"
           block={afterOff}
+          decofile={{ CMS: afterOff }}
           saveGuard={{ ifMatch: () => undefined }}
           onOpenForm={() => {}}
         />

@@ -15,9 +15,11 @@ import {
   formatAgentViewTabId,
   formatLibraryFileTabId,
   formatPinnedViewTabId,
+  formatBlogPostTabId,
   isLegacySettingsTab,
   normalizePanelSegment,
   parseAutomationTabId,
+  parseBlogPostTabId,
   parseAgentViewTabId,
   parseCodeTabId,
   parseDeckTabId,
@@ -47,6 +49,8 @@ export type TabRouteLocation =
         | "experiments";
     }
   | { kind: "automations"; automationId?: string }
+  /** The Blog view: its browser, or one post's editor. */
+  | { kind: "blog"; postId?: string }
   | { kind: "app"; connectionId: string; toolName: string }
   | { kind: "agent-view"; viewId: string }
   | { kind: "output-file"; key: string }
@@ -122,6 +126,12 @@ export type TabRouteTarget =
       params: AgentParams;
       search: {};
     }
+  | { to: typeof PROJECT_ROUTE.blog; params: AgentParams; search: {} }
+  | {
+      to: typeof PROJECT_ROUTE.blogPost;
+      params: AgentParams & { postId: string };
+      search: {};
+    }
   | { to: typeof PROJECT_ROUTE.automations; params: AgentParams; search: {} }
   | {
       to: typeof PROJECT_ROUTE.automation;
@@ -193,6 +203,7 @@ export interface MatchedTabRouteState {
     connectionId?: string;
     toolName?: string;
     viewId?: string;
+    postId?: string;
   };
   search?: { file?: string; key?: string; path?: string };
 }
@@ -209,6 +220,8 @@ export function tabIdForRoute(state: MatchedTabRouteState): string | undefined {
   if (state.siteEditorView === "preview") return "site-editor";
 
   switch (state.mainView) {
+    case "blog-post":
+      return params.postId ? formatBlogPostTabId(params.postId) : "blog";
     case "automation":
       return params.automationId
         ? `automation:${params.automationId}`
@@ -297,6 +310,9 @@ export function tabRouteLocation(tabId: string): TabRouteLocation {
     return { kind: "automations", automationId: automation.id };
   }
 
+  const blogPost = parseBlogPostTabId(tabId);
+  if (blogPost) return { kind: "blog", postId: blogPost.id };
+
   const file = parseFileTabId(tabId);
   if (file) return { kind: "output-file", key: file.key };
 
@@ -327,6 +343,7 @@ export function tabRouteLocation(tabId: string): TabRouteLocation {
   if (normalized === "content") {
     return { kind: "site-editor", view: "content" };
   }
+  if (normalized === "blog") return { kind: "blog" };
   if (normalized === "automations") return { kind: "automations" };
   if (normalized === "connect-sources") return { kind: "connect-sources" };
 
@@ -426,6 +443,14 @@ export function tabRouteTarget(input: {
       return { to: PROJECT_ROUTE.siteEditor, params, search: {} };
     case "agent-section":
       return { to: PROJECT_ROUTE[location.section], params, search: {} };
+    case "blog":
+      return location.postId
+        ? {
+            to: PROJECT_ROUTE.blogPost,
+            params: { ...params, postId: location.postId },
+            search: {},
+          }
+        : { to: PROJECT_ROUTE.blog, params, search: {} };
     case "automations":
       return location.automationId
         ? {
@@ -714,6 +739,22 @@ export function navigateToTabRouteTarget(
         replace,
       });
       return;
+    case PROJECT_ROUTE.blog:
+      navigate({
+        to: PROJECT_ROUTE.blog,
+        params: target.params,
+        search,
+        replace,
+      });
+      return;
+    case PROJECT_ROUTE.blogPost:
+      navigate({
+        to: PROJECT_ROUTE.blogPost,
+        params: target.params,
+        search,
+        replace,
+      });
+      return;
     case PROJECT_ROUTE.settings:
     case PROJECT_ROUTE.assets:
     case PROJECT_ROUTE.releases:
@@ -727,7 +768,21 @@ export function navigateToTabRouteTarget(
         search,
         replace,
       });
+      return;
+    default:
+      /**
+       * A target this switch does not handle would otherwise fall through and
+       * navigate NOWHERE — the click does nothing, with no error. Returning
+       * `never` makes adding a route to `TabRouteTarget` without a case here a
+       * compile error instead. The sibling switch in `legacy-main-redirect.tsx`
+       * gets this for free by returning an element; this one returns void.
+       */
+      return assertNoUnhandledTarget(target);
   }
+}
+
+function assertNoUnhandledTarget(target: never): never {
+  throw new Error(`Unhandled tab route target: ${JSON.stringify(target)}`);
 }
 
 /** Resolve a tab id and navigate through the canonical target executor. */

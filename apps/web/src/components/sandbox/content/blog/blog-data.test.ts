@@ -1237,6 +1237,16 @@ describe("emptyDraftPostPayload / planningMeta", () => {
     expect(planningMeta(payload).campaignKey).toBe("c1");
   });
 
+  test("on the legacy format, starts the body as empty HTML in content", () => {
+    const payload = emptyDraftPostPayload({
+      title: "How to read a label",
+      now,
+      legacyContent: true,
+    });
+    expect(payload.content).toBe("");
+    expect(payload).not.toHaveProperty("sections");
+  });
+
   test("planningMeta tolerates a missing planning object", () => {
     expect(planningMeta({})).toEqual({});
   });
@@ -1478,6 +1488,18 @@ describe("stampPostModified", () => {
 describe("emptyBlogPayload", () => {
   test("new authors default to type Person", () => {
     expect(emptyBlogPayload("authors").type).toBe("Person");
+  });
+
+  test("a new post's body is blocks by default", () => {
+    const payload = emptyBlogPayload("posts");
+    expect(payload.sections).toEqual([]);
+    expect(payload).not.toHaveProperty("content");
+  });
+
+  test("a new post's body is empty HTML on the legacy format", () => {
+    const payload = emptyBlogPayload("posts", { legacyContent: true });
+    expect(payload.content).toBe("");
+    expect(payload).not.toHaveProperty("sections");
   });
 });
 

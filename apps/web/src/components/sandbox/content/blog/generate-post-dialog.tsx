@@ -1,3 +1,6 @@
+import { useVirtualMCP } from "@/sdk";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useState } from "react";
 import { Stars02 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -63,12 +66,14 @@ const REQUIREMENT_LABEL = {
  * to invent all four.
  */
 export function GeneratePostDialog({
+  virtualMcpId,
   open,
   onOpenChange,
   decofile,
   hasAi,
   onGenerate,
 }: {
+  virtualMcpId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   decofile: Record<string, unknown>;
@@ -77,6 +82,14 @@ export function GeneratePostDialog({
 }) {
   const t = useT();
   const configsQuery = useFileConfigsQuery();
+  const project = useVirtualMCP(virtualMcpId);
+  const explicitConfigId = project?.metadata?.assetStorageConfigId;
+  const lockedConfigId =
+    explicitConfigId ??
+    matchSiteSlugConfig(
+      configsQuery.data?.configs ?? [],
+      resolveAgentSiteSlug(project),
+    )?.id;
 
   const [step, setStep] = useState<StepId>("campaign");
   const [campaignKey, setCampaignKey] = useState("");
@@ -130,7 +143,7 @@ export function GeneratePostDialog({
       fileConfigId:
         resolveTargetConfigId(
           configsQuery.data?.configs ?? [],
-          null,
+          lockedConfigId,
           typeof window !== "undefined"
             ? window.localStorage.getItem(LAST_CONFIG_KEY)
             : null,

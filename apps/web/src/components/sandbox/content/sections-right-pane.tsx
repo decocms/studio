@@ -78,6 +78,7 @@ export function SectionsRightPane({
 
   return (
     <HeldBlockView
+      listing={decofile}
       key={`saved:${selection.key}`}
       orgSlug={orgSlug}
       virtualMcpId={virtualMcpId}

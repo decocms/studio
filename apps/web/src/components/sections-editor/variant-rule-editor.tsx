@@ -1,3 +1,6 @@
+import { CmsBlockBoundary } from "@/cms/block-boundary";
+import { isIndexStub } from "@/cms/block-body";
+import { useContentBackend } from "@/cms/use-content-backend";
 import {
   MatcherPicker,
   type MatcherEntry,
@@ -22,7 +25,7 @@ import type { SandboxConfig } from "./fields/field-props";
  * section-variant rule editors. Caller owns the resolveType/formValue state
  * and any surrounding chrome (label, collapse toggle, disabled overlay).
  */
-export function VariantRuleEditor({
+function LoadedVariantRuleEditor({
   currentRt,
   currentLabel,
   currentGlobalKey,
@@ -198,5 +201,39 @@ export function VariantRuleEditor({
         </p>
       )}
     </>
+  );
+}
+
+function ConnectedVariantRuleEditor(
+  props: Parameters<typeof LoadedVariantRuleEditor>[0] & {
+    sandbox: SandboxConfig;
+  },
+) {
+  const backend = useContentBackend(
+    props.sandbox.virtualMcpId,
+    props.sandbox.branch,
+  );
+  const key = props.currentGlobalKey;
+  if (backend.kind !== "legacy" && key && isIndexStub(props.decofile?.[key])) {
+    return (
+      <CmsBlockBoundary
+        listing={props.decofile ?? {}}
+        scope={props.sandbox}
+        names={[key]}
+      >
+        <LoadedVariantRuleEditor {...props} />
+      </CmsBlockBoundary>
+    );
+  }
+  return <LoadedVariantRuleEditor {...props} />;
+}
+
+export function VariantRuleEditor(
+  props: Parameters<typeof LoadedVariantRuleEditor>[0],
+) {
+  return props.sandbox ? (
+    <ConnectedVariantRuleEditor {...props} sandbox={props.sandbox} />
+  ) : (
+    <LoadedVariantRuleEditor {...props} />
   );
 }

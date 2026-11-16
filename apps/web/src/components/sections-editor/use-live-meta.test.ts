@@ -6,10 +6,12 @@ import {
   fetchLiveMeta,
   liveMetaQueryKey,
   metaSourceOrder,
+  metaSourceUrl,
 } from "./use-live-meta";
 
 const PREVIEW = "https://sandbox.example.deco.host";
 const PROD = "https://www.example.com";
+const PREVIEW_META = `${PREVIEW}/live/_meta`;
 
 describe("metaSourceOrder", () => {
   it("dev up: live → committed → production", () => {
@@ -150,6 +152,27 @@ describe("liveMetaQueryKey", () => {
   });
 });
 
+describe("metaSourceUrl", () => {
+  const ref = {
+    orgSlug: "acme",
+    virtualMcpId: "vm_1",
+    branch: "main",
+    threadId: "thread_1",
+  };
+
+  it("reads a live dev server directly", () => {
+    expect(metaSourceUrl({ kind: "live", baseUrl: `${PREVIEW}/x` }, ref)).toBe(
+      PREVIEW_META,
+    );
+  });
+
+  it("reads the deployed site through Studio, never from the browser", () => {
+    expect(metaSourceUrl({ kind: "production", baseUrl: PROD }, ref)).toBe(
+      "/api/acme/sandbox/vm_1/main/site-meta?thread=thread_1",
+    );
+  });
+});
+
 describe("fetchLiveMeta", () => {
   const realFetch = globalThis.fetch;
   afterEach(() => {
@@ -183,27 +206,31 @@ describe("fetchLiveMeta", () => {
 
   it("first read: plain GET, no conditional header", async () => {
     const calls = stubFetch(async () => Response.json(fresh));
-    expect(await fetchLiveMeta(PREVIEW, undefined, unknownRuntime())).toEqual(
-      fresh,
-    );
+    expect(
+      await fetchLiveMeta(PREVIEW_META, undefined, unknownRuntime()),
+    ).toEqual(fresh);
     expect(calls[0]?.headers).toEqual({});
   });
 
   it("revalidates the held schema with its etag; 304 keeps it", async () => {
     const calls = stubFetch(async () => new Response(null, { status: 304 }));
-    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toBe(held);
+    expect(await fetchLiveMeta(PREVIEW_META, held, unknownRuntime())).toBe(
+      held,
+    );
     expect(calls[0]?.headers).toEqual({ "If-None-Match": '"meta-old"' });
   });
 
   it("a changed schema replaces the held one", async () => {
     stubFetch(async () => Response.json(fresh));
-    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toEqual(fresh);
+    expect(await fetchLiveMeta(PREVIEW_META, held, unknownRuntime())).toEqual(
+      fresh,
+    );
   });
 
   it("held schema without an etag: plain GET", async () => {
     const calls = stubFetch(async () => Response.json(fresh));
     await fetchLiveMeta(
-      PREVIEW,
+      PREVIEW_META,
       { ...held, etag: undefined },
       unknownRuntime(),
     );
@@ -219,7 +246,9 @@ describe("fetchLiveMeta", () => {
       if (attempt++ === 0) throw new TypeError("Failed to fetch");
       return Response.json(fresh);
     });
-    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toEqual(fresh);
+    expect(await fetchLiveMeta(PREVIEW_META, held, unknownRuntime())).toEqual(
+      fresh,
+    );
     expect(calls[0]?.headers).toEqual({ "If-None-Match": held.etag! });
     expect(calls[1]?.headers).toEqual({});
   });
@@ -233,10 +262,10 @@ describe("fetchLiveMeta", () => {
       if (attempt++ === 0) throw new TypeError("Failed to fetch");
       return Response.json(fresh);
     });
-    await fetchLiveMeta(PREVIEW, held, support);
+    await fetchLiveMeta(PREVIEW_META, held, support);
     expect(calls).toHaveLength(2);
 
-    await fetchLiveMeta(PREVIEW, held, support);
+    await fetchLiveMeta(PREVIEW_META, held, support);
     expect(calls).toHaveLength(3);
     expect(calls[2]?.headers).toEqual({});
   });
@@ -246,13 +275,13 @@ describe("fetchLiveMeta", () => {
     // the poll is busiest — and asking twice doubles the cost of every read.
     const support = unknownRuntime();
     const ok = stubFetch(async () => new Response(null, { status: 304 }));
-    await fetchLiveMeta(PREVIEW, held, support);
+    await fetchLiveMeta(PREVIEW_META, held, support);
     expect(ok).toHaveLength(1);
 
     const down = stubFetch(async () => {
       throw new TypeError("Failed to fetch");
     });
-    expect(await fetchLiveMeta(PREVIEW, held, support)).toBe(held);
+    expect(await fetchLiveMeta(PREVIEW_META, held, support)).toBe(held);
     expect(down).toHaveLength(1);
   });
 
@@ -260,7 +289,9 @@ describe("fetchLiveMeta", () => {
     stubFetch(async () => {
       throw new TypeError("Failed to fetch");
     });
-    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toBe(held);
+    expect(await fetchLiveMeta(PREVIEW_META, held, unknownRuntime())).toBe(
+      held,
+    );
   });
 
   it("nothing held and no answer: null", async () => {
@@ -268,19 +299,21 @@ describe("fetchLiveMeta", () => {
       throw new TypeError("Failed to fetch");
     });
     expect(
-      await fetchLiveMeta(PREVIEW, undefined, unknownRuntime()),
+      await fetchLiveMeta(PREVIEW_META, undefined, unknownRuntime()),
     ).toBeNull();
   });
 
   it("an HTML 200 (not a deco site) is no answer", async () => {
     stubFetch(async () => new Response("<!doctype html>", { status: 200 }));
     expect(
-      await fetchLiveMeta(PREVIEW, undefined, unknownRuntime()),
+      await fetchLiveMeta(PREVIEW_META, undefined, unknownRuntime()),
     ).toBeNull();
   });
 
   it("a 5xx on revalidation is no answer", async () => {
     stubFetch(async () => new Response("down", { status: 502 }));
-    expect(await fetchLiveMeta(PREVIEW, held, unknownRuntime())).toBeNull();
+    expect(
+      await fetchLiveMeta(PREVIEW_META, held, unknownRuntime()),
+    ).toBeNull();
   });
 });

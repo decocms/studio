@@ -51,6 +51,7 @@ import {
   editorOf,
   holdsName,
   mapBounded,
+  readDraftFile,
   readDraftFiles,
   readDraftIndex,
   readDraftState,
@@ -452,14 +453,25 @@ export function createCmsStorage(options: {
           read.files.get(name)?.etag ?? null,
         );
       } catch (error) {
-        partial = { ...landed };
-        if (
-          error instanceof ObjectChangedError ||
-          error instanceof DeliveryUnavailableError
-        ) {
-          throw new PartialApplyError(landed, error);
+        // A 412 from a file that already holds this very version is this
+        // save's own earlier try landing late (a PUT given up on as
+        // Unavailable that R2 still committed): it landed, not a lost race.
+        const own =
+          error instanceof ObjectChangedError
+            ? await readDraftFile(store, site, slug, name).catch(() => null)
+            : null;
+        if (own && draftVersion(own) === version) {
+          last = own.etag;
+        } else {
+          partial = { ...landed };
+          if (
+            error instanceof ObjectChangedError ||
+            error instanceof DeliveryUnavailableError
+          ) {
+            throw new PartialApplyError(landed, error);
+          }
+          throw error;
         }
-        throw error;
       }
       landed[name] = version;
       fileVersions[blockFileName(name)] = version;

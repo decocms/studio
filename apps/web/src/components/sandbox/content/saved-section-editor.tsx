@@ -25,7 +25,7 @@ import {
 import { globalSectionLabel } from "@/components/sections-editor/page-list";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { useT } from "@/i18n/use-t.ts";
 

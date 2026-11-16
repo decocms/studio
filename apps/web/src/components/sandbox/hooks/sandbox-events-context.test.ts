@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildDirectDaemonEventsUrl,
+  isDenoTaskCommand,
   isDirectDaemonEventsGoneStatus,
   isWorkingTreeReadyPhase,
 } from "./sandbox-events-context";
@@ -63,5 +64,27 @@ describe("isWorkingTreeReadyPhase", () => {
     expect(isWorkingTreeReadyPhase("install-failed")).toBe(true);
     expect(isWorkingTreeReadyPhase("start-failed")).toBe(true);
     expect(isWorkingTreeReadyPhase("crashed")).toBe(true);
+  });
+});
+
+/**
+ * A repo imported without a runtime picked still runs on Deno when it has a
+ * `deno.json`; its dev task's command is how the stream tells, so a Blocks
+ * save reloads its preview as a project set to Deno does.
+ */
+describe("isDenoTaskCommand", () => {
+  test("the daemon's Deno dev task", () => {
+    expect(
+      isDenoTaskCommand(
+        "export PATH=/opt/deno/bin:$PATH && cd /app/repo && deno task dev",
+      ),
+    ).toBe(true);
+    expect(isDenoTaskCommand("deno task start")).toBe(true);
+  });
+
+  test("any other runtime's task", () => {
+    expect(isDenoTaskCommand("cd /app/repo && bun run dev")).toBe(false);
+    expect(isDenoTaskCommand("cd /app/repo && npm run dev")).toBe(false);
+    expect(isDenoTaskCommand("node scripts/denotask.js")).toBe(false);
   });
 });

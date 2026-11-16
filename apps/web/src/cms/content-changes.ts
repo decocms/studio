@@ -31,11 +31,15 @@ import {
   type ChangesListResult,
   type ContentClient,
   ContentProtocolError,
+  createContentClient,
   ErrorCode,
   type UnsupportedEndpointData,
 } from "@decocms/blocks/protocol";
 import { KEYS } from "@/lib/query-keys";
-import type { ContentBackend, ProtocolBackend } from "./content-backend";
+import type {
+  ContentBackend,
+  ProtocolBackend,
+} from "@/components/sections-editor/content-backend";
 
 /** The changes of a source against its base, as last listed. */
 export interface ContentChanges {
@@ -89,11 +93,14 @@ export function isOutdatedServerError(error: unknown): boolean {
   );
 }
 
-/** A `changes.list` answer folded into what was listed before. */
+/** A list answer folded into its starting copy, preserving later cache adoption. */
 export function adoptChangesList(
   previous: ContentChanges | undefined,
   result: ChangesListResult,
+  current: ContentChanges | undefined = previous,
 ): ContentChanges | null {
+  // A save or another read adopted a newer list while this one was in flight.
+  if (current && current !== previous) return current;
   if (!result.notModified) {
     return {
       revision: result.revision,
@@ -113,11 +120,42 @@ export async function readContentChanges(
   const key = KEYS.contentChanges(cacheKey);
   const seen = queryClient.getQueryData<ContentChanges>(key);
   const answer = await client.changesList(changesListParams(seen));
-  const adopted = adoptChangesList(seen, answer);
+  const adopted = adoptChangesList(
+    seen,
+    answer,
+    queryClient.getQueryData<ContentChanges>(key),
+  );
   if (adopted) return adopted;
   // A revision without its list (the cache was dropped): read it whole.
   const whole = await client.changesList({});
-  return adoptChangesList(undefined, whole)!;
+  const complete = adoptChangesList(
+    undefined,
+    whole,
+    queryClient.getQueryData<ContentChanges>(key),
+  );
+  if (!complete) {
+    throw new ContentProtocolError(
+      ErrorCode.InternalError,
+      "changes.list returned notModified without a cached list",
+    );
+  }
+  return complete;
+}
+
+/** How many entries a project draft changes, read from its hosted decofile. */
+export async function readDraftChangeCount(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+): Promise<number> {
+  const client = createContentClient({
+    endpoint: new URL(
+      `/api/${orgSlug}/decofile/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/rpc`,
+      window.location.origin,
+    ).href,
+  });
+  const result = await client.changesList();
+  return result.notModified ? 0 : Object.keys(result.changes).length;
 }
 
 /** Both sides of `names`, 20 per call, a few calls per request. */
@@ -209,9 +247,30 @@ export function useContentChanges(
   });
 }
 
+/** Local save adoption changes entries before the server's list revision moves. */
+export function changeSidesSignature(
+  changes: ContentChanges | undefined,
+): string {
+  if (!changes) return "";
+  const entries = Object.entries(changes.changes)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([name, change]) => [
+      name,
+      change.kind,
+      change.version,
+      change.baseVersion,
+    ]);
+  return JSON.stringify([
+    changes.revision,
+    changes.base.revision,
+    changes.base.resolvedRef,
+    entries,
+  ]);
+}
+
 /**
- * Both sides of every listed change, read once per changes revision (a new
- * revision is a new entry). Never needed to show the list: it only adds what
+ * Both sides of every listed change, keyed by its revision and entry versions.
+ * Never needed to show the list: it only adds what
  * changed inside each entry and the before/after code.
  */
 export function useContentChangeSides(
@@ -223,7 +282,10 @@ export function useContentChangeSides(
   const names = changes ? Object.keys(changes.changes) : [];
   const enabled = !!protocol && !!cacheKey && !!changes && names.length > 0;
   return useQuery({
-    queryKey: KEYS.contentChangeSides(cacheKey ?? "", changes?.revision ?? ""),
+    queryKey: KEYS.contentChangeSides(
+      cacheKey ?? "",
+      changeSidesSignature(changes),
+    ),
     queryFn: enabled
       ? () => readChangeSides(protocol!.client, names)
       : skipToken,

@@ -1,3 +1,4 @@
+import { cmsRequestSignal } from "./request-deadline";
 import { useContext } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,8 +10,8 @@ import {
   PROTOCOL_NAME,
 } from "@decocms/blocks/protocol";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { cmsDraftRpcEndpoint, cmsSiteOf, ensureCmsDraft } from "./cms-api";
-import { createHostedRpc, type HostedRpc } from "./hosted-content";
+import { cmsDraftRpcEndpoint, cmsSiteOf, ensureCmsDraft } from "@/cms/cms-api";
+import { createHostedRpc, type HostedRpc } from "@/cms/hosted-content";
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { isWorkingTreeReadyPhase } from "@decocms/sandbox/shared";
@@ -23,20 +24,21 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { KEYS } from "@/lib/query-keys";
 import {
   type ContentBackend,
+  contentBackendDestination,
   contentMode,
   contentProbesEnabled,
   type ProbeAnswer,
   type ProtocolBackend,
   readFailed,
   selectContentBackend,
-} from "./content-backend";
+} from "@/components/sections-editor/content-backend";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import {
   classifyServeProbeError,
   NotDecoServeError,
   probeRetryDelay,
-} from "./deco-serve-connection";
-import { isSchemaAbsent } from "./schemaless";
+} from "@/components/sections-editor/deco-serve-connection";
+import { isSchemaAbsent } from "@/components/sections-editor/schemaless";
 
 export interface Probe {
   client: ContentClient;
@@ -76,7 +78,9 @@ export async function probeGithub(
   const client = createContentClient({
     endpoint,
     fetch: async (request) => {
-      const response = await doFetch(request);
+      const response = await doFetch(
+        new Request(request, { signal: cmsRequestSignal(request.signal) }),
+      );
       if (await isSiteNotOwnedResponse(response)) throw new SiteNotOwnedError();
       return response;
     },
@@ -168,7 +172,15 @@ export function probeSandbox(
   doFetch: (request: Request) => Promise<Response> = (request) =>
     fetch(request),
 ): Promise<Probe> {
-  return probe(createContentClient({ endpoint, fetch: doFetch }));
+  return probe(
+    createContentClient({
+      endpoint,
+      fetch: (request) =>
+        doFetch(
+          new Request(request, { signal: cmsRequestSignal(request.signal) }),
+        ),
+    }),
+  );
 }
 
 /**
@@ -192,6 +204,10 @@ export function useContentBackend(
   // The hosted CMS keys its drafts on the project's site.
   const site = cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
   const mode = contentMode({ hasServeConnection: !!connection, runtime });
+  const destination = contentBackendDestination(
+    mode,
+    connection?.endpoint ?? "",
+  );
   const threadId = useOptionalChatTask()?.taskId ?? null;
   // The sandbox answers once its working tree is there. Before its first
   // answer the editor waits (pending); once it answered for this thread, a
@@ -259,8 +275,7 @@ export function useContentBackend(
       "local",
       connection?.endpoint ?? "",
     ),
-    queryFn: () =>
-      probe(createContentClient({ endpoint: connection!.endpoint })),
+    queryFn: () => probeEndpoint(connection!.endpoint),
     enabled: localEnabled,
     staleTime: Number.POSITIVE_INFINITY,
     // Waits for `deco serve` to (re)start and reconnects on its own, backing
@@ -335,26 +350,26 @@ export function useContentBackend(
     }),
   });
 
-  if (decision === "pending") return { kind: "pending" };
+  if (decision === "pending") return { kind: "pending", ...destination };
   // The sandbox failed before its first answer: still waiting, retried.
   if (decision === "retrying-sandbox") {
-    return { kind: "pending", retrying: "sandbox" };
+    return { kind: "pending", retrying: "sandbox", ...destination };
   }
   if (decision === "legacy") return { kind: "legacy" };
   if (decision === "protocol-github") {
-    return { ...toBackend("github", github.data as Probe, ""), site };
+    return { ...toBackend(destination, github.data as Probe), site };
   }
   // A v8 site another project owns: the editor guides (no retry).
   if (decision === "site-not-owned-github") {
-    return { kind: "unavailable", source: "github", siteNotOwned: true };
+    return { kind: "unavailable", ...destination, siteNotOwned: true };
   }
   if (decision === "protocol-sandbox") {
-    return toBackend("sandbox", sandbox.data!, ":sandbox");
+    return toBackend(destination, sandbox.data!);
   }
   // Studio's hosted backend failed (a GitHub or storage hiccup): retried
   // every PROBE_RETRY_MS, never the v7 editor in the meantime.
   if (decision === "unavailable-github") {
-    return { kind: "unavailable", source: "github" };
+    return { kind: "unavailable", ...destination };
   }
   return localServeBackend({
     probed: local.data,
@@ -406,15 +421,15 @@ export function localServeBackend(input: {
   describe: DescribeResult | undefined;
   endpoint: string;
 }): ContentBackend {
+  const destination = contentBackendDestination("local", input.endpoint);
   const settled = input.probed
-    ? toBackend(
-        "local",
-        { ...input.probed, describe: input.describe ?? input.probed.describe },
-        `:serve:${input.endpoint}`,
-      )
+    ? toBackend(destination, {
+        ...input.probed,
+        describe: input.describe ?? input.probed.describe,
+      })
     : null;
   const failing = input.isError || input.failureCount > 0;
-  if (!failing) return settled ?? { kind: "pending" };
+  if (!failing) return settled ?? { kind: "pending", ...destination };
   if (
     settled?.kind === "protocol" &&
     !input.isError &&
@@ -425,7 +440,7 @@ export function localServeBackend(input: {
   // Still retrying: `deco serve` is down, restarting or answering an error.
   return {
     kind: "unavailable",
-    source: "local",
+    ...destination,
     problem: classifyServeProbeError(input.failure),
   };
 }
@@ -442,17 +457,33 @@ export const V8_PROBE_RETRY = {
 };
 
 function toBackend(
-  source: ProtocolBackend["source"],
+  destination: Pick<ProtocolBackend, "source" | "cacheKeySuffix">,
   probed: Probe,
-  cacheKeySuffix: string,
 ): ProtocolBackend {
   return {
     kind: "protocol",
-    source,
+    ...destination,
     client: probed.client,
     describe: probed.describe,
-    cacheKeySuffix,
     hasSchema: probed.hasSchema,
     ...(probed.hosted ? { hosted: probed.hosted } : {}),
   };
+}
+
+/** Probe a user-supplied protocol endpoint through the CMS transport. */
+export function probeEndpoint(
+  endpoint: string,
+  signal?: AbortSignal,
+): Promise<Probe> {
+  return probe(
+    createContentClient({
+      endpoint,
+      fetch: (request) =>
+        fetch(request, {
+          signal: cmsRequestSignal(
+            signal ? AbortSignal.any([signal, request.signal]) : request.signal,
+          ),
+        }),
+    }),
+  );
 }

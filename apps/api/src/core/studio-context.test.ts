@@ -41,6 +41,7 @@ const createMockContext = (
     orgFileConfigs: null as never,
     orgSites: null as never,
     cmsDrafts: null as never,
+    decofilePendingBlocks: null as never,
     orgRepoSyncs: null as never,
     jiraIntegrations: null as never,
     taskBoard: null as never,

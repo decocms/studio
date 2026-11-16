@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { isBlogDraftBranch } from "@decocms/shared/branch-name";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useOptionalChatStream, useOptionalChatTask } from "./context";
 import { useOptionalThreadManager } from "./store/hooks";
@@ -55,7 +56,10 @@ export function useOpenPreviewOnRepoLoad(): void {
   const { openPanel } = usePanelNavigate();
   const manager = useOptionalThreadManager();
   const messages = useOptionalChatStream()?.messages ?? [];
-  const taskId = useOptionalChatTask()?.taskId ?? null;
+  const taskCtx = useOptionalChatTask();
+  const taskId = taskCtx?.taskId ?? null;
+  // A Blog draft's chat keeps the writer on Blog.
+  const blogDraft = isBlogDraftBranch(taskCtx?.currentBranch);
 
   const loads = countLoadedRepos(messages);
 
@@ -74,6 +78,6 @@ export function useOpenPreviewOnRepoLoad(): void {
     }
     if (openedFor.current === taskId) return;
     openedFor.current = taskId;
-    openPanel("site-editor");
-  }, [loads, taskId, openPanel, manager]);
+    if (!blogDraft) openPanel("site-editor");
+  }, [loads, taskId, openPanel, manager, blogDraft]);
 }

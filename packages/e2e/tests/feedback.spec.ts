@@ -63,3 +63,28 @@ test("feedback stores private files and copies them into the configured board", 
     await db.end();
   }
 });
+
+test("problem reports land on the same board under their own tag", async ({
+  authedPage,
+}) => {
+  test.skip(
+    !targetOrg || !targetProject,
+    "Requires configured feedback destination",
+  );
+  const { page, orgSlug } = authedPage;
+  const message = `Problem test ${crypto.randomUUID()}`;
+  const response = await page.request.post(`/api/${orgSlug}/feedback`, {
+    multipart: { kind: "problem", message, pageUrl: "https://example.com" },
+  });
+  expect(response.status(), await response.text()).toBe(201);
+  const db = await connectDevDb();
+  try {
+    const result = await db.query(
+      "SELECT t.name FROM task_board_items i JOIN task_board_item_tags link ON link.task_board_item_id = i.id JOIN organization_tags t ON t.id = link.id WHERE i.organization_id = $1 AND i.title = $2",
+      [targetOrg, `Problem: ${message}`],
+    );
+    expect(result.rows.map((tag) => tag.name)).toEqual(["problem report"]);
+  } finally {
+    await db.end();
+  }
+});

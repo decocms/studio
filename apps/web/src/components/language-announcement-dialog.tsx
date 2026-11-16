@@ -13,6 +13,7 @@ import { usePreferences } from "@/hooks/use-preferences.ts";
 import { detectLocale } from "@/i18n/locale.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { makeSeenFlag } from "@/lib/seen-flag";
+import { hasLegacyAdminArrival } from "@/lib/legacy-admin-arrival";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 
@@ -53,7 +54,8 @@ export function LanguageAnnouncementDialog() {
     isExistingUser &&
     browserIsPortuguese &&
     preferences.language === "en" &&
-    !ptBrSeen(userId).has();
+    !ptBrSeen(userId).has() &&
+    !hasLegacyAdminArrival();
 
   // Decide once, on the first render where the session has settled — mirrors
   // the derived-state pattern used by VersionCheckDialog (no useEffect). On the

@@ -30,18 +30,12 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time.ts";
 import { KEYS } from "@/lib/query-keys";
-import { cmsUrl } from "@/components/sections-editor/cms-api";
+import { cmsRequest } from "@/cms/cms-api";
 import { CopyableField, CopyValueButton } from "./copy-value-button";
 
 interface SiteTokenRecord {
   kid: string;
   iat: number;
-}
-
-async function readJson<T>(res: Response): Promise<T> {
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
-  return json as T;
 }
 
 export function SiteTokenSection({
@@ -56,7 +50,6 @@ export function SiteTokenSection({
 }) {
   const t = useT();
   const queryClient = useQueryClient();
-  const base = cmsUrl(projectSite, "site-tokens");
   const key = KEYS.hostedSiteTokens(orgSlug, virtualMcpId);
   const [created, setCreated] = useState<string | null>(null);
   const siteIdField = useId();
@@ -64,11 +57,16 @@ export function SiteTokenSection({
   const list = useQuery({
     queryKey: key,
     queryFn: async () =>
-      readJson<{ site: string; tokens: SiteTokenRecord[] }>(await fetch(base)),
+      cmsRequest<{ site: string; tokens: SiteTokenRecord[] }>(
+        projectSite,
+        "site-tokens",
+      ),
   });
   const issue = useMutation({
     mutationFn: async () =>
-      readJson<{ token: string }>(await fetch(base, { method: "POST" })),
+      cmsRequest<{ token: string }>(projectSite, "site-tokens", {
+        method: "POST",
+      }),
     onSuccess: ({ token }) => setCreated(token),
     onError: (error) => toast.error(error.message),
     onSettled: () => queryClient.invalidateQueries({ queryKey: key }),

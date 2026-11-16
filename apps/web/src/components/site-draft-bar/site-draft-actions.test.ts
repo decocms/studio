@@ -32,6 +32,17 @@ describe("the site's draft bar", () => {
     });
   }
 
+  /** Blog edits its own drafts under the same bar: it shows where the writer
+   *  is (draft, branch) and Publishes their Blog draft. */
+  for (const file of ["agent-blog.tsx", "agent-blog-post.tsx"]) {
+    test(`${file} mounts the bar on every site`, () => {
+      const source = readFileSync(join(routes, file), "utf8");
+      expect(source).toContain("actions={<SiteDraftActions />}");
+      expect(source).not.toContain("<CmsHeaderActions");
+      expect(source).not.toContain("<ChatModeRow");
+    });
+  }
+
   test("Monitor reads only: no draft bar, Experiments view included", () => {
     // A Blocks v8 site's tests are edited and published in the Experiments
     // app; Monitor's Experiments view shows what is live.

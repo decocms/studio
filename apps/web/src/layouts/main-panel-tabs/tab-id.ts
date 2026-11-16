@@ -4,13 +4,14 @@
  * View id grammar:
  *   - Fixed system/destination: "overview" | "settings" | "automations" |
  *     "site-editor" | "content" | "code" | "assets" | "hosting" | "e2e" |
- *     "analytics" | "cdn"
+ *     "analytics" | "cdn" | "blog"
  *   - Legacy fixed system (redirected to "settings"): "instructions" | "connections" | "layout"
  *   - Agent-declared: "agent-view:<encoded agentTab.id>"
  *     (from virtualMcp.metadata.ui.layout.tabs)
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
  *   - Pinned view: "app:<connectionId>:<toolName>" (from metadata.ui.pinnedViews)
  *   - Ephemeral automation: "automation:<id>"
+ *   - One blog post's editor: "blog-post:<post id>"
  *   - Ephemeral file preview: "file:<encoded output key>" (thread output viewer)
  *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
  *   - Ephemeral Library file preview: "library-file:<encoded browse path>"
@@ -73,6 +74,36 @@ export function parseAutomationTabId(
   const id = tabId.slice("automation:".length);
   if (!id) return null;
   return { id };
+}
+
+export interface BlogPostTabParsed {
+  /** The post id shared by a post's planning and live block keys. */
+  id: string;
+}
+
+/**
+ * The Blog view's post editor, addressed by POST ID rather than decofile block
+ * key: a post's key moves between `blog-manager/posts/<id>` and
+ * `collections/blog/posts/<id>` as its status crosses the planning/live
+ * boundary, so a key in the tab id would break on a status change. The id is
+ * the one thing both forms share.
+ */
+export function formatBlogPostTabId(id: string): string {
+  return `blog-post:${encodeURIComponent(id)}`;
+}
+
+export function parseBlogPostTabId(
+  tabId: string | undefined,
+): BlogPostTabParsed | null {
+  if (!tabId?.startsWith("blog-post:")) return null;
+  const encoded = tabId.slice("blog-post:".length);
+  if (!encoded) return null;
+  try {
+    const id = decodeURIComponent(encoded);
+    return id ? { id } : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface PinnedViewTabParsed {
@@ -212,6 +243,7 @@ export const FIXED_SYSTEM_TABS = [
   "site-editor",
   "code",
   "content",
+  "blog",
   "assets",
   "hosting",
   "e2e",

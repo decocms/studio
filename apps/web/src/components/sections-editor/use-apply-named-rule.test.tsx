@@ -15,7 +15,7 @@ import { planNamedRulePick } from "./named-rule-picker";
 import type { ProtocolBackend } from "./content-backend";
 import { resetContentSync } from "./content-sync";
 import { draftVersionOf } from "./draft-version";
-import * as realBackend from "./use-content-backend";
+import * as realBackend from "@/cms/use-content-backend";
 import * as realDecofile from "./use-decofile";
 import * as realSessionRuntime from "@/hooks/use-session-runtime";
 import * as realNamedRuleConflict from "./named-rule-conflict";
@@ -161,7 +161,7 @@ const backend: ProtocolBackend = {
   cacheKeySuffix: "",
 };
 
-mock.module("./use-content-backend", () => ({
+mock.module("@/cms/use-content-backend", () => ({
   ...realBackend,
   useContentBackend: () => backend,
 }));
@@ -228,7 +228,7 @@ const { planNamedRuleApply, useApplyNamedRule } = await import(
 );
 const { copyScope, useCopyEpochs } = await import("./held-copy");
 const { pollProtocolContent, useRereadOnWriteElsewhere } = await import(
-  "./content-protocol-api"
+  "@/cms/content-protocol-api"
 );
 
 afterEach(() => resetContentSync());

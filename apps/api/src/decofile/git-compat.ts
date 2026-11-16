@@ -7,10 +7,11 @@
  * tree behind them.
  *
  * Invariants of sandbox-less mode that shape these payloads:
- * - There is no working tree: every save is already a commit on the branch,
- *   so local-work fields (modified/staged/unpushed/...) are always empty/0.
- * - "Publish" (sync-local-work) is therefore a no-op — the route answers OK
- *   without calling here.
+ * - There is no working tree. Every save is a commit on the branch, unless the
+ *   org turned `cms_auto_commit` off: then saves are held in Studio
+ *   (pending-blocks.ts) and play the working tree's part —
+ *   {@link withPendingStatus} lists them as local changes, and "Publish"
+ *   (sync-local-work) commits them.
  */
 
 import {
@@ -22,8 +23,13 @@ import {
   type RepoContentClient,
   type TreeEntry,
 } from "@/git-providers";
-import { mergeBlockJson } from "@decocms/shared/decofile";
+import {
+  blockKeyToFileStem,
+  decoBlockKeyFromFileStem,
+  mergeBlockJson,
+} from "@decocms/shared/decofile";
 import { mapBounded } from "@decocms/shared/std";
+import { type PendingFile, pendingFileContent } from "./pending-blocks";
 import { resolveOrCreateHead } from "./read-decofile";
 
 const DIFF_MAX_FILES = 200;
@@ -31,6 +37,9 @@ const DIFF_FETCH_CONCURRENCY = 12;
 
 /** The wire code for a refused write to the default branch. */
 export const DEFAULT_BRANCH_READ_ONLY = "default_branch_read_only";
+
+/** The wire code for a sync stopped by {@link BlocksDeletedOnBaseError}. */
+export const BLOCKS_DELETED_ON_BASE = "block-deleted-on-base";
 
 /**
  * A Fast Preview write aimed at the repository's default branch. Production is
@@ -197,6 +206,80 @@ export async function repoGitStatus(
   return buildPublishStatus({ base, branch, headSha, compared });
 }
 
+/**
+ * The status with the branch's pending saves as uncommitted changes: in the
+ * manifest (against base, folded with what the branch already committed) and
+ * in the local-change lists, and `headSha` as the draft version, so a new
+ * save is a new head to everything keyed by it.
+ */
+export function withPendingStatus(
+  status: CompatGitStatus,
+  files: PendingFile[],
+  version: string,
+): CompatGitStatus {
+  if (files.length === 0) return status;
+  const manifest = new Map(status.changedFiles.map((f) => [f.path, f]));
+  const local: Record<"created" | "modified" | "deleted", string[]> = {
+    created: [],
+    modified: [],
+    deleted: [],
+  };
+  for (const { block, path, existsAtHead } of files) {
+    const committed = manifest.get(path);
+    if (block.content === null) {
+      local.deleted.push(path);
+      // Added on the branch and deleted again: nothing differs from base.
+      if (committed?.status === "added") manifest.delete(path);
+      else manifest.set(path, { path, status: "removed" });
+      continue;
+    }
+    (existsAtHead ? local.modified : local.created).push(path);
+    if (committed?.status === "added" || committed?.status === "renamed") {
+      continue;
+    }
+    manifest.set(path, {
+      path,
+      status: committed || existsAtHead ? "modified" : "added",
+    });
+  }
+  const all = [...manifest.values()];
+  const changedFiles = all.slice(0, DIFF_MAX_FILES);
+  // Paths the cap already dropped are unknown here; count them as before.
+  const dropped = status.changedFilesTotal - status.changedFiles.length;
+  return {
+    ...status,
+    ...local,
+    headSha: version,
+    changedFiles,
+    changedFilesTotal: all.length + dropped,
+    changedFilesTruncated: dropped > 0 || all.length > changedFiles.length,
+  };
+}
+
+/**
+ * The diff with each pending save's content as the new side. The old side is
+ * the base's copy, already on the entry when the branch committed a change to
+ * that path, read at the merge base otherwise.
+ */
+export async function withPendingDiff(
+  client: RepoContentClient,
+  diff: CompatGitDiff,
+  files: PendingFile[],
+): Promise<CompatGitDiff> {
+  if (files.length === 0) return diff;
+  const diffs = { ...diff.diffs };
+  await mapBounded(files, DIFF_FETCH_CONCURRENCY, async ({ block, path }) => {
+    const from =
+      path in diffs
+        ? (diffs[path]?.from ?? null)
+        : await client.readFileAtRef(diff.mergeBaseSha, path);
+    const to = pendingFileContent(block);
+    if (from === to) delete diffs[path];
+    else diffs[path] = { from, to };
+  });
+  return { ...diff, diffs };
+}
+
 /** Mirror of the daemon's diff JSON: full old/new contents per path. */
 export interface CompatGitDiff {
   diffs: Record<string, { from: string | null; to: string | null }>;
@@ -251,7 +334,9 @@ type ComparedFile = Awaited<
  * Clean merges replay the merged content. On a conflict the branch's own blobs
  * win for every path it touched, except blocks both sides edited: those merge
  * value by value ({@link mergeBlockJson}), so a draft cannot revert a block
- * another draft published while it was open.
+ * another draft published while it was open, and blocks the base deleted
+ * stop the sync ({@link BlocksDeletedOnBaseError}) until `resolutions` says
+ * whether each comes back.
  *
  * The squash is a single `commitFiles({ rewriteFrom: baseHead })`, so the
  * commit exists before the branch is moved onto it and a crash mid-sync cannot
@@ -263,6 +348,7 @@ export async function repoGitRebase(
   client: RepoContentClient,
   branch: string,
   base: string,
+  resolutions: Readonly<Record<string, DeletedBlockResolution>> = {},
 ): Promise<void> {
   // A `base` other than the default would rewrite production onto it.
   await assertNotDefaultBranch(client, branch);
@@ -314,15 +400,30 @@ export async function repoGitRebase(
     // Raised here, not inside the try: a 409 there means the merge conflicted.
     assertReplayable(client, replayed);
     const plan = buildMergeReplayPlan(replayed, mergedSha ?? branchHead);
-    const changes = branchWon
-      ? await mergeBlocksEditedOnBothSides(client, plan, {
-          branch,
-          base,
-          branchHead,
-          baseHead,
-          branchModified: replayed,
-        })
-      : plan;
+    const editedBlocks = branchWon
+      ? modifiedBlockPaths(replayed)
+      : new Set<string>();
+    let changes = plan;
+    if (editedBlocks.size > 0) {
+      // What the base changed since the merge base: the reverse three-dot compare.
+      const baseSide = await client.compareDetailed(branch, base);
+      const deleted = findBlocksDeletedOnBase(editedBlocks, baseSide.files);
+      const unresolved = deleted.filter((block) => !resolutions[block.path]);
+      // The failed merge wrote nothing, so stopping here leaves the branch as it was.
+      if (unresolved.length > 0) {
+        throw new BlocksDeletedOnBaseError(
+          await describeDeletedBlocks(client, unresolved, {
+            branchHead,
+            baseHead,
+          }),
+        );
+      }
+      changes = await mergeBlocksEditedOnBothSides(
+        client,
+        dropAcceptedDeletions(plan, deleted, resolutions),
+        { editedBlocks, baseSide, branchHead, baseHead },
+      );
+    }
 
     const expectedHead = mergedSha ?? branchHead;
     try {
@@ -367,6 +468,168 @@ const BLOCK_FILE_RE = /(?:^|\/)\.deco\/blocks\/[^/]+\.json$/i;
 
 const BLOCK_MERGE_READ_CONCURRENCY = 6;
 
+/** The block files a compare lists as modified. */
+function modifiedBlockPaths(
+  files: ReadonlyArray<{ filename: string; status: string }>,
+): Set<string> {
+  return new Set(
+    files
+      .filter(
+        (f) =>
+          normalizeCompareStatus(f.status) === "modified" &&
+          BLOCK_FILE_RE.test(f.filename),
+      )
+      .map((f) => f.filename),
+  );
+}
+
+/** What to do with a block the branch edited after the base deleted it. */
+export type DeletedBlockResolution = "restore" | "drop";
+
+/** A block the branch edited after the base deleted or renamed it away. */
+export interface BlockDeletedOnBase {
+  /** The block's file; a resolution names the block by it. */
+  path: string;
+  key: string;
+  /** The block the base renamed it to, when it renamed rather than deleted it. */
+  renamedTo?: string;
+  /** Saved blocks the branch's copy references that the base no longer has. */
+  missingRefs: string[];
+}
+
+/**
+ * A sync that would bring back blocks the base deleted. Thrown before anything
+ * is written, so the editor can choose per block and sync again.
+ */
+export class BlocksDeletedOnBaseError extends Error {
+  constructor(readonly blocks: BlockDeletedOnBase[]) {
+    super(
+      `Blocks deleted on the base branch were edited in this draft: ${blocks
+        .map((block) => block.key)
+        .join(", ")}`,
+    );
+    this.name = "BlocksDeletedOnBaseError";
+  }
+}
+
+/**
+ * The blocks the branch edited that the base deleted, or renamed to another
+ * path, since they forked. A git merge reports either as a conflict, which
+ * the branch-wins replay would resolve by bringing the block back.
+ */
+function findBlocksDeletedOnBase(
+  editedOnBranch: ReadonlySet<string>,
+  baseFiles: ReadonlyArray<{
+    filename: string;
+    status: string;
+    previousFilename?: string;
+  }>,
+): Array<{ path: string; renamedToPath?: string }> {
+  const found: Array<{ path: string; renamedToPath?: string }> = [];
+  for (const file of baseFiles) {
+    const status = normalizeCompareStatus(file.status);
+    if (status === "removed" && editedOnBranch.has(file.filename)) {
+      found.push({ path: file.filename });
+    } else if (
+      status === "renamed" &&
+      file.previousFilename &&
+      file.previousFilename !== file.filename &&
+      editedOnBranch.has(file.previousFilename)
+    ) {
+      found.push({ path: file.previousFilename, renamedToPath: file.filename });
+    }
+  }
+  return found;
+}
+
+/**
+ * The replay plan without the deleted blocks the editor let go: the base has
+ * no file there, so leaving the path out keeps it deleted. A `restore` keeps
+ * the branch's copy, as the branch-wins replay always did.
+ */
+function dropAcceptedDeletions(
+  plan: FileChange[],
+  deleted: ReadonlyArray<{ path: string }>,
+  resolutions: Readonly<Record<string, DeletedBlockResolution>>,
+): FileChange[] {
+  const dropped = new Set(
+    deleted
+      .map((block) => block.path)
+      .filter((path) => resolutions[path] === "drop"),
+  );
+  return plan.filter((change) => !dropped.has(change.path));
+}
+
+function blockKeyOfPath(path: string): string {
+  const stem = path.slice(path.lastIndexOf("/") + 1).replace(/\.json$/i, "");
+  return decoBlockKeyFromFileStem(stem);
+}
+
+/** Every `__resolveType` naming a saved block (no module path) in a block. */
+function savedBlockRefs(value: unknown, refs = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) savedBlockRefs(item, refs);
+  } else if (value && typeof value === "object") {
+    for (const [field, child] of Object.entries(value)) {
+      if (field === "__resolveType" && typeof child === "string") {
+        if (child && !child.includes("/")) refs.add(child);
+      } else {
+        savedBlockRefs(child, refs);
+      }
+    }
+  }
+  return refs;
+}
+
+/**
+ * Name each deleted block and the saved blocks its copy on the branch points
+ * to that the base no longer has (a restored page whose footer was deleted).
+ * Only refs with a file on the branch count, so built-in resolvers never do.
+ */
+function describeDeletedBlocks(
+  client: RepoContentClient,
+  deleted: ReadonlyArray<{ path: string; renamedToPath?: string }>,
+  refs: { branchHead: string; baseHead: string },
+): Promise<BlockDeletedOnBase[]> {
+  return mapBounded(
+    [...deleted],
+    BLOCK_MERGE_READ_CONCURRENCY,
+    async (block) => {
+      const blocksDir = block.path.slice(0, block.path.lastIndexOf("/") + 1);
+      const text = await client.readFileAtRef(refs.branchHead, block.path);
+      let referenced = new Set<string>();
+      try {
+        referenced =
+          text === null ? referenced : savedBlockRefs(JSON.parse(text));
+      } catch {
+        // Not JSON: it names no other block.
+      }
+      const missingRefs: string[] = [];
+      for (const key of referenced) {
+        let refPath: string;
+        try {
+          refPath = `${blocksDir}${blockKeyToFileStem(key)}.json`;
+        } catch {
+          continue;
+        }
+        const [onBranch, onBase] = await Promise.all([
+          client.readFileAtRef(refs.branchHead, refPath),
+          client.readFileAtRef(refs.baseHead, refPath),
+        ]);
+        if (onBranch !== null && onBase === null) missingRefs.push(key);
+      }
+      return {
+        path: block.path,
+        key: blockKeyOfPath(block.path),
+        ...(block.renamedToPath
+          ? { renamedTo: blockKeyOfPath(block.renamedToPath) }
+          : {}),
+        missingRefs,
+      };
+    },
+  );
+}
+
 /**
  * Swap the branch-wins replay of every block both sides modified for a value
  * level merge against their merge base. Anything that cannot be merged that
@@ -377,29 +640,15 @@ async function mergeBlocksEditedOnBothSides(
   client: RepoContentClient,
   plan: FileChange[],
   refs: {
-    branch: string;
-    base: string;
+    editedBlocks: ReadonlySet<string>;
+    baseSide: Awaited<ReturnType<RepoContentClient["compareDetailed"]>>;
     branchHead: string;
     baseHead: string;
-    branchModified: ComparedFile[];
   },
 ): Promise<FileChange[]> {
-  const modified = (files: ComparedFile[]) =>
-    new Set(
-      files
-        .filter(
-          (f) =>
-            normalizeCompareStatus(f.status) === "modified" &&
-            BLOCK_FILE_RE.test(f.filename),
-        )
-        .map((f) => f.filename),
-    );
-  const onBranch = modified(refs.branchModified);
-  if (onBranch.size === 0) return plan;
-  // What the base changed since the merge base: the reverse three-dot compare.
-  const baseSide = await client.compareDetailed(refs.branch, refs.base);
-  const onBase = modified(baseSide.files);
-  const paths = [...onBranch].filter((path) => onBase.has(path));
+  const { baseSide } = refs;
+  const onBase = modifiedBlockPaths(baseSide.files);
+  const paths = [...refs.editedBlocks].filter((path) => onBase.has(path));
   if (paths.length === 0) return plan;
 
   const merged = new Map<string, string>();

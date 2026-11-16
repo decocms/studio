@@ -1,10 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { projectPlanningPostsForPreview } from "./blog-draft-projection";
+import { createPreviewProjection } from "./blog-draft-projection";
 
-const project = (doc: unknown): Record<string, unknown> =>
-  JSON.parse(projectPlanningPostsForPreview(JSON.stringify(doc)));
+function members(doc: Record<string, unknown>): string {
+  const projection = createPreviewProjection();
+  for (const [key, value] of Object.entries(doc)) projection.add(key, value);
+  return projection.members();
+}
 
-describe("projectPlanningPostsForPreview", () => {
+const project = (doc: Record<string, unknown>): Record<string, unknown> => ({
+  ...doc,
+  ...JSON.parse(`{${members(doc)}}`),
+});
+
+describe("createPreviewProjection", () => {
   test("exposes a planning post as a renderable live block, forced published", () => {
     const out = project({
       "blog-manager/posts/abc": {
@@ -66,19 +74,15 @@ describe("projectPlanningPostsForPreview", () => {
     ).toEqual({ slug: "real", status: "published" });
   });
 
-  test("returns the input unchanged when there is nothing to project", () => {
-    const json = JSON.stringify({
-      "collections/blog/posts/a": {
-        __resolveType: "blog/loaders/Blogpost.ts",
-        post: { slug: "a" },
-      },
-      "blog-manager-brand": { companyName: "X" },
-    });
-    expect(projectPlanningPostsForPreview(json)).toBe(json);
-  });
-
-  test("tolerates malformed input", () => {
-    expect(projectPlanningPostsForPreview("not json")).toBe("not json");
-    expect(projectPlanningPostsForPreview("[]")).toBe("[]");
+  test("adds nothing when there is nothing to project", () => {
+    expect(
+      members({
+        "collections/blog/posts/a": {
+          __resolveType: "blog/loaders/Blogpost.ts",
+          post: { slug: "a" },
+        },
+        "blog-manager-brand": { companyName: "X" },
+      }),
+    ).toBe("");
   });
 });

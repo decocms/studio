@@ -5,16 +5,7 @@ export const settings = {
   "settings.subscriptionUsage.secondary": "Secondary limit",
   "settings.subscriptionUsage.resets": "Resets {date}",
   "settings.subscriptionUsage.limitReached": "Limit reached",
-  "settings.subscriptionUsage.permission":
-    "This token cannot read usage limits. Check usage on the provider’s website.",
-  "settings.subscriptionUsage.authorization":
-    "The provider could not authorize this usage request. Relink your subscription to refresh its credentials.",
-  "settings.subscriptionUsage.rateLimited":
-    "The provider is limiting usage checks. Try again after the time below.",
-  "settings.subscriptionUsage.disconnected":
-    "Link your subscription to view usage limits.",
-  "settings.subscriptionUsage.unavailable":
-    "Usage limits are unavailable right now. Check the provider for the latest status.",
+  "settings.subscriptionUsage.viewUsage": "View usage",
   "settings.subscriptionUsage.openProvider": "View on provider",
 
   "settings.voice.title": "Voice mode",
@@ -364,6 +355,9 @@ export const settings = {
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "Blog view",
+  "settings.blogView.description":
+    "Blog as its own project view, with each post beside the site's render of it. When off, the blog is edited in the Site Editor's Content tab.",
   "settings.blog.aiTitle": "AI blog",
   "settings.blog.aiDescription":
     "Brand context, campaigns and post generation. When off, posts are written by hand.",
@@ -379,6 +373,9 @@ export const settings = {
   "settings.multiAppPreview.title": "Preview several apps of a monorepo",
   "settings.multiAppPreview.description":
     "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
+  "settings.cmsAutoCommit.title": "Commit each save to the branch",
+  "settings.cmsAutoCommit.description":
+    "In Fast Preview, every save becomes a commit on the branch being edited. Turned off, saves stay in Studio: the editor and the preview show them, but they reach the branch only when someone publishes or submits for review, as a single commit. Until then they are not in the repository, so a pull request, a deploy preview, or anyone working on the branch outside Studio won't see them.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeLight": "Light theme",
   "settings.preferences.themeDark": "Dark theme",
@@ -662,7 +659,6 @@ export const settings = {
     "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
-  "settings.subscriptionUsage.unavailableShort": "Usage unavailable",
   "settings.ownAccounts.more": "More actions",
   "settings.providerKeyRow.edit": "Edit",
   "settings.ownAccounts.title": "Your own accounts",

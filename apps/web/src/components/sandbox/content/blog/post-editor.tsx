@@ -74,6 +74,7 @@ import {
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { SuggestLinksButton } from "./link-suggestions";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useDeleteBlock } from "@/components/sections-editor/use-delete-block";
 import { useNeverPublished } from "@/components/sections-editor/use-never-published";
@@ -85,6 +86,7 @@ import { usePreviewLinkDraftPointer } from "@/components/sections-editor/use-fas
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { asBlocks, BlockDocument } from "./block-document";
+import { LegacyContentEditor } from "./legacy-content/legacy-content-editor";
 import {
   AddButton,
   EditableText,
@@ -94,7 +96,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { HeldBlockView } from "../held-block-view";
 import { deleteConfirmKey } from "../delete-copy";
-import { useContentBackend } from "@/components/sections-editor/use-content-backend";
+import { useContentBackend } from "@/cms/use-content-backend";
 
 type ExtraProp = { key: string; value: string };
 
@@ -126,6 +128,7 @@ function PostEditorForm({
   onClose,
   expanded,
   onToggleExpand,
+  onDeleted,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -139,10 +142,14 @@ function PostEditorForm({
   expanded?: boolean;
   /** When set, renders a control that toggles panel ↔ full page. */
   onToggleExpand?: () => void;
-  /** When set, renders a close control in the top cluster. */
+  /** When set (the Content tab's panel), renders a close control in the top
+   *  cluster and a link to the post's page; Blog's screen shows the page
+   *  beside the editor instead. */
   onClose?: () => void;
   /** The one status transition, shared with the board — see `usePostStatusMove`. */
   move: PostStatusMove;
+  /** The post is gone, so its screen has nothing left to show. */
+  onDeleted?: () => void;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
@@ -160,6 +167,7 @@ function PostEditorForm({
   const neverPublished = useNeverPublished({ orgSlug, virtualMcpId, branch });
   const hasAi = useHostedAiProviderKeys().length > 0;
   const blogAi = useBlogAi();
+  const legacyFormat = useLegacyBlogPostFormat(virtualMcpId);
   // The preview frame's `__draft` (a hosted draft's carries its forced
   // variants and "Preview as" options), so this link opens what it shows.
   const draftPointer = usePreviewLinkDraftPointer({
@@ -213,8 +221,11 @@ function PostEditorForm({
 
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this post.
-  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
-    save.mutate({ blockKey: refKey, data }),
+  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const saveReferencedBlock = createReferencedBlockSaver(
+    (write) => (save.v8 ? referenceSave : save).mutate(write),
+    decofile,
+    save.v8,
   );
 
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
@@ -255,6 +266,7 @@ function PostEditorForm({
       toast.success(
         t("sandbox.postEditor.deletePostSuccess", { title: str(post.title) }),
       );
+      onDeleted?.();
       onClose?.();
     } catch (err) {
       toast.error(
@@ -282,8 +294,12 @@ function PostEditorForm({
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-8 py-3">
           <div className="flex items-center gap-3">
             <SaveStatus
-              isPending={save.isPending || saveScheduled}
-              isError={save.isError}
+              isPending={
+                save.isPending ||
+                (save.v8 && referenceSave.isPending) ||
+                saveScheduled
+              }
+              isError={save.isError || (save.v8 && referenceSave.isError)}
             />
             {hasErrors && (
               <Tooltip>
@@ -384,7 +400,8 @@ function PostEditorForm({
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {blogAi && (
+                {/* Suggestions rewrite blocks; an HTML body has none. */}
+                {blogAi && !legacyFormat && (
                   <SuggestLinksButton
                     decofile={decofile}
                     virtualMcpId={virtualMcpId}
@@ -398,42 +415,67 @@ function PostEditorForm({
                     }}
                   />
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!previewUrl}
-                  title={
-                    previewUrl
-                      ? t("sandbox.postEditor.previewTooltip")
-                      : t("sandbox.postEditor.previewRequiresSlugAndCategory")
-                  }
-                  onClick={() => {
-                    if (previewUrl) {
-                      window.open(previewUrl, "_blank", "noopener,noreferrer");
+                {onClose && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!previewUrl}
+                    title={
+                      previewUrl
+                        ? t("sandbox.postEditor.previewTooltip")
+                        : t("sandbox.postEditor.previewRequiresSlugAndCategory")
                     }
-                  }}
-                >
-                  <LinkExternal01 size={14} />
-                  {t("sandbox.postEditor.seePreview")}
-                </Button>
+                    onClick={() => {
+                      if (previewUrl) {
+                        window.open(
+                          previewUrl,
+                          "_blank",
+                          "noopener,noreferrer",
+                        );
+                      }
+                    }}
+                  >
+                    <LinkExternal01 size={14} />
+                    {t("sandbox.postEditor.seePreview")}
+                  </Button>
+                )}
               </div>
             </div>
 
             <TabsContent value="content">
-              <div className="surface p-8">
-                <BlockDocument
-                  key={contentRevision}
-                  value={asBlocks(post.sections)}
-                  onChange={(next) => setField("sections", next)}
-                  meta={meta}
-                  decofile={decofile}
-                  sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
-                  previewBaseUrl={previewBaseUrl}
-                  onSaveReferencedBlock={saveReferencedBlock}
-                  emptyMessage={t("sandbox.postEditor.noContentYet")}
-                />
-              </div>
+              {legacyFormat ? (
+                <div className="space-y-3">
+                  {asBlocks(post.sections).length > 0 && (
+                    <p className="flex items-start gap-1.5 text-xs text-warning">
+                      <AlertCircle size={14} className="mt-px shrink-0" />
+                      {t("sandbox.postEditor.legacySectionsNotice", {
+                        count: asBlocks(post.sections).length,
+                      })}
+                    </p>
+                  )}
+                  <LegacyContentEditor
+                    value={str(post.content)}
+                    onChange={(html) => setField("content", html)}
+                    decofile={decofile}
+                    sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                  />
+                </div>
+              ) : (
+                <div className="surface p-8">
+                  <BlockDocument
+                    key={contentRevision}
+                    value={asBlocks(post.sections)}
+                    onChange={(next) => setField("sections", next)}
+                    meta={meta}
+                    decofile={decofile}
+                    sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
+                    previewBaseUrl={previewBaseUrl}
+                    onSaveReferencedBlock={saveReferencedBlock}
+                    emptyMessage={t("sandbox.postEditor.noContentYet")}
+                  />
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="settings">
@@ -967,6 +1009,7 @@ function RelationSelect({
 export function PostEditor(props: Parameters<typeof PostEditorForm>[0]) {
   return (
     <HeldBlockView
+      listing={props.decofile}
       orgSlug={props.orgSlug}
       virtualMcpId={props.virtualMcpId}
       branch={props.branch}

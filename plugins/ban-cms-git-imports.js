@@ -24,6 +24,7 @@ import { resolveRelative } from "./resolve-relative.js";
 
 /** The files the rule covers. Suffix-matched (`*` matches a file-name part). */
 const COVERED = [
+  /apps\/web\/src\/cms\/[a-z0-9-]+(\.test)?\.tsx?$/,
   /apps\/api\/src\/api\/routes\/cms(-[a-z-]+)?\.ts$/,
   /apps\/api\/src\/hosted\/[a-z0-9-]+(\.test)?\.ts$/,
   /apps\/api\/src\/storage\/cms-drafts\.ts$/,

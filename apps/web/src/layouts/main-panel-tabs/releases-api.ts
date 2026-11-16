@@ -10,10 +10,10 @@
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import {
-  cmsJson,
+  cmsRequest,
   cmsSiteOf,
-  cmsUrl,
-} from "@/components/sections-editor/cms-api";
+  parseCmsPublicationResult,
+} from "@/cms/cms-api";
 import { runContentChange } from "@/components/sections-editor/content-sync";
 import { useContentSyncTarget } from "@/components/sections-editor/use-content-sync";
 import { KEYS } from "@/lib/query-keys";
@@ -55,11 +55,6 @@ export interface ReleasesPage {
   nextCursor: string | null;
 }
 
-/** "Make current"'s answer (contract §4.11). */
-export type RollbackResult =
-  | { result: "published"; revision: string; previous: string | null }
-  | { result: "up-to-date"; revision: string | null };
-
 /** The project's site, which the hosted CMS keys everything on. */
 function useProjectSite(virtualMcpId: string): string | null {
   return cmsSiteOf(useVirtualMCP(virtualMcpId)?.metadata);
@@ -72,11 +67,7 @@ export function useReleases(orgSlug: string, virtualMcpId: string) {
     queryFn: async ({ pageParam }) => {
       if (!site) throw new Error("this project names no site");
       const query = pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : "";
-      return cmsJson<ReleasesPage>(
-        await fetch(cmsUrl(site, `releases${query}`), {
-          cache: "no-store",
-        }),
-      );
+      return cmsRequest<ReleasesPage>(site, `releases${query}`);
     },
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
@@ -107,16 +98,16 @@ export function useReapply(orgSlug: string, virtualMcpId: string) {
         shownRevision: (made) => made.revision,
         write: async () => {
           if (!site) throw new Error("this project names no site");
-          return cmsJson<RollbackResult>(
-            await fetch(
-              cmsUrl(site, `releases/${encodeURIComponent(vars.id)}/rollback`),
-              {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: "{}",
-              },
-            ),
+          const result = await cmsRequest<unknown>(
+            site,
+            `releases/${encodeURIComponent(vars.id)}/rollback`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: "{}",
+            },
           );
+          return parseCmsPublicationResult(result);
         },
       }),
   });

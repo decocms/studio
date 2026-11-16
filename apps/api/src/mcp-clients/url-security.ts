@@ -57,6 +57,12 @@ function isPrivateEmbeddedIPv4(ipv6: string): boolean {
 export function isPrivateUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
+
+    // Non-http(s) schemes (file:/data:/gopher:) have no routable host to vet, so treat them as unsafe.
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return true;
+    }
+
     const hostname = parsed.hostname.toLowerCase();
 
     if (

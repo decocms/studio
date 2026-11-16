@@ -10,6 +10,7 @@ import {
 } from "./tab-id";
 import {
   canonicalThreadRouteTarget,
+  navigateToTabRouteTarget,
   tabIdForRoute,
   tabRouteLocation,
   tabRouteTarget,
@@ -498,5 +499,96 @@ describe("the Experiments app", () => {
     expect(
       tabRouteTarget({ tabId: "cdn", org: "acme", agentId: "agent-1" }),
     ).toMatchObject({ to: "/$org/projects/$agentId/monitoring" });
+  });
+});
+
+describe("blog routes", () => {
+  test("the browser round-trips through its tab id", () => {
+    expect(tabRouteLocation("blog")).toEqual({ kind: "blog" });
+    expect(tabIdForRoute({ mainView: "blog" })).toBe("blog");
+  });
+
+  test("a post carries its id both ways", () => {
+    expect(tabRouteLocation("blog-post:abc123")).toEqual({
+      kind: "blog",
+      postId: "abc123",
+    });
+    expect(
+      tabIdForRoute({ mainView: "blog-post", params: { postId: "abc123" } }),
+    ).toBe("blog-post:abc123");
+  });
+
+  test("a post route with no id falls back to the browser, not a broken tab", () => {
+    expect(tabIdForRoute({ mainView: "blog-post" })).toBe("blog");
+  });
+
+  test("resolves to the canonical routes", () => {
+    expect(
+      tabRouteTarget({ tabId: "blog", org: "acme", agentId: "proj" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/blog",
+      params: { org: "acme", agentId: "proj" },
+      search: {},
+    });
+    expect(
+      tabRouteTarget({
+        tabId: "blog-post:abc123",
+        org: "acme",
+        agentId: "proj",
+      }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/blog/posts/$postId",
+      params: { org: "acme", agentId: "proj", postId: "abc123" },
+      search: {},
+    });
+  });
+});
+
+/**
+ * `navigateToTabRouteTarget` returns void, so a missing case there falls
+ * through and navigates nowhere — the click does nothing, silently. This is
+ * the test for that class of bug, not for one route.
+ */
+describe("navigateToTabRouteTarget covers every target", () => {
+  const TAB_IDS = [
+    "overview",
+    "settings",
+    "site-editor",
+    "content",
+    "code",
+    "blog",
+    "blog-post:abc",
+    "automations",
+    "automation:a1",
+    "calendar",
+    "experiments",
+    "assets",
+    "releases",
+    "hosting",
+    "e2e",
+    "analytics",
+    "cdn",
+    "board",
+    "reports",
+    "files",
+    "discover",
+    "connect-sources",
+    formatPinnedViewTabId("conn", "tool"),
+    formatAgentViewTabId("custom"),
+    formatFileTabId("org-fs:outputs/t/x.pdf"),
+    formatDeckTabId("decks/a.html"),
+    formatLibraryFileTabId("home/a.md"),
+    formatCodeTabId("src/a.ts"),
+  ];
+
+  test("every tab id reaches a navigate call", () => {
+    for (const tabId of TAB_IDS) {
+      const calls: unknown[] = [];
+      navigateToTabRouteTarget(
+        ((args: unknown) => calls.push(args)) as never,
+        tabRouteTarget({ tabId, org: "acme", agentId: "proj" }),
+      );
+      expect(calls.length, `no navigation for "${tabId}"`).toBe(1);
+    }
   });
 });

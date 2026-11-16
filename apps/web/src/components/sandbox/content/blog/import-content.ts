@@ -439,12 +439,13 @@ export function sectionsToBlocks(
  */
 export function buildImportedPostPayload({
   title,
-  blocks,
+  body,
   takenSlugs,
   now,
 }: {
   title: string;
-  blocks: Array<Record<string, unknown>>;
+  /** `{ sections }` of blocks, or `{ content }` HTML on the legacy format. */
+  body: { sections: Array<Record<string, unknown>> } | { content: string };
   takenSlugs: string[];
   now: Date;
 }): Record<string, unknown> {
@@ -458,7 +459,7 @@ export function buildImportedPostPayload({
     alt: "",
     authors: [],
     categories: [],
-    sections: blocks,
+    ...body,
     status: "in_review",
   };
 }

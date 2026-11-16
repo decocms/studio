@@ -26,7 +26,11 @@ import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
-import { generateBranchName } from "@decocms/shared/branch-name";
+import {
+  blogDraftBranchName,
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 import {
   useThreadActions,
   useThreadManager,
@@ -80,6 +84,12 @@ import {
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
+import {
+  draftNameKey,
+  isEntryCandidate,
+  viewAcceptsThread,
+} from "@/lib/draft-kind";
 import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
 import { getWellKnownDecopilotVirtualMCP } from "@/sdk";
 import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
@@ -184,6 +194,7 @@ function VmEventsBridge({
   const t = useT();
   const { currentBranch, activeTask, setCurrentTaskBranch, isThreadLocked } =
     useChatTask();
+  const draftKind = useViewDraftKind();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
   const executionEnabled = !shouldBlockHostedRuntime(activeTask?.harness_id);
@@ -227,20 +238,28 @@ function VmEventsBridge({
     if (!adoptBranchEligible || !activeTask) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the thread so a re-render can't mint twice
     adoptedBranchForThreadRef.current = activeTask.id;
+    // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
+    // would let Better Auth's empty display name through and slug to "user".
+    const label = session?.user?.name || session?.user?.email?.split("@")[0];
     setCurrentTaskBranch(
-      generateBranchName(
-        // TODO: swap for `branchUserLabel` once decocms/studio#5513 lands — `??`
-        // would let Better Auth's empty display name through and slug to "user".
-        session?.user?.name || session?.user?.email?.split("@")[0],
-      ),
+      draftKind === "blog"
+        ? blogDraftBranchName(label)
+        : generateBranchName(label),
     );
-  }, [adoptBranchEligible, activeTask, session, setCurrentTaskBranch]);
+  }, [
+    adoptBranchEligible,
+    activeTask,
+    session,
+    setCurrentTaskBranch,
+    draftKind,
+  ]);
 
   const sessionState = useSessionRuntime(virtualMcpId);
   /** `null` until the answer is real — never act on the project default. */
   const sessionRuntime = sessionState.resolved ? sessionState.runtime : null;
 
-  // Auto-name a fresh draft as "Rascunho N"; one write per branch per tab, like the guards above.
+  // Auto-name a fresh draft "Draft N" (a Blog draft "Blog Draft N", by its
+  // branch); one write per branch per tab, like the guards above.
   const draftsVm = useVirtualMCP(virtualMcpId);
   const draftsBase = useBaseBranch(draftsVm, currentBranch);
   const {
@@ -277,10 +296,7 @@ function VmEventsBridge({
     namedDraftForBranchRef.current = currentBranch;
     createDraftRelease({
       branch: currentBranch,
-      name: nextDraftName(
-        draftReleases,
-        t("thread.branchPicker.defaultVersionName"),
-      ),
+      name: nextDraftName(draftReleases, t(draftNameKey(currentBranch))),
       color: nextReleaseColor(draftReleases.length),
       createdBy: userId,
       createdAt: new Date().toISOString(),
@@ -440,21 +456,34 @@ function ProjectPanelSession({
 }) {
   const { org } = useProjectContext();
   const { virtualMcpId, activeTask } = useChatTask();
+  const entity = useVirtualMCP(virtualMcpId);
+  const draftKind = useViewDraftKind();
   const isProject = virtualMcpId !== getWellKnownDecopilotVirtualMCP(org.id).id;
-  if (!isProject || activeTask?.virtual_mcp_id === virtualMcpId) {
+  if (
+    !isProject ||
+    (activeTask?.virtual_mcp_id === virtualMcpId &&
+      viewAcceptsThread(draftKind, activeTask, entity?.metadata))
+  ) {
     return children;
   }
   return (
-    <ProjectPanelThread key={virtualMcpId} followProject={followProject}>
+    <ProjectPanelThread
+      key={`${virtualMcpId}:${draftKind ?? ""}`}
+      draftKind={draftKind}
+      followProject={followProject}
+    >
       {children}
     </ProjectPanelThread>
   );
 }
 
 function ProjectPanelThread({
+  draftKind,
   followProject,
   children,
 }: {
+  /** Blog keeps its own drafts, apart from the site's. */
+  draftKind: ReturnType<typeof useViewDraftKind>;
   /** Entering a coding project moves the chat onto the panel's draft, so the
    *  chat edits the sandbox the preview shows. */
   followProject: boolean;
@@ -486,7 +515,9 @@ function ProjectPanelThread({
   } | null>(null);
   const findEntry = (candidates: Task[]) =>
     findAgentEntryThread(
-      candidates,
+      candidates.filter((thread) =>
+        isEntryCandidate(draftKind, thread, entity?.metadata),
+      ),
       projectId,
       userId,
       defaultThreadRuntime(entity?.metadata),
@@ -511,18 +542,20 @@ function ProjectPanelThread({
         : hasActiveRepository
           ? {
               threadId: crypto.randomUUID(),
-              branch: generateBranchName(
-                session?.user?.name || session?.user?.email?.split("@")[0],
-              ),
+              branch:
+                draftKind === "blog"
+                  ? blogDraftBranchName(branchUserLabel(session?.user))
+                  : generateBranchName(
+                      session?.user?.name ||
+                        session?.user?.email?.split("@")[0],
+                    ),
             }
           : { threadId: null },
     );
   }
 
-  const ensured = useEnsureTask(
-    panel?.threadId ?? null,
-    projectId,
-    panel?.branch,
+  const ensured = useEnsureTask(panel?.threadId ?? null, projectId, (id) =>
+    id === panel?.threadId ? panel.branch : undefined,
   );
   const task = ensured.status === "ready" ? ensured.task : null;
   const value: ChatTaskContextValue = {

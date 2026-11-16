@@ -69,6 +69,7 @@ import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ConnectionItem, ConnectionItemSkeleton } from "./connection-item";
 import { ProjectViewsSection } from "./settings/views-section";
 import { useProjectViews } from "./settings/use-project-views";
+import { AssetStorageSettings } from "./settings/asset-storage-settings";
 import { ProjectIdentity } from "./settings/project-identity";
 import { ProjectSettingsTabs } from "./settings/settings-tabs";
 import {
@@ -82,7 +83,7 @@ import { useProjectSettingsSection } from "./settings/use-settings-section";
 import type { ProjectSettingsSectionKey } from "./settings/sections";
 import { SiteTokenSection } from "./settings/site-token-section";
 import { BlocksV8SiteSection } from "./settings/blocks-v8-site-section";
-import { cmsSiteOf } from "@/components/sections-editor/cms-api";
+import { cmsSiteOf } from "@/cms/cms-api";
 import { PreviewSettingsRows } from "./settings/preview-settings-rows";
 import { useBlocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
@@ -101,6 +102,7 @@ import { RuntimeAppsField } from "@/components/sandbox/runtime-card/runtime-apps
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
+import { LegacyBlogPostFormatField } from "@/components/sandbox/runtime-card/legacy-blog-post-format-field";
 import { PublishPolicyField } from "./publish-policy-field";
 import { ContentEditingField } from "./content-editing-field";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
@@ -1009,7 +1011,10 @@ function VirtualMcpDetailViewWithData({
                 pair rather than the tighter rhythm inside the identity block. */}
               {section === "views" && <ProjectViewsSection views={views} />}
               {showGeneral && (
-                <ProjectIdentity form={form} onCommit={flushAndSave} />
+                <>
+                  <ProjectIdentity form={form} onCommit={flushAndSave} />
+                  <AssetStorageSettings form={form} onCommit={flushAndSave} />
+                </>
               )}
               {section === "connections" && (
                 <section className="flex flex-col gap-3">
@@ -1147,6 +1152,11 @@ function VirtualMcpDetailViewWithData({
                     {!cmsOff && (
                       <SettingsCardRow>
                         <FieldDescriptionTooltipsField control={form.control} />
+                      </SettingsCardRow>
+                    )}
+                    {!cmsOff && (
+                      <SettingsCardRow>
+                        <LegacyBlogPostFormatField control={form.control} />
                       </SettingsCardRow>
                     )}
                     {!cmsOff && hasRepository && (
