@@ -166,6 +166,8 @@ const CONTENT_RPC_MAX_BODY_BYTES = 8 * 1024 * 1024 + 64 * 1024;
 /** One daemon file call made for the content protocol. */
 const DAEMON_FILE_CALL_TIMEOUT_MS = 30_000;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
+/** `base` plus one resolution per conflicting block: never a large body. */
+const REBASE_MAX_BODY_BYTES = 64 * 1024;
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
@@ -1323,55 +1325,67 @@ export const createSandboxRoutes = () => {
       }),
     );
   });
-  app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
-    const claim = c.get("vmClaim");
-    if (claim.runtime === "cms") {
-      return withClaimGitLock(claim.claimName, async () => {
-        try {
-          const parsed = rebaseBodySchema.safeParse(
-            await c.req.json().catch(() => ({})),
-          );
-          if (!parsed.success) {
-            return c.json(
-              { error: "Invalid body", details: parsed.error.issues },
-              400,
-              SANDBOX_PROXY_CACHE_HEADERS,
+  app.post(
+    "/:virtualMcpId/:branch/git/rebase",
+    bodyLimit({
+      maxSize: REBASE_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    async (c) => {
+      const claim = c.get("vmClaim");
+      if (claim.runtime === "cms") {
+        return withClaimGitLock(claim.claimName, async () => {
+          try {
+            const parsed = rebaseBodySchema.safeParse(
+              await c.req.json().catch(() => ({})),
             );
+            if (!parsed.success) {
+              return c.json(
+                { error: "Invalid body", details: parsed.error.issues },
+                400,
+                SANDBOX_PROXY_CACHE_HEADERS,
+              );
+            }
+            const client = await fastPreviewGitClient(c);
+            const base = parsed.data.base ?? (await client.getDefaultBranch());
+            await repoGitRebase(
+              client,
+              claim.branch,
+              base,
+              parsed.data.resolutions,
+            );
+            return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+          } catch (err) {
+            return fastPreviewGitError(c, err);
           }
-          const client = await fastPreviewGitClient(c);
-          const base = parsed.data.base ?? (await client.getDefaultBranch());
-          await repoGitRebase(
-            client,
-            claim.branch,
-            base,
-            parsed.data.resolutions,
-          );
-          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
-        } catch (err) {
-          return fastPreviewGitError(c, err);
-        }
-      });
-    }
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
-
-    const { claimName } = c.get("vmClaim");
-    const ctx = c.var.studioContext;
-
-    return withClaimGitLock(claimName, async () => {
-      try {
-        await patchSandboxOperator(ctx, runner, claimName);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+        });
       }
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-      return proxyDaemon(c, "/_sandbox/git/rebase", {
-        forwardJsonBody: true,
-        map404to410: true,
+      const { claimName } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
+
+      return withClaimGitLock(claimName, async () => {
+        try {
+          await patchSandboxOperator(ctx, runner, claimName);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+        }
+
+        return proxyDaemon(c, "/_sandbox/git/rebase", {
+          forwardJsonBody: true,
+          map404to410: true,
+        });
       });
-    });
-  });
+    },
+  );
   // Smart-review judge: the client sends the full publish payload (status +
   // combined diff) and the cheap "fast" model tier decides whether the changes
   // need PR review. Backfills status/diff from the daemon when omitted. On any
