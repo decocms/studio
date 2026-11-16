@@ -269,7 +269,7 @@ function MainPanelControls() {
         <Button
           variant="ghost"
           size="sm"
-          aria-pressed
+          aria-pressed={expanded}
           className="h-7 gap-1.5 px-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           onClick={layout.toggleFullscreen}
         >
@@ -279,6 +279,7 @@ function MainPanelControls() {
       ) : (
         <LayoutButton
           label={t("page.enterFullscreen")}
+          pressed={expanded}
           onClick={layout.toggleFullscreen}
         >
           <Maximize01 size={16} />
