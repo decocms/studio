@@ -13,7 +13,7 @@ import type { StudioContext } from "../core/studio-context";
 import type { ConnectionEntity } from "../tools/connection/schema";
 import { clientFromConnection } from "./client";
 
-class ListToolsTimeoutError extends Error {
+export class ListToolsTimeoutError extends Error {
   constructor(connectionId: string, timeoutMs: number) {
     super(
       `listTools timed out after ${timeoutMs}ms for connection ${connectionId}`,

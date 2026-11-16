@@ -361,10 +361,6 @@ export interface ConnectionStoragePort {
     kind: "project" | "connection",
   ): Promise<{ id: string; canonicalSlug: string } | null>;
   delete(id: string): Promise<void>;
-  testConnection(
-    id: string,
-    headers?: Record<string, string>,
-  ): Promise<{ healthy: boolean; latencyMs: number }>;
 }
 
 // ============================================================================
