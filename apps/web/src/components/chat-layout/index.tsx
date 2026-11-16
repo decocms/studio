@@ -9,7 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { Maximize01, Minimize01, XClose } from "@untitledui/icons";
+import { Maximize01, MessageCircle01, XClose } from "@untitledui/icons";
 import { Panel } from "@/components/panel";
 import { Page } from "@/components/page";
 import { SidebarThreadButtonPortal } from "@/components/sidebar/thread-button";
@@ -273,7 +273,7 @@ function MainPanelControls() {
           className="h-7 gap-1.5 px-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           onClick={layout.toggleFullscreen}
         >
-          <Minimize01 size={16} />
+          <MessageCircle01 size={16} />
           {t("page.exitFullscreen")}
         </Button>
       ) : (
