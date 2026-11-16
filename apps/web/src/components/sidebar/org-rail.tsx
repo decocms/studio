@@ -446,6 +446,7 @@ export function OrgRail({ onNavigate }: { onNavigate?: () => void } = {}) {
                       navigate({
                         to: "/$org/settings",
                         params: { org: candidate.slug },
+                        search: { thread: undefined },
                       });
                     }}
                     onTogglePin={() =>

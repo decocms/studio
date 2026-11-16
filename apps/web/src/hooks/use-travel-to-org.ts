@@ -29,7 +29,14 @@ export function useTravelToOrg(): (
     const onRail = railSlugs?.includes(slug) ?? false;
     setPrefs((prev) => showRailOrg(readRailOrgPrefs(prev), slug));
     remember(slug, onRail ? railSlugs : undefined);
-    /** A view transition, so the rail's marks slide to their new places. */
-    navigate({ to: "/$org/home", params: { org: slug }, viewTransition: true });
+    /** A view transition, so the rail's marks slide to their new places. The
+     *  agent shell retains `thread` across navigations; a thread belongs to one
+     *  org, so leave it behind or the new org tries to open a foreign id. */
+    navigate({
+      to: "/$org/home",
+      params: { org: slug },
+      search: { thread: undefined },
+      viewTransition: true,
+    });
   };
 }
