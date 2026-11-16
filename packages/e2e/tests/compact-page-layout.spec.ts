@@ -337,18 +337,17 @@ test.describe("compact page layout", () => {
       await page.getByRole("button", { name: "Preview", exact: true }).click();
       expect(await originalPicker!.evaluate((el) => el.isConnected)).toBe(true);
       const sidebar = page.locator('[data-slot="sidebar"]');
-      // Collapsing the sidebar moves its chat toggle to the page header, so
-      // the toggle is whichever one is on screen.
-      const threadToggle = page
-        .getByRole("button", { name: /^(Open|Close) chat$/ })
-        .filter({ visible: true })
-        .last();
+      // Expand takes the page over the chat; "Show chat" brings the chat back.
+      const expand = page
+        .getByTestId("main-panel")
+        .getByRole("button", { name: "Expand", exact: true });
+      const showChat = page
+        .getByTestId("main-panel")
+        .getByRole("button", { name: "Show chat", exact: true });
+      await expand.click();
+      await expect(page.getByTestId("chat-panel")).toHaveCount(0);
+      await expect(showChat).toHaveAttribute("aria-pressed", "true");
       await page.mouse.move(0, 0);
-      await expect(threadToggle).toHaveAttribute("aria-pressed", "false");
-      await expect(threadToggle).toHaveCSS(
-        "background-color",
-        "rgba(0, 0, 0, 0)",
-      );
       await page.screenshot({
         animations: "disabled",
         path: testInfo.outputPath("compact-editor-expanded.png"),
@@ -370,14 +369,8 @@ test.describe("compact page layout", () => {
             (await page.getByTestId("main-panel").boundingBox())!.width,
         )
         .toBeGreaterThan(width + 100);
-      await threadToggle.click();
+      await showChat.click();
       await expect(page.getByTestId("chat-panel")).toBeVisible();
-      await expect(threadToggle).toHaveAttribute("aria-pressed", "true");
-      await page.mouse.move(0, 0);
-      await expect(threadToggle).not.toHaveCSS(
-        "background-color",
-        "rgba(0, 0, 0, 0)",
-      );
       await expect(picker).toContainText("About us");
       await expect(picker).toContainText("/about");
       expect(await originalBlocks!.evaluate((el) => el.isConnected)).toBe(true);
@@ -385,25 +378,13 @@ test.describe("compact page layout", () => {
       expect(new URL(page.url()).searchParams.get("thread")).toBe(
         thread.item.id,
       );
-      await threadToggle.click();
+      await expand.click();
       await expect(page.getByTestId("chat-panel")).toHaveCount(0);
-      await expect(threadToggle).toHaveAttribute("aria-pressed", "false");
-      await page.mouse.move(0, 0);
-      await expect(threadToggle).toHaveCSS(
-        "background-color",
-        "rgba(0, 0, 0, 0)",
-      );
-      await threadToggle.click();
+      await showChat.click();
       await expect(page.getByTestId("chat-panel")).toBeVisible();
-      await expect(threadToggle).toHaveAttribute("aria-pressed", "true");
-      await threadToggle.click();
+      await expand.click();
       await expect(page.getByTestId("chat-panel")).toHaveCount(0);
-      await expect(threadToggle).toHaveAttribute("aria-pressed", "false");
       await page.mouse.move(0, 0);
-      await expect(threadToggle).toHaveCSS(
-        "background-color",
-        "rgba(0, 0, 0, 0)",
-      );
       await page.screenshot({
         animations: "disabled",
         path: testInfo.outputPath("compact-editor.png"),

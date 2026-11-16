@@ -118,7 +118,13 @@ test.describe("deck preview tab", () => {
     // group's drag state active forever. The library then kept
     // `pointer-events: none` on the panels, so the framed page still painted
     // but no longer accepted clicks or keyboard focus.
-    const resizeHandle = page.locator('[data-slot="resizable-handle"]').first();
+    // The workspace divider between the page and the chat, not a handle
+    // inside the page.
+    const resizeHandle = page
+      .locator(
+        '[data-testid="chat-layout-content"] ~ [data-slot="resizable-handle"]',
+      )
+      .first();
     const iframe = page.locator(`iframe[title="${DECK_PATH}"]`);
     const mainResizablePanel = page
       .getByTestId("main-panel")
