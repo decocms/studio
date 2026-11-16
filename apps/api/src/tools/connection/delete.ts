@@ -145,11 +145,15 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     // Drop the unbounded oauth refresh backoff tracker entry so it doesn't linger.
     clearRefreshBackoff(input.id);
 
-    // trigger_callback_tokens.connection_id has no FK either — same class of orphan.
-    await ctx.storage.triggerCallbackTokens.deleteByConnection(
-      input.id,
-      organization.id,
-    );
+    // trigger_callback_tokens.connection_id has no FK either — same class of orphan; best-effort so it can't mask the already-finished deletion.
+    await ctx.storage.triggerCallbackTokens
+      .deleteByConnection(input.id, organization.id)
+      .catch((err) => {
+        console.warn(
+          "[COLLECTION_CONNECTIONS_DELETE] trigger callback token cleanup failed (non-critical):",
+          err,
+        );
+      });
 
     // Invalidate NATS KV cache
     getMcpListCache()

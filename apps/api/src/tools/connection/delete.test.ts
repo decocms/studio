@@ -123,6 +123,22 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
     );
   });
 
+  it("still reports the connection deleted when token cleanup fails", async () => {
+    // Regression: an unguarded cleanup call threw after the connection row was already gone.
+    const { ctx, deleteConnection } = makeCtx({ referencedByThread: false });
+    ctx.storage.triggerCallbackTokens.deleteByConnection = mock(() =>
+      Promise.reject(new Error("db unavailable")),
+    );
+
+    const result = await COLLECTION_CONNECTIONS_DELETE.handler(
+      { id: "conn_repo" },
+      ctx,
+    );
+
+    expect(result.item.id).toBe("conn_repo");
+    expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
+  });
+
   it("refuses to delete a connection with an active automation event trigger", async () => {
     // Regression: automation_triggers.connection_id has no FK and would strand silently.
     const { ctx, deleteConnection } = makeCtx({
