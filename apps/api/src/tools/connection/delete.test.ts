@@ -168,4 +168,31 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
     expect(deactivateAutomation).toHaveBeenCalledWith("auto_1");
     expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
   });
+
+  it("refuses to delete a nonexistent connection", async () => {
+    const { ctx, deleteConnection } = makeCtx({ referencedByThread: false });
+    ctx.storage.connections.findPublicById = mock(async () => null);
+
+    await expect(
+      COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_missing" }, ctx),
+    ).rejects.toThrow(/Connection not found/);
+
+    expect(deleteConnection).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete a connection owned by a different organization", async () => {
+    // Guards against a cross-org delete by id: findPublicById() has no org filter.
+    const { ctx, deleteConnection } = makeCtx({ referencedByThread: false });
+    ctx.storage.connections.findPublicById = mock(async () => ({
+      id: "conn_other_org",
+      organization_id: "org_other",
+      metadata: null,
+    })) as unknown as typeof ctx.storage.connections.findPublicById;
+
+    await expect(
+      COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_other_org" }, ctx),
+    ).rejects.toThrow(/not found in organization/);
+
+    expect(deleteConnection).not.toHaveBeenCalled();
+  });
 });
