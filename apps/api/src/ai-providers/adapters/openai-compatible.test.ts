@@ -15,6 +15,14 @@ const MODELS_BODY = {
   data: [{ id: "llama-3", owned_by: "meta" }],
 };
 
+describe("openaiCompatibleAdapter.create", () => {
+  test("rejects a malformed stored credential instead of throwing a raw SyntaxError", () => {
+    expect(() => openaiCompatibleAdapter.create("not json")).toThrow(
+      "Invalid OpenAI-compatible credential: malformed JSON",
+    );
+  });
+});
+
 describe("openaiCompatibleAdapter.listModels", () => {
   test("retries a transient 5xx and succeeds once the endpoint recovers", async () => {
     let calls = 0;
