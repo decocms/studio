@@ -7543,9 +7543,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       label: string;
@@ -7588,9 +7588,9 @@ export interface StudioToolIO {
         | "google"
         | "claude-code"
         | "codex"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible"
         | undefined;
@@ -7610,9 +7610,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       callbackUrl: string;
@@ -7623,9 +7623,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       code: string;
@@ -7644,9 +7644,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7662,9 +7662,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       amountCents: number;
@@ -7676,9 +7676,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7688,9 +7688,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7717,9 +7717,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7731,9 +7731,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       planId: "free";
@@ -8027,10 +8027,17 @@ export interface StudioToolIO {
     output: { success: true };
   };
   FILE_OBJECT_UPLOAD: {
-    input: { configId: string; files: { url: string; filename: string }[] };
+    input: {
+      configId: string;
+      files: (
+        | { url: string; filename: string }
+        | { content: string; contentType: string; filename: string }
+      )[];
+    };
     output: {
       files: {
-        url: string;
+        filename: string;
+        url?: string | undefined;
         publicUrl?: string | undefined;
         key?: string | undefined;
         contentType?: string | undefined;
