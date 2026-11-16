@@ -16,6 +16,20 @@ describe("extractDevPort", () => {
     ).toBe("8000");
   });
 
+  it("extracts a port from a space-separated --port flag", () => {
+    expect(
+      extractDevPort(
+        JSON.stringify({ scripts: { dev: "vite dev --port 8812" } }),
+      ),
+    ).toBe("8812");
+  });
+
+  it("extracts a port from an equals-separated --port flag", () => {
+    expect(
+      extractDevPort(JSON.stringify({ scripts: { dev: "vite --port=8812" } })),
+    ).toBe("8812");
+  });
+
   it("drops an out-of-range 5-digit match instead of returning it", () => {
     expect(
       extractDevPort(

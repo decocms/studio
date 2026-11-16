@@ -35,7 +35,7 @@ const PORT_SOURCES: Partial<Record<PackageManager, string[]>> = {
   npm: ["package.json"],
 };
 
-const PORT_RE = /(?:--port|PORT=|:)(\d{4,5})/;
+const PORT_RE = /(?:--port[=\s]*|PORT=|:)(\d{4,5})/;
 
 export interface DetectedRuntime {
   packageManager: PackageManager;
