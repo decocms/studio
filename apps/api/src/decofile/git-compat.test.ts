@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { RepoContentClient, TreeEntry } from "@/git-providers";
+import { GitProviderError } from "@/git-providers/types";
 import {
+  BlocksDeletedOnBaseError,
   buildDiscardPlan,
   buildMergeReplayPlan,
   buildPublishStatus,
@@ -229,5 +231,121 @@ describe("writes to the default branch", () => {
     await expect(repoGitDiscard(client, "main", ["a.json"])).rejects.toThrow(
       DefaultBranchWriteError,
     );
+  });
+});
+
+/**
+ * A draft that edited a header and a page the base renamed and deleted since:
+ * the merge conflicts, and the page's copy points at a footer the base dropped.
+ */
+function draftBehindDeletion() {
+  const header = ".deco/blocks/Header%20Proposta.json";
+  const page = ".deco/blocks/pages-cases.json";
+  const footer = ".deco/blocks/Footer%20Proposta.json";
+  const pageBody = JSON.stringify({
+    sections: [
+      { __resolveType: "Header Proposta" },
+      { __resolveType: "site/sections/Intro.tsx" },
+      { __resolveType: "Footer Proposta" },
+    ],
+  });
+  const onDraft = new Map([
+    [header, "{}"],
+    [page, pageBody],
+    [footer, "{}"],
+  ]);
+  const writes: { commit?: unknown; reset?: string } = {};
+  const client = {
+    repo: { provider: "github" },
+    getDefaultBranch: async () => "main",
+    getBranch: async (name: string) => ({
+      sha: name === "main" ? "main-head" : "draft-head",
+    }),
+    compareDetailed: async (base: string) =>
+      base === "main"
+        ? {
+            aheadBy: 2,
+            behindBy: 5,
+            mergeBaseSha: "fork",
+            commitMessages: [],
+            files: [
+              { filename: header, status: "modified", sha: "h" },
+              { filename: page, status: "modified", sha: "p" },
+            ],
+          }
+        : {
+            aheadBy: 5,
+            behindBy: 2,
+            mergeBaseSha: "fork",
+            files: [
+              {
+                filename: ".deco/blocks/Header%20Carrier.json",
+                previousFilename: header,
+                status: "renamed",
+                sha: "c",
+              },
+              { filename: page, status: "removed", sha: "" },
+              { filename: footer, status: "removed", sha: "" },
+            ],
+          },
+    mergeBranches: async () => {
+      throw new GitProviderError({
+        provider: "github",
+        status: 409,
+        message: "Merge conflict",
+      });
+    },
+    readFileAtRef: async (ref: string, path: string) =>
+      ref === "draft-head" ? (onDraft.get(path) ?? null) : null,
+    commitFiles: async (args: unknown) => {
+      writes.commit = args;
+    },
+    forceBranchHead: async (_branch: string, sha: string) => {
+      writes.reset = sha;
+    },
+  } as unknown as RepoContentClient;
+  return { client, writes, header, page };
+}
+
+describe("syncing a draft over blocks the base deleted", () => {
+  it("stops before writing and names each block and its broken references", async () => {
+    const { client, writes } = draftBehindDeletion();
+    const error = await repoGitRebase(client, "draft", "main").catch((e) => e);
+    expect(error).toBeInstanceOf(BlocksDeletedOnBaseError);
+    expect(error.blocks).toEqual([
+      {
+        path: ".deco/blocks/Header%20Proposta.json",
+        key: "Header Proposta",
+        renamedTo: "Header Carrier",
+        missingRefs: [],
+      },
+      {
+        path: ".deco/blocks/pages-cases.json",
+        key: "pages-cases",
+        missingRefs: ["Header Proposta", "Footer Proposta"],
+      },
+    ]);
+    expect(writes).toEqual({});
+  });
+
+  it("accepting both deletions resets the draft onto the base", async () => {
+    const { client, writes, header, page } = draftBehindDeletion();
+    await repoGitRebase(client, "draft", "main", {
+      [header]: "drop",
+      [page]: "drop",
+    });
+    expect(writes).toEqual({ reset: "main-head" });
+  });
+
+  it("restoring a block replays the draft's copy and keeps the other deleted", async () => {
+    const { client, writes, header, page } = draftBehindDeletion();
+    await repoGitRebase(client, "draft", "main", {
+      [header]: "drop",
+      [page]: "restore",
+    });
+    expect(writes.commit).toMatchObject({
+      rewriteFrom: "main-head",
+      changes: [{ path: page, copyFromRef: "draft-head" }],
+    });
   });
 });

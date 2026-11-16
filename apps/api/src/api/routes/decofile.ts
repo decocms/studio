@@ -64,6 +64,8 @@ import {
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import {
   assertNotDefaultBranch,
+  BLOCKS_DELETED_ON_BASE,
+  BlocksDeletedOnBaseError,
   DEFAULT_BRANCH_READ_ONLY,
   DefaultBranchWriteError,
   repoGitRebase,
@@ -326,6 +328,12 @@ function errorResponse(c: Context<DecofileEnv>, err: unknown) {
   }
   if (err instanceof DefaultBranchWriteError) {
     return c.json({ error: message, code: DEFAULT_BRANCH_READ_ONLY }, 409);
+  }
+  if (err instanceof BlocksDeletedOnBaseError) {
+    return c.json(
+      { error: message, code: BLOCKS_DELETED_ON_BASE, blocks: err.blocks },
+      409,
+    );
   }
   if (err instanceof DecofileTooLargeError) {
     return c.json({ error: message, code: "decofile-too-large" }, 413);

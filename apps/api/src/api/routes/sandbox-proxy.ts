@@ -15,6 +15,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
+import { z } from "zod";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type {
   SandboxProvider,
@@ -61,6 +62,8 @@ import {
 } from "@/git-providers";
 import { GitProviderError } from "../../git-providers/types";
 import {
+  BLOCKS_DELETED_ON_BASE,
+  BlocksDeletedOnBaseError,
   DEFAULT_BRANCH_READ_ONLY,
   DefaultBranchWriteError,
   repoGitDiff,
@@ -445,6 +448,13 @@ function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
       SANDBOX_PROXY_CACHE_HEADERS,
     );
   }
+  if (err instanceof BlocksDeletedOnBaseError) {
+    return c.json(
+      { error: message, code: BLOCKS_DELETED_ON_BASE, blocks: err.blocks },
+      409,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
+  }
   if (err instanceof RepoWriteConflict) {
     return c.json({ error: message }, 409, SANDBOX_PROXY_CACHE_HEADERS);
   }
@@ -598,6 +608,12 @@ export function withClaimGitLock<T>(
 // ---- Proxy helpers ----------------------------------------------------------
 
 /** Sandbox runtime responses must never be cached — 410 Gone was getting stuck in disk cache. */
+/** `POST …/git/rebase`: the base to sync onto, and per deleted block whether it comes back. */
+const rebaseBodySchema = z.object({
+  base: z.string().min(1).optional(),
+  resolutions: z.record(z.string(), z.enum(["restore", "drop"])).optional(),
+});
+
 const SANDBOX_PROXY_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
   Pragma: "no-cache",
@@ -1312,12 +1328,24 @@ export const createSandboxRoutes = () => {
     if (claim.runtime === "cms") {
       return withClaimGitLock(claim.claimName, async () => {
         try {
-          const body = (await c.req.json().catch(() => ({}))) as {
-            base?: string;
-          };
+          const parsed = rebaseBodySchema.safeParse(
+            await c.req.json().catch(() => ({})),
+          );
+          if (!parsed.success) {
+            return c.json(
+              { error: "Invalid body", details: parsed.error.issues },
+              400,
+              SANDBOX_PROXY_CACHE_HEADERS,
+            );
+          }
           const client = await fastPreviewGitClient(c);
-          const base = body.base ?? (await client.getDefaultBranch());
-          await repoGitRebase(client, claim.branch, base);
+          const base = parsed.data.base ?? (await client.getDefaultBranch());
+          await repoGitRebase(
+            client,
+            claim.branch,
+            base,
+            parsed.data.resolutions,
+          );
           return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
         } catch (err) {
           return fastPreviewGitError(c, err);
