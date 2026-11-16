@@ -411,7 +411,13 @@ test.describe("compact page layout", () => {
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(picker).toBeVisible();
       const pickerBounds = (await picker.boundingBox())!;
-      expect(pickerBounds.width).toBeGreaterThanOrEqual(320);
+      const openInNewTab = (await page
+        .locator('[data-slot="panel-toolbar"]')
+        .getByRole("button", { name: "Open in new tab" })
+        .boundingBox())!;
+      expect(pickerBounds.x + pickerBounds.width).toBeLessThanOrEqual(
+        openInNewTab.x,
+      );
       for (const part of [
         picker.getByText("About us", { exact: true }),
         picker.getByTestId("preview-page-path"),

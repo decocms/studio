@@ -1,35 +1,48 @@
 import { describe, expect, it } from "bun:test";
 import {
   cmsEditorActivation,
-  showCmsPageSelector,
+  showPageSelector,
   showPreviewToolbarFor,
   visualEditorActivation,
 } from "./cms-controls";
 
-describe("showCmsPageSelector", () => {
+describe("showPageSelector", () => {
   it("shows it whenever content editing and the preview toolbar are enabled", () => {
     expect(
-      showCmsPageSelector({
+      showPageSelector({
         showPreviewToolbar: true,
         contentEditingEnabled: true,
+        hasFrameworkRoutes: false,
       }),
     ).toBe(true);
   });
 
-  it("hides it under the same disabled gate as Content and Blocks", () => {
+  it("hides it without content editing or router routes", () => {
     expect(
-      showCmsPageSelector({
+      showPageSelector({
         showPreviewToolbar: true,
         contentEditingEnabled: false,
+        hasFrameworkRoutes: false,
       }),
     ).toBe(false);
   });
 
+  it("shows the site's router routes without content editing", () => {
+    expect(
+      showPageSelector({
+        showPreviewToolbar: true,
+        contentEditingEnabled: false,
+        hasFrameworkRoutes: true,
+      }),
+    ).toBe(true);
+  });
+
   it("hides it when the toolbar itself is hidden", () => {
     expect(
-      showCmsPageSelector({
+      showPageSelector({
         showPreviewToolbar: false,
         contentEditingEnabled: true,
+        hasFrameworkRoutes: false,
       }),
     ).toBe(false);
   });
@@ -51,12 +64,13 @@ describe("showPreviewToolbarFor", () => {
       }),
     ).toBe(true);
     expect(
-      showCmsPageSelector({
+      showPageSelector({
         showPreviewToolbar: showPreviewToolbarFor({
           ...base,
           servePreviewUrl: "http://localhost:5180",
         }),
         contentEditingEnabled: true,
+        hasFrameworkRoutes: false,
       }),
     ).toBe(true);
   });
@@ -99,7 +113,10 @@ describe("cmsEditorActivation", () => {
     ] as const) {
       expect(
         cmsEditorActivation({ v8: false, production, localPreview, script }),
-      ).toEqual({ type: "editor::inject", args: { script } });
+      ).toEqual({
+        type: "editor::inject",
+        args: { script },
+      });
     }
   });
 

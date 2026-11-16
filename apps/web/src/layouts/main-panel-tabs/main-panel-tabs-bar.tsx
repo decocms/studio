@@ -31,6 +31,7 @@ export function MainPanelTabsBar({
           <Page.Tab
             key={tab.id}
             active={active}
+            title={tab.title}
             onClick={() => {
               if (active) return;
               track("main_panel_tab_clicked", {
@@ -48,7 +49,10 @@ export function MainPanelTabsBar({
             >
               <TabIconGlyph icon={tab.icon} />
             </span>
-            {tab.title}
+            {/* Narrow desktop panels keep the tabs' icons and give the room to the panel's own controls. */}
+            <span className="md:@max-[40rem]/panel-toolbar:sr-only">
+              {tab.title}
+            </span>
           </Page.Tab>
         );
       })}
