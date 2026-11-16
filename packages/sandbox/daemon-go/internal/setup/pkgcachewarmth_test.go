@@ -74,6 +74,7 @@ func TestPkgCacheWarmthReadsTheCacheDir(t *testing.T) {
 // very comparison this attribute exists for; it is a different fact.
 func TestPkgCacheWarmthUnpointedForNonBunNonDeno(t *testing.T) {
 	t.Setenv("DEPS_CACHE_ROOT", t.TempDir())
+	t.Setenv("DEPS_CACHE_YARN", "")
 	for _, pm := range []string{"npm", "pnpm", "yarn"} {
 		cfg := cfgWithPm(pm, "https://github.com/acme/site.git")
 		if got := PkgCacheWarmth(cfg, ""); got != "unpointed" {
@@ -89,4 +90,48 @@ func cfgWithPm(pm, cloneUrl string) *config.Enriched {
 			PackageManager: &config.PackageManagerConfig{Name: &pm},
 		},
 	}}
+}
+
+// A repo's `.yarnrc` can set `cache-folder` inside the checkout, which puts the
+// whole download cache on the size-limited workdir. With the flag on, the
+// install env points yarn at the per-repo node cache instead.
+func TestDepsCacheEnvPointsYarnAtTheNodeCacheWhenEnabled(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("DEPS_CACHE_ROOT", root)
+	cloneUrl := "https://x-access-token:ghs_secret@github.com/acme/site.git"
+	cfg := cfgWithPm("yarn", cloneUrl)
+
+	t.Setenv("DEPS_CACHE_YARN", "")
+	if got, ok := DepsCacheEnv(cfg, "")["YARN_CACHE_FOLDER"]; ok {
+		t.Fatalf("flag off still set YARN_CACHE_FOLDER=%q", got)
+	}
+	if got := PkgCacheWarmth(cfg, ""); got != "unpointed" {
+		t.Fatalf("flag off: warmth %q, want unpointed", got)
+	}
+
+	t.Setenv("DEPS_CACHE_YARN", "1")
+	want := filepath.Join(root, "yarn", repoCacheKey("https://github.com/acme/site.git"))
+	if got := DepsCacheEnv(cfg, "")["YARN_CACHE_FOLDER"]; got != want {
+		t.Fatalf("YARN_CACHE_FOLDER=%q, want %q", got, want)
+	}
+	if got := PkgCacheWarmth(cfg, ""); got != "cold" {
+		t.Fatalf("flag on, empty cache: warmth %q, want cold", got)
+	}
+	if err := os.MkdirAll(filepath.Join(want, "v6"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := PkgCacheWarmth(cfg, ""); got != "warm" {
+		t.Fatalf("flag on, populated cache: warmth %q, want warm", got)
+	}
+}
+
+// Other package managers never get a yarn cache dir, flag or not.
+func TestDepsCacheEnvLeavesNonYarnAloneWithTheFlagOn(t *testing.T) {
+	t.Setenv("DEPS_CACHE_ROOT", t.TempDir())
+	t.Setenv("DEPS_CACHE_YARN", "1")
+	for _, pm := range []string{"npm", "pnpm", "bun"} {
+		if got, ok := DepsCacheEnv(cfgWithPm(pm, "https://github.com/acme/site.git"), "")["YARN_CACHE_FOLDER"]; ok {
+			t.Fatalf("%s got YARN_CACHE_FOLDER=%q", pm, got)
+		}
+	}
 }

@@ -62,9 +62,25 @@ func DepsCacheEnv(cfg *config.Enriched, repoDir string) map[string]string {
 	if cloneUrl == "" {
 		return nil
 	}
-	return map[string]string{
+	env := map[string]string{
 		"BUN_INSTALL_CACHE_DIR": filepath.Join(cacheRoot, "bun", repoCacheKey(cloneUrl)),
 	}
+	if cfg.PmName() == "yarn" && YarnDepsCacheEnabled() {
+		// The env var outranks a repo's `.yarnrc` `cache-folder`, which can
+		// otherwise park the whole download cache inside the checkout and evict
+		// the pod for exceeding the workdir's sizeLimit.
+		env["YARN_CACHE_FOLDER"] = filepath.Join(cacheRoot, "yarn", repoCacheKey(cloneUrl))
+	}
+	return env
+}
+
+const yarnDepsCacheEnvVar = "DEPS_CACHE_YARN"
+
+// YarnDepsCacheEnabled gates moving yarn's download cache to the node cache.
+// It changes the boot install path, so it ships off unless explicitly enabled.
+func YarnDepsCacheEnabled() bool {
+	v := os.Getenv(yarnDepsCacheEnvVar)
+	return v == "1" || v == "true"
 }
 
 // PkgCacheWarmth reports whether this repo's package-manager download cache was
@@ -96,10 +112,15 @@ func PkgCacheWarmth(cfg *config.Enriched, repoDir string) string {
 		dir = filepath.Join(cacheRoot, "deno", repoCacheKey(cloneUrl))
 	case "bun":
 		dir = filepath.Join(cacheRoot, "bun", repoCacheKey(cloneUrl))
+	case "yarn":
+		if !YarnDepsCacheEnabled() {
+			return "unpointed"
+		}
+		dir = filepath.Join(cacheRoot, "yarn", repoCacheKey(cloneUrl))
 	default:
-		// npm/pnpm/yarn are not pointed at the shared cache at all, so their
-		// installs always pay full price. Saying "cold" would read as a warmable
-		// miss; this is a different fact.
+		// npm/pnpm are not pointed at the shared cache at all, so their installs
+		// always pay full price. Saying "cold" would read as a warmable miss;
+		// this is a different fact.
 		return "unpointed"
 	}
 	entries, err := os.ReadDir(dir)
