@@ -431,17 +431,35 @@ function VmEventsBridge({
 // project's draft instead of the chat's branch.
 // ---------------------------------------------------------------------------
 
-function ProjectPanelSession({ children }: { children: ReactNode }) {
+function ProjectPanelSession({
+  followProject,
+  children,
+}: {
+  followProject: boolean;
+  children: ReactNode;
+}) {
   const { org } = useProjectContext();
   const { virtualMcpId, activeTask } = useChatTask();
   const isProject = virtualMcpId !== getWellKnownDecopilotVirtualMCP(org.id).id;
   if (!isProject || activeTask?.virtual_mcp_id === virtualMcpId) {
     return children;
   }
-  return <ProjectPanelThread key={virtualMcpId}>{children}</ProjectPanelThread>;
+  return (
+    <ProjectPanelThread key={virtualMcpId} followProject={followProject}>
+      {children}
+    </ProjectPanelThread>
+  );
 }
 
-function ProjectPanelThread({ children }: { children: ReactNode }) {
+function ProjectPanelThread({
+  followProject,
+  children,
+}: {
+  /** Entering a coding project moves the chat onto the panel's draft, so the
+   *  chat edits the sandbox the preview shows. */
+  followProject: boolean;
+  children: ReactNode;
+}) {
   const chat = useChatTask();
   const projectId = chat.virtualMcpId;
   const entity = useVirtualMCP(projectId);
@@ -527,6 +545,16 @@ function ProjectPanelThread({ children }: { children: ReactNode }) {
         sandboxMap={entity?.metadata?.sandboxMap}
       >
         {children}
+        {followProject && task && (
+          <Navigate
+            to="."
+            replace
+            search={(prev: Record<string, unknown>) => ({
+              ...prev,
+              thread: task.id,
+            })}
+          />
+        )}
       </VmEventsBridge>
     </ChatTaskValueProvider>
   );
@@ -560,10 +588,12 @@ function ThreadTopbar() {
 
 function ThreadSessionContent({
   layout,
+  followProject,
   onNewTaskRef,
   createNewTask,
 }: {
   layout: ReturnType<typeof useChatLayoutState>;
+  followProject: boolean;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
   createNewTask: () => void;
 }) {
@@ -596,7 +626,7 @@ function ThreadSessionContent({
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
         }
       >
-        <ProjectPanelSession>
+        <ProjectPanelSession followProject={followProject}>
           <Outlet />
         </ProjectPanelSession>
         <ChatLayout.Thread topbar={<ThreadTopbar />}>
@@ -663,6 +693,20 @@ function ThreadSessionProvider() {
       ? ensureState.task?.virtual_mcp_id
       : undefined) ?? superAgentId;
   const chatEntity = useVirtualMCP(chatAgentId);
+
+  /** The project the chat already settled on for this visit. Until then a
+   *  coding project takes the chat onto its draft; a chat picked on the page
+   *  afterwards stays. Leaving the project resets it. */
+  const [enteredProject, setEnteredProject] = useState<string | null>(null);
+  if (enteredProject !== null && enteredProject !== virtualMcpId) {
+    setEnteredProject(null);
+  } else if (
+    enteredProject === null &&
+    ensureState.status === "ready" &&
+    (chatAgentId === virtualMcpId || !(entity && getActiveRepository(entity)))
+  ) {
+    setEnteredProject(virtualMcpId);
+  }
 
   const layoutMetadata = entity?.metadata?.ui?.layout ?? null;
   const entityMetadata = layoutMetadata
@@ -816,6 +860,7 @@ function ThreadSessionProvider() {
               <MainPanelBoundary>
                 <ThreadSessionContent
                   layout={layout}
+                  followProject={enteredProject !== virtualMcpId}
                   onNewTaskRef={onNewTask}
                   createNewTask={createNewTask}
                 />
