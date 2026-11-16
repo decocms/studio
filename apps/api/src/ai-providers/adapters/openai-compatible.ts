@@ -18,7 +18,12 @@ function fetchModelsWithRetry(
 }
 
 function parseCredential(raw: string): { baseUrl: string; apiKey: string } {
-  const parsed = JSON.parse(raw);
+  let parsed: { baseUrl?: unknown; apiKey?: unknown };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid OpenAI-compatible credential: malformed JSON");
+  }
   if (!parsed.baseUrl || typeof parsed.baseUrl !== "string") {
     throw new Error(
       "Invalid OpenAI-compatible credential: missing baseUrl field",
@@ -29,7 +34,10 @@ function parseCredential(raw: string): { baseUrl: string; apiKey: string } {
   // so it must end with /v1 for standard OpenAI-compatible servers.
   let url = parsed.baseUrl.replace(/\/+$/, "");
   if (!url.endsWith("/v1")) url += "/v1";
-  return { baseUrl: url, apiKey: parsed.apiKey ?? "" };
+  return {
+    baseUrl: url,
+    apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
+  };
 }
 
 const OPENAI_LOGO =
