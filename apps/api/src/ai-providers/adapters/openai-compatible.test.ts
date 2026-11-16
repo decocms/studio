@@ -21,6 +21,17 @@ describe("openaiCompatibleAdapter.create", () => {
       "Invalid OpenAI-compatible credential: malformed JSON",
     );
   });
+
+  test("rejects a baseUrl targeting a private network", () => {
+    const credential = JSON.stringify({
+      baseUrl: "http://169.254.169.254/latest/meta-data",
+      apiKey: "secret-key",
+    });
+
+    expect(() => openaiCompatibleAdapter.create(credential)).toThrow(
+      "Invalid OpenAI-compatible credential: baseUrl targets a private network",
+    );
+  });
 });
 
 describe("openaiCompatibleAdapter.listModels", () => {
