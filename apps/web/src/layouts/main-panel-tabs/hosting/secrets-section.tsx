@@ -21,6 +21,11 @@ import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -29,7 +34,13 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
-import { errorText, mutateJson, type EnvScope, type Secret } from "./api";
+import {
+  errorText,
+  mutateJson,
+  type EnvScope,
+  type Secret,
+  type SecretPutResult,
+} from "./api";
 import {
   ConfirmDeleteDialog,
   HostingSection,
@@ -72,10 +83,16 @@ export function SecretsSection({
 
   const putMutation = useMutation({
     mutationFn: (input: { name: string; value: string; scope: EnvScope }) =>
-      mutateJson(`${base}/secrets`, "PUT", input),
-    onSuccess: () => {
+      mutateJson(`${base}/secrets`, "PUT", input) as Promise<SecretPutResult>,
+    onSuccess: (res) => {
       invalidate();
-      toast.success(t("mainPanelTabs.hostingTab.toastSecretSaved"));
+      // Stored, but the Cloudflare worker push failed: the site doesn't see the
+      // value yet — say so instead of a plain "saved".
+      if (res?.workerSync?.status === "failed") {
+        toast.warning(t("mainPanelTabs.hostingTab.toastSecretNotOnWorker"));
+      } else {
+        toast.success(t("mainPanelTabs.hostingTab.toastSecretSaved"));
+      }
       setAddOpen(false);
       setAddName("");
       setAddValue("");
@@ -157,6 +174,18 @@ export function SecretsSection({
                     <Badge variant="secondary">
                       {t("mainPanelTabs.hostingTab.secretOnWorker")}
                     </Badge>
+                  )}
+                  {s.workerSync === "missing" && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="warning">
+                          {t("mainPanelTabs.hostingTab.secretNotOnWorker")}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        {t("mainPanelTabs.hostingTab.secretNotOnWorkerHint")}
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
                 <span className="font-mono text-xs text-muted-foreground/60">

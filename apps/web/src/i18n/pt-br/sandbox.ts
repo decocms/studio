@@ -775,6 +775,7 @@ export const sandbox = {
   "sandbox.generatePost.title": "Gerar posts",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
+  "sandbox.itemActions.discardChanges": "Descartar alterações",
   "sandbox.itemActions.duplicate": "Duplicar",
   "sandbox.itemActions.editSeo": "Editar SEO",
   "sandbox.itemActions.moreActions": "Mais ações",
