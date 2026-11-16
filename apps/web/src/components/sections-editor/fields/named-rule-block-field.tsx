@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useT } from "@/i18n/use-t.ts";
+import { whilePending } from "@/lib/while-pending";
 import {
   Select,
   SelectContent,
@@ -60,11 +61,8 @@ function NamedRuleBlockField({
       return;
     }
     const kind = next as NamedRuleKind;
-    setPending(true);
-    try {
-      if (!(await support.ensureBlock(kind))) return;
-    } finally {
-      setPending(false);
+    if (!(await whilePending(setPending, () => support.ensureBlock(kind)))) {
+      return;
     }
     onChange({ __resolveType: kind });
   };

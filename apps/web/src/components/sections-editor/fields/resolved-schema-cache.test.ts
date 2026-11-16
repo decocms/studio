@@ -7,6 +7,39 @@ import {
 import type { LiveMeta, SchemaProperty } from "../resolve-schema";
 
 describe("cachedResolveSchema", () => {
+  it("shares a frozen schema, so a consumer cannot mutate it for others", () => {
+    const resolveType = "site/sections/Shared.tsx";
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: { sections: { [resolveType]: { $ref: "#/definitions/S" } } },
+      },
+      schema: {
+        definitions: {
+          S: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: { name: { type: "string", title: "Name" } },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const schema = cachedResolveSchema(resolveType, meta);
+    expect(cachedResolveSchema(resolveType, meta)).toBe(schema);
+    const name = schema?.properties?.items?.items?.properties?.name;
+    expect(Object.isFrozen(schema)).toBe(true);
+    expect(Object.isFrozen(name)).toBe(true);
+    expect(() => {
+      (name as { title?: string }).title = "Changed";
+    }).toThrow(TypeError);
+  });
+
   it("does not leak a resolveType's schema across different meta (site) instances", () => {
     // Built-in matcher resolveTypes are identical strings across every deco
     // site — only `meta` (site A vs. site B) tells them apart.

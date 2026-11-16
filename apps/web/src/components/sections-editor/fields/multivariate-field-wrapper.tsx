@@ -18,6 +18,7 @@ import {
   extractMatcherGlobals,
   extractMatchers,
   type MatcherEntry,
+  type MatcherGlobalEntry,
 } from "../matcher-picker";
 import { matcherFormatter } from "../format-matcher";
 import { crumbLabel } from "../schema-form-breadcrumb";
@@ -48,6 +49,7 @@ import {
 import { namedRuleOf } from "../named-rules";
 import { useNamedRuleFieldSupport } from "../named-rule-step";
 import { useBlocksSiteEditor } from "../blocks-site-editor";
+import { whilePending } from "@/lib/while-pending";
 
 // `meta` changes only on page load; `resolveType` changes only on rule picker
 // selection — cache the matcher list per meta instance (WeakMap, so a stale
@@ -59,6 +61,29 @@ function cachedExtractMatchers(meta: LiveMeta): MatcherEntry[] {
   if (!result) {
     result = extractMatchers(meta);
     matchersCache.set(meta, result);
+  }
+  return result;
+}
+
+// Walks the whole decofile; a save replaces the decofile, dropping the entry.
+const matcherGlobalsCache = new WeakMap<
+  LiveMeta,
+  WeakMap<Record<string, unknown>, MatcherGlobalEntry[]>
+>();
+
+function cachedExtractMatcherGlobals(
+  meta: LiveMeta,
+  decofile: Record<string, unknown>,
+): MatcherGlobalEntry[] {
+  let byDecofile = matcherGlobalsCache.get(meta);
+  if (!byDecofile) {
+    byDecofile = new WeakMap();
+    matcherGlobalsCache.set(meta, byDecofile);
+  }
+  let result = byDecofile.get(decofile);
+  if (!result) {
+    result = extractMatcherGlobals(meta, decofile);
+    byDecofile.set(decofile, result);
   }
   return result;
 }
@@ -219,7 +244,8 @@ export function MultivariateFieldWrapper({
   const currentValue = currentVariant?.value;
 
   const matchers = meta ? cachedExtractMatchers(meta) : [];
-  const globals = meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
+  const globals =
+    meta && decofile ? cachedExtractMatcherGlobals(meta, decofile) : [];
 
   const ruleSchema =
     currentRt && meta ? cachedResolveSchema(currentRt, meta) : null;
@@ -331,13 +357,9 @@ export function MultivariateFieldWrapper({
 
   const handleRename = async (index: number, nextName: string) => {
     if (!onVariantMatcherOp) return;
-    setRenamePending(true);
-    try {
-      await onVariantMatcherOp.rename(wrapperRecord, index, nextName);
-    } finally {
-      setRenamePending(false);
-      setRenameIndex(null);
-    }
+    await whilePending(setRenamePending, () =>
+      onVariantMatcherOp.rename(wrapperRecord, index, nextName),
+    ).finally(() => setRenameIndex(null));
   };
 
   const handleValueChange = (nextValue: unknown) => {
@@ -435,6 +457,19 @@ export function MultivariateFieldWrapper({
     );
   }
 
+  const renameRule =
+    renameIndex === null
+      ? undefined
+      : (variants[renameIndex]?.rule as Record<string, unknown> | undefined);
+  const renameIsSaved = isSavedMatcherBlockReference(
+    renameRule,
+    decofile ?? {},
+    meta,
+  );
+  const renameInitialName = renameIsSaved
+    ? resolveVariantRuleLabel(renameRule, decofile ?? {}, formatMatcher, meta)
+    : "";
+
   return (
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0">
       <SectionVariantList
@@ -493,32 +528,9 @@ export function MultivariateFieldWrapper({
       {renameIndex !== null && (
         <VariantRenameDialog
           open
-          initialName={
-            isSavedMatcherBlockReference(
-              variants[renameIndex]?.rule as
-                | Record<string, unknown>
-                | undefined,
-              decofile ?? {},
-              meta,
-            )
-              ? resolveVariantRuleLabel(
-                  variants[renameIndex]?.rule as
-                    | Record<string, unknown>
-                    | undefined,
-                  decofile ?? {},
-                  formatMatcher,
-                  meta,
-                )
-              : ""
-          }
+          initialName={renameInitialName}
           autoLabel={formatMatcher(
-            resolveEffectiveMatcherRule(
-              variants[renameIndex]?.rule as
-                | Record<string, unknown>
-                | undefined,
-              decofile ?? {},
-              meta,
-            ),
+            resolveEffectiveMatcherRule(renameRule, decofile ?? {}, meta),
           )}
           isPending={renamePending}
           onSubmit={(name) => handleRename(renameIndex, name)}

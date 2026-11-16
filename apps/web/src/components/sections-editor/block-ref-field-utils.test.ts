@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { LiveMeta, SchemaProperty } from "./resolve-schema";
+import {
+  resolveSchema,
+  type LiveMeta,
+  type SchemaProperty,
+} from "./resolve-schema";
 import {
   blockRefLoaderConfigHasData,
   blockRefOptionLabel,
@@ -10,6 +14,7 @@ import {
   moduleResolveTypeFromBlockData,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
+  valueForBranchSwitch,
   withBranchDiscriminator,
   type BlockRefOption,
 } from "./block-ref-field-utils";
@@ -417,5 +422,54 @@ describe("withBranchDiscriminator", () => {
     expect(withBranchDiscriminator(value, "type", undefined)).toBe(value);
     expect(withBranchDiscriminator(undefined, "type", equals)).toBeUndefined();
     expect(withBranchDiscriminator([], "type", equals)).toEqual([]);
+  });
+});
+
+describe("valueForBranchSwitch", () => {
+  const RT = "site/loaders/Kits.tsx";
+  const meta: LiveMeta = {
+    manifest: {
+      blocks: { loaders: { [RT]: { $ref: "#/definitions/KitsProps" } } },
+    },
+    schema: {
+      definitions: {
+        KitsProps: {
+          type: "object",
+          properties: {
+            title: { type: "string", default: "Kits" },
+            limit: { type: "number" },
+            enabled: { type: "boolean" },
+          },
+        },
+      },
+    },
+  };
+  const defaults = { title: "Kits", limit: 0, enabled: false };
+
+  test("seeds a lazy branch's defaults from its module schema", () => {
+    expect(valueForBranchSwitch({}, RT, undefined, undefined, meta)).toEqual(
+      defaults,
+    );
+  });
+
+  test("seeds the same defaults as the eager branch", () => {
+    const eager = { schema: resolveSchema(RT, meta) ?? undefined };
+    expect(valueForBranchSwitch(eager, RT, undefined, undefined, meta)).toEqual(
+      valueForBranchSwitch({}, RT, undefined, undefined, meta),
+    );
+  });
+
+  test("keeps the current value's fields the branch also has", () => {
+    const value = { limit: 12, stale: "dropped" };
+    expect(valueForBranchSwitch({}, RT, value, value, meta)).toEqual({
+      ...defaults,
+      limit: 12,
+    });
+  });
+
+  test("gets nothing for a branch no module resolves", () => {
+    expect(
+      valueForBranchSwitch({}, "Saved Kits", { limit: 1 }, undefined, meta),
+    ).toEqual({});
   });
 });
