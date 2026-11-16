@@ -25,9 +25,23 @@ import {
   redirectStatus,
 } from "./redirect-data";
 import { HeldBlockView } from "./held-block-view";
+import { Fragment, type ReactNode } from "react";
 
 /** The status select's value for "no explicit status". */
 const STATUS_FROM_TYPE = "type";
+
+/** Renders `**bold**` markers in a translated string as `<strong>` text. */
+function withBoldMarkdown(text: string): ReactNode {
+  return text
+    .split(/\*\*(.+?)\*\*/)
+    .map((part, i) =>
+      i % 2 === 1 ? (
+        <strong key={i}>{part}</strong>
+      ) : (
+        <Fragment key={i}>{part}</Fragment>
+      ),
+    );
+}
 
 const TYPE_OPTIONS: Array<{ value: RedirectType; labelKey: TranslationKey }> = [
   { value: "temporary", labelKey: "sandbox.redirectEditor.typeTemporary" },
@@ -156,9 +170,7 @@ function RedirectEditorForm({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              {/* TODO(i18n): rich text with <strong> tags */}
-              Use <strong>Temporary</strong> when the redirect may change;{" "}
-              <strong>Permanent</strong> lets browsers cache it.
+              {withBoldMarkdown(t("sandbox.redirectEditor.typeHint"))}
             </p>
           </div>
 
