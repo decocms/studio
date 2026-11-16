@@ -337,14 +337,14 @@ test.describe("compact page layout", () => {
       await page.getByRole("button", { name: "Preview", exact: true }).click();
       expect(await originalPicker!.evaluate((el) => el.isConnected)).toBe(true);
       const sidebar = page.locator('[data-slot="sidebar"]');
-      // Expand takes the page over the chat; "Show chat" brings the chat back.
+      // The Site Editor opens full screen; "Show chat" brings the chat back
+      // and Expand takes the page over it again.
       const expand = page
         .getByTestId("main-panel")
         .getByRole("button", { name: "Expand", exact: true });
       const showChat = page
         .getByTestId("main-panel")
         .getByRole("button", { name: "Show chat", exact: true });
-      await expand.click();
       await expect(page.getByTestId("chat-panel")).toHaveCount(0);
       await expect(showChat).toHaveAttribute("aria-pressed", "true");
       await page.mouse.move(0, 0);

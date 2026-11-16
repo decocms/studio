@@ -141,10 +141,10 @@ test.describe("deck preview tab", () => {
     const resizeY = iframeBox.y + iframeBox.height / 2;
     await page.mouse.move(resizeX, resizeY);
     await page.mouse.down();
-    // Establish the drag while still over the parent document. v4 captures the
-    // pointer on this first movement so the later iframe crossing cannot steal
-    // the release event.
-    await page.mouse.move(resizeX - 4, resizeY);
+    // Establish the drag while still over the parent document (the chat, right
+    // of the divider). v4 captures the pointer on this first movement so the
+    // later iframe crossing cannot steal the release event.
+    await page.mouse.move(resizeX + 4, resizeY);
     await expect(mainResizablePanel).toHaveCSS("pointer-events", "none");
     await page.mouse.move(iframeBox.x + 40, resizeY, { steps: 10 });
     await page.mouse.up();
