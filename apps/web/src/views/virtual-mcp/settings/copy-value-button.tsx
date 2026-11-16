@@ -68,13 +68,7 @@ export function CopyableField({
 }) {
   return (
     <div className={cn("relative h-fit", className)}>
-      <Input
-        id={id}
-        value={value}
-        readOnly
-        disabled
-        className="pr-10 font-mono"
-      />
+      <Input id={id} value={value} readOnly className="pr-10 font-mono" />
       <CopyValueButton
         value={value}
         label={copyLabel}
