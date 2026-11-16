@@ -144,10 +144,13 @@ export class OrganizationJoinRequestStorage
   /**
    * Atomically transition a pending request. The `status = 'pending'` guard
    * makes concurrent approve/deny safe — only the first decision sticks; later
-   * ones update 0 rows and return null (already decided).
+   * ones update 0 rows and return null (already decided). Scoped by
+   * `organizationId` like every other method here, so a caller that skips the
+   * `getById` ownership check can never decide another org's request.
    */
   async decide(
     id: string,
+    organizationId: string,
     status: Exclude<JoinRequestStatus, "pending">,
     decidedBy: string,
   ): Promise<OrganizationJoinRequest | null> {
@@ -161,6 +164,7 @@ export class OrganizationJoinRequestStorage
         updated_at: now,
       })
       .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
       .where("status", "=", "pending")
       .executeTakeFirst();
 

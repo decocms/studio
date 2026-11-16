@@ -100,6 +100,7 @@ export const ORGANIZATION_JOIN_REQUEST_APPROVE = defineTool({
     const actorId = getUserId(ctx);
     const decided = await ctx.storage.organizationJoinRequests.decide(
       request.id,
+      org.id,
       "approved",
       actorId ?? request.userId,
     );
@@ -167,6 +168,7 @@ export const ORGANIZATION_JOIN_REQUEST_DENY = defineTool({
     const actorId = getUserId(ctx);
     const decided = await ctx.storage.organizationJoinRequests.decide(
       request.id,
+      org.id,
       "denied",
       actorId ?? request.userId,
     );
