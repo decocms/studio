@@ -5,7 +5,7 @@ import {
   type LiveMeta,
 } from "./resolve-schema";
 import { isPageResolveType } from "./page-types";
-import { normalizePagePath } from "./page-path-utils";
+import { extractPathParams, normalizePagePath } from "./page-path-utils";
 import {
   listSavedSectionBlocks,
   underlyingSectionResolveType,
@@ -117,9 +117,10 @@ export function findPageForPath(
 }
 
 /**
- * `findPageForPath`, but `/` falls back to the first page: a site without a
- * home page (e.g. `/` redirects to `/en` or `/pt`) would otherwise open on
- * "No page found".
+ * `findPageForPath`, but `/` falls back to the page every other page sits
+ * under (a blog whose `/` redirects to `/blog`), else the first page: a site
+ * without a home page (e.g. `/` redirects to `/en` or `/pt`) would otherwise
+ * open on "No page found".
  */
 export function findPageForPathOrFirst(
   pages: PageEntry[],
@@ -128,7 +129,23 @@ export function findPageForPathOrFirst(
 ): PageEntry | null {
   const page = findPageForPath(pages, path, preferredKey);
   if (page || normalizePagePath(path) !== "/") return page;
-  return pages[0] ?? null;
+  return findRootPage(pages) ?? pages[0] ?? null;
+}
+
+function pathSegments(path: string): string[] {
+  return normalizePagePath(path).split("/").filter(Boolean);
+}
+
+/** The param-free page whose path prefixes every page's path, if any. */
+function findRootPage(pages: PageEntry[]): PageEntry | null {
+  const all = pages.map((p) => pathSegments(p.path));
+  return (
+    pages.find((page, i) => {
+      if (extractPathParams(page.path).length > 0) return false;
+      const root = all[i]!;
+      return all.every((other) => root.every((s, j) => other[j] === s));
+    }) ?? null
+  );
 }
 
 /** Canonical decofile block id for the site app (matches admin `SITE_APP_ID`). */
