@@ -17,7 +17,6 @@
  * single-shot PutObject offers when the SDK can't replay a stream.
  */
 
-import { checkAssetWrite } from "@/file-storage/asset-access";
 import { ForbiddenError } from "@/core/access-control";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Hono } from "hono";
@@ -52,7 +51,8 @@ export const createFileUploadRoutes = () => {
       throw new HTTPException(400, { message: "Organization required" });
     }
     try {
-      await checkAssetWrite(ctx.access, "browser-upload");
+      // Preserve the historical upload grant without granting bucket administration.
+      await ctx.access.check("FILE_OBJECT_UPLOAD", "FILE_CONFIG_UPDATE");
     } catch (error) {
       if (error instanceof ForbiddenError) {
         return c.json({ message: error.message }, 403);

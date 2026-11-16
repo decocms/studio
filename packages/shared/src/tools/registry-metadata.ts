@@ -1780,7 +1780,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
 // ============================================================================
 
 /**
- * A gated permission capability — a user-facing feature grouping that maps to MCP tools or resource actions.
+ * A gated permission capability — a user-facing feature grouping that maps to a set of MCP tools.
  * Used for role editing and OAuth consent screens.
  */
 export interface PermissionCapability {
@@ -1788,8 +1788,7 @@ export interface PermissionCapability {
   label: string;
   description: string;
   section: string;
-  // Resource actions authorize operations shared by HTTP routes and MCP tools.
-  tools: (ToolName | "ASSETS_MANAGE")[];
+  tools: ToolName[];
   dangerous?: boolean;
 }
 
@@ -2095,7 +2094,14 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     label: "Manage assets",
     description: "Upload and delete files in configured buckets",
     section: "Organization",
-    tools: ["ASSETS_MANAGE"],
+    tools: ["FILE_OBJECT_UPLOAD", "FILE_OBJECT_DELETE"],
+  },
+  {
+    id: "repositories:connect",
+    label: "Connect repositories",
+    description: "Connect git provider accounts and link existing repositories",
+    section: "Organization",
+    tools: ["GIT_ACCOUNT_CONNECT_TOKEN", "REPOSITORY_LINK"],
   },
   // File Configs
   {
@@ -2266,6 +2272,7 @@ const USER_ROLE_CAPABILITY_IDS: string[] = [
   "agents:manage",
   "connections:manage",
   "assets:manage",
+  "repositories:connect",
 ];
 
 /**

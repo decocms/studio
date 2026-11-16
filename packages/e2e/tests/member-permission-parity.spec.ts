@@ -155,6 +155,30 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
     );
     expect(conn.item?.id).toBeTruthy();
 
+    const connect = await memberCtx.get(
+      `/api/${owner.orgSlug}/git-providers/github/connect`,
+      { maxRedirects: 0 },
+    );
+    // A configured app redirects to GitHub; otherwise configuration is checked
+    // after authorization and returns 503. Neither case contacts GitHub here.
+    expect([302, 503]).toContain(connect.status());
+    if (connect.status() === 503) {
+      expect(await connect.text()).toContain("GitHub App is not configured");
+    }
+    const linked = await callSelfMcpTool<{ repository: { id: string } }>(
+      memberCtx,
+      owner.orgSlug,
+      "REPOSITORY_LINK",
+      { url: "https://github.com/org-example/repo-example" },
+    );
+    expect(linked.repository.id).toBeTruthy();
+    await expectDenied(memberCtx, owner.orgSlug, "REPOSITORY_DELETE", {
+      id: linked.repository.id,
+    });
+    await expectDenied(memberCtx, owner.orgSlug, "GIT_ACCOUNT_DELETE", {
+      id: "account_example",
+    });
+
     const configs = await callSelfMcpTool<{ configs: unknown[] }>(
       memberCtx,
       owner.orgSlug,
@@ -183,11 +207,7 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
     await memberCtx.dispose();
   });
 
-  for (const grant of [
-    "ASSETS_MANAGE",
-    "FILE_CONFIG_UPDATE",
-    "FILE_OBJECT_UPLOAD",
-  ]) {
+  for (const grant of ["FILE_CONFIG_UPDATE", "FILE_OBJECT_UPLOAD"]) {
     test(`custom ${grant} grant allows browser uploads`, async ({
       playwright,
     }) => {
@@ -235,12 +255,10 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
         );
         expect(upload.status()).toBe(400);
         expect(await upload.text()).toContain("Missing `filename`");
-        if (grant !== "ASSETS_MANAGE") {
-          await expectDenied(memberCtx, owner.orgSlug, "FILE_OBJECT_DELETE", {
-            configId: "config_example",
-            key: "image.png",
-          });
-        }
+        await expectDenied(memberCtx, owner.orgSlug, "FILE_OBJECT_DELETE", {
+          configId: "config_example",
+          key: "image.png",
+        });
         if (grant === "FILE_CONFIG_UPDATE") {
           await expectDenied(memberCtx, owner.orgSlug, "FILE_OBJECT_UPLOAD", {
             configId: "config_example",
@@ -411,6 +429,9 @@ test.describe("member permission parity (in-memory built-in role resolution)", (
       {},
     );
     expect(stats).toBeDefined();
+    await expectDenied(memberCtx, owner.orgSlug, "REPOSITORY_LINK", {
+      url: "https://github.com/org-example/repo-example",
+    });
 
     const upload = await memberCtx.post(
       `/api/${owner.orgSlug}/file-configs/config_example/upload`,
