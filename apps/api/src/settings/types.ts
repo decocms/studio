@@ -177,6 +177,12 @@ export interface Settings {
   /** MCP read/list caching. On by default in production, off in development;
    *  MCP_CACHE_ENABLED explicitly overrides either default. */
   mcpCacheEnabled: boolean;
+  /** Rewrite outbound MCP URLs to in-cluster addresses, keyed by public
+   *  hostname (MCP_INTERNAL_HOST_MAP, `host=origin` CSV). Lets calls to an
+   *  own-cluster MCP addressed by its `*.deco.site` host (e.g. the 700-tool
+   *  VTEX MCP) stay internal instead of egressing through the public ingress.
+   *  Empty = off. See mcp-clients/outbound/internalize-url.ts. */
+  mcpInternalHostMap: Record<string, string>;
   /** JSON array of public skill-set sources overlaid on the built-in
    *  defaults (see file-storage/public-sets.ts). */
   orgFsPublicSetsJson: string | undefined;
