@@ -102,6 +102,20 @@ class ProbeBreaker {
   }
 }
 
+/**
+ * Whether a Kubernetes claim that never becomes ready should move to Freestyle
+ * instead of being recreated in place. A recreate repeats whatever kept the
+ * first pod from starting (an eviction for disk, a pod that never schedules),
+ * so it only makes sense where Kubernetes was asked for: an explicit request,
+ * a non-default image, or a Freestyle outage keep it.
+ */
+function movesWhenStuck(placed: Placement): boolean {
+  return (
+    placed.kind === "kubernetes" &&
+    (placed.reason === "existing" || placed.reason === "split")
+  );
+}
+
 /** Errors the other provider would repeat, or that already have a retry path (the 401 re-auth). */
 function repeatsElsewhere(err: unknown): boolean {
   return err instanceof ConfigRequestError;
@@ -239,12 +253,18 @@ export class SandboxProviderRouter implements SandboxProvider {
   ): Promise<Sandbox> {
     const { provider: _requested, ...rest } = opts;
     const placed = await this.place(handle, opts);
+    console.log(
+      `[SandboxProviderRouter] place ${handle} on ${placed.kind} (${placed.reason ?? "sole"})`,
+    );
     this.remember(handle, placed.kind);
     // A new sandbox on the stray's provider replaces it; stop deleting it.
     if (this.strays.get(handle) === placed.kind) this.strays.delete(handle);
     let failure: unknown;
     try {
-      const sandbox = await this.get(placed.kind).ensure(id, rest);
+      const sandbox = await this.get(placed.kind).ensure(
+        id,
+        movesWhenStuck(placed) ? { ...rest, onStuckClaim: "fail" } : rest,
+      );
       return placed.reason
         ? { ...sandbox, placement: { reason: placed.reason } }
         : sandbox;
@@ -274,6 +294,9 @@ export class SandboxProviderRouter implements SandboxProvider {
       this.picked.delete(handle);
       throw tagSandboxProvider(err, fallback);
     }
+    console.log(
+      `[SandboxProviderRouter] place ${handle} on ${fallback} (fallback from ${placed.kind})`,
+    );
     // A resumed sandbox moved and the new one cloned the same branch. One
     // owner per handle; a Freestyle VM whose sync fails is detached, not deleted.
     if (placed.reason === "existing") this.retire(placed.kind, handle);
