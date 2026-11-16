@@ -68,7 +68,7 @@ export function useImageUpload({
     siteSlug,
     explicitConfigId,
   );
-  const lockedConfigId = explicitConfigId ?? lockedConfig?.id ?? null;
+  const lockedConfigId = lockedConfig?.id ?? null;
 
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
