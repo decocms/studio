@@ -18,6 +18,16 @@ const showToolbar = (component: MountResult) =>
 const PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
+// Keep image controls visible without relying on an external image host.
+test.beforeEach(async ({ page }) => {
+  await page.route("https://x.test/**", (route) =>
+    route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(PNG.split(",")[1]!, "base64"),
+    }),
+  );
+});
+
 test("a cover gets no width or priority buttons", async ({ mount }) => {
   const component = await mount(
     <ResponsiveImageHarness initial={{ image: PNG }} />,

@@ -177,6 +177,7 @@ function useCapabilities(): Capability[] {
     matchSiteSlugConfig(
       fileConfigs.data?.configs ?? [],
       resolveAgentSiteSlug(project),
+      project.metadata?.assetStorageConfigId,
     ),
   );
 

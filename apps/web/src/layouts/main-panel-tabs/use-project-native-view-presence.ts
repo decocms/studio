@@ -44,7 +44,11 @@ export function useProjectNativeViewPresence(
   const ownsSite = siteAccess.data?.owned === true;
   return {
     presence: {
-      assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
+      assets: !!matchSiteSlugConfig(
+        fileConfigs.data?.configs ?? [],
+        siteSlug,
+        project?.metadata?.assetStorageConfigId,
+      ),
       releases: v8 && !!project?.metadata?.siteSlug,
       hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
@@ -55,7 +59,9 @@ export function useProjectNativeViewPresence(
       experiments: v8,
       blog: blogView === true,
     },
-    assetsPending: !!siteSlug && fileConfigs.isPending,
+    assetsPending:
+      !!(siteSlug || project?.metadata?.assetStorageConfigId) &&
+      fileConfigs.isPending,
     // A disabled TanStack query is still pending; it is only unresolved when a
     // probe can actually run.
     siteAccessPending: siteAccessProbeEnabled && siteAccess.isPending,

@@ -64,7 +64,11 @@ import {
 export function AssetsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const entity = useVirtualMCP(virtualMcpId);
   const configs = useFileConfigs();
-  const config = matchSiteSlugConfig(configs, resolveAgentSiteSlug(entity));
+  const config = matchSiteSlugConfig(
+    configs,
+    resolveAgentSiteSlug(entity),
+    entity?.metadata?.assetStorageConfigId,
+  );
 
   if (!config) {
     return <NoBucketState />;

@@ -117,6 +117,7 @@ function PickerBody({
   onSelect: (url: string) => void;
 }) {
   const configs = useFileConfigs();
+  const t = useT();
 
   if (configs.length === 0) {
     return <NoConfigsEmpty />;
@@ -127,6 +128,11 @@ function PickerBody({
     if (locked) {
       return <BucketPanel config={locked} mode={mode} onSelect={onSelect} />;
     }
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        {t("virtualMcp.settings.assetStorage.missing")}
+      </p>
+    );
   }
 
   if (configs.length === 1) {

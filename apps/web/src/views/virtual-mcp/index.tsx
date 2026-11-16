@@ -69,6 +69,7 @@ import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ConnectionItem, ConnectionItemSkeleton } from "./connection-item";
 import { ProjectViewsSection } from "./settings/views-section";
 import { useProjectViews } from "./settings/use-project-views";
+import { AssetStorageSettings } from "./settings/asset-storage-settings";
 import { ProjectIdentity } from "./settings/project-identity";
 import { ProjectSettingsTabs } from "./settings/settings-tabs";
 import {
@@ -1010,7 +1011,10 @@ function VirtualMcpDetailViewWithData({
                 pair rather than the tighter rhythm inside the identity block. */}
               {section === "views" && <ProjectViewsSection views={views} />}
               {showGeneral && (
-                <ProjectIdentity form={form} onCommit={flushAndSave} />
+                <>
+                  <ProjectIdentity form={form} onCommit={flushAndSave} />
+                  <AssetStorageSettings form={form} onCommit={flushAndSave} />
+                </>
               )}
               {section === "connections" && (
                 <section className="flex flex-col gap-3">

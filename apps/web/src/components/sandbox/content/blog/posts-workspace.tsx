@@ -432,6 +432,7 @@ export function PostsWorkspace({
           </DropdownMenu>
           {canGenerate && (
             <GeneratePostDialog
+              virtualMcpId={virtualMcpId}
               open={generateOpen}
               onOpenChange={setGenerateOpen}
               decofile={decofile}

@@ -1,3 +1,7 @@
+import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { useFileConfigsQuery } from "@/hooks/use-file-configs";
+import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { useRef, useState } from "react";
 import { CodeSquare01, Image01, ImagePlus } from "@untitledui/icons";
 import type { Editor } from "@tiptap/core";
@@ -60,7 +64,21 @@ const PLACEHOLDER_CLASS = [
 ];
 
 /** Insert an image from the library (or an upload), or from a pasted address. */
-function ImageControls({ editor }: { editor: Editor }) {
+function ImageControls({
+  editor,
+  virtualMcpId,
+}: {
+  editor: Editor;
+  virtualMcpId?: string;
+}) {
+  const project = useVirtualMCP(virtualMcpId);
+  const configs = useFileConfigsQuery();
+  const lockedConfigId =
+    project?.metadata?.assetStorageConfigId ??
+    matchSiteSlugConfig(
+      configs.data?.configs ?? [],
+      resolveAgentSiteSlug(project),
+    )?.id;
   const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState<string | null>(null);
@@ -126,6 +144,7 @@ function ImageControls({ editor }: { editor: Editor }) {
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         mode="image"
+        lockedConfigId={lockedConfigId}
         onSelect={(url) => {
           const src = bodyImageSrc(url);
           if (src) insert(src);
@@ -136,7 +155,13 @@ function ImageControls({ editor }: { editor: Editor }) {
 }
 
 /** The controls only the HTML body offers: highlight, code block and images. */
-function LegacyToolbarExtras({ editor }: { editor: Editor }) {
+function LegacyToolbarExtras({
+  editor,
+  virtualMcpId,
+}: {
+  editor: Editor;
+  virtualMcpId?: string;
+}) {
   const t = useT();
   const [highlightOpen, setHighlightOpen] = useState(false);
   const state = useEditorState({
@@ -166,7 +191,7 @@ function LegacyToolbarExtras({ editor }: { editor: Editor }) {
       >
         <CodeSquare01 size={14} />
       </ToolbarButton>
-      <ImageControls editor={editor} />
+      <ImageControls editor={editor} virtualMcpId={virtualMcpId} />
     </>
   );
 }
@@ -223,7 +248,12 @@ export function LegacyContentEditor({
         editor={editor}
         fontSize={PT_FONT_SIZE}
         linkSources={linkSources}
-        extras={<LegacyToolbarExtras editor={editor} />}
+        extras={
+          <LegacyToolbarExtras
+            editor={editor}
+            virtualMcpId={sandboxRef?.virtualMcpId}
+          />
+        }
       />
       {/* Scrolls on its own so the toolbar stays in reach in a long post. */}
       <EditorContent
