@@ -10,10 +10,6 @@ import {
   writeRepositoryMetadata,
 } from "./repository-metadata";
 import {
-  buildAuthorizationHeaderValue,
-  sanitizeCustomHeaders,
-} from "../mcp-clients/outbound/headers";
-import {
   type Insertable,
   type Kysely,
   type RawBuilder,
@@ -34,10 +30,6 @@ import type {
 } from "../tools/connection/schema";
 import { isStdioParameters } from "../tools/connection/schema";
 import type { PublicConnectionEntity } from "../tools/connection/public-connection";
-import {
-  createNoRedirectFetch,
-  guardAgainstPrivateUrl,
-} from "../mcp-clients/url-security";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,
@@ -614,89 +606,6 @@ export class ConnectionStorage implements ConnectionStoragePort {
 
   async delete(id: string): Promise<void> {
     await this.db.deleteFrom("connections").where("id", "=", id).execute();
-  }
-
-  async testConnection(
-    id: string,
-    headers?: Record<string, string>,
-  ): Promise<{ healthy: boolean; latencyMs: number }> {
-    const connection = await this.findById(id);
-    if (!connection) {
-      throw new Error("Connection not found");
-    }
-
-    const startTime = Date.now();
-
-    // STDIO connections can't be tested via HTTP
-    if (connection.connection_type === "STDIO") {
-      // For STDIO, we'd need to spawn the process - skip for now
-      return {
-        healthy: true, // Assume healthy, actual health checked on first use
-        latencyMs: Date.now() - startTime,
-      };
-    }
-
-    if (!connection.connection_url) {
-      return {
-        healthy: false,
-        latencyMs: Date.now() - startTime,
-      };
-    }
-
-    try {
-      // connection_url is user-supplied — a plain `fetch` here would let a
-      // URL that resolves privately (or 302s to one) reach an internal/
-      // metadata address on every test call, even if the address was safe at
-      // create/update time. Reuse the same SSRF guard the fetch-tools path
-      // applies, plus a no-redirect fetch to close the redirect-based bypass.
-      const guardError = await guardAgainstPrivateUrl(
-        connection.connection_url,
-      );
-      if (guardError) {
-        return {
-          healthy: false,
-          latencyMs: Date.now() - startTime,
-        };
-      }
-
-      const httpParams = connection.connection_headers as {
-        headers?: Record<string, string>;
-      } | null;
-
-      // Bound the probe — a hanging remote server shouldn't hang this call.
-      const response = await createNoRedirectFetch()(
-        connection.connection_url,
-        {
-          method: "POST",
-          signal: AbortSignal.timeout(10_000),
-          headers: {
-            "Content-Type": "application/json",
-            ...(connection.connection_token && {
-              Authorization: buildAuthorizationHeaderValue(
-                connection.connection_token,
-              ),
-            }),
-            ...sanitizeCustomHeaders(httpParams?.headers),
-            ...headers,
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "ping",
-            id: 1,
-          }),
-        },
-      );
-
-      return {
-        healthy: response.ok || response.status === 404,
-        latencyMs: Date.now() - startTime,
-      };
-    } catch {
-      return {
-        healthy: false,
-        latencyMs: Date.now() - startTime,
-      };
-    }
   }
 
   /**

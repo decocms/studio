@@ -1480,9 +1480,22 @@ describe("Connection Tools", () => {
       );
 
       expect(result.id).toBe(created.item.id);
-      expect(result).toHaveProperty("healthy");
-      expect(result).toHaveProperty("latencyMs");
+      expect(result.healthy).toBe(false);
       expect(typeof result.latencyMs).toBe("number");
+    });
+
+    it("should not connect to a private-network URL", async () => {
+      const created = await ctx.storage.connections.create({
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Private target",
+        connection_type: "HTTP",
+        connection_url: "http://169.254.169.254/latest/meta-data/",
+      });
+
+      const result = await CONNECTION_TEST.execute({ id: created.id }, ctx);
+
+      expect(result).toMatchObject({ healthy: false, reason: "blocked_url" });
     });
 
     it("should throw when connection not found", async () => {
