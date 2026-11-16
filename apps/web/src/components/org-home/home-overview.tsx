@@ -332,6 +332,7 @@ export function ForYou({
                 className="group flex h-10 items-center gap-3 rounded-lg px-2 transition-colors hover:bg-accent"
               >
                 <span
+                  aria-hidden="true"
                   className={cn(
                     "flex size-4 shrink-0 items-center justify-center",
                     config?.tone,
@@ -350,7 +351,9 @@ export function ForYou({
                 </span>
                 <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-muted-foreground">
                   {item.kind !== "mention" && item.mention && (
-                    <MentionAvatar mention={item.mention} />
+                    <span aria-hidden="true">
+                      <MentionAvatar mention={item.mention} />
+                    </span>
                   )}
                   <span className="truncate">{reason}</span>
                 </span>
