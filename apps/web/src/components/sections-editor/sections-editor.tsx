@@ -41,6 +41,7 @@ import {
 } from "./use-save-block";
 import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { AddSectionButton, SectionList, parseSections } from "./section-list";
+import { newSectionIndex } from "./parse-sections";
 import { isLazyResolveType } from "./section-lazy";
 import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { protocolBlockVersion } from "@/cms/content-protocol-api";
@@ -2244,11 +2245,12 @@ export function SectionsEditor({
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
+    const newIndex = newSectionIndex(parsedSections);
     const updatedSections = [
-      ...rawSections,
+      ...rawSections.slice(0, newIndex),
       { __resolveType: entry.resolveType } as RawSection,
+      ...rawSections.slice(newIndex),
     ];
-    const newIndex = updatedSections.length - 1;
 
     // The save updates the decofile cache optimistically; no need to await it.
     savePageSections(updatedSections, {

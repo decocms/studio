@@ -316,6 +316,11 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       toast.success(
         t("thread.headerActions.syncedWithBase", { base: target.base }),
       );
+      const contentKey = KEYS.decofile(
+        `${org.slug}/${virtualMcpId}/${target.branch}`,
+      );
+      // A first read still in flight holds the old head, and an invalidation would join it instead of reading again.
+      await queryClient.cancelQueries({ queryKey: contentKey });
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: sandboxGitStatusQueryKey({
@@ -325,11 +330,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
             threadId: taskId ?? null,
           }),
         }),
-        queryClient.invalidateQueries({
-          queryKey: KEYS.decofile(
-            `${org.slug}/${virtualMcpId}/${target.branch}`,
-          ),
-        }),
+        queryClient.invalidateQueries({ queryKey: contentKey }),
       ]);
     },
     onError: (err: unknown) => {
