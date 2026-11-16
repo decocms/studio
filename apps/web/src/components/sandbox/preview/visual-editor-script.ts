@@ -64,11 +64,15 @@ export const VISUAL_EDITOR_SCRIPT = `(function() {
       if (el === lastTarget) return;
       lastTarget = el;
       var r = el.getBoundingClientRect();
+      // A CSS zoom on <body> scales the overlay's lengths again; the rect is already zoomed.
+      var z = document.body.currentCSSZoom || 1;
+      var top = r.top / z;
+      var left = r.left / z;
       highlight.style.display = "block";
-      highlight.style.top = r.top + "px";
-      highlight.style.left = r.left + "px";
-      highlight.style.width = r.width + "px";
-      highlight.style.height = r.height + "px";
+      highlight.style.top = top + "px";
+      highlight.style.left = left + "px";
+      highlight.style.width = r.width / z + "px";
+      highlight.style.height = r.height / z + "px";
       var tag = el.tagName.toLowerCase();
       var id = el.id ? "#" + el.id : "";
       var cls = el.className && typeof el.className === "string"
@@ -76,8 +80,8 @@ export const VISUAL_EDITOR_SCRIPT = `(function() {
         : "";
       badge.textContent = tag + id + cls;
       badge.style.display = "block";
-      badge.style.top = Math.max(0, r.top - 20) + "px";
-      badge.style.left = r.left + "px";
+      badge.style.top = Math.max(0, top - 20) + "px";
+      badge.style.left = left + "px";
     });
   };
   document.addEventListener("mousemove", moveHandler, true);

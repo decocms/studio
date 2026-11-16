@@ -188,13 +188,15 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   // natively — no per-frame JS repositioning, no scroll lag.
   var positionHighlight = function(section) {
     var r = section.getBoundingClientRect();
-    var top = r.top + window.scrollY;
-    var left = r.left + window.scrollX;
+    // A CSS zoom on <body> scales the overlay's lengths again; the rect is already zoomed.
+    var z = document.body.currentCSSZoom || 1;
+    var top = (r.top + window.scrollY) / z;
+    var left = (r.left + window.scrollX) / z;
     highlight.style.display = "block";
     highlight.style.top = top + "px";
     highlight.style.left = left + "px";
-    highlight.style.width = r.width + "px";
-    highlight.style.height = r.height + "px";
+    highlight.style.width = r.width / z + "px";
+    highlight.style.height = r.height / z + "px";
     badge.textContent = lastLabel || displayKey(section);
     badge.style.display = "block";
     badge.style.top = Math.max(0, top - 20) + "px";
