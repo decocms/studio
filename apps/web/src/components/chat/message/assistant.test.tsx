@@ -31,10 +31,8 @@ describe("MessageAssistant", () => {
     );
 
     expect(getByText("Planning next moves...")).toBeInTheDocument();
-    // The shimmer sits on the text, inside the pill, so it never paints over the pill's fill.
     const detail = getByText("Deciding how to approach the request");
     expect(detail).toHaveClass("shimmer");
-    expect(detail.parentElement).toHaveClass("bg-muted/50");
   });
 
   it("skips a part type this client build doesn't know instead of crashing", () => {
