@@ -111,6 +111,8 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
       rawMetadata.assetStorageConfigId !==
         existing.metadata?.assetStorageConfigId
     ) {
+      // Assert the selected storage belongs to this organization; findById throws
+      // for missing or foreign configurations. Its metadata is not needed here.
       await ctx.storage.orgFileConfigs.findById(
         rawMetadata.assetStorageConfigId,
         organization.id,
