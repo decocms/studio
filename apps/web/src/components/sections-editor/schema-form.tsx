@@ -13,6 +13,7 @@ import { EnumField } from "./fields/enum-field";
 import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import { inlineDataBlockRefSchema } from "./block-ref-field-utils";
 import {
   fitsNamedRuleBlock,
   NamedRuleBlockFieldGate,
@@ -340,6 +341,12 @@ function renderFieldBody(fieldProps: FieldProps): ReactNode {
           multivariateResolveType={ref.resolveType}
           renderInnerField={innerRenderer}
         />
+      );
+    }
+    const inlineData = inlineDataBlockRefSchema(schema, value);
+    if (inlineData) {
+      return (
+        <InlineUnionField key={props.path} {...props} schema={inlineData} />
       );
     }
     // For now render as object if we have properties, otherwise skip

@@ -314,3 +314,43 @@ export function blockRefLoaderConfigHasData(
   }
   return Object.keys(obj).some((k) => !k.startsWith("__") && k !== "@type");
 }
+
+/**
+ * A `T | Loader<T>` field whose stored value is an inline `T` (no
+ * `__resolveType`), as an inline union: `T`'s form beside the loader options,
+ * whose `{ __resolveType }` value renders through `loaderRef`. The loader
+ * picker alone has no branch for `T`, so such a value could not be edited.
+ */
+export function inlineDataBlockRefSchema(
+  schema: SchemaProperty,
+  value: unknown,
+): SchemaProperty | null {
+  const data = schema.plainSchema;
+  if (
+    schema.type !== "block-ref" ||
+    schema.discriminatorKey ||
+    data?.type !== "object" ||
+    !data.properties ||
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return null;
+  }
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.__resolveType === "string") return null;
+  const dataKeys = data.properties;
+  if (!Object.keys(obj).some((key) => key in dataKeys)) return null;
+  const { plainSchema: _, ...loaderRef } = schema;
+  // deco titles a type's def with its module URL (`file:///…/ProductCard.tsx@Layout`).
+  const title = data.title?.includes("://")
+    ? (data.title.match(/@([A-Za-z_$][\w$]*)$/)?.[1] ?? "")
+    : (data.title ?? "");
+  return {
+    type: "inline-union",
+    title: schema.title,
+    description: schema.description,
+    inlineUnionBranches: [{ title, schema: data }],
+    loaderRef,
+  };
+}
