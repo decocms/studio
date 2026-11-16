@@ -146,7 +146,11 @@ test.describe("deck preview tab", () => {
     // later iframe crossing cannot steal the release event.
     await page.mouse.move(resizeX + 4, resizeY);
     await expect(mainResizablePanel).toHaveCSS("pointer-events", "none");
-    await page.mouse.move(iframeBox.x + 40, resizeY, { steps: 10 });
+    // Release just inside the iframe, beside the divider, so the page keeps
+    // its width.
+    await page.mouse.move(iframeBox.x + iframeBox.width - 40, resizeY, {
+      steps: 10,
+    });
     await page.mouse.up();
     await expect(mainResizablePanel).toHaveCSS("pointer-events", "auto");
 
