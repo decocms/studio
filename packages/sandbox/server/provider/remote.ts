@@ -552,7 +552,16 @@ export class RemoteSandboxProvider implements SandboxProvider {
             ? fresh
             : null;
         },
-        unreachable: () => this.daemonFor(handle, { refresh: true, signal }),
+        unreachable: async (err) => {
+          const fresh = await this.daemonFor(handle, { refresh: true, signal });
+          if (!fresh || fresh.url !== daemon.url) return fresh;
+          // Dialing the same dead address again only doubles the wait. The
+          // host still maps the handle there; say so, since that is the fault.
+          console.warn(
+            `[${LOG_LABEL}] ${handle}: host re-read returned the unreachable daemon ${fresh.url} (${errMsg(err)})`,
+          );
+          return null;
+        },
       }),
     );
   }

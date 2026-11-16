@@ -1,4 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import { once } from "node:events";
+import { type AddressInfo, createServer } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { z } from "zod";
@@ -34,6 +36,9 @@ const REPO = { connectionId: "c1", repo: "acme/site" };
 const CLONE = "https://x-access-token:ghs_1@github.com/acme/site.git";
 /** MCP requests the host turns away with 503, as a leaderless follower does. */
 let mcpUnavailable = 0;
+/** What the host answers as the sandbox's daemon. Port 1 refuses connections. */
+const DEAD_DAEMON = "http://127.0.0.1:1";
+let daemonUrl = DEAD_DAEMON;
 /** Replaces the watch route when set. */
 let watchRoute: ((req: Request) => Response) | null = null;
 const phases: ClaimPhase[] = [
@@ -56,7 +61,10 @@ const fake = {
       provider: "kubernetes",
     };
   },
-  daemonEndpoint: async () => ({ url: "http://127.0.0.1:1", token: "d-tok" }),
+  daemonEndpoint: async () => {
+    calls.push("daemonEndpoint");
+    return { url: daemonUrl, token: "d-tok" };
+  },
   delete: async () => void calls.push("delete"),
   alive: async () => {
     calls.push("alive");
@@ -166,6 +174,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  daemonUrl = DEAD_DAEMON;
   watchRoute = null;
   ensureWaitMs = 0;
   ensureFails = null;
@@ -502,5 +511,54 @@ describe("RemoteSandboxProvider against the host tools", () => {
       seen.push(phase);
     }
     expect(seen).toEqual([{ kind: "ready" }]);
+  });
+});
+
+describe("RemoteSandboxProvider daemon traffic", () => {
+  const post = () => ({
+    method: "POST",
+    headers: new Headers(),
+    body: "{}",
+  });
+
+  it("re-reads a refused daemon and retries against the address the host moved it to", async () => {
+    const live = Bun.serve({ port: 0, fetch: () => new Response("moved") });
+    try {
+      await provider.ensure(ID);
+      daemonUrl = `http://127.0.0.1:${live.port}`;
+      const resp = await provider.proxyDaemonRequest(HANDLE, "/x", post());
+      expect(resp.status).toBe(200);
+      expect(await resp.text()).toBe("moved");
+    } finally {
+      live.stop(true);
+    }
+  });
+
+  it("does not dial the same dead address again when the host repeats it", async () => {
+    let dials = 0;
+    const broken = createServer((socket) => {
+      dials++;
+      socket.on("data", () => socket.destroy());
+    }).listen(0);
+    try {
+      await once(broken, "listening");
+      const { port } = broken.address() as AddressInfo;
+      daemonUrl = `http://127.0.0.1:${port}`;
+      await provider.ensure(ID);
+      calls.length = 0;
+      const err = await provider
+        .proxyDaemonRequest(HANDLE, "/x", {
+          method: "GET",
+          headers: new Headers(),
+          body: null,
+        })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      // A GET may be resent, but the re-read answered the same address.
+      expect(calls.filter((c) => c === "daemonEndpoint")).toHaveLength(1);
+      expect(dials).toBe(1);
+    } finally {
+      broken.close();
+    }
   });
 });
