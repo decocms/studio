@@ -1,5 +1,5 @@
 export const virtualMcp = {
-  "virtualMcp.settings.assetStorage.label": "Asset storage",
+  "virtualMcp.settings.assetStorage.label": "CMS Asset Storage",
   "virtualMcp.settings.assetStorage.description":
     "Choose where this project browses and uploads images and files. Existing content URLs stay unchanged.",
   "virtualMcp.settings.assetStorage.automatic": "Automatic (match the site)",

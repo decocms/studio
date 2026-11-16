@@ -47,7 +47,7 @@ test("project asset storage persists, reports deletion, and can return to automa
   };
   await page.goto(`/${orgSlug}/projects/${item.id}/settings`);
   const select = page.getByRole("combobox", {
-    name: "Asset storage",
+    name: "CMS Asset Storage",
     exact: true,
   });
   await expect(select).toBeEnabled({ timeout: 60_000 });
