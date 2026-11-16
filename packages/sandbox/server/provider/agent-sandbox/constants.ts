@@ -36,6 +36,18 @@ export class SandboxTimeoutError extends SandboxError {
 }
 
 /**
+ * A claim left starting never became ready and was deleted instead of
+ * recreated, because the caller (`onStuckClaim: "fail"`) can run the sandbox
+ * elsewhere.
+ */
+export class SandboxClaimStuckError extends SandboxError {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause);
+    this.name = "SandboxClaimStuckError";
+  }
+}
+
+/**
  * Surfaced when the API server rejects a SandboxClaim create with 409
  * AlreadyExists — typically because the operator's idle-TTL deletion of a
  * prior claim is still draining finalizers when studio tries to recreate.

@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { sleep } from "@decocms/shared/std";
 import { FreestyleApiError } from "freestyle";
 import { ConfigRequestError } from "../daemon-client";
 import type { SandboxProvider } from "./agent-sandbox";
+import { SandboxClaimStuckError } from "./agent-sandbox/constants";
 import {
   handleShare,
   type OwningSandboxProvider,
@@ -35,10 +36,13 @@ function fake(
   } = {},
 ) {
   const calls: string[] = [];
+  const ensureOpts: EnsureOptions[] = [];
   const provider = {
     calls,
-    ensure: async () => {
+    ensureOpts,
+    ensure: async (_id: unknown, opts: EnsureOptions = {}) => {
       calls.push("ensure");
+      ensureOpts.push(opts);
       if (state.ensureError) throw state.ensureError;
       return {
         handle: HANDLE,
@@ -70,7 +74,10 @@ function fake(
     getPreviewUrl: async () => kind,
     close: () => {},
   };
-  return provider as unknown as OwningSandboxProvider & { calls: string[] };
+  return provider as unknown as OwningSandboxProvider & {
+    calls: string[];
+    ensureOpts: EnsureOptions[];
+  };
 }
 
 describe("SandboxProviderRouter", () => {
@@ -343,6 +350,91 @@ describe("SandboxProviderRouter", () => {
       reason: "existing",
     });
     expect(kubernetes.calls).toContain("delete");
+  });
+
+  test("an existing Kubernetes claim that never becomes ready moves to Freestyle", async () => {
+    // The provider deletes the stuck claim and fails instead of recreating it
+    // on Kubernetes, where it would get stuck the same way.
+    const kubernetes = fake("k8s", {
+      alive: true,
+      ensureError: new SandboxClaimStuckError(
+        `claim ${HANDLE} never became ready`,
+      ),
+    });
+    const freestyle = fake("fs");
+    const router = new SandboxProviderRouter(
+      { kubernetes, freestyle },
+      { freestyleShare: 1 },
+    );
+    const sb = await router.ensure(ID, {});
+    expect(kubernetes.ensureOpts[0]?.onStuckClaim).toBe("fail");
+    expect(sb.provider).toBe("freestyle");
+    expect(sb.placement).toEqual({
+      reason: "fallback",
+      fallbackFrom: "kubernetes",
+    });
+    // Freestyle builds its own sandbox; the hint is for Kubernetes only.
+    expect(freestyle.ensureOpts[0]?.onStuckClaim).toBeUndefined();
+    await sleep(0);
+    expect(kubernetes.calls).toContain("delete");
+  });
+
+  test("a claim placed by the split moves too; a requested or Android one is recreated", async () => {
+    const share = handleShare(HANDLE);
+    const split = fake("k8s");
+    await new SandboxProviderRouter(
+      { kubernetes: split, freestyle: fake("fs") },
+      { freestyleShare: Math.max(0, share - 0.01) },
+    ).ensure(ID, {});
+    expect(split.ensureOpts[0]?.onStuckClaim).toBe("fail");
+
+    const requested = fake("k8s");
+    await new SandboxProviderRouter({
+      kubernetes: requested,
+      freestyle: fake("fs"),
+    }).ensure(ID, { provider: "kubernetes" });
+    expect(requested.ensureOpts[0]?.onStuckClaim).toBeUndefined();
+
+    const android = fake("k8s", { alive: true });
+    await new SandboxProviderRouter({
+      kubernetes: android,
+      freestyle: fake("fs"),
+    }).ensure(ID, { sandboxImage: "android" });
+    expect(android.ensureOpts[0]?.onStuckClaim).toBeUndefined();
+
+    const alone = fake("k8s", { alive: true });
+    await new SandboxProviderRouter({ kubernetes: alone }).ensure(ID, {});
+    expect(alone.ensureOpts[0]?.onStuckClaim).toBeUndefined();
+  });
+
+  test("logs each placement with its handle and reason", async () => {
+    const lines: string[] = [];
+    const log = spyOn(console, "log").mockImplementation((...args) => {
+      lines.push(args.join(" "));
+    });
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const router = new SandboxProviderRouter(
+        {
+          kubernetes: fake("k8s", {
+            alive: true,
+            ensureError: new SandboxClaimStuckError("stuck"),
+          }),
+          freestyle: fake("fs"),
+        },
+        { freestyleShare: 1 },
+      );
+      await router.ensure(ID, {});
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+    }
+    expect(lines).toContain(
+      `[SandboxProviderRouter] place ${HANDLE} on kubernetes (existing)`,
+    );
+    expect(lines).toContain(
+      `[SandboxProviderRouter] place ${HANDLE} on freestyle (fallback from kubernetes)`,
+    );
   });
 
   test("two ensures for one handle land on one provider", async () => {

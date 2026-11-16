@@ -92,6 +92,7 @@ import {
 import {
   K8S_CONSTANTS,
   SandboxAlreadyExistsError,
+  SandboxClaimStuckError,
   SandboxError,
 } from "./constants";
 import {
@@ -1108,10 +1109,12 @@ export class AgentSandboxProvider {
         // releases the lock with it. Deleting it would restart the node launch
         // and image pull elsewhere, so finish binding it. `bind` deletes it if
         // it turns out to be stuck, and it is provisioned fresh below.
+        let joinError: unknown;
         const joined = await this.join(id, handle, opts, existing).catch(
           (err) => {
+            joinError = err;
             console.warn(
-              `[${LOG_LABEL}] join of starting claim ${handle} failed, recreating: ${err instanceof Error ? err.message : String(err)}`,
+              `[${LOG_LABEL}] join of starting claim ${handle} failed, ${opts.onStuckClaim === "fail" ? "deleting" : "recreating"}: ${err instanceof Error ? err.message : String(err)}`,
             );
             return null;
           },
@@ -1137,6 +1140,12 @@ export class AgentSandboxProvider {
             `[${LOG_LABEL}] wait for deleted claim ${handle} failed: ${err instanceof Error ? err.message : String(err)}`,
           );
         });
+        if (opts.onStuckClaim === "fail") {
+          throw new SandboxClaimStuckError(
+            `claim ${handle} never became ready`,
+            joinError,
+          );
+        }
       } else {
         const adopted = await this.adopt(id, handle, existing).catch((err) => {
           console.warn(
