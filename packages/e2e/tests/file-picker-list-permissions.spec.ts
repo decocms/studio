@@ -81,9 +81,9 @@ test("listing denial leaves uploads available and other S3 failures remain error
       );
     const result = await upload();
     expect(result.ok(), await result.text()).toBe(true);
-    expect((await result.json()).publicUrl).toMatch(
-      /^https:\/\/cdn.example.com\/incoming\/example\/.+notes.txt$/,
-    );
+    const uploadedUrl = new URL((await result.json()).publicUrl);
+    expect(uploadedUrl.origin).toBe("https://cdn.example.com");
+    expect(uploadedUrl.pathname).toMatch(/^\/incoming\/example\/.+notes\.txt$/);
     expect(uploaded).toEqual([payload]);
 
     const { item } = await callSelfMcpTool<{ item: { id: string } }>(
