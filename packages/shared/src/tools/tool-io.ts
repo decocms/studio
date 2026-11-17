@@ -7838,6 +7838,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };
@@ -7849,6 +7850,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };
@@ -7860,6 +7862,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };
@@ -7871,6 +7874,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };

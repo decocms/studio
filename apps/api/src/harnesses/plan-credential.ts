@@ -19,9 +19,10 @@ const planTokens = (ctx: StudioContext, providerId: string) =>
 /**
  * The plan a sandbox run bills, or null for the org's model key.
  *
- * A plan shared with the org (only Copilot can be shared today) outranks the
- * dispatcher's own: the org turned sharing on so its runs would use it.
- * ponytail: shares are tried oldest first; a pool would pick among them here.
+ * The dispatcher's own plans come first, so a member who linked a plan bills
+ * their own seat. A plan another member shared with the org (only Copilot can
+ * be shared today) covers members who linked none, oldest share first. Every
+ * shareable provider follows the same order.
  *
  * A token that is gone, expired, or fails to decrypt (a rotated key) is
  * skipped rather than failing the dispatch.
@@ -53,12 +54,14 @@ export async function resolvePlanCredential(
     userId: string;
     sharedBy?: PlanCredential["sharedBy"];
   }> = [
-    ...shared.map((plan) => ({
-      providerId: plan.providerId,
-      userId: plan.userId,
-      sharedBy: { userId: plan.userId, userName: plan.userName ?? null },
-    })),
     ...PLAN_PROVIDERS.map((providerId) => ({ providerId, userId })),
+    ...shared
+      .filter((plan) => plan.userId !== userId)
+      .map((plan) => ({
+        providerId: plan.providerId,
+        userId: plan.userId,
+        sharedBy: { userId: plan.userId, userName: plan.userName ?? null },
+      })),
   ];
   for (const candidate of candidates) {
     const apiKey = await planTokens(ctx, candidate.providerId)
