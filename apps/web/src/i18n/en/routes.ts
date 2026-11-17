@@ -17,7 +17,6 @@ export const routes = {
     "Don't have an account? ",
   "routes.reportsOnboarding.authCopy.emailLabel": "Email",
   "routes.reportsOnboarding.authCopy.emailPlaceholder": "Email address",
-  "routes.reportsOnboarding.authCopy.enterCodePlaceholder": "Enter code",
   "routes.reportsOnboarding.authCopy.forgotPassword": "Forgot password?",
   "routes.reportsOnboarding.authCopy.genericError":
     "Something went wrong. Please try again.",
@@ -60,7 +59,6 @@ export const routes = {
     "Verification code",
   "routes.reportsOnboarding.authCopy.verificationCodeTitle":
     "Enter verification code",
-  "routes.reportsOnboarding.authCopy.verify": "Verify",
   "routes.reportsOnboarding.authCopy.verifying": "Verifying...",
   "routes.reportsOnboarding.authCopy.welcomeTitle": "Welcome to deco",
   "routes.reportsOnboarding.chooseOrg": "Choose an organization",

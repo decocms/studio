@@ -8,6 +8,7 @@ import {
 } from "@/components/auth-form-actions";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { InputOtp } from "@decocms/ui/components/input-otp.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 export type AuthFlowMethod =
@@ -119,9 +120,7 @@ export interface UnifiedAuthFormCopy {
   sending: string;
   sendCode: string;
   verificationCodeLabel: string;
-  enterCodePlaceholder: string;
   verifying: string;
-  verify: string;
   useDifferentEmail: string;
   sendResetLink: string;
   nameLabel: string;
@@ -169,9 +168,7 @@ const DEFAULT_AUTH_FORM_COPY: UnifiedAuthFormCopy = {
   sending: "Sending...",
   sendCode: "Send code",
   verificationCodeLabel: "Verification code",
-  enterCodePlaceholder: "Enter code",
   verifying: "Verifying...",
-  verify: "Verify",
   useDifferentEmail: "Use a different email",
   sendResetLink: "Send reset link",
   nameLabel: "Name",
@@ -267,6 +264,7 @@ export function UnifiedAuthForm({
   const nameFieldId = `${formId}-name`;
   const passwordFieldId = `${formId}-password`;
   const otpFieldId = `${formId}-otp`;
+  const otpStatusId = `${formId}-otp-status`;
 
   const isSignUp = view === "signUp";
   const isForgotPassword = view === "forgotPassword";
@@ -398,6 +396,8 @@ export function UnifiedAuthForm({
       void resolvedActions.onAuthenticated(redirectUrl ?? callbackUrl);
     },
     onError: (error) => {
+      // Retype from the first box without clicking.
+      setOtp("");
       emitAuthEvent({
         type: "failed",
         method: "email_otp",
@@ -467,9 +467,22 @@ export function UnifiedAuthForm({
     sendOtpMutation.mutate({ email });
   };
 
+  const submitOtp = (code: string) => {
+    if (verifyOtpMutation.isPending) return;
+    verifyOtpMutation.mutate({ email, otp: code });
+  };
+
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    verifyOtpMutation.mutate({ email, otp });
+    if (otp.length === emailOtp.length) submitOtp(otp);
+  };
+
+  const handleOtpChange = (value: string) => {
+    setOtp(value);
+    if (otpError) {
+      sendOtpMutation.reset();
+      verifyOtpMutation.reset();
+    }
   };
 
   const handleInputChange =
@@ -519,9 +532,7 @@ export function UnifiedAuthForm({
     : isForgotPassword
       ? email.trim()
       : isEmailOtp
-        ? otpSent
-          ? otp.trim()
-          : email.trim()
+        ? email.trim()
         : email.trim() && password.trim();
 
   const getErrorMessage = (error: Error | null) => {
@@ -768,13 +779,7 @@ export function UnifiedAuthForm({
               </Button>
             </form>
           ) : (
-            <form
-              onSubmit={handleVerifyOtp}
-              className={cn(
-                "grid gap-2",
-                compact && "sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start",
-              )}
-            >
+            <form onSubmit={handleVerifyOtp} className="grid gap-2">
               <div className="grid gap-2">
                 <label
                   htmlFor={otpFieldId}
@@ -785,29 +790,30 @@ export function UnifiedAuthForm({
                 >
                   {copy.verificationCodeLabel}
                 </label>
-                <Input
+                {/* Never disabled: a disabled input drops focus. */}
+                <InputOtp
                   id={otpFieldId}
-                  type="text"
-                  placeholder={copy.enterCodePlaceholder}
+                  length={emailOtp.length}
                   value={otp}
-                  onChange={handleInputChange(setOtp)}
-                  required
-                  disabled={isLoading}
+                  onChange={handleOtpChange}
+                  onComplete={submitOtp}
                   autoFocus
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  className="h-11"
+                  aria-invalid={!!verifyOtpMutation.error}
+                  aria-describedby={
+                    verifyOtpMutation.isPending ? otpStatusId : undefined
+                  }
                 />
+                <p
+                  id={otpStatusId}
+                  role="status"
+                  className={cn(
+                    "text-sm text-muted-foreground",
+                    !verifyOtpMutation.isPending && "sr-only",
+                  )}
+                >
+                  {verifyOtpMutation.isPending ? copy.verifying : ""}
+                </p>
               </div>
-
-              <Button
-                type="submit"
-                size={compact ? "lg" : "xl"}
-                disabled={isLoading || !canSubmit}
-                className={cn(compact ? "sm:w-auto" : "w-full")}
-              >
-                {isLoading ? copy.verifying : copy.verify}
-              </Button>
 
               <button
                 type="button"
@@ -818,10 +824,7 @@ export function UnifiedAuthForm({
                   verifyOtpMutation.reset();
                 }}
                 disabled={isLoading}
-                className={cn(
-                  "mt-1 text-sm text-muted-foreground transition-colors hover:text-foreground",
-                  compact && "sm:col-span-2",
-                )}
+                className="mt-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
                 {copy.useDifferentEmail}
               </button>
