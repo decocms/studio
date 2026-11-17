@@ -12,6 +12,7 @@
 import { randomBytes } from "crypto";
 import { getSettings } from "../settings";
 import { getToolsByCategory } from "@decocms/shared/tools/registry-metadata";
+import { passkey } from "@better-auth/passkey";
 import { sso } from "@better-auth/sso";
 import { organization } from "@decocms/better-auth/plugins";
 import { betterAuth, BetterAuthOptions } from "better-auth";
@@ -43,17 +44,21 @@ import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
+import { createPasskeyConfig } from "./passkey";
 import { seedOrgDb } from "./org";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
-import { ADMIN_ROLES } from "@decocms/shared/auth/roles";
+import { ADMIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
 import { getBuiltinRoleStatements } from "./builtin-role-permission";
 import { createSSOConfig } from "./sso";
 import {
   displayNameFromEmail,
   GENERIC_EMAIL_DOMAINS,
 } from "./org-assurance-policy";
-import { ensureUserOrganization } from "./ensure-user-organization";
+import {
+  ensureUserOrganization,
+  type AuthOrganizationApi,
+} from "./ensure-user-organization";
 import { isReservedOrganizationSlug } from "@decocms/shared/organization-slugs";
 import { rejectOrganizationSlugChange } from "./reject-slug-change";
 
@@ -435,6 +440,10 @@ const plugins = [
         ),
       ]
     : []),
+
+  ...(authConfig.passkey.enabled
+    ? [passkey(createPasskeyConfig(getBaseUrl()))]
+    : []),
 ];
 
 export { GENERIC_EMAIL_DOMAINS };
@@ -559,6 +568,7 @@ export const auth = betterAuth({
       "/email-otp/verify-email": { window: 60, max: 10 },
       "/sign-in/email-otp": { window: 60, max: 10 },
       "/sign-in/magic-link": { window: 60, max: 5 },
+      "/passkey/verify-authentication": { window: 60, max: 10 },
       "/two-factor/send-otp": { window: 60, max: 5 },
     },
   },
@@ -628,7 +638,7 @@ export const auth = betterAuth({
           try {
             const result = await ensureUserOrganization({
               db: getDb().db,
-              authApi: auth.api,
+              authApi: authOrganizationApi,
               user: {
                 id: user.id,
                 email: user.email,
@@ -751,6 +761,17 @@ export const auth = betterAuth({
 });
 
 export type BetterAuthInstance = typeof auth;
+
+/**
+ * Better Auth types `addMember`'s role as the static roles, but dynamic access
+ * control also accepts an organization's custom role names, which pending
+ * invitations can carry.
+ */
+export const authOrganizationApi: AuthOrganizationApi = {
+  createOrganization: (input) => auth.api.createOrganization(input),
+  addMember: ({ body }) =>
+    auth.api.addMember({ body: { ...body, role: body.role as BuiltinRole } }),
+};
 
 // ============================================================================
 // Helper Functions
