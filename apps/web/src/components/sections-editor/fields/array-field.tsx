@@ -77,12 +77,11 @@ import {
   RequiredFieldProvider,
   useRequiredField,
 } from "./required-field-context";
-import { expandRecursiveSchema } from "./resolved-schema-cache";
 import {
-  resolveSchema,
-  type LiveMeta,
-  type SchemaProperty,
-} from "../resolve-schema";
+  cachedResolveSchema,
+  expandRecursiveSchema,
+} from "./resolved-schema-cache";
+import { type LiveMeta, type SchemaProperty } from "../resolve-schema";
 
 /**
  * A default of `[]` is a NEW array on every render, so anything derived from
@@ -111,14 +110,14 @@ function itemEditorSchema(
   if (item != null && typeof item === "object" && !Array.isArray(item)) {
     const resolveType = (item as Record<string, unknown>).__resolveType;
     if (typeof resolveType === "string" && meta) {
-      const resolved = resolveSchema(resolveType, meta);
+      const resolved = cachedResolveSchema(resolveType, meta);
       if (resolved?.properties && Object.keys(resolved.properties).length > 0) {
         return resolved;
       }
     }
   }
   if (meta && containerResolveType && arrayFieldKey) {
-    const container = resolveSchema(containerResolveType, meta);
+    const container = cachedResolveSchema(containerResolveType, meta);
     const itemsSchema = container?.properties?.[arrayFieldKey]?.items;
     if (
       itemsSchema?.properties &&
