@@ -14,6 +14,7 @@ import { Page } from "@/components/page";
 import { SettingsPage } from "@/components/settings/settings-section";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -30,12 +31,21 @@ import {
 import { DeployButton, DeploymentsSection } from "./deployments-section";
 import { DomainsSection } from "./domains-section";
 import { EnvSection } from "./env-section";
+import { HostingTabs } from "./hosting-tabs";
 import { RedirectsSection } from "./redirects-section";
 import { SecretsSection } from "./secrets-section";
 
 const STALE = 30_000;
 
 export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
+  const entity = useVirtualMCP(virtualMcpId);
+  if (blocksV8Project(entity)) {
+    return <HostingTabs virtualMcpId={virtualMcpId} />;
+  }
+  return <HostingPage virtualMcpId={virtualMcpId} />;
+}
+
+function HostingPage({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(virtualMcpId);

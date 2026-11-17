@@ -709,4 +709,15 @@ export const mainPanelTabs = {
     "Your app at `{host}` isn't answering yet. If it isn't running, start it on your computer. Meanwhile, you can edit your content in the Content tab.",
   "mainPanelTabs.previewTab.localAppWaiting.hint":
     "The preview loads on its own as soon as your app answers.",
+  "mainPanelTabs.hostingTab.viewsLabel": "Hosting sections",
+  "mainPanelTabs.hostingTab.tabDeploys": "Deploys",
+  "mainPanelTabs.hostingTab.tabVariables": "Variables",
+  "mainPanelTabs.hostingTab.liveInProduction": "Live in production",
+  "mainPanelTabs.hostingTab.noLiveDeploy": "Nothing is live in production yet.",
+  "mainPanelTabs.hostingTab.commitTitle": "Commit {sha}",
+  "mainPanelTabs.hostingTab.buildTook": "build {duration}",
+  "mainPanelTabs.hostingTab.preview": "Preview",
+  "mainPanelTabs.hostingTab.statusReady": "Ready",
+  "mainPanelTabs.hostingTab.statusFailed": "Failed",
+  "mainPanelTabs.hostingTab.statusInProgress": "In progress",
 } as const;

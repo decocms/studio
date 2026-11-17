@@ -81,10 +81,15 @@ export function DeployButton({
   base,
   orgSlug,
   site,
+  label,
+  variant = "default",
 }: {
   base: string;
   orgSlug: string;
   site: string;
+  /** Overrides the "Deploy" label; the action is the same. */
+  label?: string;
+  variant?: "default" | "outline";
 }) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -110,13 +115,14 @@ export function DeployButton({
     <>
       <Button
         size="sm"
+        variant={variant}
         onClick={() => setConfirm(true)}
         disabled={deployMutation.isPending}
       >
         <Rocket01 />
         {deployMutation.isPending
           ? t("mainPanelTabs.hostingTab.deploying")
-          : t("mainPanelTabs.hostingTab.deploy")}
+          : (label ?? t("mainPanelTabs.hostingTab.deploy"))}
       </Button>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
@@ -238,7 +244,7 @@ function outcomeBadge(outcome: string | null | undefined, t: Translate) {
   return null;
 }
 
-function LogsButton({
+export function LogsButton({
   commit,
   onClick,
 }: {
@@ -259,7 +265,7 @@ function LogsButton({
 
 /** Build-logs sheet. Re-fetches on every open (staleTime/gcTime 0) because the
  *  presigned `url` expires ~5min; the URL is never cached. */
-function BuildLogsSheet({
+export function BuildLogsSheet({
   base,
   orgSlug,
   site,
