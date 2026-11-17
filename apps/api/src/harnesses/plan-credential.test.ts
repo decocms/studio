@@ -3,7 +3,11 @@ import type { StudioContext } from "@/core/studio-context";
 import { resolvePlanCredential } from "./plan-credential";
 
 function ctx(opts: {
-  shared?: Array<{ providerId: string; userId: string }>;
+  shared?: Array<{
+    providerId: string;
+    userId: string;
+    userName?: string | null;
+  }>;
   claude?: Record<string, string>;
   copilot?: Record<string, string | Error>;
 }): StudioContext {
@@ -27,17 +31,31 @@ describe("resolvePlanCredential", () => {
   test("a Copilot plan shared with the org outranks the user's own plans", async () => {
     const resolved = await resolvePlanCredential(
       ctx({
-        shared: [{ providerId: "github-copilot", userId: "admin" }],
+        shared: [
+          { providerId: "github-copilot", userId: "admin", userName: "Admin" },
+        ],
         claude: { me: "sk-ant-oat-me" },
         copilot: { admin: "github_pat_admin", me: "github_pat_me" },
       }),
       "org",
       "me",
     );
+    // Whose plan it is travels with it, so a failure can name the owner.
     expect(resolved).toEqual({
       providerId: "github-copilot",
       apiKey: "github_pat_admin",
+      sharedBy: { userId: "admin", userName: "Admin" },
     });
+  });
+
+  test("the user's own plan carries no sharedBy", async () => {
+    expect(
+      await resolvePlanCredential(
+        ctx({ copilot: { me: "github_pat_me" } }),
+        "org",
+        "me",
+      ),
+    ).toEqual({ providerId: "github-copilot", apiKey: "github_pat_me" });
   });
 
   test("a share whose token is gone or broken falls through to the user's own", async () => {

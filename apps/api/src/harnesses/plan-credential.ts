@@ -26,12 +26,19 @@ const planTokens = (ctx: StudioContext, providerId: string) =>
  * A token that is gone, expired, or fails to decrypt (a rotated key) is
  * skipped rather than failing the dispatch.
  */
+export interface PlanCredential {
+  providerId: string;
+  apiKey: string;
+  /** Set when the plan is another member's, shared with the org. */
+  sharedBy?: { userId: string; userName: string | null };
+}
+
 export async function resolvePlanCredential(
   ctx: StudioContext,
   organizationId: string,
   userId: string,
   harnessId: string = "claude-code",
-): Promise<{ providerId: string; apiKey: string } | null> {
+): Promise<PlanCredential | null> {
   if (harnessId === "codex") {
     const apiKey = await ctx.storage.codexSubscriptions
       .findLiveToken(userId)
@@ -41,8 +48,16 @@ export async function resolvePlanCredential(
       : null;
   }
   const shared = await ctx.storage.orgSharedPlans.list(organizationId);
-  const candidates = [
-    ...shared.map(({ providerId, userId }) => ({ providerId, userId })),
+  const candidates: Array<{
+    providerId: string;
+    userId: string;
+    sharedBy?: PlanCredential["sharedBy"];
+  }> = [
+    ...shared.map((plan) => ({
+      providerId: plan.providerId,
+      userId: plan.userId,
+      sharedBy: { userId: plan.userId, userName: plan.userName ?? null },
+    })),
     ...PLAN_PROVIDERS.map((providerId) => ({ providerId, userId })),
   ];
   for (const candidate of candidates) {
@@ -52,7 +67,12 @@ export async function resolvePlanCredential(
         console.warn(`[plan] ${candidate.providerId} lookup failed`, err);
         return null;
       });
-    if (apiKey) return { providerId: candidate.providerId, apiKey };
+    if (apiKey) {
+      const { providerId, sharedBy } = candidate;
+      return sharedBy
+        ? { providerId, apiKey, sharedBy }
+        : { providerId, apiKey };
+    }
   }
   return null;
 }

@@ -18,6 +18,7 @@ import {
   type StudioContext,
 } from "../../core/studio-context";
 import { GITHUB_COPILOT_PROVIDER_ID } from "../../harnesses/claude-code-env";
+import { copilotTokenVerifier } from "./verify-token";
 
 const statusSchema = z.object({
   connected: z.boolean(),
@@ -89,9 +90,11 @@ export const GITHUB_COPILOT_CONNECT = defineTool({
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
 
+    const accessToken = normalizeCopilotToken(input.token);
+    await copilotTokenVerifier.verify(accessToken);
     const { linkedAt } = await ctx.storage.githubCopilotSubscriptions.upsert({
       userId,
-      accessToken: normalizeCopilotToken(input.token),
+      accessToken,
     });
     return {
       connected: true,
@@ -166,6 +169,12 @@ export const GITHUB_COPILOT_SHARE = defineTool({
     const found = await ctx.storage.githubCopilotSubscriptions.find(userId);
     if (input.shared) {
       if (!found) throw new Error("Link your GitHub Copilot plan first");
+      // Every run in the org will use this token, so prove it still works:
+      // it may predate verification at link time, or have lost its permission.
+      const token =
+        await ctx.storage.githubCopilotSubscriptions.findLiveToken(userId);
+      if (!token) throw new Error("Link your GitHub Copilot plan first");
+      await copilotTokenVerifier.verify(token);
       await ctx.storage.orgSharedPlans.share(
         organization.id,
         GITHUB_COPILOT_PROVIDER_ID,
