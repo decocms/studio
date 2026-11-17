@@ -46,10 +46,10 @@ describe("SiteDraftViewHeader", () => {
  */
 describe("Experiments and Calendar keep their actions in the view", () => {
   const src = join(import.meta.dir, "../..");
-  // Experiments opens a test inside its list; Calendar has a detail view.
+  // Both open an entry inside their list, so each has one header.
   const views = [
     ["layouts/main-panel-tabs/experiments-block-tab.tsx", 1],
-    ["components/sandbox/content/campaigns/campaigns-view.tsx", 2],
+    ["components/sandbox/content/campaigns/campaigns-view.tsx", 1],
   ] as const;
   for (const [file, headers] of views) {
     test(`${file} puts its actions in SiteDraftViewHeader`, () => {
