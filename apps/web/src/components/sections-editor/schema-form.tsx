@@ -2,7 +2,6 @@ import { isV8Schema } from "@decocms/shared/blocks-major";
 import { type ReactNode, useEffect } from "react";
 import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
-import { resolveSchema } from "./resolve-schema";
 import { applySchemaDefaults } from "./schema-defaults";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
@@ -29,6 +28,7 @@ import { LocationField } from "./fields/location-field";
 import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import {
+  cachedResolveSchema,
   expandRecursiveSchema,
   fillDepthCappedBranches,
 } from "./fields/resolved-schema-cache";
@@ -154,7 +154,7 @@ function renderResolvedBlockRefValue(props: FieldProps): ReactNode | null {
   }
   const resolveType = (value as Record<string, unknown>).__resolveType;
   if (typeof resolveType !== "string" || !meta) return null;
-  const referencedSchema = resolveSchema(resolveType, meta);
+  const referencedSchema = cachedResolveSchema(resolveType, meta);
   if (!referencedSchema) return null;
   return (
     <SchemaForm

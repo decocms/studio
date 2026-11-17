@@ -29,9 +29,9 @@ import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb"
 import {
   inferSchemaFromValue,
   isFreeformPropsSchema,
-  resolveSchema,
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
+import { cachedResolveSchema } from "@/components/sections-editor/fields/resolved-schema-cache";
 import { validateBlockId } from "@/components/sections-editor/page-sections";
 import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-block";
 import { MakeReusableModal } from "@/components/sections-editor/make-reusable-modal";
@@ -110,7 +110,7 @@ export function RunnableBlockEditor({
   // declared fields) — the block DOES take props, but the site doesn't publish
   // their schema. When a saved block carries values, infer a basic form from
   // them; otherwise the empty state points at the JSON editor toggle.
-  const resolvedSchema = resolveSchema(target.resolveType, meta);
+  const resolvedSchema = cachedResolveSchema(target.resolveType, meta);
   const freeformProps =
     !resolvedSchema && isFreeformPropsSchema(target.resolveType, meta);
   const inferredSchema = freeformProps

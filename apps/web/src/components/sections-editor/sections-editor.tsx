@@ -84,7 +84,8 @@ import { BlockConflictError } from "./decofile-api";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
-import { resolveSchema, type SchemaProperty } from "./resolve-schema";
+import type { SchemaProperty } from "./resolve-schema";
+import { cachedResolveSchema } from "./fields/resolved-schema-cache";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { useEnsureSiteSeoBlocks } from "./seo-editor";
 import { defaultPageSeoResolveType } from "./seo-schema";
@@ -837,7 +838,7 @@ export function SectionsEditor({
       : null;
   const seoSchema =
     editingSeo && activeSeoType && isSeoEnabled(displayRawSeo)
-      ? resolveSchema(activeSeoType, meta)
+      ? cachedResolveSchema(activeSeoType, meta)
       : null;
   const siteDefaultSeo = editingSeo
     ? findSiteSeoEntry(decofile, meta)?.seoData
@@ -1268,7 +1269,9 @@ export function SectionsEditor({
   };
 
   const activeSchema =
-    activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
+    activeResolveType && meta
+      ? cachedResolveSchema(activeResolveType, meta)
+      : null;
 
   const savePageSections = (
     updatedSections: RawSection[],
@@ -2685,7 +2688,7 @@ export function SectionsEditor({
     !isGlobalBlockMode && !!(galleryAvailable && meta && decofile);
 
   const ruleSchema =
-    ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
+    ruleResolveType && meta ? cachedResolveSchema(ruleResolveType, meta) : null;
 
   const cancelPendingRuleSaves = () => {
     if (ruleDebounceRef.current) {
@@ -3306,7 +3309,7 @@ export function SectionsEditor({
     : (selectedParsed?.label ?? "");
   const sectionRuleSchema =
     sectionRuleResolveType && meta
-      ? resolveSchema(sectionRuleResolveType, meta)
+      ? cachedResolveSchema(sectionRuleResolveType, meta)
       : null;
   /** A crumb names a block and, when what sits below it belongs to one of that
    *  block's variants, names the variant too. Compact says both in one crumb,

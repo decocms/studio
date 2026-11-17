@@ -13,10 +13,8 @@ import {
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
-import {
-  resolveSchema,
-  type LiveMeta,
-} from "@/components/sections-editor/resolve-schema";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
+import { cachedResolveSchema } from "@/components/sections-editor/fields/resolved-schema-cache";
 import { unwrapSection } from "@/components/sections-editor/unwrap-section";
 import {
   parseSections,
@@ -104,7 +102,7 @@ export function SavedSectionEditor({
   );
 
   const schema = seed?.resolveType
-    ? resolveSchema(seed.resolveType, meta)
+    ? cachedResolveSchema(seed.resolveType, meta)
     : null;
 
   const backend = useContentBackend(virtualMcpId, branch);
