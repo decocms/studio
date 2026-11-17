@@ -640,7 +640,7 @@ function formatDimensions(dimensions: Dimensions | null): string | null {
   return dimensions ? `${dimensions.width} × ${dimensions.height}` : null;
 }
 
-/** One side of the replace comparison: the whole file, never cropped. */
+/** One side of the replace comparison, filling its card. */
 function ComparePreview({
   src,
   kind,
@@ -657,7 +657,7 @@ function ComparePreview({
       <img
         src={src}
         alt={alt}
-        className="max-h-full max-w-full rounded-xl object-contain shadow-edge"
+        className="size-full object-cover"
         onLoad={(e) =>
           onDimensions({
             width: e.currentTarget.naturalWidth,
@@ -675,7 +675,7 @@ function ComparePreview({
         muted
         playsInline
         controls
-        className="max-h-full max-w-full rounded-xl object-contain shadow-edge"
+        className="size-full object-cover"
         onLoadedMetadata={(e) =>
           onDimensions({
             width: e.currentTarget.videoWidth,
@@ -686,7 +686,7 @@ function ComparePreview({
     );
   }
   return (
-    <div className="flex size-full items-center justify-center rounded-xl bg-muted">
+    <div className="flex size-full items-center justify-center">
       <File02 size={32} className="text-muted-foreground" />
     </div>
   );
@@ -767,7 +767,7 @@ function ReplaceAssetSheet({
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("assets.replace.before")}
             </p>
-            <div className="flex h-64 items-center justify-center">
+            <div className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl bg-muted shadow-edge">
               <ComparePreview
                 src={previewUrl(item.publicUrl, item.lastModified)}
                 kind={assetKind(item.key)}
@@ -787,7 +787,7 @@ function ReplaceAssetSheet({
 
           <ChevronRight
             size={18}
-            className="mt-32 text-muted-foreground"
+            className="self-center text-muted-foreground"
             aria-hidden
           />
 
@@ -797,8 +797,8 @@ function ReplaceAssetSheet({
             </p>
             <div
               className={cn(
-                "flex h-64 items-center justify-center rounded-xl",
-                !file && "bg-muted",
+                "flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl bg-muted",
+                file && "shadow-edge",
                 isDragging && "bg-primary/5 ring-2 ring-primary",
               )}
               onDragOver={(e) => {
