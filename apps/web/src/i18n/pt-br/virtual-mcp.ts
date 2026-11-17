@@ -158,6 +158,50 @@ export const virtualMcp = {
     "Conecte um repositório do GitHub para editar e pré-visualizar o site deste projeto.",
   "virtualMcp.settings.repository.connect": "Conectar repositório",
   "virtualMcp.settings.repository.change": "Trocar",
+  "virtualMcp.settings.repository.collaborators.title": "Colaboradores",
+  "virtualMcp.settings.repository.collaborators.description":
+    "Pessoas com acesso direto a este repositório no GitHub. Acesso por organização ou time do GitHub é gerenciado no GitHub.",
+  "virtualMcp.settings.repository.collaborators.add": "Adicionar colaborador",
+  "virtualMcp.settings.repository.collaborators.addTitle":
+    "Adicionar um colaborador",
+  "virtualMcp.settings.repository.collaborators.addDescription":
+    "O GitHub envia um convite. A pessoa ganha acesso quando aceitar.",
+  "virtualMcp.settings.repository.collaborators.username": "Usuário do GitHub",
+  "virtualMcp.settings.repository.collaborators.permissionLabel": "Acesso",
+  "virtualMcp.settings.repository.collaborators.send": "Enviar convite",
+  "virtualMcp.settings.repository.collaborators.cancel": "Cancelar",
+  "virtualMcp.settings.repository.collaborators.loading":
+    "Carregando colaboradores…",
+  "virtualMcp.settings.repository.collaborators.loadFailed":
+    "Não foi possível carregar os colaboradores",
+  "virtualMcp.settings.repository.collaborators.empty":
+    "Ninguém tem acesso direto ainda",
+  "virtualMcp.settings.repository.collaborators.pending": "Convite pendente",
+  "virtualMcp.settings.repository.collaborators.remove": "Remover acesso",
+  "virtualMcp.settings.repository.collaborators.cancelInvitation":
+    "Cancelar convite",
+  "virtualMcp.settings.repository.collaborators.removeTitle":
+    "Remover o acesso de {login}?",
+  "virtualMcp.settings.repository.collaborators.cancelInvitationTitle":
+    "Cancelar o convite de {login}?",
+  "virtualMcp.settings.repository.collaborators.removeDescription":
+    "A pessoa perde o acesso direto ao repositório no GitHub. Você pode convidá-la de novo depois.",
+  "virtualMcp.settings.repository.collaborators.invited":
+    "Convite enviado para {login}. A pessoa precisa aceitar no GitHub.",
+  "virtualMcp.settings.repository.collaborators.updated":
+    "Acesso de {login} atualizado",
+  "virtualMcp.settings.repository.collaborators.removed":
+    "Acesso de {login} removido",
+  "virtualMcp.settings.repository.collaborators.cancelled":
+    "Convite de {login} cancelado",
+  "virtualMcp.settings.repository.collaborators.permission.read": "Leitura",
+  "virtualMcp.settings.repository.collaborators.permission.triage": "Triagem",
+  "virtualMcp.settings.repository.collaborators.permission.write": "Escrita",
+  "virtualMcp.settings.repository.collaborators.permission.maintain":
+    "Manutenção",
+  "virtualMcp.settings.repository.collaborators.permission.admin": "Admin",
+  "virtualMcp.settings.repository.collaborators.permission.custom":
+    "Papel personalizado",
   "virtualMcp.settings.repository.connected": "{name} conectado",
   "virtualMcp.settings.cmsEmpty":
     "Conecte o repositório do site para ligar o CMS.",

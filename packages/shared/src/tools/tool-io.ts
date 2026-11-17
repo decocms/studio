@@ -3590,7 +3590,17 @@ export interface StudioToolIO {
   };
   CONNECTION_TEST: {
     input: { id: string };
-    output: { id: string; healthy: boolean; latencyMs: number };
+    output: {
+      id: string;
+      healthy: boolean;
+      latencyMs: number;
+      reason?:
+        | "timeout"
+        | "unauthorized"
+        | "blocked_url"
+        | "unreachable"
+        | undefined;
+    };
   };
   CONNECTION_TOOLS_SEARCH: {
     input: {
@@ -7543,9 +7553,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       label: string;
@@ -7588,9 +7598,9 @@ export interface StudioToolIO {
         | "google"
         | "claude-code"
         | "codex"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible"
         | undefined;
@@ -7610,9 +7620,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       callbackUrl: string;
@@ -7623,9 +7633,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       code: string;
@@ -7644,9 +7654,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7662,9 +7672,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       amountCents: number;
@@ -7676,9 +7686,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7688,9 +7698,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7717,9 +7727,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7731,9 +7741,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       planId: "free";
@@ -9300,6 +9310,39 @@ export interface StudioToolIO {
       totalCount: number;
       nextCursor: string | null;
     };
+  };
+  REPOSITORY_COLLABORATORS_LIST: {
+    input: { repositoryId: string };
+    output: {
+      collaborators: {
+        login: string;
+        avatarUrl: string | null;
+        permission: "read" | "admin" | "triage" | "write" | "maintain" | null;
+      }[];
+      invitations: {
+        login: string;
+        avatarUrl: string | null;
+        permission: "read" | "admin" | "triage" | "write" | "maintain" | null;
+      }[];
+    };
+  };
+  REPOSITORY_COLLABORATOR_ADD: {
+    input: {
+      repositoryId: string;
+      username: string;
+      permission?:
+        | "read"
+        | "admin"
+        | "triage"
+        | "write"
+        | "maintain"
+        | undefined;
+    };
+    output: { status: "updated" | "invited" };
+  };
+  REPOSITORY_COLLABORATOR_REMOVE: {
+    input: { repositoryId: string; username: string };
+    output: { removed: true };
   };
   CHANGE_REQUEST_STATE: {
     input: {
