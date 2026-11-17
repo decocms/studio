@@ -48,6 +48,7 @@ export const routes = {
   "routes.reportsOnboarding.authCopy.signInFailed": "Falha ao entrar",
   "routes.reportsOnboarding.authCopy.signInWithEmailCode":
     "Entrar com código por e-mail",
+  "routes.reportsOnboarding.authCopy.signInWithPasskey": "Entrar com passkey",
   "routes.reportsOnboarding.authCopy.signInWithPassword": "Entrar com senha",
   "routes.reportsOnboarding.authCopy.signUp": "Criar conta",
   "routes.reportsOnboarding.authCopy.signUpFailed": "Falha ao criar conta",

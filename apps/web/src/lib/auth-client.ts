@@ -6,6 +6,7 @@ import {
   emailOTPClient,
 } from "better-auth/client/plugins";
 import { ssoClient } from "@better-auth/sso/client";
+import { passkeyClient } from "@better-auth/passkey/client";
 import * as z from "zod";
 import { activeOrganizations } from "@decocms/shared/organization/org-archived";
 
@@ -20,6 +21,7 @@ export const authClient = createAuthClient({
     ssoClient(),
     magicLinkClient(),
     emailOTPClient(),
+    passkeyClient(),
   ],
 });
 

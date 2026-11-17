@@ -10,7 +10,7 @@ import { authClient } from "@/lib/auth-client";
  *  returns (`{data, error}`) — narrowed to just the `error` field this
  *  module's callers (`UnifiedAuthForm`'s mutations) read. */
 export interface AuthActionResult {
-  error?: { message?: string | null } | null;
+  error?: { code?: string | null; message?: string | null } | null;
 }
 
 export interface AuthFormActions {
@@ -39,8 +39,10 @@ export interface AuthFormActions {
     providerId: string;
     callbackURL: string;
   }) => Promise<AuthActionResult>;
+  /** WebAuthn ceremony against a passkey the user registered in settings. */
+  passkeySignIn: () => Promise<AuthActionResult>;
   /**
-   * Runs once after a successful password or OTP sign-in (never on a bare
+   * Runs once after a successful password, OTP or passkey sign-in (never on a bare
    * sign-up-only or forgot-password success). The default navigates to
    * finish the (possibly OAuth-authorize) redirect chain.
    */
@@ -61,6 +63,7 @@ export const defaultAuthFormActions: AuthFormActions = {
     authClient.signIn.social({ provider, callbackURL }),
   ssoSignIn: ({ providerId, callbackURL }) =>
     authClient.signIn.sso({ providerId, callbackURL }),
+  passkeySignIn: () => authClient.signIn.passkey(),
   onAuthenticated: (redirectTo) => {
     window.location.href = redirectTo;
   },
