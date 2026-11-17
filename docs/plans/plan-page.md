@@ -66,13 +66,24 @@ mantém o desenho dos mockups e acrescenta o que o motor novo exige: o
 | --- | --- |
 | ![Protótipo claro](plan/proto-light.jpg) | ![Protótipo escuro](plan/proto-dark.jpg) |
 
-A página tem, de cima para baixo:
+A página tem quatro abas, na barra do painel, como no Monitor:
+
+| Aba | O que mostra | Fase |
+| --- | --- | --- |
+| **Plano** (padrão) | Objetivo, ideia e as duas maiores perdas | F1–F3 |
+| **Loja** | O funil da loja etapa por etapa, com a página ao vivo (ver "Visão da loja") | F3 |
+| **Metas** | Faturamento, meta por mês e as alavancas (ver 4.1) | F2 |
+| **Mapa** | Áreas além da conversão: Inbound, saúde técnica (ver seção 11) | F4, "em breve" até lá |
+
+A aba Plano tem, de cima para baixo:
 
 1. **Objetivo na loja**, no topo. Uma frase que resume o que a pessoa quer da
    loja agora ("Fazer o celular vender tão bem quanto o computador, sem
-   aumentar o investimento em mídia"), o tipo de objetivo que ela move
-   ("Aumentar a conversão"), de onde a frase veio e "Editar". Tudo abaixo é
-   lido à luz dessa frase.
+   aumentar o investimento em mídia"). Logo abaixo, a **meta em números**: a
+   meta do mês, a projeção no ritmo de hoje, quanto falta e a alavanca com mais
+   distância ("Conversão 1,1% → 1,4%"). Depois, o tipo de objetivo
+   ("Aumentar a conversão"), de onde ele veio e "Editar". Tudo abaixo é lido à
+   luz dessa frase e dessa meta.
 2. **Composer da ideia.** "O que você quer melhorar na loja?", com anexo, áudio
    e o botão "Criar o plano". Os chips "Comece por" preenchem um ponto de
    partida.
@@ -84,7 +95,8 @@ A página tem, de cima para baixo:
 5. **Dois cards**, as duas maiores perdas do site inteiro que não sejam o mesmo
    problema:
    - selo ("Maior perda" / "2ª maior perda"), página e dispositivo;
-   - R$/mês em jogo e a premissa da conta ("se fechar 1 pp da diferença");
+   - R$/mês em jogo, a premissa da conta ("se fechar 1 pp da diferença") e
+     **quanto isso fecha do que falta para a meta** ("45% do que falta");
    - título: a perda medida, escrita pelo código;
    - o que foi visto na página;
    - **estado**: "Causa em investigação" ou "Pronta para testar", mais a
@@ -94,7 +106,7 @@ A página tem, de cima para baixo:
      desmentidas, riscadas;
    - teste recomendado, quando há hipótese pronta;
    - CTA: **"Criar plano de investigação"** ou **"Criar business case"**.
-6. **"Ver as outras N perdas"**, a lista do site inteiro.
+6. **"Ver a loja etapa por etapa"**, que abre a aba Loja.
 
 **Por que o estado é obrigatório.** Na última rodada real do motor (5 páginas,
 10 oportunidades, 25 hipóteses), só **1** hipótese chegou a "pronta para
@@ -109,7 +121,8 @@ pé está cada uma.
 ![Editar objetivo](plan/proto-objective.jpg)
 
 A pessoa reescreve a frase do jeito que diria ao time e confere o tipo de
-objetivo que ela move. O tipo decide quais páginas e etapas entram na rodada
+objetivo que ela move. Os números (meta por mês, sessões, conversão e ticket)
+ficam na aba Metas. O tipo decide quais páginas e etapas entram na rodada
 (ver 4.1); tipos sem cobertura aparecem como "em breve". "Salvar e analisar de
 novo" dispara uma rodada do site inteiro com o objetivo novo; "Só salvar" vale
 a partir da próxima rodada.
@@ -122,14 +135,40 @@ Além da rodada semanal, a pessoa pode pedir uma análise a qualquer momento:
 
 - **Site inteiro:** todas as páginas que o objetivo cobre, ao mesmo tempo (até
   uns 45 minutos, cerca de US$ 8).
-- **Só uma parte:** home, categoria, busca, página de produto ou carrinho e
-  checkout (até uns 15 minutos, cerca de US$ 2). Serve para refazer uma página
-  depois de uma mudança no site ou de instrumentar um evento.
+- **Só as partes escolhidas:** uma ou mais entre home, categoria, busca,
+  página de produto e carrinho e checkout. As partes rodam ao mesmo tempo (até
+  uns 15 minutos, cerca de US$ 2 por parte). Serve para refazer páginas depois
+  de uma mudança no site ou de instrumentar um evento.
 
 Cada página mostra quando foi analisada pela última vez. Uma página que já está
 rodando aparece como "rodando agora" e não pode ser pedida de novo. Quando só
 uma parte é refeita, as outras páginas continuam com a última análise e o top 2
-é recalculado sobre o conjunto (ver 4.6).
+é recalculado sobre o conjunto (ver 4.6). A aba Loja também tem "Refazer esta
+página" no card de cada etapa.
+
+#### Visão da loja (aba Loja)
+
+![Visão da loja](plan/proto-store.jpg)
+
+O funil da loja com as mesmas páginas que o motor analisa: home, categoria e
+busca (caminhos alternativos na mesma coluna), produto, carrinho e checkout.
+Cada etapa mostra pessoas por semana, quanto avança para a próxima e a maior
+perda medida nela, com o dispositivo escolhido em cima (celular ou computador).
+
+Clicar numa etapa abre o card dela:
+
+- **a página ao vivo** num iframe, enquadrada como no heatmap (mesmos helpers
+  `siteOrigin` e `frameUrl` de `layouts/main-panel-tabs/analytics-heatmap-model.ts`,
+  mesmo sandbox e o domínio do status do Deco Analytics), com o caminho
+  editável e "abrir em nova aba". A captura do motor permite marcar por cima o
+  fim da 1ª tela e a posição dos elementos citados nas observações;
+- as perdas medidas naquela página, com estado e confiança;
+- o que a análise viu na página;
+- "Refazer esta página" e "Abrir a maior perda".
+
+Esta aba substitui a lista "outras N perdas" e é também o detalhe da perda. A
+ideia, o enquadramento do iframe e o desenho do funil vêm do PR #8439 (ver
+seção 11).
 
 #### Estados
 
@@ -212,9 +251,23 @@ O objetivo tem duas partes:
 - **a frase**, em linguagem da pessoa, que aparece no topo do Plan e entra no
   prompt de cada etapa da análise (por exemplo, "sem aumentar o investimento em
   mídia" faz o agente não recomendar mais mídia paga);
-- **o tipo**, que decide quais páginas e etapas entram na rodada.
+- **o tipo**, que decide quais páginas e etapas entram na rodada;
+- **a meta em números**, na aba Metas: faturamento web dos anos anteriores,
+  realizado e meta deste ano e do próximo, a meta distribuída por mês (com
+  sazonalidade de varejo como ponto de partida e aviso quando os meses não
+  somam a meta do ano) e as alavancas **sessões × conversão × ticket médio**.
 
-Os dois são inferidos do que a org já declarou (metas, contexto do projeto,
+A meta em números faz duas coisas que a frase sozinha não faz:
+
+1. **Sugere o tipo.** Comparando as alavancas de hoje com as necessárias para a
+   meta, o Plan vê onde está a maior distância. Se o que falta é conversão, o
+   tipo sugerido é "Aumentar a conversão"; se é sessões, "Trazer mais sessões".
+2. **Dá escala às perdas.** Cada perda passa a dizer quanto fecha do que falta
+   para a meta do mês ("45% do que falta"), e não só um R$ solto.
+
+A frase, o tipo e a meta são inferidos
+
+do que a org já declarou (metas, contexto do projeto,
 conversas) e dos dados (por exemplo, queda de conversão em 4 semanas). O Studio
 guarda a frase, o tipo, a evidência e se foi **inferido**, **confirmado** ou
 **editado** pela pessoa. Uma edição da pessoa nunca é sobrescrita pela
@@ -446,7 +499,8 @@ O motor recebeu 41 mudanças em 5 dias. Para o port não virar uma corrida:
 | Tabela | Campos principais |
 | --- | --- |
 | `plan_objectives` | `organization_id` (único), `statement` (a frase, até 280 caracteres), `objective` (`conversion` \| `ticket` \| `sessions` \| `efficiency`), `source` (`inferred` \| `confirmed` \| `edited`), `evidence` (jsonb), `out_of_scope_stages` (text[]), `updated_by`, `updated_at` |
-| `plan_site_runs` | `id`, `organization_id`, `scope` (`site` ou um `page_type`), `objective_statement` e `objective` (cópia do objetivo usado), `trigger` (`schedule` \| `objective_changed` \| `manual`), `requested_by`, `status`, `cost_usd`, `started_at`, `finished_at` |
+| `plan_goals` | `organization_id`, `year`, `month` (nulo = ano), `revenue_actual`, `revenue_target`, `levers` (jsonb: sessões, conversão, ticket), `updated_by`, `updated_at`. Valores em moeda da org; o realizado vem do lake quando houver |
+| `plan_site_runs` | `id`, `organization_id`, `scope` (`site` ou a lista de `page_type` escolhidos), `objective_statement` e `objective` (cópia do objetivo usado), `trigger` (`schedule` \| `objective_changed` \| `manual`), `requested_by`, `status`, `cost_usd`, `started_at`, `finished_at` |
 | `plan_diagnoses` | `id`, `site_run_id`, `organization_id`, `page_type`, `page_route`, `status`, `stage`, `progress_note`, `headline`, `limits` (jsonb), `gaps` (jsonb), `evidence` (jsonb), `cost_usd`, `error` |
 | `plan_opportunities` | `id`, `diagnosis_id`, `rank`, `area`, `device`, `title`, `summary`, `observations` (jsonb), `metric` (jsonb), `measured` (jsonb), `reliability` (jsonb), `drilldown` (jsonb), `money` (jsonb), `confidence`, `outcome` (jsonb), `tree_notes` (jsonb), `is_reserve`, `retired_at` |
 | `plan_hypotheses` | `id`, `opportunity_id`, `rank`, `category`, `tree` (jsonb), `lifecycle`, `lifecycle_log` (jsonb), `validation` (jsonb), `verification` (jsonb), `relevance` (jsonb), `experiment` (jsonb), `priority` (jsonb), `review` (jsonb), `status` (`pending` \| `approved` \| `dismissed`), `solution_key` |
@@ -471,9 +525,10 @@ Seguem `apps/api/AGENTS.md`:
 | Tool | Faz |
 | --- | --- |
 | `PLAN_OBJECTIVE_GET` / `PLAN_OBJECTIVE_SET` | Lê ou define a frase, o tipo de objetivo e as etapas fora de escopo |
-| `PLAN_RUN_START` | `{ scope: "site" \| page_type }`. Começa uma rodada do site inteiro ou de uma página, ou devolve a que já está rodando para aquela página |
+| `PLAN_RUN_START` | `{ scope: "site" } \| { pages: page_type[] }`. Começa uma rodada do site inteiro ou das páginas escolhidas; páginas que já estão rodando são devolvidas como estão |
 | `PLAN_RUN_GET` / `PLAN_RUN_LIST` | Estado e progresso de uma rodada; lista de rodadas |
-| `PLAN_STORE_VIEW_GET` | A visão da loja: última análise concluída de cada página, quando foi feita, top 2 e as outras perdas ordenadas |
+| `PLAN_STORE_VIEW_GET` | A visão da loja: última análise concluída de cada página, quando foi feita, o funil por dispositivo, top 2 e as outras perdas ordenadas |
+| `PLAN_GOALS_GET` / `PLAN_GOALS_SET` | Metas por ano e mês e as alavancas |
 | `PLAN_OPPORTUNITY_GET` | A perda com hipóteses, verificação e dossiês |
 | `PLAN_HYPOTHESIS_VERIFY` | Roda de novo a verificação de uma hipótese |
 | `PLAN_HYPOTHESIS_DECIDE` | Aprova (só se pronta) ou descarta; vira conhecimento da loja |
@@ -507,7 +562,8 @@ O teto (o gap inteiro) só aparece como referência e nunca como promessa.
 ## 7. Web
 
 - `apps/web/src/routes/workspace/plan.tsx` passa a renderizar `PlanPage` dentro
-  de `ChatLayout.Content`. O título vem de `staticData.pageTitle`.
+  de `ChatLayout.Content`. O título vem de `staticData.pageTitle`. As abas
+  ficam em `Panel.Toolbar.Left.Portal`, como no Monitor e no PR #8439.
 - Componentes do Studio: `Page`, `Page.Content`, `Page.Container`, `Badge`
   (`lime` para "Maior perda" e "Pronta para testar", `warning` para "Causa em
   investigação", `success` para "Dados confiáveis"), `Button` e as utilities de
@@ -531,9 +587,9 @@ O teto (o gap inteiro) só aparece como referência e nunca como promessa.
 | Fase | Entrega | Gate |
 | --- | --- | --- |
 | **F1 — Página e business case reativo** | Página com composer e chips; agente/skill de Plan; documento gravado em arquivos; "Mandar para o board". Sem a seção proativa. | Nenhum: substitui o coming soon |
-| **F2 — Objetivo** | `plan_objectives`; frase e tipo inferidos; objetivo no topo da página com "Editar"; etapas fora de escopo | Flag de org `plan_proactive_enabled` (default off) |
-| **F3 — Port do motor** | P1 a P5 da seção 5.5. Ao fim de P1+P2, o Plan já mostra as perdas medidas com "causa em investigação". P3–P5 trazem hipóteses, verificação, estado e os dois CTAs. "Nova análise" (site inteiro ou uma página) e rodada semanal. | `plan_proactive_enabled`; a rodada semanal tem a sua, `plan_weekly_sweep_enabled` |
-| **F4 — Concorrentes, mockups e outros objetivos** | P6; objetivos de sessões e eficiência (SEO, mídia paga) | Por objetivo |
+| **F2 — Objetivo e metas** | `plan_objectives` e `plan_goals`; frase, tipo e meta inferidos; objetivo no topo da página com "Editar"; aba Metas; etapas fora de escopo | Flag de org `plan_proactive_enabled` (default off) |
+| **F3 — Port do motor** | P1 a P5 da seção 5.5. Ao fim de P1+P2, o Plan já mostra as perdas medidas com "causa em investigação". P3–P5 trazem hipóteses, verificação, estado e os dois CTAs. Aba Loja com o funil e a página ao vivo. "Nova análise" (site inteiro ou as partes escolhidas) e rodada semanal. | `plan_proactive_enabled`; a rodada semanal tem a sua, `plan_weekly_sweep_enabled` |
+| **F4 — Concorrentes, mockups e outros objetivos** | P6; aba Mapa com Inbound e saúde técnica; objetivos de sessões e eficiência (SEO, GEO, mídia paga) | Por objetivo |
 | **F5 — Catálogo de soluções** | Hipótese pronta → solução existente, com esforço menor no business case | — |
 
 Pré-requisitos, fora desta página:
@@ -580,6 +636,52 @@ Pré-requisitos, fora desta página:
 | Arquivo | Origem |
 | --- | --- |
 | `mockup-*.jpg` | Mockups de design |
-| `proto-*.jpg` | Protótipo HTML estático com o tema do Studio e dados sintéticos. Não faz parte do produto. |
+| `proto-*.jpg` | Protótipo HTML estático com o tema do Studio e dados sintéticos. Não faz parte do produto. A aba Loja e a aba Metas seguem as ideias do PR #8439. |
 | `current-coming-soon.jpg` | Studio em produção; org, pessoa e outras orgs mascaradas |
 | `pdp-optimizer-*.jpg` | Motor externo em produção, em 17/11/2026; domínio, marca, concorrentes e imagens mascarados |
+
+## 11. Relação com o PR #8439
+
+O PR #8439 propõe outro protótipo para a mesma página, só de front-end e com
+dados mock. Ele tem:
+- um **mapa radial** da loja (Inbound com SEO, GEO e conteúdo; CRO; saúde técnica;
+  áreas "em breve") com checks verde, amarelo e vermelho;
+- o **CRO como funil**, com a página de cada etapa ao vivo num iframe;
+- uma aba **Metas** com faturamento, meta por mês com sazonalidade e simulação
+  de sessões × conversão × ticket;
+- um diálogo **"Iniciar um plano"** com três entradas: ideia, direção (chips de
+  tópico) e análise completa.
+
+### O que este plano incorpora
+
+| Do #8439 | Aqui |
+| --- | --- |
+| Metas em números e as alavancas | Aba Metas (F2). A meta sugere o tipo de objetivo e dá escala às perdas ("45% do que falta") |
+| Funil com caminhos alternativos e a maior perda | Aba Loja (F3), alimentada pelas perdas medidas do motor |
+| Página ao vivo enquadrada como no heatmap | Card da etapa na aba Loja e detalhe da perda |
+| "Tenho uma direção" com vários tópicos | "Nova análise" com várias partes |
+| Mapa com Inbound e saúde técnica | Aba Mapa (F4), para os objetivos que o motor ainda não cobre |
+| Abas no `Panel.Toolbar`, `orgFileUrl` para o logo, `i18n/plan.ts` | Implementação da F1 |
+
+### Onde as ideias divergem
+
+| | #8439 | Este plano |
+| --- | --- | --- |
+| Tela de entrada | Um inventário: o mapa de tudo o que a loja tem | Uma decisão: o objetivo e as duas maiores perdas |
+| Objetivo | Meta de faturamento, separada da análise | Frase, tipo e meta, que dirigem a análise |
+| Oportunidade de CRO | Item de checklist de boa prática ("sem login social"), sem medida de quanto custa | Perda medida em R$, com hipóteses verificadas |
+| Priorização | Nenhuma; a pessoa navega | Valor × confiança, duas em destaque |
+| Saída | "Criar tarefa" ou "Validar novamente" por check | Business case ou plano de investigação |
+| Backend | Mock | Port do motor |
+
+**Checklist só onde aprovado/reprovado é fato.** Em saúde técnica (velocidade,
+acessibilidade, boas práticas) e em boa parte de SEO, um check reprovado é um
+fato verificável, e a checklist do #8439 serve bem na aba Mapa. Em CRO, um
+check de boa prática sem medida é o tipo de recomendação que o cliente derruba
+fácil, então a oportunidade continua sendo a perda medida.
+
+**Conflito de arquivos.** Os dois desenhos criam `components/plan/plan-page.tsx`
+e `i18n/{en,pt-br}/plan.ts` e mudam `routes/workspace/plan.tsx`. Antes de
+começar a F1, os dois lados precisam combinar qual PR vira a base; a sugestão é
+partir do #8439 (abas, funil, card da página, metas) e trocar a tela de entrada
+pela aba Plano desta doc.
