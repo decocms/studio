@@ -92,7 +92,8 @@ function typeInto(element: HTMLElement, value: string) {
     propsKey ?? ""
   ];
   const onChange = props?.onChange as
-    ((event: { target: { value: string } }) => void) | undefined;
+    | ((event: { target: { value: string } }) => void)
+    | undefined;
   if (!onChange) throw new Error("not a controlled field");
   act(() => onChange({ target: { value } }));
 }
