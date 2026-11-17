@@ -14,6 +14,10 @@ import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import {
+  inlineDataBlockRefSchema,
+  withInlineDataOption,
+} from "./block-ref-field-utils";
+import {
   fitsNamedRuleBlock,
   NamedRuleBlockFieldGate,
 } from "./fields/named-rule-block-field";
@@ -342,9 +346,21 @@ function renderFieldBody(fieldProps: FieldProps): ReactNode {
         />
       );
     }
+    const inlineData = inlineDataBlockRefSchema(schema, value);
+    if (inlineData) {
+      return (
+        <InlineUnionField key={props.path} {...props} schema={inlineData} />
+      );
+    }
     // For now render as object if we have properties, otherwise skip
     if (schema.anyOfRefs) {
-      return <AnyOfField key={props.path} {...props} />;
+      return (
+        <AnyOfField
+          key={props.path}
+          {...props}
+          schema={withInlineDataOption(schema)}
+        />
+      );
     }
     return null;
   }
