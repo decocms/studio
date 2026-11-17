@@ -233,6 +233,7 @@ function getReportsAuthCopy(t: ReturnType<typeof useT>) {
     signInWithEmailCode: t(
       "routes.reportsOnboarding.authCopy.signInWithEmailCode",
     ),
+    signInWithPasskey: t("routes.reportsOnboarding.authCopy.signInWithPasskey"),
   };
 }
 

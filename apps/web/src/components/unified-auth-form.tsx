@@ -9,6 +9,7 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { InputOtp } from "@decocms/ui/components/input-otp.tsx";
+import { Fingerprint04 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 export type AuthFlowMethod =
@@ -16,6 +17,7 @@ export type AuthFlowMethod =
   | "email_password"
   | "social"
   | "sso"
+  | "passkey"
   | "local";
 
 export type AuthFlowEvent =
@@ -74,7 +76,10 @@ interface UnifiedAuthFormProps {
   variant?: "default" | "compact";
   /** Limit social buttons without changing the deployment-wide auth config. */
   allowedSocialProviders?: string[];
-  /** Hide password auth when an embedded surface should use OTP only. */
+  /**
+   * Hide password and passkey auth when an embedded surface should use OTP
+   * only.
+   */
   allowPassword?: boolean;
   /** Optional lifecycle sink for embedded surfaces with their own funnel. */
   onAuthEvent?: (event: AuthFlowEvent) => void;
@@ -137,6 +142,7 @@ export interface UnifiedAuthFormCopy {
   signIn: string;
   signUp: string;
   signInWithEmailCode: string;
+  signInWithPasskey: string;
 }
 
 const DEFAULT_AUTH_FORM_COPY: UnifiedAuthFormCopy = {
@@ -185,6 +191,7 @@ const DEFAULT_AUTH_FORM_COPY: UnifiedAuthFormCopy = {
   signIn: "Sign in",
   signUp: "Sign up",
   signInWithEmailCode: "Sign in with email code",
+  signInWithPasskey: "Sign in with a passkey",
 };
 
 export function UnifiedAuthForm({
@@ -200,8 +207,13 @@ export function UnifiedAuthForm({
   onAuthEvent,
   actions,
 }: UnifiedAuthFormProps) {
-  const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
-    useAuthConfig();
+  const {
+    emailAndPassword,
+    resetPassword,
+    emailOtp,
+    passkey,
+    socialProviders,
+  } = useAuthConfig();
   const resolvedActions: AuthFormActions = {
     ...defaultAuthFormActions,
     ...actions,
@@ -239,6 +251,11 @@ export function UnifiedAuthForm({
   const emailAndPasswordEnabled =
     emailAndPassword.enabled &&
     (allowPassword || (!emailOtp.enabled && !hasSocialProviders));
+  const passkeyAvailable =
+    passkey.enabled &&
+    allowPassword &&
+    typeof globalThis.PublicKeyCredential !== "undefined";
+  const hasButtonMethods = hasSocialProviders || passkeyAvailable;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -410,6 +427,36 @@ export function UnifiedAuthForm({
     },
   });
 
+  const passkeyMutation = useMutation({
+    mutationFn: async () => {
+      const result = await resolvedActions.passkeySignIn();
+      if (result.error) {
+        // Dismissing the browser prompt is not a failure worth a banner.
+        if (result.error.code === "AUTH_CANCELLED") return { cancelled: true };
+        throw new Error(result.error.message || copy.authenticationFailed);
+      }
+      return { cancelled: false };
+    },
+    onMutate: () => {
+      emitAuthEvent({ type: "started", method: "passkey" });
+    },
+    onSuccess: ({ cancelled }) => {
+      if (cancelled) return;
+      emitAuthEvent({ type: "succeeded", method: "passkey" });
+      globalThis.localStorage?.setItem("hasLoggedIn", "true");
+      void resolvedActions.onAuthenticated(redirectUrl ?? callbackUrl);
+    },
+    onError: (error) => {
+      emitAuthEvent({
+        type: "failed",
+        method: "passkey",
+        stage: "authenticate",
+        error: error.message,
+      });
+      track("passkey_signin_failed", { error: error.message });
+    },
+  });
+
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -516,13 +563,15 @@ export function UnifiedAuthForm({
     forgotPasswordMutation.reset();
     sendOtpMutation.reset();
     verifyOtpMutation.reset();
+    passkeyMutation.reset();
   };
 
   const isLoading =
     emailPasswordMutation.isPending ||
     forgotPasswordMutation.isPending ||
     sendOtpMutation.isPending ||
-    verifyOtpMutation.isPending;
+    verifyOtpMutation.isPending ||
+    passkeyMutation.isPending;
   const error = emailPasswordMutation.error;
   const forgotPasswordError = forgotPasswordMutation.error;
   const otpError = sendOtpMutation.error || verifyOtpMutation.error;
@@ -566,11 +615,17 @@ export function UnifiedAuthForm({
     return error.message || copy.genericError;
   };
 
-  const displayError = error || forgotPasswordError || otpError || socialError;
+  const displayError =
+    error ||
+    forgotPasswordError ||
+    otpError ||
+    socialError ||
+    passkeyMutation.error;
 
   const handleSocialSignIn = async (provider: string) => {
     emitAuthEvent({ type: "started", method: "social", provider });
     setSocialError(null);
+    passkeyMutation.reset();
     try {
       const result = await resolvedActions.socialSignIn({
         provider,
@@ -667,42 +722,60 @@ export function UnifiedAuthForm({
         </div>
       )}
 
-      {/* Social Provider Buttons */}
-      {!isForgotPassword && !(isEmailOtp && otpSent) && hasSocialProviders && (
+      {/* Social provider and passkey buttons */}
+      {!isForgotPassword && !(isEmailOtp && otpSent) && hasButtonMethods && (
         <div className="grid gap-2">
-          {visibleSocialProviders.map((provider) => (
+          {hasSocialProviders &&
+            visibleSocialProviders.map((provider) => (
+              <Button
+                key={provider.name}
+                type="button"
+                variant="outline"
+                size={compact ? "lg" : "xl"}
+                disabled={isLoading}
+                onClick={() => void handleSocialSignIn(provider.name)}
+                className="w-full gap-3"
+              >
+                {provider.icon && (
+                  <img
+                    src={provider.icon}
+                    alt=""
+                    className={cn(
+                      "h-5 w-5",
+                      provider.name === "github" && "dark:invert",
+                    )}
+                    aria-hidden="true"
+                  />
+                )}
+                {copy.continueWith(
+                  provider.name.charAt(0).toUpperCase() +
+                    provider.name.slice(1),
+                )}
+              </Button>
+            ))}
+          {passkeyAvailable && (
             <Button
-              key={provider.name}
               type="button"
               variant="outline"
               size={compact ? "lg" : "xl"}
               disabled={isLoading}
-              onClick={() => void handleSocialSignIn(provider.name)}
+              onClick={() => {
+                setSocialError(null);
+                passkeyMutation.mutate();
+              }}
               className="w-full gap-3"
             >
-              {provider.icon && (
-                <img
-                  src={provider.icon}
-                  alt=""
-                  className={cn(
-                    "h-5 w-5",
-                    provider.name === "github" && "dark:invert",
-                  )}
-                  aria-hidden="true"
-                />
-              )}
-              {copy.continueWith(
-                provider.name.charAt(0).toUpperCase() + provider.name.slice(1),
-              )}
+              <Fingerprint04 className="h-5 w-5" aria-hidden="true" />
+              {copy.signInWithPasskey}
             </Button>
-          ))}
+          )}
         </div>
       )}
 
       {/* Divider between social and email-based auth */}
       {!isForgotPassword &&
         !(isEmailOtp && otpSent) &&
-        hasSocialProviders &&
+        hasButtonMethods &&
         (emailAndPasswordEnabled || emailOtp.enabled) && (
           <div
             className={cn(
