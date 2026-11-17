@@ -12,7 +12,10 @@ mock.module("@/hooks/use-new-blocks-editor", () => ({
   useNewBlocksEditorState: () => false,
 }));
 
-import { inlineDataBlockRefSchema } from "./block-ref-field-utils";
+import {
+  inlineDataBlockRefSchema,
+  withInlineDataOption,
+} from "./block-ref-field-utils";
 import { resolveSchema, type LiveMeta } from "./resolve-schema";
 import { SchemaForm } from "./schema-form";
 
@@ -129,14 +132,19 @@ describe("inlineDataBlockRefSchema", () => {
     ]);
   });
 
-  test("loader, saved-block, empty and foreign values keep the picker", () => {
+  test("an empty object is the plain type just picked", () => {
+    expect(inlineDataBlockRefSchema(cardLayoutSchema(), {})?.type).toBe(
+      "inline-union",
+    );
+  });
+
+  test("loader, saved-block, missing and foreign values keep the picker", () => {
     const schema = cardLayoutSchema();
     for (const value of [
       { __resolveType: LOADER, layout: { heading: "Hi" } },
       { __resolveType: SAVED },
       undefined,
       null,
-      {},
       { unrelated: true },
       [{ heading: "Hi" }],
     ]) {
@@ -150,6 +158,20 @@ describe("inlineDataBlockRefSchema", () => {
       plainSchema: { type: "string", format: "image-uri" },
     };
     expect(inlineDataBlockRefSchema(schema, "https://x/a.png")).toBeNull();
+    expect(withInlineDataOption(schema)).toBe(schema);
+  });
+
+  test("the loader picker lists the plain type last", () => {
+    const refs = withInlineDataOption(cardLayoutSchema()).anyOfRefs ?? [];
+    expect(refs.map((r) => r.title)).toEqual([
+      "Product Card Layout",
+      `#${LOADER}@${SAVED}`,
+      "Layout",
+    ]);
+    expect(Object.keys(refs[2]?.schema?.properties ?? {})).toEqual([
+      "heading",
+      "showPrice",
+    ]);
   });
 });
 
@@ -282,5 +304,33 @@ describe("a `T | Loader<T>` field holding an inline `T`", () => {
       "Product Card Layout",
     );
     expect(view.queryByDisplayValue("Typed")).toBeNull();
+  });
+
+  test("from a loader, picking the plain type goes back to its fields", async () => {
+    const changes: unknown[] = [];
+    const view = renderForm(
+      section({ __resolveType: LOADER, layout: { heading: "Nested" } }),
+      (v) => changes.push(v),
+    );
+    await view.findByDisplayValue("Nested");
+    const trigger = view.container.querySelector<HTMLElement>("#cardLayout");
+    expect(trigger?.textContent).toBe("Product Card Layout");
+    selectValue(trigger!, "inline@Layout");
+    // The picker seeds the branch's fields, as it does for any branch.
+    await waitFor(() =>
+      expect(changes.at(-1)).toEqual(
+        section({ heading: "", showPrice: false }),
+      ),
+    );
+    expect(view.container.querySelector("#cardLayout")?.textContent).toBe(
+      "Layout",
+    );
+    const heading = await view.findByLabelText("Heading");
+    typeInto(heading, "Typed");
+    await waitFor(() =>
+      expect(changes.at(-1)).toEqual(
+        section({ heading: "Typed", showPrice: false }),
+      ),
+    );
   });
 });

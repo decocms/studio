@@ -13,7 +13,10 @@ import { EnumField } from "./fields/enum-field";
 import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
-import { inlineDataBlockRefSchema } from "./block-ref-field-utils";
+import {
+  inlineDataBlockRefSchema,
+  withInlineDataOption,
+} from "./block-ref-field-utils";
 import {
   fitsNamedRuleBlock,
   NamedRuleBlockFieldGate,
@@ -351,7 +354,13 @@ function renderFieldBody(fieldProps: FieldProps): ReactNode {
     }
     // For now render as object if we have properties, otherwise skip
     if (schema.anyOfRefs) {
-      return <AnyOfField key={props.path} {...props} />;
+      return (
+        <AnyOfField
+          key={props.path}
+          {...props}
+          schema={withInlineDataOption(schema)}
+        />
+      );
     }
     return null;
   }
