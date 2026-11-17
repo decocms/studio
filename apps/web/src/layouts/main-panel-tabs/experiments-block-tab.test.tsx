@@ -73,6 +73,14 @@ mock.module("@/components/sections-editor/named-rule-view", () => ({
 
 const { ExperimentsBlockReady } = await import("./experiments-block-tab");
 
+function Providers({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      {children}
+    </QueryClientProvider>
+  );
+}
+
 beforeEach(() => {
   saves.length = 0;
   holdsCopy = true;
@@ -93,11 +101,7 @@ function view(decofile: Record<string, unknown>) {
 }
 
 function setup(decofile: Record<string, unknown>) {
-  const queryClient = new QueryClient();
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
-  const rendered = render(view(decofile), { wrapper });
+  const rendered = render(view(decofile), { wrapper: Providers });
   const body = within(rendered.container);
   return {
     rerender: (next: Record<string, unknown>) => rendered.rerender(view(next)),
@@ -110,6 +114,7 @@ function setup(decofile: Record<string, unknown>) {
       });
     },
     save: () => body.getByRole("button", { name: "Save" }) as HTMLButtonElement,
+    saveShown: () => body.queryByRole("button", { name: "Save" }) !== null,
   };
 }
 
@@ -126,22 +131,28 @@ describe("an A/B test's share on a hosted v8 draft", () => {
   });
 
   test("after a reconcile, the share shows the draft's and has nothing to save", () => {
-    const { nudge, rerender, save, share } = setup(tests(10));
+    const { nudge, rerender, saveShown, share } = setup(tests(10));
     nudge();
     rerender(tests(30));
     act(() => bumpCopyEpoch(copyScope(SCOPE), "experiments"));
     expect(share()).toBe(30);
-    expect(save().disabled).toBe(true);
+    expect(saveShown()).toBe(false);
+  });
+
+  test("Save shows only once the share is moved", () => {
+    const { nudge, saveShown } = setup(tests(10));
+    expect(saveShown()).toBe(false);
+    nudge();
+    expect(saveShown()).toBe(true);
   });
 });
 
 describe("the list, with a slot under it (the Experiments app)", () => {
   function list(live?: Parameters<typeof ExperimentsBlockReady>[0]["live"]) {
     openName = null;
-    const queryClient = new QueryClient();
     return within(
       render(
-        <QueryClientProvider client={queryClient}>
+        <Providers>
           <ExperimentsBlockReady
             {...SCOPE}
             threadId={null}
@@ -149,7 +160,7 @@ describe("the list, with a slot under it (the Experiments app)", () => {
             meta={meta as never}
             live={live}
           />
-        </QueryClientProvider>,
+        </Providers>,
       ).container,
     );
   }
@@ -182,7 +193,6 @@ describe("the list, with a slot under it (the Experiments app)", () => {
 
   test("a ?test= the draft doesn't have is dropped from the URL", () => {
     openName = null;
-    const queryClient = new QueryClient();
     const open = (name: string | null) => ({
       name,
       set: () => {},
@@ -191,7 +201,7 @@ describe("the list, with a slot under it (the Experiments app)", () => {
       },
     });
     const ui = (name: string | null) => (
-      <QueryClientProvider client={queryClient}>
+      <Providers>
         <ExperimentsBlockReady
           {...SCOPE}
           threadId={null}
@@ -199,7 +209,7 @@ describe("the list, with a slot under it (the Experiments app)", () => {
           meta={meta as never}
           open={open(name)}
         />
-      </QueryClientProvider>
+      </Providers>
     );
     // The mocked view reads the open name from `openName`.
     openName = "gone";
@@ -212,6 +222,56 @@ describe("the list, with a slot under it (the Experiments app)", () => {
     openName = "hero";
     view.rerender(ui("hero"));
     expect(cleared).toBe(0);
+  });
+
+  test("a row opens its test in place, and closes it again", () => {
+    const body = list();
+    expect(body.getByText("1 running")).toBeTruthy();
+    expect(body.queryByTestId("experiment-v8-detail")).toBeNull();
+    const toggle = body.getByRole("button", { name: "hero" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    act(() => toggle.click());
+    expect(opened).toEqual(["hero"]);
+
+    openName = "hero";
+    const open = within(
+      render(
+        <Providers>
+          <ExperimentsBlockReady
+            {...SCOPE}
+            threadId={null}
+            decofile={tests(10)}
+            meta={meta as never}
+          />
+        </Providers>,
+      ).container,
+    );
+    expect(open.getAllByTestId("experiment-v8-row")).toHaveLength(1);
+    expect(open.getByTestId("experiment-v8-detail")).toBeTruthy();
+    act(() => open.getByRole("button", { name: "hero" }).click());
+    expect(opened).toEqual(["hero", null]);
+  });
+
+  test("an empty draft offers one way to create and no live section", () => {
+    openName = null;
+    const body = within(
+      render(
+        <Providers>
+          <ExperimentsBlockReady
+            {...SCOPE}
+            threadId={null}
+            decofile={{ experiments: { __resolveType: "split-traffic" } }}
+            meta={meta as never}
+            live={() => <p>live slot</p>}
+          />
+        </Providers>,
+      ).container,
+    );
+    expect(body.getAllByRole("button", { name: "New A/B test" })).toHaveLength(
+      1,
+    );
+    expect(body.queryByText("live slot")).toBeNull();
+    expect(body.queryByTestId("experiments-v8-list")).toBeNull();
   });
 
   test("without a slot, the list is as before", () => {
