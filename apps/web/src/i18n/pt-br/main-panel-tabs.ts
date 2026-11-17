@@ -736,4 +736,15 @@ export const mainPanelTabs = {
     "Seu app em `{host}` ainda não está respondendo. Se ele não estiver rodando, inicie-o no seu computador. Enquanto isso, você pode editar seu conteúdo na aba Conteúdo.",
   "mainPanelTabs.previewTab.localAppWaiting.hint":
     "O preview carrega sozinho assim que seu app responder.",
+  "mainPanelTabs.hostingTab.viewsLabel": "Seções de hosting",
+  "mainPanelTabs.hostingTab.tabDeploys": "Deploys",
+  "mainPanelTabs.hostingTab.tabVariables": "Variáveis",
+  "mainPanelTabs.hostingTab.liveInProduction": "No ar em produção",
+  "mainPanelTabs.hostingTab.noLiveDeploy": "Nada no ar em produção ainda.",
+  "mainPanelTabs.hostingTab.commitTitle": "Commit {sha}",
+  "mainPanelTabs.hostingTab.buildTook": "build de {duration}",
+  "mainPanelTabs.hostingTab.preview": "Preview",
+  "mainPanelTabs.hostingTab.statusReady": "Pronto",
+  "mainPanelTabs.hostingTab.statusFailed": "Falhou",
+  "mainPanelTabs.hostingTab.statusInProgress": "Em andamento",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;
