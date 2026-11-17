@@ -634,10 +634,7 @@ function formatDimensions(dimensions: Dimensions | null): string | null {
   return dimensions ? `${dimensions.width} × ${dimensions.height}` : null;
 }
 
-/**
- * One side of the replace comparison: the whole file, never cropped, over a
- * blurred copy that fills the rest of the fixed frame.
- */
+/** One side of the replace comparison: the whole file, never cropped. */
 function ComparePreview({
   src,
   kind,
@@ -651,25 +648,17 @@ function ComparePreview({
 }) {
   if (kind === "image") {
     return (
-      <>
-        <img
-          src={src}
-          alt=""
-          aria-hidden
-          className="absolute inset-0 size-full scale-110 object-cover opacity-50 blur-2xl"
-        />
-        <img
-          src={src}
-          alt={alt}
-          className="relative max-h-full max-w-full object-contain"
-          onLoad={(e) =>
-            onDimensions({
-              width: e.currentTarget.naturalWidth,
-              height: e.currentTarget.naturalHeight,
-            })
-          }
-        />
-      </>
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-full max-w-full rounded-md object-contain shadow-sm"
+        onLoad={(e) =>
+          onDimensions({
+            width: e.currentTarget.naturalWidth,
+            height: e.currentTarget.naturalHeight,
+          })
+        }
+      />
     );
   }
   if (kind === "video") {
@@ -680,7 +669,7 @@ function ComparePreview({
         muted
         playsInline
         controls
-        className="relative max-h-full max-w-full object-contain"
+        className="max-h-full max-w-full rounded-md object-contain shadow-sm"
         onLoadedMetadata={(e) =>
           onDimensions({
             width: e.currentTarget.videoWidth,
@@ -755,20 +744,20 @@ function ReplaceAssetSheet({
       <SheetContent
         side="bottom"
         container={container}
-        className="gap-0 rounded-t-2xl border-0"
+        className="mx-auto w-full max-w-4xl gap-0 rounded-t-2xl border-0"
       >
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border" />
-        <SheetHeader className="mx-auto w-full max-w-4xl px-6 pb-2 pt-3">
+        <SheetHeader className="px-6 pb-2 pt-3">
           <SheetTitle>{t("assets.replace.title", { name })}</SheetTitle>
           <SheetDescription>{t("assets.replace.description")}</SheetDescription>
         </SheetHeader>
 
-        <div className="mx-auto grid w-full max-w-4xl grid-cols-[1fr_auto_1fr] items-start gap-4 px-6 py-4">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-4 px-6 py-4">
           <div className="flex min-w-0 flex-col gap-2">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("assets.replace.before")}
             </p>
-            <div className="relative flex h-56 items-center justify-center overflow-hidden rounded-xl bg-muted shadow-edge">
+            <div className="flex h-64 items-center justify-center overflow-hidden rounded-xl bg-muted p-3">
               <ComparePreview
                 src={previewUrl(item.publicUrl, item.lastModified)}
                 kind={assetKind(item.key)}
@@ -798,8 +787,7 @@ function ReplaceAssetSheet({
             </p>
             <div
               className={cn(
-                "relative flex h-56 items-center justify-center overflow-hidden rounded-xl",
-                file ? "shadow-edge" : "bg-muted",
+                "relative flex h-64 items-center justify-center overflow-hidden rounded-xl bg-muted p-3",
                 isDragging && "bg-primary/5 ring-2 ring-primary",
               )}
               onDragOver={(e) => {
@@ -884,7 +872,7 @@ function ReplaceAssetSheet({
           </div>
         </div>
 
-        <SheetFooter className="mx-auto w-full max-w-4xl flex-row items-center gap-2 px-6 pb-5 pt-1">
+        <SheetFooter className="flex-row items-center gap-2 px-6 pb-5 pt-1">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
             {file
               ? t("assets.replace.cacheNote")
