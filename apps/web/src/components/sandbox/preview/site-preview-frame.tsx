@@ -10,6 +10,7 @@ import {
 } from "./frame-navigation";
 import { resolvePreviewFrameGeometry } from "./preview-frame-geometry";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
+import { guardFrameFocus } from "./preview-focus-guard";
 import { PreviewProgressBar } from "./preview-progress-bar";
 
 /**
@@ -199,7 +200,9 @@ export function SitePreviewFrame({
           className="w-full h-full border-0"
           title={title}
           onError={recovery.handleError}
-          onLoad={() => {
+          onLoad={(event) => {
+            // The site's scripts run now and may take focus.
+            guardFrameFocus(event.currentTarget);
             // A held navigation may go in now, and what was awaited is shown.
             setNavigation(frameNavigationLoaded);
             setAwaitingLoad(false);
