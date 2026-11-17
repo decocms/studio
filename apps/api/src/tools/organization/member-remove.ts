@@ -60,10 +60,6 @@ export const ORGANIZATION_MEMBER_REMOVE = defineTool({
       organizationId,
       memberIdOrEmail: input.memberIdOrEmail,
     });
-    // Better Auth answers null only when it cannot resolve the organization.
-    if (!removed) {
-      throw new Error("Organization not found");
-    }
 
     // Invalidate the removed member's cached role immediately — otherwise a
     // just-removed admin/owner keeps passing the cached-role permission

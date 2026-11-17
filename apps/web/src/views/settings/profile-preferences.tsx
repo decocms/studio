@@ -36,8 +36,6 @@ import { playSound } from "@/lib/sounds/sound-engine.ts";
 import { question004Sound } from "@/lib/sounds/question-004.ts";
 import { toast } from "@decocms/ui/components/sonner.tsx";
 import { track } from "@/lib/posthog-client";
-import { useAuthConfig } from "@/providers/auth-config-provider";
-import { PasskeysSection } from "./passkeys-section";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -409,7 +407,6 @@ function PreferencesSection() {
 
 export function ProfilePreferencesPage() {
   const t = useT();
-  const { passkey } = useAuthConfig();
   return (
     <Page>
       <Page.Content>
@@ -417,7 +414,6 @@ export function ProfilePreferencesPage() {
           <SettingsPage>
             <Page.Title>{t("settings.title")}</Page.Title>
             <ProfileSection />
-            {passkey.enabled && <PasskeysSection />}
             <PreferencesSection />
           </SettingsPage>
         </Page.Container>
