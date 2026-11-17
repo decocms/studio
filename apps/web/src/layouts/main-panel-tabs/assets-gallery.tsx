@@ -640,7 +640,19 @@ function formatDimensions(dimensions: Dimensions | null): string | null {
   return dimensions ? `${dimensions.width} × ${dimensions.height}` : null;
 }
 
-/** One side of the replace comparison, filling its card. */
+/** Tallest a comparison card gets; keep in sync with `h-[min(45vh,28rem)]`. */
+const COMPARE_HEIGHT = "min(45vh, 28rem)";
+
+/**
+ * The width of a card in a file's proportion: as wide as the frame allows,
+ * never wider than the file itself, so a photo is not cropped or enlarged.
+ */
+function compareCardWidth(dimensions: Dimensions): string {
+  const ratio = dimensions.width / dimensions.height;
+  return `min(100%, calc(${COMPARE_HEIGHT} * ${ratio}), ${dimensions.width}px)`;
+}
+
+/** One side of the replace comparison: a card in the file's own shape. */
 function ComparePreview({
   src,
   kind,
@@ -657,7 +669,7 @@ function ComparePreview({
       <img
         src={src}
         alt={alt}
-        className="size-full object-cover"
+        className="max-h-full max-w-full rounded-xl shadow-edge"
         onLoad={(e) =>
           onDimensions({
             width: e.currentTarget.naturalWidth,
@@ -675,7 +687,7 @@ function ComparePreview({
         muted
         playsInline
         controls
-        className="size-full object-cover"
+        className="max-h-full max-w-full rounded-xl shadow-edge"
         onLoadedMetadata={(e) =>
           onDimensions({
             width: e.currentTarget.videoWidth,
@@ -686,7 +698,7 @@ function ComparePreview({
     );
   }
   return (
-    <div className="flex size-full items-center justify-center">
+    <div className="flex aspect-[4/3] max-h-full w-full max-w-xs items-center justify-center rounded-xl bg-muted shadow-edge">
       <File02 size={32} className="text-muted-foreground" />
     </div>
   );
@@ -767,7 +779,7 @@ function ReplaceAssetSheet({
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("assets.replace.before")}
             </p>
-            <div className="flex aspect-video max-h-[45vh] w-full items-center justify-center overflow-hidden rounded-xl bg-muted shadow-edge">
+            <div className="flex h-[min(45vh,28rem)] items-center justify-center">
               <ComparePreview
                 src={previewUrl(item.publicUrl, item.lastModified)}
                 kind={assetKind(item.key)}
@@ -796,11 +808,7 @@ function ReplaceAssetSheet({
               {t("assets.replace.after")}
             </p>
             <div
-              className={cn(
-                "flex aspect-video max-h-[45vh] w-full items-center justify-center overflow-hidden rounded-xl bg-muted",
-                file && "shadow-edge",
-                isDragging && "bg-primary/5 ring-2 ring-primary",
-              )}
+              className="flex h-[min(45vh,28rem)] items-center justify-center"
               onDragOver={(e) => {
                 e.preventDefault();
                 setIsDragging(true);
@@ -821,7 +829,18 @@ function ReplaceAssetSheet({
                   onDimensions={setAfter}
                 />
               ) : (
-                <div className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+                <div
+                  className={cn(
+                    "flex max-h-full flex-col items-center justify-center gap-3 rounded-xl bg-muted p-4 text-center text-sm text-muted-foreground",
+                    isDragging && "bg-primary/5 ring-2 ring-primary",
+                  )}
+                  style={{
+                    width: before ? compareCardWidth(before) : "100%",
+                    aspectRatio: before
+                      ? `${before.width} / ${before.height}`
+                      : "16 / 9",
+                  }}
+                >
                   <Upload01 size={20} />
                   {t("assets.replace.dropHint")}
                   <Button
