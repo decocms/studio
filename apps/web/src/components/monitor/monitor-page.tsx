@@ -384,6 +384,8 @@ export function MonitorPage({
             project={scopeProject}
             today={today}
             kpis={board.kpis}
+            deploys={board.deploys}
+            dayStart={board.dayStart}
           />
         }
         more={

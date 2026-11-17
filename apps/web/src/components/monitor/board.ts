@@ -37,6 +37,8 @@ export interface MetricPoint {
   d1: number | null;
   w1: number | null;
   y1: number | null;
+  /** The order monitor's warning and alert levels for this bucket, when it judges it. */
+  band?: [number, number] | null;
 }
 
 export interface Kpi {
