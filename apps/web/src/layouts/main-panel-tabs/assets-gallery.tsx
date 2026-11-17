@@ -754,7 +754,7 @@ function ReplaceAssetSheet({
       <SheetContent
         side="bottom"
         container={container}
-        className="mx-auto w-full max-w-4xl gap-0 rounded-t-2xl border-0"
+        className="gap-0 rounded-t-2xl border-0"
       >
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border" />
         <SheetHeader className="px-6 pb-2 pt-3">
@@ -767,7 +767,7 @@ function ReplaceAssetSheet({
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("assets.replace.before")}
             </p>
-            <div className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl bg-muted shadow-edge">
+            <div className="flex aspect-video max-h-[45vh] w-full items-center justify-center overflow-hidden rounded-xl bg-muted shadow-edge">
               <ComparePreview
                 src={previewUrl(item.publicUrl, item.lastModified)}
                 kind={assetKind(item.key)}
@@ -797,7 +797,7 @@ function ReplaceAssetSheet({
             </p>
             <div
               className={cn(
-                "flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl bg-muted",
+                "flex aspect-video max-h-[45vh] w-full items-center justify-center overflow-hidden rounded-xl bg-muted",
                 file && "shadow-edge",
                 isDragging && "bg-primary/5 ring-2 ring-primary",
               )}
