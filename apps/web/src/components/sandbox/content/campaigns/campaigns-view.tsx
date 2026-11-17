@@ -304,11 +304,7 @@ export function CampaignsView({
                   <span className="pl-6">
                     {t("sandbox.dateCampaigns.colCampaign")}
                   </span>
-                  <span>
-                    {t("sandbox.dateCampaigns.colWindow", {
-                      months: months.join(" / "),
-                    })}
-                  </span>
+                  <StripMonths months={months} today={strip.today} />
                   <span>{t("sandbox.dateCampaigns.colStatus")}</span>
                   <span className="w-16" />
                 </div>
@@ -365,6 +361,56 @@ export function CampaignsView({
         pending={view.isPending}
         onCreate={view.create}
       />
+    </div>
+  );
+}
+
+/** How much of the strip a month's name and the "Today" tag take, in percent. */
+const MONTH_LABEL_WIDTH = 8;
+const TODAY_TAG_HALF = 5;
+
+/**
+ * The strip's months, each at the start of its third, and a "Today" tag over
+ * its line; a month whose name the tag would cover is left out.
+ */
+function StripMonths({
+  months,
+  today,
+}: {
+  months: string[];
+  today: number | undefined;
+}) {
+  const t = useT();
+  const tag =
+    today === undefined
+      ? undefined
+      : Math.min(Math.max(today, TODAY_TAG_HALF), 100 - TODAY_TAG_HALF);
+  return (
+    <div className="relative h-5" data-testid="campaign-strip-months">
+      {months.map((month, i) => {
+        const left = (i / months.length) * 100;
+        const covered =
+          tag !== undefined &&
+          tag + TODAY_TAG_HALF > left &&
+          tag - TODAY_TAG_HALF < left + MONTH_LABEL_WIDTH;
+        return covered ? null : (
+          <span
+            key={`${month}-${i}`}
+            className="absolute top-1/2 -translate-y-1/2 pl-1.5"
+            style={{ left: `${left}%` }}
+          >
+            {month}
+          </span>
+        );
+      })}
+      {tag !== undefined && (
+        <span
+          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-destructive px-1.5 py-px text-2xs font-semibold normal-case tracking-normal text-destructive-foreground"
+          style={{ left: `${tag}%` }}
+        >
+          {t("sandbox.dateCampaigns.today")}
+        </span>
+      )}
     </div>
   );
 }

@@ -1211,8 +1211,6 @@ export const sandbox = {
     "Um código de status explícito prevalece sobre o tipo.",
   "sandbox.redirectEditor.statusFromType": "Seguir o tipo ({status})",
   "sandbox.redirectEditor.statusLabel": "Código de status",
-  "sandbox.redirectEditor.typeHint":
-    "Use **Temporário** quando o redirecionamento pode mudar; **Permanente** permite que os navegadores façam cache.",
   "sandbox.redirectEditor.title": "Redirecionamento",
   "sandbox.redirectEditor.toDescription":
     "O destino — um caminho relativo ou uma URL absoluta.",
@@ -1462,12 +1460,12 @@ export const sandbox = {
   "sandbox.calendarView.loadFailedHint":
     "Nada foi alterado. Tente de novo em instantes.",
   "sandbox.dateCampaigns.intro":
-    "Campanhas mudam o site numa janela de datas. A linha vermelha é hoje. As mudanças vão ao ar quando você publica.",
+    "Campanhas mudam o site numa janela de datas. As mudanças vão ao ar quando você publica.",
   "sandbox.dateCampaigns.tabsLabel": "Campanhas a mostrar",
   "sandbox.dateCampaigns.tabCurrent": "Campanhas",
   "sandbox.dateCampaigns.tabEnded": "Encerradas",
   "sandbox.dateCampaigns.colCampaign": "Campanha",
-  "sandbox.dateCampaigns.colWindow": "Janela · {months}",
+  "sandbox.dateCampaigns.today": "Hoje",
   "sandbox.dateCampaigns.colStatus": "Status",
   "sandbox.dateCampaigns.noneCurrent": "Nenhuma campanha no ar ou agendada.",
   "sandbox.dateCampaigns.noneEnded": "Nenhuma campanha encerrada ainda.",

@@ -92,8 +92,7 @@ function typeInto(element: HTMLElement, value: string) {
     propsKey ?? ""
   ];
   const onChange = props?.onChange as
-    | ((event: { target: { value: string } }) => void)
-    | undefined;
+    ((event: { target: { value: string } }) => void) | undefined;
   if (!onChange) throw new Error("not a controlled field");
   act(() => onChange({ target: { value } }));
 }
@@ -225,6 +224,15 @@ describe("the list", () => {
     const { body } = setup(both);
     expect(names(body)).toEqual(["old"]);
     expect(body.getByTestId("campaign-editor")).toBeTruthy();
+  });
+
+  test("the strip's months head the column, with today tagged", () => {
+    openName = null;
+    const { body } = setup(both);
+    const header = body.getByTestId("campaign-strip-months");
+    // Three months, less one the tag would cover, and the tag.
+    expect(header.children.length).toBeGreaterThanOrEqual(3);
+    expect(header.textContent).toMatch(/Today|sandbox\.dateCampaigns\.today/);
   });
 
   test("each row draws its window on the strip", () => {
