@@ -157,7 +157,7 @@ export function AssetsGallery({ config }: { config: FileConfigInfo }) {
       className="relative flex h-full min-h-0 overflow-hidden"
     >
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 pb-3 pt-4">
+        <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 pb-2 pt-4">
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold">
               {t("assets.browser.title")}
@@ -213,7 +213,7 @@ export function AssetsGallery({ config }: { config: FileConfigInfo }) {
           onDragLeave={onDragLeave}
           onDrop={onDrop}
         >
-          <div className="absolute inset-0 overflow-y-auto px-4 pb-24">
+          <div className="absolute inset-0 overflow-y-auto px-4 pt-1 pb-24">
             {items.length === 0 ? (
               activeSearch ? (
                 <EmptyNote
