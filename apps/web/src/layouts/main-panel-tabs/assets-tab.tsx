@@ -54,6 +54,9 @@ import {
 } from "@/hooks/use-file-picker";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
+import { assetColumnCount, distributeIntoColumns } from "./asset-columns";
+import { AssetsGallery } from "./assets-gallery";
 import {
   basename,
   extensionTag,
@@ -72,6 +75,10 @@ export function AssetsTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   if (!config) {
     return <NoBucketState />;
+  }
+
+  if (blocksV8Project(entity)) {
+    return <AssetsGallery config={config} />;
   }
 
   return <AssetsBrowser config={config} />;
@@ -94,32 +101,6 @@ function NoBucketState() {
       </div>
     </div>
   );
-}
-
-/**
- * Column count for the masonry grid, keyed off the measured container width
- * (thresholds mirror the old Tailwind sm/md/lg breakpoints). `-1` means "not
- * measured yet" — it re-renders with the real width before paint, so the
- * fallback is only a momentary default and never a visible layout.
- */
-function assetColumnCount(width: number): number {
-  if (width < 0 || width < 640) return 2;
-  if (width < 768) return 3;
-  if (width < 1024) return 4;
-  return 5;
-}
-
-/**
- * Distributes items round-robin across `count` columns so reading order stays
- * left-to-right, top-to-bottom (item 0,1,2… fill the first visual row). Cards
- * keep their natural height within each column — a mosaic with no fixed row
- * height and no leftover space — while preserving the source order, which a
- * pure CSS `columns` layout would scramble into column-major order.
- */
-function distributeIntoColumns<T>(items: T[], count: number): T[][] {
-  const columns: T[][] = Array.from({ length: count }, () => []);
-  items.forEach((item, i) => columns[i % count]!.push(item));
-  return columns;
 }
 
 function AssetsBrowser({ config }: { config: FileConfigInfo }) {
