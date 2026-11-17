@@ -24,7 +24,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
 import { isAlreadyMemberError } from "@/auth/is-already-member-error";
-import { BUILTIN_ROLES, type BuiltinRole } from "@decocms/shared/auth/roles";
+import { BUILTIN_ROLES } from "@decocms/shared/auth/roles";
 import { getDb } from "@/database";
 import { getObjectStorageS3Service } from "@/object-storage/factory";
 import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
@@ -500,8 +500,8 @@ export function createAdminRoutes(): Hono<Env> {
     };
     const email =
       typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    const role = typeof body.role === "string" ? body.role : "";
-    if (!email || !BUILTIN_ROLES.includes(role as BuiltinRole)) {
+    const role = BUILTIN_ROLES.find((builtin) => builtin === body.role);
+    if (!email || !role) {
       return c.json({ error: "Valid email and role are required" }, 400);
     }
 
