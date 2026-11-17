@@ -56,9 +56,6 @@ export const authEnvSchema = z
     AUTH_EMAIL_OTP_LENGTH: z.coerce.number().optional(),
     AUTH_EMAIL_OTP_EXPIRES_IN: z.coerce.number().optional(),
 
-    // Passkeys (WebAuthn). The relying party id comes from BASE_URL.
-    AUTH_PASSKEY_ENABLED: bool(true),
-
     // SSO (Microsoft)
     AUTH_SSO_DOMAIN: z.string().optional(),
     AUTH_SSO_MS_TENANT_ID: z.string().optional(),
@@ -278,7 +275,6 @@ export const authEnvSchema = z
       ssoConfig,
       magicLinkConfig,
       emailOtpConfig,
-      passkey: { enabled: env.AUTH_PASSKEY_ENABLED },
     };
   });
 

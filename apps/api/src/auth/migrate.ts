@@ -10,7 +10,6 @@
  */
 
 import { getMigrations } from "better-auth/db";
-import { passkey } from "@better-auth/passkey";
 import { sso } from "@better-auth/sso";
 import { organization } from "@decocms/better-auth/plugins";
 import {
@@ -55,7 +54,6 @@ export async function migrateBetterAuth(databaseUrl?: string): Promise<string> {
       sso(),
       magicLink({ sendMagicLink: async () => {} }),
       emailOTP({ sendVerificationOTP: async () => {} }),
-      passkey(),
     ],
   };
 
