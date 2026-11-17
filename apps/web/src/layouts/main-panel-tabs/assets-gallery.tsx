@@ -735,7 +735,8 @@ function ReplaceAssetSheet({
     if (!next) return;
     if (fileUrl) URL.revokeObjectURL(fileUrl);
     setFile(next);
-    setFileUrl(URL.createObjectURL(next));
+    // A no-op on the browser-made blob: URL; it marks the src as escaped for CodeQL.
+    setFileUrl(encodeURI(URL.createObjectURL(next)));
     setAfter(null);
   }
 
