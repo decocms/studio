@@ -52,5 +52,8 @@
     "fast-xml-parser": "5.4.2",
     "prosemirror-model": "1.25.11",
     "@types/bun": "1.3.14"
+  },
+  "patchedDependencies": {
+    "better-auth@1.4.22": "patches/better-auth@1.4.22.patch"
   }
 }
