@@ -5,21 +5,15 @@
  * variant names a campaign (`campaign { name }`), so these are all the dates
  * of the site; nothing is left out.
  *
- * List → detail: change the window, or delete (it just deletes, with an
+ * A row opens in place: change the window, or delete (it just deletes, with an
  * Undo; `deco check` reports a rule that names a campaign that isn't there).
  * The view doesn't say where a campaign is used and doesn't rename one. A
- * timeline shows one row per campaign. Each change is one guarded
+ * strip shows each campaign's window. Each change is one guarded
  * `blocks.apply` into the draft and goes live with the normal Publish.
  */
 
-import { useState } from "react";
-import {
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  List,
-  Plus,
-} from "@untitledui/icons";
+import { type ReactNode, useState } from "react";
+import { Calendar, ChevronRight, Plus } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
@@ -30,6 +24,8 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { useT } from "@/i18n/use-t.ts";
+import { LOCALE_TAG } from "@/i18n/locale.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
 import {
   SITE_DRAFT_VIEW_INSET,
   SiteDraftViewHeader,
@@ -45,7 +41,6 @@ import {
   NamedRuleCreateDialog,
   NamedRuleDetailDelete,
   type NamedRuleDetailProps,
-  NamedRuleDetailTitle,
   NamedRuleDraftNotes,
   NamedRuleEntryBadge,
   namedRuleDetailProps,
@@ -60,40 +55,52 @@ import {
   namedRuleKindInfo,
 } from "@/components/sections-editor/named-rules";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import {
-  addMonths,
-  MONTHS,
-  startOfMonth,
-} from "../variant-calendar/date-utils";
+import { addMonths, startOfMonth } from "../variant-calendar/date-utils";
 import {
   type CampaignRowModel,
   type CampaignStatus,
   campaignRows,
   removedCampaigns,
+  shortCampaignWindow,
   timelineBar,
-  timelineLabelPlacement,
   timelineStart,
 } from "./campaigns-model";
 
-type ViewMode = "list" | "timeline";
+type CampaignTab = "current" | "ended";
 
 const STATUS_DOT: Record<CampaignStatus, string> = {
   running: "bg-success",
-  upcoming: "bg-primary",
+  upcoming: "bg-brand-blue",
   always: "bg-success",
   ended: "bg-muted-foreground/50",
   unreadable: "bg-warning",
 };
 
 const STATUS_BAR: Record<CampaignStatus, string> = {
-  running: "bg-success/80 text-success-foreground",
-  upcoming: "bg-primary/80 text-primary-foreground",
-  always: "bg-success/60 text-success-foreground",
-  ended: "bg-muted text-muted-foreground",
-  unreadable: "bg-warning/60 text-warning-foreground",
+  running: "bg-success",
+  upcoming: "bg-brand-blue",
+  always: "bg-success/60",
+  ended: "bg-muted-foreground/40",
+  unreadable: "bg-warning/60",
 };
 
-const TIMELINE_MONTHS = 4;
+const STATUS_BADGE: Record<
+  CampaignStatus,
+  "success" | "info" | "muted" | "warning"
+> = {
+  running: "success",
+  upcoming: "info",
+  always: "success",
+  ended: "muted",
+  unreadable: "warning",
+};
+
+/** Months on each row's strip. */
+const STRIP_MONTHS = 3;
+
+/** Name, strip, status, Edit: the list's columns, header and rows alike. */
+const ROW_GRID =
+  "grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_7rem_auto] items-center gap-4";
 
 const CAMPAIGNS_BLOCK = namedRuleKindInfo("campaigns").blockKey;
 
@@ -122,8 +129,7 @@ function useStatusLabel() {
 function CampaignStatusPill({ status }: { status: CampaignStatus }) {
   const label = useStatusLabel();
   return (
-    <Badge variant="secondary" data-status={status}>
-      <span className={cn("size-1.5 rounded-full", STATUS_DOT[status])} />
+    <Badge variant={STATUS_BADGE[status]} data-status={status}>
       {label(status)}
     </Badge>
   );
@@ -149,17 +155,15 @@ export function CampaignsView({
   branch,
   decofile,
   meta,
-  initialView = "list",
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
   meta: LiveMeta | null | undefined;
-  /** The Calendar view opens on the timeline; the content browser, the list. */
-  initialView?: ViewMode;
 }) {
   const t = useT();
+  const [preferences] = usePreferences();
   const view = useNamedRuleView("campaigns", {
     orgSlug,
     virtualMcpId,
@@ -167,7 +171,8 @@ export function CampaignsView({
     decofile,
     meta,
   });
-  const [mode, setMode] = useState<ViewMode>(initialView);
+  // Unpicked, the list opens where the open campaign is.
+  const [pickedTab, setTab] = useState<CampaignTab | null>(null);
   // A reconcile of the campaigns (hosted v8) replaced the copy the detail
   // shows: it is seeded again from the draft's copy.
   const copyEpoch = useCopyEpochs(copyScope({ orgSlug, virtualMcpId, branch }))(
@@ -196,64 +201,154 @@ export function CampaignsView({
 
   const rows = campaignRows(decofile, view.published, now);
   const removed = removedCampaigns(decofile, view.published);
-
-  const opened = rows.find((row) => row.name === view.openName) ?? null;
-  if (opened) {
-    return (
-      <CampaignDetail
-        key={`${opened.name}:${copyEpoch}`}
-        {...namedRuleDetailProps(view, opened, { decofile, meta })}
-      />
-    );
-  }
+  const ended = rows.filter((row) => row.status === "ended");
+  const current = rows.filter((row) => row.status !== "ended");
+  const openEnded = ended.some((row) => row.name === view.openName);
+  const tab = pickedTab ?? (openEnded ? "ended" : "current");
+  const shown = tab === "ended" ? ended : current;
+  // Ended campaigns look back from this month; the rest look ahead.
+  const stripStart =
+    tab === "ended"
+      ? addMonths(startOfMonth(now), -(STRIP_MONTHS - 1))
+      : timelineStart(
+          shown.map((row) => row.window),
+          now,
+          STRIP_MONTHS,
+        );
+  const strip = {
+    start: stripStart,
+    end: addMonths(stripStart, STRIP_MONTHS),
+    today: timelineBar(
+      {
+        start: now.toISOString(),
+        end: new Date(now.getTime() + 1).toISOString(),
+      },
+      stripStart,
+      addMonths(stripStart, STRIP_MONTHS),
+    )?.left,
+  };
+  const monthName = new Intl.DateTimeFormat(LOCALE_TAG[preferences.language], {
+    month: "short",
+  });
+  const months = Array.from({ length: STRIP_MONTHS }, (_, i) =>
+    monthName.format(addMonths(stripStart, i)).replace(".", ""),
+  );
+  const empty = rows.length === 0;
 
   return (
     <div className="flex h-full w-full flex-col">
       <SiteDraftViewHeader
         intro={t("sandbox.dateCampaigns.intro")}
         actions={
-          <>
-            <ToggleGroup
-              type="single"
-              variant="segmented"
-              size="sm"
-              value={mode}
-              onValueChange={(next) => {
-                if (next === "list" || next === "timeline") setMode(next);
-              }}
-            >
-              <ToggleGroupItem value="list">
-                <List />
-                {t("sandbox.dateCampaigns.listMode")}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="timeline">
-                <Calendar />
-                {t("sandbox.dateCampaigns.timelineMode")}
-              </ToggleGroupItem>
-            </ToggleGroup>
+          empty ? undefined : (
             <Button size="sm" onClick={() => view.setCreating(true)}>
               <Plus size={16} />
               {t("sandbox.dateCampaigns.new")}
             </Button>
-          </>
+          )
         }
       />
       <ScrollArea className="min-h-0 flex-1">
         <div className={cn("flex flex-col gap-4", SITE_DRAFT_VIEW_INSET)}>
-          {rows.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-10 text-center">
-              <Calendar size={24} className="text-muted-foreground/60" />
+          {empty ? (
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-16 text-center">
+              <span className="flex size-10 items-center justify-center rounded-lg bg-muted">
+                <Calendar size={20} className="text-muted-foreground" />
+              </span>
               <p className="text-sm font-medium">
                 {t("sandbox.dateCampaigns.empty.title")}
               </p>
               <p className="max-w-sm text-sm text-muted-foreground">
                 {t("sandbox.dateCampaigns.empty.desc")}
               </p>
+              <Button
+                size="sm"
+                className="mt-2"
+                onClick={() => view.setCreating(true)}
+              >
+                <Plus size={16} />
+                {t("sandbox.dateCampaigns.new")}
+              </Button>
             </div>
-          ) : mode === "list" ? (
-            <CampaignList rows={rows} onOpen={view.setOpenName} />
           ) : (
-            <CampaignTimeline rows={rows} now={now} onOpen={view.setOpenName} />
+            <>
+              <ToggleGroup
+                type="single"
+                variant="segmented"
+                size="sm"
+                value={tab}
+                aria-label={t("sandbox.dateCampaigns.tabsLabel")}
+                className="self-start"
+                onValueChange={(next) => {
+                  if (next === "current" || next === "ended") setTab(next);
+                }}
+              >
+                <ToggleGroupItem value="current">
+                  <Calendar />
+                  {t("sandbox.dateCampaigns.tabCurrent")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="ended">
+                  {t("sandbox.dateCampaigns.tabEnded")}
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <div
+                className="overflow-hidden rounded-xl border border-border"
+                data-testid="campaigns-list"
+              >
+                <div
+                  className={cn(
+                    ROW_GRID,
+                    "border-b border-border px-4 py-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground",
+                  )}
+                >
+                  <span className="pl-6">
+                    {t("sandbox.dateCampaigns.colCampaign")}
+                  </span>
+                  <StripMonths months={months} today={strip.today} />
+                  <span>{t("sandbox.dateCampaigns.colStatus")}</span>
+                  <span className="w-16" />
+                </div>
+                {shown.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    {tab === "ended"
+                      ? t("sandbox.dateCampaigns.noneEnded")
+                      : t("sandbox.dateCampaigns.noneCurrent")}
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {shown.map((row) => {
+                      const expanded = row.name === view.openName;
+                      return (
+                        <CampaignRow
+                          key={row.name}
+                          row={row}
+                          dates={shortCampaignWindow(
+                            row.window,
+                            LOCALE_TAG[preferences.language],
+                            now,
+                          )}
+                          strip={strip}
+                          expanded={expanded}
+                          onToggle={() =>
+                            view.setOpenName(expanded ? null : row.name)
+                          }
+                        >
+                          {expanded && (
+                            <CampaignEditor
+                              key={`${row.name}:${copyEpoch}`}
+                              {...namedRuleDetailProps(view, row, {
+                                decofile,
+                                meta,
+                              })}
+                            />
+                          )}
+                        </CampaignRow>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </>
           )}
           <NamedRuleDraftNotes kind="campaigns" removed={removed} />
         </div>
@@ -270,217 +365,199 @@ export function CampaignsView({
   );
 }
 
-function CampaignList({
-  rows,
-  onOpen,
-}: {
-  rows: CampaignRowModel[];
-  onOpen: (name: string) => void;
-}) {
-  const t = useT();
-  return (
-    <ul
-      className="divide-y divide-border rounded-md border border-border"
-      data-testid="campaigns-list"
-    >
-      {rows.map((row) => (
-        <li
-          key={row.name}
-          className="group relative flex items-center gap-4 px-4 py-3 hover:bg-muted/50"
-          data-testid="campaign-row"
-        >
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <button
-              type="button"
-              onClick={() => onOpen(row.name)}
-              className="truncate text-left text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
-            >
-              {row.name}
-            </button>
-            <span className="truncate text-xs text-muted-foreground">
-              {windowText(
-                row.window,
-                t("sectionsEditor.namedRulePicker.alwaysRunning"),
-              )}
-            </span>
-          </div>
-          <div className="hidden w-40 shrink-0 md:flex">
-            <NamedRuleEntryBadge kind="campaigns" state={row.entryState} />
-          </div>
-          <div className="flex w-32 shrink-0">
-            <CampaignStatusPill status={row.status} />
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
+/** How much of the strip a month's name and the "Today" tag take, in percent. */
+const MONTH_LABEL_WIDTH = 8;
+const TODAY_TAG_HALF = 5;
 
-/** One row per campaign over a few months, today marked. */
-function CampaignTimeline({
-  rows,
-  now,
-  onOpen,
+/**
+ * The strip's months, each at the start of its third, and a "Today" tag over
+ * its line; a month whose name the tag would cover is left out.
+ */
+function StripMonths({
+  months,
+  today,
 }: {
-  rows: CampaignRowModel[];
-  now: Date;
-  onOpen: (name: string) => void;
+  months: string[];
+  today: number | undefined;
 }) {
   const t = useT();
-  const [cursor, setCursor] = useState(() =>
-    timelineStart(
-      rows.map((row) => row.window),
-      now,
-      TIMELINE_MONTHS,
-    ),
-  );
-  const rangeEnd = addMonths(cursor, TIMELINE_MONTHS);
-  const months = Array.from({ length: TIMELINE_MONTHS }, (_, i) =>
-    addMonths(cursor, i),
-  );
-  const today = timelineBar(
-    {
-      start: now.toISOString(),
-      end: new Date(now.getTime() + 1).toISOString(),
-    },
-    cursor,
-    rangeEnd,
-  );
-  const bars = rows.map((row) => ({
-    row,
-    bar: timelineBar(row.window, cursor, rangeEnd),
-  }));
-  const shown = bars.filter((entry) => entry.bar !== null);
+  const tag =
+    today === undefined
+      ? undefined
+      : Math.min(Math.max(today, TODAY_TAG_HALF), 100 - TODAY_TAG_HALF);
   return (
-    <div className="flex flex-col gap-2" data-testid="campaigns-timeline">
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCursor(startOfMonth(now))}
+    <div className="relative h-5" data-testid="campaign-strip-months">
+      {months.map((month, i) => {
+        const left = (i / months.length) * 100;
+        const covered =
+          tag !== undefined &&
+          tag + TODAY_TAG_HALF > left &&
+          tag - TODAY_TAG_HALF < left + MONTH_LABEL_WIDTH;
+        return covered ? null : (
+          <span
+            key={`${month}-${i}`}
+            className="absolute top-1/2 -translate-y-1/2 pl-1.5"
+            style={{ left: `${left}%` }}
+          >
+            {month}
+          </span>
+        );
+      })}
+      {tag !== undefined && (
+        <span
+          className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-destructive px-1.5 py-px text-2xs font-semibold normal-case tracking-normal text-destructive-foreground"
+          style={{ left: `${tag}%` }}
         >
           {t("sandbox.dateCampaigns.today")}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label={t("sandbox.dateCampaigns.previous")}
-          onClick={() => setCursor((c) => addMonths(c, -TIMELINE_MONTHS))}
-        >
-          <ChevronLeft size={16} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label={t("sandbox.dateCampaigns.next")}
-          onClick={() => setCursor((c) => addMonths(c, TIMELINE_MONTHS))}
-        >
-          <ChevronRight size={16} />
-        </Button>
-      </div>
-      <div className="relative min-w-[640px] rounded-md border border-border">
-        <div className="flex border-b">
-          <div className="w-48 shrink-0 border-r" />
-          <div
-            className="grid flex-1"
-            style={{
-              gridTemplateColumns: `repeat(${TIMELINE_MONTHS}, minmax(0, 1fr))`,
-            }}
-          >
-            {months.map((month) => (
-              <div
-                key={month.getTime()}
-                className="border-r px-2 py-1.5 text-xs text-muted-foreground last:border-r-0"
-              >
-                {MONTHS[month.getMonth()]?.slice(0, 3)} {month.getFullYear()}
-              </div>
-            ))}
-          </div>
-        </div>
-        {shown.length === 0 ? (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-            {t("sandbox.dateCampaigns.nothingInRange")}
-          </p>
-        ) : (
-          shown.map(({ row, bar }) => {
-            const label = timelineLabelPlacement(bar!, row.name);
-            return (
-              <div
-                key={row.name}
-                className="flex h-9 items-center border-b last:border-b-0"
-              >
-                <div className="w-48 shrink-0 truncate border-r px-3 text-sm">
-                  {row.name}
-                </div>
-                <div className="relative h-full flex-1">
-                  {today && (
-                    <div
-                      className="pointer-events-none absolute top-0 bottom-0 w-px bg-primary/70"
-                      style={{ left: `${today.left}%` }}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onOpen(row.name)}
-                    aria-label={row.name}
-                    title={windowText(
-                      row.window,
-                      t("sectionsEditor.namedRulePicker.alwaysRunning"),
-                    )}
-                    className={cn(
-                      "absolute top-1/2 h-6 -translate-y-1/2 truncate rounded text-left text-2xs font-medium",
-                      label === "inside" && "px-2",
-                      STATUS_BAR[row.status],
-                      bar!.openStart && "rounded-l-none",
-                      bar!.openEnd && "rounded-r-none",
-                    )}
-                    style={{
-                      left: `${bar!.left}%`,
-                      width: `max(calc(${bar!.width}% - 2px), 6px)`,
-                    }}
-                    data-label={label}
-                  >
-                    {label === "inside" ? row.name : null}
-                  </button>
-                  {label !== "inside" && (
-                    // A short campaign: its name beside the bar, readable.
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-hidden="true"
-                      onClick={() => onOpen(row.name)}
-                      className="absolute top-1/2 -translate-y-1/2 truncate whitespace-nowrap text-left text-2xs font-medium text-foreground hover:underline"
-                      style={
-                        label === "after"
-                          ? {
-                              left: `calc(${bar!.left + bar!.width}% + 6px)`,
-                              maxWidth: `calc(${100 - bar!.left - bar!.width}% - 6px)`,
-                            }
-                          : {
-                              right: `calc(${100 - bar!.left}% + 6px)`,
-                              maxWidth: `calc(${bar!.left}% - 6px)`,
-                            }
-                      }
-                      title={row.name}
-                      data-testid="campaign-bar-label"
-                    >
-                      {row.name}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+        </span>
+      )}
     </div>
   );
 }
 
-function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
-  const { row, decofile, pending, holdsCopy, onBack, onSave } = props;
+interface Strip {
+  start: Date;
+  end: Date;
+  /** Where today falls, in percent; `undefined` when it is off the strip. */
+  today: number | undefined;
+}
+
+function CampaignRow({
+  row,
+  dates,
+  strip,
+  expanded,
+  onToggle,
+  children,
+}: {
+  row: CampaignRowModel;
+  /** The window, short; `null` falls back to the long form. */
+  dates: string | null;
+  strip: Strip;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const t = useT();
+  const window = windowText(
+    row.window,
+    t("sectionsEditor.namedRulePicker.alwaysRunning"),
+  );
+  return (
+    <li data-testid="campaign-row">
+      <div
+        className={cn(
+          ROW_GRID,
+          "relative px-4 py-3 transition-colors hover:bg-muted/50",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <ChevronRight
+            size={14}
+            aria-hidden
+            className={cn(
+              "shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-90",
+            )}
+          />
+          <span
+            aria-hidden
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              STATUS_DOT[row.status],
+            )}
+          />
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={expanded}
+                title={window}
+                className="truncate text-left text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
+              >
+                {row.name}
+              </button>
+              <NamedRuleEntryBadge kind="campaigns" state={row.entryState} />
+            </div>
+            <p
+              className="truncate text-xs text-muted-foreground"
+              title={window}
+            >
+              {dates ?? window}
+            </p>
+          </div>
+        </div>
+        <CampaignStrip row={row} strip={strip} />
+        <div>
+          <CampaignStatusPill status={row.status} />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="relative w-16"
+          aria-expanded={expanded}
+          aria-label={t("sandbox.dateCampaigns.editNamed", { name: row.name })}
+          onClick={onToggle}
+        >
+          {t("sandbox.dateCampaigns.edit")}
+        </Button>
+      </div>
+      {children}
+    </li>
+  );
+}
+
+/** A campaign's window on the row's months, with today as a red line. */
+function CampaignStrip({
+  row,
+  strip,
+}: {
+  row: CampaignRowModel;
+  strip: Strip;
+}) {
+  const bar = timelineBar(row.window, strip.start, strip.end);
+  return (
+    <div
+      className="pointer-events-none relative h-5 overflow-hidden rounded-md bg-muted"
+      data-testid="campaign-strip"
+    >
+      {Array.from({ length: STRIP_MONTHS - 1 }, (_, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className="absolute inset-y-0 w-px bg-border"
+          style={{ left: `${((i + 1) / STRIP_MONTHS) * 100}%` }}
+        />
+      ))}
+      {bar && (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute top-1/2 h-2.5 -translate-y-1/2 rounded-full",
+            STATUS_BAR[row.status],
+            bar.openStart && "rounded-l-none",
+            bar.openEnd && "rounded-r-none",
+          )}
+          style={{
+            left: `${bar.left}%`,
+            width: `max(${bar.width}%, 6px)`,
+          }}
+        />
+      )}
+      {strip.today !== undefined && (
+        <span
+          aria-hidden
+          className="absolute inset-y-0 w-0.5 bg-destructive"
+          style={{ left: `${strip.today}%` }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CampaignEditor(props: NamedRuleDetailProps<CampaignRowModel>) {
+  const { row, decofile, pending, holdsCopy, onSave } = props;
   const t = useT();
   const stored = {
     block: decofile[CAMPAIGNS_BLOCK],
@@ -532,69 +609,53 @@ function CampaignDetail(props: NamedRuleDetailProps<CampaignRowModel>) {
   };
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <SiteDraftViewHeader
-        back={{
-          label: t("sandbox.dateCampaigns.allCampaigns"),
-          onClick: onBack,
-        }}
-        actions={<NamedRuleDetailDelete kind="campaigns" detail={props} />}
+    <div
+      className="flex flex-col gap-3 border-t border-border bg-muted/30 px-4 py-4 pl-12"
+      data-testid="campaign-editor"
+    >
+      <CampaignWindowInputs
+        idPrefix="campaign"
+        className="max-w-xl"
+        start={start}
+        end={end}
+        onStartChange={setStart}
+        onEndChange={setEnd}
       />
-      <ScrollArea className="min-h-0 flex-1">
-        <div
-          className={cn("flex max-w-2xl flex-col gap-6", SITE_DRAFT_VIEW_INSET)}
+      {"problem" in window && (
+        <p className="text-xs text-destructive">
+          {t("sectionsEditor.namedRules.endBeforeStart")}
+        </p>
+      )}
+      {row.status === "unreadable" && (
+        <p className="text-xs text-muted-foreground">
+          {t("sandbox.dateCampaigns.unreadableHint")}
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {t("sectionsEditor.namedRules.windowHint")}
+      </p>
+      {row.publishedWindow && (
+        <p className="text-xs text-muted-foreground">
+          {t("sandbox.dateCampaigns.publishedWindow", {
+            window: windowText(
+              row.publishedWindow,
+              t("sectionsEditor.namedRulePicker.alwaysRunning"),
+            ),
+          })}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          disabled={pending || !windowChanged}
+          onClick={saveWindow}
         >
-          <NamedRuleDetailTitle
-            kind="campaigns"
-            name={row.name}
-            status={<CampaignStatusPill status={row.status} />}
-            entryState={row.entryState}
-          />
-
-          <section className="flex flex-col gap-2">
-            <CampaignWindowInputs
-              idPrefix="campaign"
-              className="max-w-md"
-              start={start}
-              end={end}
-              onStartChange={setStart}
-              onEndChange={setEnd}
-            />
-            {"problem" in window && (
-              <p className="text-xs text-destructive">
-                {t("sectionsEditor.namedRules.endBeforeStart")}
-              </p>
-            )}
-            {row.status === "unreadable" && (
-              <p className="text-xs text-muted-foreground">
-                {t("sandbox.dateCampaigns.unreadableHint")}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {t("sectionsEditor.namedRules.windowHint")}
-            </p>
-            {row.publishedWindow && (
-              <p className="text-xs text-muted-foreground">
-                {t("sandbox.dateCampaigns.publishedWindow", {
-                  window: windowText(
-                    row.publishedWindow,
-                    t("sectionsEditor.namedRulePicker.alwaysRunning"),
-                  ),
-                })}
-              </p>
-            )}
-            <div>
-              <Button
-                size="sm"
-                disabled={pending || !windowChanged}
-                onClick={saveWindow}
-              >
-                {t("sandbox.dateCampaigns.saveDates")}
-              </Button>
-            </div>
-          </section>
+          {t("sandbox.dateCampaigns.saveDates")}
+        </Button>
+        <div className="ml-auto">
+          <NamedRuleDetailDelete kind="campaigns" detail={props} />
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

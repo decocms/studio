@@ -1,6 +1,6 @@
 /**
  * The Calendar view of a Blocks (v8) site: its campaigns (the saved block
- * `campaigns`, type `calendar`) on a timeline, in the draft the site editor
+ * `campaigns`, type `calendar`), each on a short timeline, in the draft the site editor
  * works in. It is the content browser's Campaigns view on its own page, with
  * the same draft bar on top, so a campaign changes the same draft as the
  * pages and goes live with the same Publish. Production is never written.
@@ -47,7 +47,6 @@ export function CalendarTab({ virtualMcpId }: { virtualMcpId: string }) {
             branch={branch}
             decofile={decofile}
             meta={meta}
-            initialView="timeline"
           />
         </div>
       )}

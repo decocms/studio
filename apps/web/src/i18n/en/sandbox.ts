@@ -1424,15 +1424,23 @@ export const sandbox = {
   "sandbox.calendarView.loadFailedHint":
     "Nothing was changed. Try again in a moment.",
   "sandbox.dateCampaigns.intro":
-    "Every date on your site is a campaign: a variant with the rule “Campaign” shows while its campaign runs. Changes are saved in your draft and go live when you publish.",
+    "Campaigns change your site within a window of dates. Changes go live when you publish.",
+  "sandbox.dateCampaigns.tabsLabel": "Campaigns to show",
+  "sandbox.dateCampaigns.tabCurrent": "Campaigns",
+  "sandbox.dateCampaigns.tabEnded": "Ended",
+  "sandbox.dateCampaigns.colCampaign": "Campaign",
+  "sandbox.dateCampaigns.today": "Today",
+  "sandbox.dateCampaigns.colStatus": "Status",
+  "sandbox.dateCampaigns.noneCurrent": "No campaign is live or scheduled.",
+  "sandbox.dateCampaigns.noneEnded": "No campaign has ended yet.",
+  "sandbox.dateCampaigns.edit": "Edit",
+  "sandbox.dateCampaigns.editNamed": "Edit {name}",
   "sandbox.dateCampaigns.new": "New campaign",
   "sandbox.dateCampaigns.empty.title": "No campaigns yet",
   "sandbox.dateCampaigns.empty.desc":
     "Create one here, or from a variant in the site editor: choose the rule “Campaign” and type a name.",
-  "sandbox.dateCampaigns.listMode": "List",
-  "sandbox.dateCampaigns.timelineMode": "Timeline",
-  "sandbox.dateCampaigns.status.running": "Running",
-  "sandbox.dateCampaigns.status.upcoming": "Upcoming",
+  "sandbox.dateCampaigns.status.running": "Live",
+  "sandbox.dateCampaigns.status.upcoming": "Scheduled",
   "sandbox.dateCampaigns.status.ended": "Ended",
   "sandbox.dateCampaigns.status.always": "Always on",
   "sandbox.dateCampaigns.status.unreadable": "Dates can't be read",
@@ -1449,11 +1457,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.deleted": "Campaign “{name}” deleted from your draft",
   "sandbox.dateCampaigns.deletedHint":
     "It leaves the site when you publish. Undo brings it back.",
-  "sandbox.dateCampaigns.allCampaigns": "All campaigns",
-  "sandbox.dateCampaigns.today": "Today",
-  "sandbox.dateCampaigns.previous": "Earlier",
-  "sandbox.dateCampaigns.next": "Later",
-  "sandbox.dateCampaigns.nothingInRange": "No campaign runs in these months.",
   "sandbox.dateCampaigns.missing.title":
     "Your site needs an update for campaigns",
   "sandbox.dateCampaigns.missing.desc":

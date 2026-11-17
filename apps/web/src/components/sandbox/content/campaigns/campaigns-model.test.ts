@@ -4,8 +4,8 @@ import {
   campaignRows,
   campaignStatus,
   removedCampaigns,
+  shortCampaignWindow,
   timelineBar,
-  timelineLabelPlacement,
   timelineStart,
 } from "./campaigns-model";
 
@@ -153,49 +153,6 @@ describe("timelineBar", () => {
   });
 });
 
-describe("timelineLabelPlacement", () => {
-  const from = at("2026-11-01T00:00:00Z");
-  const to = at("2027-03-01T00:00:00Z");
-
-  it("a month-long campaign carries its name", () => {
-    const bar = timelineBar(
-      { start: "2026-11-27T00:00:00Z", end: "2026-12-27T00:00:00Z" },
-      from,
-      to,
-    )!;
-    expect(timelineLabelPlacement(bar, "Black Friday")).toBe("inside");
-  });
-
-  it("a short campaign's name goes beside its bar, never cut", () => {
-    // Two days on a four-month range: a few pixels.
-    const bar = timelineBar(
-      { start: "2026-11-27T00:00:00Z", end: "2026-11-29T00:00:00Z" },
-      from,
-      to,
-    )!;
-    expect(timelineLabelPlacement(bar, "b")).toBe("after");
-    expect(timelineLabelPlacement(bar, "Black Friday")).toBe("after");
-  });
-
-  it("before the bar when it ends near the right edge", () => {
-    const bar = timelineBar(
-      { start: "2027-02-25T00:00:00Z", end: "2027-02-27T00:00:00Z" },
-      from,
-      to,
-    )!;
-    expect(timelineLabelPlacement(bar, "Carnival sale")).toBe("before");
-  });
-
-  it("on the roomier side when it fits whole on neither (then cut there)", () => {
-    expect(timelineLabelPlacement({ left: 0, width: 1 }, "x".repeat(80))).toBe(
-      "after",
-    );
-    expect(timelineLabelPlacement({ left: 90, width: 2 }, "x".repeat(80))).toBe(
-      "before",
-    );
-  });
-});
-
 describe("timelineStart", () => {
   const now = new Date(2026, 9, 22, 12);
   const month = (y: number, m: number) => new Date(y, m, 1).getTime();
@@ -221,5 +178,57 @@ describe("timelineStart", () => {
       { end: new Date(2026, 0, 1).toISOString() },
     ];
     expect(timelineStart(windows, now, 4).getTime()).toBe(month(2027, 2));
+  });
+});
+
+describe("shortCampaignWindow", () => {
+  const now = new Date("2026-11-17T12:00:00");
+
+  it("a range this year, without the year", () => {
+    const text = shortCampaignWindow(
+      { start: "2026-11-14T15:28:00", end: "2026-11-27T15:28:00" },
+      "en-US",
+      now,
+    )!;
+    expect(text).toContain("Nov 14");
+    expect(text).toContain("27");
+    expect(text).not.toContain("2026");
+  });
+
+  it("a range into another year names the years", () => {
+    const text = shortCampaignWindow(
+      { start: "2026-12-14T00:00:00", end: "2027-01-05T00:00:00" },
+      "en-US",
+      now,
+    )!;
+    expect(text).toContain("2026");
+    expect(text).toContain("2027");
+  });
+
+  it("speaks the given language", () => {
+    expect(
+      shortCampaignWindow(
+        { start: "2026-11-14T15:28:00", end: "2026-11-27T15:28:00" },
+        "pt-BR",
+        now,
+      ),
+    ).toContain("nov");
+  });
+
+  it("leaves open, unreadable and backwards windows to the long form", () => {
+    expect(shortCampaignWindow({}, "en-US", now)).toBeNull();
+    expect(
+      shortCampaignWindow({ start: "2026-11-14T00:00:00" }, "en-US", now),
+    ).toBeNull();
+    expect(
+      shortCampaignWindow({ start: "nope", end: "2026-11-27" }, "en-US", now),
+    ).toBeNull();
+    expect(
+      shortCampaignWindow(
+        { start: "2026-11-27T00:00:00", end: "2026-11-14T00:00:00" },
+        "en-US",
+        now,
+      ),
+    ).toBeNull();
   });
 });

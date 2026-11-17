@@ -128,6 +128,30 @@ export function removedCampaigns(
   return namedRulesRemovedInDraft(decofile, published, "campaigns");
 }
 
+/**
+ * A window as a short date range in `locale` ("Nov 14 – 27"), with the year
+ * only when it isn't `now`'s; `null` unless both bounds are readable dates.
+ */
+export function shortCampaignWindow(
+  window: CampaignWindow,
+  locale: string,
+  now: Date,
+): string | null {
+  const { start, end } = bounds(window);
+  if (start === null || end === null) return null;
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+  const from = new Date(start);
+  const to = new Date(end);
+  const thisYear =
+    from.getFullYear() === now.getFullYear() &&
+    to.getFullYear() === now.getFullYear();
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "short",
+    ...(thisYear ? {} : { year: "numeric" }),
+  }).formatRange(from, to);
+}
+
 /** A campaign's bar on a timeline from `rangeStart` to `rangeEnd`. */
 export interface TimelineBar {
   /** Percent of the range from its start. */
@@ -164,35 +188,6 @@ export function timelineBar(
     openStart: barStart < from,
     openEnd: barEnd > to,
   };
-}
-
-/** Where a bar's name goes: on the bar, or beside it when the bar is short. */
-export type TimelineLabelPlacement = "inside" | "after" | "before";
-
-/**
- * Roughly how much of the range one character of a bar's name takes (11px
- * text on the narrowest timeline, four months over ~450px), and the bar's
- * own padding, in percent of the range.
- */
-const LABEL_CHAR_WIDTH = 1.5;
-const LABEL_PADDING = 4;
-
-/**
- * Whether a campaign's name fits on its bar. A short campaign on a
- * four-month range is a few pixels wide: its name goes after the bar, or
- * before it when the bar ends near the range's right edge, so it is always
- * readable and never cut to "b…".
- */
-export function timelineLabelPlacement(
-  bar: Pick<TimelineBar, "left" | "width">,
-  name: string,
-): TimelineLabelPlacement {
-  const needed = name.length * LABEL_CHAR_WIDTH + LABEL_PADDING;
-  if (bar.width >= needed) return "inside";
-  if (bar.left + bar.width + needed <= 100) return "after";
-  if (bar.left >= needed) return "before";
-  // Fits on neither side whole: the side with more room, cut to fit there.
-  return bar.left > 100 - (bar.left + bar.width) ? "before" : "after";
 }
 
 /**
