@@ -13,14 +13,22 @@
  */
 
 import { type ReactNode, useEffect, useState } from "react";
-import { Beaker02, Plus } from "@untitledui/icons";
+import { Beaker02, ChevronRight, Plus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { ExperimentStatusPill } from "@/components/experiments/experiment-status-pill";
-import { ShareSplit } from "@/components/experiments/split-donut";
+import {
+  EXPERIMENT_STATUS_DOT,
+  experimentStatusLabel,
+} from "@/components/experiments/experiment-status-pill";
+import {
+  armColors,
+  ShareSplit,
+  SplitDonut,
+  shareArms,
+} from "@/components/experiments/split-donut";
 import { Page } from "@/components/page";
 import {
   SITE_DRAFT_VIEW_INSET,
@@ -31,7 +39,6 @@ import {
   NamedRuleCreateDialog,
   NamedRuleDetailDelete,
   type NamedRuleDetailProps,
-  NamedRuleDetailTitle,
   NamedRuleDraftNotes,
   NamedRuleEntryBadge,
   namedRuleDetailProps,
@@ -206,15 +213,7 @@ export function ExperimentsBlockReady({
   }
 
   const removed = removedExperiments(decofile, view.published);
-
-  if (opened) {
-    return (
-      <ExperimentBlockDetail
-        key={`${opened.name}:${copyEpoch}`}
-        {...namedRuleDetailProps(view, opened, { decofile, meta })}
-      />
-    );
-  }
+  const summary = experimentsSummary(t, rows);
 
   return (
     <Page>
@@ -239,19 +238,38 @@ export function ExperimentsBlockReady({
               }}
             />
           ) : (
-            <Card
-              size="flush"
-              className="gap-0 divide-y divide-border overflow-hidden"
-              data-testid="experiments-v8-list"
-            >
-              {rows.map((row) => (
-                <ExperimentBlockRow
-                  key={row.name}
-                  row={row}
-                  onOpen={() => view.setOpenName(row.name)}
-                />
-              ))}
-            </Card>
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">{summary}</p>
+              <Card
+                size="flush"
+                className="gap-0 divide-y divide-border overflow-hidden"
+                data-testid="experiments-v8-list"
+              >
+                {rows.map((row) => {
+                  const expanded = row.name === opened?.name;
+                  return (
+                    <ExperimentBlockRow
+                      key={row.name}
+                      row={row}
+                      expanded={expanded}
+                      onToggle={() =>
+                        view.setOpenName(expanded ? null : row.name)
+                      }
+                    >
+                      {expanded && (
+                        <ExperimentBlockDetail
+                          key={`${row.name}:${copyEpoch}`}
+                          {...namedRuleDetailProps(view, row, {
+                            decofile,
+                            meta,
+                          })}
+                        />
+                      )}
+                    </ExperimentBlockRow>
+                  );
+                })}
+              </Card>
+            </div>
           )}
           <NamedRuleDraftNotes kind="experiments" removed={removed} />
           <p className="text-xs text-muted-foreground">
@@ -278,49 +296,124 @@ export function ExperimentsBlockReady({
   );
 }
 
+/** "2 running · 1 off": how many tests are in each status, busiest first. */
+function experimentsSummary(
+  t: ReturnType<typeof useT>,
+  rows: ExperimentRowModel[],
+): string {
+  const count = (status: ExperimentRowModel["status"]) =>
+    rows.filter((row) => row.status === status).length;
+  const running = count("running");
+  const everyone = count("everyone");
+  const off = count("off");
+  return [
+    running > 0 &&
+      t("experiments.v8.count.running", { count: String(running) }),
+    everyone > 0 &&
+      t("experiments.v8.count.everyone", { count: String(everyone) }),
+    off === 1 && t("experiments.v8.count.offOne"),
+    off > 1 && t("experiments.v8.count.offMany", { count: String(off) }),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function ExperimentBlockRow({
   row,
-  onOpen,
+  expanded,
+  onToggle,
+  children,
 }: {
   row: ExperimentRowModel;
-  onOpen: () => void;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
 }) {
   const t = useT();
   return (
-    <div
-      className="group relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50"
-      data-testid="experiment-v8-row"
-    >
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="truncate text-left text-sm font-medium text-foreground after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
-        >
-          {row.name}
-        </button>
+    <div data-testid="experiment-v8-row">
+      <div className="group relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50">
+        <span
+          aria-hidden
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            EXPERIMENT_STATUS_DOT[row.status],
+          )}
+        />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className="truncate text-left text-sm font-medium text-foreground after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
+          >
+            {row.name}
+          </button>
+          <NamedRuleEntryBadge kind="experiments" state={row.entryState} />
+        </div>
+        <span className="hidden w-36 shrink-0 items-center gap-2 text-xs text-muted-foreground sm:flex">
+          <SplitDonut arms={shareArms(row.share)} size={18} thickness={3} />
+          {t("sectionsEditor.namedRulePicker.shareOfVisitors", {
+            share: String(row.share),
+          })}
+        </span>
+        <span className="w-24 shrink-0 text-xs text-muted-foreground">
+          {experimentStatusLabel(t, row.status)}
+        </span>
+        <ChevronRight
+          size={16}
+          aria-hidden
+          className={cn(
+            "shrink-0 text-muted-foreground transition-transform",
+            expanded && "rotate-90",
+          )}
+        />
       </div>
-      <span className="w-32 shrink-0 text-xs tabular-nums text-muted-foreground">
-        {t("sectionsEditor.namedRulePicker.shareOfVisitors", {
-          share: String(row.share),
-        })}
-      </span>
-      <div className="hidden w-40 shrink-0 md:flex">
-        <NamedRuleEntryBadge kind="experiments" state={row.entryState} />
-      </div>
-      <div className="flex w-24 shrink-0">
-        <ExperimentStatusPill status={row.status} />
-      </div>
+      {children}
     </div>
   );
 }
 
 const EXPERIMENTS_BLOCK = namedRuleKindInfo("experiments").blockKey;
 
+/** One side of the split, as the visitor sees it, with its share of traffic. */
+function VersionCard({
+  color,
+  label,
+  title,
+  share,
+}: {
+  color: string;
+  label: string;
+  title: string;
+  share: number;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+      <span
+        aria-hidden
+        className="size-2 shrink-0 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="truncate text-sm font-medium">{title}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-sm font-semibold tabular-nums">{share}%</p>
+        <p className="text-xs text-muted-foreground">
+          {t("experiments.v8.versions.ofTraffic")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ExperimentBlockDetail(
   props: NamedRuleDetailProps<ExperimentRowModel>,
 ) {
-  const { row, decofile, pending, holdsCopy, onBack, onSave } = props;
+  const { row, decofile, pending, holdsCopy, onSave } = props;
   const t = useT();
   // The share being edited, and the tests as they were when it was first
   // moved (the copy it is built on); `null` shows the share as stored. A
@@ -337,11 +430,11 @@ function ExperimentBlockDetail(
     }));
   const share = editing?.share ?? row.share;
   const shareDirty = share !== row.share;
+  const [inColor, restColor] = armColors(shareArms(share)) as [string, string];
 
-  const setTo = (value: number) => {
-    const change = planNamedRuleSet(decofile, "experiments", row.name, value);
-    // Hosted v8: guarded by the tests as the share was moved on, or as
-    // shown now for a share set by a button.
+  const save = () => {
+    const change = planNamedRuleSet(decofile, "experiments", row.name, share);
+    // Hosted v8: guarded by the tests as the share was moved on.
     const basis = editing ? editing.basis : decofile[EXPERIMENTS_BLOCK];
     void onSave(
       change && holdsCopy
@@ -351,92 +444,70 @@ function ExperimentBlockDetail(
   };
 
   return (
-    <Page>
-      <Page.Breadcrumbs
-        after="page"
-        parent={{ label: t("experiments.title"), onSelect: onBack }}
-        items={[{ key: "experiment", label: row.name }]}
-      />
-      <SiteDraftViewHeader
-        back={{ label: t("experiments.v8.allTests"), onClick: onBack }}
-        actions={<NamedRuleDetailDelete kind="experiments" detail={props} />}
-      />
-      <Page.Content>
-        <div
-          className={cn("flex max-w-2xl flex-col gap-6", SITE_DRAFT_VIEW_INSET)}
-        >
-          <NamedRuleDetailTitle
-            kind="experiments"
-            name={row.name}
-            status={<ExperimentStatusPill status={row.status} />}
-            entryState={row.entryState}
-          />
-
-          <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-medium">
-              {t("experiments.v8.shareTitle")}
-            </h3>
-            <ShareSplit
-              value={share}
-              onChange={setShare}
-              sliderLabel={t("experiments.v8.shareLabel")}
-              inTestLabel={t("experiments.v8.split.inTest")}
-              restLabel={t("experiments.v8.split.rest")}
-              centerLabel={t("experiments.v8.split.center")}
+    <div
+      className="grid gap-6 border-t border-border bg-muted/30 px-5 py-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
+      data-testid="experiment-v8-detail"
+    >
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium">
+          {t("experiments.v8.shareTitle")}
+        </h3>
+        <ShareSplit
+          value={share}
+          onChange={setShare}
+          sliderLabel={t("experiments.v8.shareLabel")}
+          inTestLabel={t("experiments.v8.split.inTest")}
+          restLabel={t("experiments.v8.split.rest")}
+          centerLabel={t("experiments.v8.split.center")}
+          disabled={pending}
+          compact
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("experiments.v8.shareHint")}
+        </p>
+        {row.publishedShare !== undefined && (
+          <p className="text-xs text-muted-foreground">
+            {t("experiments.v8.publishedShare", {
+              share: String(row.publishedShare),
+            })}
+          </p>
+        )}
+        {shareDirty && (
+          <div className="flex items-center gap-2">
+            <Button size="sm" disabled={pending} onClick={save}>
+              {t("experiments.v8.save")}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
               disabled={pending}
-            />
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                disabled={!shareDirty || pending}
-                onClick={() => setTo(share)}
-              >
-                {t("experiments.v8.save")}
-              </Button>
-              {shareDirty && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={pending}
-                  onClick={() => setEditing(null)}
-                >
-                  {t("experiments.v8.split.reset", {
-                    share: String(row.share),
-                  })}
-                </Button>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("experiments.v8.shareHint")}
-            </p>
-            {row.publishedShare !== undefined && (
-              <p className="text-xs text-muted-foreground">
-                {t("experiments.v8.publishedShare", {
-                  share: String(row.publishedShare),
-                })}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending || row.share === 0}
-                onClick={() => setTo(0)}
-              >
-                {t("experiments.v8.turnOff")}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending || row.share === 100}
-                onClick={() => setTo(100)}
-              >
-                {t("experiments.v8.showEveryone")}
-              </Button>
-            </div>
-          </section>
+              onClick={() => setEditing(null)}
+            >
+              {t("experiments.v8.split.reset", { share: String(row.share) })}
+            </Button>
+          </div>
+        )}
+      </section>
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium">
+          {t("experiments.v8.versions.title")}
+        </h3>
+        <VersionCard
+          color={inColor}
+          label={t("experiments.v8.versions.test")}
+          title={row.name}
+          share={share}
+        />
+        <VersionCard
+          color={restColor}
+          label={t("experiments.v8.versions.control")}
+          title={t("experiments.v8.versions.published")}
+          share={100 - share}
+        />
+        <div className="mt-auto flex justify-end pt-1">
+          <NamedRuleDetailDelete kind="experiments" detail={props} />
         </div>
-      </Page.Content>
-    </Page>
+      </section>
+    </div>
   );
 }
