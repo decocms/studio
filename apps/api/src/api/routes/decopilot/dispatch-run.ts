@@ -1477,13 +1477,23 @@ async function prepareRun(
     // A Claude or Copilot plan — shared with the org, or the dispatcher's
     // own — outranks the org's thinking-slot key for a sandbox-hosted run.
     // Absent, expired or undecryptable falls back to the org credential.
-    const userPlanCredential = sandboxHosted
+    const plan = sandboxHosted
       ? await resolvePlanCredential(
           ctx,
           input.organizationId,
           input.userId,
           harnessId,
         )
+      : null;
+    // The CLI reports a shared plan's auth failure as a bare 401, which reads
+    // as the dispatcher's own; record whose plan this run bills.
+    if (plan?.sharedBy) {
+      console.log(
+        `[plan] dispatch for user ${input.userId} uses ${plan.providerId} shared by user ${plan.sharedBy.userId}`,
+      );
+    }
+    const userPlanCredential = plan
+      ? { providerId: plan.providerId, apiKey: plan.apiKey }
       : null;
 
     const dispatchHarnessChunks =

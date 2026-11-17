@@ -669,10 +669,14 @@ export const settings = {
   "settings.githubCopilot.howTo":
     "Crie um token fine-grained do GitHub com a permiss\u00e3o Copilot Requests",
   "settings.githubCopilot.sharedBy":
-    "Toda execu\u00e7\u00e3o nesta organiza\u00e7\u00e3o usa o plano GitHub Copilot compartilhado por {name}.",
+    "Voc\u00ea est\u00e1 usando o plano GitHub Copilot da organiza\u00e7\u00e3o, compartilhado por {name}.",
+  "settings.githubCopilot.ownPlanUsed":
+    "Suas execu\u00e7\u00f5es usam o seu pr\u00f3prio plano. O plano compartilhado por {name} s\u00f3 vale para quem n\u00e3o vinculou um.",
   "settings.githubCopilot.shareTitle": "Compartilhar com a org",
   "settings.githubCopilot.shareDescription":
-    "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
+    "O compartilhamento s\u00f3 vale para os membros desta organiza\u00e7\u00e3o que n\u00e3o vincularam o pr\u00f3prio plano GitHub Copilot.",
+  "settings.githubCopilot.shareTaken":
+    "{name} j\u00e1 compartilha um plano. Para compartilhar o seu, pe\u00e7a que {name} pare de compartilhar primeiro.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
   "settings.ownAccounts.more": "Mais ações",
