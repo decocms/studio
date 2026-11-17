@@ -33,7 +33,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { CustomFieldsPanel } from "./custom-fields-panel";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
   blogCustomFieldsSchema,
   KNOWN_CATEGORY_FIELDS,
@@ -177,12 +177,11 @@ function CategoryEditorForm({
   );
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this record.
-  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => (save.v8 ? referenceSave : save).mutate(write),
+  const referenceSave = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile,
-    save.v8,
   );
+  const saveReferencedBlock = referenceSave.save;
 
   // Only offer a preview when the blog app has a `categorySlug` route
   // template configured — otherwise there is no category page to open.
@@ -453,15 +452,9 @@ function CategoryEditorForm({
           <div className="flex shrink-0 items-center gap-3">
             <SaveStatus
               isPending={
-                save.isPending ||
-                (save.v8 && referenceSave.isPending) ||
-                move.isPending
+                save.isPending || referenceSave.isPending || move.isPending
               }
-              isError={
-                save.isError ||
-                (save.v8 && referenceSave.isError) ||
-                move.isError
-              }
+              isError={save.isError || referenceSave.isError || move.isError}
             />
             {missing.length > 0 && (
               <Tooltip>

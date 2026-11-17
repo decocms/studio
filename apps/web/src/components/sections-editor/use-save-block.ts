@@ -79,7 +79,7 @@ import {
 } from "./held-copy";
 import { autosaveDelay } from "./autosave-delay";
 
-interface UseSaveBlockParams {
+export interface UseSaveBlockParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
@@ -126,10 +126,25 @@ export interface SaveGuard {
 }
 
 /** The block a write was built from; `value: undefined` when there was none. */
-interface SaveBlockBase {
+export interface SaveBlockBase {
   value: unknown;
   /** Taken from the cache by default rather than handed in by the caller. */
   fromCache?: boolean;
+}
+
+/** Newest value per cache+block (a started save or a shown edit); older saves never write over it. */
+const newestEdits = new Map<string, unknown>();
+
+function newestEditKey(cacheKey: string, blockKey: string): string {
+  return `${cacheKey}\u0000${blockKey}`;
+}
+
+/** A newer value than `data` was given to the block since `data`'s save started. */
+function supersededSave(key: string, data: unknown): boolean {
+  if (!newestEdits.has(key)) return false;
+  if (newestEdits.get(key) !== data) return true;
+  newestEdits.delete(key);
+  return false;
 }
 
 interface SaveBlockVariables {
@@ -785,13 +800,16 @@ export function useSaveBlock(
           [blockKey]: data,
         }),
       );
+      newestEdits.set(newestEditKey(cacheKey, blockKey), data);
       return { queryKey, blockKey, hadKey, previousValue };
     },
     // Restore only this mutation's own key so a concurrent sibling save isn't clobbered.
     // A stale-copy refusal already re-read the block; restoring would put the stale copy back.
-    onError: (error, _variables, context) => {
+    onError: (error, { blockKey, data }, context) => {
       // A hosted dead end says what to do, wherever its message shows.
       inPlainWords(t, error);
+      // A newer edit of the block is already shown: restoring would hide it.
+      if (supersededSave(newestEditKey(cacheKey, blockKey), data)) return;
       if (!context || error instanceof BlockConflictError) return;
       // Refused because the content changed on disk: load what is there now.
       if (isSaveConflict(error)) {
@@ -810,6 +828,11 @@ export function useSaveBlock(
       );
     },
     onSuccess: (result, { blockKey, data }) => {
+      // A newer edit of the block is already shown, and its save follows.
+      const superseded = supersededSave(
+        newestEditKey(cacheKey, blockKey),
+        data,
+      );
       /**
        * The draft now holds something else than the editor's copy (their
        * version, their deletion, a merge): an editor keeping its own copy
@@ -831,6 +854,7 @@ export function useSaveBlock(
         showDraft();
         return;
       }
+      if (superseded) return;
       // A save replayed on a newer copy stored more than this edit's `data`.
       const stored =
         result && typeof result === "object" && "written" in result
@@ -884,6 +908,21 @@ export function useSaveBlock(
     holdsCopy: held !== null,
     /** This backend's debounce window for autosaves ({@link autosaveDelay}). */
     autosaveDelay: autosaveDelay(protocol !== null),
+    /** Shows an edit in the cache before its save is sent; earlier saves won't overwrite it. */
+    showEdit: (blockKey: string, data: unknown) => {
+      queryClient.setQueryData(
+        KEYS.decofile(cacheKey),
+        (current: Record<string, unknown> | undefined) => ({
+          ...(current ?? {}),
+          [blockKey]: data,
+        }),
+      );
+      newestEdits.set(newestEditKey(cacheKey, blockKey), data);
+    },
+    /** An edit shown with `showEdit` won't be saved (a discard dropped it). */
+    forgetShownEdit: (blockKey: string) => {
+      newestEdits.delete(newestEditKey(cacheKey, blockKey));
+    },
     /**
      * An edit of `blockKey` is made now (holdsCopy): the copy it is built
      * on, for its save's `edit`. Undefined when saves aren't guarded by the
@@ -911,6 +950,13 @@ type SaveData =
   | Record<string, unknown>
   | (() => Record<string, unknown> | null);
 
+/** What an edit of a block was made on, for an editor that shows its edits. */
+export interface SaveFrom {
+  base: SaveBlockBase;
+  /** The block didn't exist yet (see {@link SaveBlockVariables.create}). */
+  create?: boolean;
+}
+
 /**
  * Wraps {@link useSaveBlock} with the standard debounced-autosave loop shared by
  * every form-driven block editor (section forms, the SEO editor, the SEO
@@ -921,13 +967,21 @@ type SaveData =
  */
 export function useDebouncedSaveBlock(
   params: UseSaveBlockParams,
-  opts?: { onSaved?: () => void; guard?: SaveGuard; holdsCopy?: boolean },
+  opts?: {
+    onSaved?: () => void;
+    guard?: SaveGuard;
+    holdsCopy?: boolean;
+    /** Fields read the cache: show each edit there now; `save` names its `from`. */
+    showEdits?: boolean;
+  },
 ) {
   const saveBlock = useSaveBlock(params, { holdsCopy: opts?.holdsCopy });
   const pendingRef = useRef<Map<string, SaveData>>(new Map());
   // The copy each pending edit was made on (holdsCopy): the first edit of
   // the window, so one made before the form was reseeded keeps its guard.
   const editsRef = useRef<Map<string, HeldEdit>>(new Map());
+  // showEdits: what each block's next save builds on (`from`, then the last sent value).
+  const buildsOnRef = useRef<Map<string, SaveFrom>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
@@ -948,10 +1002,37 @@ export function useDebouncedSaveBlock(
     editsRef.current.delete(blockKey);
     if (!resolved) return;
     sendingRef.current.add(blockKey);
+    const from = buildsOnRef.current.get(blockKey);
+    // The edits made while this one is on its way build on it.
+    if (from) {
+      buildsOnRef.current.set(blockKey, {
+        base: { value: resolved, fromCache: true },
+      });
+    }
+    const editsWait = () =>
+      pendingRef.current.has(blockKey) || waitingRef.current.has(blockKey);
     // mutate's callbacks skip all but the latest call; the waiting edit needs this one's end.
     void saveBlock
-      .mutateAsync({ blockKey, data: resolved, guard: opts?.guard, edit })
-      .then(() => opts?.onSaved?.(), saveBlock.reportError)
+      .mutateAsync({
+        blockKey,
+        data: resolved,
+        guard: opts?.guard,
+        edit,
+        ...(from
+          ? { base: from.base, ...(from.create ? { create: true } : {}) }
+          : {}),
+      })
+      .then(
+        () => {
+          if (!editsWait()) buildsOnRef.current.delete(blockKey);
+          opts?.onSaved?.();
+        },
+        (error: Error) => {
+          // Not stored: the next save builds on what this one did.
+          if (from) buildsOnRef.current.set(blockKey, from);
+          saveBlock.reportError(error);
+        },
+      )
       .finally(() => {
         sendingRef.current.delete(blockKey);
         if (waitingRef.current.delete(blockKey)) runPendingSave(blockKey);
@@ -978,6 +1059,8 @@ export function useDebouncedSaveBlock(
       pendingRef.current.delete(blockKey);
       editsRef.current.delete(blockKey);
       waitingRef.current.delete(blockKey);
+      buildsOnRef.current.delete(blockKey);
+      if (opts?.showEdits) saveBlock.forgetShownEdit(blockKey);
     }
   });
 
@@ -999,8 +1082,9 @@ export function useDebouncedSaveBlock(
   // it unmounts when the draft's copy replaces its form (a reconcile, a
   // deletion), and a pending edit is reconciled against it, never dropped.
   const flushHeldOnUnmount = useEffectEvent(() => {
-    if (saveBlock.holdsCopy) flush();
-    return saveBlock.holdsCopy;
+    const keep = saveBlock.holdsCopy || !!opts?.showEdits;
+    if (keep) flush();
+    return keep;
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup on unmount
   useEffect(() => {
@@ -1013,10 +1097,16 @@ export function useDebouncedSaveBlock(
     };
   }, []);
 
-  const save = (blockKey: string, data: SaveData) => {
+  const save = (blockKey: string, data: SaveData, from?: SaveFrom) => {
     if (!editsRef.current.has(blockKey)) {
       const edit = saveBlock.edited(blockKey);
       if (edit) editsRef.current.set(blockKey, edit);
+    }
+    if (from && !buildsOnRef.current.has(blockKey)) {
+      buildsOnRef.current.set(blockKey, from);
+    }
+    if (opts?.showEdits && typeof data !== "function") {
+      saveBlock.showEdit(blockKey, data);
     }
     pendingRef.current.set(blockKey, data);
     const existing = timersRef.current.get(blockKey);
@@ -1034,6 +1124,7 @@ export function useDebouncedSaveBlock(
     save,
     flush,
     isPending: saveBlock.isPending,
+    isError: saveBlock.isError,
     hold: saveBlock.hold,
     v8: saveBlock.v8,
   };

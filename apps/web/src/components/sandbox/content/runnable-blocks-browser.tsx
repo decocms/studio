@@ -22,7 +22,7 @@ import {
   keptTheirVersion,
   useSaveBlock,
 } from "@/components/sections-editor/use-save-block";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { ItemRow } from "./item-row";
 import { EmptyMessage } from "./empty-message";
 import {
@@ -147,11 +147,10 @@ export function RunnableBlocksBrowser({
   };
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => saveBlock.mutate(write),
+  const saveReferencedBlock = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile,
-    saveBlock.v8,
-  );
+  ).save;
 
   const singular = runnableSingular(kind);
   const Icon = KIND_ICON[kind];

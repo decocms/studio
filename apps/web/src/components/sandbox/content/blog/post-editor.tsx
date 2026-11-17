@@ -42,7 +42,7 @@ import { NumberField } from "@/components/sections-editor/fields/number-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { CustomFieldsPanel } from "./custom-fields-panel";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
   blogCustomFieldsSchema,
   KNOWN_POST_FIELDS,
@@ -221,12 +221,11 @@ function PostEditorForm({
 
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this post.
-  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => (save.v8 ? referenceSave : save).mutate(write),
+  const referenceSave = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile,
-    save.v8,
   );
+  const saveReferencedBlock = referenceSave.save;
 
   // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
   const [contentRevision, setContentRevision] = useState(0);
@@ -295,11 +294,9 @@ function PostEditorForm({
           <div className="flex items-center gap-3">
             <SaveStatus
               isPending={
-                save.isPending ||
-                (save.v8 && referenceSave.isPending) ||
-                saveScheduled
+                save.isPending || referenceSave.isPending || saveScheduled
               }
-              isError={save.isError || (save.v8 && referenceSave.isError)}
+              isError={save.isError || referenceSave.isError}
             />
             {hasErrors && (
               <Tooltip>

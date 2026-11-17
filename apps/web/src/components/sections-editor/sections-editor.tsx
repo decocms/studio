@@ -200,7 +200,7 @@ import {
   combineForcedVariants,
 } from "./variant-draft-pointer";
 import { PageJsonDialog } from "./page-json-dialog";
-import { createReferencedBlockSaver } from "./save-referenced-block";
+import { useReferencedBlockSaver } from "./save-referenced-block";
 import { matcherFormatter } from "./format-matcher";
 import {
   AddVariantButton,
@@ -576,16 +576,12 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => {
-      saveBlock.mutate(write, {
-        onSuccess: () => onSaved?.(),
-        onError: saveBlock.reportError,
-      });
-    },
+  const referencedBlockSave = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile ?? {},
-    saveBlock.v8,
+    { onSaved },
   );
+  const saveReferencedBlock = referencedBlockSave.save;
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const applyNamedRule = useApplyNamedRule({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
@@ -1145,6 +1141,7 @@ export function SectionsEditor({
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the page rule's timer
       ruleDebounceRef.current !== null ||
       saveBlock.isPending ||
+      referencedBlockSave.isPending ||
       pageBlockSave.isPending ||
       // The form's edits wait for the user's choice between two versions.
       formConflicts.length > 0;
