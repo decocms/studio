@@ -399,7 +399,12 @@ function CampaignRow({
   );
   return (
     <li data-testid="campaign-row">
-      <div className={cn(ROW_GRID, "px-4 py-3")}>
+      <div
+        className={cn(
+          ROW_GRID,
+          "relative px-4 py-3 transition-colors hover:bg-muted/50",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <ChevronRight
             size={14}
@@ -422,7 +427,8 @@ function CampaignRow({
                 type="button"
                 onClick={onToggle}
                 aria-expanded={expanded}
-                className="truncate text-left text-sm font-medium focus-visible:underline focus-visible:outline-none"
+                title={window}
+                className="truncate text-left text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
               >
                 {row.name}
               </button>
@@ -436,14 +442,14 @@ function CampaignRow({
             </p>
           </div>
         </div>
-        <CampaignStrip row={row} strip={strip} title={window} />
+        <CampaignStrip row={row} strip={strip} />
         <div>
           <CampaignStatusPill status={row.status} />
         </div>
         <Button
           variant="outline"
           size="sm"
-          className="w-16"
+          className="relative w-16"
           aria-expanded={expanded}
           aria-label={t("sandbox.dateCampaigns.editNamed", { name: row.name })}
           onClick={onToggle}
@@ -460,17 +466,14 @@ function CampaignRow({
 function CampaignStrip({
   row,
   strip,
-  title,
 }: {
   row: CampaignRowModel;
   strip: Strip;
-  title: string;
 }) {
   const bar = timelineBar(row.window, strip.start, strip.end);
   return (
     <div
-      className="relative h-5 overflow-hidden rounded-md bg-muted"
-      title={title}
+      className="pointer-events-none relative h-5 overflow-hidden rounded-md bg-muted"
       data-testid="campaign-strip"
     >
       {Array.from({ length: STRIP_MONTHS - 1 }, (_, i) => (
