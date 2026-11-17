@@ -347,7 +347,10 @@ export function AssetsGallery({ config }: { config: FileConfigInfo }) {
           key={selected.key}
           item={selected}
           onClose={() => setSelectedKey(null)}
-          onReplace={() => setReplacing(selected)}
+          onReplace={() => {
+            setReplacing(selected);
+            setSelectedKey(null);
+          }}
           onDelete={() => setPendingDelete(selected)}
         />
       )}
@@ -358,7 +361,10 @@ export function AssetsGallery({ config }: { config: FileConfigInfo }) {
           configId={config.id}
           item={replacing}
           container={panel}
-          onClose={() => setReplacing(null)}
+          onClose={() => {
+            setSelectedKey(replacing.key);
+            setReplacing(null);
+          }}
           onReplaced={() => objectsQuery.refetch()}
         />
       )}
@@ -651,7 +657,7 @@ function ComparePreview({
       <img
         src={src}
         alt={alt}
-        className="max-h-full max-w-full rounded-md object-contain shadow-sm"
+        className="max-h-full max-w-full rounded-xl object-contain shadow-edge"
         onLoad={(e) =>
           onDimensions({
             width: e.currentTarget.naturalWidth,
@@ -669,7 +675,7 @@ function ComparePreview({
         muted
         playsInline
         controls
-        className="max-h-full max-w-full rounded-md object-contain shadow-sm"
+        className="max-h-full max-w-full rounded-xl object-contain shadow-edge"
         onLoadedMetadata={(e) =>
           onDimensions({
             width: e.currentTarget.videoWidth,
@@ -679,7 +685,11 @@ function ComparePreview({
       />
     );
   }
-  return <File02 size={32} className="text-muted-foreground" />;
+  return (
+    <div className="flex size-full items-center justify-center rounded-xl bg-muted">
+      <File02 size={32} className="text-muted-foreground" />
+    </div>
+  );
 }
 
 function ReplaceAssetSheet({
@@ -757,7 +767,7 @@ function ReplaceAssetSheet({
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("assets.replace.before")}
             </p>
-            <div className="flex h-64 items-center justify-center overflow-hidden rounded-xl bg-muted p-3">
+            <div className="flex h-64 items-center justify-center">
               <ComparePreview
                 src={previewUrl(item.publicUrl, item.lastModified)}
                 kind={assetKind(item.key)}
@@ -787,7 +797,8 @@ function ReplaceAssetSheet({
             </p>
             <div
               className={cn(
-                "relative flex h-64 items-center justify-center overflow-hidden rounded-xl bg-muted p-3",
+                "flex h-64 items-center justify-center rounded-xl",
+                !file && "bg-muted",
                 isDragging && "bg-primary/5 ring-2 ring-primary",
               )}
               onDragOver={(e) => {
@@ -803,24 +814,12 @@ function ReplaceAssetSheet({
               }}
             >
               {file && fileUrl ? (
-                <>
-                  <ComparePreview
-                    src={fileUrl}
-                    kind={assetKind(file.name)}
-                    alt={file.name}
-                    onDimensions={setAfter}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="absolute bottom-2 right-2"
-                    disabled={upload.isPending}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {t("assets.replace.chooseAnother")}
-                  </Button>
-                </>
+                <ComparePreview
+                  src={fileUrl}
+                  kind={assetKind(file.name)}
+                  alt={file.name}
+                  onDimensions={setAfter}
+                />
               ) : (
                 <div className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
                   <Upload01 size={20} />
@@ -838,14 +837,25 @@ function ReplaceAssetSheet({
             </div>
             <div className="min-w-0 text-xs">
               {file ? (
-                <>
-                  <p className="truncate font-medium">{file.name}</p>
-                  <p className="text-muted-foreground">
-                    {[formatSize(file.size), formatDimensions(after)]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{file.name}</p>
+                    <p className="text-muted-foreground">
+                      {[formatSize(file.size), formatDimensions(after)]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={upload.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {t("assets.replace.chooseAnother")}
+                  </Button>
+                </div>
               ) : (
                 <>
                   <p className="font-medium text-muted-foreground">
