@@ -210,6 +210,24 @@ function typeInto(element: HTMLElement, value: string) {
   act(() => onChange({ target: { value } }));
 }
 
+/** The `onValueChange` of the Radix select whose trigger is `element`; happy-dom can't open its popover. */
+function selectValue(element: HTMLElement, value: string) {
+  const fiberKey = Object.keys(element).find((k) =>
+    k.startsWith("__reactFiber$"),
+  );
+  type Fiber = {
+    memoizedProps?: { onValueChange?: (v: string) => void };
+    return?: Fiber;
+  };
+  let fiber = (element as unknown as Record<string, Fiber | undefined>)[
+    fiberKey ?? ""
+  ];
+  while (fiber && !fiber.memoizedProps?.onValueChange) fiber = fiber.return;
+  const onValueChange = fiber?.memoizedProps?.onValueChange;
+  if (!onValueChange) throw new Error("not a select");
+  act(() => onValueChange(value));
+}
+
 const section = (cardLayout: unknown) => ({
   __resolveType: SECTION,
   title: "Shelf",
@@ -244,5 +262,25 @@ describe("a `T | Loader<T>` field holding an inline `T`", () => {
         section({ __resolveType: LOADER, layout: { heading: "Edited" } }),
       ),
     );
+  });
+
+  test("still offers the loaders, and picking one stores the loader", async () => {
+    const changes: unknown[] = [];
+    const view = renderForm(section({ heading: "Typed" }), (v) =>
+      changes.push(v),
+    );
+    await view.findByDisplayValue("Typed");
+    const trigger = view.container.querySelector<HTMLElement>("#cardLayout");
+    expect(trigger?.textContent).toBe("Layout");
+    selectValue(trigger!, "loader:0");
+    await waitFor(() =>
+      expect(changes.at(-1)).toEqual(section({ __resolveType: LOADER })),
+    );
+    // The loader picker replaces the inline fields.
+    await view.findByText("Loader configuration");
+    expect(view.container.querySelector("#cardLayout")?.textContent).toBe(
+      "Product Card Layout",
+    );
+    expect(view.queryByDisplayValue("Typed")).toBeNull();
   });
 });
