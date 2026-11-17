@@ -134,7 +134,7 @@ export function HostingTabs({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 pb-3 pt-4">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 pb-2 pt-4">
         <ToggleGroup
           type="single"
           variant="segmented"
@@ -176,7 +176,7 @@ export function HostingTabs({ virtualMcpId }: { virtualMcpId: string }) {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-1 pb-8">
         <div className="w-full">
           {view === "deploys" && (
             <DeploysView
