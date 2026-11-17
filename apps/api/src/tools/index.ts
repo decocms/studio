@@ -360,6 +360,9 @@ export const CORE_TOOLS = [
   GitTools.REPOSITORY_DEPLOYS_LIST,
   GitTools.REPOSITORY_DELETE,
   GitTools.REPOSITORY_SEARCH_BRANCHES,
+  GitTools.REPOSITORY_COLLABORATORS_LIST,
+  GitTools.REPOSITORY_COLLABORATOR_ADD,
+  GitTools.REPOSITORY_COLLABORATOR_REMOVE,
 
   // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
   ChangeRequestTools.CHANGE_REQUEST_STATE,

@@ -291,6 +291,9 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_DEPLOYS_LIST",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
+  "REPOSITORY_COLLABORATORS_LIST",
+  "REPOSITORY_COLLABORATOR_ADD",
+  "REPOSITORY_COLLABORATOR_REMOVE",
 
   // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
   "CHANGE_REQUEST_STATE",
@@ -1474,6 +1477,24 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPOSITORY_DELETE",
     description: "Unlink a repository from the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_COLLABORATORS_LIST",
+    description:
+      "List who has direct access to a linked repository, and pending invitations",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_COLLABORATOR_ADD",
+    description:
+      "Invite someone to a linked repository, or change their access",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_COLLABORATOR_REMOVE",
+    description:
+      "Withdraw someone's invitation and direct access to a linked repository",
     category: "Git",
   },
   // Search tools

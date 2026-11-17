@@ -624,3 +624,8 @@ export const REPOSITORY_DELETE = defineTool({
 });
 
 export { REPOSITORY_SEARCH_BRANCHES } from "./branches";
+export {
+  REPOSITORY_COLLABORATORS_LIST,
+  REPOSITORY_COLLABORATOR_ADD,
+  REPOSITORY_COLLABORATOR_REMOVE,
+} from "./collaborators";
