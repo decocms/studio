@@ -20,6 +20,7 @@ import {
 } from "@/components/sections-editor/content-backend";
 import { BlocksSiteEditorProvider } from "@/components/sections-editor/blocks-site-editor";
 import {
+  BlocksErrorState,
   ContentBackendWaiting,
   isSiteNotOwned,
   SiteNotOwnedState,
@@ -175,13 +176,16 @@ function BlogWorkspaceData({
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const fetchParams = { orgSlug, virtualMcpId, branch, threadId, previewUrl };
-  const { data: decofile, isLoading: decofileLoading } = useDecofile(
-    fetchParams,
-    { fetchEnabled: devServerReady },
-  );
-  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
-    fetchEnabled: devServerReady,
-  });
+  const {
+    data: decofile,
+    isLoading: decofileLoading,
+    refetch: refetchDecofile,
+  } = useDecofile(fetchParams, { fetchEnabled: devServerReady });
+  const {
+    data: meta,
+    isLoading: metaLoading,
+    refetch: refetchMeta,
+  } = useLiveMeta(fetchParams, { fetchEnabled: devServerReady });
   /**
    * Hosted v8: the decofile lists the index, and a block's body loads when a
    * view opens it. Every Blog row and editor shows a record's body, and an
@@ -228,7 +232,15 @@ function BlogWorkspaceData({
   }
 
   if (dataMissing) {
-    return <EmptyMessage title="Could not load site data." />;
+    return (
+      <BlocksErrorState
+        source="data"
+        onRetry={() => {
+          if (!decofile) void refetchDecofile();
+          if (!meta) void refetchMeta();
+        }}
+      />
+    );
   }
 
   /**
