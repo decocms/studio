@@ -102,6 +102,31 @@ export function assertAllowed(contentType: string, size: number): void {
 }
 
 /**
+ * A replace overwrites an object in place so its public URL serves the new
+ * bytes. It may only target an object under the config's prefix, and only
+ * with the media type that object already has: pages embedding the URL
+ * expect that format. `existingContentType` is null when the object has none.
+ */
+export function assertReplaceable(params: {
+  prefix: string | null;
+  key: string;
+  existingContentType: string | null;
+  contentType: string;
+}): void {
+  if (params.prefix && !params.key.startsWith(params.prefix)) {
+    throw new UploadRejected("The file to replace is outside this bucket.");
+  }
+  const existing = params.existingContentType
+    ? normalizeContentType(params.existingContentType)
+    : null;
+  if (existing !== normalizeContentType(params.contentType)) {
+    throw new UploadRejected(
+      `Replace it with a file of the same type (${existing ?? "unknown"}).`,
+    );
+  }
+}
+
+/**
  * Sanitize a filename for use as the suffix of an object key. ASCII-fold,
  * lowercase, replace any non-[a-z0-9._-] with `-`, collapse repeats, cap at
  * 80 chars while preserving the file extension when possible.
