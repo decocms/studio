@@ -19,7 +19,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.550.0",
+      "version": "4.584.16",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -202,7 +202,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.130.3",
+      "version": "1.140.2",
       "dependencies": {
         "@decocms/blocks": "8.8.0",
         "@decocms/shared": "workspace:*",
@@ -219,7 +219,7 @@
     },
     "packages/harness-runner": {
       "name": "@decocms/harness-runner",
-      "version": "0.14.1",
+      "version": "0.15.1",
       "bin": {
         "decocms-harness-runner": "./main.ts",
       },
@@ -272,7 +272,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.95.4",
+      "version": "1.99.4",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
@@ -289,7 +289,7 @@
     },
     "packages/sandbox-controller": {
       "name": "@decocms/sandbox-controller",
-      "version": "0.15.4",
+      "version": "0.19.4",
       "dependencies": {
         "@kubernetes/client-node": "^1.4.0",
       },
@@ -306,7 +306,7 @@
     },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.190.0",
+      "version": "0.205.2",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -336,7 +336,7 @@
     },
     "packages/ui": {
       "name": "@decocms/ui",
-      "version": "1.29.0",
+      "version": "1.31.0",
       "dependencies": {
         "@radix-ui/react-accordion": "^1.2.3",
         "@radix-ui/react-alert-dialog": "^1.1.6",
@@ -367,6 +367,7 @@
         "clsx": "^2.1.1",
         "cmdk": "^1.1.1",
         "embla-carousel-react": "^8.5.2",
+        "input-otp": "1.4.2",
         "next-themes": "^0.4.6",
         "react-day-picker": "^8.10.1",
         "react-markdown": "^10.1.0",

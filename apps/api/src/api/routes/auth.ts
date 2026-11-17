@@ -44,6 +44,9 @@ import {
 
 const app = new Hono();
 
+// Better Auth's email-otp default when AUTH_EMAIL_OTP_LENGTH is unset.
+const DEFAULT_EMAIL_OTP_LENGTH = 6;
+
 export type { AuthConfig } from "@decocms/shared/config";
 
 export function buildAuthConfig(): AuthConfig {
@@ -66,6 +69,7 @@ export function buildAuthConfig(): AuthConfig {
     },
     emailOtp: {
       enabled: authConfig.emailOtpConfig?.enabled ?? false,
+      length: authConfig.emailOtpConfig?.otpLength ?? DEFAULT_EMAIL_OTP_LENGTH,
     },
     resetPassword: {
       enabled: resetPasswordEnabled,
