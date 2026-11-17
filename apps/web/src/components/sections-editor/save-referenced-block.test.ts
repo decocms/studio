@@ -1,77 +1,34 @@
 import { describe, expect, it } from "bun:test";
 import { assertSafeDecoBlockKey } from "./deco-block-key";
-import { createReferencedBlockSaver } from "./save-referenced-block";
+import { referencedBlockSource } from "./save-referenced-block";
 
-describe("save-referenced-block", () => {
-  it("guards a nested edit by the exact source its form displayed", () => {
+describe("referencedBlockSource", () => {
+  it("an edit is made on the exact copy its form displayed", () => {
     const opened = { text: "Hello", color: "blue" };
-    let current = { Header: opened };
-    const saved: unknown[] = [];
-    const save = createReferencedBlockSaver(
-      (write) => saved.push(write),
-      current,
-      true,
+    const blocks = { Header: opened };
+    expect(referencedBlockSource(blocks, "Header", true)).toEqual({
+      base: { value: opened, fromCache: true },
+      create: false,
+    });
+    expect(referencedBlockSource(blocks, "Header", true).base.value).toBe(
+      opened,
     );
-    // Another read replaced the cache; the form still edits its opened copy.
-    current = { Header: { text: "Hello", color: "red" } };
-    save("Header", { ...opened, text: "Edited" });
-    expect(saved).toEqual([
-      {
-        blockKey: "Header",
-        data: { text: "Edited", color: "blue" },
-        base: { value: opened, fromCache: true },
-        create: false,
-      },
-    ]);
-    expect((saved[0] as { base: { value: unknown } }).base.value).not.toBe(
-      current.Header,
-    );
-    expect(() => save("../Header", {})).toThrow(/Invalid block key/);
-    expect(saved).toHaveLength(1);
   });
 
-  it("creates a new referenced block with a must-not-exist guard", () => {
-    const saved: unknown[] = [];
-    const save = createReferencedBlockSaver(
-      (write) => saved.push(write),
-      {},
-      true,
-    );
-    save("Header", { text: "Hello" });
-    expect(saved).toEqual([
-      {
-        blockKey: "Header",
-        data: { text: "Hello" },
-        base: { value: undefined, fromCache: true },
-        create: true,
-      },
-    ]);
+  it("v8 saves a block the listing doesn't hold as a create", () => {
+    expect(referencedBlockSource({}, "Header", true)).toEqual({
+      base: { value: undefined, fromCache: true },
+      create: true,
+    });
   });
 
-  it("legacy references keep the original payload without explicit source guards", () => {
-    const saved: unknown[] = [];
-    const save = createReferencedBlockSaver(
-      (write) => saved.push(write),
-      { Header: { text: "old" } },
-      false,
-    );
-    save("Header", { text: "edited" });
-    save("New", { text: "new" });
-    expect(saved).toEqual([
-      { blockKey: "Header", data: { text: "edited" } },
-      { blockKey: "New", data: { text: "new" } },
-    ]);
-  });
-
-  it("rejects encoded path traversal before persistence", () => {
-    const saved: unknown[] = [];
-    const save = createReferencedBlockSaver(
-      (write) => saved.push(write),
-      {},
-      true,
-    );
-    expect(() => save("%2e%2e%2fHeader", {})).toThrow(/Invalid block key/);
-    expect(saved).toEqual([]);
+  it("legacy never sends a create", () => {
+    expect(
+      referencedBlockSource({ Header: { text: "old" } }, "Header", false),
+    ).toEqual({ base: { value: { text: "old" }, fromCache: true } });
+    expect(referencedBlockSource({}, "New", false)).toEqual({
+      base: { value: undefined, fromCache: true },
+    });
   });
 });
 

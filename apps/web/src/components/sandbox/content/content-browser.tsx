@@ -92,7 +92,7 @@ import {
   getPageVariantSectionsAt,
 } from "@/components/sections-editor/page-variants";
 import { listAvailableSections } from "@/components/sections-editor/section-catalog";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -838,6 +838,11 @@ function ContentBrowserReady({
   };
 
   const saveBlock = useSaveBlock(fetchParams);
+  // Persist nested saved-block references created from within the section form.
+  const saveReferencedBlock = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
+    decofile ?? {},
+  ).save;
   const loadBlock = useLoadDecofileBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
 
@@ -1447,13 +1452,6 @@ function ContentBrowserReady({
     }
     setSelection({ collection: "sections", key: blockId });
   };
-
-  // Persist nested saved-block references created from within the section form.
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => saveBlock.mutate(write),
-    decofile,
-    saveBlock.v8,
-  );
 
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     const prepare = (source: Record<string, unknown> | undefined) => {

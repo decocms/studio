@@ -1,34 +1,48 @@
 import { assertSafeDecoBlockKey } from "./deco-block-key";
+import {
+  type SaveFrom,
+  type UseSaveBlockParams,
+  useDebouncedSaveBlock,
+} from "./use-save-block";
 
 export type ReferencedBlockSaveFn = (
   blockKey: string,
   data: Record<string, unknown>,
 ) => void;
 
-interface ReferencedBlockWrite {
-  blockKey: string;
-  data: Record<string, unknown>;
-  base?: { value: unknown; fromCache: true };
-  create?: boolean;
+/** The copy a referenced block's edit is made on; v8 creates a block the listing lacks. */
+export function referencedBlockSource(
+  blocks: Readonly<Record<string, unknown>>,
+  blockKey: string,
+  v8: boolean,
+): SaveFrom {
+  return {
+    base: { value: blocks[blockKey], fromCache: true },
+    ...(v8 ? { create: !Object.hasOwn(blocks, blockKey) } : {}),
+  };
 }
 
-/** V8 guards the displayed copy; legacy keeps its existing call-time cache base. */
-export function createReferencedBlockSaver(
-  save: (write: ReferencedBlockWrite) => void,
+/** Saves a block edited inside another form, debounced like any form; its fields read the cache. */
+export function useReferencedBlockSaver(
+  params: UseSaveBlockParams,
   blocks: Readonly<Record<string, unknown>>,
-  v8: boolean,
-): ReferencedBlockSaveFn {
-  return (blockKey, data) => {
+  opts?: { onSaved?: () => void },
+) {
+  const debounced = useDebouncedSaveBlock(params, {
+    onSaved: opts?.onSaved,
+    showEdits: true,
+  });
+  const save: ReferencedBlockSaveFn = (blockKey, data) => {
     assertSafeDecoBlockKey(blockKey);
-    save({
+    debounced.save(
       blockKey,
       data,
-      ...(v8
-        ? {
-            base: { value: blocks[blockKey], fromCache: true as const },
-            create: !Object.hasOwn(blocks, blockKey),
-          }
-        : {}),
-    });
+      referencedBlockSource(blocks, blockKey, debounced.v8),
+    );
+  };
+  return {
+    save,
+    isPending: debounced.isPending,
+    isError: debounced.isError,
   };
 }

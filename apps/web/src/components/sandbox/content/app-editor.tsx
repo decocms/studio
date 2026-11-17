@@ -14,7 +14,7 @@ import {
   type LiveMeta,
 } from "@/components/sections-editor/resolve-schema";
 import type { SectionCatalogEntry } from "@/components/sections-editor/section-catalog";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
   keptTheirVersion,
   type SaveGuard,
@@ -144,20 +144,10 @@ function AppEditorForm({
     { guard: saveGuard, holdsCopy: true },
   );
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  // Not debounced: the saved block's form reads its value from the decofile cache, which a delay leaves stale.
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) =>
-      saveBlock.mutate(write, {
-        onError: (err) =>
-          toast.error(
-            t("sectionsEditor.sectionsEditor.saveFailed", {
-              error: err.message,
-            }),
-          ),
-      }),
+  const saveReferencedBlock = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile,
-    saveBlock.v8,
-  );
+  ).save;
 
   const [prevBlockKey, setPrevBlockKey] = useState(blockKey);
   const [formValue, setFormValue] = useState<Record<string, unknown> | null>(

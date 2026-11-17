@@ -1,7 +1,6 @@
 import { useT } from "@/i18n/use-t.ts";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
-import { useSaveBlock } from "@/components/sections-editor/use-save-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { RunnableBlockEditor } from "@/components/sandbox/content/runnable-block-editor";
 import { readSavedRunnableBlock } from "@/components/sandbox/content/runnable-catalog";
 import { HeldBlockView } from "@/components/sandbox/content/held-block-view";
@@ -31,11 +30,9 @@ export function GlobalLoaderEditor({
   blockKey: string;
 }) {
   const t = useT();
-  const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => saveBlock.mutate(write),
+  const referencedBlockSave = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile,
-    saveBlock.v8,
   );
 
   const { resolveType, props, title } = readSavedRunnableBlock(
@@ -71,9 +68,9 @@ export function GlobalLoaderEditor({
         kind="loaders"
         target={{ mode: "saved", blockKey, resolveType, title }}
         initialValue={props}
-        isCreating={saveBlock.isPending}
+        isCreating={referencedBlockSave.isPending}
         onCreate={async () => {}}
-        onSaveReferencedBlock={saveReferencedBlock}
+        onSaveReferencedBlock={referencedBlockSave.save}
         showRun={false}
       />
     </HeldBlockView>

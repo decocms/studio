@@ -16,7 +16,7 @@ import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { buildBlogBlock, getBlogPayload, type BlogKind } from "./blog-data";
 import { blogCustomFieldsSchema } from "./blog-schema";
 import { CustomFieldsPanel } from "./custom-fields-panel";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { str } from "./blocks/primitives";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useAutosave } from "./use-autosave";
@@ -123,12 +123,11 @@ function RecordEditorForm({
   const customFields = blogCustomFieldsSchema(kind, meta, KNOWN_FIELDS[kind]);
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this record.
-  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => (save.v8 ? referenceSave : save).mutate(write),
+  const referenceSave = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile,
-    save.v8,
   );
+  const saveReferencedBlock = referenceSave.save;
 
   const [payload, setPayload] = useAutosave(
     initial,
@@ -146,8 +145,8 @@ function RecordEditorForm({
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
         <span className="text-sm font-medium">{t(TITLE[kind])}</span>
         <SaveStatus
-          isPending={save.isPending || (save.v8 && referenceSave.isPending)}
-          isError={save.isError || (save.v8 && referenceSave.isError)}
+          isPending={save.isPending || referenceSave.isPending}
+          isError={save.isError || referenceSave.isError}
         />
       </div>
       <div className="min-w-0 flex-1 overflow-y-auto px-6 py-6">
