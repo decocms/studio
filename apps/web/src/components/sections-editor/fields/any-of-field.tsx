@@ -661,9 +661,11 @@ function LoadedAnyOfField({
               open={loaderConfigOpen}
               onOpenChange={setLoaderConfigOpen}
               title={
-                isNestedBlockRef
-                  ? t("sectionsEditor.anyOfField.configuration")
-                  : t("sectionsEditor.anyOfField.loaderConfiguration")
+                sectionSlot && selectedRef
+                  ? blockRefOptionLabel(selectedRef)
+                  : isNestedBlockRef || sectionSlot
+                    ? t("sectionsEditor.anyOfField.configuration")
+                    : t("sectionsEditor.anyOfField.loaderConfiguration")
               }
               nested={nestedProps}
               nestedBlockRef={isNestedBlockRef}

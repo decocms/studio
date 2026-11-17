@@ -519,3 +519,48 @@ test("segment union: a discriminator-only branch shows just the selector", async
   await expect(component.getByRole("textbox")).toHaveCount(0);
   await expect(component.getByLabel("Months")).toHaveCount(0);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// (C) section slot
+// ═══════════════════════════════════════════════════════════════════════════
+
+// deco titles a section without `@title` with its own module path.
+const sectionSlot: SchemaProperty = {
+  type: "block-ref",
+  anyOfRefs: [
+    {
+      resolveType: "site/sections/Content/Alert.tsx",
+      title: "site/sections/Content/Alert.tsx",
+      schema: {
+        type: "object",
+        properties: { message: { type: "string", title: "Message" } },
+      },
+    },
+  ],
+};
+
+const emptyMeta: LiveMeta = { manifest: { blocks: {} }, schema: {} };
+
+test("section slot: names the section, not a path or 'Loader configuration'", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <FieldHarness
+      schema={sectionSlot}
+      label="Section"
+      meta={emptyMeta}
+      initialValue={{ __resolveType: "site/sections/Content/Alert.tsx" }}
+    />,
+  );
+
+  await expect(component.getByRole("combobox")).toHaveText("Alert");
+  await expect(
+    component.getByRole("button", { name: "Alert", exact: true }),
+  ).toBeVisible();
+  await expect(
+    component.getByRole("button", { name: /loader configuration/i }),
+  ).toHaveCount(0);
+  await expect(
+    component.getByText("site/sections/Content/Alert.tsx", { exact: true }),
+  ).toHaveCount(0);
+});

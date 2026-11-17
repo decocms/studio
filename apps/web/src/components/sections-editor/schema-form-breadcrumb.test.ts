@@ -87,6 +87,14 @@ describe("fieldDisplayLabel", () => {
       "Background Color",
     );
   });
+
+  test("humanizes key when the title is only a module path", () => {
+    expect(
+      fieldDisplayLabel("alertSection", {
+        title: "site/sections/Content/Alert.tsx",
+      } as SchemaProperty),
+    ).toBe("Alert Section");
+  });
 });
 
 describe("siblingFieldLabel", () => {
