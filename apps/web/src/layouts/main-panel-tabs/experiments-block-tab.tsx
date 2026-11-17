@@ -214,26 +214,38 @@ export function ExperimentsBlockReady({
 
   const removed = removedExperiments(decofile, view.published);
   const summary = experimentsSummary(t, rows);
+  const empty = rows.length === 0;
+  // With no test in the draft and none it removed, nothing is live either.
+  const showLive = !empty || removed.length > 0;
 
   return (
     <Page>
       <SiteDraftViewHeader
         intro={t("experiments.v8.intro")}
         actions={
-          <Button size="sm" onClick={() => view.setCreating(true)}>
-            <Plus size={16} />
-            {t("experiments.v8.new")}
-          </Button>
+          empty ? undefined : (
+            <Button size="sm" onClick={() => view.setCreating(true)}>
+              <Plus size={16} />
+              {t("experiments.v8.new")}
+            </Button>
+          )
         }
       />
       <Page.Content>
         <div className={cn("flex flex-col gap-4", SITE_DRAFT_VIEW_INSET)}>
-          {rows.length === 0 ? (
+          {empty ? (
             <EmptyState
+              icon={<Beaker02 size={20} />}
               title={t("experiments.v8.empty.title")}
               description={t("experiments.v8.empty.desc")}
+              className="rounded-xl border border-dashed border-border py-16"
               buttonProps={{
-                children: t("experiments.v8.new"),
+                children: (
+                  <>
+                    <Plus size={16} />
+                    {t("experiments.v8.new")}
+                  </>
+                ),
                 onClick: () => view.setCreating(true),
               }}
             />
@@ -272,16 +284,19 @@ export function ExperimentsBlockReady({
             </div>
           )}
           <NamedRuleDraftNotes kind="experiments" removed={removed} />
-          <p className="text-xs text-muted-foreground">
-            {t("experiments.v8.previewHint")}
-          </p>
-          {live?.({
-            orgSlug,
-            virtualMcpId,
-            draft: decofile,
-            published: view.live,
-            openTest: (name) => view.setOpenName(name),
-          })}
+          {!empty && (
+            <p className="text-xs text-muted-foreground">
+              {t("experiments.v8.previewHint")}
+            </p>
+          )}
+          {showLive &&
+            live?.({
+              orgSlug,
+              virtualMcpId,
+              draft: decofile,
+              published: view.live,
+              openTest: (name) => view.setOpenName(name),
+            })}
         </div>
       </Page.Content>
       <NamedRuleCreateDialog

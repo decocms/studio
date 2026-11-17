@@ -252,6 +252,28 @@ describe("the list, with a slot under it (the Experiments app)", () => {
     expect(opened).toEqual(["hero", null]);
   });
 
+  test("an empty draft offers one way to create and no live section", () => {
+    openName = null;
+    const body = within(
+      render(
+        <Providers>
+          <ExperimentsBlockReady
+            {...SCOPE}
+            threadId={null}
+            decofile={{ experiments: { __resolveType: "split-traffic" } }}
+            meta={meta as never}
+            live={() => <p>live slot</p>}
+          />
+        </Providers>,
+      ).container,
+    );
+    expect(body.getAllByRole("button", { name: "New A/B test" })).toHaveLength(
+      1,
+    );
+    expect(body.queryByText("live slot")).toBeNull();
+    expect(body.queryByTestId("experiments-v8-list")).toBeNull();
+  });
+
   test("without a slot, the list is as before", () => {
     const body = list();
     expect(body.queryByText("live slot")).toBeNull();
