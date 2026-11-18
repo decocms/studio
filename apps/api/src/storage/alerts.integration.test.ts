@@ -71,16 +71,14 @@ describe("AlertStorage", () => {
     ).not.toBeNull();
     expect(await alerts.open(drop(otherOrg))).not.toBeNull();
 
-    expect((await alerts.list(orgId)).map((a) => a.subjectId).sort()).toEqual([
-      "conn_other",
-      "conn_store",
-      "conn_store",
-    ]);
-    expect(await alerts.list(otherOrg)).toHaveLength(1);
+    expect(
+      (await alerts.list(orgId)).alerts.map((a) => a.subjectId).sort(),
+    ).toEqual(["conn_other", "conn_store", "conn_store"]);
+    expect((await alerts.list(otherOrg)).alerts).toHaveLength(1);
   });
 
   test("acks in the org only, links the task, and lets the rule alert again", async () => {
-    const [open] = (await alerts.list(orgId)).filter(
+    const [open] = (await alerts.list(orgId)).alerts.filter(
       (a) => a.subjectId === "conn_store" && a.rule === "orders_drop",
     );
     expect(open).toBeDefined();
@@ -99,8 +97,10 @@ describe("AlertStorage", () => {
     });
     expect(acked).toMatchObject({
       ackedBy: userId,
+      ackedByName: "Alerts",
       ackNote: "Checkout was down for 40 min",
       taskBoardItemId: task.id,
+      taskKeySeq: task.keySeq,
     });
     expect(acked?.ackedAt).not.toBeNull();
 
@@ -110,9 +110,11 @@ describe("AlertStorage", () => {
     });
     expect(again).toMatchObject({ ackedBy: userId, ackedAt: acked!.ackedAt });
 
-    expect((await alerts.list(orgId)).map((a) => a.id)).not.toContain(open!.id);
+    expect((await alerts.list(orgId)).alerts.map((a) => a.id)).not.toContain(
+      open!.id,
+    );
     expect(
-      (await alerts.list(orgId, { includeAcked: true })).map((a) => a.id),
+      (await alerts.list(orgId, { status: "all" })).alerts.map((a) => a.id),
     ).toContain(open!.id);
 
     // The next crossing opens a fresh alert.
@@ -134,16 +136,92 @@ describe("AlertStorage", () => {
       .deleteFrom("task_board_items")
       .where("id", "=", task.id)
       .execute();
-    const [kept] = (await alerts.list(orgId, { includeAcked: true })).filter(
+    const [kept] = (await alerts.list(orgId, { status: "all" })).alerts.filter(
       (a) => a.id === open!.id,
     );
     expect(kept?.taskBoardItemId).toBeNull();
+    expect(kept?.taskKeySeq).toBeNull();
+  });
+
+  test("keeps one threshold setting per org, source and rule", async () => {
+    expect(await alerts.listRuleSettings(orgId, "order_monitor")).toEqual([]);
+    const set = (threshold: number) =>
+      alerts.setRuleSetting(
+        orgId,
+        {
+          source: "order_monitor",
+          rule: "orders_drop",
+          threshold,
+          minVolume: 25,
+        },
+        userId,
+      );
+    await set(30);
+    await set(40);
+    expect(await alerts.listRuleSettings(orgId, "order_monitor")).toMatchObject(
+      [
+        {
+          rule: "orders_drop",
+          threshold: 40,
+          minVolume: 25,
+          updatedBy: userId,
+        },
+      ],
+    );
+    expect(await alerts.listRuleSettings(orgId, "other_source")).toEqual([]);
+    expect(await alerts.listRuleSettings(otherOrg, "order_monitor")).toEqual(
+      [],
+    );
+  });
+
+  test("pages by status, newest first, ties on the same instant included", async () => {
+    const at = new Date("2026-01-01T12:00:00Z");
+    for (let i = 0; i < 5; i++) {
+      const a = await alerts.open({
+        ...drop(orgId, `conn_page_${i}`),
+        // Two pairs share an instant: the cursor must not skip either.
+        createdAt: new Date(at.getTime() - Math.floor(i / 2) * 60_000),
+      });
+      await alerts.ack(orgId, a!.id, userId);
+    }
+    const acked = await alerts.list(orgId, { status: "acked", limit: 100 });
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await alerts.list(orgId, {
+        status: "acked",
+        limit: 2,
+        cursor,
+      });
+      expect(page.alerts.length).toBeLessThanOrEqual(2);
+      seen.push(...page.alerts.map((a) => a.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(seen).toEqual(acked.alerts.map((a) => a.id));
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(
+      (await alerts.list(orgId, { status: "acked", limit: 100 })).alerts.every(
+        (a) => a.ackedAt !== null,
+      ),
+    ).toBe(true);
+    expect(
+      (await alerts.list(orgId, { limit: 100 })).alerts.every(
+        (a) => a.ackedAt === null,
+      ),
+    ).toBe(true);
+    // A malformed cursor reads as the first page.
+    expect(
+      (await alerts.list(orgId, { status: "acked", limit: 2, cursor: "x" }))
+        .alerts[0]?.id,
+    ).toBe(acked.alerts[0]?.id);
   });
 
   test("goes with its organization", async () => {
     await sql`DELETE FROM "organization" WHERE id = ${otherOrg}`.execute(
       database.db,
     );
-    expect(await alerts.list(otherOrg, { includeAcked: true })).toHaveLength(0);
+    expect(
+      (await alerts.list(otherOrg, { status: "all" })).alerts,
+    ).toHaveLength(0);
   });
 });

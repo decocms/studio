@@ -15,7 +15,10 @@ export const AlertSchema = z.object({
   ackedAt: z.string().nullable(),
   /** User id of whoever acked it, an agent acting for a user included. */
   ackedBy: z.string().nullable(),
+  ackedByName: z.string().nullable(),
   ackNote: z.string().nullable(),
   /** The task opened for it, when one was linked on ack. */
   taskBoardItemId: z.string().nullable(),
+  /** That task's per-org sequence, behind its key (`DECO-12`). */
+  taskKeySeq: z.number().nullable(),
 });

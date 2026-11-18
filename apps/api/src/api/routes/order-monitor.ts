@@ -27,6 +27,7 @@ import { isAuthenticated, requireOrganization } from "@/core/studio-context";
 import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
+import { loadThresholds } from "@/monitoring/order-alerts";
 import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
 import { loadSiteTraffic } from "@/monitoring/site-traffic";
@@ -162,7 +163,12 @@ export const createOrderMonitorRoutes = () => {
           404,
         );
       }
-      return c.json(buildDayView(day, at));
+      // The chart's bands are the thresholds the sweep judges by.
+      const thresholds = await loadThresholds(
+        g.ctx.storage.alerts,
+        g.organizationId,
+      );
+      return c.json(buildDayView(day, at, thresholds));
     } catch (err) {
       console.error("[order-monitor] day read failed", {
         connectionId,

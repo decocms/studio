@@ -66,6 +66,7 @@ import type {
 import { createSecretModelSource } from "@/harnesses/lib/types";
 import { streamDecopilot } from "@/harnesses/decopilot/stream";
 import { withHtmlArtifactPreviews } from "@/harnesses/html-artifact-watcher";
+import { withSandboxPrCapture } from "@/tools/task-board/sandbox-pr-capture";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -1568,8 +1569,13 @@ async function prepareRun(
           yield* rawHarnessChunks;
           return;
         }
+        const chunks = withSandboxPrCapture(
+          rawHarnessChunks,
+          ctx,
+          mem.thread.id,
+        );
         // Decopilot titles inside its own loop; a sandbox harness has no such step.
-        yield* withRunTitle(withHtmlArtifactPreviews(rawHarnessChunks, ctx), {
+        yield* withRunTitle(withHtmlArtifactPreviews(chunks, ctx), {
           currentThreadTitle: mem.thread.title,
           isSubagent: input.isSubagent === true,
           userText: materializedRequestMessage.parts

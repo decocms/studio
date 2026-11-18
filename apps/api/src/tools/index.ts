@@ -74,6 +74,8 @@ export const CORE_TOOLS = [
   NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
   AlertTools.ALERTS_LIST,
   AlertTools.ALERT_ACK,
+  AlertTools.ALERT_RULES_LIST,
+  AlertTools.ALERT_RULE_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
   // The cross-org `org` param is applied at each tool's own definition, NOT
   // here — the Super Agent imports these tools directly (see

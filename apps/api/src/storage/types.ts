@@ -212,7 +212,7 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Per-host PATs every sandbox in the org installs in its git config.
   submodule_credentials: JsonArray<SubmoduleCredential[]> | null;
-  // The store goal on the Plan page. See migration 266.
+  // The store goal on the Plan page. See migration 267.
   plan_objective: JsonObject<PlanObjective> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
@@ -329,6 +329,17 @@ export interface AlertTable {
   acked_by: ColumnType<string | null, never, string | null>;
   ack_note: ColumnType<string | null, never, string | null>;
   task_board_item_id: ColumnType<string | null, never, string | null>;
+}
+
+/** An org's thresholds for one alert rule (migration 266). */
+export interface AlertRuleSettingsTable {
+  organization_id: string;
+  source: string;
+  rule: string;
+  threshold: number;
+  min_volume: number;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_by: string | null;
 }
 
 /**
@@ -2610,6 +2621,7 @@ export interface Database {
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
   alerts: AlertTable;
+  alert_rule_settings: AlertRuleSettingsTable;
 
   // Automations tables
   automations: AutomationTable;
