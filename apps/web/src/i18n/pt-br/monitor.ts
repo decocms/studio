@@ -102,6 +102,14 @@ export const monitor = {
   "monitor.alerts.rules.reset": "Voltar aos padrões",
   "monitor.alerts.rules.hint":
     "A última hora de cada loja, verificada a cada 5 minutos contra o que essa hora costuma trazer.",
+  "monitor.alerts.rules.visitors": "Visitantes",
+  "monitor.alerts.rules.pageviews": "Pageviews",
+  "monitor.alerts.rules.visitorsHelp":
+    "Última hora abaixo desta fração dos visitantes esperados de um site",
+  "monitor.alerts.rules.pageviewsHelp":
+    "Última hora abaixo desta fração das pageviews esperadas de um site",
+  "monitor.alerts.rules.unitVisitors": "visitantes",
+  "monitor.alerts.rules.unitPageviews": "pageviews",
   "monitor.alerts.rules.save": "Salvar",
   "monitor.view.heatmap": "Heatmap",
   "monitor.deco.pickProject": "Escolha um projeto",

@@ -125,12 +125,14 @@ export interface OrderMonitorDay {
 export interface SiteTrafficDay {
   /** Unique visitors in each hour. */
   visitors: OrderMonitorSeries;
+  pageviews: OrderMonitorSeries;
   /** Purchases the sites reported to the collector. */
   conversions: OrderMonitorSeries;
   /** Today so far, and each reference day up to the same hour. Visitors are
    *  the day's uniques, not the hours summed. */
   headline: {
     visitors: { today: number; d1: number; w1: number; y1: number };
+    pageviews: { today: number; d1: number; w1: number; y1: number };
     conversions: { today: number; d1: number; w1: number; y1: number };
   };
 }

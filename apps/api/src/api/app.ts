@@ -35,6 +35,10 @@ import {
   setOrderMonitorRuntime,
 } from "@/monitoring/dbos-order-monitor";
 import {
+  registerTrafficMonitorWorkflow,
+  setTrafficMonitorRuntime,
+} from "@/monitoring/dbos-traffic-monitor";
+import {
   registerSubscriptionSweepWorkflow,
   setSubscriptionSweepRuntime,
 } from "@/billing/dbos-subscription-sweep";
@@ -1681,6 +1685,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Every 5 minutes: each ingest-installed store's order flow vs its baseline.
   setOrderMonitorRuntime({ db: database.db });
 
+  // Every 5 minutes: each analytics site's last hour of traffic vs its baseline.
+  setTrafficMonitorRuntime({ db: database.db });
+
   // Hourly: the paid tiers whose `subscription.deleted` never arrived.
   setSubscriptionSweepRuntime({ db: database.db });
 
@@ -1981,6 +1988,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerTaskBoardArchiveSweepWorkflow();
   registerDemoBoardResetWorkflow();
   registerOrderMonitorWorkflow();
+  registerTrafficMonitorWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerBoardTransitionWorkflows();

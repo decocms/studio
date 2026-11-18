@@ -98,6 +98,14 @@ export const monitor = {
   "monitor.alerts.rules.reset": "Reset to defaults",
   "monitor.alerts.rules.hint":
     "Each store's last hour, checked every 5 minutes against what that hour usually brings.",
+  "monitor.alerts.rules.visitors": "Visitors",
+  "monitor.alerts.rules.pageviews": "Pageviews",
+  "monitor.alerts.rules.visitorsHelp":
+    "Last hour below this share of a site's expected visitors",
+  "monitor.alerts.rules.pageviewsHelp":
+    "Last hour below this share of a site's expected pageviews",
+  "monitor.alerts.rules.unitVisitors": "visitors",
+  "monitor.alerts.rules.unitPageviews": "pageviews",
   "monitor.alerts.rules.save": "Save",
   "monitor.view.heatmap": "Heatmap",
   "monitor.deco.pickProject": "Pick a project",

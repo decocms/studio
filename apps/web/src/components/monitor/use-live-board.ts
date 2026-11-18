@@ -374,6 +374,24 @@ export function useLiveBoard(
         y1: visitors.y1[h] ?? null,
       })),
     });
+    const { pageviews } = traffic;
+    kpis.push({
+      id: "pageviews",
+      source: "site",
+      value: headline.pageviews.today,
+      references: {
+        d1: headline.pageviews.d1,
+        w1: headline.pageviews.w1,
+        y1: headline.pageviews.y1,
+      },
+      points: hoursSoFar.map((h) => ({
+        bucket: h * 12 + 6,
+        value: pageviews.today[h] ?? null,
+        d1: pageviews.d1[h] ?? null,
+        w1: pageviews.w1[h] ?? null,
+        y1: pageviews.y1[h] ?? null,
+      })),
+    });
   }
   if (traffic && purchases) {
     const { visitors, headline } = traffic;

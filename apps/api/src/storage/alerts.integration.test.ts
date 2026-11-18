@@ -216,6 +216,30 @@ describe("AlertStorage", () => {
     ).toBe(acked.alerts[0]?.id);
   });
 
+  test("opens a crossing once, whether re-judged or acked in between", async () => {
+    const hour = new Date("2026-11-18T16:00:00Z");
+    const crossing = {
+      organizationId: orgId,
+      source: "site_traffic",
+      subjectId: "s1",
+      rule: "pageviews_drop",
+      title: "Pageviews on site are 70 % below expected since 13:00",
+      createdAt: hour,
+    };
+    const first = await alerts.openOnce(crossing);
+    expect(first?.createdAt).toBe(hour.toISOString());
+    expect(await alerts.openOnce(crossing)).toBeNull();
+    await alerts.ack(orgId, first!.id, userId);
+    expect(await alerts.openOnce(crossing)).toBeNull();
+    // The next crossing, a later hour, opens anew.
+    const next = await alerts.openOnce({
+      ...crossing,
+      createdAt: new Date("2026-11-18T19:00:00Z"),
+    });
+    expect(next).not.toBeNull();
+    expect(next?.id).not.toBe(first!.id);
+  });
+
   test("goes with its organization", async () => {
     await sql`DELETE FROM "organization" WHERE id = ${otherOrg}`.execute(
       database.db,

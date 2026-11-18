@@ -23,14 +23,15 @@ const daysAgo = `dateDiff('day', toDate(hour, {tz:String}), toDate(${AT}, {tz:St
 // summed from the hours) for the headline.
 const HOURLY_SQL = `
   SELECT ${daysAgo} AS days_ago, toHour(hour, {tz:String}) AS h,
-    uniqMerge(visitors) AS visitors, sum(conversions) AS conversions
+    uniqMerge(visitors) AS visitors, sum(pageviews) AS pageviews, sum(conversions) AS conversions
   FROM customer_lake.site_traffic_hourly FINAL
   WHERE ${WHERE}
   GROUP BY days_ago, h`;
 
 // A reference day counts up to the same hour of the day as now.
 const HEADLINE_SQL = `
-  SELECT ${daysAgo} AS days_ago, uniqMerge(visitors) AS visitors, sum(conversions) AS conversions
+  SELECT ${daysAgo} AS days_ago, uniqMerge(visitors) AS visitors,
+    sum(pageviews) AS pageviews, sum(conversions) AS conversions
   FROM customer_lake.site_traffic_hourly FINAL
   WHERE ${WHERE} AND toHour(hour, {tz:String}) <= toHour(${AT}, {tz:String})
   GROUP BY days_ago`;
@@ -53,7 +54,7 @@ export async function loadSiteTraffic(
   ]);
   if (hourly.length === 0) return null;
 
-  type Measure = "visitors" | "conversions";
+  type Measure = "visitors" | "pageviews" | "conversions";
   const series = (measure: Measure, day: number) => {
     const out = new Array<number>(24).fill(0);
     for (const row of hourly) {
@@ -90,9 +91,11 @@ export async function loadSiteTraffic(
 
   return {
     visitors: day("visitors"),
+    pageviews: day("pageviews"),
     conversions: day("conversions"),
     headline: {
       visitors: total("visitors"),
+      pageviews: total("pageviews"),
       conversions: total("conversions"),
     },
   };

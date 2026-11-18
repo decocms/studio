@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ORDER_MONITOR_ALERT_SOURCE } from "@decocms/shared/alerts";
+import {
+  ORDER_MONITOR_ALERT_SOURCE,
+  SITE_TRAFFIC_ALERT_SOURCE,
+  SITE_TRAFFIC_DEFAULT_THRESHOLDS,
+  SITE_TRAFFIC_RULES,
+} from "@decocms/shared/alerts";
 import {
   ORDER_MONITOR_DEFAULT_THRESHOLDS,
   ORDER_MONITOR_RULES,
@@ -11,6 +16,15 @@ import {
   requireOrganization,
 } from "@/core/studio-context";
 import { loadThresholds } from "@/monitoring/order-alerts";
+import { loadTrafficThresholds } from "@/monitoring/traffic-alerts";
+
+const RULES = [...ORDER_MONITOR_RULES, ...SITE_TRAFFIC_RULES] as const;
+type AlertRuleName = (typeof RULES)[number];
+const isTraffic = (rule: AlertRuleName) =>
+  (SITE_TRAFFIC_RULES as readonly string[]).includes(rule);
+/** Rules whose threshold is a share of expected; the rest are multiples of it. */
+const isDrop = (rule: AlertRuleName) =>
+  rule === "orders_drop" || isTraffic(rule);
 
 const ThresholdSchema = z.object({
   threshold: z.number(),
@@ -20,7 +34,7 @@ const ThresholdSchema = z.object({
 export const ALERT_RULES_LIST = defineTool({
   name: "ALERT_RULES_LIST",
   description:
-    "List the alert rules and the thresholds the organization alerts at. orders_drop: alerts when an hour brings less than `threshold` % of the expected orders, once at least `minVolume` orders were expected. cancel_spike / denied_spike: alerts at `threshold` times the expected cancellations or payment denials in an hour, and at least `minVolume` of them.",
+    "List the alert rules and the thresholds the organization alerts at. orders_drop: alerts when an hour brings less than `threshold` % of the expected orders, once at least `minVolume` orders were expected. cancel_spike / denied_spike: alerts at `threshold` times the expected cancellations or payment denials in an hour, and at least `minVolume` of them. visitors_drop / pageviews_drop: alerts when a site's hour brings less than `threshold` % of its expected visitors or pageviews, once at least `minVolume` were expected.",
   annotations: {
     title: "List Alert Rules",
     readOnlyHint: true,
@@ -33,7 +47,7 @@ export const ALERT_RULES_LIST = defineTool({
     rules: z.array(
       ThresholdSchema.extend({
         source: z.string(),
-        rule: z.enum(ORDER_MONITOR_RULES),
+        rule: z.enum(RULES),
         defaults: ThresholdSchema,
       }),
     ),
@@ -42,14 +56,25 @@ export const ALERT_RULES_LIST = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
     const org = requireOrganization(ctx);
-    const thresholds = await loadThresholds(ctx.storage.alerts, org.id);
+    const [orders, traffic] = await Promise.all([
+      loadThresholds(ctx.storage.alerts, org.id),
+      loadTrafficThresholds(ctx.storage.alerts, org.id),
+    ]);
     return {
-      rules: ORDER_MONITOR_RULES.map((rule) => ({
-        source: ORDER_MONITOR_ALERT_SOURCE,
-        rule,
-        ...thresholds[rule],
-        defaults: ORDER_MONITOR_DEFAULT_THRESHOLDS[rule],
-      })),
+      rules: [
+        ...ORDER_MONITOR_RULES.map((rule) => ({
+          source: ORDER_MONITOR_ALERT_SOURCE,
+          rule,
+          ...orders[rule],
+          defaults: ORDER_MONITOR_DEFAULT_THRESHOLDS[rule],
+        })),
+        ...SITE_TRAFFIC_RULES.map((rule) => ({
+          source: SITE_TRAFFIC_ALERT_SOURCE,
+          rule,
+          ...traffic[rule],
+          defaults: SITE_TRAFFIC_DEFAULT_THRESHOLDS[rule],
+        })),
+      ],
     };
   },
 });
@@ -57,7 +82,7 @@ export const ALERT_RULES_LIST = defineTool({
 export const ALERT_RULE_UPDATE = defineTool({
   name: "ALERT_RULE_UPDATE",
   description:
-    "Set the thresholds an alert rule alerts at for the organization (see ALERT_RULES_LIST for what each means). orders_drop's `threshold` is a percentage of expected (1–99); the spikes' is a multiple of expected (above 1). The monitor applies them from its next check, every 5 minutes.",
+    "Set the thresholds an alert rule alerts at for the organization (see ALERT_RULES_LIST for what each means). A drop rule's `threshold` (orders_drop, visitors_drop, pageviews_drop) is a percentage of expected (1–99); a spike's is a multiple of expected (above 1). The monitor applies them from its next check, every 5 minutes.",
   annotations: {
     title: "Update Alert Rule",
     readOnlyHint: false,
@@ -67,22 +92,22 @@ export const ALERT_RULE_UPDATE = defineTool({
   },
   inputSchema: z
     .object({
-      rule: z.enum(ORDER_MONITOR_RULES),
+      rule: z.enum(RULES),
       threshold: z.number().positive().max(1000),
       minVolume: z.number().min(0).max(100_000),
     })
     .refine(
       (r) =>
-        r.rule === "orders_drop"
+        isDrop(r.rule)
           ? r.threshold >= 1 && r.threshold <= 99
           : r.threshold > 1,
       {
         message:
-          "orders_drop's threshold is a percentage from 1 to 99; a spike's is a multiple above 1",
+          "a drop rule's threshold is a percentage from 1 to 99; a spike's is a multiple above 1",
         path: ["threshold"],
       },
     ),
-  outputSchema: z.object({ rule: z.enum(ORDER_MONITOR_RULES) }),
+  outputSchema: z.object({ rule: z.enum(RULES) }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -90,7 +115,9 @@ export const ALERT_RULE_UPDATE = defineTool({
     await ctx.storage.alerts.setRuleSetting(
       org.id,
       {
-        source: ORDER_MONITOR_ALERT_SOURCE,
+        source: isTraffic(input.rule)
+          ? SITE_TRAFFIC_ALERT_SOURCE
+          : ORDER_MONITOR_ALERT_SOURCE,
         rule: input.rule,
         threshold: input.threshold,
         minVolume: input.minVolume,

@@ -11,6 +11,7 @@
   "jira/dbos-jira-trigger-sweep.ts": "649651ee57fde683050a71158bf0248162323875ffb705b39d7a549bddd8f20a",
   "monitoring/dbos-order-monitor.ts": "ce2f6d127ffa76708a0c1360c3b5c4ea6c787ad8595870239642a1394d2d621b",
   "monitoring/dbos-retention-workflow.ts": "757e9999af900d9395c6629d4966b84c723512d0a5a8e488f70b7ba634752bd8",
+  "monitoring/dbos-traffic-monitor.ts": "410bed348bd549642efe0e76dd251e5b952a6fe4bcc7cf4149af719262adfa92",
   "notifications/dbos-digest.ts": "cf3de868c0e85d8c7dec44b229e97f63640c18c19d454afceccc66c3d317f6fa",
   "sandbox/dbos-credential-push.ts": "8f65b9f8f8dba7989281f5ce4d7921b587f2d0d06a422dd0caa4085cd6ade439",
   "tools/demo-board/dbos-demo-board-reset.ts": "65a4235e5fe596b9e2d0de7830480bfc397e022d85f3fb437fb596cb9d13bf37",
