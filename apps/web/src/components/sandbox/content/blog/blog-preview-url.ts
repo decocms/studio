@@ -212,6 +212,40 @@ export function applyBlogCategorySlug(
   return template.replace(ALL_CATEGORY_PARAMS, encodePath(path));
 }
 
+/** The site path of a category listing page, or `null` when it has none. */
+export function blogCategoryPath(
+  decofile: Record<string, unknown>,
+  category: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): string | null {
+  const template = findBlogCategorySlug(decofile, meta);
+  if (!template) return null;
+  const slug = str(category.slug);
+  return applyBlogCategorySlug(
+    template,
+    routeTakesCategoryPath(template, true)
+      ? categoryPath(decofile, slug)
+      : slug,
+  );
+}
+
+/** The site path of a post, or `null` when a route param is missing. */
+export function blogPostPath(
+  decofile: Record<string, unknown>,
+  post: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): string | null {
+  const template = findBlogPageSlug(decofile, meta);
+  if (!template) return null;
+  const leaf = firstCategorySlug(post);
+  return applyBlogPageSlug(template, {
+    category: routeTakesCategoryPath(template)
+      ? categoryPath(decofile, leaf)
+      : leaf,
+    slug: str(post.slug),
+  });
+}
+
 /**
  * Builds the absolute preview URL for a category listing page, or `null` when
  * it can't be built (no `categorySlug` configured on the blog app, no preview
@@ -233,16 +267,7 @@ export function buildBlogCategoryPreviewUrl({
   meta?: LiveMeta | null;
 }): string | null {
   if (!previewBaseUrl) return null;
-  const template = findBlogCategorySlug(decofile, meta);
-  if (!template) return null;
-
-  const slug = str(category.slug);
-  const path = applyBlogCategorySlug(
-    template,
-    routeTakesCategoryPath(template, true)
-      ? categoryPath(decofile, slug)
-      : slug,
-  );
+  const path = blogCategoryPath(decofile, category, meta);
   if (!path) return null;
 
   try {
@@ -283,16 +308,7 @@ export function buildBlogPostPreviewUrl({
   planning?: boolean;
 }): string | null {
   if (!previewBaseUrl) return null;
-  const template = findBlogPageSlug(decofile, meta);
-  if (!template) return null;
-
-  const leaf = firstCategorySlug(post);
-  const path = applyBlogPageSlug(template, {
-    category: routeTakesCategoryPath(template)
-      ? categoryPath(decofile, leaf)
-      : leaf,
-    slug: str(post.slug),
-  });
+  const path = blogPostPath(decofile, post, meta);
   if (!path) return null;
 
   try {

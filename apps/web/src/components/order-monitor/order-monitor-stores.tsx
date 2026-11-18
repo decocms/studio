@@ -4,7 +4,6 @@
  * store's day once one is picked.
  */
 
-import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
@@ -21,7 +20,6 @@ import {
   ORDER_MONITOR_RULES,
   type OrderMonitorStore,
 } from "@decocms/shared/order-monitor";
-import { taskKey } from "@decocms/shared/task-key";
 import { formatTimeAgo } from "@/lib/format-time";
 import { useT } from "@/i18n/use-t.ts";
 import { useOrderMonitorStores } from "@/hooks/use-order-monitor";
@@ -33,15 +31,12 @@ import {
 
 function StoreRow({
   store,
-  orgSlug,
   onSelect,
 }: {
   store: OrderMonitorStore;
-  orgSlug: string;
   onSelect: () => void;
 }) {
   const t = useT();
-  const openTasks = store.rules.flatMap((r) => (r.task ? [r.task] : []));
   return (
     <TableRow
       className="cursor-pointer"
@@ -85,28 +80,6 @@ function StoreRow({
           </TableCell>
         );
       })}
-      <TableCell>
-        {openTasks.length === 0 ? (
-          <span className="text-xs text-muted-foreground">—</span>
-        ) : (
-          <div className="flex flex-col gap-1">
-            {openTasks.map((task) => {
-              const key = taskKey(orgSlug, task.keySeq);
-              return key ? (
-                <Link
-                  key={task.id}
-                  to="/$org/t/$taskKey"
-                  params={{ org: orgSlug, taskKey: key }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs font-medium text-foreground underline-offset-2 hover:underline"
-                >
-                  {key}
-                </Link>
-              ) : null;
-            })}
-          </div>
-        )}
-      </TableCell>
     </TableRow>
   );
 }
@@ -187,7 +160,6 @@ export function OrderMonitorStoresTab({
             {ORDER_MONITOR_RULES.map((rule) => (
               <TableHead key={rule}>{ruleLabel(rule, t)}</TableHead>
             ))}
-            <TableHead>{t("orderMonitor.openTask")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -195,7 +167,6 @@ export function OrderMonitorStoresTab({
             <StoreRow
               key={s.connectionId}
               store={s}
-              orgSlug={orgSlug}
               onSelect={() => onSelect({ store: s.connectionId })}
             />
           ))}

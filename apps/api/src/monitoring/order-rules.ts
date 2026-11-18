@@ -21,18 +21,6 @@ import type {
 export { ORDER_MONITOR_RULES as RULES } from "@decocms/shared/order-monitor";
 export type { Rule, Status };
 
-/**
- * Which rules open a task on the org's board. Off = shadow: the verdict is
- * written and the transition logged, nothing else. Each one goes on after its
- * thresholds are backtested on every monitored store (scripts/order-monitor-backtest.ts)
- * and its shadow transitions are checked against what actually happened.
- */
-export const NOTIFY: Record<Rule, boolean> = {
-  orders_drop: false,
-  denied_spike: false,
-  cancel_spike: false,
-};
-
 const WINDOW = 4; // 15-minute buckets = last 60 minutes
 export const BUCKETS_PER_DAY = 96;
 const WARN_BELOW = 0.3; // warning when the hour brings < 30% of expected
@@ -81,10 +69,7 @@ export interface StoreDay {
 }
 
 /** `from`/`to` are bucket indexes of day 0, `to` exclusive; `from` is negative while the window reaches into the day before. */
-export type Verdict = Omit<
-  OrderMonitorVerdict,
-  "timezone" | "ingestIncident" | "crossCheckPending" | "crossCheckSince"
->;
+export type Verdict = Omit<OrderMonitorVerdict, "timezone">;
 
 const sum = (a: number[], from = 0, to = a.length) =>
   a.slice(Math.max(0, from), to).reduce((s, v) => s + v, 0);

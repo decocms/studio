@@ -212,7 +212,7 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Per-host PATs every sandbox in the org installs in its git config.
   submodule_credentials: JsonArray<SubmoduleCredential[]> | null;
-  // The store goal on the Plan page. See migration 265.
+  // The store goal on the Plan page. See migration 266.
   plan_objective: JsonObject<PlanObjective> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
@@ -312,6 +312,23 @@ export interface OrderMonitorStateTable {
     string | null | undefined,
     string | null
   >;
+}
+
+/** Something a detector saw, open until a person or an agent acks it (migration 265). */
+export interface AlertTable {
+  id: string;
+  organization_id: string;
+  source: string;
+  subject_id: ColumnType<string, string | undefined, string>;
+  rule: string;
+  title: string;
+  body: ColumnType<string, string | undefined, string>;
+  link: ColumnType<string | null, string | null | undefined, string | null>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  acked_at: ColumnType<Date | null, never, Date | string | null>;
+  acked_by: ColumnType<string | null, never, string | null>;
+  ack_note: ColumnType<string | null, never, string | null>;
+  task_board_item_id: ColumnType<string | null, never, string | null>;
 }
 
 /**
@@ -2592,6 +2609,7 @@ export interface Database {
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
+  alerts: AlertTable;
 
   // Automations tables
   automations: AutomationTable;

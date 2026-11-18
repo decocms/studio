@@ -26,6 +26,8 @@ function properties(name: string): string[] {
 describe("createTaskBoardTools", () => {
   test("registers the task-board tools under their raw names", () => {
     expect(Object.keys(tools).sort()).toEqual([
+      "ALERTS_LIST",
+      "ALERT_ACK",
       "TASK_BOARD_ADMIN_ORG_LIST",
       "TASK_BOARD_COST",
       "TASK_BOARD_DELIVERY",

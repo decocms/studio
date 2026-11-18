@@ -340,6 +340,7 @@ import type { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { DemoBoardStorage } from "@/storage/demo-board";
 import type { NotificationStorage } from "@/storage/notifications";
+import type { AlertStorage } from "@/storage/alerts";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
 import type { KVStorage } from "@/storage/kv";
@@ -400,6 +401,7 @@ export interface StudioStorage {
   taskBoardAnalytics: TaskBoardAnalyticsStorage;
   threadAnalytics: ThreadAnalyticsStorage;
   notifications: NotificationStorage;
+  alerts: AlertStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   codexSubscriptions: CodexSubscriptionStorage;

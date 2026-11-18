@@ -54,6 +54,8 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   TASK_BOARD_QUALITY: { readOnly: true, destructive: false },
   TASK_BOARD_ERRORS: { readOnly: true, destructive: false },
   TASK_BOARD_TENANTS: { readOnly: true, destructive: false },
+  ALERTS_LIST: { readOnly: true, destructive: false },
+  ALERT_ACK: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";

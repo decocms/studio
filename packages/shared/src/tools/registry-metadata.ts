@@ -359,6 +359,8 @@ const ALL_TOOL_NAMES = [
   "NOTIFICATION_MARK_READ",
   "NOTIFICATION_SUBSCRIPTION_SET",
   "NOTIFICATION_SUBSCRIPTION_LIST",
+  "ALERTS_LIST",
+  "ALERT_ACK",
 ] as const;
 
 /**
@@ -1573,6 +1575,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "ALERTS_LIST",
+    description: "List the organization's alerts",
+    category: "Monitoring",
+  },
+  {
+    name: "ALERT_ACK",
+    description: "Acknowledge an alert",
+    category: "Monitoring",
+  },
+  {
     name: "TASK_BOARD_ACTIVITY_LIST",
     description: "List a task board item's change history",
     category: "Task Board",
@@ -1969,6 +1981,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // Every member sees the org's alerts and can ack them.
+      "ALERTS_LIST",
+      "ALERT_ACK",
       // Chat tools Decopilot ran for every member as built-ins.
       "generate_image",
       // The same for apps reading or writing text on the org's chat model.

@@ -1,9 +1,8 @@
 /**
  * Replays the order-monitor rules every 15 minutes over a store's past days,
- * reading the lake through the same `loadStoreDay` the sweep uses, and counts
- * what the cards would have done: opens and escalations, with a card held
- * until ok lasts RECOVERY_MS, as `incidentAction` does. Run it on every
- * monitored store before turning a rule's `NOTIFY` on.
+ * reading the lake through the same `loadStoreDay` the sweep uses, and lists
+ * the alerts the sweep would have opened: each crossing into `alert`. Run it
+ * on a store before changing a rule's thresholds.
  *
  *   CUSTOMER_LAKE_URL=… CUSTOMER_LAKE_ADMIN_PASSWORD=… CUSTOMER_LAKE_TENANT_SECRET=… \
  *     bun apps/api/scripts/order-monitor-backtest.ts <organizationId> <connectionId> [days=28]
@@ -14,7 +13,7 @@ import {
   loadStoreTimezone,
   localDayStart,
 } from "../src/monitoring/order-lake";
-import { bucketTime, RECOVERY_MS } from "../src/monitoring/order-incidents";
+import { bucketTime } from "../src/monitoring/order-alerts";
 import { evaluateStore, RULES } from "../src/monitoring/order-rules";
 
 const [organizationId, connectionId, daysArg = "28"] = process.argv.slice(2);
@@ -33,9 +32,7 @@ if (!timezone) {
 }
 
 const todayStart = localDayStart(new Date(), timezone).getTime();
-const totals = Object.fromEntries(
-  RULES.map((r) => [r, { warning: 0, alert: 0 }]),
-);
+const totals = Object.fromEntries(RULES.map((r) => [r, 0]));
 
 for (let n = Number(daysArg); n >= 1; n--) {
   // The day's last instant, so every bucket of it is in.
@@ -43,30 +40,18 @@ for (let n = Number(daysArg); n >= 1; n--) {
   const day = await loadStoreDay(organizationId, connectionId, at);
   if (!day) continue;
   const fired: string[] = [];
-  // Per rule: the open episode's worst status ("ok" = no card) and how long ok has held.
-  const card = Object.fromEntries(RULES.map((r) => [r, "ok"]));
-  const okBuckets = Object.fromEntries(RULES.map((r) => [r, 0]));
+  const last = Object.fromEntries(RULES.map((r) => [r, "ok"]));
   for (let done = 0; done <= 96; done++) {
     const verdicts = evaluateStore({ ...day, done });
     for (const rule of RULES) {
       const v = verdicts[rule];
-      // Too few orders to judge: the card waits, ok doesn't advance.
-      if (v.status === "low-volume") continue;
-      if (v.status === "ok") {
-        okBuckets[rule]!++;
-        if (okBuckets[rule]! * 15 * 60_000 >= RECOVERY_MS) card[rule] = "ok";
-        continue;
-      }
-      okBuckets[rule] = 0;
-      const opens = card[rule] === "ok";
-      const escalates = v.status === "alert" && card[rule] === "warning";
-      if (opens || escalates) {
-        totals[rule]![v.status]++;
+      if (v.status === "alert" && last[rule] !== "alert") {
+        totals[rule]!++;
         fired.push(
-          `${rule} ${v.status} at ${bucketTime(done)}: ${v.observed} vs ${v.expected.toFixed(0)} usual`,
+          `${rule} at ${bucketTime(done)}: ${v.observed} vs ${v.expected.toFixed(0)} usual`,
         );
-        card[rule] = v.status;
       }
+      last[rule] = v.status;
     }
   }
   const date = at.toLocaleDateString("en-CA", { timeZone: timezone });

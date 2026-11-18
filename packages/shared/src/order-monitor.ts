@@ -26,12 +26,6 @@ export interface OrderMonitorVerdict {
   alertAt: number;
   level: number;
   timezone: string;
-  /** The lake saw a drop VTEX did not: our ingest stopped, not the store's sales. */
-  ingestIncident?: boolean;
-  /** The card waits on VTEX to confirm the drop; the sweep retries the open. */
-  crossCheckPending?: boolean;
-  /** When the open started waiting on VTEX; the wait is bounded from here. */
-  crossCheckSince?: string;
 }
 
 export interface OrderMonitorRuleState {
@@ -40,8 +34,6 @@ export interface OrderMonitorRuleState {
   since: string;
   evaluatedAt: string;
   verdict: OrderMonitorVerdict;
-  /** The open incident's card, when there is one. */
-  task: { id: string; keySeq: number } | null;
 }
 
 export interface OrderMonitorStore {

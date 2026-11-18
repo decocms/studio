@@ -1,7 +1,7 @@
 import type { Kysely } from "kysely";
 
 /**
- * Migration 265 — the store goal on the Plan page.
+ * Migration 266 — the store goal on the Plan page.
  *
  * One sentence per organization, written by a member, with who wrote it and
  * when (`{ statement, updated_by, updated_at }`). NULL means no goal yet. It

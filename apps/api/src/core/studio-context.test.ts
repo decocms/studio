@@ -50,6 +50,7 @@ const createMockContext = (
     taskBoardAnalytics: null as never,
     threadAnalytics: null as never,
     notifications: null as never,
+    alerts: null as never,
     orgFsEntries: null as never,
     oauthPkceStates: null as never,
     codexSubscriptions: null as never,
