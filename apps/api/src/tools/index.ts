@@ -106,6 +106,7 @@ export const CORE_TOOLS = [
   DemoBoardTools.DEMO_BOARD_STATUS,
   // Decopilot's chat built-ins, for sandbox-hosted runs (thread-mcp.ts)
   ChatTools.GENERATE_IMAGE,
+  ChatTools.GENERATE_TEXT,
   ChatTools.WEB_SEARCH,
   ChatTools.DEEP_RESEARCH,
   ChatTools.SUGGEST_TASK,

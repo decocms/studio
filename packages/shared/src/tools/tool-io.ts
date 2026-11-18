@@ -1043,6 +1043,23 @@ export interface StudioToolIO {
       usedReferenceImages: number;
     };
   };
+  generate_text: {
+    input: {
+      prompt: string;
+      system?: string | undefined;
+      images?: { uri: string }[] | undefined;
+      tier?: "fast" | "smart" | "thinking" | undefined;
+      provider?: string | undefined;
+      model?: string | undefined;
+      maxOutputTokens?: number | undefined;
+    };
+    output: {
+      success: true;
+      text: string;
+      model: string;
+      usage: { inputTokens: number; outputTokens: number };
+    };
+  };
   web_search: {
     input: { query: string };
     output: {
