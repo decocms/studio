@@ -146,6 +146,35 @@ export const common = {
   "common.index.pageNotFound": "Page not found",
   "common.index.pageNotFoundDescription":
     "The page you are looking for does not exist or has been moved.",
+  "common.inviteLink.activeLinkMeta": "{count} joined · expires {expiresAt}",
+  "common.inviteLink.activeLinks": "Active links",
+  "common.inviteLink.copied": "Link copied",
+  "common.inviteLink.copy": "Copy link",
+  "common.inviteLink.create": "Create invite link (24h)",
+  "common.inviteLink.createFailed": "Failed to create invite link",
+  "common.inviteLink.created": "Invite link created",
+  "common.inviteLink.createdAndCopied": "Invite link copied",
+  "common.inviteLink.creating": "Creating…",
+  "common.inviteLink.dialogDescription":
+    "Anyone with the link can join for the next 24 hours, without an email invite.",
+  "common.inviteLink.dialogTitle": "Or share an invite link",
+  "common.inviteLink.expiresAt": "Expires {expiresAt}",
+  "common.inviteLink.revoke": "Revoke",
+  "common.inviteLink.revokeFailed": "Failed to revoke invite link",
+  "common.inviteLink.revoked": "Invite link revoked",
+  "common.inviteLinkScreen.failedToJoin": "Failed to join the organization",
+  "common.inviteLinkScreen.goHome": "Go home",
+  "common.inviteLinkScreen.invalidDescription":
+    "This invite link has expired or was revoked. Ask whoever shared it for a new one.",
+  "common.inviteLinkScreen.invalidTitle": "Invite link unavailable",
+  "common.inviteLinkScreen.joinButton": "Join {orgName}",
+  "common.inviteLinkScreen.joinDescription":
+    "You'll join as {email} and go straight to the shared page.",
+  "common.inviteLinkScreen.joining": "Joining…",
+  "common.inviteLinkScreen.signInButton": "Sign in to accept",
+  "common.inviteLinkScreen.signInDescription":
+    "Sign in or create an account to join and open the shared page.",
+  "common.inviteLinkScreen.title": "You've been invited to {orgName}",
   "common.inviteMemberDialog.cancelButton": "Cancel",
   "common.inviteMemberDialog.emailLabel": "Email addresses",
   "common.inviteMemberDialog.emailPlaceholder":
@@ -203,6 +232,10 @@ export const common = {
   "common.requestToJoinScreen.requestButton": "Request to join",
   "common.requestToJoinScreen.requesting": "Requesting…",
   "common.requestToJoinScreen.title": "Request to join {orgName}?",
+  "common.sharePage.button": "Share",
+  "common.sharePage.description":
+    "Anyone with the link can join {orgName} for the next 24 hours and opens this page.",
+  "common.sharePage.title": "Invite to this page",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "This organization requires SSO authentication to access.",
   "common.ssoRequiredScreen.requiresSsoAuth": "requires SSO authentication",
