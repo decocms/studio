@@ -401,6 +401,11 @@ export function createDecofileRoutes(
       if (c.req.header("if-none-match") === `"${version}"`) {
         return c.body(null, 304, headers);
       }
+      headers["content-type"] = "application/json";
+      // Hono serves HEAD through this GET handler and drops the body without
+      // cancelling it, so never open the document for one.
+      if (c.req.method === "HEAD") return c.body(null, 200, headers);
+      const signal = c.req.raw.signal;
 
       // Two consumers, two shapes, distinguished by how they authenticate:
       // the production runtime (anonymous + ?token=) expects the BARE decofile
@@ -409,11 +414,13 @@ export function createDecofileRoutes(
       // The editor (session) gets the wrapper with the version and a fresh
       // draft token, so the preview pointer it builds never carries a stale
       // grant.
-      headers["content-type"] = "application/json";
       if (!scope.userId) {
         const doc = await snapshot.open({ version, pending });
         // Preview-only: render unscheduled planning posts (see blog-draft-projection).
-        const body = streamDocument(doc, { appendMembers: doc.previewMembers });
+        const body = streamDocument(doc, {
+          appendMembers: doc.previewMembers,
+          signal,
+        });
         return c.body(body, 200, headers);
       }
       const token = signScopeDraftToken(scope);
@@ -421,6 +428,7 @@ export function createDecofileRoutes(
       const body = streamDocument(doc, {
         prefix: `{"version":${JSON.stringify(version)},"token":${JSON.stringify(token)},"apiHost":${JSON.stringify(requestApiHost(c))},"decofile":`,
         suffix: "}",
+        signal,
       });
       return c.body(body, 200, headers);
     } catch (err) {

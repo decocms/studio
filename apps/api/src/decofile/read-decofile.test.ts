@@ -14,13 +14,17 @@ function blob(path: string): TreeEntry {
 }
 
 describe("streamDocument releases the document", () => {
-  function fakeDoc(text: string): DecofileDocument & { closes: number } {
+  // Two chunks, so an auto-pulled stream leaves the read suspended mid-document
+  // (where the production handle sits when a body is dropped).
+  function fakeDoc(): DecofileDocument & { closes: number } {
+    const enc = new TextEncoder();
     const doc = {
       closes: 0,
-      size: text.length,
+      size: 7,
       previewMembers: "",
       chunks: async function* () {
-        yield new TextEncoder().encode(text);
+        yield enc.encode('{"a"');
+        yield enc.encode(":1}");
       },
       close: async () => {
         doc.closes++;
@@ -28,15 +32,36 @@ describe("streamDocument releases the document", () => {
     };
     return doc;
   }
+  const tick = () => new Promise((r) => setTimeout(r, 10));
 
-  it("closes when cancelled before the first pull", async () => {
-    const doc = fakeDoc('{"a":1}');
-    await streamDocument(doc, { prefix: "[" }).cancel();
+  it("closes on abort after the stream auto-pulled into the document", async () => {
+    const doc = fakeDoc();
+    const ac = new AbortController();
+    streamDocument(doc, { signal: ac.signal }); // body dropped, never read
+    await tick();
+    expect(doc.closes).toBe(0);
+    ac.abort();
+    await tick();
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+
+  it("closes when the signal is already aborted", async () => {
+    const doc = fakeDoc();
+    streamDocument(doc, { signal: AbortSignal.abort() });
+    await tick();
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+
+  it("closes on cancel mid-read", async () => {
+    const doc = fakeDoc();
+    const reader = streamDocument(doc, {}).getReader();
+    await reader.read();
+    await reader.cancel();
     expect(doc.closes).toBeGreaterThan(0);
   });
 
   it("closes after a full read", async () => {
-    const doc = fakeDoc('{"a":1}');
+    const doc = fakeDoc();
     const text = await new Response(streamDocument(doc, {})).text();
     expect(text).toBe('{"a":1}');
     expect(doc.closes).toBeGreaterThan(0);

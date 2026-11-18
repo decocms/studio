@@ -428,10 +428,19 @@ async function* readAll(handle: FileHandle): AsyncGenerator<Uint8Array> {
  * `appendMembers`, the members are spliced in before the document's closing
  * brace. The document is read as the client consumes it, so the API never
  * holds more than a chunk of it.
+ *
+ * Pass the request's `signal`: a client that disconnects before the handler
+ * returns gets its body dropped without `cancel()`, which would leave the
+ * document open until GC (an uncaught ERR_INVALID_STATE that shuts Bun down).
  */
 export function streamDocument(
   doc: DecofileDocument,
-  parts: { prefix?: string; suffix?: string; appendMembers?: string },
+  parts: {
+    prefix?: string;
+    suffix?: string;
+    appendMembers?: string;
+    signal?: AbortSignal;
+  },
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const append = parts.appendMembers ?? "";
@@ -456,17 +465,24 @@ export function streamDocument(
     }
   }
   const it = body();
+  // return() on a generator that never started skips its `finally`, so close
+  // the document explicitly too (idempotent).
+  const release = async () => {
+    await it.return(undefined).catch(() => {});
+    await doc.close?.();
+  };
+  if (parts.signal?.aborted) void release();
+  else
+    parts.signal?.addEventListener("abort", () => void release(), {
+      once: true,
+    });
   return new ReadableStream({
     async pull(controller) {
       const { value, done } = await it.next();
       if (done) controller.close();
       else controller.enqueue(value);
     },
-    async cancel() {
-      await it.return(undefined);
-      // return() on a generator that never started skips its `finally`.
-      await doc.close?.();
-    },
+    cancel: release,
   });
 }
 
