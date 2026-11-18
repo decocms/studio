@@ -24,6 +24,7 @@ import type {
 } from "@decocms/shared/project-sidebar";
 import type {
   OrgFlags,
+  PlanObjective,
   SubmoduleCredential,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
@@ -211,6 +212,8 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Per-host PATs every sandbox in the org installs in its git config.
   submodule_credentials: JsonArray<SubmoduleCredential[]> | null;
+  // The store goal on the Plan page. See migration 267.
+  plan_objective: JsonObject<PlanObjective> | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -225,6 +228,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   submodule_credentials: SubmoduleCredential[] | null;
+  plan_objective: PlanObjective | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }

@@ -144,12 +144,17 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
         | undefined;
       submodule_credentials?:
         | { host: string; secretId: string }[]
+        | null
+        | undefined;
+      plan_objective?:
+        | { statement: string; updated_by: string; updated_at: string }
         | null
         | undefined;
       createdAt?: string | undefined;
@@ -234,6 +239,7 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | undefined;
@@ -320,6 +326,7 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -328,11 +335,25 @@ export interface StudioToolIO {
         | { host: string; secretId: string }[]
         | null
         | undefined;
+      plan_objective?:
+        | { statement: string; updated_by: string; updated_at: string }
+        | null
+        | undefined;
     };
   };
   ORGANIZATION_BLOCKS_EDITOR_SET: {
     input: { enabled: boolean };
     output: { enabled: boolean };
+  };
+  ORGANIZATION_PLAN_OBJECTIVE_SET: {
+    input: { statement: string | null };
+    output: {
+      plan_objective: {
+        statement: string;
+        updated_by: string;
+        updated_at: string;
+      } | null;
+    };
   };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };

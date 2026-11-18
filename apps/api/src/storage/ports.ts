@@ -32,7 +32,10 @@ import type {
   Thread,
   ThreadMessage,
 } from "./types";
-import type { UserModelPreferences } from "@decocms/shared/organization/schema";
+import type {
+  PlanObjective,
+  UserModelPreferences,
+} from "@decocms/shared/organization/schema";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import type { RepositoryBinding } from "@decocms/shared/sdk";
 
@@ -377,6 +380,10 @@ export interface OrganizationSettingsStoragePort {
         "sidebar_items" | "simple_mode" | "default_home_agents" | "flags"
       >
     >,
+  ): Promise<OrganizationSettings>;
+  setPlanObjective(
+    organizationId: string,
+    objective: PlanObjective | null,
   ): Promise<OrganizationSettings>;
 }
 
