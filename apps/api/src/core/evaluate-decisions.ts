@@ -45,7 +45,7 @@ export interface DecisionModel {
 }
 
 /** Resolve credentials in the caller's organization, never through a chat tier. */
-export async function openDecisionModel(
+async function openDecisionModel(
   ctx: StudioContext,
   selection: SimpleModeModelSlot,
 ): Promise<DecisionModel> {
@@ -88,4 +88,34 @@ export async function openDecisionModel(
     });
   };
   return { fits, evaluate };
+}
+
+/** TypeSafe's Jev, served through the org's OpenRouter or Deco AI key. */
+const JEV_MODEL_ID = "typesafe/jev-1.13";
+
+/**
+ * Jev in the caller's organization, or null when it is not available there:
+ * no OpenRouter or Deco key, not permitted for the role, or no such model.
+ */
+export async function openJev(
+  ctx: StudioContext,
+  organizationId: string,
+): Promise<DecisionModel | null> {
+  try {
+    const keys = await ctx.storage.aiProviderKeys.list({ organizationId });
+    const key =
+      keys.find((entry) => entry.providerId === "openrouter") ??
+      keys.find((entry) => entry.providerId === "deco");
+    if (!key) return null;
+    return await openDecisionModel(ctx, {
+      keyId: key.id,
+      modelId: JEV_MODEL_ID,
+    });
+  } catch (error) {
+    console.warn(
+      "[decisions] Jev unavailable",
+      error instanceof Error ? error.message : "unknown error",
+    );
+    return null;
+  }
 }
