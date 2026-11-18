@@ -382,6 +382,10 @@ export const settings = {
     "Você não vai mais conseguir entrar com esta passkey. A credencial continua no seu dispositivo até você apagá-la lá.",
   "settings.passkeys.cancel": "Cancelar",
   "settings.preferences.title": "Preferências",
+  "settings.plan.sectionTitle": "Planejar",
+  "settings.plan.pageTitle": "Página Planejar",
+  "settings.plan.pageDescription":
+    'Mostra o objetivo da loja e transforma ideias em business cases na página Planejar. Desligada, a página continua como "em breve".',
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "View Blog",
   "settings.blogView.description":

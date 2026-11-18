@@ -373,6 +373,10 @@ export const settings = {
     "You will no longer be able to sign in with this passkey. The credential stays on your device until you delete it there.",
   "settings.passkeys.cancel": "Cancel",
   "settings.preferences.title": "Preferences",
+  "settings.plan.sectionTitle": "Plan",
+  "settings.plan.pageTitle": "Plan page",
+  "settings.plan.pageDescription":
+    "Show the store goal and turn ideas into business cases on the Plan page. Off, Plan stays a coming-soon page.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "Blog view",
   "settings.blogView.description":
