@@ -17,6 +17,13 @@ import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { tabForThread } from "@/layouts/main-panel-tabs/tab-draft-kind";
 import { useBlogView } from "@/hooks/use-blog-view";
 
+export interface NavigateToTaskOptions {
+  virtualMcpId?: string;
+  autosend?: boolean;
+  keepView?: boolean;
+  tabId?: string;
+}
+
 export interface ChatNavigation {
   /** The agent this chat dispatches to: the route's, via {@link useRouteVirtualMcpId}. */
   virtualMcpId: string;
@@ -24,11 +31,8 @@ export interface ChatNavigation {
   taskId: string | null;
   /** Navigate to a task in its agent-owned route. `autosend` tells the route to
    * consume the stored handoff message. `keepView` keeps a per-thread view open:
-   * a thread just started beside it is about that view. */
-  navigateToTask: (
-    taskId: string,
-    opts?: { virtualMcpId?: string; autosend?: boolean; keepView?: boolean },
-  ) => void;
+   * a thread just started beside it is about that view. `tabId` opens that view. */
+  navigateToTask: (taskId: string, opts?: NavigateToTaskOptions) => void;
 }
 
 export function useChatNavigation(): ChatNavigation {
@@ -53,10 +57,7 @@ export function useChatNavigation(): ChatNavigation {
   const manager = useOptionalThreadManager();
   const blogView = useBlogView();
 
-  const navigateToTask = (
-    taskId: string,
-    opts?: { virtualMcpId?: string; autosend?: boolean; keepView?: boolean },
-  ) => {
+  const navigateToTask = (taskId: string, opts?: NavigateToTaskOptions) => {
     /** A view that belongs to the thread being left does not follow it; a
      *  system view does, by navigating to its canonical route. */
     const carried =
@@ -71,6 +72,7 @@ export function useChatNavigation(): ChatNavigation {
      *  names no agent it opens in place: the folder and file the question is
      *  about stay open. A project's Library names its agent and must not. */
     if (
+      !opts?.tabId &&
       targetAgentId === superAgentId &&
       routeAgentId === undefined &&
       carried &&
@@ -89,7 +91,8 @@ export function useChatNavigation(): ChatNavigation {
       return;
     }
     const tabId =
-      targetAgentId === virtualMcpId &&
+      opts?.tabId ??
+      (targetAgentId === virtualMcpId &&
       carried &&
       tabRouteLocation(carried).kind !== "org-destination"
         ? // A carried view that can't show the thread gives way to one that can.
@@ -98,7 +101,7 @@ export function useChatNavigation(): ChatNavigation {
             manager?.threads.get().find((thread) => thread.id === taskId),
             blogView,
           ) ?? carried)
-        : "overview";
+        : "overview");
     const target = canonicalThreadRouteTarget({
       org: org.slug,
       agentId: targetAgentId,

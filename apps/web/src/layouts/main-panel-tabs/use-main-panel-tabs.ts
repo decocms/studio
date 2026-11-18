@@ -12,7 +12,7 @@
 
 import { useSearch } from "@tanstack/react-router";
 import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
-import { Globe01, Monitor01 } from "@untitledui/icons";
+import { Globe01, Monitor01, Target04 } from "@untitledui/icons";
 import { createElement } from "react";
 import {
   getReportsAgentId,
@@ -34,6 +34,7 @@ import {
   formatPinnedViewTabId,
   parseAutomationTabId,
   formatAgentViewTabId,
+  parseCaseTabId,
   parseCodeTabId,
   parseDeckTabId,
   parseFileTabId,
@@ -390,6 +391,18 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
+  // The chat's business case canvas (Plan): same pill semantics.
+  const caseTabs: Tab[] = parseCaseTabId(activeTab)
+    ? [
+        {
+          id: activeTab,
+          title: t("page.businessCase"),
+          kind: "file",
+          icon: { kind: "component", Component: Target04 },
+        },
+      ]
+    : [];
+
   // Ephemeral Library file-preview tab (the `library-file` view): an org
   // file referenced from a chat message, opened as a side panel on desktop.
   // Same pill semantics as file/deck previews; title is the basename.
@@ -435,6 +448,7 @@ export function useMainPanelTabs(ctx: {
     ...surfaceTabs,
     ...fileTabs,
     ...deckTabs,
+    ...caseTabs,
     ...libraryFileTabs,
     ...layoutTabs.map((t) => ({
       id: formatAgentViewTabId(t.id),

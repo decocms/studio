@@ -6,22 +6,27 @@ import { businessCasePrompt } from "./business-case-prompt.ts";
 
 const t: TFunction = (key, vars) => interpolate(en[key], vars);
 
+const casePath = "/app/org/home/plans/cases/thread-1.json";
+
 describe("businessCasePrompt", () => {
-  it("sends the trimmed idea, the goal and the skill path", () => {
+  it("sends the trimmed request, the goal, the case file and the skill path", () => {
     const text = businessCasePrompt(t, {
-      idea: "  Show shipping in the cart.  ",
+      idea: "  I want to improve search.  ",
       objective: " Sell more on mobile. ",
+      casePath,
     });
-    expect(text).toContain("Idea: Show shipping in the cart.");
+    expect(text).toContain("Request: I want to improve search.");
     expect(text).toContain("Store goal: Sell more on mobile.");
+    expect(text).toContain(`The canvas for this case is ${casePath}`);
     expect(text).toContain("/app/org/public/core/business-case/SKILL.md");
   });
 
   it("leaves the goal line out when there is no goal", () => {
     for (const objective of [null, undefined, "   "]) {
-      const text = businessCasePrompt(t, { idea: "Idea", objective });
+      const text = businessCasePrompt(t, { idea: "Idea", objective, casePath });
       expect(text).not.toContain("Store goal");
-      expect(text).toContain("Idea: Idea");
+      expect(text).toContain("Request: Idea");
+      expect(text).toContain(casePath);
     }
   });
 });

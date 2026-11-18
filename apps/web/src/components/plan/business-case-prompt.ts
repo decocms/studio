@@ -1,17 +1,19 @@
 import type { TFunction } from "@/i18n/use-t.ts";
 
-/**
- * The chat message "Create the plan" sends: the idea, the store goal when
- * there is one, and a pointer to the business-case skill. The skill is named
- * by its path so both the hosted agent and a sandboxed harness can read it.
- */
+/** The skill is named by its path so hosted and sandboxed harnesses can both read it. */
 export function businessCasePrompt(
   t: TFunction,
-  input: { idea: string; objective: string | null | undefined },
+  input: {
+    idea: string;
+    objective: string | null | undefined;
+    /** The case file as the agent sees it (`/app/org/home/plans/cases/…`). */
+    casePath: string;
+  },
 ): string {
   const idea = input.idea.trim();
   const objective = input.objective?.trim();
+  const casePath = input.casePath;
   return objective
-    ? t("plan.prompt.withObjective", { idea, objective })
-    : t("plan.prompt.withoutObjective", { idea });
+    ? t("plan.prompt.withObjective", { idea, objective, casePath })
+    : t("plan.prompt.withoutObjective", { idea, casePath });
 }
