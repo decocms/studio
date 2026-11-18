@@ -456,18 +456,35 @@ export interface StudioToolIO {
         threshold: number;
         minVolume: number;
         source: string;
-        rule: "orders_drop" | "denied_spike" | "cancel_spike";
+        rule:
+          | "orders_drop"
+          | "denied_spike"
+          | "cancel_spike"
+          | "visitors_drop"
+          | "pageviews_drop";
         defaults: { threshold: number; minVolume: number };
       }[];
     };
   };
   ALERT_RULE_UPDATE: {
     input: {
-      rule: "orders_drop" | "denied_spike" | "cancel_spike";
+      rule:
+        | "orders_drop"
+        | "denied_spike"
+        | "cancel_spike"
+        | "visitors_drop"
+        | "pageviews_drop";
       threshold: number;
       minVolume: number;
     };
-    output: { rule: "orders_drop" | "denied_spike" | "cancel_spike" };
+    output: {
+      rule:
+        | "orders_drop"
+        | "denied_spike"
+        | "cancel_spike"
+        | "visitors_drop"
+        | "pageviews_drop";
+    };
   };
   TASK_BOARD_ITEM_CREATE: {
     input: {

@@ -26,11 +26,20 @@ describe("ALERT_RULE_UPDATE input", () => {
     );
   });
 
+  test("takes a traffic drop's threshold as a percentage", () => {
+    expect(
+      parse({ rule: "pageviews_drop", threshold: 30, minVolume: 300 }),
+    ).toBe(true);
+    expect(parse({ rule: "visitors_drop", threshold: 150, minVolume: 1 })).toBe(
+      false,
+    );
+  });
+
   test("rejects a negative minimum and an unknown rule", () => {
     expect(parse({ rule: "cancel_spike", threshold: 3, minVolume: -1 })).toBe(
       false,
     );
-    expect(parse({ rule: "visitors_drop", threshold: 3, minVolume: 1 })).toBe(
+    expect(parse({ rule: "conversion_drop", threshold: 3, minVolume: 1 })).toBe(
       false,
     );
   });

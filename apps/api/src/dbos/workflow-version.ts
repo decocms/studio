@@ -113,5 +113,8 @@
  * crossing into alert now opens an alert inside the store's step. The
  * workflow is a scheduled sweep; an in-flight v14 tick strands and the next
  * tick reads the same lake.
+ *
+ * Version 16 adds `trafficMonitorWorkflow`. Like 14, a new workflow needs the
+ * bump only because the source guard keys on the fileset.
  */
-export const DBOS_WORKFLOW_VERSION = "15";
+export const DBOS_WORKFLOW_VERSION = "16";

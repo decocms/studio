@@ -262,6 +262,18 @@ export function OverviewNumbers({
     label: string,
     help: string,
   ): OverviewNumber | false => {
+    // The lake's hours, when the board has them: today so far against the
+    // reference days, opened into the same chart as orders.
+    const lake = boardCard(
+      metric === "visitors" ? "audience" : "pageviews",
+      label,
+      metric === "visitors"
+        ? t("monitor.overview.visitorsHelpToday")
+        : t("monitor.overview.pageviewsHelpToday"),
+      fmtInt,
+      { whole: true },
+    );
+    if (lake) return lake;
     if (trafficLoading) return pending(metric, label, help);
     // Across the org, or on a past day, the board's own visitors stand in.
     if (!kpis && !otherSummary) {

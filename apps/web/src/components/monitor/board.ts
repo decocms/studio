@@ -22,6 +22,7 @@ export type KpiId =
   | "orders"
   | "conversion"
   | "audience"
+  | "pageviews"
   | "latency"
   | "errors"
   | "cancellations";

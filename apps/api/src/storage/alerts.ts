@@ -1,5 +1,5 @@
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import type { Database } from "./types";
 
 export interface Alert {
@@ -91,6 +91,31 @@ export class AlertStorage {
       .returning("id")
       .executeTakeFirst();
     return row ? this.byId(input.organizationId, row.id) : null;
+  }
+
+  /**
+   * Opens the alert unless one for the same source, subject and rule is still
+   * open or was created at or after `input.createdAt`: a crossing judged again
+   * (a re-run tick, the next tick in the same hour) opens it once, even if it
+   * was acked in between.
+   */
+  async openOnce(input: NewAlert & { createdAt: Date }): Promise<Alert | null> {
+    return this.db.transaction().execute(async (trx) => {
+      const key = `alert:${input.organizationId}:${input.source}:${input.subjectId ?? ""}:${input.rule}`;
+      await sql`select pg_advisory_xact_lock(hashtext(${key})::bigint)`.execute(
+        trx,
+      );
+      const seen = await trx
+        .selectFrom("alerts")
+        .select("id")
+        .where("organization_id", "=", input.organizationId)
+        .where("source", "=", input.source)
+        .where("subject_id", "=", input.subjectId ?? "")
+        .where("rule", "=", input.rule)
+        .where("created_at", ">=", input.createdAt)
+        .executeTakeFirst();
+      return seen ? null : new AlertStorage(trx).open(input);
+    });
   }
 
   /**

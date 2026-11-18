@@ -24,7 +24,7 @@ import {
   useAlertRules,
   useAlerts,
 } from "@/hooks/use-alerts";
-import { useT } from "@/i18n/use-t.ts";
+import { type TFunction, useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time";
 
 const ROW = "flex items-center gap-4 px-5 py-4";
@@ -159,6 +159,51 @@ function AlertRow({
   );
 }
 
+/** Rules whose threshold is a share of expected; the rest are multiples of it. */
+const isDrop = (rule: AlertRule["rule"]) =>
+  rule === "orders_drop" ||
+  rule === "visitors_drop" ||
+  rule === "pageviews_drop";
+
+function ruleMeta(rule: AlertRule["rule"], t: TFunction) {
+  switch (rule) {
+    case "orders_drop":
+      return {
+        label: ruleLabel(rule, t),
+        help: t("monitor.alerts.rules.dropHelp"),
+        unit: t("monitor.alerts.rules.unitOrders"),
+      };
+    case "denied_spike":
+      return {
+        label: ruleLabel(rule, t),
+        help: t("monitor.alerts.rules.spikeHelp"),
+        unit: t("monitor.alerts.rules.unitDenials"),
+      };
+    case "cancel_spike":
+      return {
+        label: ruleLabel(rule, t),
+        help: t("monitor.alerts.rules.spikeHelp"),
+        unit: t("monitor.alerts.rules.unitCancellations"),
+      };
+    case "visitors_drop":
+      return {
+        label: t("monitor.alerts.rules.visitors"),
+        help: t("monitor.alerts.rules.visitorsHelp"),
+        unit: t("monitor.alerts.rules.unitVisitors"),
+      };
+    case "pageviews_drop":
+      return {
+        label: t("monitor.alerts.rules.pageviews"),
+        help: t("monitor.alerts.rules.pageviewsHelp"),
+        unit: t("monitor.alerts.rules.unitPageviews"),
+      };
+    default: {
+      const unhandled: never = rule;
+      return unhandled;
+    }
+  }
+}
+
 type Draft = Record<
   AlertRule["rule"],
   { threshold: string; minVolume: string }
@@ -182,9 +227,7 @@ function parsed(rule: AlertRule, d: Draft[AlertRule["rule"]]) {
     Number.isFinite(threshold) &&
     Number.isFinite(minVolume) &&
     minVolume >= 0 &&
-    (rule.rule === "orders_drop"
-      ? threshold >= 1 && threshold <= 99
-      : threshold > 1);
+    (isDrop(rule.rule) ? threshold >= 1 && threshold <= 99 : threshold > 1);
   return ok ? { threshold, minVolume } : null;
 }
 
@@ -232,12 +275,6 @@ function RulesForm({
     field: "threshold" | "minVolume",
     value: string,
   ) => setDraft({ ...draft, [rule]: { ...draft[rule], [field]: value } });
-  const unit = (rule: AlertRule["rule"]) =>
-    rule === "orders_drop"
-      ? t("monitor.alerts.rules.unitOrders")
-      : rule === "denied_spike"
-        ? t("monitor.alerts.rules.unitDenials")
-        : t("monitor.alerts.rules.unitCancellations");
   const field = (
     rule: AlertRule,
     key: "threshold" | "minVolume",
@@ -250,7 +287,7 @@ function RulesForm({
         inputMode="decimal"
         min={0}
         aria-invalid={invalid}
-        aria-label={`${ruleLabel(rule.rule, t)}: ${unit}`}
+        aria-label={`${ruleMeta(rule.rule, t).label}: ${unit}`}
         value={draft[rule.rule][key]}
         onChange={(e) => set(rule.rule, key, e.target.value)}
         className="tabular-nums"
@@ -284,19 +321,16 @@ function RulesForm({
           {t("monitor.alerts.rules.colMinimum")}
         </span>
         {rows.map(({ rule, d }) => {
-          const drop = rule.rule === "orders_drop";
+          const meta = ruleMeta(rule.rule, t);
+          const drop = isDrop(rule.rule);
           const bad = parsed(rule, d) === null;
           return (
             <div key={rule.rule} className="contents">
               <span className="flex min-w-0 flex-col gap-0.5 border-t border-border/70 px-5 py-3">
                 <span className="text-sm font-medium text-foreground">
-                  {ruleLabel(rule.rule, t)}
+                  {meta.label}
                 </span>
-                <span className="text-meta">
-                  {drop
-                    ? t("monitor.alerts.rules.dropHelp")
-                    : t("monitor.alerts.rules.spikeHelp")}
-                </span>
+                <span className="text-meta">{meta.help}</span>
               </span>
               <span className="flex h-full items-center border-t border-border/70 py-3">
                 {field(rule, "threshold", drop ? "%" : "×", bad)}
@@ -305,7 +339,7 @@ function RulesForm({
                 {field(
                   rule,
                   "minVolume",
-                  unit(rule.rule),
+                  meta.unit,
                   d.minVolume === "" || Number(d.minVolume) < 0,
                 )}
               </span>
