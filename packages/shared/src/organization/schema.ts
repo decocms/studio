@@ -148,10 +148,13 @@ export type DefaultHomeAgentsConfig = z.infer<
 /** Longest store goal a person can write: one sentence, not a document. */
 export const PLAN_OBJECTIVE_MAX_LENGTH = 280;
 
+/** Who wrote the store goal: a member, or Jev picking it from the store's data. */
+export const PlanObjectiveSourceSchema = z.enum(["member", "jev"]);
+
 /**
  * The store goal shown at the top of the Plan page and sent with every business
- * case the page asks for. Written by a person; who and when are set by the
- * server, never by the caller.
+ * case the page asks for. Who and when are set by the server, never by the
+ * caller.
  */
 export const PlanObjectiveSchema = z.object({
   statement: z
@@ -160,7 +163,54 @@ export const PlanObjectiveSchema = z.object({
     .describe("The store goal in one sentence, in the person's own words."),
   updated_by: z.string().describe("Id of the user who last wrote the goal."),
   updated_at: z.string().datetime().describe("ISO 8601 timestamp"),
+  source: PlanObjectiveSourceSchema.optional().describe(
+    "member when a person wrote it, jev when the decision model picked it. Absent reads as member.",
+  ),
 });
+
+/**
+ * The goals Jev chooses between. A decision model returns a choice, not text,
+ * so the store goal it decides is one of these, worded by the web in the
+ * person's language with the store's own numbers.
+ */
+export const PLAN_GOALS = [
+  "mobile_conversion",
+  "checkout_completion",
+  "cart_to_checkout",
+  "product_to_cart",
+  "traffic_growth",
+  "recover_sales",
+  "average_ticket",
+  "site_stability",
+] as const;
+
+export const PlanGoalSchema = z.enum(PLAN_GOALS);
+export type PlanGoal = z.infer<typeof PlanGoalSchema>;
+
+/**
+ * The store's last 28 days against the 28 before, from its data lake. Rates
+ * are percentages and changes are percent differences; a field is null when
+ * the lake has no data for it.
+ */
+export const StoreSnapshotSchema = z.object({
+  mobile_conversion_rate: z.number().nullable(),
+  desktop_conversion_rate: z.number().nullable(),
+  product_to_cart_rate: z.number().nullable(),
+  cart_to_checkout_rate: z.number().nullable(),
+  checkout_completion_rate: z.number().nullable(),
+  visitors: z.number().nullable(),
+  visitors_change: z.number().nullable(),
+  orders: z.number().nullable(),
+  orders_change: z.number().nullable(),
+  revenue_change: z.number().nullable(),
+  average_ticket: z.number().nullable(),
+  average_ticket_change: z.number().nullable(),
+  items_per_order: z.number().nullable(),
+  currency: z.string().nullable(),
+  site_errors: z.number().nullable(),
+  site_errors_per_1k_pageviews: z.number().nullable(),
+});
+export type StoreSnapshot = z.infer<typeof StoreSnapshotSchema>;
 
 export type PlanObjective = z.infer<typeof PlanObjectiveSchema>;
 
@@ -370,6 +420,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "The Plan page: the store goal and a composer that turns an idea into a business case written by the agent. Off by default; with it off, Plan stays a coming-soon page.",
+    ),
+  plan_goal_jev_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "With the store goal empty, the Plan page asks Jev, a decision model, to pick it from the store's last 28 days of data and saves it. Needs plan_page_enabled and an OpenRouter or Deco AI key. Off by default; with it off, a member writes the goal.",
     ),
   blog_view_enabled: z
     .boolean()

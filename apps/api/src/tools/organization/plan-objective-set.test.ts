@@ -7,7 +7,11 @@ function makeCtx(
   auth: Record<string, unknown> = { user: { id: "user-1" } },
 ) {
   const setPlanObjective = mock(
-    async (organizationId: string, objective: PlanObjective | null) => ({
+    async (
+      organizationId: string,
+      objective: PlanObjective | null,
+      _options?: { ifEmpty?: boolean },
+    ) => ({
       organizationId,
       plan_objective: objective,
     }),
@@ -42,7 +46,21 @@ describe("ORGANIZATION_PLAN_OBJECTIVE_SET", () => {
       updated_by: "user-1",
     });
     expect(Number.isNaN(Date.parse(written?.updated_at ?? ""))).toBe(false);
+    expect(written?.source).toBe("member");
     expect(result.plan_objective).toEqual(written ?? null);
+  });
+
+  it("writes a Jev goal only while none is saved, when asked", async () => {
+    const { ctx, setPlanObjective } = makeCtx({ id: "org-a" });
+
+    await ORGANIZATION_PLAN_OBJECTIVE_SET.handler(
+      { statement: "Win back visitors.", source: "jev", if_empty: true },
+      ctx,
+    );
+
+    const [, written, options] = setPlanObjective.mock.calls[0] ?? [];
+    expect(written?.source).toBe("jev");
+    expect(options).toEqual({ ifEmpty: true });
   });
 
   it("clears the goal with null", async () => {
@@ -53,7 +71,11 @@ describe("ORGANIZATION_PLAN_OBJECTIVE_SET", () => {
       ctx,
     );
 
-    expect(setPlanObjective.mock.calls[0]).toEqual(["org-a", null]);
+    expect(setPlanObjective.mock.calls[0]).toEqual([
+      "org-a",
+      null,
+      { ifEmpty: false },
+    ]);
     expect(result).toEqual({ plan_objective: null });
   });
 
