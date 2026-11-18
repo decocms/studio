@@ -151,6 +151,14 @@ export interface EnsureOptions {
    */
   provider?: SandboxProviderKind;
   /**
+   * What AgentSandboxProvider does with a claim left starting that never
+   * becomes ready: `recreate` it in place (the default), or delete it and
+   * `fail`. Set only by `SandboxProviderRouter` when it can fall back to
+   * Freestyle, so a sandbox that cannot start on Kubernetes moves instead of
+   * being recreated there again. Not on the wire and never persisted.
+   */
+  onStuckClaim?: "recreate" | "fail";
+  /**
    * Defaults to `interactive` when absent. AgentSandboxProvider uses this to
    * decide the SandboxTemplate (memory ceiling) and the warm pool, so it has
    * to survive into the persisted opts a resurrected claim is rebuilt from.

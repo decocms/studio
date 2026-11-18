@@ -48,6 +48,10 @@ import {
 } from "@/layouts/thread-route";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { resolveTaskSwitchSearch } from "@/layouts/resolve-task-switch-search";
+import { branchUserLabel } from "@decocms/shared/branch-name";
+import { blogThreadDefaults } from "@/lib/draft-kind";
+import { useBlogView } from "@/hooks/use-blog-view";
+import { useViewDraftKind } from "@/hooks/use-view-draft-kind";
 import {
   useActivePanelTabId,
   usePanelNavigate,
@@ -122,6 +126,9 @@ export function usePanelActions() {
   const currentTaskId = useRouteThreadId();
   const routeVirtualMcpId = useRouteVirtualMcpId();
   const navigateThread = useThreadNavigate();
+  const draftKind = useViewDraftKind();
+  const blogView = useBlogView();
+  const { data: session } = authClient.useSession();
 
   /**
    * Search-only navigation: `to: "."` re-interpolates the matched route's own
@@ -156,6 +163,14 @@ export function usePanelActions() {
     const savedLayout = isSameThread ? null : readThreadLayout(id);
     const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
+    // The org assistant's chat follows you across pages: opening one keeps the
+    // page you're on.
+    if (virtualMcpId === decopilotId && !opts?.panel) {
+      return navigateThread(id, () =>
+        opts?.autosend ? { autosend: AUTOSEND_QUERY_VALUE } : {},
+      );
+    }
+
     const target = resolveTaskSwitchSearch({
       /** The source agent is the one the ROUTE names, never a search param a previous navigation left behind — a stale one misreports the agent we're switching AWAY from, and the carry-forward view rides on that comparison. */
       prev: {
@@ -169,6 +184,8 @@ export function usePanelActions() {
       savedLayout,
       opts,
       autosendValue: AUTOSEND_QUERY_VALUE,
+      target: manager?.threads.get().find((thread) => thread.id === id),
+      blogView,
     });
 
     return navigateThread(
@@ -203,13 +220,19 @@ export function usePanelActions() {
   ) => {
     const newId = crypto.randomUUID();
     const targetVmcp = virtualMcpId ?? routeVirtualMcpId;
+    // A chat opened from Blog, on Blog's own agent, is a Blog draft. Another
+    // agent's "+" or a pinned landing view is not Blog work.
+    const blog =
+      draftKind === "blog" && targetVmcp === routeVirtualMcpId && !opts?.panel
+        ? blogThreadDefaults(branch, branchUserLabel(session?.user))
+        : null;
     try {
       // No manager (settings tree): skip the eager create and let the
       // /$org/$taskId route loader's ensure-fallback create the thread.
       await manager?.create({
         id: newId,
         virtual_mcp_id: targetVmcp,
-        ...(branch ? { branch } : {}),
+        ...(blog ?? (branch ? { branch } : {})),
       });
     } catch {
       // Toast already fired by useCollectionActions; navigate anyway so the

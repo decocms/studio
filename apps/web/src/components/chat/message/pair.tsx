@@ -63,8 +63,7 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
    * Initial-scroll once per MessagePair mount. The ref callback below fires
    * on every render (its identity is unstable by design), so this gate keeps
    * `scrollIntoView` / scroll-to-bottom from re-firing on every commit during
-   * streaming — the sticky `top-4` on MessageUser keeps the user message
-   * pinned visually without re-scrolling.
+   * streaming.
    */
   const didInitialScroll = useRef(false);
 
@@ -114,12 +113,9 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
       className={cn("flex flex-col pb-2 sm:pb-2", !pair.user && "pt-8 sm:pt-6")}
     >
       {pair.user && (
-        <>
-          <div className="sticky top-0 z-50 w-full h-4 bg-background" />
-          <div className="sticky mb-8 sm:mb-6 top-4 z-50">
-            <MessageUser message={pair.user} onScrollToPair={scrollToPair} />
-          </div>
-        </>
+        <div className="mt-4 mb-6">
+          <MessageUser message={pair.user} onScrollToPair={scrollToPair} />
+        </div>
       )}
       <MessageAssistant
         message={pair.assistant}

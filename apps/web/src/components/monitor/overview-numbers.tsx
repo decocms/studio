@@ -1,6 +1,6 @@
 /** The Overview's four most important numbers: each its figure, how it moved, and its shape. */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Tooltip,
@@ -15,8 +15,9 @@ import { useProjectContext } from "@/sdk";
 import { firstRow, fmtInt, n0, num, rowsOf } from "./analytics/panels";
 import { EMPTY_SEGMENT, useDecoView } from "./analytics/segment";
 import { useAudience } from "./audience-view";
-import type { Kpi, KpiId, MetricPoint } from "./board";
+import type { Deploy, Kpi, KpiId, MetricPoint } from "./board";
 import { useAnalyticsStatus } from "./deco-analytics";
+import { ExpandedMetric } from "./metric-chart";
 import type { SiteProject } from "./org-insights";
 import { Sparkline } from "./sparkline";
 
@@ -29,6 +30,8 @@ export interface OverviewNumber {
   value: ReactNode | null;
   change?: ReactNode;
   chart: ReactNode;
+  /** The board's day behind the card, which clicking it opens up. */
+  kpi?: Kpi;
 }
 
 /** How many cards the Overview shows, most important first. */
@@ -48,7 +51,7 @@ function Help({ text }: { text: string }) {
         <button
           type="button"
           aria-label={text}
-          className="focus-ring flex size-4 shrink-0 cursor-help items-center justify-center rounded-full bg-muted text-[0.625rem] font-medium text-muted-foreground"
+          className="focus-ring relative z-10 flex size-4 shrink-0 cursor-help items-center justify-center rounded-full bg-muted text-[0.625rem] font-medium text-muted-foreground"
         >
           ?
         </button>
@@ -59,7 +62,17 @@ function Help({ text }: { text: string }) {
 }
 
 /** The cards themselves, also drawn faded behind the connect card. */
-export function NumberCards({ numbers }: { numbers: OverviewNumber[] }) {
+export function NumberCards({
+  numbers,
+  expanded = null,
+  onExpand,
+}: {
+  numbers: OverviewNumber[];
+  /** The key of the card opened up under the row. */
+  expanded?: string | null;
+  onExpand?: (key: string | null) => void;
+}) {
+  const t = useT();
   if (numbers.length === 0) return null;
   return (
     <div
@@ -82,10 +95,24 @@ export function NumberCards({ numbers }: { numbers: OverviewNumber[] }) {
             )
           }
           aside={<Help text={n.help} />}
+          className={cn(
+            n.kpi?.points && onExpand && "relative surface-interactive",
+            expanded === n.key && "bg-accent",
+          )}
         >
           <div className="mt-auto h-16">
             {n.value === null ? <Skeleton className="h-full" /> : n.chart}
           </div>
+          {n.kpi?.points && onExpand && (
+            // Over the whole card, under the "?" so its tooltip still opens.
+            <button
+              type="button"
+              aria-expanded={expanded === n.key}
+              aria-label={t("monitor.chart.expand", { metric: n.label })}
+              onClick={() => onExpand(expanded === n.key ? null : n.key)}
+              className="focus-ring absolute inset-0 cursor-pointer rounded-[inherit]"
+            />
+          )}
         </MetricCard>
       ))}
     </div>
@@ -183,14 +210,21 @@ export function OverviewNumbers({
   project,
   today,
   kpis: board,
+  deploys,
+  dayStart,
 }: {
   /** The site the Overview is on; none across the org. */
   project: SiteProject | undefined;
   today: boolean;
   /** The board's own figures for the day: orders, cancellations, errors… */
   kpis: readonly Kpi[];
+  /** The day's deploys and rollouts, marked on an opened card. */
+  deploys: readonly Deploy[] | null;
+  /** Local midnight of the day on screen. */
+  dayStart: string;
 }) {
   const t = useT();
+  const [expanded, setExpanded] = useState<string | null>(null);
   const { org } = useProjectContext();
   const deco = useDecoOverview(project, today);
   const site = project ?? { site: "", analyticsSite: "" };
@@ -320,6 +354,7 @@ export function OverviewNumbers({
           className="h-16"
         />
       ),
+      kpi: k,
     };
   };
 
@@ -377,5 +412,25 @@ export function OverviewNumbers({
   const numbers = candidates
     .filter((n): n is OverviewNumber => n !== false)
     .slice(0, CARDS);
-  return <NumberCards numbers={numbers} />;
+  const open = numbers.find((n) => n.key === expanded);
+  return (
+    <div className="flex flex-col gap-4">
+      <NumberCards
+        numbers={numbers}
+        expanded={open ? expanded : null}
+        onExpand={setExpanded}
+      />
+      {open?.kpi && (
+        <ExpandedMetric
+          // A new metric starts from its own reference days.
+          key={open.key}
+          kpi={open.kpi}
+          title={open.label}
+          changes={deploys ?? []}
+          dayStart={dayStart}
+          onClose={() => setExpanded(null)}
+        />
+      )}
+    </div>
+  );
 }

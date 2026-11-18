@@ -280,6 +280,7 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `telemetry.otlp.ip` / `telemetry.otlp.port` | `""` / `4318` | collector **ClusterIP** and port. Must be an IP — sandboxes use `dnsPolicy: None`, so in-cluster DNS names do not resolve. Goes stale if the Service is recreated |
 | `disableFsSidecar` | `false` | debug-only opt-out from the mandatory privileged org-fs sidecar |
 | `depsCache.enabled` / `depsCache.golden` | `false` / `false` | opt-in node-local dependency caches |
+| `depsCache.yarn` | `false` | point yarn's download cache at a per-repo dir under the node cache instead of a repo-chosen `cache-folder` (needs `depsCache.enabled`) |
 | `depsCache.remote.enabled` / `depsCache.remote.pvcName` | `false` / `""` | opt-in L2 cross-node golden archive on an RWX PVC, mounted read-only |
 | `warmPool.enabled` / `warmPool.size` | `false` / `0` | only after measuring cold-start pain |
 | `warmPool.autoscaling.enabled` | `false` | HPA; requires at least one explicit metric |

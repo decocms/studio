@@ -119,6 +119,13 @@ describe("stripEnsureOpts", () => {
       cloneOnly: true,
     });
   });
+
+  // The router decides per ensure; a resurrection without a router must not
+  // inherit a fail-instead-of-recreate decision from an earlier one.
+  it("drops onStuckClaim", () => {
+    const opts: EnsureOptions = { onStuckClaim: "fail", branch: "b" };
+    expect(stripEnsureOpts(opts)).toEqual({ branch: "b" });
+  });
 });
 
 describe("earlierShutdown", () => {

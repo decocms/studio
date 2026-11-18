@@ -2,6 +2,7 @@ import type { ComponentType, SVGProps } from "react";
 import {
   ClockRewind,
   BarChartSquare02,
+  BookOpen01,
   CheckDone01,
   Code02,
   File02,
@@ -32,6 +33,7 @@ export type SystemTabId =
   | "site-editor"
   | "code"
   | "content"
+  | "blog"
   | "assets"
   | "releases"
   | "hosting"
@@ -47,6 +49,7 @@ export const SYSTEM_TAB_ICONS: Record<SystemTabId, IconComponent> = {
   "site-editor": Globe01,
   code: Code02,
   content: File02,
+  blog: BookOpen01,
   assets: Package,
   releases: ClockRewind,
   hosting: Server01,

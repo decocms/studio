@@ -99,9 +99,10 @@ async function countProjectThreads(
 test.describe("project entry thread", () => {
   test.describe.configure({ timeout: 240_000 });
 
+  // Only a coding project takes the chat onto its own; a branchless project
+  // keeps the chat that followed the person there.
   for (const { kind, repository } of [
     { kind: "repo-backed", repository: true },
-    { kind: "branchless", repository: false },
   ] as const) {
     test(`a ${kind} project resumes its last chat past the shared feed's first page`, async ({
       authedPage: { page, orgSlug },

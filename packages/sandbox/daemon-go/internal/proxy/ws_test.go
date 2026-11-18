@@ -54,7 +54,7 @@ func TestServeUpstream_WriteFailureSendsCloseFrame(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		serveUpstream(clientConn, bufio.NewReader(clientConn), req, upstream, nil)
+		serveUpstream(clientConn, bufio.NewReader(clientConn), req, 3000, upstream, nil)
 		close(done)
 	}()
 

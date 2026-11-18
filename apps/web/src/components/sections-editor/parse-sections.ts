@@ -184,3 +184,14 @@ export function parseSections(
     };
   });
 }
+
+/**
+ * Where a new page section goes: before the shared sections that close the
+ * page (a footer, a cookie banner), not after them. On a page that holds only
+ * shared sections, before the last one.
+ */
+export function newSectionIndex(sections: readonly ParsedSection[]): number {
+  let index = sections.length;
+  while (index > 0 && sections[index - 1]?.isSavedBlock) index--;
+  return index > 0 ? index : Math.max(sections.length - 1, 0);
+}

@@ -5,6 +5,7 @@
  * file bytes as the raw request body (NOT multipart) and streams them
  * through `@aws-sdk/lib-storage` `Upload` to the configured bucket using
  * the server-side decrypted credentials.
+ * `?replace=<key>` overwrites that existing object in place (see `assertReplaceable`).
  *
  * Why raw body and not multipart? Hono's `c.req.formData()` materializes
  * the entire multipart body before yielding the file, which defeats the
@@ -17,6 +18,7 @@
  * single-shot PutObject offers when the SDK can't replay a stream.
  */
 
+import { ForbiddenError } from "@/core/access-control";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -25,12 +27,14 @@ import {
   buildPublicUrl,
   buildS3Client,
   FileConfigForbiddenError,
+  headObjectContentType,
   resolveFileConfig,
 } from "@/file-storage/file-config-s3";
 import {
   MAX_UPLOAD_BYTES,
   UploadRejected,
   assertAllowed,
+  assertReplaceable,
   buildObjectKey,
 } from "@/file-storage/upload-policy";
 
@@ -49,13 +53,15 @@ export const createFileUploadRoutes = () => {
     if (!orgId) {
       throw new HTTPException(400, { message: "Organization required" });
     }
-    // Gate behind a write-tier file-config permission. We pick
-    // FILE_CONFIG_UPDATE specifically so that if the `file-configs:manage`
-    // group ever splits into read/write capabilities, this upload route
-    // lands on the write side. Using a read-only tool here (e.g.
-    // FILE_OBJECTS_LIST) would silently expose write access to read-only
-    // principals after such a split.
-    await ctx.access.check("FILE_CONFIG_UPDATE");
+    try {
+      // Preserve the historical upload grant without granting bucket administration.
+      await ctx.access.check("FILE_OBJECT_UPLOAD", "FILE_CONFIG_UPDATE");
+    } catch (error) {
+      if (error instanceof ForbiddenError) {
+        return c.json({ message: error.message }, 403);
+      }
+      throw error;
+    }
 
     const configId = c.req.param("id");
     if (!configId) {
@@ -63,9 +69,10 @@ export const createFileUploadRoutes = () => {
     }
 
     const filename = c.req.query("filename");
-    if (!filename) {
+    const replaceKey = c.req.query("replace");
+    if (!filename && !replaceKey) {
       throw new HTTPException(400, {
-        message: "Missing `filename` query parameter",
+        message: "Missing `filename` or `replace` query parameter",
       });
     }
 
@@ -138,10 +145,35 @@ export const createFileUploadRoutes = () => {
       throw err;
     }
 
-    const key = buildObjectKey({
-      prefix: fileCfg.info.prefix,
-      filename,
-    });
+    let key: string;
+    if (replaceKey) {
+      const existingContentType = await headObjectContentType({
+        ctx: fileCfg,
+        key: replaceKey,
+      });
+      if (existingContentType === undefined) {
+        throw new HTTPException(404, { message: "File to replace not found" });
+      }
+      try {
+        assertReplaceable({
+          prefix: fileCfg.info.prefix,
+          key: replaceKey,
+          existingContentType,
+          contentType,
+        });
+      } catch (err) {
+        if (err instanceof UploadRejected) {
+          throw new HTTPException(400, { message: err.message });
+        }
+        throw err;
+      }
+      key = replaceKey;
+    } else {
+      key = buildObjectKey({
+        prefix: fileCfg.info.prefix,
+        filename: filename!,
+      });
+    }
 
     const client = buildS3Client(fileCfg);
 

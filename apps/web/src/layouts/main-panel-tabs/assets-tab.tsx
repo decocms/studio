@@ -52,8 +52,12 @@ import {
   useFilePickerObjects,
   useFilePickerUpload,
 } from "@/hooks/use-file-picker";
+import { BucketListingError } from "@/components/file-picker/bucket-listing-error";
 import { matchSiteSlugConfig } from "@/components/file-picker/match-site-slug-config";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { blocksV8Project } from "@/hooks/use-blocks-v8-project";
+import { assetColumnCount, distributeIntoColumns } from "./asset-columns";
+import { AssetsGallery } from "./assets-gallery";
 import {
   basename,
   extensionTag,
@@ -64,10 +68,18 @@ import {
 export function AssetsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const entity = useVirtualMCP(virtualMcpId);
   const configs = useFileConfigs();
-  const config = matchSiteSlugConfig(configs, resolveAgentSiteSlug(entity));
+  const config = matchSiteSlugConfig(
+    configs,
+    resolveAgentSiteSlug(entity),
+    entity?.metadata?.assetStorageConfigId,
+  );
 
   if (!config) {
     return <NoBucketState />;
+  }
+
+  if (blocksV8Project(entity)) {
+    return <AssetsGallery config={config} />;
   }
 
   return <AssetsBrowser config={config} />;
@@ -90,32 +102,6 @@ function NoBucketState() {
       </div>
     </div>
   );
-}
-
-/**
- * Column count for the masonry grid, keyed off the measured container width
- * (thresholds mirror the old Tailwind sm/md/lg breakpoints). `-1` means "not
- * measured yet" — it re-renders with the real width before paint, so the
- * fallback is only a momentary default and never a visible layout.
- */
-function assetColumnCount(width: number): number {
-  if (width < 0 || width < 640) return 2;
-  if (width < 768) return 3;
-  if (width < 1024) return 4;
-  return 5;
-}
-
-/**
- * Distributes items round-robin across `count` columns so reading order stays
- * left-to-right, top-to-bottom (item 0,1,2… fill the first visual row). Cards
- * keep their natural height within each column — a mosaic with no fixed row
- * height and no leftover space — while preserving the source order, which a
- * pure CSS `columns` layout would scramble into column-major order.
- */
-function distributeIntoColumns<T>(items: T[], count: number): T[][] {
-  const columns: T[][] = Array.from({ length: count }, () => []);
-  items.forEach((item, i) => columns[i % count]!.push(item));
-  return columns;
 }
 
 function AssetsBrowser({ config }: { config: FileConfigInfo }) {
@@ -178,6 +164,9 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
 
   const [gridWidth, gridRef] = useElementWidth();
   const pages = objectsQuery.data?.pages ?? [];
+  const listingDenied = pages.some(
+    (page) => page.listingError === "access_denied",
+  );
   const items = pages.flatMap((p) => p.items);
   const columns = distributeIntoColumns(items, assetColumnCount(gridWidth));
   const activeSearch = debouncedSearch.trim();
@@ -251,8 +240,17 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
       </button>
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {listingDenied || objectsQuery.isError ? (
+          <BucketListingError
+            denied={listingDenied}
+            retrying={objectsQuery.isFetching}
+            onRetry={() => void objectsQuery.refetch()}
+          />
+        ) : null}
         {items.length === 0 ? (
-          activeSearch ? (
+          objectsQuery.isPending ||
+          objectsQuery.isError ||
+          listingDenied ? null : activeSearch ? (
             <EmptyNote
               title={t("filePicker.filePickerDialog.noMatches", {
                 query: activeSearch,

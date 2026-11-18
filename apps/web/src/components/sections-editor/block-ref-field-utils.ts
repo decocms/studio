@@ -314,3 +314,77 @@ export function blockRefLoaderConfigHasData(
   }
   return Object.keys(obj).some((k) => !k.startsWith("__") && k !== "@type");
 }
+
+/**
+ * The plain object `T` of a `T | Loader<T>` block-ref (deco's `plainSchema`),
+ * with its type name. `null` for other block-refs, `type`-discriminated
+ * unions, and scalar widgets.
+ */
+function inlineDataBranch(
+  schema: SchemaProperty,
+): { title: string; schema: SchemaProperty } | null {
+  const data = schema.plainSchema;
+  if (
+    schema.type !== "block-ref" ||
+    schema.discriminatorKey ||
+    data?.type !== "object" ||
+    !data.properties
+  ) {
+    return null;
+  }
+  // deco titles a type's def with its module URL (`file:///…/ProductCard.tsx@Layout`).
+  const title = data.title?.includes("://")
+    ? (data.title.match(/@([A-Za-z_$][\w$]*)$/)?.[1] ?? "")
+    : (data.title ?? "");
+  return { title, schema: data };
+}
+
+/**
+ * A `T | Loader<T>` field whose stored value is an inline `T` (no
+ * `__resolveType`; `{}` when just picked), as an inline union: `T`'s form
+ * beside the loader options, whose `{ __resolveType }` value renders through
+ * `loaderRef`. The loader picker alone has no branch for `T`.
+ */
+export function inlineDataBlockRefSchema(
+  schema: SchemaProperty,
+  value: unknown,
+): SchemaProperty | null {
+  const branch = inlineDataBranch(schema);
+  if (!branch || !value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.__resolveType === "string") return null;
+  const keys = Object.keys(obj);
+  const dataKeys = branch.schema.properties ?? {};
+  if (keys.length > 0 && !keys.some((key) => key in dataKeys)) return null;
+  const { plainSchema: _, ...loaderRef } = schema;
+  return {
+    type: "inline-union",
+    title: schema.title,
+    description: schema.description,
+    inlineUnionBranches: [branch],
+    loaderRef,
+  };
+}
+
+/**
+ * The picker of a `T | Loader<T>` field with `T` as its last option. It is an
+ * embedded union variant (`…@T`), so picking it stores `T`'s plain props,
+ * which {@link inlineDataBlockRefSchema} then renders.
+ */
+export function withInlineDataOption(schema: SchemaProperty): SchemaProperty {
+  const branch = inlineDataBranch(schema);
+  if (!branch) return schema;
+  return {
+    ...schema,
+    anyOfRefs: [
+      ...(schema.anyOfRefs ?? []),
+      {
+        resolveType: `inline@${branch.title || "value"}`,
+        title: branch.title,
+        schema: branch.schema,
+      },
+    ],
+  };
+}

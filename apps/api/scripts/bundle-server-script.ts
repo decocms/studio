@@ -85,6 +85,8 @@ const ALWAYS_INCLUDE = [
   "@decocms/better-auth",
   "better-auth",
   "@better-auth/sso",
+  // Inlined, tsyringe (via @simplewebauthn/server) ran before reflect-metadata: 4.587.0 crashed on boot.
+  "@better-auth/passkey",
 ];
 const ALWAYS_EXCLUDE = ["kysely-codegen", "@duckdb/node-bindings"];
 

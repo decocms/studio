@@ -353,8 +353,30 @@ export const settings = {
   "settings.profile.avatarUploadError": "Failed to update the picture",
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
+  "settings.passkeys.title": "Passkeys",
+  "settings.passkeys.description":
+    "Sign in with your fingerprint, face or device screen lock instead of an emailed code.",
+  "settings.passkeys.add": "Add passkey",
+  "settings.passkeys.added": "Passkey added",
+  "settings.passkeys.addError": "Failed to add passkey",
+  "settings.passkeys.alreadyRegistered":
+    "This device already has a passkey for your account",
+  "settings.passkeys.empty": "No passkeys yet.",
+  "settings.passkeys.unsupported": "This browser does not support passkeys.",
+  "settings.passkeys.unnamed": "Passkey",
+  "settings.passkeys.createdAt": "Added {date}",
+  "settings.passkeys.delete": "Remove passkey",
+  "settings.passkeys.deleted": "Passkey removed",
+  "settings.passkeys.deleteError": "Failed to remove passkey",
+  "settings.passkeys.deleteTitle": "Remove {name}?",
+  "settings.passkeys.deleteDescription":
+    "You will no longer be able to sign in with this passkey. The credential stays on your device until you delete it there.",
+  "settings.passkeys.cancel": "Cancel",
   "settings.preferences.title": "Preferences",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "Blog view",
+  "settings.blogView.description":
+    "Blog as its own project view, with each post beside the site's render of it. When off, the blog is edited in the Site Editor's Content tab.",
   "settings.blog.aiTitle": "AI blog",
   "settings.blog.aiDescription":
     "Brand context, campaigns and post generation. When off, posts are written by hand.",
@@ -370,6 +392,9 @@ export const settings = {
   "settings.multiAppPreview.title": "Preview several apps of a monorepo",
   "settings.multiAppPreview.description":
     "Add other apps of a project's repository and view them side by side in the preview. Each one runs its own dev server in the sandbox.",
+  "settings.cmsAutoCommit.title": "Commit each save to the branch",
+  "settings.cmsAutoCommit.description":
+    "In Fast Preview, every save becomes a commit on the branch being edited. Turned off, saves stay in Studio: the editor and the preview show them, but they reach the branch only when someone publishes or submits for review, as a single commit. Until then they are not in the repository, so a pull request, a deploy preview, or anyone working on the branch outside Studio won't see them.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeLight": "Light theme",
   "settings.preferences.themeDark": "Dark theme",
@@ -647,10 +672,14 @@ export const settings = {
   "settings.githubCopilot.howTo":
     "Create a fine-grained GitHub token with the Copilot Requests permission",
   "settings.githubCopilot.sharedBy":
-    "Every run in this organization uses {name}'s shared GitHub Copilot plan.",
+    "You're using the organization's GitHub Copilot plan, shared by {name}.",
+  "settings.githubCopilot.ownPlanUsed":
+    "Your runs use your own plan. {name}'s shared plan only covers members who haven't linked one.",
   "settings.githubCopilot.shareTitle": "Share with org",
   "settings.githubCopilot.shareDescription":
-    "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
+    "Sharing only applies to members of this organization who haven't linked their own GitHub Copilot plan.",
+  "settings.githubCopilot.shareTaken":
+    "{name} already shares a plan. To share yours, ask {name} to stop sharing first.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
   "settings.ownAccounts.more": "More actions",

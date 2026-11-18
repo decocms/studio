@@ -33,6 +33,10 @@ import {
   siteEditorContentSearchShape,
   taskBoardSearchShape,
 } from "@/lib/legacy-workspace-search";
+import {
+  blogPostSearchShape,
+  blogSearchShape,
+} from "@/components/sandbox/content/blog/blog-search-params";
 
 const rootRoute = createRootRoute({
   /** No `<Providers>` here: the entry (`index.web.tsx`) wraps
@@ -444,11 +448,9 @@ const threadSessionRoute = createRoute({
   getParentRoute: () => threadRoute,
   id: "agent-shell",
   validateSearch: chatLayoutSearchSchema,
-  /** Chat visibility follows the person across workspace destinations. Agent
-   *  identity never does: canonical agent routes own it in `$agentId`, while
-   *  `virtualmcpid` remains an input/filter only on the legacy and org-level
-   *  routes that explicitly declare it. */
-  search: { middlewares: [retainSearchParams(["sidepanel"])] },
+  /** The chat, and whether it shows, follow the person across workspace
+   *  destinations; the page's project is context for it, not its owner. */
+  search: { middlewares: [retainSearchParams(["sidepanel", "thread"])] },
   // Render the centered panel-area loader (matches the shell's own Suspense
   // fallbacks) while this route loads, instead of the full-screen SplashScreen.
   // The sidebar is already mounted by orgRoute, so the pending state
@@ -693,6 +695,41 @@ const agentSiteEditorRoute = createRoute({
   }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-site-editor.tsx"),
+  ),
+});
+
+const agentBlogRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/blog",
+  staticData: {
+    pageTitle: "sidebar.projectNav.blog",
+    defaultMain: "blog",
+    mainView: "blog",
+  },
+  validateSearch: z.object(blogSearchShape),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-blog.tsx"),
+  ),
+});
+
+/** One post's editor, addressed by post id: the decofile block key moves
+ *  between the planning and live forms as the status changes, so a key in the
+ *  URL would break on a status change. */
+const agentBlogPostRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/blog/posts/$postId",
+  staticData: {
+    pageTitle: "sidebar.projectNav.blog",
+    defaultMain: "blog",
+    mainView: "blog-post",
+  },
+  validateSearch: z.object(blogPostSearchShape),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-blog-post.tsx"),
   ),
 });
 
@@ -1238,6 +1275,7 @@ const monitoringSearch = z.object({
   view: z
     .enum([
       "metrics",
+      "alerts",
       "performance",
       "logs",
       "audience",
@@ -1782,6 +1820,8 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   projectTasksRoute,
   projectReportsRoute,
   agentSiteEditorWithChildren,
+  agentBlogRoute,
+  agentBlogPostRoute,
   agentAutomationsRoute,
   agentAutomationRoute,
   agentSettingsRoute,

@@ -11,6 +11,7 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "site-editor",
   "calendar",
   "experiments",
+  "blog",
   "assets",
   "releases",
   "hosting",
@@ -26,6 +27,7 @@ export const DEFAULT_PROJECT_SIDEBAR_VIEWS = [
   "reports",
   "board",
   "site-editor",
+  "blog",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Unversioned values came from the first native-only rollout, in which core
@@ -44,45 +46,84 @@ export const PROJECT_NAV_VIEW_IDS = [
 export type ProjectNavViewId = (typeof PROJECT_NAV_VIEW_IDS)[number];
 
 /**
+ * Views a project gets once on top of a list saved before they existed: a
+ * selection made without a row could not have turned it off. Offered while
+ * the org has them on (Blog: `blog_view_enabled`) until the project's next
+ * sidebar save records them in `sidebarViewsSeen`; from then on the saved list
+ * alone decides, so hiding one sticks.
+ */
+const ADDED_SIDEBAR_VIEWS = [
+  "blog",
+] as const satisfies readonly ProjectSidebarViewId[];
+
+/**
  * Views a Blocks (v8) site gets once on top of a list saved before they were
  * defaults (PO decision): its campaigns and A/B tests are content its
- * editors own.
- * Offered until the project's next sidebar save records them in
- * `sidebarViewsSeen`; from then on the saved list alone decides, so hiding
- * one sticks. A v7 site is never offered them.
+ * editors own. Offered and recorded like {@link ADDED_SIDEBAR_VIEWS}, but a v7
+ * site is never offered them.
  */
 const BLOCKS_SITE_SIDEBAR_VIEWS = [
   "calendar",
   "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
+/** A hosted site's settings (env vars, domains, deploys), offered once the
+ * same way, and only beside a Site Editor the project shows. */
+const HOSTED_SITE_SIDEBAR_VIEWS = [
+  "hosting",
+] as const satisfies readonly ProjectSidebarViewId[];
+
+/** Presence the offers depend on: `calendar` marks a Blocks site, `blog` an
+ * org with the Blog view on. */
+export type ProjectSidebarOfferPresence = Pick<
+  ProjectSidebarViewPresence,
+  "calendar" | "hosting" | "site-editor" | "blog"
+>;
+
+const NO_SITE_OFFERS: ProjectSidebarOfferPresence = {
+  calendar: false,
+  hosting: false,
+  "site-editor": false,
+  blog: false,
+};
+
 function offerableProjectSidebarViews(
-  blocksSite: boolean,
+  presence: ProjectSidebarOfferPresence,
 ): readonly ProjectSidebarViewId[] {
-  return blocksSite
-    ? [...PROJECT_NAV_VIEW_IDS, ...BLOCKS_SITE_SIDEBAR_VIEWS]
-    : PROJECT_NAV_VIEW_IDS;
+  return [
+    ...PROJECT_NAV_VIEW_IDS,
+    ...(presence.calendar ? BLOCKS_SITE_SIDEBAR_VIEWS : []),
+    ...(presence.hosting && presence["site-editor"]
+      ? HOSTED_SITE_SIDEBAR_VIEWS
+      : []),
+    ...(presence.blog ? ADDED_SIDEBAR_VIEWS : []),
+  ];
 }
 
 /** Offerable views this project hasn't seen yet; pass to {@link effectiveProjectSidebarViews}. */
 export function offeredProjectSidebarViews(
   seen: readonly VirtualMcpSidebarView[] | null | undefined,
-  blocksSite: boolean,
+  presence: ProjectSidebarOfferPresence,
 ): ProjectSidebarViewId[] {
   const already = new Set(seen ?? []);
-  return offerableProjectSidebarViews(blocksSite).filter(
+  return offerableProjectSidebarViews(presence).filter(
     (view) => !already.has(view),
   );
 }
 
-/** `sidebarViewsSeen` after a save; Blocks views stay unseen until the site is a Blocks site. */
+/** `sidebarViewsSeen` after saving `saved`; site views stay unseen until the
+ * site has them, and Hosting until the Site Editor is shown beside it. */
 export function seenProjectSidebarViewsAfterSave(
   seen: readonly VirtualMcpSidebarView[] | null | undefined,
-  blocksSite: boolean,
+  presence: ProjectSidebarOfferPresence,
+  saved: readonly VirtualMcpSidebarView[],
 ): VirtualMcpSidebarView[] {
   const next = new Set<VirtualMcpSidebarView>([
     ...(seen ?? []),
-    ...offerableProjectSidebarViews(blocksSite),
+    ...offerableProjectSidebarViews({
+      ...presence,
+      "site-editor": presence["site-editor"] && saved.includes("site-editor"),
+    }),
   ]);
   return PROJECT_SIDEBAR_VIEW_IDS.filter((view) => next.has(view));
 }
@@ -99,7 +140,10 @@ export function selectedProjectNavViews(
       : effectiveProjectSidebarViews(
           resolveProjectSidebarViews(metadata),
           metadata?.sidebarViewsVersion,
-          offeredProjectSidebarViews(metadata?.sidebarViewsSeen, false),
+          offeredProjectSidebarViews(
+            metadata?.sidebarViewsSeen,
+            NO_SITE_OFFERS,
+          ),
         ),
   );
   return new Set(PROJECT_NAV_VIEW_IDS.filter((view) => selected.has(view)));
@@ -108,7 +152,7 @@ export function selectedProjectNavViews(
 export type ProjectSidebarViewId = (typeof PROJECT_SIDEBAR_VIEW_IDS)[number];
 
 /** Native panels whose availability is discovered from project resources. */
-export const PROJECT_NATIVE_VIEW_IDS = [
+const PROJECT_NATIVE_VIEW_IDS = [
   "calendar",
   "experiments",
   "assets",
@@ -119,19 +163,25 @@ export const PROJECT_NATIVE_VIEW_IDS = [
 
 export type ProjectNativeViewId = (typeof PROJECT_NATIVE_VIEW_IDS)[number];
 
-export type ProjectNativeViewPresence = Record<ProjectNativeViewId, boolean>;
+export type ProjectNativeViewPresence = Record<ProjectNativeViewId, boolean> & {
+  /** The org's Blog view (`blog_view_enabled`), a product rollout rather than a
+   *  resource: no native panel of its own. */
+  blog?: boolean;
+};
 export type ProjectSidebarViewPresence = Record<ProjectSidebarViewId, boolean>;
 
 export interface ProjectNativeViewPending {
   assets: boolean;
   siteAccess: boolean;
+  /** The org's flags are loading, so whether Blog is on is not known yet. */
+  blog?: boolean;
 }
 
 export interface ProjectSidebarViewsMetadata {
   /** Canonical location. With version 1, null or [] disables every row. */
   sidebarViews?: readonly VirtualMcpSidebarView[] | null;
   sidebarViewsVersion?: typeof PROJECT_SIDEBAR_VIEWS_VERSION;
-  /** Views offered once on top of the saved list (see BLOCKS_SITE_SIDEBAR_VIEWS). */
+  /** Views offered once on top of the saved list (see ADDED_SIDEBAR_VIEWS). */
   sidebarViewsSeen?: readonly VirtualMcpSidebarView[] | null;
   /** Deprecated location, retained only while persisted agents migrate. */
   ui?: {
@@ -198,7 +248,10 @@ export function effectiveProjectSidebarViews(
   if (version !== PROJECT_SIDEBAR_VIEWS_VERSION) {
     for (const viewId of DEFAULT_PROJECT_SIDEBAR_VIEWS) selected.add(viewId);
   }
-  for (const viewId of offered) selected.add(viewId);
+  for (const viewId of offered) {
+    if (viewId === "hosting" && !selected.has("site-editor")) continue;
+    selected.add(viewId);
+  }
   return PROJECT_SIDEBAR_VIEW_IDS.filter((viewId) => selected.has(viewId));
 }
 
@@ -229,6 +282,11 @@ export function projectSidebarViewPresence(
     reports: hasClonableSource,
     board: hasClonableSource,
     "site-editor": hasClonableSource,
+    /** The org's Blog view, with the Site Editor's source requirement: blog
+     *  records are decofile blocks. Whether the site actually has a blog app is
+     *  the view's own empty state to explain — a row whose existence waits on a
+     *  decofile read would blink in, or never appear. */
+    blog: hasClonableSource && native.blog === true,
     assets: native.assets,
     // Hosted Deco CMS releases: a v8 site's repo history.
     releases: hasClonableSource && native.releases,
@@ -302,6 +360,8 @@ export function projectSidebarViewUnavailable(
   pending: ProjectNativeViewPending,
 ): boolean {
   if (!isProjectSidebarViewId(viewId) || presence[viewId]) return false;
+  // Held while the org's flags load, so a Blog link isn't sent away first.
+  if (viewId === "blog") return pending.blog !== true;
   if (!isProjectNativeViewId(viewId)) return true;
   // Releases, Calendar and Experiments are a v8 project's (its switch, known
   // with the project): nothing to wait for.

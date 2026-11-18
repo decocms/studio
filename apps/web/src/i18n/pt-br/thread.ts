@@ -23,6 +23,7 @@ export const thread = {
   "thread.branchPicker.advancedBack": "Voltar",
   "thread.branchPicker.cancel": "Cancelar",
   "thread.branchPicker.defaultVersionName": "Draft",
+  "thread.branchPicker.blogDraftName": "Blog Draft",
   "thread.branchPicker.delete": "Descartar",
   "thread.branchPicker.keepOneDraft": "Mantenha pelo menos um draft",
   "thread.branchPicker.deleteConfirm":
@@ -36,7 +37,7 @@ export const thread = {
   "thread.branchPicker.localhost.label": "Localhost",
   "thread.branchPicker.localhost.connected": "Conectado",
   "thread.branchPicker.localUrlLabel": "URL do túnel local",
-  "thread.branchPicker.localUrlPlaceholder": "https://seu-tunel.exemplo.com",
+  "thread.branchPicker.localUrlPlaceholder": "http://localhost:8000",
   "thread.branchPicker.localTurnOff": "Desligar",
   "thread.branchPicker.moreActions": "Mais ações",
   "thread.branchPicker.newVersion": "Novo Draft",
@@ -122,6 +123,16 @@ export const thread = {
   "thread.headerActions.reconnectGithub": "Reconectar GitHub",
   "thread.headerActions.review": "Revisar",
   "thread.headerActions.saving": "Salvando…",
+  "thread.deletedBlocks.title": "Blocos apagados em {base}",
+  "thread.deletedBlocks.description":
+    "Este rascunho editou esses blocos. Escolha o que fazer com cada um.",
+  "thread.deletedBlocks.renamed": "Renomeado para {name}",
+  "thread.deletedBlocks.missingRefs":
+    "Aponta para {names}, que não existem mais",
+  "thread.deletedBlocks.drop": "Aceitar a exclusão",
+  "thread.deletedBlocks.restore": "Restaurar minha versão",
+  "thread.deletedBlocks.cancel": "Cancelar",
+  "thread.deletedBlocks.continue": "Continuar",
   "thread.headerActions.syncedWithBase": "Sincronizado com {base}",
   "thread.headerActions.reopenPr": "Reabrir PR",
   "thread.headerActions.reopenPrTooltip": "Reabrir PR #{prNumber}",

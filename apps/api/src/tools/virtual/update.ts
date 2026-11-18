@@ -106,6 +106,18 @@ export const COLLECTION_VIRTUAL_MCP_UPDATE = defineTool({
         ? null
         : blocksV8SwitchPatch(existing.metadata, blocksV8);
     if (blocksV8Patch) requireOrgAdminForBlocksV8Switch(ctx);
+    if (
+      rawMetadata?.assetStorageConfigId &&
+      rawMetadata.assetStorageConfigId !==
+        existing.metadata?.assetStorageConfigId
+    ) {
+      // Assert the selected storage belongs to this organization; findById throws
+      // for missing or foreign configurations. Its metadata is not needed here.
+      await ctx.storage.orgFileConfigs.findById(
+        rawMetadata.assetStorageConfigId,
+        organization.id,
+      );
+    }
     let metadata = stripServerManagedMetadata(rawMetadata);
     if (metadata && existing.metadata) {
       metadata = { ...existing.metadata, ...metadata };

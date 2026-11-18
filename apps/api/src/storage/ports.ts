@@ -361,10 +361,6 @@ export interface ConnectionStoragePort {
     kind: "project" | "connection",
   ): Promise<{ id: string; canonicalSlug: string } | null>;
   delete(id: string): Promise<void>;
-  testConnection(
-    id: string,
-    headers?: Record<string, string>,
-  ): Promise<{ healthy: boolean; latencyMs: number }>;
 }
 
 // ============================================================================
@@ -762,6 +758,7 @@ export interface OrganizationJoinRequestStoragePort {
   /** Atomic pending→decided transition; null if it was already decided. */
   decide(
     id: string,
+    organizationId: string,
     status: Exclude<JoinRequestStatus, "pending">,
     decidedBy: string,
   ): Promise<OrganizationJoinRequest | null>;

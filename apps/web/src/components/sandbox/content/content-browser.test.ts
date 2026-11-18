@@ -55,3 +55,27 @@ describe("deepLinkCollection", () => {
     }
   });
 });
+
+/** With the org's Blog view on, the blog is Blog's: none of it is listed here,
+ *  and its links are handed to Blog before this tab reads them. */
+describe("with the org's Blog view on", () => {
+  test("no blog collection is shown here", () => {
+    for (const blog of [
+      "posts",
+      "authors",
+      "categories",
+      "post-schedule",
+      "context",
+    ] as const) {
+      expect(visibleCollection(blog, true, false, true)).toBe("pages");
+    }
+    expect(visibleCollection("sections", true, true, true)).toBe("sections");
+    expect(visibleCollection("calendar", true, false, true)).toBe("calendar");
+  });
+
+  test("a blog deep link opens Pages, not a hidden collection", () => {
+    expect(deepLinkCollection("posts", false, true)).toBeNull();
+    expect(deepLinkCollection("categories", true, true)).toBeNull();
+    expect(deepLinkCollection("sections", true, true)).toBe("sections");
+  });
+});

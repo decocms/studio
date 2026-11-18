@@ -63,6 +63,7 @@ export const projects = {
   "projects.identity.storeUrlDescription":
     "The live storefront. Reports run against this address.",
   "projects.apps.reports": "Report",
+  "projects.apps.blog": "Blog",
   "projects.apps.siteEditor": "Site editor",
   "projects.apps.assets": "Assets",
   "projects.apps.releases": "Releases",

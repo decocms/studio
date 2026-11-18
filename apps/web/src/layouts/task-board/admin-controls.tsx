@@ -16,6 +16,7 @@ import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { BarChartSquare02 } from "@untitledui/icons";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useBoardOrgSlug } from "./board-org";
+import { FoldedLabelTooltip } from "./folded-label-tooltip";
 
 export function TaskBoardAdminBanner() {
   const t = useT();
@@ -79,26 +80,32 @@ export function TaskBoardAnalyticsButton({
   const org = params.org ?? "";
   // Off on phones: the header has no room left for New task beside it.
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      className="hidden sm:inline-flex"
-      asChild
-    >
-      {project ? (
-        <Link
-          to="/$org/projects/$agentId/taskboard-analytics"
-          params={{ org, agentId: project }}
-        >
-          <BarChartSquare02 size={16} />
-          {t("taskBoard.analytics.openAnalytics")}
-        </Link>
-      ) : (
-        <Link to="/$org/taskboard-analytics" params={{ org }}>
-          <BarChartSquare02 size={16} />
-          {t("taskBoard.analytics.openAnalytics")}
-        </Link>
-      )}
-    </Button>
+    <FoldedLabelTooltip label={t("taskBoard.analytics.openAnalytics")}>
+      <Button
+        size="icon-sm"
+        variant="outline"
+        className="hidden sm:inline-flex"
+        asChild
+      >
+        {project ? (
+          <Link
+            to="/$org/projects/$agentId/taskboard-analytics"
+            params={{ org, agentId: project }}
+          >
+            <BarChartSquare02 size={16} />
+            <span data-folding-label className="sr-only">
+              {t("taskBoard.analytics.openAnalytics")}
+            </span>
+          </Link>
+        ) : (
+          <Link to="/$org/taskboard-analytics" params={{ org }}>
+            <BarChartSquare02 size={16} />
+            <span data-folding-label className="sr-only">
+              {t("taskBoard.analytics.openAnalytics")}
+            </span>
+          </Link>
+        )}
+      </Button>
+    </FoldedLabelTooltip>
   );
 }

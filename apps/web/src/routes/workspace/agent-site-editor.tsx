@@ -13,6 +13,7 @@ import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { ChatLayout } from "@/components/chat-layout";
 import { useVirtualMCP } from "@/sdk";
 import { useDecoServeConnection } from "@/hooks/use-deco-serve-connection";
+import { BlogDeepLinkHandoff } from "./blog-view-gate";
 
 function SiteEditorDrawer() {
   const session = useOptionalChatTask();
@@ -47,7 +48,9 @@ export default function SiteEditorRoute() {
       actions={<SiteDraftActions />}
       drawer={<SiteEditorDrawer />}
     >
-      <SiteEditorBody />
+      <BlogDeepLinkHandoff>
+        <SiteEditorBody />
+      </BlogDeepLinkHandoff>
     </ChatLayout.Content>
   );
 }

@@ -8,9 +8,10 @@ import {
   CheckCircle,
   ChevronRight,
 } from "@untitledui/icons";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { taskKey } from "@decocms/shared/task-key";
-import { ruleLabel } from "@/components/order-monitor/order-monitor-day";
+import { useAlerts } from "@/hooks/use-alerts";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time";
 import { formatCount } from "@/layouts/main-panel-tabs/monitor-v8";
@@ -75,7 +76,7 @@ interface Row {
   /** Where it happened: the store or the project. */
   place: string;
   /** The next step. */
-  go: { link: LinkProps } | { onClick: () => void };
+  go: { link: LinkProps } | { onClick: () => void } | { href: string | null };
 }
 
 function rowOf(
@@ -100,37 +101,15 @@ function rowOf(
       : null;
   };
   switch (signal.kind) {
-    case "orders": {
-      const metric = ruleLabel(signal.rule, t);
+    case "alert":
       return {
-        title:
-          signal.rule === "orders_drop"
-            ? t("monitor.signal.below", {
-                metric,
-                pct: `${Math.round((1 - signal.observed / Math.max(1, signal.expected)) * 100)}%`,
-              })
-            : t("monitor.signal.above", {
-                metric,
-                times: String(
-                  Math.round(
-                    (signal.observed / Math.max(1, signal.expected)) * 10,
-                  ) / 10,
-                ),
-              }),
-        reason: [
-          since,
-          signal.after &&
-            t("monitor.signal.afterDeploy", {
-              minutes: signal.after.minutes,
-              message: signal.after.message,
-            }),
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        place: storeName(signal.storeTitle),
-        go: { onClick: () => onOpenStore(signal.storeId) },
+        title: signal.title,
+        reason: since,
+        place: "",
+        go: signal.storeId
+          ? { onClick: () => onOpenStore(signal.storeId!) }
+          : { href: signal.link },
       };
-    }
     case "deploy":
       return {
         title: t("monitor.signal.deploy", {
@@ -192,6 +171,7 @@ export function SignalsPanel({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const { ack } = useAlerts(orgSlug);
   const shown = open ? signals : signals.slice(0, VISIBLE);
   const hidden = signals.length - shown.length;
   return (
@@ -199,7 +179,14 @@ export function SignalsPanel({
       <h2 className="text-sm font-medium text-foreground">
         {t("monitor.signals.title")}
       </h2>
-      <ul className="surface divide-y divide-border/70 overflow-hidden">
+      <ul
+        className={cn(
+          "surface divide-y divide-border/70",
+          open
+            ? "max-h-[28rem] overflow-y-auto overscroll-contain"
+            : "overflow-hidden",
+        )}
+      >
         {shown.map((signal) => {
           const row = rowOf(signal, t, orgSlug, scopeId, onOpenStore);
           const { icon: Icon, tone, mark } = SEVERITY[signal.severity];
@@ -232,15 +219,33 @@ export function SignalsPanel({
           );
           const go = row.go;
           return (
-            <li key={signal.id}>
+            <li key={signal.id} className="flex items-center">
               {"link" in go ? (
                 <Link {...go.link} className={ROW}>
                   {content}
                 </Link>
+              ) : "href" in go ? (
+                go.href ? (
+                  <a href={go.href} className={ROW}>
+                    {content}
+                  </a>
+                ) : (
+                  <div className={ROW}>{content}</div>
+                )
               ) : (
                 <button type="button" onClick={go.onClick} className={ROW}>
                   {content}
                 </button>
+              )}
+              {signal.kind === "alert" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mr-5 shrink-0"
+                  onClick={() => ack(signal.id)}
+                >
+                  {t("monitor.signal.ack")}
+                </Button>
               )}
             </li>
           );

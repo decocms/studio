@@ -28,8 +28,6 @@ export type FilterFieldId = (typeof FILTER_FIELD_IDS)[number];
 export function activeFilterFieldIds(
   filters: TaskFilters,
   index: ProjectIndex,
-  /** The running sprint's id, or null when none is running. */
-  currentSprint: string | null,
 ): FilterFieldId[] {
   return FILTER_FIELD_IDS.filter((id) => {
     switch (id) {
@@ -43,10 +41,9 @@ export function activeFilterFieldIds(
         return filters.tags.length > 0;
       case "project":
         return projectFilterNarrows(filters.project, index);
-      // The running sprint is where the board opens, named by the view row's
-      // switcher; any other sprint, or the backlog, reads as a narrowing.
+      // The running sprint is where the board opens; its chip says so, since nothing else in the header does.
       case "sprint":
-        return filters.sprint !== null && filters.sprint !== currentSprint;
+        return filters.sprint !== null;
       default: {
         const exhaustive: never = id;
         return exhaustive;
@@ -55,12 +52,10 @@ export function activeFilterFieldIds(
   });
 }
 
-/** Clearing one chip leaves the others alone. A cleared sprint goes back to
- *  the running one, where the board opens. */
+/** Clearing one chip leaves the others alone. A cleared sprint shows every sprint. */
 export function withFieldCleared(
   filters: TaskFilters,
   id: FilterFieldId,
-  currentSprint: string | null,
 ): TaskFilters {
   switch (id) {
     case "assignee":
@@ -74,7 +69,7 @@ export function withFieldCleared(
     case "project":
       return { ...filters, project: null };
     case "sprint":
-      return { ...filters, sprint: currentSprint };
+      return { ...filters, sprint: null };
     default: {
       const exhaustive: never = id;
       return exhaustive;

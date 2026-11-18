@@ -7,7 +7,6 @@ import {
   useCurrentEditor,
   useEditor,
 } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import type { Ref } from "react";
 import { Suspense, useEffect, useImperativeHandle, useRef } from "react";
 import type { Metadata } from "../types.ts";
@@ -15,6 +14,7 @@ import { FileNode, FileUploader, type UnsupportedFileInfo } from "./file";
 import { MentionNode } from "./mention";
 import { AtMention } from "./mention-at.tsx";
 import { SlashMention } from "./mention-slash.tsx";
+import { CHAT_RICH_TEXT_CLASSES, chatStarterKit } from "./rich-text.ts";
 import { AiProviderModel } from "@/hooks/collections/use-ai-providers.ts";
 
 const DEFAULT_PLACEHOLDER =
@@ -22,13 +22,7 @@ const DEFAULT_PLACEHOLDER =
 
 function buildExtensions(placeholderRef: React.RefObject<string | undefined>) {
   return [
-    StarterKit.configure({
-      heading: false,
-      blockquote: false,
-      codeBlock: false,
-      horizontalRule: false,
-      dropcursor: false,
-    }),
+    chatStarterKit,
     Placeholder.configure({
       placeholder: () => placeholderRef.current ?? DEFAULT_PLACEHOLDER,
       showOnlyWhenEditable: false,
@@ -94,7 +88,7 @@ export function TiptapProvider({
         "aria-multiline": "true",
         "aria-label": placeholder ?? DEFAULT_PLACEHOLDER,
         class:
-          "prose prose-sm max-w-none focus:outline-none w-full h-full text-base p-[18px]",
+          "prose prose-sm max-w-none focus:outline-none w-full h-full text-[14px] max-md:text-base p-[18px]",
       },
       handleKeyDown: (_view: EditorView, event: KeyboardEvent) => {
         if (
@@ -244,6 +238,7 @@ export function TiptapInput({
         className={cn(
           "overflow-y-auto relative flex-1 max-h-[164px] min-h-[20px] w-full flex flex-col",
           className,
+          CHAT_RICH_TEXT_CLASSES,
           "[&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[20px] [&_.ProseMirror]:flex-1",
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
           "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",

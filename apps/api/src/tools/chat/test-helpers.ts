@@ -14,6 +14,7 @@ export function chatToolContext(
         get: async () => ({
           simple_mode: {
             tiers: {
+              smart: { keyId: "key_1", modelId: "text-model" },
               image: { keyId: "key_1", modelId: "image-model" },
               web_search: { keyId: "key_1", modelId: "search-model" },
               deep_research: { keyId: "key_1", modelId: "research-model" },

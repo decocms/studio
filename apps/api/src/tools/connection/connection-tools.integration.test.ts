@@ -115,6 +115,7 @@ describe("Connection Tools", () => {
         orgFileConfigs: null as never,
         orgSites: null as never,
         cmsDrafts: null as never,
+        decofilePendingBlocks: null as never,
         orgRepoSyncs: null as never,
         gitProviderAccounts: null as never,
         gitProviderAccountCredentials: null as never,
@@ -128,6 +129,7 @@ describe("Connection Tools", () => {
         taskBoardAnalytics: null as never,
         threadAnalytics: null as never,
         notifications: null as never,
+        alerts: null as never,
         orgFsEntries: null as never,
         oauthPkceStates: null as never,
         codexSubscriptions: null as never,
@@ -1479,9 +1481,22 @@ describe("Connection Tools", () => {
       );
 
       expect(result.id).toBe(created.item.id);
-      expect(result).toHaveProperty("healthy");
-      expect(result).toHaveProperty("latencyMs");
+      expect(result.healthy).toBe(false);
       expect(typeof result.latencyMs).toBe("number");
+    });
+
+    it("should not connect to a private-network URL", async () => {
+      const created = await ctx.storage.connections.create({
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Private target",
+        connection_type: "HTTP",
+        connection_url: "http://169.254.169.254/latest/meta-data/",
+      });
+
+      const result = await CONNECTION_TEST.execute({ id: created.id }, ctx);
+
+      expect(result).toMatchObject({ healthy: false, reason: "blocked_url" });
     });
 
     it("should throw when connection not found", async () => {

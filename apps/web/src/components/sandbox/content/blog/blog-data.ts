@@ -13,6 +13,13 @@
  */
 import { sanitizeSiteUrl } from "@decocms/shared/deco-site-production-url";
 import {
+  isPlanningPostKey,
+  livePostKey,
+  PLANNING_POST_KEY_PREFIX,
+  planningPostKey,
+  postIdOfKey,
+} from "./blog-post-id";
+import {
   CAMPAIGN_OBJECTIVES,
   CAMPAIGN_STATUSES,
   CAMPAIGN_TARGET_KINDS,
@@ -101,10 +108,15 @@ export interface BlogEntry {
   duplicateName?: boolean;
 }
 
-export function kindOfResolveType(resolveType: unknown): BlogKind | null {
+function kindOfResolveType(resolveType: unknown): BlogKind | null {
   return typeof resolveType === "string"
     ? (KIND_FOR_RESOLVE_TYPE[resolveType] ?? null)
     : null;
+}
+
+/** A post, author or category block's type. */
+export function isBlogRecordType(type: string): boolean {
+  return kindOfResolveType(type) !== null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -638,32 +650,10 @@ export function listPostsWithMeta(
 
 // ------------------ Lifecycle posts (idea → published) -----------------------
 
-/**
- * Planning posts (draft / generating / awaiting_review / archived) live one
- * block each under this
- * prefix, carrying NO `__resolveType` — exactly like themes, so the site's blog
- * app never resolves an unfinished draft. Only when a post is scheduled is it
- * promoted to a real `collections/blog/posts/<id>` block the site renders.
- */
-export const PLANNING_POST_KEY_PREFIX = "blog-manager/posts/";
-
-/** True when a key points at a planning post — anything but scheduled/published. */
-function isPlanningPostKey(key: string): boolean {
-  return key.startsWith(PLANNING_POST_KEY_PREFIX);
-}
-
-/** The `<id>` shared by a post's planning and live forms — the last path segment. */
-export function postIdOfKey(key: string): string {
-  return key.split("/").pop() ?? key;
-}
-
-export function planningPostKey(id: string): string {
-  return `${PLANNING_POST_KEY_PREFIX}${id}`;
-}
-
-export function livePostKey(id: string): string {
-  return `collections/blog/posts/${id}`;
-}
+/** Re-exported so `blog-data` stays the one import site for the data layer.
+ *  `isPlanningPostKey` stays private here: its callers outside this module are
+ *  about ROUTING, and take it from `blog-post-id` directly. */
+export { livePostKey, PLANNING_POST_KEY_PREFIX, planningPostKey, postIdOfKey };
 
 /** A fresh id for a new lifecycle post, unique enough for a per-site decofile. */
 export function newPostId(): string {
@@ -695,11 +685,21 @@ export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
   };
 }
 
+/**
+ * A new post's empty body, in the format the project edits: blocks in
+ * `sections`, or one HTML document in `content` for a project on the legacy
+ * format, whose templates read `content` as a string.
+ */
+function emptyPostBody(legacyContent = false): Record<string, unknown> {
+  return legacyContent ? { content: "" } : { sections: [] };
+}
+
 /** Payload for a post started by hand: a briefing, no body yet. */
 export function emptyDraftPostPayload(args: {
   title: string;
   planning?: PlanningMeta;
   now: Date;
+  legacyContent?: boolean;
 }): Record<string, unknown> {
   return {
     title: args.title,
@@ -710,7 +710,7 @@ export function emptyDraftPostPayload(args: {
     alt: "",
     authors: [],
     categories: [],
-    sections: [],
+    ...emptyPostBody(args.legacyContent),
     status: "draft",
     planning: (args.planning ?? {}) as Record<string, unknown>,
   };
@@ -976,7 +976,10 @@ export function generateBlogKey(
 }
 
 /** Default payload for a freshly created record. */
-export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
+export function emptyBlogPayload(
+  kind: BlogKind,
+  { legacyContent = false }: { legacyContent?: boolean } = {},
+): Record<string, unknown> {
   switch (kind) {
     case "posts":
       return {
@@ -988,7 +991,7 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
         alt: "",
         authors: [],
         categories: [],
-        sections: [],
+        ...emptyPostBody(legacyContent),
       };
     case "authors":
       return {

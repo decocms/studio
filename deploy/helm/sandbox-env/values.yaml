@@ -46,7 +46,7 @@ image:
   # instead of silently moving with `:latest`. Bump in lockstep with
   # packages/sandbox/package.json — release-studio-sandbox.yaml tags
   # images using that version. NEVER set this to "latest" in prod.
-  tag: "1.99.1"
+  tag: "1.99.6"
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
@@ -429,6 +429,13 @@ depsCache:
   # install path — leave off until validated on the target nodes. Adds the
   # same unreaped-growth caveat as above (a golden ≈ a full node_modules).
   golden: false
+  # Move yarn's download cache into this cache (per repo) instead of wherever
+  # the repo's `.yarnrc` puts it. A `cache-folder` inside the checkout lands
+  # the whole cache on the `workdir` emptyDir, and a large monorepo's cache
+  # alone exceeds `volumeSizes.workdir`, evicting the pod mid-install. Off by
+  # default because it changes the boot install path; adds the same
+  # unreaped-growth caveat as above (one yarn cache per repo per node).
+  yarn: false
 
   # ── L2: cross-node golden archive (opt-in, off) ──────────────────────
   # The golden above is NODE-LOCAL: it only hits when the pod lands on a

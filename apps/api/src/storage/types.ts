@@ -310,6 +310,34 @@ export interface OrderMonitorStateTable {
   >;
 }
 
+/** Something a detector saw, open until a person or an agent acks it (migration 265). */
+export interface AlertTable {
+  id: string;
+  organization_id: string;
+  source: string;
+  subject_id: ColumnType<string, string | undefined, string>;
+  rule: string;
+  title: string;
+  body: ColumnType<string, string | undefined, string>;
+  link: ColumnType<string | null, string | null | undefined, string | null>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  acked_at: ColumnType<Date | null, never, Date | string | null>;
+  acked_by: ColumnType<string | null, never, string | null>;
+  ack_note: ColumnType<string | null, never, string | null>;
+  task_board_item_id: ColumnType<string | null, never, string | null>;
+}
+
+/** An org's thresholds for one alert rule (migration 266). */
+export interface AlertRuleSettingsTable {
+  organization_id: string;
+  source: string;
+  rule: string;
+  threshold: number;
+  min_volume: number;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_by: string | null;
+}
+
 /**
  * A repository checked out into a thread's run, beyond the agent's own.
  *
@@ -1657,6 +1685,31 @@ export interface CmsDraftRow {
 }
 
 // ============================================================================
+// Fast Preview saves held in Studio (migration 264)
+// ============================================================================
+
+export interface DecofilePendingBlockTable {
+  organization_id: string;
+  virtual_mcp_id: string;
+  branch: string;
+  block_key: string;
+  /** The block's JSON text (key order kept); null when the save deleted it. */
+  content: string | null;
+  /** Reassigned on every write; bigint comes back as a string. */
+  revision: ColumnType<string, never, string>;
+  updated_by: string | null;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One block saved on a branch and not committed yet. */
+export interface DecofilePendingBlock {
+  blockKey: string;
+  /** The block's new content, or null when it was deleted. */
+  content: Record<string, unknown> | null;
+  revision: string;
+}
+
+// ============================================================================
 // Organization Notices (deployment-admin billing warning / block)
 // ============================================================================
 
@@ -2563,6 +2616,8 @@ export interface Database {
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
+  alerts: AlertTable;
+  alert_rule_settings: AlertRuleSettingsTable;
 
   // Automations tables
   automations: AutomationTable;
@@ -2588,6 +2643,7 @@ export interface Database {
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
   drafts: CmsDraftTable;
+  decofile_pending_blocks: DecofilePendingBlockTable;
   experiments: ExperimentTable;
 
   // Deployment-admin billing warning / block pinned on an org

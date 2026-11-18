@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -75,15 +76,21 @@ interface MessageStatsBarProps {
   usage: UsageStatsType | null | undefined;
   /** Reasoning duration in milliseconds */
   duration?: number | null;
+  /** When the message was sent, kept on the same line as its cost. */
+  timestamp?: ReactNode;
 }
 
-export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
+export function MessageStatsBar({
+  usage,
+  duration,
+  timestamp,
+}: MessageStatsBarProps) {
   const showCost = useModelDisclosure();
   const hasDuration = duration != null && duration > 0;
   const hasCost = showCost && usage != null && (usage.cost ?? 0) > 0;
   const hasTokens = usage != null && (usage.totalTokens ?? 0) > 0;
 
-  if (!hasDuration && !hasCost && !hasTokens) return null;
+  if (!hasDuration && !hasCost && !hasTokens) return timestamp ?? null;
 
   const durationLabel = hasDuration ? formatDuration(duration! / 1000) : null;
 
@@ -154,6 +161,12 @@ export function MessageStatsBar({ usage, duration }: MessageStatsBarProps) {
             </div>
           </TooltipContent>
         </Tooltip>
+      )}
+      {timestamp && (
+        <>
+          <span className="text-muted-foreground/40 select-none">·</span>
+          {timestamp}
+        </>
       )}
     </div>
   );
@@ -229,7 +242,7 @@ export function SessionStats({
               )}
             />
           </svg>
-          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100 text-2xs font-mono tabular-nums">
+          <span className="inline-block overflow-hidden whitespace-nowrap max-w-0 opacity-0 transition-[max-width,opacity] duration-200 ease-out @[480px]/chat-bottom:max-w-32 @[480px]/chat-bottom:opacity-100 text-2xs font-mono tabular-nums">
             {pct.toFixed(0)}%{cost > 0 ? ` · $${cost.toFixed(2)}` : ""}
           </span>
         </button>

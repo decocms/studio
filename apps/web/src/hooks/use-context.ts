@@ -12,6 +12,7 @@
  */
 
 import { useMatch } from "@tanstack/react-router";
+import { useChatViewContext } from "@/hooks/use-current-view";
 import { useOpenLibraryFile } from "@/hooks/use-open-library-file";
 import { basename, orgFsMountPath } from "@/layouts/library/location";
 
@@ -29,6 +30,7 @@ export function useContext(virtualMcpId?: string | null): string {
   });
 
   const openFilePath = useOpenLibraryFile()?.path ?? null;
+  const view = useChatViewContext();
 
   const contextParts: string[] = [];
 
@@ -36,6 +38,19 @@ export function useContext(virtualMcpId?: string | null): string {
   if (virtualMcpId) {
     contextParts.push(`### Selected Agent
 - ID: ${virtualMcpId}`);
+  }
+
+  // The page in front of the user, so "this" and "here" resolve to it.
+  if (view) {
+    contextParts.push(`### Current Page
+The user is looking at: ${view.title}${
+      view.project
+        ? `
+- Project: ${view.project.title} (ID: ${view.project.id})`
+        : ""
+    }
+
+When a request is ambiguous about what it refers to ("this", "here", "this page"), assume it means what is on this page.`);
   }
 
   // Point the assistant at the file the user is looking at, so an ambiguous

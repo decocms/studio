@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.110",
+    "@better-auth/passkey": "1.4.22",
     "@better-auth/sso": "1.6.11",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@decocms/bindings": "workspace:*",
@@ -40,6 +41,7 @@
     "@tanstack/react-virtual": "3.13.24",
     "@tiptap/core": "3.30.5",
     "@tiptap/extension-bubble-menu": "3.30.5",
+    "@tiptap/extension-highlight": "3.30.5",
     "@tiptap/extension-image": "3.30.5",
     "@tiptap/extension-link": "3.30.5",
     "@tiptap/extension-list": "3.30.5",

@@ -70,7 +70,7 @@ export const GenerateImageInputSchema = z.object({
         "when the user wants to modify, transform, or use an existing image as a starting point.",
     ),
   aspectRatio: z
-    .enum(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"])
+    .enum(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4"])
     .optional()
     .describe("Aspect ratio for the generated image. Defaults to 1:1."),
   n: z
@@ -264,6 +264,9 @@ export interface GenerateImageCoreParams {
    *  the cluster's background job to the NATS-broadcast thread-cancel path so a
    *  cancelled turn stops generation mid-flight, not just at the next step. */
   abortSignal?: AbortSignal;
+  /** Exact output size; replaces `input.aspectRatio`. */
+  size?: `${number}x${number}`;
+  providerOptions?: Parameters<typeof generateImage>[0]["providerOptions"];
 }
 
 export interface GenerateImageResult {
@@ -311,7 +314,14 @@ export async function generateImageCore(
       model: imageModel,
       prompt,
       n: input.n ?? 1,
-      ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+      ...(params.size
+        ? { size: params.size }
+        : input.aspectRatio
+          ? { aspectRatio: input.aspectRatio }
+          : {}),
+      ...(params.providerOptions
+        ? { providerOptions: params.providerOptions }
+        : {}),
       abortSignal: signal,
     });
   } catch (err) {

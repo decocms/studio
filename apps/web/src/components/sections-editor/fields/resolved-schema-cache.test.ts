@@ -1,10 +1,84 @@
 import { describe, expect, it, test } from "bun:test";
 import {
   cachedResolveSchema,
+  createSchemaCache,
   expandRecursiveSchema,
   fillDepthCappedBranches,
 } from "./resolved-schema-cache";
 import type { LiveMeta, SchemaProperty } from "../resolve-schema";
+
+describe("createSchemaCache bounds", () => {
+  const meta: LiveMeta = { manifest: { blocks: {} }, schema: {} };
+
+  /** A cache on a manual clock whose builds take `buildMs[resolveType]`. */
+  function setup(
+    limits: { maxEntries: number; maxBuildMs: number; idleMs: number },
+    buildMs: Record<string, number> = {},
+  ) {
+    let clock = 0;
+    const builds: string[] = [];
+    const get = createSchemaCache({
+      ...limits,
+      now: () => clock,
+      resolve: (resolveType) => {
+        builds.push(resolveType);
+        clock += buildMs[resolveType] ?? 0;
+        return { type: "object", title: resolveType };
+      },
+    });
+    return {
+      get: (resolveType: string) => get(resolveType, meta),
+      builds,
+      wait: (ms: number) => {
+        clock += ms;
+      },
+    };
+  }
+
+  test("returns the same schema without rebuilding it", () => {
+    const cache = setup({ maxEntries: 4, maxBuildMs: 1000, idleMs: 10 });
+    const first = cache.get("a");
+    expect(cache.get("a")).toBe(first);
+    expect(cache.builds).toEqual(["a"]);
+  });
+
+  test("evicts the least recently used idle entry past the entry cap", () => {
+    const cache = setup({ maxEntries: 2, maxBuildMs: 1000, idleMs: 10 });
+    cache.get("a");
+    cache.get("b");
+    cache.wait(20);
+    cache.get("a");
+    cache.wait(20);
+    cache.get("c");
+    cache.get("a");
+    cache.get("b");
+    expect(cache.builds).toEqual(["a", "b", "c", "b"]);
+  });
+
+  test("evicts idle entries once their build time passes the budget", () => {
+    const cache = setup(
+      { maxEntries: 64, maxBuildMs: 100, idleMs: 10 },
+      { heavyA: 60, heavyB: 60 },
+    );
+    cache.get("heavyA");
+    cache.wait(20);
+    cache.get("heavyB");
+    cache.get("heavyA");
+    expect(cache.builds).toEqual(["heavyA", "heavyB", "heavyA"]);
+  });
+
+  test("keeps entries a screen still renders even over the limits", () => {
+    const cache = setup(
+      { maxEntries: 1, maxBuildMs: 100, idleMs: 1000 },
+      { heavyA: 60, heavyB: 60 },
+    );
+    for (let render = 0; render < 3; render++) {
+      cache.get("heavyA");
+      cache.get("heavyB");
+    }
+    expect(cache.builds).toEqual(["heavyA", "heavyB"]);
+  });
+});
 
 describe("cachedResolveSchema", () => {
   it("does not leak a resolveType's schema across different meta (site) instances", () => {

@@ -9,7 +9,6 @@ export const reports = {
   "reports.authGate.divider": "ou",
   "reports.authGate.emailLabel": "E-mail",
   "reports.authGate.emailPlaceholder": "seu@email.com",
-  "reports.authGate.enterCodePlaceholder": "Digite o código",
   "reports.authGate.freeAccess": "Acesso gratuito. Leva menos de um minuto.",
   "reports.authGate.genericError": "Algo deu errado. Tente novamente.",
   "reports.authGate.invalidCode": "Código inválido",
@@ -25,7 +24,6 @@ export const reports = {
   "reports.authGate.useDifferentEmail": "Usar outro email",
   "reports.authGate.verificationCodeLabel": "Código de verificação",
   "reports.authGate.verificationCodeTitle": "Digite o código",
-  "reports.authGate.verify": "Entrar",
   "reports.authGate.verifying": "Verificando...",
   "reports.scanGate.anonymousHelp":
     "Mandamos o link por e-mail quando ficar pronto.",

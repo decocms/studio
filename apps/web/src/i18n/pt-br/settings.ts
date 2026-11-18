@@ -362,8 +362,30 @@ export const settings = {
   "settings.profile.avatarUploadError": "Falha ao atualizar a foto",
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
+  "settings.passkeys.title": "Passkeys",
+  "settings.passkeys.description":
+    "Entre com sua digital, rosto ou bloqueio de tela do dispositivo em vez de um código por e-mail.",
+  "settings.passkeys.add": "Adicionar passkey",
+  "settings.passkeys.added": "Passkey adicionada",
+  "settings.passkeys.addError": "Falha ao adicionar passkey",
+  "settings.passkeys.alreadyRegistered":
+    "Este dispositivo já tem uma passkey para sua conta",
+  "settings.passkeys.empty": "Nenhuma passkey ainda.",
+  "settings.passkeys.unsupported": "Este navegador não suporta passkeys.",
+  "settings.passkeys.unnamed": "Passkey",
+  "settings.passkeys.createdAt": "Adicionada em {date}",
+  "settings.passkeys.delete": "Remover passkey",
+  "settings.passkeys.deleted": "Passkey removida",
+  "settings.passkeys.deleteError": "Falha ao remover passkey",
+  "settings.passkeys.deleteTitle": "Remover {name}?",
+  "settings.passkeys.deleteDescription":
+    "Você não vai mais conseguir entrar com esta passkey. A credencial continua no seu dispositivo até você apagá-la lá.",
+  "settings.passkeys.cancel": "Cancelar",
   "settings.preferences.title": "Preferências",
   "settings.blog.sectionTitle": "Blog",
+  "settings.blogView.title": "View Blog",
+  "settings.blogView.description":
+    "O Blog como uma view própria do projeto, com cada post ao lado de como o site o mostra. Desligado, o blog é editado na aba Conteúdo do Site Editor.",
   "settings.blog.aiTitle": "Blog com IA",
   "settings.blog.aiDescription":
     "Contexto da marca, campanhas e geração de posts. Desligado, os posts são escritos à mão.",
@@ -379,6 +401,9 @@ export const settings = {
   "settings.multiAppPreview.title": "Ver vários apps de um monorepo",
   "settings.multiAppPreview.description":
     "Adicione outros apps do repositório de um projeto e veja lado a lado no preview. Cada um roda o próprio servidor de desenvolvimento na sandbox.",
+  "settings.cmsAutoCommit.title": "Commitar cada salvamento na branch",
+  "settings.cmsAutoCommit.description":
+    "No Fast Preview, cada salvamento vira um commit na branch em edição. Desligado, os salvamentos ficam no Studio: o editor e o preview mostram as mudanças, mas elas só chegam na branch quando alguém publica ou envia para revisão, em um único commit. Até lá elas não estão no repositório, então um pull request, um deploy preview ou quem trabalha na branch fora do Studio não as vê.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeLight": "Tema claro",
   "settings.preferences.themeDark": "Tema escuro",
@@ -663,10 +688,14 @@ export const settings = {
   "settings.githubCopilot.howTo":
     "Crie um token fine-grained do GitHub com a permiss\u00e3o Copilot Requests",
   "settings.githubCopilot.sharedBy":
-    "Toda execu\u00e7\u00e3o nesta organiza\u00e7\u00e3o usa o plano GitHub Copilot compartilhado por {name}.",
+    "Voc\u00ea est\u00e1 usando o plano GitHub Copilot da organiza\u00e7\u00e3o, compartilhado por {name}.",
+  "settings.githubCopilot.ownPlanUsed":
+    "Suas execu\u00e7\u00f5es usam o seu pr\u00f3prio plano. O plano compartilhado por {name} s\u00f3 vale para quem n\u00e3o vinculou um.",
   "settings.githubCopilot.shareTitle": "Compartilhar com a org",
   "settings.githubCopilot.shareDescription":
-    "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
+    "O compartilhamento s\u00f3 vale para os membros desta organiza\u00e7\u00e3o que n\u00e3o vincularam o pr\u00f3prio plano GitHub Copilot.",
+  "settings.githubCopilot.shareTaken":
+    "{name} j\u00e1 compartilha um plano. Para compartilhar o seu, pe\u00e7a que {name} pare de compartilhar primeiro.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
   "settings.ownAccounts.more": "Mais ações",

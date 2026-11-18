@@ -40,6 +40,9 @@ const BRUNO_END = "2026-12-16T18:00:00-03:00";
 const saves: Array<NamedRuleChange | null> = [];
 let saveAnswer = true;
 let holdsCopy = true;
+/** The campaign the list has open, and what it asked to open or close. */
+let openName: string | null = "bf";
+const opened: Array<string | null> = [];
 
 const realView = { ...realNamedRuleView };
 afterAll(() => {
@@ -53,8 +56,8 @@ mock.module("@/components/sections-editor/named-rule-view", () => ({
     reread: async () => null,
     isPending: false,
     holdsCopy,
-    openName: "bf",
-    setOpenName: () => {},
+    openName,
+    setOpenName: (name: string | null) => opened.push(name),
     creating: false,
     setCreating: () => {},
     blocked: null,
@@ -73,6 +76,8 @@ beforeEach(() => {
   saves.length = 0;
   saveAnswer = true;
   holdsCopy = true;
+  openName = "bf";
+  opened.length = 0;
 });
 
 /**
@@ -170,5 +175,70 @@ describe("a campaign's dates elsewhere (Fast Preview, Localhost)", () => {
     const { ends, rerender } = setup(calendar(SEED_END));
     rerender(calendar(BRUNO_END));
     expect(ends().value).toBe(isoToLocalInput(SEED_END));
+  });
+});
+
+describe("the list", () => {
+  /** "bf" runs or starts soon; "old" ended years ago. */
+  const both = {
+    campaigns: {
+      __resolveType: "calendar",
+      bf: { start: START, end: SEED_END },
+      old: { start: "2020-01-01T00:00:00Z", end: "2020-02-01T00:00:00Z" },
+    },
+  };
+  const names = (body: ReturnType<typeof within>) =>
+    body
+      .getAllByTestId("campaign-row")
+      .map((row: HTMLElement) => row.querySelector("button")?.textContent);
+
+  test("a campaign opens in place and closes again", () => {
+    openName = null;
+    const closed = setup(both).body;
+    expect(names(closed)).toEqual(["bf"]);
+    expect(closed.queryByTestId("campaign-editor")).toBeNull();
+    act(() => closed.getByRole("button", { name: "bf" }).click());
+    expect(opened).toEqual(["bf"]);
+
+    openName = "bf";
+    const open = setup(both).body;
+    expect(open.getByTestId("campaign-editor")).toBeTruthy();
+    act(() => open.getByRole("button", { name: "bf" }).click());
+    expect(opened).toEqual(["bf", null]);
+  });
+
+  test("Ended lists only the ended campaigns", () => {
+    openName = null;
+    const { body } = setup(both);
+    act(() =>
+      body
+        .getByRole("radio", {
+          name: /^(Ended|sandbox\.dateCampaigns\.tabEnded)$/,
+        })
+        .click(),
+    );
+    expect(names(body)).toEqual(["old"]);
+  });
+
+  test("an ended campaign opened by a link opens on Ended", () => {
+    openName = "old";
+    const { body } = setup(both);
+    expect(names(body)).toEqual(["old"]);
+    expect(body.getByTestId("campaign-editor")).toBeTruthy();
+  });
+
+  test("the strip's months head the column, with today tagged", () => {
+    openName = null;
+    const { body } = setup(both);
+    const header = body.getByTestId("campaign-strip-months");
+    // Three months, less one the tag would cover, and the tag.
+    expect(header.children.length).toBeGreaterThanOrEqual(3);
+    expect(header.textContent).toMatch(/Today|sandbox\.dateCampaigns\.today/);
+  });
+
+  test("each row draws its window on the strip", () => {
+    openName = null;
+    const { body } = setup(both);
+    expect(body.getAllByTestId("campaign-strip")).toHaveLength(1);
   });
 });

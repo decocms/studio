@@ -326,11 +326,10 @@ function LoadedAnyOfField({
     const handleRefChange = (rt: string) => {
       setSelectedRt(rt);
       const targetRef = refs.find((r) => r.resolveType === rt);
-      const resolvedTargetSchema = resolveNestedBlockRefSchema(
-        editorValue,
-        meta,
-        targetRef?.schema,
-      );
+      // An embedded variant keeps only its own props, not the replaced module's.
+      const resolvedTargetSchema = isEmbeddedUnionResolveType(rt)
+        ? targetRef?.schema
+        : resolveNestedBlockRefSchema(editorValue, meta, targetRef?.schema);
       const allowed = new Set(
         Object.keys(
           (resolvedTargetSchema ?? targetRef?.schema)?.properties ?? {},

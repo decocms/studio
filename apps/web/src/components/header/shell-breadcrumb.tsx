@@ -9,38 +9,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
-import { useThreads } from "@/components/chat/store/hooks";
+import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useT } from "@/i18n/use-t.ts";
 
-/**
- * New-chat button — starts a fresh chat with the active agent (reusing an
- * existing empty "New chat" for it when there is one, so empties don't pile
- * up). Lives in the chat panel header, so "new chat" stays reachable when the
- * sidebar's own new-chat action is tucked away.
- */
+/** A fresh chat with the org's assistant; the page you're on is only context. */
 export function NewChatCrumb() {
   const t = useT();
-  const { threads } = useThreads();
+  const { org } = useProjectContext();
   const { createNewTask } = usePanelActions();
-
-  /**
-   * The scope of the page, not of the legacy grammar: on
-   * `/$org/agents/{-$project}` the project segment names the agent, so a new chat
-   * started there belongs to that project rather than to the Super Agent.
-   */
-  const activeAgentId = useRouteVirtualMcpId();
-  const routeThreadId = useRouteThreadId();
-
-  /** A new chat inherits the viewed thread's branch so it lands on the same
-   *  sandbox; `null` where the route names no thread → server default. */
-  const currentBranch =
-    threads.find((thread) => thread.id === routeThreadId)?.branch ?? null;
 
   // ALWAYS create a fresh chat — never reuse/refocus an existing empty one.
   const handleNewChat = () => {
-    void createNewTask(activeAgentId, currentBranch);
+    void createNewTask(getWellKnownDecopilotVirtualMCP(org.id).id, null);
   };
 
   return (

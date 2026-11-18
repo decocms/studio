@@ -339,14 +339,14 @@ export function ToolsPopover({
             aria-label={t("chat.toolsPopover.tools")}
             className={cn(
               "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
-              "gap-0 @[320px]/chat-bottom:gap-1.5",
+              "gap-0 @[480px]/chat-bottom:gap-1.5",
             )}
           >
             <Settings04 size={14} />
             <span
               className={cn(
                 "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
+                "@[480px]/chat-bottom:max-w-24 @[480px]/chat-bottom:opacity-100",
               )}
             >
               {t("chat.toolsPopover.tools")}

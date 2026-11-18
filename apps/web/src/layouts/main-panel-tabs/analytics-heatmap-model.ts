@@ -509,15 +509,15 @@ type ViewMessage =
 
 /**
  * A message from the framed site, or null. Trust is the frame's window AND
- * the site's registered origin AND the protocol tag: a page that navigated
- * the frame elsewhere, or any other window, is ignored.
+ * one of the site's registered origins AND the protocol tag: a page that
+ * navigated the frame elsewhere, or any other window, is ignored.
  */
 export function readViewMessage(
   e: { source: unknown; origin: string; data: unknown },
   frame: unknown,
-  origin: string,
+  origins: readonly string[],
 ): ViewMessage | null {
-  if (!frame || e.source !== frame || e.origin !== origin) return null;
+  if (!frame || e.source !== frame || !origins.includes(e.origin)) return null;
   const d = e.data as Row | null;
   if (!d || typeof d !== "object" || d.dq !== "hm" || d.v !== VIEW_PROTOCOL)
     return null;

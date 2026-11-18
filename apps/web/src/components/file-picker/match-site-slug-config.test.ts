@@ -72,3 +72,18 @@ describe("matchSiteSlugConfig", () => {
     expect(matchSiteSlugConfig([first, second], "storefront")).toBe(first);
   });
 });
+
+test("explicit project storage overrides automatic site matching", () => {
+  const managed = config("managed", { siteSlug: "storefront" });
+  const custom = config("custom", { bucket: "media-library" });
+  expect(matchSiteSlugConfig([managed, custom], "storefront", "custom")).toBe(
+    custom,
+  );
+  expect(matchSiteSlugConfig([custom], null, "custom")).toBe(custom);
+});
+
+test("a missing explicit storage does not fall back to a different bucket", () => {
+  const managed = config("managed", { siteSlug: "storefront" });
+  expect(matchSiteSlugConfig([managed], "storefront", "deleted")).toBeNull();
+  expect(matchSiteSlugConfig([managed], "storefront", null)).toBe(managed);
+});

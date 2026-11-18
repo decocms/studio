@@ -27,6 +27,7 @@ import {
   sortSignals,
   storeTimezone,
 } from "./board";
+import { AlertsView } from "./alerts-view";
 import { AskData } from "./ask-data";
 import {
   AudienceView,
@@ -253,6 +254,20 @@ export function MonitorPage({
       </MonitorFrame>
     );
   }
+  if (view === "alerts") {
+    return (
+      <MonitorFrame tabs={tabs}>
+        <AlertsView
+          orgSlug={orgSlug}
+          stores={new Set(board.stores.map((s) => s.store.connectionId))}
+          scoped={scopeId !== null}
+          onOpenStore={(store) =>
+            onSelect({ project: selection.project, store })
+          }
+        />
+      </MonitorFrame>
+    );
+  }
   if (view === "experiments") {
     return (
       <MonitorFrame tabs={tabs}>
@@ -384,6 +399,8 @@ export function MonitorPage({
             project={scopeProject}
             today={today}
             kpis={board.kpis}
+            deploys={board.deploys}
+            dayStart={board.dayStart}
           />
         }
         more={

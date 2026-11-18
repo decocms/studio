@@ -41,6 +41,7 @@ import {
 } from "./use-save-block";
 import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { AddSectionButton, SectionList, parseSections } from "./section-list";
+import { newSectionIndex } from "./parse-sections";
 import { isLazyResolveType } from "./section-lazy";
 import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { protocolBlockVersion } from "@/cms/content-protocol-api";
@@ -83,7 +84,8 @@ import { BlockConflictError } from "./decofile-api";
 import { canonicalBlockJson } from "@decocms/shared/decofile";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
-import { resolveSchema, type SchemaProperty } from "./resolve-schema";
+import type { SchemaProperty } from "./resolve-schema";
+import { cachedResolveSchema } from "./fields/resolved-schema-cache";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { useEnsureSiteSeoBlocks } from "./seo-editor";
 import { defaultPageSeoResolveType } from "./seo-schema";
@@ -199,7 +201,7 @@ import {
   combineForcedVariants,
 } from "./variant-draft-pointer";
 import { PageJsonDialog } from "./page-json-dialog";
-import { createReferencedBlockSaver } from "./save-referenced-block";
+import { useReferencedBlockSaver } from "./save-referenced-block";
 import { matcherFormatter } from "./format-matcher";
 import {
   AddVariantButton,
@@ -575,16 +577,12 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => {
-      saveBlock.mutate(write, {
-        onSuccess: () => onSaved?.(),
-        onError: saveBlock.reportError,
-      });
-    },
+  const referencedBlockSave = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile ?? {},
-    saveBlock.v8,
+    { onSaved },
   );
+  const saveReferencedBlock = referencedBlockSave.save;
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const applyNamedRule = useApplyNamedRule({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
@@ -840,7 +838,7 @@ export function SectionsEditor({
       : null;
   const seoSchema =
     editingSeo && activeSeoType && isSeoEnabled(displayRawSeo)
-      ? resolveSchema(activeSeoType, meta)
+      ? cachedResolveSchema(activeSeoType, meta)
       : null;
   const siteDefaultSeo = editingSeo
     ? findSiteSeoEntry(decofile, meta)?.seoData
@@ -1144,6 +1142,7 @@ export function SectionsEditor({
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- same, the page rule's timer
       ruleDebounceRef.current !== null ||
       saveBlock.isPending ||
+      referencedBlockSave.isPending ||
       pageBlockSave.isPending ||
       // The form's edits wait for the user's choice between two versions.
       formConflicts.length > 0;
@@ -1270,7 +1269,9 @@ export function SectionsEditor({
   };
 
   const activeSchema =
-    activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
+    activeResolveType && meta
+      ? cachedResolveSchema(activeResolveType, meta)
+      : null;
 
   const savePageSections = (
     updatedSections: RawSection[],
@@ -2244,11 +2245,12 @@ export function SectionsEditor({
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
+    const newIndex = newSectionIndex(parsedSections);
     const updatedSections = [
-      ...rawSections,
+      ...rawSections.slice(0, newIndex),
       { __resolveType: entry.resolveType } as RawSection,
+      ...rawSections.slice(newIndex),
     ];
-    const newIndex = updatedSections.length - 1;
 
     // The save updates the decofile cache optimistically; no need to await it.
     savePageSections(updatedSections, {
@@ -2686,7 +2688,7 @@ export function SectionsEditor({
     !isGlobalBlockMode && !!(galleryAvailable && meta && decofile);
 
   const ruleSchema =
-    ruleResolveType && meta ? resolveSchema(ruleResolveType, meta) : null;
+    ruleResolveType && meta ? cachedResolveSchema(ruleResolveType, meta) : null;
 
   const cancelPendingRuleSaves = () => {
     if (ruleDebounceRef.current) {
@@ -3307,7 +3309,7 @@ export function SectionsEditor({
     : (selectedParsed?.label ?? "");
   const sectionRuleSchema =
     sectionRuleResolveType && meta
-      ? resolveSchema(sectionRuleResolveType, meta)
+      ? cachedResolveSchema(sectionRuleResolveType, meta)
       : null;
   /** A crumb names a block and, when what sits below it belongs to one of that
    *  block's variants, names the variant too. Compact says both in one crumb,

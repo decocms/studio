@@ -145,6 +145,7 @@ export function accountAccessIssue(
 export function clientForAccount(
   deps: GitProviderDeps,
   account: GitProviderAccountRecord,
+  repository?: RepositoryRecord,
 ): GitProviderClient {
   if (account.status !== "active") {
     throw new GitProviderError({
@@ -200,6 +201,9 @@ export function clientForAccount(
           host: account.host,
           installationId: account.installationId,
           repositoryIds: account.installationRepositoryIds,
+          knownRepository: repository
+            ? { ref: repoRefOf(repository), externalId: repository.externalId }
+            : undefined,
           appAuth,
         });
       }
@@ -292,7 +296,7 @@ export async function repoCredentialForRepository(
     repository,
     repository.accountId,
   );
-  const client = clientForAccount(deps, account);
+  const client = clientForAccount(deps, account, repository);
   const kind = tokenKindOf(account);
   return {
     ref,
@@ -326,7 +330,7 @@ export async function cloneInfoForRepository(
     repository,
     repository.accountId,
   );
-  const client = clientForAccount(deps, account);
+  const client = clientForAccount(deps, account, repository);
   const mintsPerRepository = tokenKindOf(account) === "installation";
   // An account-wide token already reaches the siblings, so it skips the read.
   const alsoRepositories = mintsPerRepository

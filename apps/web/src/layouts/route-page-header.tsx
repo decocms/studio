@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
-import { useRouterState } from "@tanstack/react-router";
-import { LayoutLeft, MessageCircle01 } from "@untitledui/icons";
+import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import {
   Tooltip,
@@ -13,46 +12,27 @@ import { Page } from "@/components/page";
 
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
-import { useInSettings } from "@/hooks/use-in-settings";
-import { useOptionalChatLayout } from "@/components/chat-layout";
 
 import { useScopeId } from "@/hooks/use-project-scope";
+import { useCurrentView } from "@/hooks/use-current-view";
 import { useT } from "@/i18n/use-t";
-import { useProjectContext, useVirtualMCPNonBlocking } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 
 /** Router adapter for Page.Header. Settings stays independent of thread/runtime providers. */
 export function RoutePageHeader({
   actions,
   navigation,
+  trailingActions,
 }: {
   actions?: ReactNode;
   navigation?: ReactNode;
+  trailingActions?: ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const scopeId = useScopeId();
-  const project = useVirtualMCPNonBlocking(scopeId);
-  const inSettings = useInSettings();
-  const { toggleSidebar } = useSidebar();
-  const collapsed = useSidebarCollapsed();
-  const chatLayout = useOptionalChatLayout();
-  const page = useRouterState({
-    select: (state) =>
-      state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
-  });
-  const isHome = page?.mainView === "overview";
+  const { project, title, isHome, inSettings } = useCurrentView();
   const projectTitle = project?.title ?? t("common.loading");
-  const title = isHome
-    ? // A project's home names the PROJECT, since nothing else on the page
-      // does. The org's home is just Home: the org is named in the sidebar's
-      // picker, and repeating it as the page title says it twice.
-      scopeId
-      ? projectTitle
-      : t("sidebar.navDestinations.home")
-    : // The Library is called Context.
-      page?.mainView === "files"
-      ? t("sidebar.navDestinations.context")
-      : t(page?.pageTitle ?? "page.view");
   /** The crumb leaves an app for the project's Overview. */
   const projectLink = {
     to: "/$org/projects/$agentId" as const,
@@ -73,58 +53,41 @@ export function RoutePageHeader({
     });
   }
   breadcrumbs.push({ key: "page", label: title });
-  /** A collapsed sidebar takes its toggles with it: they move here, beside the
-   *  breadcrumb. */
-  const sidebarHidden = collapsed;
-  /** An open chat sits left of this panel and holds the sidebar toggle instead. */
-  const chatHoldsSidebarToggle =
-    !!chatLayout && !chatLayout.threadless && chatLayout.threadOpen;
-  const chatToggle = sidebarHidden && chatLayout && !chatLayout.threadless && (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <ToolbarIconButton
-          aria-label={t(
-            chatLayout.threadOpen ? "page.closeThread" : "page.openThread",
-          )}
-          aria-pressed={chatLayout.threadOpen}
-          active={chatLayout.threadOpen}
-          onClick={chatLayout.toggleThread}
-        >
-          <MessageCircle01 size={16} />
-        </ToolbarIconButton>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {t(chatLayout.threadOpen ? "page.closeThread" : "page.openThread")}
-      </TooltipContent>
-    </Tooltip>
-  );
   return (
     <Page.Header
-      leading={
-        <>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <ToolbarIconButton
-                className={cn(
-                  (!sidebarHidden || chatHoldsSidebarToggle) && "md:hidden",
-                )}
-                onClick={toggleSidebar}
-                aria-label={t("page.expandSidebar")}
-              >
-                <LayoutLeft size={16} />
-              </ToolbarIconButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t("page.expandSidebar")}
-            </TooltipContent>
-          </Tooltip>
-          {chatToggle}
-        </>
-      }
+      leading={<SidebarToggleButton />}
       breadcrumbs={breadcrumbs}
       scope={org.name}
       actions={actions}
       navigation={navigation}
+      trailingActions={trailingActions}
     />
+  );
+}
+
+/** Brings a collapsed sidebar back from the leftmost visible panel. Mobile
+ *  always shows it; desktop only once project-first nav hid the sidebar. */
+export function SidebarToggleButton({
+  showOnDesktop = true,
+}: {
+  showOnDesktop?: boolean;
+}) {
+  const t = useT();
+  const { toggleSidebar } = useSidebar();
+  const collapsed = useSidebarCollapsed();
+  const sidebarHidden = showOnDesktop && collapsed;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          className={cn(!sidebarHidden && "md:hidden")}
+          onClick={toggleSidebar}
+          aria-label={t("page.expandSidebar")}
+        >
+          <LayoutLeft size={16} />
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{t("page.expandSidebar")}</TooltipContent>
+    </Tooltip>
   );
 }

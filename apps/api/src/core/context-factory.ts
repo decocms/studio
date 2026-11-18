@@ -618,6 +618,7 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { DraftStorage } from "@/storage/cms-drafts";
+import { DecofilePendingBlockStorage } from "@/storage/decofile-pending-blocks";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
@@ -631,6 +632,7 @@ import { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { DemoBoardStorage } from "@/storage/demo-board";
 import { NotificationStorage } from "@/storage/notifications";
+import { AlertStorage } from "@/storage/alerts";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -1577,6 +1579,7 @@ export async function createStudioContextFactory(
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
     cmsDrafts: new DraftStorage(config.db),
+    decofilePendingBlocks: new DecofilePendingBlockStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
     gitProviderAccounts: new GitProviderAccountStorage(config.db),
     gitProviderAccountCredentials: new GitProviderAccountCredentialStorage(
@@ -1593,6 +1596,7 @@ export async function createStudioContextFactory(
     taskBoardAnalytics: new TaskBoardAnalyticsStorage(config.db),
     threadAnalytics: new ThreadAnalyticsStorage(config.db),
     notifications: new NotificationStorage(config.db),
+    alerts: new AlertStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),

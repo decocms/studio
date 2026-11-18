@@ -17,6 +17,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { buildRequestHeaders, sanitizeCustomHeaders } from "./headers";
 import { createClientPool } from "./client-pool";
+import { internalizeMcpUrl } from "./internalize-url";
 import { createStdioTransport } from "./transport-stdio";
 import {
   composeTransport,
@@ -142,7 +143,10 @@ export async function createOutboundClient(
         }
 
         let transport: Transport = makeBaseTransport(
-          new URL(connectionUrl),
+          internalizeMcpUrl(
+            new URL(connectionUrl),
+            getSettings().mcpInternalHostMap,
+          ),
           headers,
         );
 

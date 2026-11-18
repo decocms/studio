@@ -212,6 +212,40 @@ export function applyBlogCategorySlug(
   return template.replace(ALL_CATEGORY_PARAMS, encodePath(path));
 }
 
+/** The site path of a category listing page, or `null` when it has none. */
+export function blogCategoryPath(
+  decofile: Record<string, unknown>,
+  category: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): string | null {
+  const template = findBlogCategorySlug(decofile, meta);
+  if (!template) return null;
+  const slug = str(category.slug);
+  return applyBlogCategorySlug(
+    template,
+    routeTakesCategoryPath(template, true)
+      ? categoryPath(decofile, slug)
+      : slug,
+  );
+}
+
+/** The site path of a post, or `null` when a route param is missing. */
+export function blogPostPath(
+  decofile: Record<string, unknown>,
+  post: Record<string, unknown>,
+  meta?: LiveMeta | null,
+): string | null {
+  const template = findBlogPageSlug(decofile, meta);
+  if (!template) return null;
+  const leaf = firstCategorySlug(post);
+  return applyBlogPageSlug(template, {
+    category: routeTakesCategoryPath(template)
+      ? categoryPath(decofile, leaf)
+      : leaf,
+    slug: str(post.slug),
+  });
+}
+
 /**
  * Builds the absolute preview URL for a category listing page, or `null` when
  * it can't be built (no `categorySlug` configured on the blog app, no preview
@@ -233,16 +267,7 @@ export function buildBlogCategoryPreviewUrl({
   meta?: LiveMeta | null;
 }): string | null {
   if (!previewBaseUrl) return null;
-  const template = findBlogCategorySlug(decofile, meta);
-  if (!template) return null;
-
-  const slug = str(category.slug);
-  const path = applyBlogCategorySlug(
-    template,
-    routeTakesCategoryPath(template, true)
-      ? categoryPath(decofile, slug)
-      : slug,
-  );
+  const path = blogCategoryPath(decofile, category, meta);
   if (!path) return null;
 
   try {
@@ -251,6 +276,14 @@ export function buildBlogCategoryPreviewUrl({
     return null;
   }
 }
+
+/**
+ * The blog app's own switch for rendering a post still in planning: with it,
+ * the post page resolves the planning block too. Honoured from `apps` 0.166.2
+ * (Deno) and `@decocms/apps-blog` 7.85.0 (TanStack); an older site ignores it
+ * and answers its not-found page.
+ */
+const BLOG_DRAFT_PARAM = "draft";
 
 /**
  * Builds the absolute preview URL for a post, or `null` when it can't be
@@ -262,6 +295,7 @@ export function buildBlogPostPreviewUrl({
   previewBaseUrl,
   draftPointer,
   meta,
+  planning = false,
 }: {
   decofile: Record<string, unknown>;
   post: Record<string, unknown>;
@@ -270,22 +304,17 @@ export function buildBlogPostPreviewUrl({
   draftPointer?: string | null;
   /** The site's schema, for its page types. */
   meta?: LiveMeta | null;
+  /** The post is still in planning: ask for it with `?draft=true`. */
+  planning?: boolean;
 }): string | null {
   if (!previewBaseUrl) return null;
-  const template = findBlogPageSlug(decofile, meta);
-  if (!template) return null;
-
-  const leaf = firstCategorySlug(post);
-  const path = applyBlogPageSlug(template, {
-    category: routeTakesCategoryPath(template)
-      ? categoryPath(decofile, leaf)
-      : leaf,
-    slug: str(post.slug),
-  });
+  const path = blogPostPath(decofile, post, meta);
   if (!path) return null;
 
   try {
-    return withDraftPointer(new URL(path, previewBaseUrl).href, draftPointer);
+    const url = new URL(path, previewBaseUrl);
+    if (planning) url.searchParams.set(BLOG_DRAFT_PARAM, "true");
+    return withDraftPointer(url.href, draftPointer);
   } catch {
     return null;
   }

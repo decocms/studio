@@ -1050,16 +1050,18 @@ describe("debounced saves while one of the block's saves is running", () => {
   });
 
   /** A server that answers each write only when the test lets it. */
-  function setupGated(options?: { failFirst?: boolean }) {
+  function setupGated(options?: { failFirst?: boolean; showEdits?: boolean }) {
     server.blocks = { Hero: { title: "loaded" } };
     server.versions = { Hero: "h1" };
     server.applied = [];
     server.draftInRefusal = false;
     server.hashed = true;
     const sent: unknown[] = [];
+    const guards: unknown[] = [];
     const release: Array<() => void> = [];
     client.blocksApply = (async (patch: Parameters<typeof realApply>[0]) => {
       sent.push(Object.values(patch.set ?? {})[0]);
+      guards.push(patch.ifMatch);
       const turn = sent.length;
       await new Promise<void>((resolve) => release.push(resolve));
       if (options?.failFirst && turn === 1) throw new Error("gateway");
@@ -1078,7 +1080,7 @@ describe("debounced saves while one of the block's saves is running", () => {
       () =>
         useDebouncedSaveBlock(
           { orgSlug: ORG, virtualMcpId: VM, branch: BRANCH },
-          { onSaved },
+          { onSaved, showEdits: options?.showEdits },
         ),
       { wrapper },
     );
@@ -1092,7 +1094,22 @@ describe("debounced saves while one of the block's saves is running", () => {
     };
     const idle = () =>
       waitFor(() => expect(hook.result.current.isPending).toBe(false));
-    return { ...hook, sent, sentCount, answer, idle, onSaved };
+    /** Hero as the cache shows it to fields that read it. */
+    const shown = () =>
+      queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(CACHE_KEY),
+      )?.Hero;
+    return {
+      ...hook,
+      queryClient,
+      sent,
+      guards,
+      sentCount,
+      answer,
+      idle,
+      onSaved,
+      shown,
+    };
   }
 
   const edit = (
@@ -1171,6 +1188,84 @@ describe("debounced saves while one of the block's saves is running", () => {
     await answer();
     await idle();
     await waitFor(() => expect(leave()).toBe(false));
+  });
+
+  describe("fields that read the block from the cache (showEdits)", () => {
+    it("show each edit at once, and an earlier save's answer never puts its older value back", async () => {
+      const { result, sent, sentCount, answer, idle, shown } = setupGated({
+        showEdits: true,
+      });
+      edit(result, "one");
+      await sentCount(1);
+      act(() => result.current.save("Hero", { title: "two" }));
+      expect(shown()).toEqual({ title: "two" });
+      await answer();
+      // "one" landed while "two" is still typed: the field keeps "two".
+      expect(shown()).toEqual({ title: "two" });
+      act(() => result.current.flush());
+      await sentCount(2);
+      await answer();
+      await idle();
+      expect(sent).toEqual([{ title: "one" }, { title: "two" }]);
+      expect(shown()).toEqual({ title: "two" });
+      expect(server.blocks.Hero).toEqual({ title: "two" });
+    });
+
+    it("guard the first save by the copy the edit was made on, then each save by the one before it", async () => {
+      const shownRun = setupGated({ showEdits: true });
+      act(() => {
+        shownRun.result.current.save(
+          "Hero",
+          { title: "one" },
+          { base: { value: { title: "loaded" }, fromCache: true } },
+        );
+        shownRun.result.current.flush();
+      });
+      await shownRun.sentCount(1);
+      // Made while "one" is on its way: built on it, not on "loaded".
+      act(() => {
+        shownRun.result.current.save(
+          "Hero",
+          { title: "two" },
+          { base: { value: { title: "one" }, fromCache: true } },
+        );
+      });
+      await shownRun.answer();
+      act(() => shownRun.result.current.flush());
+      await shownRun.sentCount(2);
+      await shownRun.answer();
+      await shownRun.idle();
+      expect(shownRun.guards).toEqual([
+        { Hero: LOADED_VERSION },
+        { Hero: await draftVersionOf({ title: "one" }) },
+      ]);
+    });
+  });
+
+  it("a keystroke's save that ends after a newer one started leaves the newer value shown", async () => {
+    const { queryClient, sentCount, answer } = setupGated();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useSaveBlock(params), { wrapper });
+    const shown = () =>
+      queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(CACHE_KEY),
+      )?.Hero;
+    act(() =>
+      result.current.mutate({ blockKey: "Hero", data: { title: "a" } }),
+    );
+    await sentCount(1);
+    act(() =>
+      result.current.mutate({ blockKey: "Hero", data: { title: "ab" } }),
+    );
+    await waitFor(() => expect(shown()).toEqual({ title: "ab" }));
+    await answer();
+    await sentCount(2);
+    expect(shown()).toEqual({ title: "ab" });
+    await answer();
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(shown()).toEqual({ title: "ab" });
   });
 });
 

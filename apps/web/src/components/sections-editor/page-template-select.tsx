@@ -55,10 +55,11 @@ export function PageTemplateSelect({
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className="w-full justify-between font-normal"
+          // Width from the dialog, not the nowrap label, so long paths truncate.
+          className="w-full justify-between font-normal contain-inline-size"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate">
+            <span className="max-w-full shrink-0 truncate">
               {selected?.name ??
                 t("sectionsEditor.pageTemplateSelect.blankPageDefaultLabel")}
             </span>

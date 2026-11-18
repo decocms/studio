@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { buildSandboxUrl, type SandboxProxyRef } from "@/sdk/sandbox-url";
 
 export interface GitStatusFile {
@@ -94,6 +95,42 @@ function retryGitRequest(failureCount: number, error: unknown): boolean {
   return failureCount < 1;
 }
 
+/** What to do with a block the draft edited after the base deleted it. */
+export type DeletedBlockResolution = "restore" | "drop";
+
+const deletedBlocksBodySchema = z.object({
+  code: z.literal("block-deleted-on-base"),
+  error: z.string(),
+  blocks: z
+    .array(
+      z.object({
+        path: z.string(),
+        key: z.string(),
+        renamedTo: z.string().optional(),
+        missingRefs: z.array(z.string()),
+      }),
+    )
+    .min(1),
+});
+
+export type BlockDeletedOnBase = z.infer<
+  typeof deletedBlocksBodySchema
+>["blocks"][number];
+
+/**
+ * A sync that stopped because the draft edited blocks the base deleted or
+ * renamed. Nothing was written; sync again with a resolution per block.
+ */
+export class BlocksDeletedOnBaseError extends Error {
+  constructor(
+    message: string,
+    readonly blocks: BlockDeletedOnBase[],
+  ) {
+    super(message);
+    this.name = "BlocksDeletedOnBaseError";
+  }
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   let body: T & { error?: string };
   try {
@@ -101,6 +138,11 @@ async function parseJson<T>(res: Response): Promise<T> {
   } catch {
     // Malformed body must surface as SandboxGitError, not a raw SyntaxError.
     throw new SandboxGitError(`Request failed (${res.status})`, res.status);
+  }
+  const deleted =
+    res.status === 409 ? deletedBlocksBodySchema.safeParse(body) : null;
+  if (deleted?.success) {
+    throw new BlocksDeletedOnBaseError(deleted.data.error, deleted.data.blocks);
   }
   if (!res.ok) {
     throw new SandboxGitError(
@@ -177,19 +219,19 @@ export async function publishGitChanges(
 
 /**
  * Sync the branch with `base`. On a git-level conflict the server resolves
- * branch-wins — the branch's content wins for every path it touched. Not
- * negotiable per call: a conflict dialog is worse than a branch-favoured merge
- * for the non-technical editor, and the sandbox daemon has never offered the
- * choice either.
+ * branch-wins — the branch's content wins for every path it touched — except
+ * for blocks the base deleted: those throw {@link BlocksDeletedOnBaseError}
+ * until `resolutions` says, per block path, whether each comes back.
  */
 export async function rebaseGitBranch(
   ref: SandboxProxyRef,
   base: string,
+  resolutions?: Readonly<Record<string, DeletedBlockResolution>>,
 ): Promise<void> {
   const res = await sandboxFetch(buildSandboxGitUrl(ref, "rebase"), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ base }),
+    body: JSON.stringify({ base, ...(resolutions ? { resolutions } : {}) }),
   });
   await parseJson(res);
 }

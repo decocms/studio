@@ -43,6 +43,7 @@ import {
   useFilePickerObjects,
   useFilePickerUpload,
 } from "@/hooks/use-file-picker";
+import { BucketListingError } from "./bucket-listing-error";
 import { basename, extensionTag, formatSize, isImageKey } from "./asset-utils";
 
 export type FilePickerMode = "image" | "any";
@@ -117,6 +118,7 @@ function PickerBody({
   onSelect: (url: string) => void;
 }) {
   const configs = useFileConfigs();
+  const t = useT();
 
   if (configs.length === 0) {
     return <NoConfigsEmpty />;
@@ -127,6 +129,11 @@ function PickerBody({
     if (locked) {
       return <BucketPanel config={locked} mode={mode} onSelect={onSelect} />;
     }
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        {t("virtualMcp.settings.assetStorage.missing")}
+      </p>
+    );
   }
 
   if (configs.length === 1) {
@@ -218,10 +225,7 @@ function BucketPanel({
     const list = Array.from(files);
     if (list.length === 0) return;
 
-    // Upload each file independently so a single mid-batch failure
-    // doesn't discard the work already done — we still refetch the
-    // listing and select the first successful upload, then surface
-    // the failed names in a toast.
+    // Select the first successful upload even when another file fails.
     let firstUrl: string | null = null;
     const failures: string[] = [];
     for (const f of list) {
@@ -237,7 +241,10 @@ function BucketPanel({
         );
       }
     }
-    await objectsQuery.refetch();
+    // Selection depends on the upload response, not on permission to list.
+    if (!objectsQuery.data?.pages.some((page) => page.listingError)) {
+      void objectsQuery.refetch();
+    }
     if (failures.length > 0) {
       toast.error(
         failures.length === list.length
@@ -272,6 +279,9 @@ function BucketPanel({
   }
 
   const pages = objectsQuery.data?.pages ?? [];
+  const listingDenied = pages.some(
+    (page) => page.listingError === "access_denied",
+  );
   const allItems = pages.flatMap((p) => p.items);
   const items = allItems.filter((item) =>
     mode === "image" ? isImageKey(item.key) : true,
@@ -343,7 +353,15 @@ function BucketPanel({
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {items.length === 0 ? (
+        {listingDenied || objectsQuery.isError ? (
+          <BucketListingError
+            denied={listingDenied}
+            retrying={objectsQuery.isFetching}
+            onRetry={() => void objectsQuery.refetch()}
+          />
+        ) : objectsQuery.isPending ? (
+          <Skeleton className="h-32 w-full" />
+        ) : items.length === 0 ? (
           activeSearch ? (
             <NoSearchResults query={activeSearch} />
           ) : mode === "image" && allItems.length > 0 ? (

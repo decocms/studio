@@ -33,7 +33,7 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { CustomFieldsPanel } from "./custom-fields-panel";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import {
   blogCustomFieldsSchema,
   KNOWN_CATEGORY_FIELDS,
@@ -108,6 +108,7 @@ function CategoryEditorForm({
   onManagePosts,
   onOpenPost,
   previewBaseUrl,
+  fastPreviewActive = true,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -123,6 +124,11 @@ function CategoryEditorForm({
   onManagePosts: (slug: string) => void;
   onOpenPost: (key: string) => void;
   previewBaseUrl?: string | null;
+  /** `previewBaseUrl` is Fast Preview's preview server, which takes the
+   *  `?__draft=` pointer; Localhost or a Local tunnel renders local code.
+   *  The pointer is `null` outside Fast Preview anyway, so the Content tab
+   *  leaves this out. */
+  fastPreviewActive?: boolean;
 }) {
   const t = useT();
   const threadId = useOptionalChatTask()?.taskId ?? null;
@@ -171,12 +177,11 @@ function CategoryEditorForm({
   );
   // Edits to a field pointing at a saved block belong to that block's own
   // decofile entry, not to this record.
-  const referenceSave = useSaveBlock({ orgSlug, virtualMcpId, branch });
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => (save.v8 ? referenceSave : save).mutate(write),
+  const referenceSave = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
     decofile,
-    save.v8,
   );
+  const saveReferencedBlock = referenceSave.save;
 
   // Only offer a preview when the blog app has a `categorySlug` route
   // template configured — otherwise there is no category page to open.
@@ -184,7 +189,7 @@ function CategoryEditorForm({
     decofile,
     category,
     previewBaseUrl,
-    draftPointer,
+    draftPointer: fastPreviewActive ? draftPointer : null,
     meta,
   });
 
@@ -447,15 +452,9 @@ function CategoryEditorForm({
           <div className="flex shrink-0 items-center gap-3">
             <SaveStatus
               isPending={
-                save.isPending ||
-                (save.v8 && referenceSave.isPending) ||
-                move.isPending
+                save.isPending || referenceSave.isPending || move.isPending
               }
-              isError={
-                save.isError ||
-                (save.v8 && referenceSave.isError) ||
-                move.isError
-              }
+              isError={save.isError || referenceSave.isError || move.isError}
             />
             {missing.length > 0 && (
               <Tooltip>

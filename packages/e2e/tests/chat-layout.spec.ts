@@ -38,7 +38,8 @@ test.describe("chat layout composition", () => {
     const handle = (await separator.boundingBox())!;
     await page.mouse.move(handle.x + handle.width / 2, handle.y + 200);
     await page.mouse.down();
-    await page.mouse.move(handle.x + 100, handle.y + 200, { steps: 10 });
+    // The chat sits on the right: dragging the divider left widens it.
+    await page.mouse.move(handle.x - 100, handle.y + 200, { steps: 10 });
     await page.mouse.up();
     await expect
       .poll(async () => (await chat.boundingBox())!.width)
@@ -46,23 +47,20 @@ test.describe("chat layout composition", () => {
     const resizedWidth = (await chat.boundingBox())!.width;
 
     const sidebar = page.locator('[data-slot="sidebar"]');
-    await expect(
-      sidebar.getByRole("button", { name: "Close chat", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await expect(
-      page
-        .getByTestId("side-panel")
-        .getByRole("button", { name: "Close chat", exact: true }),
-    ).toHaveCount(0);
+    const mainPanel = page.getByTestId("main-panel");
     await page.screenshot({
       animations: "disabled",
       path: test.info().outputPath("compact-chat-header.png"),
     });
-    await sidebar
-      .getByRole("button", { name: "Close chat", exact: true })
+    // Expanding the page takes over the chat; "Show chat" brings it back at
+    // the width it had.
+    await mainPanel
+      .getByRole("button", { name: "Expand", exact: true })
       .click();
     await expect(page.getByTestId("chat-panel")).toHaveCount(0);
-    await page.getByRole("button", { name: "Open chat", exact: true }).click();
+    await mainPanel
+      .getByRole("button", { name: "Show chat", exact: true })
+      .click();
     await expect(page.getByTestId("chat-panel")).toBeVisible();
     await expect
       .poll(async () =>

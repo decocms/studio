@@ -1476,12 +1476,13 @@ export const createMonitorRoutes = () => {
     if (!read) return c.json({ available: false, reason: "no-source" });
 
     try {
-      const rows = await read(window);
       const [since, until] = previousWindow(window.since, window.days);
-      const previous =
+      const [rows, previous] = await Promise.all([
+        read(window),
         view === "summary"
-          ? await read({ since, until }).catch(() => null)
-          : null;
+          ? read({ since, until }).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       return c.json({
         available: true,
         source: answered,

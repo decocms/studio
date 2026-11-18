@@ -15,6 +15,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
+import { z } from "zod";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type {
   SandboxProvider,
@@ -57,22 +58,42 @@ import {
   contentClientForProjectRepo,
   repoErrorStatus,
   repoRateLimitRetryAfterMs,
+  type RepoContentClient,
 } from "@/git-providers";
 import { GitProviderError } from "../../git-providers/types";
 import {
+  BLOCKS_DELETED_ON_BASE,
+  BlocksDeletedOnBaseError,
   DEFAULT_BRANCH_READ_ONLY,
   DefaultBranchWriteError,
   repoGitDiff,
   repoGitDiscard,
   repoGitRebase,
   repoGitStatus,
+  withPendingDiff,
+  withPendingStatus,
 } from "../../decofile/git-compat";
+import {
+  commitPendingBlocks,
+  pendingFiles,
+  pendingVersion,
+} from "../../decofile/pending-blocks";
+import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
+import type { PendingBranchScope } from "../../storage/decofile-pending-blocks";
 import {
   buildLoaderInvokeUrl,
   isCatalogLoaderResolveType,
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
+import {
+  buildSiteMetaRequest,
+  isJsonContentType,
+  projectSiteSlug,
+  resolveSiteMetaTarget,
+  siteMetaResponseHeaders,
+} from "../../lib/site-meta-request";
+import { guardAgainstPrivateUrl } from "../../mcp-clients/url-security";
 import { sandboxContentHandler } from "../../sandbox/content-storage";
 import { projectPackagePath } from "../../hosted/blocks-major";
 import { isBlocksV8Project } from "@decocms/shared/blocks-major";
@@ -145,6 +166,11 @@ const CONTENT_RPC_MAX_BODY_BYTES = 8 * 1024 * 1024 + 64 * 1024;
 /** One daemon file call made for the content protocol. */
 const DAEMON_FILE_CALL_TIMEOUT_MS = 30_000;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
+/** `base` plus one resolution per conflicting block: never a large body. */
+const REBASE_MAX_BODY_BYTES = 64 * 1024;
+/** A TenantConfig (git/operator/application) or a `{ base }` / `{ filepaths }`
+ *  git request: a handful of strings, never a large body. */
+const SMALL_SANDBOX_REQUEST_MAX_BODY_BYTES = 64 * 1024;
 
 /**
  * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
@@ -427,6 +453,13 @@ function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
       SANDBOX_PROXY_CACHE_HEADERS,
     );
   }
+  if (err instanceof BlocksDeletedOnBaseError) {
+    return c.json(
+      { error: message, code: BLOCKS_DELETED_ON_BASE, blocks: err.blocks },
+      409,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
+  }
   if (err instanceof RepoWriteConflict) {
     return c.json({ error: message }, 409, SANDBOX_PROXY_CACHE_HEADERS);
   }
@@ -477,10 +510,70 @@ async function proxyPreviewUpstream(
   });
 }
 
+/** The session's branch, as the pending-saves store addresses it. */
+function fastPreviewPendingScope(c: Context<VmEnv>): PendingBranchScope {
+  const claim = c.get("vmClaim");
+  return {
+    organizationId: requireOrganization(c.var.studioContext).id,
+    virtualMcpId: claim.virtualMcpId,
+    branch: claim.branch,
+  };
+}
+
+/** The branch's pending saves with the file each one touches at `headSha`. */
+async function fastPreviewPendingFiles(
+  c: Context<VmEnv>,
+  client: RepoContentClient,
+  headSha: string,
+) {
+  const pending = await c.var.studioContext.storage.decofilePendingBlocks.list(
+    fastPreviewPendingScope(c),
+  );
+  const files = await pendingFiles(
+    client,
+    headSha,
+    projectPackagePath(c.get("vmClaim").virtualMcpMetadata),
+    pending,
+  );
+  return { pending, files };
+}
+
+/** `repoGitStatus` plus the saves held in Studio, as uncommitted work. */
+async function fastPreviewStatusPayload(
+  c: Context<VmEnv>,
+  client: RepoContentClient,
+) {
+  const status = await repoGitStatus(client, c.get("vmClaim").branch);
+  const { pending, files } = await fastPreviewPendingFiles(
+    c,
+    client,
+    status.headSha,
+  );
+  return withPendingStatus(
+    status,
+    files,
+    pendingVersion(status.headSha, pending),
+  );
+}
+
+/** `repoGitDiff` with the saves held in Studio as the new side. */
+async function fastPreviewDiffPayload(
+  c: Context<VmEnv>,
+  client: RepoContentClient,
+  base?: string,
+) {
+  const { branch } = c.get("vmClaim");
+  const diff = await repoGitDiff(client, branch, base);
+  const head = await client.getBranch(branch);
+  if (!head) return diff;
+  const { files } = await fastPreviewPendingFiles(c, client, head.sha);
+  return withPendingDiff(client, diff, files);
+}
+
 async function fastPreviewGitStatus(c: Context<VmEnv>): Promise<Response> {
   try {
     const client = await fastPreviewGitClient(c);
-    const status = await repoGitStatus(client, c.get("vmClaim").branch);
+    const status = await fastPreviewStatusPayload(c, client);
     return c.json(status, 200, SANDBOX_PROXY_CACHE_HEADERS);
   } catch (err) {
     return fastPreviewGitError(c, err);
@@ -520,10 +613,22 @@ export function withClaimGitLock<T>(
 // ---- Proxy helpers ----------------------------------------------------------
 
 /** Sandbox runtime responses must never be cached — 410 Gone was getting stuck in disk cache. */
+/** `POST …/git/rebase`: the base to sync onto, and per deleted block whether it comes back. */
+const rebaseBodySchema = z.object({
+  base: z.string().min(1).optional(),
+  resolutions: z.record(z.string(), z.enum(["restore", "drop"])).optional(),
+});
+
 const SANDBOX_PROXY_CACHE_HEADERS = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
   Pragma: "no-cache",
 } as const;
+
+const smallSandboxRequestBodyLimit = bodyLimit({
+  maxSize: SMALL_SANDBOX_REQUEST_MAX_BODY_BYTES,
+  onError: (c) =>
+    c.json({ error: "Payload too large" }, 413, SANDBOX_PROXY_CACHE_HEADERS),
+});
 
 async function proxyDaemon(
   c: Context<VmEnv>,
@@ -927,7 +1032,7 @@ export const createSandboxRoutes = () => {
       redactRepoDir: true,
     }),
   );
-  app.put("/:virtualMcpId/:branch/config", (c) =>
+  app.put("/:virtualMcpId/:branch/config", smallSandboxRequestBodyLimit, (c) =>
     proxyDaemon(c, "/_sandbox/config", {
       method: "PUT",
       forwardJsonBody: true,
@@ -1079,30 +1184,31 @@ export const createSandboxRoutes = () => {
       ]),
     });
   });
-  app.post("/:virtualMcpId/:branch/git/diff", async (c) => {
-    const claim = c.get("vmClaim");
-    if (claim.runtime === "cms") {
-      try {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          base?: string;
-        };
-        const client = await fastPreviewGitClient(c);
-        const diff = await repoGitDiff(client, claim.branch, body.base);
-        return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
-      } catch (err) {
-        return fastPreviewGitError(c, err);
+  app.post(
+    "/:virtualMcpId/:branch/git/diff",
+    smallSandboxRequestBodyLimit,
+    async (c) => {
+      const claim = c.get("vmClaim");
+      if (claim.runtime === "cms") {
+        try {
+          const body = (await c.req.json().catch(() => ({}))) as {
+            base?: string;
+          };
+          const client = await fastPreviewGitClient(c);
+          const diff = await fastPreviewDiffPayload(c, client, body.base);
+          return c.json(diff, 200, SANDBOX_PROXY_CACHE_HEADERS);
+        } catch (err) {
+          return fastPreviewGitError(c, err);
+        }
       }
-    }
-    return proxyDaemon(c, "/_sandbox/git/diff", {
-      forwardJsonBody: true,
-      map404to410: true,
-    });
-  });
+      return proxyDaemon(c, "/_sandbox/git/diff", {
+        forwardJsonBody: true,
+        map404to410: true,
+      });
+    },
+  );
   app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
-    // Sandbox-less: every save is already a commit on the remote branch, so
-    // "sync local work" has nothing to do. Answering OK keeps the publish
-    // dialog's flow (push → rebase → PR/merge via the GitHub connection)
-    // working with no working tree behind it.
+    // Sandbox-less: "sync local work" only commits the saves held in Studio.
     //
     // Deliberately does NOT flush a coding session's pod on the same branch:
     // the daemon's publish commits its ENTIRE working tree, while the gate that
@@ -1110,8 +1216,26 @@ export const createSandboxRoutes = () => {
     // flushing would push unreviewed code past a `smart`/`code-review` policy.
     // A teammate's unpushed work staying invisible here is a pre-existing blind
     // spot, and the honest fix is to widen the GATE, not to widen the push.
-    if (c.get("vmClaim").runtime === "cms") {
-      return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+    const publishClaim = c.get("vmClaim");
+    if (publishClaim.runtime === "cms") {
+      return withClaimGitLock(publishClaim.claimName, async () => {
+        try {
+          const client = await fastPreviewGitClient(c);
+          await commitPendingBlocks(
+            c.var.studioContext.storage.decofilePendingBlocks,
+            fastPreviewPendingScope(c),
+            {
+              client,
+              branch: publishClaim.branch,
+              packagePath: projectPackagePath(publishClaim.virtualMcpMetadata),
+              coAuthor: coAuthorFromStudioContext(c.var.studioContext),
+            },
+          );
+          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+        } catch (err) {
+          return fastPreviewGitError(c, err);
+        }
+      });
     }
     const runner = requireRunner(c);
     if (runner instanceof Response) return runner;
@@ -1152,89 +1276,133 @@ export const createSandboxRoutes = () => {
       });
     });
   });
-  app.post("/:virtualMcpId/:branch/git/discard", async (c) => {
-    const claim = c.get("vmClaim");
-    if (claim.runtime === "cms") {
-      // No working tree: discarding a COMMITTED change is itself a commit.
-      return withClaimGitLock(claim.claimName, async () => {
-        const body = (await c.req.json().catch(() => ({}))) as {
-          filepaths?: unknown;
-        };
-        const filepaths = Array.isArray(body.filepaths)
-          ? body.filepaths.filter((p): p is string => typeof p === "string")
-          : [];
-        if (filepaths.length === 0) {
-          return c.json(
-            { error: "filepaths is required" },
-            400,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-        try {
-          const client = await fastPreviewGitClient(c);
-          await repoGitDiscard(client, claim.branch, filepaths);
-          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
-        } catch (err) {
-          if (err instanceof DefaultBranchWriteError) {
+  app.post(
+    "/:virtualMcpId/:branch/git/discard",
+    smallSandboxRequestBodyLimit,
+    async (c) => {
+      const claim = c.get("vmClaim");
+      if (claim.runtime === "cms") {
+        // No working tree: discarding a COMMITTED change is itself a commit.
+        return withClaimGitLock(claim.claimName, async () => {
+          const body = (await c.req.json().catch(() => ({}))) as {
+            filepaths?: unknown;
+          };
+          const filepaths = Array.isArray(body.filepaths)
+            ? body.filepaths.filter((p): p is string => typeof p === "string")
+            : [];
+          if (filepaths.length === 0) {
+            return c.json(
+              { error: "filepaths is required" },
+              400,
+              SANDBOX_PROXY_CACHE_HEADERS,
+            );
+          }
+          try {
+            const client = await fastPreviewGitClient(c);
+            // A held save is discarded by dropping it; a committed one below.
+            const head = await client.getBranch(claim.branch);
+            if (head) {
+              const { files } = await fastPreviewPendingFiles(
+                c,
+                client,
+                head.sha,
+              );
+              const wanted = new Set(filepaths);
+              await c.var.studioContext.storage.decofilePendingBlocks.deleteKeys(
+                fastPreviewPendingScope(c),
+                files
+                  .filter((f) => wanted.has(f.path))
+                  .map((f) => f.block.blockKey),
+              );
+            }
+            await repoGitDiscard(client, claim.branch, filepaths);
+            return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+          } catch (err) {
+            if (err instanceof DefaultBranchWriteError) {
+              return fastPreviewGitError(c, err);
+            }
+            const status =
+              repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
+                ? 409
+                : 502;
+            const message = err instanceof Error ? err.message : String(err);
+            return c.json(
+              { error: message },
+              status,
+              SANDBOX_PROXY_CACHE_HEADERS,
+            );
+          }
+        });
+      }
+      return withClaimGitLock(claim.claimName, () =>
+        proxyDaemon(c, "/_sandbox/git/discard", {
+          forwardJsonBody: true,
+          map404to410: true,
+        }),
+      );
+    },
+  );
+  app.post(
+    "/:virtualMcpId/:branch/git/rebase",
+    bodyLimit({
+      maxSize: REBASE_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    async (c) => {
+      const claim = c.get("vmClaim");
+      if (claim.runtime === "cms") {
+        return withClaimGitLock(claim.claimName, async () => {
+          try {
+            const parsed = rebaseBodySchema.safeParse(
+              await c.req.json().catch(() => ({})),
+            );
+            if (!parsed.success) {
+              return c.json(
+                { error: "Invalid body", details: parsed.error.issues },
+                400,
+                SANDBOX_PROXY_CACHE_HEADERS,
+              );
+            }
+            const client = await fastPreviewGitClient(c);
+            const base = parsed.data.base ?? (await client.getDefaultBranch());
+            await repoGitRebase(
+              client,
+              claim.branch,
+              base,
+              parsed.data.resolutions,
+            );
+            return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
+          } catch (err) {
             return fastPreviewGitError(c, err);
           }
-          const status =
-            repoErrorStatus(err) === 409 || err instanceof RepoWriteConflict
-              ? 409
-              : 502;
-          const message = err instanceof Error ? err.message : String(err);
-          return c.json(
-            { error: message },
-            status,
-            SANDBOX_PROXY_CACHE_HEADERS,
-          );
-        }
-      });
-    }
-    return withClaimGitLock(claim.claimName, () =>
-      proxyDaemon(c, "/_sandbox/git/discard", {
-        forwardJsonBody: true,
-        map404to410: true,
-      }),
-    );
-  });
-  app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
-    const claim = c.get("vmClaim");
-    if (claim.runtime === "cms") {
-      return withClaimGitLock(claim.claimName, async () => {
-        try {
-          const body = (await c.req.json().catch(() => ({}))) as {
-            base?: string;
-          };
-          const client = await fastPreviewGitClient(c);
-          const base = body.base ?? (await client.getDefaultBranch());
-          await repoGitRebase(client, claim.branch, base);
-          return c.json({ ok: true }, 200, SANDBOX_PROXY_CACHE_HEADERS);
-        } catch (err) {
-          return fastPreviewGitError(c, err);
-        }
-      });
-    }
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
-
-    const { claimName } = c.get("vmClaim");
-    const ctx = c.var.studioContext;
-
-    return withClaimGitLock(claimName, async () => {
-      try {
-        await patchSandboxOperator(ctx, runner, claimName);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+        });
       }
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-      return proxyDaemon(c, "/_sandbox/git/rebase", {
-        forwardJsonBody: true,
-        map404to410: true,
+      const { claimName } = c.get("vmClaim");
+      const ctx = c.var.studioContext;
+
+      return withClaimGitLock(claimName, async () => {
+        try {
+          await patchSandboxOperator(ctx, runner, claimName);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+        }
+
+        return proxyDaemon(c, "/_sandbox/git/rebase", {
+          forwardJsonBody: true,
+          map404to410: true,
+        });
       });
-    });
-  });
+    },
+  );
   // Smart-review judge: the client sends the full publish payload (status +
   // combined diff) and the cheap "fast" model tier decides whether the changes
   // need PR review. Backfills status/diff from the daemon when omitted. On any
@@ -1304,8 +1472,8 @@ export const createSandboxRoutes = () => {
                 await (async () => {
                   const client = await fastPreviewGitClient(c);
                   return Promise.all([
-                    repoGitStatus(client, claim.branch),
-                    repoGitDiff(client, claim.branch),
+                    fastPreviewStatusPayload(c, client),
+                    fastPreviewDiffPayload(c, client),
                   ]);
                 })();
         // The only route under /sandbox that spends real money: one model call
@@ -1497,6 +1665,74 @@ export const createSandboxRoutes = () => {
       });
     },
   );
+
+  // The deployed site's schema, for the CMS's last-resort meta source. The
+  // edge rejects `/live/_meta` on public hosts without the admin token, which
+  // only Studio holds, so the browser cannot read it directly.
+  app.get("/:virtualMcpId/:branch/site-meta", async (c) => {
+    const metadata = c.get("vmClaim").virtualMcpMetadata;
+    const siteSlug = projectSiteSlug(metadata);
+    const orgOwnsSite = siteSlug
+      ? await c.var.studioContext.storage.orgSites.isOwnedBy(
+          siteSlug,
+          requireOrganization(c.var.studioContext).id,
+        )
+      : false;
+    const target = resolveSiteMetaTarget(metadata, orgOwnsSite);
+    if (!target) {
+      return c.json(
+        { error: "Project has no preview server configured" },
+        404,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+    const request = buildSiteMetaRequest({
+      target,
+      ifNoneMatch: c.req.header("if-none-match"),
+      adminToken: process.env.DECO_SITE_ADMIN_TOKEN,
+    });
+    const blocked = await guardAgainstPrivateUrl(request.url);
+    if (blocked) {
+      return c.json({ error: blocked }, 403, SANDBOX_PROXY_CACHE_HEADERS);
+    }
+
+    let upstream: Response;
+    try {
+      upstream = await fetch(request.url, {
+        headers: request.headers,
+        redirect: "manual",
+        signal: AbortSignal.any([
+          c.req.raw.signal,
+          AbortSignal.timeout(30_000),
+        ]),
+      });
+    } catch {
+      return c.json(
+        { error: "Site unreachable" },
+        502,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+
+    const headers = siteMetaResponseHeaders(upstream.headers);
+    if (upstream.status === 304) {
+      await upstream.body?.cancel();
+      return new Response(null, { status: 304, headers });
+    }
+    if (
+      !upstream.ok ||
+      !isJsonContentType(upstream.headers.get("content-type"))
+    ) {
+      await upstream.body?.cancel();
+      // Redirects are not followed: they would leave the project's origin.
+      return c.json(
+        { error: `Site answered ${upstream.status} without a schema` },
+        upstream.status === 404 ? 404 : 502,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
+    return new Response(upstream.body, { status: 200, headers });
+  });
 
   return app;
 };

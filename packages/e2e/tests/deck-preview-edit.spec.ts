@@ -118,7 +118,13 @@ test.describe("deck preview tab", () => {
     // group's drag state active forever. The library then kept
     // `pointer-events: none` on the panels, so the framed page still painted
     // but no longer accepted clicks or keyboard focus.
-    const resizeHandle = page.locator('[data-slot="resizable-handle"]').first();
+    // The workspace divider between the page and the chat, not a handle
+    // inside the page.
+    const resizeHandle = page
+      .locator(
+        '[data-testid="chat-layout-content"] ~ [data-slot="resizable-handle"]',
+      )
+      .first();
     const iframe = page.locator(`iframe[title="${DECK_PATH}"]`);
     const mainResizablePanel = page
       .getByTestId("main-panel")
@@ -135,12 +141,16 @@ test.describe("deck preview tab", () => {
     const resizeY = iframeBox.y + iframeBox.height / 2;
     await page.mouse.move(resizeX, resizeY);
     await page.mouse.down();
-    // Establish the drag while still over the parent document. v4 captures the
-    // pointer on this first movement so the later iframe crossing cannot steal
-    // the release event.
-    await page.mouse.move(resizeX - 4, resizeY);
+    // Establish the drag while still over the parent document (the chat, right
+    // of the divider). v4 captures the pointer on this first movement so the
+    // later iframe crossing cannot steal the release event.
+    await page.mouse.move(resizeX + 4, resizeY);
     await expect(mainResizablePanel).toHaveCSS("pointer-events", "none");
-    await page.mouse.move(iframeBox.x + 40, resizeY, { steps: 10 });
+    // Release just inside the iframe, beside the divider, so the page keeps
+    // its width.
+    await page.mouse.move(iframeBox.x + iframeBox.width - 40, resizeY, {
+      steps: 10,
+    });
     await page.mouse.up();
     await expect(mainResizablePanel).toHaveCSS("pointer-events", "auto");
 

@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import type { Database } from "./types";
 
 /** A plan shared with an org, as callers see it. The token is never here. */
@@ -23,12 +23,45 @@ export class OrgSharedPlanStorage {
         organization_id: organizationId,
         provider_id: providerId,
         user_id: userId,
-        created_at: new Date(),
+        // The database clock, so a later insert never sorts before an earlier
+        // one across API pods: `shareExclusive` picks its winner by this order.
+        created_at: sql<Date>`now()`,
       })
       .onConflict((oc) =>
         oc.columns(["organization_id", "provider_id", "user_id"]).doNothing(),
       )
       .execute();
+  }
+
+  /**
+   * Share unless another member already shares this provider here. Returns
+   * the share that holds the slot: the caller's on success, otherwise the
+   * other member's. Two concurrent callers can both insert; the oldest row
+   * (ties by user id, the same order `list` uses) keeps the slot and the
+   * other removes its own row, so no lock or migration is needed.
+   */
+  async shareExclusive(
+    organizationId: string,
+    providerId: string,
+    userId: string,
+  ): Promise<OrgSharedPlan | null> {
+    const holder = await this.holder(organizationId, providerId);
+    if (holder && holder.userId !== userId) return holder;
+    await this.share(organizationId, providerId, userId);
+    const winner = await this.holder(organizationId, providerId);
+    if (winner && winner.userId !== userId) {
+      await this.unshare(organizationId, providerId, userId);
+    }
+    return winner;
+  }
+
+  /** The share dispatch and status use for this provider: the oldest. */
+  async holder(
+    organizationId: string,
+    providerId: string,
+  ): Promise<OrgSharedPlan | null> {
+    const plans = await this.list(organizationId);
+    return plans.find((plan) => plan.providerId === providerId) ?? null;
   }
 
   async unshare(organizationId: string, providerId: string, userId: string) {
@@ -51,7 +84,9 @@ export class OrgSharedPlanStorage {
 
   /**
    * The org's shared plans, oldest first per provider — the order dispatch
-   * tries them in. A sharer who left the org no longer counts.
+   * tries them in. Orgs that shared before sharing became exclusive may hold
+   * several rows per provider; the oldest is the one status reports. A sharer
+   * who left the org no longer counts.
    */
   async list(organizationId: string): Promise<OrgSharedPlan[]> {
     const rows = await this.db
@@ -70,6 +105,7 @@ export class OrgSharedPlanStorage {
       ])
       .where("s.organization_id", "=", organizationId)
       .orderBy("s.created_at", "asc")
+      .orderBy("s.user_id", "asc")
       .execute();
     return rows.map((row) => ({
       ...row,

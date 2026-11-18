@@ -36,10 +36,14 @@ const MODELS_BODY = {
   ],
 };
 
+const imageOnlyList = () =>
+  new Response(JSON.stringify({ data: [] }), { status: 200 });
+
 describe("openrouterAdapter.listModels", () => {
   test("retries a transient 5xx and succeeds once OpenRouter recovers", async () => {
     let calls = 0;
-    globalThis.fetch = (async (): Promise<Response> => {
+    globalThis.fetch = (async (url: string): Promise<Response> => {
+      if (url.includes("output_modalities=image")) return imageOnlyList();
       calls++;
       if (calls < 3) {
         return new Response("upstream hiccup", { status: 503 });
@@ -61,7 +65,8 @@ describe("openrouterAdapter.listModels", () => {
 
   test("does not retry a non-transient 4xx and surfaces it immediately", async () => {
     let calls = 0;
-    globalThis.fetch = (async (): Promise<Response> => {
+    globalThis.fetch = (async (url: string): Promise<Response> => {
+      if (url.includes("output_modalities=image")) return imageOnlyList();
       calls++;
       return new Response("bad key", { status: 401 });
     }) as unknown as typeof fetch;

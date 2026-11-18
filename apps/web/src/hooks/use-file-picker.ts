@@ -97,11 +97,16 @@ export function useFilePickerUpload() {
     mutationFn: async (input: {
       configId: string;
       file: File;
+      /** Overwrite this existing key instead of creating a new one. */
+      replaceKey?: string;
     }): Promise<UploadResult> => {
       const contentType = input.file.type || "application/octet-stream";
+      const target = input.replaceKey
+        ? `replace=${encodeURIComponent(input.replaceKey)}`
+        : `filename=${encodeURIComponent(input.file.name)}`;
 
       const response = await fetch(
-        `/api/${encodeURIComponent(org.slug)}/file-configs/${encodeURIComponent(input.configId)}/upload?filename=${encodeURIComponent(input.file.name)}`,
+        `/api/${encodeURIComponent(org.slug)}/file-configs/${encodeURIComponent(input.configId)}/upload?${target}`,
         {
           method: "POST",
           headers: { "Content-Type": contentType },

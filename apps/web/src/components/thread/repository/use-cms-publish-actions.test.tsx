@@ -790,7 +790,14 @@ describe("useCmsPublishActions: a discard is never blocked", () => {
 });
 
 describe("useCmsPublishActions on a v7 site", () => {
-  it("discard keeps its git path and re-reads the dialog, as on main", async () => {
+  it("discard keeps its git path, re-reads the dialog and the blocks, then has the open form re-read", async () => {
+    let blockReads = 0;
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.decofile(CACHE_KEY),
+      queryFn: async () => ({ read: ++blockReads }),
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => {});
+    await settle();
     const refresh = mock(async () => {});
     const { result } = render({ kind: "legacy" }, { hosted: false, refresh });
     const before = { ...reads };
@@ -805,10 +812,13 @@ describe("useCmsPublishActions on a v7 site", () => {
       [HOME],
     );
     expect(refresh).toHaveBeenCalledTimes(1);
+    // Nothing of the content protocol is read for a v7 site.
     expect(reads).toEqual(before);
+    // Fast Preview has no push: the discard re-reads what the editor shows.
+    expect(blockReads).toBe(2);
     expect(getContentSyncState(SCOPE)).toMatchObject({
       phase: "idle",
-      epoch: 0,
+      epoch: 1,
     });
   });
 });

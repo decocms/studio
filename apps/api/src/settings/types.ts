@@ -177,6 +177,12 @@ export interface Settings {
   /** MCP read/list caching. On by default in production, off in development;
    *  MCP_CACHE_ENABLED explicitly overrides either default. */
   mcpCacheEnabled: boolean;
+  /** Rewrite outbound MCP URLs to in-cluster addresses, keyed by public
+   *  hostname (MCP_INTERNAL_HOST_MAP, `host=origin` CSV). Lets calls to an
+   *  own-cluster MCP addressed by its `*.deco.site` host (e.g. the 700-tool
+   *  VTEX MCP) stay internal instead of egressing through the public ingress.
+   *  Empty = off. See mcp-clients/outbound/internalize-url.ts. */
+  mcpInternalHostMap: Record<string, string>;
   /** JSON array of public skill-set sources overlaid on the built-in
    *  defaults (see file-storage/public-sets.ts). */
   orgFsPublicSetsJson: string | undefined;
@@ -202,6 +208,9 @@ export interface Settings {
    *  trigger runs on it (`BOARD_TRANSITION_SETTLE_SECONDS`, default 20).
    *  Shortened only by e2e. */
   boardTransitionSettleSeconds: number;
+  /** Least time between two decofile autosave commits to one branch
+   *  (`DECOFILE_COMMIT_GAP_SECONDS`, default 5). Shortened only by e2e. */
+  decofileCommitGapSeconds: number;
   /** Same, for a run whose agent loop executes in its own SANDBOX pod
    *  (SANDBOX_MAX_CONCURRENT_HOSTED_RUNS) — `workerConcurrency` on
    *  HOSTED_HARNESS_SANDBOXED_QUEUE. Much higher than the in-process cap

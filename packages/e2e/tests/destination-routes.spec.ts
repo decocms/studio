@@ -193,23 +193,24 @@ test.describe("destination routes", () => {
       { timeout: SHELL_TIMEOUT_MS },
     );
 
-    // A link missing its project resolves to the persisted owner of the chat.
+    // A link missing its project opens the chat where the person lands: the
+    // chat follows them across pages instead of moving them to its project.
     await page.goto(`/${orgSlug}/${threadId}`);
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${orgSlug}/projects/${projectId}` &&
+        url.pathname === `/${orgSlug}/home` &&
         url.searchParams.get("virtualmcpid") === null &&
         url.searchParams.get("thread") === threadId,
       { timeout: SHELL_TIMEOUT_MS },
     );
   });
 
-  // A project chat keeps its owner through legacy destination redirects.
+  // A legacy destination keeps its page; the project chat opens beside it.
   for (const { main, destination } of [
     { main: "board", destination: "tasks" },
     { main: "files", destination: "library" },
   ] as const) {
-    test(`a legacy main=${main} thread settles in its owning project after /${destination}`, async ({
+    test(`a legacy main=${main} thread keeps its chat after /${destination}`, async ({
       authedPage: { page, orgSlug },
     }) => {
       const request = page.context().request;
@@ -228,7 +229,7 @@ test.describe("destination routes", () => {
           url.pathname ===
           (main === "board"
             ? `/${orgSlug}/projects/${projectId}/tasks`
-            : `/${orgSlug}/projects/${projectId}`),
+            : `/${orgSlug}/${destination}`),
         { timeout: SHELL_TIMEOUT_MS },
       );
       const landed = new URL(page.url());
@@ -470,22 +471,22 @@ test.describe("destination routes", () => {
     );
   });
 
-  test("a destination collapses the chat, and the URL overrides that", async ({
+  test("a destination opens beside the chat, and the URL overrides that", async ({
     authedPage: { page, orgSlug },
   }) => {
-    /* Going to Tasks shows Tasks: the destination names its own main view, so
-       the chat starts collapsed beside it. */
+    /* Going to Tasks shows Tasks: the destination names its own main view, and
+       the chat stays open beside it. */
     await page.goto(`/${orgSlug}/tasks`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await expect(chatPanel(page)).toHaveCount(0);
+    await expect(chatPanel(page)).toBeVisible();
 
     /* An explicit `?sidepanel=` outranks the route's default. */
     await page.goto(`/${orgSlug}/tasks?sidepanel=true`);
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toBeVisible();
 
-    /* Closing the main panel can never leave the workspace blank: with the
-       route default collapsing the chat, the fallback reopens it. */
+    /* Closing the main panel can never leave the workspace blank: the chat
+       fills the space. */
     await page.goto(`/${orgSlug}/tasks?mainpanel=false`);
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(mainPanel(page)).toBeHidden();
@@ -508,6 +509,5 @@ test.describe("destination routes", () => {
     await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await page.goto(`/${orgSlug}/tasks?sidepanel=0`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-    await expect(chatPanel(page)).toHaveCount(0);
   });
 });

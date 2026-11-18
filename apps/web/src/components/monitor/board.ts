@@ -9,7 +9,6 @@
 
 import type {
   OrderMonitorChannel,
-  OrderMonitorRule,
   OrderMonitorStatus,
   OrderMonitorStore,
 } from "@decocms/shared/order-monitor";
@@ -37,6 +36,8 @@ export interface MetricPoint {
   d1: number | null;
   w1: number | null;
   y1: number | null;
+  /** The order monitor's warning and alert levels for this bucket, when it judges it. */
+  band?: [number, number] | null;
 }
 
 export interface Kpi {
@@ -103,19 +104,17 @@ export interface Deploy {
 
 export type Signal =
   | {
-      kind: "orders";
+      /** An open alert: it stays until someone acks it. */
+      kind: "alert";
       id: string;
-      severity: "alert" | "warning";
+      severity: "alert";
       since: string;
       projectId: string | null;
-      storeId: string;
-      storeTitle: string;
-      rule: OrderMonitorRule;
-      observed: number;
-      expected: number;
-      /** The deploy it started after, when one landed shortly before. */
-      after: { message: string; minutes: number } | null;
-      task: { keySeq: number } | null;
+      /** The store it is about, when it is about one of the monitored stores. */
+      storeId: string | null;
+      title: string;
+      /** Where to look when it isn't one of the stores: a Studio path. */
+      link: string | null;
     }
   | {
       kind: "deploy";
@@ -181,6 +180,23 @@ export interface ExperimentRow {
 }
 
 export type SourceState = "live" | "partial" | "off";
+
+/**
+ * The orders source's state. `storesConfirmed` is false while the store list is
+ * still loading or came back an error — then an empty list is NOT authoritative,
+ * so a VTEX connection whose ingest store simply wasn't fetched is not mistaken
+ * for one that was never installed. Fail open to "live" in that case rather than
+ * nag a connected store to reconnect; only a confirmed-empty read is "partial".
+ */
+export function ordersSourceState(
+  storeCount: number,
+  vtexCount: number,
+  storesConfirmed: boolean,
+): SourceState {
+  if (storeCount > 0) return "live";
+  if (vtexCount === 0) return "off";
+  return storesConfirmed ? "partial" : "live";
+}
 
 export interface SourceRow {
   id: SourceId;

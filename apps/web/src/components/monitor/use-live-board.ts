@@ -9,6 +9,7 @@ import type { OrderMonitorChannel } from "@decocms/shared/order-monitor";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { localInstant } from "@/components/order-monitor/order-monitor-day";
+import { useAlerts } from "@/hooks/use-alerts";
 import { useFeature } from "@/hooks/use-entitlements";
 import {
   useRepositories,
@@ -31,6 +32,7 @@ import {
   type Kpi,
   type MetricPoint,
   type MonitorBoard,
+  ordersSourceState,
   type ProjectRow,
   measureDeploy,
   type Signal,
@@ -58,11 +60,12 @@ export function useLiveBoard(
   const config = usePublicConfig();
   // Off the plan, the order monitor answers 403: no stores, not a broken page.
   const monitoring = useFeature("monitoring");
-  const storesQuery = useOrderMonitorStores(
-    orgSlug,
-    config.orderMonitorEnabled === true && monitoring,
-  );
+  const storesEnabled = config.orderMonitorEnabled === true && monitoring;
+  const storesQuery = useOrderMonitorStores(orgSlug, storesEnabled);
   const allStores = monitoring ? (storesQuery.data ?? []) : [];
+  const { alerts } = useAlerts(orgSlug);
+  // Empty means "no store" only once the read answered; disabled keeps its old upsell meaning. See ordersSourceState.
+  const storesConfirmed = !storesEnabled || storesQuery.isSuccess;
   const stores = scopeId
     ? allStores.filter((s) => s.agentIds.includes(scopeId))
     : allStores;
@@ -110,29 +113,26 @@ export function useLiveBoard(
   // A store whose day failed would leave every total waiting on it.
   const dayError = dayQueries.find((q) => q.error)?.error ?? null;
 
-  // The rules' states are now's; a past day has no verdicts of its own.
-  const signals: Signal[] = (date ? [] : stores).flatMap((store) =>
-    store.rules.flatMap((r): Signal[] =>
-      r.status === "warning" || r.status === "alert"
-        ? [
-            {
-              kind: "orders",
-              id: `${store.connectionId}:${r.rule}`,
-              severity: r.status,
-              since: r.since,
-              projectId: scopeId ?? store.agentIds[0] ?? null,
-              storeId: store.connectionId,
-              storeTitle: store.title,
-              rule: r.rule,
-              observed: r.verdict.observed,
-              expected: r.verdict.expected,
-              after: null,
-              task: r.task,
-            },
-          ]
-        : [],
-    ),
-  );
+  // Open alerts are now's; a past day shows none. A store alert belongs to
+  // the projects that sell through the store, so a scoped board keeps only
+  // its own stores' alerts.
+  const storeOf = new Map(allStores.map((s) => [s.connectionId, s]));
+  const signals: Signal[] = (date ? [] : alerts).flatMap((alert): Signal[] => {
+    const store = storeOf.get(alert.subjectId);
+    if (scopeId && store && !store.agentIds.includes(scopeId)) return [];
+    return [
+      {
+        kind: "alert",
+        id: alert.id,
+        severity: "alert",
+        since: alert.createdAt,
+        projectId: store ? (scopeId ?? store.agentIds[0] ?? null) : null,
+        storeId: store?.connectionId ?? null,
+        title: alert.title,
+        link: alert.link,
+      },
+    ];
+  });
 
   const scoped = scopeId ? projects.filter((p) => p.id === scopeId) : projects;
   // Studio's own agents come with every org and carry no site, the Deco Score
@@ -166,7 +166,7 @@ export function useLiveBoard(
       : {
           // A store connected without the order ingest isn't in the lake yet.
           id: "orders",
-          state: vtex.length > 0 ? "partial" : "off",
+          state: ordersSourceState(0, vtex.length, storesConfirmed),
           detail:
             vtex.length > 0 ? { provider: "VTEX", count: vtex.length } : null,
           lastEventAt: null,
@@ -233,6 +233,25 @@ export function useLiveBoard(
     const hourly = (key: "today" | Comparison, h: number) =>
       days.length === 0 ? null : sum(days.map((d) => d.orders[key][h] ?? null));
     const hours = Array.from({ length: 24 }, (_, h) => h);
+    // Each store's warning and alert levels added up; none while any store doesn't judge the hour.
+    const bandOf = (
+      levels: (d: (typeof days)[number]) => {
+        warn: (number | null)[];
+        alert: (number | null)[];
+      },
+      h: number,
+    ): [number, number] | null => {
+      const pairs = days.map((d) => {
+        const { warn, alert } = levels(d);
+        return [alert[h] ?? null, warn[h] ?? null] as const;
+      });
+      return days.length > 0 &&
+        pairs.every(([a, w]) => a !== null && w !== null)
+        ? [sum(pairs.map(([a]) => a)), sum(pairs.map(([, w]) => w))]
+        : null;
+    };
+    const ordersBand = (h: number) =>
+      bandOf((d) => ({ warn: d.orders.warnAt, alert: d.orders.alertAt }), h);
     const points: MetricPoint[] = hours
       .filter((h) => h < running)
       .map((h) => ({
@@ -241,6 +260,7 @@ export function useLiveBoard(
         d1: hourly("d1", h),
         w1: hourly("w1", h),
         y1: hourly("y1", h),
+        band: ordersBand(h),
       }));
     // The hours still to come: the order monitor's expected count, which past
     // now is its projection, beside the reference days' same hours.
@@ -255,6 +275,7 @@ export function useLiveBoard(
         d1: hourly("d1", h),
         w1: hourly("w1", h),
         y1: hourly("y1", h),
+        band: ordersBand(h),
       }));
     const backfills = days.flatMap((d) => (d.backfill ? [d.backfill] : []));
     kpis.push({
@@ -297,6 +318,13 @@ export function useLiveBoard(
             d1: canceled("d1", h),
             w1: canceled("w1", h),
             y1: canceled("y1", h),
+            band: bandOf(
+              (d) => ({
+                warn: d.cancellations.canceledWarnAt,
+                alert: d.cancellations.canceledAlertAt,
+              }),
+              h,
+            ),
           }))
         : null,
     });
@@ -433,7 +461,7 @@ export function useLiveBoard(
         // By store: a store several projects aggregate alerts in each of them.
         signals: signals.filter(
           (s) =>
-            s.kind === "orders" &&
+            s.kind === "alert" &&
             own.some((store) => store.connectionId === s.storeId),
         ).length,
       },

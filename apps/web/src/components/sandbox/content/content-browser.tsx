@@ -1,6 +1,8 @@
 import { isBlockBody } from "@/cms/block-body";
 import { CmsBlockBoundary } from "@/cms/block-boundary";
 import { useBlogAi } from "@/hooks/use-blog-ai";
+import { useBlogView } from "@/hooks/use-blog-view";
+import { useLegacyBlogPostFormat } from "@/hooks/use-legacy-blog-post-format";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -90,7 +92,7 @@ import {
   getPageVariantSectionsAt,
 } from "@/components/sections-editor/page-variants";
 import { listAvailableSections } from "@/components/sections-editor/section-catalog";
-import { createReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
+import { useReferencedBlockSaver } from "@/components/sections-editor/save-referenced-block";
 import { CollectionsSidebar } from "./collections-sidebar";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
@@ -140,7 +142,7 @@ import {
   uniqueCategorySlug,
   getBlogPayload,
   isBlogKind,
-  kindOfResolveType,
+  isBlogRecordType,
   listAllPostPayloads,
   missingFieldsLabel,
   postIdOfKey,
@@ -166,6 +168,7 @@ import { useNeverPublished } from "@/components/sections-editor/use-never-publis
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import {
+  BlocksErrorState,
   ContentBackendWaiting,
   isSiteNotOwned,
   SiteNotOwnedState,
@@ -260,8 +263,12 @@ const RedirectEditor = lazy(() =>
 
 /** Types whose list rows show fields of the body: loaded with the list (hosted v8). */
 function isBodyListedType(type: string): boolean {
+  return isBlogRecordType(type) || isSiteBodyListedType(type);
+}
+
+/** {@link isBodyListedType} when the blog is the Blog view's, not listed here. */
+function isSiteBodyListedType(type: string): boolean {
   return (
-    kindOfResolveType(type) !== null ||
     type === REDIRECTS_RESOLVE_TYPE ||
     type === "redirect" ||
     REDIRECT_LOADER_RESOLVE_TYPES.has(type)
@@ -297,23 +304,35 @@ export function visibleCollection(
   blogAi: boolean,
   /** A Blocks (v8) site: its campaigns are the Calendar view, not a tab here. */
   blocksV8 = false,
+  /** The org's Blog view (`blog_view_enabled`) holds the blog instead. */
+  blogView = false,
 ): CollectionId {
+  if (blogView && isBlogCollection(active)) return "pages";
   if (active === "context" && !blogAi) return "posts";
   if (blocksV8 && active === "calendar") return "pages";
   return active;
 }
 
+/** The blog's collections: its records, its schedule and its brand context. */
+function isBlogCollection(id: CollectionId): boolean {
+  return isBlogKind(id) || id === "post-schedule" || id === "context";
+}
+
 /**
  * A `?contentCollection=` deep link's collection: a blog collection (the Blog
- * Manager's "Editar no Studio") and, on a Blocks v8 site, Sections (the
- * Experiments tab's links). Anything else opens Pages.
+ * Manager's "Editar no Studio"), unless the org's Blog view takes those, and,
+ * on a Blocks v8 site, Sections (the Experiments tab's links). Anything else
+ * opens Pages.
  */
 export function deepLinkCollection(
   param: string | undefined,
   blocksV8: boolean,
+  blogView = false,
 ): CollectionId | null {
   if (!param) return null;
-  if (isBlogKind(param as CollectionId)) return param as CollectionId;
+  if (isBlogKind(param as CollectionId)) {
+    return blogView ? null : (param as CollectionId);
+  }
   if (!blocksV8) return null;
   return param === "sections" ? param : null;
 }
@@ -533,21 +552,29 @@ function ContentBrowserReady({
     from: ContentTypesView | null;
   } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
+  // A changed entry whose discard is being confirmed: kept after the dialog
+  // closes, so its title doesn't empty while the dialog animates out.
+  const [discardTarget, setDiscardTarget] = useState<ContentEntry | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
-  const { data: decofile, isLoading: decofileLoading } = useDecofile(
-    fetchParams,
-    { fetchEnabled: devServerReady },
-  );
+  const {
+    data: decofile,
+    isLoading: decofileLoading,
+    refetch: refetchDecofile,
+  } = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   // Hosted v8: the lists read only the index; the bodies a view shows are
   // loaded as it opens them (useEnsureDecofileBlocks). Type lists whose rows
   // show fields of the body (blog records, redirect rules, the site app)
   // load their blocks.
   const scope = { orgSlug, virtualMcpId, branch };
+  // With the org's Blog view on, the blog isn't listed here.
+  const blogView = useBlogView();
   const typeListNames = useIndexNamesOfType(
     hostedDraft ? scope : null,
-    isBodyListedType,
+    blogView ? isSiteBodyListedType : isBodyListedType,
   );
   const typeListLoad = useEnsureDecofileBlocks(
     hostedDraft ? scope : null,
@@ -562,14 +589,19 @@ function ContentBrowserReady({
   const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [storedCollection, setActiveCollection] = useState<CollectionId>(
     () =>
-      deepLinkCollection(contentDeepLink.contentCollection, !runsSiteCode) ??
-      "pages",
+      deepLinkCollection(
+        contentDeepLink.contentCollection,
+        !runsSiteCode,
+        blogView,
+      ) ?? "pages",
   );
   const blogAi = useBlogAi();
+  const legacyContent = useLegacyBlogPostFormat(virtualMcpId);
   const activeCollection = visibleCollection(
     storedCollection,
     blogAi,
     !runsSiteCode,
+    blogView,
   );
   const { openPanel } = usePanelNavigate();
   // Where a variant's test or campaign is managed: the Experiments and
@@ -631,7 +663,11 @@ function ContentBrowserReady({
    * built" for as long as the block stays open.
    */
   const [schemaWaitOpen, setSchemaWaitOpen] = useState(false);
-  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
+  const {
+    data: meta,
+    isLoading: metaLoading,
+    refetch: refetchMeta,
+  } = useLiveMeta(fetchParams, {
     fetchEnabled: devServerReady,
     refetchInterval: (query) => {
       const currentMeta = query.state.data;
@@ -808,6 +844,11 @@ function ContentBrowserReady({
   };
 
   const saveBlock = useSaveBlock(fetchParams);
+  // Persist nested saved-block references created from within the section form.
+  const saveReferencedBlock = useReferencedBlockSaver(
+    { orgSlug, virtualMcpId, branch },
+    decofile ?? {},
+  ).save;
   const loadBlock = useLoadDecofileBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
 
@@ -906,7 +947,15 @@ function ContentBrowserReady({
   }
 
   if (dataMissing) {
-    return <EmptyMessage title="Could not load site data." />;
+    return (
+      <BlocksErrorState
+        source="data"
+        onRetry={() => {
+          if (!decofile) void refetchDecofile();
+          if (!meta) void refetchMeta();
+        }}
+      />
+    );
   }
 
   // No schema yet: every block, as plain fields, until it appears.
@@ -935,7 +984,8 @@ function ContentBrowserReady({
     activeCollection === "sections" ? listAvailableSections(meta) : [];
   const siteApp = findSiteAppEntry(decofile, meta);
   const allBlogEntries = scanBlogEntries(decofile);
-  const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
+  const showBlog =
+    !blogView && BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
   const blogEntries = isBlogKind(activeCollection)
     ? allBlogEntries[activeCollection]
     : [];
@@ -1093,19 +1143,42 @@ function ContentBrowserReady({
     }
   };
 
-  /** A deleted entry back as published: its deletion is discarded. */
-  const restoreTypeEntry = async (entry: ContentEntry) => {
+  /** An entry back as published: the draft's change to it is discarded. */
+  const discardTypeEntry = async (entry: ContentEntry, success: string) => {
     const change = draftChanges.data?.changes[entry.key];
     if (!typesBackend || !change) return;
+    await discardChanges(
+      typesBackend,
+      [{ name: entry.key, version: change.version }],
+      success,
+    );
+  };
+
+  const restoreTypeEntry = async (entry: ContentEntry) => {
     setRestoring(entry.key);
     try {
-      await discardChanges(
-        typesBackend,
-        [{ name: entry.key, version: change.version }],
+      await discardTypeEntry(
+        entry,
         t("siteEditor.contentTypes.restored", { name: entryName(entry) }),
       );
     } finally {
       setRestoring(null);
+    }
+  };
+
+  const confirmDiscard = async () => {
+    if (!discardTarget) return;
+    setIsDiscarding(true);
+    try {
+      await discardTypeEntry(
+        discardTarget,
+        t("siteEditor.contentTypes.discarded", {
+          name: entryName(discardTarget),
+        }),
+      );
+    } finally {
+      setIsDiscarding(false);
+      setDiscardOpen(false);
     }
   };
 
@@ -1144,6 +1217,14 @@ function ContentBrowserReady({
   };
 
   const typeRowMenu = (type: ContentType, entry: ContentEntry) => {
+    // A new entry has no published copy: deleting it already drops it.
+    const onDiscard =
+      typesBackend && entry.status === "changed"
+        ? () => {
+            setDiscardTarget(entry);
+            setDiscardOpen(true);
+          }
+        : undefined;
     if (type.group === "pages") {
       const page: PageEntry = {
         key: entry.key,
@@ -1154,6 +1235,7 @@ function ContentBrowserReady({
         <ItemActions
           onDuplicate={() => openDuplicatePage(page)}
           onRename={() => openRenamePage(page)}
+          onDiscard={onDiscard}
           onDelete={() =>
             setDeleteTarget({ kind: "page", key: page.key, label: page.name })
           }
@@ -1163,6 +1245,7 @@ function ContentBrowserReady({
     if (type.group === "redirects") {
       return (
         <ItemActions
+          onDiscard={onDiscard}
           onDelete={() =>
             requestRedirectDeletion(
               entry.key,
@@ -1175,6 +1258,7 @@ function ContentBrowserReady({
     if (type.group === "sections") {
       return (
         <ItemActions
+          onDiscard={onDiscard}
           onDelete={() =>
             setDeleteTarget({
               kind: "section",
@@ -1185,7 +1269,7 @@ function ContentBrowserReady({
         />
       );
     }
-    return null;
+    return onDiscard ? <ItemActions onDiscard={onDiscard} /> : null;
   };
 
   // ------------------ Variant ------------------
@@ -1383,13 +1467,6 @@ function ContentBrowserReady({
     setSelection({ collection: "sections", key: blockId });
   };
 
-  // Persist nested saved-block references created from within the section form.
-  const saveReferencedBlock = createReferencedBlockSaver(
-    (write) => saveBlock.mutate(write),
-    decofile,
-    saveBlock.v8,
-  );
-
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     const prepare = (source: Record<string, unknown> | undefined) => {
       if (!source) {
@@ -1533,7 +1610,11 @@ function ContentBrowserReady({
   // ------------------ Blog CRUD ------------------
   const handleCreateBlog = async (kind: BlogKind) => {
     const key = generateBlogKey(decofile, kind);
-    const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
+    const data = buildBlogBlock(
+      key,
+      kind,
+      emptyBlogPayload(kind, { legacyContent }),
+    );
     try {
       const created = await saveBlock.mutateAsync({
         blockKey: key,
@@ -1552,7 +1633,11 @@ function ContentBrowserReady({
   /** Calendar "+" on a day: a post scheduled for that day, opened to edit. */
   const handleCreateScheduledPost = async (day: Date) => {
     const key = generateBlogKey(decofile, "posts");
-    const data = buildBlogBlock(key, "posts", scheduledPostPayload(day));
+    const data = buildBlogBlock(
+      key,
+      "posts",
+      scheduledPostPayload(day, { legacyContent }),
+    );
     try {
       const created = await saveBlock.mutateAsync({
         blockKey: key,
@@ -2103,7 +2188,7 @@ function ContentBrowserReady({
             counts={counts}
             hidden={hiddenCollections}
             showBlog={showBlog}
-            showContext={blogAi}
+            showContext={blogAi && !blogView}
             onSelect={(id) => {
               setActiveCollection(id);
               setSelection(null);
@@ -2362,6 +2447,43 @@ function ContentBrowserReady({
                 ) : (
                   t("sandbox.contentBrowser.deleteDialog.delete")
                 )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={discardOpen}
+          onOpenChange={(next) => {
+            if (!next && !isDiscarding) setDiscardOpen(false);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {discardTarget &&
+                  t("siteEditor.contentTypes.discardTitle", {
+                    name: entryName(discardTarget),
+                  })}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("siteEditor.contentTypes.discardDescription")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDiscarding}>
+                {t("sandbox.contentBrowser.deleteDialog.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  void confirmDiscard();
+                }}
+                disabled={isDiscarding}
+                className={cn(buttonVariants({ variant: "destructive" }))}
+              >
+                {isDiscarding && <Spinner className="size-3.5" />}
+                {t("sandbox.itemActions.discardChanges")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

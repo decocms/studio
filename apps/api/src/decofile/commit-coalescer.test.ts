@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it, vi } from "bun:test";
 import type { RepoRef } from "@decocms/shared/git-providers";
 import type {
   BranchPage,
@@ -8,7 +8,11 @@ import type {
 } from "@/git-providers";
 import { RepoWriteConflict } from "@/git-providers";
 import { decoBlockFingerprint } from "@decocms/shared/decofile";
-import { BlockConflictError, enqueueDecofilePatch } from "./commit-coalescer";
+import {
+  BlockConflictError,
+  enqueueDecofilePatch,
+  MIN_COMMIT_INTERVAL_MS,
+} from "./commit-coalescer";
 import { resolveBlockContents } from "./read-decofile";
 
 /**
@@ -46,6 +50,9 @@ function fakeClient(opts: FakeOpts) {
   let maxInFlight = 0;
   let commitAttempts = 0;
   let committed: FileChange[] = [];
+  const inlined: Array<boolean | undefined> = [];
+  /** The branch head; `committedAt` empty for the seeded head (long ago). */
+  let head = { sha: "head1", committedAt: "" };
 
   const treeEntries = (): TreeEntry[] => [
     ...opts.stems.map(
@@ -69,7 +76,9 @@ function fakeClient(opts: FakeOpts) {
   const client: RepoContentClient = {
     repo: REPO,
     getDefaultBranch: async () => "main",
-    getBranch: async () => ({ sha: "head1" }),
+    getBranch: async () => ({ sha: head.sha }),
+    readCommit: async (sha: string) =>
+      sha === head.sha ? { message: "", date: head.committedAt } : null,
     searchBranches: async (): Promise<BranchPage> => ({
       branches: [],
       totalCount: 0,
@@ -89,13 +98,24 @@ function fakeClient(opts: FakeOpts) {
       return JSON.stringify({ __resolveType: stem });
     },
     readFileAtRef: async () => null,
-    commitFiles: async ({ changes }: { changes: FileChange[] }) => {
+    commitFiles: async ({
+      changes,
+      inlineContent,
+    }: {
+      changes: FileChange[];
+      inlineContent?: boolean;
+    }) => {
       commitAttempts++;
+      inlined.push(inlineContent);
       if (commitAttempts <= (opts.conflicts ?? 0)) {
         throw new RepoWriteConflict("head moved");
       }
       committed = changes;
-      return { sha: `commit${commitAttempts}` };
+      head = {
+        sha: `commit${commitAttempts}`,
+        committedAt: new Date().toISOString(),
+      };
+      return { sha: head.sha };
     },
     createBranch: async () => {},
     forceBranchHead: async () => {},
@@ -106,6 +126,7 @@ function fakeClient(opts: FakeOpts) {
   return {
     client,
     readBlobCalls,
+    inlined,
     get maxInFlight() {
       return maxInFlight;
     },
@@ -169,6 +190,25 @@ describe("resolveBlockContents", () => {
     expect(f.maxInFlight).toBeLessThanOrEqual(12);
   });
 });
+
+/**
+ * Settle `promises` while a fake clock drives the coalescer's commit gap:
+ * drain microtasks, then step time, until all have settled.
+ */
+async function settleWithClock<T>(promises: Promise<T>[]) {
+  let pending = promises.length;
+  for (const p of promises) {
+    p.then(
+      () => pending--,
+      () => pending--,
+    );
+  }
+  for (let i = 0; pending > 0 && i < 200; i++) {
+    for (let j = 0; j < 50; j++) await Promise.resolve();
+    vi.advanceTimersByTime(250);
+  }
+  return Promise.allSettled(promises);
+}
 
 describe("enqueueDecofilePatch blob cost", () => {
   const stems = Array.from({ length: 50 }, (_, i) => `Block${i}`);
@@ -300,12 +340,18 @@ describe("enqueueDecofilePatch expectations", () => {
         expect: { Banner: null },
       }),
     ).resolves.toBe("commit1");
-    await expect(
+    vi.useFakeTimers();
+    const [second] = await settleWithClock([
       enqueueDecofilePatch(queue, deps(f), {
         set: { Footer: { __resolveType: "Footer", x: 1 } },
         expect: { Footer: null },
       }),
-    ).rejects.toBeInstanceOf(BlockConflictError);
+    ]);
+    vi.useRealTimers();
+    expect(second).toMatchObject({
+      status: "rejected",
+      reason: expect.any(BlockConflictError),
+    });
   });
 
   it("checks a coalesced patch against the writes queued before it", async () => {
@@ -315,7 +361,8 @@ describe("enqueueDecofilePatch expectations", () => {
     const first = { __resolveType: "Header", title: "first" };
     const afterFirst = await decoBlockFingerprint(first);
 
-    // Holds the queue so the next three land in ONE batch.
+    vi.useFakeTimers();
+    // All four arrive before the first commit starts: ONE batch.
     const blocker = enqueueDecofilePatch(queue, deps(f), {
       set: { Footer: { __resolveType: "Footer", x: 1 } },
     });
@@ -334,18 +381,19 @@ describe("enqueueDecofilePatch expectations", () => {
       expect: { Header: afterFirst },
     });
 
-    const [, ...results] = await Promise.allSettled([
+    const [, ...results] = await settleWithClock([
       blocker,
       accepted,
       overtaken,
       followUp,
     ]);
+    vi.useRealTimers();
     expect(results.map((r) => r.status)).toEqual([
       "fulfilled",
       "rejected",
       "fulfilled",
     ]);
-    expect(results[0]).toMatchObject({ value: "commit2" });
+    expect(results[0]).toMatchObject({ value: "commit1" });
     expect(results[1]).toMatchObject({
       reason: expect.any(BlockConflictError),
     });
@@ -356,5 +404,103 @@ describe("enqueueDecofilePatch expectations", () => {
       __resolveType: "Header",
       title: "second",
     });
+  });
+});
+
+describe("enqueueDecofilePatch commit gap", () => {
+  const stems = ["Header", "Footer"];
+  const deps = (f: ReturnType<typeof fakeClient>) => ({
+    client: f.client,
+    branch: "feature",
+    packagePath: null,
+  });
+
+  it("commits the first save at once and batches the saves made inside the gap", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fakeClient({ stems, tracksGen: false });
+      const queue = `q-gap-${Date.now()}`;
+      const start = Date.now();
+      const [first] = await settleWithClock([
+        enqueueDecofilePatch(queue, deps(f), {
+          set: { Header: { __resolveType: "Header", v: 1 } },
+        }),
+      ]);
+      expect(first).toMatchObject({ value: "commit1" });
+      expect(Date.now() - start).toBeLessThan(MIN_COMMIT_INTERVAL_MS);
+
+      // Two autosaves arrive while typing: neither commits before the gap ends.
+      const second = enqueueDecofilePatch(queue, deps(f), {
+        set: { Header: { __resolveType: "Header", v: 2 } },
+      });
+      const third = enqueueDecofilePatch(queue, deps(f), {
+        set: { Footer: { __resolveType: "Footer", v: 3 } },
+      });
+      for (let j = 0; j < 50; j++) await Promise.resolve();
+      expect(f.commitAttempts).toBe(1);
+
+      const results = await settleWithClock([second, third]);
+      expect(results).toEqual([
+        { status: "fulfilled", value: "commit2" },
+        { status: "fulfilled", value: "commit2" },
+      ]);
+      expect(Date.now() - start).toBeGreaterThanOrEqual(MIN_COMMIT_INTERVAL_MS);
+      expect(f.committed.map((c) => c.path).sort()).toEqual([
+        ".deco/blocks/Footer.json",
+        ".deco/blocks/Header.json",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the gap when the next save reaches another replica", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fakeClient({ stems, tracksGen: false });
+      // Each replica has its own in-process queue for the branch.
+      const key = `q-gap-replica-${Date.now()}`;
+      await settleWithClock([
+        enqueueDecofilePatch(`${key}/pod-a`, deps(f), {
+          set: { Header: { __resolveType: "Header", v: 1 } },
+        }),
+      ]);
+      const start = Date.now();
+      const [second] = await settleWithClock([
+        enqueueDecofilePatch(`${key}/pod-b`, deps(f), {
+          set: { Header: { __resolveType: "Header", v: 2 } },
+        }),
+      ]);
+      expect(second).toMatchObject({ value: "commit2" });
+      expect(Date.now() - start).toBeGreaterThanOrEqual(
+        MIN_COMMIT_INTERVAL_MS - 250,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps queues for different branches independent", async () => {
+    const key = `q-gap-other-${Date.now()}`;
+    await enqueueDecofilePatch(
+      `${key}/a`,
+      deps(fakeClient({ stems, tracksGen: false })),
+      { set: { Header: { __resolveType: "Header" } } },
+    );
+    const start = Date.now();
+    await enqueueDecofilePatch(
+      `${key}/b`,
+      deps(fakeClient({ stems, tracksGen: false })),
+      { set: { Header: { __resolveType: "Header" } } },
+    );
+    expect(Date.now() - start).toBeLessThan(MIN_COMMIT_INTERVAL_MS);
+  });
+
+  it("sends the commit's files inline in the tree write", async () => {
+    const f = fakeClient({ stems, tracksGen: true });
+    await enqueueDecofilePatch(`q-inline-${Date.now()}`, deps(f), {
+      set: { Header: { __resolveType: "Header" } },
+    });
+    expect(f.inlined).toEqual([true]);
   });
 });

@@ -14,6 +14,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
+import { throwContentResponseError } from "./content-response-error";
 import type {
   DecofilePatchBody,
   DecofileScopeParams,
@@ -70,10 +71,7 @@ export async function throwResponseError(
   res: Response,
   verb: string,
 ): Promise<never> {
-  const body = await res.json().catch(() => ({}));
-  throw new Error(
-    (body as { error?: string }).error ?? `${verb} failed (${res.status})`,
-  );
+  return throwContentResponseError(res, verb);
 }
 
 export function setDecofileDraft(
@@ -142,9 +140,7 @@ export async function fetchDecofile(
 ): Promise<Record<string, unknown>> {
   const res = await fetch(decofileApiUrl(params), { cache: "no-store" });
   if (!res.ok) {
-    const err = new Error(`Failed to fetch decofile: ${res.status}`);
-    (err as { status?: number }).status = res.status;
-    throw err;
+    return throwContentResponseError(res, "Read decofile");
   }
   const body = (await res.json()) as {
     version: string;

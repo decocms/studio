@@ -114,6 +114,29 @@ function parsePlanPriceIds(value: string | undefined): Record<string, string> {
   return map;
 }
 
+/**
+ * `host=origin,host2=origin2` → `{host: 'origin', ...}`. Malformed entries are
+ * dropped with a warning so one bad pair can't stop the process from booting.
+ */
+function parseHostOriginMap(value: string | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const pair of (value ?? "").split(",")) {
+    const trimmed = pair.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf("=");
+    const host = eq > 0 ? trimmed.slice(0, eq).trim() : "";
+    const origin = eq > 0 ? trimmed.slice(eq + 1).trim() : "";
+    if (!host || !origin) {
+      console.warn(
+        `MCP_INTERNAL_HOST_MAP: ignoring unparseable entry "${trimmed}" — expected host=origin`,
+      );
+      continue;
+    }
+    map[host] = origin;
+  }
+  return map;
+}
+
 function toNonNegativeIntegerOrDefault(
   name: string,
   value: string | undefined,
@@ -300,6 +323,7 @@ export function resolveConfig(
       envVars.MCP_CACHE_ENABLED,
       nodeEnv !== "development",
     ),
+    mcpInternalHostMap: parseHostOriginMap(envVars.MCP_INTERNAL_HOST_MAP),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
     orgFsMountsDisabled: toBool(envVars.DISABLE_ORGFS_MOUNTS),
     decopilotMaxConcurrentSubagents: toPositiveIntegerOrDefault(
@@ -321,6 +345,12 @@ export function resolveConfig(
       envVars.BOARD_TRANSITION_SETTLE_SECONDS,
       20,
       3600,
+    ),
+    decofileCommitGapSeconds: toPositiveIntegerOrDefault(
+      "DECOFILE_COMMIT_GAP_SECONDS",
+      envVars.DECOFILE_COMMIT_GAP_SECONDS,
+      5,
+      60,
     ),
     sandboxMaxConcurrentHostedRuns: toPositiveIntegerOrDefault(
       "SANDBOX_MAX_CONCURRENT_HOSTED_RUNS",

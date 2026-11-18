@@ -610,6 +610,31 @@ describe("content-sync refresh (contentChanged)", () => {
     });
   });
 
+  it("a v7 (legacy) discard re-reads the blocks and has the open form re-read its block", async () => {
+    const queryClient = new QueryClient();
+    const { reads } = editorQueries(queryClient);
+    let blockReads = 0;
+    new QueryObserver(queryClient, {
+      queryKey: KEYS.decofile(CACHE_KEY),
+      queryFn: async () => ({ read: ++blockReads }),
+      staleTime: Number.POSITIVE_INFINITY,
+    }).subscribe(() => {});
+    await settle();
+    const before = { ...reads };
+    await runContentChange(target(queryClient, { kind: "legacy" }), {
+      kind: "discard",
+      reread: true,
+      write: async () => {},
+    });
+    expect(blockReads).toBe(2);
+    // Nothing of the content protocol is read for a v7 site.
+    expect(reads).toEqual(before);
+    expect(getContentSyncState(SCOPE)).toMatchObject({
+      phase: "idle",
+      epoch: 1,
+    });
+  });
+
   it("someone else's change (a moved revision on poll) refreshes the pointer and reloads the preview", async () => {
     const queryClient = new QueryClient();
     const { state, backend } = fakeBackend();

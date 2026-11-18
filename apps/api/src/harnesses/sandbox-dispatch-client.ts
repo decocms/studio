@@ -48,6 +48,7 @@ import type { PodTermination } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessId, HarnessStreamInput } from "@/harnesses/lib/types";
+import { sanitizeStreamError } from "@/harnesses/lib/stream-error";
 import {
   claudeCodeEnvFromCredential,
   modelClassFromMetadata,
@@ -1333,7 +1334,14 @@ async function* dispatchToDaemon(args: {
         }
       }
       total += parsed.data.chunks.length;
-      yield* parsed.data.chunks as UIMessageChunk[];
+      for (const chunk of parsed.data.chunks as UIMessageChunk[]) {
+        // A harness reports a failed turn in the provider's words, which can
+        // name the provider's key URL. Decopilot's failures pass through the
+        // same sanitizer, which also adds the `[CREDITS]` marker the chat reads.
+        yield chunk.type === "error"
+          ? { ...chunk, errorText: sanitizeStreamError(chunk.errorText) }
+          : chunk;
+      }
       error ??= parsed.data.error;
       if (parsed.data.done) done = true;
     }

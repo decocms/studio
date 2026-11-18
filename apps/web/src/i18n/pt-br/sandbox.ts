@@ -498,6 +498,9 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.offDescription":
     "Sem a visão Conteúdo nem o formulário de Blocos no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
+  "sandbox.blogWorkspace.noBlogApp": "Este site não tem blog",
+  "sandbox.blogWorkspace.noBlogAppHint":
+    "Instale o app de blog, ou crie uma página com a seção de post, e seus posts, autores e categorias aparecem aqui.",
   "sandbox.collectionsSidebar.actions": "Ações",
   "sandbox.collectionsSidebar.advanced": "Avançado",
   "sandbox.collectionsSidebar.apps": "Apps",
@@ -772,6 +775,7 @@ export const sandbox = {
   "sandbox.generatePost.title": "Gerar posts",
   "sandbox.itemActions.addVariant": "Adicionar variante",
   "sandbox.itemActions.delete": "Excluir",
+  "sandbox.itemActions.discardChanges": "Descartar alterações",
   "sandbox.itemActions.duplicate": "Duplicar",
   "sandbox.itemActions.editSeo": "Editar SEO",
   "sandbox.itemActions.moreActions": "Mais ações",
@@ -868,6 +872,8 @@ export const sandbox = {
   "sandbox.pathParamPickerChip.pickValueHeading": "Escolha um valor para",
   "sandbox.pathParamPickerChip.pickValueTitle":
     "Escolha um valor para {paramLabel}",
+  "sandbox.pathParamPickerChip.searchBlogPlaceholder":
+    "Busque posts, categorias ou autores, ou digite um valor…",
   "sandbox.pathParamPickerChip.searchPlaceholder":
     "Procurar {options} ou digite um valor…",
   "sandbox.pathParamPickerChip.useRawValue":
@@ -975,6 +981,14 @@ export const sandbox = {
   "sandbox.postEditor.issuePlural": "problemas",
   "sandbox.postEditor.issueSingular": "problema",
   "sandbox.postEditor.keyPlaceholder": "chave",
+  "sandbox.postEditor.legacyCodeBlock": "Bloco de código",
+  "sandbox.postEditor.legacyContentPlaceholder": "Escreva o post…",
+  "sandbox.postEditor.legacyImageDataUrl":
+    "Dados de imagem colados não ficam no post. Envie a imagem ou use o endereço dela.",
+  "sandbox.postEditor.legacyInsertImage": "Inserir imagem da biblioteca",
+  "sandbox.postEditor.legacyInsertImageUrl": "Inserir imagem por URL",
+  "sandbox.postEditor.legacySectionsNotice":
+    "Este post também tem {count} blocos do editor de blocos. Eles são mantidos como estão; este editor só altera o corpo em HTML.",
   "sandbox.postEditor.missingFieldPlural":
     "Campos obrigatórios faltando: {fields}",
   "sandbox.postEditor.missingFieldSingular":
@@ -985,6 +999,29 @@ export const sandbox = {
     "Nenhuma categoria ainda — crie algumas na coleção de categorias.",
   "sandbox.postEditor.noContentYet":
     "Este post ainda não tem conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
+  "sandbox.postEditScreen.notFound": "Este post não existe mais",
+  "sandbox.postEditScreen.notFoundHint":
+    "Ele pode ter sido excluído, ou o link aponta para um id que este site não tem.",
+  "sandbox.postEditScreen.edit": "Editar",
+  "sandbox.postEditScreen.preview": "Visualizar",
+  "sandbox.postEditScreen.resizeSplit":
+    "Redimensionar o editor e a visualização",
+  "sandbox.postEditScreen.resizeSplitHint":
+    "Arraste para redimensionar. Clique duas vezes para voltar ao padrão.",
+  "sandbox.postPreview.desktop": "Desktop",
+  "sandbox.postPreview.frameTitle": "Visualização do post",
+  "sandbox.postPreview.missingParams": "Falta dado para montar a URL",
+  "sandbox.postPreview.missingParamsHint":
+    "Defina o slug do post e, quando a rota do blog usa uma, a categoria.",
+  "sandbox.postPreview.mobile": "Celular",
+  "sandbox.postPreview.noOrigin": "Esperando o site",
+  "sandbox.postPreview.noOriginHint":
+    "A visualização aparece assim que o site deste projeto estiver no ar.",
+  "sandbox.postPreview.noRoute": "Este site não tem página de post",
+  "sandbox.postPreview.noRouteHint":
+    "Crie uma página com a seção de post do blog, ou defina o pageSlug do app de blog, e a visualização passa a renderizar.",
+  "sandbox.postPreview.openInNewTab": "Abrir em nova aba",
+  "sandbox.postPreview.refresh": "Atualizar",
   "sandbox.postEditor.postTitlePlaceholder": "Título do post",
   "sandbox.postEditor.readTimeLabel": "Tempo de leitura (minutos)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
@@ -1176,6 +1213,8 @@ export const sandbox = {
     "Um código de status explícito prevalece sobre o tipo.",
   "sandbox.redirectEditor.statusFromType": "Seguir o tipo ({status})",
   "sandbox.redirectEditor.statusLabel": "Código de status",
+  "sandbox.redirectEditor.typeHint":
+    "Use **Temporário** quando o redirecionamento pode mudar; **Permanente** permite que os navegadores façam cache.",
   "sandbox.redirectEditor.title": "Redirecionamento",
   "sandbox.redirectEditor.toDescription":
     "O destino — um caminho relativo ou uma URL absoluta.",
@@ -1218,6 +1257,9 @@ export const sandbox = {
   "sandbox.fieldDescriptionTooltipsField.label": "Descrições compactas",
   "sandbox.fieldDescriptionTooltipsField.description":
     "No formulário de blocos, exibe a descrição do campo como um tooltip ao passar o mouse sobre o título, em vez de texto abaixo do título.",
+  "sandbox.legacyBlogPostFormatField.label": "Editor de blogpost legado",
+  "sandbox.legacyBlogPostFormatField.description":
+    "Edita o corpo do post via HTML, num único editor de texto rico salvo no campo content, o formato que templates de blog mais antigos leem, em vez de em blocos.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",
@@ -1422,15 +1464,23 @@ export const sandbox = {
   "sandbox.calendarView.loadFailedHint":
     "Nada foi alterado. Tente de novo em instantes.",
   "sandbox.dateCampaigns.intro":
-    "Toda data do seu site é uma campanha: uma variante com a regra “Campanha” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
+    "Campanhas mudam o site numa janela de datas. As mudanças vão ao ar quando você publica.",
+  "sandbox.dateCampaigns.tabsLabel": "Campanhas a mostrar",
+  "sandbox.dateCampaigns.tabCurrent": "Campanhas",
+  "sandbox.dateCampaigns.tabEnded": "Encerradas",
+  "sandbox.dateCampaigns.colCampaign": "Campanha",
+  "sandbox.dateCampaigns.today": "Hoje",
+  "sandbox.dateCampaigns.colStatus": "Status",
+  "sandbox.dateCampaigns.noneCurrent": "Nenhuma campanha no ar ou agendada.",
+  "sandbox.dateCampaigns.noneEnded": "Nenhuma campanha encerrada ainda.",
+  "sandbox.dateCampaigns.edit": "Editar",
+  "sandbox.dateCampaigns.editNamed": "Editar {name}",
   "sandbox.dateCampaigns.new": "Nova campanha",
   "sandbox.dateCampaigns.empty.title": "Nenhuma campanha ainda",
   "sandbox.dateCampaigns.empty.desc":
     "Crie uma aqui ou a partir de uma variante no editor do site: escolha a regra “Campanha” e digite um nome.",
-  "sandbox.dateCampaigns.listMode": "Lista",
-  "sandbox.dateCampaigns.timelineMode": "Linha do tempo",
-  "sandbox.dateCampaigns.status.running": "Rodando",
-  "sandbox.dateCampaigns.status.upcoming": "Em breve",
+  "sandbox.dateCampaigns.status.running": "No ar",
+  "sandbox.dateCampaigns.status.upcoming": "Agendada",
   "sandbox.dateCampaigns.status.ended": "Encerrada",
   "sandbox.dateCampaigns.status.always": "Sempre ativa",
   "sandbox.dateCampaigns.status.unreadable": "Datas ilegíveis",
@@ -1447,11 +1497,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
   "sandbox.dateCampaigns.deletedHint":
     "Ela sai do site quando você publicar. Desfazer traz ela de volta.",
-  "sandbox.dateCampaigns.allCampaigns": "Todas as campanhas",
-  "sandbox.dateCampaigns.today": "Hoje",
-  "sandbox.dateCampaigns.previous": "Antes",
-  "sandbox.dateCampaigns.next": "Depois",
-  "sandbox.dateCampaigns.nothingInRange": "Nenhuma campanha roda nestes meses.",
   "sandbox.dateCampaigns.missing.title":
     "Seu site precisa de uma atualização para campanhas",
   "sandbox.dateCampaigns.missing.desc":

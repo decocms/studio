@@ -348,6 +348,7 @@ const ALL_TOOL_NAMES = [
   "THREAD_ANALYTICS_ERRORS",
   "TASK_ADD_REPO",
   "generate_image",
+  "generate_text",
   "web_search",
   "deep_research",
   "suggest_task",
@@ -357,6 +358,10 @@ const ALL_TOOL_NAMES = [
   "NOTIFICATION_MARK_READ",
   "NOTIFICATION_SUBSCRIPTION_SET",
   "NOTIFICATION_SUBSCRIPTION_LIST",
+  "ALERTS_LIST",
+  "ALERT_ACK",
+  "ALERT_RULES_LIST",
+  "ALERT_RULE_UPDATE",
 ] as const;
 
 /**
@@ -1566,6 +1571,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "ALERTS_LIST",
+    description: "List the organization's alerts",
+    category: "Monitoring",
+  },
+  {
+    name: "ALERT_ACK",
+    description: "Acknowledge an alert",
+    category: "Monitoring",
+  },
+  {
+    name: "ALERT_RULES_LIST",
+    description: "List the alert rules and their thresholds",
+    category: "Monitoring",
+  },
+  {
+    name: "ALERT_RULE_UPDATE",
+    description: "Set an alert rule's thresholds",
+    category: "Monitoring",
+  },
+
+  {
     name: "TASK_BOARD_ACTIVITY_LIST",
     description: "List a task board item's change history",
     category: "Task Board",
@@ -1749,6 +1775,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Chat",
   },
   {
+    name: "generate_text",
+    description:
+      "Generate text, or read images, with the organization's chat model",
+    category: "Chat",
+  },
+  {
     name: "web_search",
     description: "Search the web and synthesize a short cited answer",
     category: "Chat",
@@ -1859,8 +1891,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "GET_OBJECT_METADATA",
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
-      // Browse files in a configured bucket (file picker in the sandbox /
-      // content editor). Lists object keys only — no credentials returned.
+      // The CMS picker needs bucket metadata before it can list objects.
+      // Neither listing returns credentials.
+      "FILE_CONFIG_LIST",
       "FILE_OBJECTS_LIST",
       // Read-only list of synced repos — every member needs it so the
       // Library can mark mirror volumes read-only (management stays gated
@@ -1953,8 +1986,15 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // Every member sees the org's alerts and can ack them.
+      "ALERTS_LIST",
+      "ALERT_ACK",
+      "ALERT_RULES_LIST",
+      "ALERT_RULE_UPDATE",
       // Chat tools Decopilot ran for every member as built-ins.
       "generate_image",
+      // The same for apps reading or writing text on the org's chat model.
+      "generate_text",
       "web_search",
       "deep_research",
       "suggest_task",
@@ -2087,6 +2127,20 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     description: "Create and list secrets stored in the credential vault",
     section: "Organization",
     tools: ["SECRET_CREATE", "SECRET_LIST"],
+  },
+  {
+    id: "assets:manage",
+    label: "Manage assets",
+    description: "Upload and delete files in configured buckets",
+    section: "Organization",
+    tools: ["FILE_OBJECT_UPLOAD", "FILE_OBJECT_DELETE"],
+  },
+  {
+    id: "repositories:connect",
+    label: "Connect repositories",
+    description: "Connect git provider accounts and link existing repositories",
+    section: "Organization",
+    tools: ["GIT_ACCOUNT_CONNECT_TOKEN", "REPOSITORY_LINK"],
   },
   // File Configs
   {
@@ -2249,14 +2303,15 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set([
 
 /**
  * Gated capability ids additionally granted to the built-in `user` role, beyond
- * basic-usage. EMPTY by default — every member is otherwise enforced down to
- * basic-usage only. Add a capability id here (e.g. "agents:manage") to grant ALL
- * of its tools to every member of every org. This is a GLOBAL change with no
+ * basic-usage. Add a capability id here to grant ALL of its tools to the
+ * built-in user role in every org. This is a GLOBAL change with no
  * migration; for per-org grants use a custom role instead.
  */
 const USER_ROLE_CAPABILITY_IDS: string[] = [
   "agents:manage",
   "connections:manage",
+  "assets:manage",
+  "repositories:connect",
 ];
 
 /**

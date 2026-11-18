@@ -106,7 +106,10 @@ import {
   logDeprecatedRoute,
 } from "./middleware/log-deprecated-route";
 import { handleApiError } from "./error-handler";
-import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
+import {
+  memberRole,
+  resolveOrgFromPath,
+} from "./middleware/resolve-org-from-path";
 import { createCmsRoutes } from "./routes/cms";
 import { createOrgScopedApi } from "./routes/org-scoped";
 import { ElevenLabsConversationAdapter } from "@/ai-providers/voice/elevenlabs-conversation";
@@ -448,6 +451,18 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   );
   if (!connection?.connection_url) {
     return c.json({ error: "Connection not found" }, 404);
+  }
+
+  // Legacy mount has no `:org`, so findById ran unscoped: gate authed callers on membership of the connection's own org (canonical mount does this via resolveOrgFromPath).
+  if (!c.req.param("org") && ctx.db) {
+    const callerId = ctx.auth?.user?.id;
+    if (
+      callerId &&
+      (await memberRole(c, ctx.db, callerId, connection.organization_id)) ===
+        undefined
+    ) {
+      return c.json({ error: "forbidden: not a member of organization" }, 403);
+    }
   }
 
   // Some providers advertise a `registration_endpoint` and then 403 it (Figma):

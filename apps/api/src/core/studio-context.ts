@@ -326,6 +326,7 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import type { DraftStorage } from "@/storage/cms-drafts";
+import type { DecofilePendingBlockStorage } from "@/storage/decofile-pending-blocks";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
 import type { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
 import type { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
@@ -339,6 +340,7 @@ import type { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { DemoBoardStorage } from "@/storage/demo-board";
 import type { NotificationStorage } from "@/storage/notifications";
+import type { AlertStorage } from "@/storage/alerts";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
 import type { KVStorage } from "@/storage/kv";
@@ -384,6 +386,8 @@ export interface StudioStorage {
   orgSites: OrgSiteStorage;
   /** The hosted CMS's named drafts (`drafts` table). */
   cmsDrafts: DraftStorage;
+  /** Fast Preview saves held in Studio (`decofile_pending_blocks` table). */
+  decofilePendingBlocks: DecofilePendingBlockStorage;
   orgRepoSyncs: OrgRepoSyncStorage;
   gitProviderAccounts: GitProviderAccountStorage;
   gitProviderAccountCredentials: GitProviderAccountCredentialStorage;
@@ -397,6 +401,7 @@ export interface StudioStorage {
   taskBoardAnalytics: TaskBoardAnalyticsStorage;
   threadAnalytics: ThreadAnalyticsStorage;
   notifications: NotificationStorage;
+  alerts: AlertStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   codexSubscriptions: CodexSubscriptionStorage;

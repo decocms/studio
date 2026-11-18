@@ -260,6 +260,12 @@ spec:
             # per-repo BUN_INSTALL_CACHE_DIR under it (see setup/install.ts).
             - name: DEPS_CACHE_ROOT
               value: "/deps-cache"
+            {{- if .Values.depsCache.yarn }}
+            # Points yarn's download cache at a per-repo dir under the cache
+            # root, overriding a repo `.yarnrc` that would put it in /app.
+            - name: DEPS_CACHE_YARN
+              value: "1"
+            {{- end }}
             {{- if .Values.depsCache.golden }}
             # Golden node_modules reflink cache (opt-in, off by default — it
             # touches the boot install path). Requires a reflink-capable

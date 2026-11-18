@@ -38,7 +38,12 @@ import {
   runSubmitForReviewFlow,
   type PublishTarget,
 } from "./publish-flow.ts";
-import { discardGitFiles } from "./sandbox-git-api.ts";
+import {
+  type BlockDeletedOnBase,
+  BlocksDeletedOnBaseError,
+  type DeletedBlockResolution,
+  discardGitFiles,
+} from "./sandbox-git-api.ts";
 import {
   type HostedPublishResult,
   publishHostedDraft,
@@ -102,6 +107,13 @@ interface CmsPublishActions {
   submit: () => Promise<boolean | void>;
   discardChange: (change: PublishChange) => Promise<void>;
   discardAll: () => Promise<void>;
+  /** Blocks the base deleted that this draft edited: the publish waits on a choice per block. */
+  deletedBlocks: BlockDeletedOnBase[] | null;
+  /** Publish again, with whether each deleted block comes back. */
+  publishWithResolutions: (
+    resolutions: Record<string, DeletedBlockResolution>,
+  ) => Promise<void>;
+  dismissDeletedBlocks: () => void;
 }
 
 /**
@@ -266,19 +278,31 @@ export function useCmsPublishActions(
     }
   };
 
-  const publish = async () => {
+  const [deletedBlocks, setDeletedBlocks] = useState<
+    BlockDeletedOnBase[] | null
+  >(null);
+
+  const publish = async (
+    resolutions?: Record<string, DeletedBlockResolution>,
+  ) => {
     publishLockRef.current = true;
     setIsPublishing(true);
     setPublishError(undefined);
     setPublishErrorDetail(null);
     try {
-      await runPublishFlow(target, noteParts(), t);
+      await runPublishFlow(target, noteParts(), t, resolutions);
+      setDeletedBlocks(null);
 
       toastPublished(t, destinationHost);
       onOpenChange(false);
       // Together: awaiting the PR re-read first let the stale open PR render.
       await Promise.all([quietly(onPullRequestChanged), quietly(onPublished)]);
     } catch (error) {
+      if (error instanceof BlocksDeletedOnBaseError) {
+        setDeletedBlocks(error.blocks);
+        return;
+      }
+      setDeletedBlocks(null);
       // One message in the dialog, in plain words (no toast on top of it);
       // the step's own error, and the pull request a failed merge left
       // open, go behind Details.
@@ -369,7 +393,14 @@ export function useCmsPublishActions(
     publishErrorDetail,
     // Hosted callers never pass review mode (no pull request to open).
     submit:
-      mode === "review" ? submitForReview : hosted ? publishHosted : publish,
+      mode === "review"
+        ? submitForReview
+        : hosted
+          ? publishHosted
+          : () => publish(),
+    deletedBlocks,
+    publishWithResolutions: (resolutions) => publish(resolutions),
+    dismissDeletedBlocks: () => setDeletedBlocks(null),
     discardChange: (change) => {
       const success = t("thread.publishPopover.discarded", {
         name: change.name,

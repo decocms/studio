@@ -115,7 +115,10 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.secretNamePlaceholder": "NOME",
   "mainPanelTabs.hostingTab.secretValuePlaceholder": "valor",
   "mainPanelTabs.hostingTab.secretValueHidden": "••••••",
-  "mainPanelTabs.hostingTab.secretOnWorker": "No worker",
+  "mainPanelTabs.hostingTab.secretOnWorker": "Direto no worker",
+  "mainPanelTabs.hostingTab.secretNotOnWorker": "Fora do worker",
+  "mainPanelTabs.hostingTab.secretNotOnWorkerHint":
+    "Salvo, mas o worker do Cloudflare ainda não tem esse segredo, então o site não consegue ler. Salve de novo para tentar.",
   "mainPanelTabs.hostingTab.secretScope": "Escopo",
   "mainPanelTabs.hostingTab.secretScopeRuntime": "Runtime",
   "mainPanelTabs.hostingTab.secretScopeBuild": "Build",
@@ -128,6 +131,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.confirmDeleteSecretDescription":
     "Excluir {name}? Isso o remove do site.",
   "mainPanelTabs.hostingTab.toastSecretSaved": "Segredo salvo",
+  "mainPanelTabs.hostingTab.toastSecretNotOnWorker":
+    "Segredo salvo, mas não chegou no worker do Cloudflare. Salve de novo para tentar.",
   "mainPanelTabs.hostingTab.toastSecretDeleted": "Segredo excluído",
   "mainPanelTabs.hostingTab.errorSecretNameRequired": "O nome é obrigatório",
   "mainPanelTabs.hostingTab.errorSecretValueRequired": "O valor é obrigatório",
@@ -731,4 +736,15 @@ export const mainPanelTabs = {
     "Seu app em `{host}` ainda não está respondendo. Se ele não estiver rodando, inicie-o no seu computador. Enquanto isso, você pode editar seu conteúdo na aba Conteúdo.",
   "mainPanelTabs.previewTab.localAppWaiting.hint":
     "O preview carrega sozinho assim que seu app responder.",
+  "mainPanelTabs.hostingTab.viewsLabel": "Seções de hosting",
+  "mainPanelTabs.hostingTab.tabDeploys": "Deploys",
+  "mainPanelTabs.hostingTab.tabVariables": "Variáveis",
+  "mainPanelTabs.hostingTab.liveInProduction": "No ar em produção",
+  "mainPanelTabs.hostingTab.noLiveDeploy": "Nada no ar em produção ainda.",
+  "mainPanelTabs.hostingTab.commitTitle": "Commit {sha}",
+  "mainPanelTabs.hostingTab.buildTook": "build de {duration}",
+  "mainPanelTabs.hostingTab.preview": "Preview",
+  "mainPanelTabs.hostingTab.statusReady": "Pronto",
+  "mainPanelTabs.hostingTab.statusFailed": "Falhou",
+  "mainPanelTabs.hostingTab.statusInProgress": "Em andamento",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;

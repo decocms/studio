@@ -17,6 +17,11 @@ export interface AuthConfig {
   };
   emailOtp: {
     enabled: boolean;
+    /** Number of characters in the emailed sign-in code. */
+    length: number;
+  };
+  passkey: {
+    enabled: boolean;
   };
   socialProviders: {
     enabled: boolean;

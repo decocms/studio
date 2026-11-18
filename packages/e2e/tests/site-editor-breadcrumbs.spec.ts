@@ -239,7 +239,8 @@ test.describe("Site Editor breadcrumbs", () => {
         trail.getByRole("link", { name: "Forma", exact: true }),
       ).toHaveAttribute(
         "href",
-        `/${orgSlug}/projects/${project.vmcpId}?sidepanel=false`,
+        // The open chat follows every link.
+        `/${orgSlug}/projects/${project.vmcpId}?${search}`,
       );
       await blocks
         .getByRole("textbox", { name: "Description", exact: true })

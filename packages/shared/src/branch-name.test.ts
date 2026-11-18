@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { branchUserLabel, generateBranchName } from "./branch-name";
+import {
+  blogDraftBranchName,
+  branchUserLabel,
+  generateBranchName,
+  isBlogDraftBranch,
+} from "./branch-name";
 
 describe("branchUserLabel", () => {
   test("prefers the display name", () => {
@@ -67,5 +72,28 @@ describe("generateBranchName", () => {
       expect(pattern.test(name)).toBe(true);
       expect(name.startsWith("-")).toBe(false);
     }
+  });
+});
+
+describe("Blog draft branches", () => {
+  test("a Blog draft is the prefix on a generated branch", () => {
+    const name = blogDraftBranchName("João Silva");
+    expect(name).toMatch(/^blog-draft-joao-silva-[0-9a-z]+$/);
+    expect(isBlogDraftBranch(name)).toBe(true);
+  });
+
+  test("only the prefix makes a Blog draft", () => {
+    expect(isBlogDraftBranch(generateBranchName("Tavano"))).toBe(false);
+    expect(isBlogDraftBranch("main")).toBe(false);
+    expect(isBlogDraftBranch("feature/blog-draft-x")).toBe(false);
+    expect(isBlogDraftBranch(null)).toBe(false);
+    expect(isBlogDraftBranch(undefined)).toBe(false);
+  });
+
+  test("a user named like the prefix still mints site drafts", () => {
+    for (const label of ["Blog Draft", "blog-draft-bot", "BLOG  DRAFT"]) {
+      expect(isBlogDraftBranch(generateBranchName(label))).toBe(false);
+    }
+    expect(isBlogDraftBranch(blogDraftBranchName("Blog Draft"))).toBe(true);
   });
 });

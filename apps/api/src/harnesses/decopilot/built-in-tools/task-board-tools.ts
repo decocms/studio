@@ -45,6 +45,12 @@ import {
   TASK_BOARD_STUCK,
   TASK_BOARD_TENANTS,
 } from "@/tools/task-board/analytics";
+import {
+  ALERT_ACK,
+  ALERT_RULE_UPDATE,
+  ALERT_RULES_LIST,
+  ALERTS_LIST,
+} from "@/tools/alerts";
 
 export function createTaskBoardTools(
   ctx: StudioContext,
@@ -110,5 +116,11 @@ export function createTaskBoardTools(
     TASK_BOARD_QUALITY: wrap(TASK_BOARD_QUALITY),
     TASK_BOARD_ERRORS: wrap(TASK_BOARD_ERRORS),
     TASK_BOARD_TENANTS: wrap(TASK_BOARD_TENANTS),
+    // The org's alerts, so the agent can look into one, open a task for it
+    // and ack it.
+    ALERTS_LIST: wrap(ALERTS_LIST),
+    ALERT_ACK: wrap(ALERT_ACK),
+    ALERT_RULES_LIST: wrap(ALERT_RULES_LIST),
+    ALERT_RULE_UPDATE: wrap(ALERT_RULE_UPDATE),
   };
 }
