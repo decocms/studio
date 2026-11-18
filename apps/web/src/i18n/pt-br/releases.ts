@@ -12,6 +12,8 @@ export const releases = {
   "releases.publishedBy": "Publicado por",
   "releases.loadFailed": "Não foi possível carregar suas releases.",
   "releases.nothingPublished": "Nada publicado ainda",
+  "releases.nothingPublishedDescription":
+    "Publique seu rascunho e cada release aparece aqui.",
   "releases.latest": "Mais recente",
   "releases.preview": "Visualizar esta versão",
   "releases.reapply": "Tornar atual",

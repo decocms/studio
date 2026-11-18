@@ -22,6 +22,8 @@ export const releases = {
   "releases.publishedBy": "Published by",
   "releases.loadFailed": "Couldn't load your releases.",
   "releases.nothingPublished": "Nothing published yet",
+  "releases.nothingPublishedDescription":
+    "Publish your draft and each release shows up here.",
   "releases.latest": "Latest",
   "releases.preview": "Preview this version",
   "releases.reapply": "Make current",

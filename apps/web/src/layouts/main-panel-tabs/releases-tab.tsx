@@ -14,9 +14,11 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ChevronRight, Eye, File02 } from "@untitledui/icons";
+import { ChevronRight, ClockRewind, Eye, File02 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -245,19 +247,21 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
         <p className="text-xs text-muted-foreground">
           {t("releases.subtitle")}
         </p>
-        {revisions.length === 0 && !live ? (
-          <p
-            className="mt-2 text-sm text-muted-foreground"
-            data-testid="releases-status"
-          >
-            {t("releases.nothingPublished")}
-          </p>
-        ) : null}
       </div>
 
+      {revisions.length === 0 && !live ? (
+        <Card size="flush" data-testid="releases-status">
+          <EmptyState
+            icon={<ClockRewind />}
+            title={t("releases.nothingPublished")}
+            description={t("releases.nothingPublishedDescription")}
+          />
+        </Card>
+      ) : null}
+
       {revisions.length > 0 ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="overflow-hidden rounded-xl border border-border">
+        <div className="-mt-1 min-h-0 flex-1 overflow-y-auto px-px pt-1">
+          <Card size="flush" className="gap-0 overflow-hidden">
             <div
               className={cn(
                 ROW_GRID,
@@ -461,7 +465,7 @@ export function ReleasesTab({ virtualMcpId }: { virtualMcpId: string }) {
                 );
               })}
             </ul>
-          </div>
+          </Card>
           {releases.hasNextPage ? (
             <div className="flex justify-center py-4">
               <Button
