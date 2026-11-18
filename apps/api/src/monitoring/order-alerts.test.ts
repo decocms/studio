@@ -1,51 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { OrderMonitorVerdict } from "@decocms/shared/order-monitor";
-import {
-  bucketTime,
-  incidentAction,
-  incidentTitle,
-  RECOVERY_MS,
-} from "./order-incidents";
+import { alertBody, alertLink, alertTitle, bucketTime } from "./order-alerts";
 import { toDailyMarkers, toMarkers } from "./order-pushes";
 
-describe("incidentAction", () => {
-  const held = RECOVERY_MS;
-  it.each([
-    // prev, next, hasCard, heldMs, retryOpen, action
-    [undefined, "warning", false, 0, false, "open"],
-    ["ok", "alert", false, 0, false, "open"],
-    ["low-volume", "warning", false, 0, false, "open"],
-    ["warning", "alert", true, 0, false, "update"],
-    ["alert", "warning", true, 0, false, "update"],
-    ["low-volume", "alert", true, 0, false, "update"],
-    // Ok has to hold before the card closes, so a flapping window keeps it.
-    ["alert", "ok", true, 0, false, "none"],
-    ["ok", "warning", true, 0, false, "update"],
-    ["ok", "ok", true, held, false, "close"],
-    ["low-volume", "ok", true, held, false, "close"],
-    // Too few orders mid-incident: noted on the card, not closed.
-    ["alert", "low-volume", true, 0, false, "pause"],
-    ["low-volume", "low-volume", true, held, false, "none"],
-    // A person deleted the card mid-incident: don't reopen it.
-    ["warning", "alert", false, 0, false, "none"],
-    ["alert", "ok", false, held, false, "none"],
-    ["ok", "low-volume", false, 0, false, "none"],
-    ["alert", "alert", true, 0, false, "none"],
-    // An open waiting on VTEX is retried until a card exists.
-    ["warning", "warning", false, 0, true, "open"],
-    ["warning", "alert", false, 0, true, "open"],
-    ["warning", "warning", true, 0, true, "none"],
-  ] as const)(
-    "%s → %s (card: %s, held: %s, retry: %s) = %s",
-    (prev, next, hasCard, heldMs, retryOpen, action) => {
-      expect(incidentAction(prev, next, { hasCard, heldMs, retryOpen })).toBe(
-        action,
-      );
-    },
-  );
-});
-
-describe("incidentTitle", () => {
+describe("alert text", () => {
   const verdict = (
     over: Partial<OrderMonitorVerdict>,
   ): OrderMonitorVerdict => ({
@@ -62,20 +20,38 @@ describe("incidentTitle", () => {
   });
 
   it("says how far below expected orders are, and since when", () => {
-    expect(incidentTitle("orders_drop", "Store", verdict({}))).toBe(
+    expect(alertTitle("orders_drop", "Store", verdict({}))).toBe(
       "Orders at Store are 85 % below expected since 14:15",
     );
   });
 
   it("gives counts for a spike", () => {
     expect(
-      incidentTitle(
+      alertTitle(
         "denied_spike",
         "Store",
         verdict({ observed: 30, expected: 2 }),
       ),
     ).toBe(
       "Payment denials at Store: 30 in an hour vs 2 expected, since 14:15",
+    );
+  });
+
+  it("states the window's numbers", () => {
+    expect(alertBody("cancel_spike", verdict({ observed: 1234 }))).toBe(
+      "Cancellations: 1,234 between 14:15 and 15:15 vs 40 expected.",
+    );
+  });
+
+  it("links the store's chart at the window's start, in the store's day", () => {
+    const link = alertLink(
+      "my org",
+      "conn_1",
+      new Date("2026-10-19T18:20:00Z"),
+      verdict({}),
+    );
+    expect(link).toBe(
+      "/my%20org/settings/monitor?tab=stores&store=conn_1&at=2026-10-19T17%3A15%3A00.000Z",
     );
   });
 });

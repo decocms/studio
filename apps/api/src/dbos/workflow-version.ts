@@ -107,5 +107,11 @@
  * Version 14 adds `orderMonitorWorkflow`. Like 12, a new workflow needs the
  * bump only because the source guard keys on the fileset; there are no v13
  * instances of it to strand.
+ *
+ * Version 15 drops `orderMonitorWorkflow`'s card steps (`syncIncidentTask:*`)
+ * and changes what `loadMonitoredStores` and `evaluateStore:*` record: a rule
+ * crossing into alert now opens an alert inside the store's step. The
+ * workflow is a scheduled sweep; an in-flight v14 tick strands and the next
+ * tick reads the same lake.
  */
-export const DBOS_WORKFLOW_VERSION = "14";
+export const DBOS_WORKFLOW_VERSION = "15";

@@ -20,13 +20,13 @@ import type {
 } from "@decocms/shared/order-monitor";
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { z } from "zod";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { StudioContext } from "@/core/studio-context";
 import { isAuthenticated, requireOrganization } from "@/core/studio-context";
 import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
-import { loadStoreInfo } from "@/monitoring/order-incidents";
 import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
 import { loadSiteTraffic } from "@/monitoring/site-traffic";
@@ -75,6 +75,22 @@ async function ownedStore(g: Gate, connectionId: string) {
   return stores.find((s) => s.connectionId === connectionId) ?? null;
 }
 
+/** The agents that aggregate the VTEX connection the install is bound to (`state.VTEX`). */
+async function storeAgentIds(g: Gate, connectionId: string): Promise<string[]> {
+  const install = await g.ctx.storage.connections.findById(
+    connectionId,
+    g.organizationId,
+  );
+  const binding = z
+    .object({ VTEX: z.object({ value: z.string() }) })
+    .safeParse(install?.configuration_state);
+  if (!binding.success) return [];
+  const agents = await g.storage.listAggregatingAgents(g.organizationId, [
+    binding.data.VTEX.value,
+  ]);
+  return [...new Set(agents.map((a) => a.agentId))];
+}
+
 /** `?at=`: any past instant, default now; the future is clamped to now. */
 function parseAt(raw: string | undefined): Date | null {
   if (!raw) return new Date();
@@ -102,12 +118,7 @@ export const createOrderMonitorRoutes = () => {
     ]);
     const out: OrderMonitorStore[] = await Promise.all(
       stores.map(async (store) => {
-        const info = await loadStoreInfo(
-          g.ctx,
-          g.storage,
-          g.organizationId,
-          store.connectionId,
-        );
+        const agentIds = await storeAgentIds(g, store.connectionId);
         const rules: OrderMonitorRuleState[] = states
           .filter((s) => s.connectionId === store.connectionId)
           .filter((s): s is typeof s & { rule: Rule } =>
@@ -119,12 +130,11 @@ export const createOrderMonitorRoutes = () => {
             since: s.since.toISOString(),
             evaluatedAt: s.evaluatedAt.toISOString(),
             verdict: s.verdict as unknown as OrderMonitorVerdict,
-            task: s.task,
           }));
         return {
           connectionId: store.connectionId,
           title: store.title,
-          agentIds: info?.agentIds ?? [],
+          agentIds,
           rules,
         };
       }),

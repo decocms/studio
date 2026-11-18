@@ -310,6 +310,23 @@ export interface OrderMonitorStateTable {
   >;
 }
 
+/** Something a detector saw, open until a person or an agent acks it (migration 265). */
+export interface AlertTable {
+  id: string;
+  organization_id: string;
+  source: string;
+  subject_id: ColumnType<string, string | undefined, string>;
+  rule: string;
+  title: string;
+  body: ColumnType<string, string | undefined, string>;
+  link: ColumnType<string | null, string | null | undefined, string | null>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  acked_at: ColumnType<Date | null, never, Date | string | null>;
+  acked_by: ColumnType<string | null, never, string | null>;
+  ack_note: ColumnType<string | null, never, string | null>;
+  task_board_item_id: ColumnType<string | null, never, string | null>;
+}
+
 /**
  * A repository checked out into a thread's run, beyond the agent's own.
  *
@@ -2588,6 +2605,7 @@ export interface Database {
   github_copilot_subscriptions: ClaudeSubscriptionTable;
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
+  alerts: AlertTable;
 
   // Automations tables
   automations: AutomationTable;

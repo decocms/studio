@@ -851,6 +851,8 @@ export const KEYS = {
   /** Monitor: the registry icons of the sources it reads. */
   monitorSourceIcons: (org: string) =>
     ["monitor", org, "source-icons"] as const,
+  /** The org's open alerts (`ALERTS_LIST`). */
+  alerts: (org: string) => ["alerts", org] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>

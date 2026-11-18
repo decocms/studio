@@ -9,6 +9,7 @@ import type { OrderMonitorChannel } from "@decocms/shared/order-monitor";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { localInstant } from "@/components/order-monitor/order-monitor-day";
+import { useAlerts } from "@/hooks/use-alerts";
 import { useFeature } from "@/hooks/use-entitlements";
 import {
   useRepositories,
@@ -62,6 +63,7 @@ export function useLiveBoard(
   const storesEnabled = config.orderMonitorEnabled === true && monitoring;
   const storesQuery = useOrderMonitorStores(orgSlug, storesEnabled);
   const allStores = monitoring ? (storesQuery.data ?? []) : [];
+  const { alerts } = useAlerts(orgSlug, true);
   // Empty means "no store" only once the read answered; disabled keeps its old upsell meaning. See ordersSourceState.
   const storesConfirmed = !storesEnabled || storesQuery.isSuccess;
   const stores = scopeId
@@ -111,29 +113,26 @@ export function useLiveBoard(
   // A store whose day failed would leave every total waiting on it.
   const dayError = dayQueries.find((q) => q.error)?.error ?? null;
 
-  // The rules' states are now's; a past day has no verdicts of its own.
-  const signals: Signal[] = (date ? [] : stores).flatMap((store) =>
-    store.rules.flatMap((r): Signal[] =>
-      r.status === "warning" || r.status === "alert"
-        ? [
-            {
-              kind: "orders",
-              id: `${store.connectionId}:${r.rule}`,
-              severity: r.status,
-              since: r.since,
-              projectId: scopeId ?? store.agentIds[0] ?? null,
-              storeId: store.connectionId,
-              storeTitle: store.title,
-              rule: r.rule,
-              observed: r.verdict.observed,
-              expected: r.verdict.expected,
-              after: null,
-              task: r.task,
-            },
-          ]
-        : [],
-    ),
-  );
+  // Open alerts are now's; a past day shows none. A store alert belongs to
+  // the projects that sell through the store, so a scoped board keeps only
+  // its own stores' alerts.
+  const storeOf = new Map(allStores.map((s) => [s.connectionId, s]));
+  const signals: Signal[] = (date ? [] : alerts).flatMap((alert): Signal[] => {
+    const store = storeOf.get(alert.subjectId);
+    if (scopeId && store && !store.agentIds.includes(scopeId)) return [];
+    return [
+      {
+        kind: "alert",
+        id: alert.id,
+        severity: "alert",
+        since: alert.createdAt,
+        projectId: store ? (scopeId ?? store.agentIds[0] ?? null) : null,
+        storeId: store?.connectionId ?? null,
+        title: alert.title,
+        link: alert.link,
+      },
+    ];
+  });
 
   const scoped = scopeId ? projects.filter((p) => p.id === scopeId) : projects;
   // Studio's own agents come with every org and carry no site, the Deco Score
@@ -462,7 +461,7 @@ export function useLiveBoard(
         // By store: a store several projects aggregate alerts in each of them.
         signals: signals.filter(
           (s) =>
-            s.kind === "orders" &&
+            s.kind === "alert" &&
             own.some((store) => store.connectionId === s.storeId),
         ).length,
       },
