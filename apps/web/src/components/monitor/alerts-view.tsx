@@ -8,7 +8,11 @@ import { type ReactNode, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertCircle, CheckCircle } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@decocms/ui/components/input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { taskKey } from "@decocms/shared/task-key";
@@ -142,84 +146,173 @@ function AlertRow({
   );
 }
 
-function RuleRow({
-  rule,
+type Draft = Record<
+  AlertRule["rule"],
+  { threshold: string; minVolume: string }
+>;
+
+const draftOf = (rules: AlertRule[]) =>
+  Object.fromEntries(
+    rules.map((r) => [
+      r.rule,
+      { threshold: String(r.threshold), minVolume: String(r.minVolume) },
+    ]),
+  ) as Draft;
+
+/** A draft value as the tool takes it, or null when it isn't one. */
+function parsed(rule: AlertRule, d: Draft[AlertRule["rule"]]) {
+  const threshold = Number(d.threshold);
+  const minVolume = Number(d.minVolume);
+  const ok =
+    d.threshold !== "" &&
+    d.minVolume !== "" &&
+    Number.isFinite(threshold) &&
+    Number.isFinite(minVolume) &&
+    minVolume >= 0 &&
+    (rule.rule === "orders_drop"
+      ? threshold >= 1 && threshold <= 99
+      : threshold > 1);
+  return ok ? { threshold, minVolume } : null;
+}
+
+function RulesForm({
+  rules,
   saving,
   onSave,
 }: {
-  rule: AlertRule;
+  rules: AlertRule[];
   saving: boolean;
-  onSave: (next: { threshold: number; minVolume: number }) => void;
+  onSave: (
+    changes: {
+      rule: AlertRule["rule"];
+      threshold: number;
+      minVolume: number;
+    }[],
+  ) => void;
 }) {
   const t = useT();
-  const [threshold, setThreshold] = useState(String(rule.threshold));
-  const [minVolume, setMinVolume] = useState(String(rule.minVolume));
-  const drop = rule.rule === "orders_drop";
-  const next = { threshold: Number(threshold), minVolume: Number(minVolume) };
-  const valid =
-    threshold !== "" &&
-    minVolume !== "" &&
-    Number.isFinite(next.threshold) &&
-    Number.isFinite(next.minVolume) &&
-    next.minVolume >= 0 &&
-    (drop ? next.threshold >= 1 && next.threshold <= 99 : next.threshold > 1);
-  const dirty =
-    next.threshold !== rule.threshold || next.minVolume !== rule.minVolume;
-  const isDefault =
-    rule.threshold === rule.defaults.threshold &&
-    rule.minVolume === rule.defaults.minVolume;
-  const number = (value: string, onChange: (v: string) => void) => (
-    <Input
-      type="number"
-      inputMode="decimal"
-      min={0}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-8 w-20 tabular-nums"
-    />
+  const [draft, setDraft] = useState(() => draftOf(rules));
+  const rows = rules.map((rule) => {
+    const d = draft[rule.rule];
+    const next = parsed(rule, d);
+    return {
+      rule,
+      d,
+      next,
+      dirty:
+        !next ||
+        next.threshold !== rule.threshold ||
+        next.minVolume !== rule.minVolume,
+    };
+  });
+  const valid = rows.every((r) => r.next);
+  const changes = rows.flatMap((r) =>
+    r.dirty && r.next ? [{ rule: r.rule.rule, ...r.next }] : [],
   );
+  const atDefaults = rules.every(
+    (r) =>
+      r.threshold === r.defaults.threshold &&
+      r.minVolume === r.defaults.minVolume,
+  );
+  const set = (
+    rule: AlertRule["rule"],
+    field: "threshold" | "minVolume",
+    value: string,
+  ) => setDraft({ ...draft, [rule]: { ...draft[rule], [field]: value } });
+  const unit = (rule: AlertRule["rule"]) =>
+    rule === "orders_drop"
+      ? t("monitor.alerts.rules.unitOrders")
+      : rule === "denied_spike"
+        ? t("monitor.alerts.rules.unitDenials")
+        : t("monitor.alerts.rules.unitCancellations");
+  const field = (
+    rule: AlertRule,
+    key: "threshold" | "minVolume",
+    suffix: string,
+    invalid: boolean,
+  ) => (
+    <InputGroup size="sm" className="w-full">
+      <InputGroupInput
+        type="number"
+        inputMode="decimal"
+        min={0}
+        aria-invalid={invalid}
+        aria-label={`${ruleLabel(rule.rule, t)} ${suffix}`}
+        value={draft[rule.rule][key]}
+        onChange={(e) => set(rule.rule, key, e.target.value)}
+        className="tabular-nums"
+      />
+      <InputGroupAddon className="text-xs">{suffix}</InputGroupAddon>
+    </InputGroup>
+  );
+
   return (
-    <li className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:gap-6">
-      <span className="w-40 shrink-0 text-sm font-medium text-foreground">
-        {ruleLabel(rule.rule, t)}
-      </span>
-      <span className="flex flex-1 flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        {drop
-          ? t("monitor.alerts.rules.dropWhen")
-          : t("monitor.alerts.rules.spikeWhen")}
-        {number(threshold, setThreshold)}
-        {drop
-          ? t("monitor.alerts.rules.dropUnit")
-          : t("monitor.alerts.rules.spikeUnit")}
-        <span className="basis-full md:basis-auto" />
-        {drop
-          ? t("monitor.alerts.rules.dropMin")
-          : t("monitor.alerts.rules.spikeMin")}
-        {number(minVolume, setMinVolume)}
-        {drop
-          ? t("monitor.alerts.rules.dropMinUnit")
-          : t("monitor.alerts.rules.spikeMinUnit")}
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {!isDefault && (
+    <div className="surface overflow-hidden">
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem_10rem] items-center gap-x-4 gap-y-0">
+        <span className="text-meta px-5 pt-3 pb-2">
+          {t("monitor.alerts.rules.colRule")}
+        </span>
+        <span className="text-meta pt-3 pb-2">
+          {t("monitor.alerts.rules.colThreshold")}
+        </span>
+        <span className="text-meta pt-3 pr-5 pb-2">
+          {t("monitor.alerts.rules.colMinimum")}
+        </span>
+        {rows.map(({ rule, d }) => {
+          const drop = rule.rule === "orders_drop";
+          const bad = parsed(rule, d) === null;
+          return (
+            <div key={rule.rule} className="contents">
+              <span className="flex min-w-0 flex-col gap-0.5 border-t border-border/70 px-5 py-3">
+                <span className="text-sm font-medium text-foreground">
+                  {ruleLabel(rule.rule, t)}
+                </span>
+                <span className="text-meta">
+                  {drop
+                    ? t("monitor.alerts.rules.dropHelp")
+                    : t("monitor.alerts.rules.spikeHelp")}
+                </span>
+              </span>
+              <span className="flex h-full items-center border-t border-border/70 py-3">
+                {field(rule, "threshold", drop ? "%" : "×", bad)}
+              </span>
+              <span className="flex h-full items-center border-t border-border/70 py-3 pr-5">
+                {field(
+                  rule,
+                  "minVolume",
+                  unit(rule.rule),
+                  d.minVolume === "" || Number(d.minVolume) < 0,
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center justify-end gap-2 border-t border-border/70 px-5 py-3">
+        <span className="text-meta mr-auto">
+          {t("monitor.alerts.rules.note")}
+        </span>
+        {!atDefaults && (
           <Button
             variant="ghost"
             size="sm"
             disabled={saving}
-            onClick={() => onSave(rule.defaults)}
+            onClick={() =>
+              onSave(rules.map((r) => ({ rule: r.rule, ...r.defaults })))
+            }
           >
             {t("monitor.alerts.rules.reset")}
           </Button>
         )}
         <Button
           size="sm"
-          disabled={!dirty || !valid || saving}
-          onClick={() => onSave(next)}
+          disabled={changes.length === 0 || !valid || saving}
+          onClick={() => onSave(changes)}
         >
           {t("monitor.alerts.rules.save")}
         </Button>
-      </span>
-    </li>
+      </div>
+    </div>
   );
 }
 
@@ -277,17 +370,17 @@ export function AlertsView({
         {rules.loading ? (
           <Skeleton className="h-40" />
         ) : (
-          <ul className="surface divide-y divide-border/70 overflow-hidden">
-            {rules.rules.map((r) => (
-              <RuleRow
-                // Saved values reset the row's draft.
-                key={`${r.rule}:${r.threshold}:${r.minVolume}`}
-                rule={r}
-                saving={rules.saving}
-                onSave={(next) => void rules.save({ rule: r.rule, ...next })}
-              />
-            ))}
-          </ul>
+          <RulesForm
+            // Saved values reset the draft.
+            key={rules.rules
+              .map((r) => `${r.rule}:${r.threshold}:${r.minVolume}`)
+              .join("|")}
+            rules={rules.rules}
+            saving={rules.saving}
+            onSave={(changes) =>
+              void Promise.all(changes.map((c) => rules.save(c)))
+            }
+          />
         )}
       </Section>
 
