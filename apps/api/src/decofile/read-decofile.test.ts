@@ -5,11 +5,43 @@ import {
   blockEntriesInTree,
   blocksDirPath,
   gitBlobSha,
+  type DecofileDocument,
+  streamDocument,
 } from "./read-decofile";
 
 function blob(path: string): TreeEntry {
   return { path, type: "blob", sha: `sha-${path}` };
 }
+
+describe("streamDocument releases the document", () => {
+  function fakeDoc(text: string): DecofileDocument & { closes: number } {
+    const doc = {
+      closes: 0,
+      size: text.length,
+      previewMembers: "",
+      chunks: async function* () {
+        yield new TextEncoder().encode(text);
+      },
+      close: async () => {
+        doc.closes++;
+      },
+    };
+    return doc;
+  }
+
+  it("closes when cancelled before the first pull", async () => {
+    const doc = fakeDoc('{"a":1}');
+    await streamDocument(doc, { prefix: "[" }).cancel();
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+
+  it("closes after a full read", async () => {
+    const doc = fakeDoc('{"a":1}');
+    const text = await new Response(streamDocument(doc, {})).text();
+    expect(text).toBe('{"a":1}');
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+});
 
 describe("blocksDirPath", () => {
   it("handles root and nested projects", () => {
