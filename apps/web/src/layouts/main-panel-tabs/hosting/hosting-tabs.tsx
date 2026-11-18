@@ -284,7 +284,8 @@ function DeploysView({
           <EmptyState
             icon={<Rocket01 className="size-5" />}
             title={t("mainPanelTabs.hostingTab.noLiveDeploy")}
-            className="py-8"
+            description={t("mainPanelTabs.hostingTab.noLiveDeployDescription")}
+            size="inline"
           />
         </ListCard>
       )}
@@ -298,11 +299,14 @@ function DeploysView({
           </ListMessage>
         </ListCard>
       ) : history.length === 0 ? (
-        <ListCard>
-          <ListMessage>
-            {t("mainPanelTabs.hostingTab.noDeployHistory")}
-          </ListMessage>
-        </ListCard>
+        // With nothing live either, the empty state above already says it.
+        live ? (
+          <ListCard>
+            <ListMessage>
+              {t("mainPanelTabs.hostingTab.noDeployHistory")}
+            </ListMessage>
+          </ListCard>
+        ) : null
       ) : (
         <ListCard>
           {visible.map((event) => (
