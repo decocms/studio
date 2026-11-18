@@ -4,7 +4,12 @@
  * drops the row from the open list at once; the server confirms.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { KEYS } from "@/lib/query-keys";
@@ -17,30 +22,14 @@ export type AlertRule =
 
 /** Fallback only: the SSE stream is the real signal, this covers a dead one. */
 const POLL_MS = 5 * 60_000;
-/** The acked alerts the Alerts tab lists, newest first. */
-const HISTORY = 200;
+/** Open alerts are one per store and rule, so a single read holds them. */
+const OPEN_LIMIT = 200;
+/** Acked alerts pile up; the history loads this many at a time. */
+const PAGE = 25;
 
-/** Open alerts only, unless `includeAcked`. */
-export function useAlerts(
-  orgSlug: string,
-  { includeAcked = false }: { includeAcked?: boolean } = {},
-) {
-  const studio = useStudioTools();
+/** Refresh every alerts read of the org when one opens or is acked. */
+function useLiveAlerts(orgSlug: string) {
   const queryClient = useQueryClient();
-  const queryKey = KEYS.alerts(orgSlug, includeAcked);
-
-  const query = useQuery({
-    queryKey,
-    queryFn: async () =>
-      (
-        await studio.call(
-          "ALERTS_LIST",
-          includeAcked ? { includeAcked, limit: HISTORY } : {},
-        )
-      ).alerts,
-    refetchInterval: POLL_MS,
-  });
-
   useSyncExternalStore(
     (onStoreChange) => {
       if (!orgSlug) return () => {};
@@ -56,14 +45,28 @@ export function useAlerts(
     () => 0,
     () => 0,
   );
+}
+
+/** The open alerts, and acking one. */
+export function useAlerts(orgSlug: string) {
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  const queryKey = KEYS.alerts(orgSlug, "open");
+  const query = useQuery({
+    queryKey,
+    queryFn: async () =>
+      (await studio.call("ALERTS_LIST", { status: "open", limit: OPEN_LIMIT }))
+        .alerts,
+    refetchInterval: POLL_MS,
+  });
+  useLiveAlerts(orgSlug);
 
   const ack = useMutation({
     mutationFn: (id: string) => studio.call("ALERT_ACK", { id }),
     onMutate: async (id) => {
-      const open = KEYS.alerts(orgSlug, false);
       // Cancel a stale in-flight refetch, or it can bring the row back.
-      await queryClient.cancelQueries({ queryKey: open });
-      queryClient.setQueryData<Alert[]>(open, (alerts) =>
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData<Alert[]>(queryKey, (alerts) =>
         alerts?.filter((a) => a.id !== id),
       );
     },
@@ -75,6 +78,34 @@ export function useAlerts(
     alerts: query.data ?? [],
     loading: query.isLoading,
     ack: (id: string) => ack.mutate(id),
+  };
+}
+
+/** The acked alerts, newest first, a page at a time. */
+export function useAckedAlerts(orgSlug: string) {
+  const studio = useStudioTools();
+  const query = useInfiniteQuery({
+    queryKey: KEYS.alerts(orgSlug, "acked"),
+    queryFn: ({ pageParam }) =>
+      studio.call("ALERTS_LIST", {
+        status: "acked",
+        limit: PAGE,
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  });
+  useLiveAlerts(orgSlug);
+  return {
+    alerts: query.data?.pages.flatMap((p) => p.alerts) ?? [],
+    loading: query.isLoading,
+    hasMore: query.hasNextPage,
+    loadingMore: query.isFetchingNextPage,
+    loadMore: () => {
+      if (query.hasNextPage && !query.isFetchingNextPage) {
+        void query.fetchNextPage();
+      }
+    },
   };
 }
 

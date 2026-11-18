@@ -79,6 +79,7 @@ export const monitor = {
   "monitor.alerts.openEmpty": "No open alerts.",
   "monitor.alerts.opened": "Opened {ago}",
   "monitor.alerts.ackedTitle": "Acknowledged",
+  "monitor.alerts.loadMore": "Load more",
   "monitor.alerts.ackedEmpty": "No alert has been acknowledged yet.",
   "monitor.alerts.acked": "Acked {ago}",
   "monitor.alerts.ackedBy": "Acked {ago} by {name}",

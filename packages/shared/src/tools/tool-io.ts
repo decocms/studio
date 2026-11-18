@@ -378,7 +378,11 @@ export interface StudioToolIO {
     output: { userIds: string[] };
   };
   ALERTS_LIST: {
-    input: { includeAcked?: boolean | undefined; limit?: number | undefined };
+    input: {
+      status?: "open" | "acked" | "all" | undefined;
+      limit?: number | undefined;
+      cursor?: string | undefined;
+    };
     output: {
       alerts: {
         id: string;
@@ -396,6 +400,7 @@ export interface StudioToolIO {
         taskBoardItemId: string | null;
         taskKeySeq: number | null;
       }[];
+      nextCursor: string | null;
     };
   };
   ALERT_ACK: {

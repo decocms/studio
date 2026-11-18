@@ -853,9 +853,9 @@ export const KEYS = {
     ["monitor", org, "source-icons"] as const,
   /** Every alerts read of the org, so one event refreshes them all. */
   alertsAll: (org: string) => ["alerts", org] as const,
-  /** The org's alerts (`ALERTS_LIST`): open ones, or every one. */
-  alerts: (org: string, includeAcked: boolean) =>
-    ["alerts", org, includeAcked ? "all" : "open"] as const,
+  /** The org's open or acked alerts (`ALERTS_LIST`). */
+  alerts: (org: string, status: "open" | "acked") =>
+    ["alerts", org, status] as const,
   alertRules: (org: string) => ["alert-rules", org] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,

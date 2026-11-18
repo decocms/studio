@@ -93,17 +93,46 @@ export class AlertStorage {
     return row ? this.byId(input.organizationId, row.id) : null;
   }
 
-  /** Newest first; open ones only unless `includeAcked`. */
+  /**
+   * Newest first, `limit` at a time; `cursor` is the previous page's
+   * `nextCursor`, null on the last page.
+   */
   async list(
     organizationId: string,
-    opts: { includeAcked?: boolean; limit?: number } = {},
-  ): Promise<Alert[]> {
+    opts: {
+      status?: "open" | "acked" | "all";
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ): Promise<{ alerts: Alert[]; nextCursor: string | null }> {
+    const limit = opts.limit ?? 50;
     let query = this.select(organizationId)
       .orderBy("a.created_at", "desc")
       .orderBy("a.id", "desc")
-      .limit(opts.limit ?? 50);
-    if (!opts.includeAcked) query = query.where("a.acked_at", "is", null);
-    return (await query.execute()).map(toAlert);
+      .limit(limit + 1);
+    const status = opts.status ?? "open";
+    if (status === "open") query = query.where("a.acked_at", "is", null);
+    if (status === "acked") query = query.where("a.acked_at", "is not", null);
+    const after = opts.cursor ? parseCursor(opts.cursor) : null;
+    if (after) {
+      query = query.where((eb) =>
+        eb.or([
+          eb("a.created_at", "<", after.createdAt),
+          eb.and([
+            eb("a.created_at", "=", after.createdAt),
+            eb("a.id", "<", after.id),
+          ]),
+        ]),
+      );
+    }
+    const rows = (await query.execute()).map(toAlert);
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    return {
+      alerts: page,
+      nextCursor:
+        rows.length > limit && last ? `${last.createdAt}|${last.id}` : null,
+    };
   }
 
   /**
@@ -186,6 +215,16 @@ export class AlertStorage {
       )
       .execute();
   }
+}
+
+/** `<created_at ISO>|<id>`; anything else reads as the first page. */
+function parseCursor(cursor: string) {
+  const at = cursor.indexOf("|");
+  const createdAt = new Date(cursor.slice(0, at));
+  const id = cursor.slice(at + 1);
+  return at > 0 && id && !Number.isNaN(createdAt.getTime())
+    ? { createdAt, id }
+    : null;
 }
 
 type AlertRow = Awaited<

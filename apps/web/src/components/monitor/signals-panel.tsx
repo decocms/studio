@@ -179,7 +179,14 @@ export function SignalsPanel({
       <h2 className="text-sm font-medium text-foreground">
         {t("monitor.signals.title")}
       </h2>
-      <ul className="surface divide-y divide-border/70 overflow-hidden">
+      <ul
+        className={cn(
+          "surface divide-y divide-border/70",
+          open
+            ? "max-h-[28rem] overflow-y-auto overscroll-contain"
+            : "overflow-hidden",
+        )}
+      >
         {shown.map((signal) => {
           const row = rowOf(signal, t, orgSlug, scopeId, onOpenStore);
           const { icon: Icon, tone, mark } = SEVERITY[signal.severity];

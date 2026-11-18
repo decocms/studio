@@ -20,6 +20,7 @@ import { ruleLabel } from "@/components/order-monitor/order-monitor-day";
 import {
   type Alert,
   type AlertRule,
+  useAckedAlerts,
   useAlertRules,
   useAlerts,
 } from "@/hooks/use-alerts";
@@ -27,20 +28,32 @@ import { useT } from "@/i18n/use-t.ts";
 import { formatTimeAgo } from "@/lib/format-time";
 
 const ROW = "flex items-center gap-4 px-5 py-4";
+/** A list that scrolls inside the page instead of growing it. */
+const LIST =
+  "surface max-h-[26rem] divide-y divide-border/70 overflow-y-auto overscroll-contain";
 
 function Section({
   title,
+  count,
   hint,
   children,
 }: {
   title: string;
+  count?: number;
   hint?: string;
   children: ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <h2 className="text-sm font-medium text-foreground">{title}</h2>
+        <h2 className="text-sm font-medium text-foreground">
+          {title}
+          {count ? (
+            <span className="ml-1.5 text-muted-foreground tabular-nums">
+              {count}
+            </span>
+          ) : null}
+        </h2>
         {hint && <p className="text-meta">{hint}</p>}
       </div>
       {children}
@@ -228,27 +241,39 @@ function RulesForm({
   const field = (
     rule: AlertRule,
     key: "threshold" | "minVolume",
-    suffix: string,
+    unit: string,
     invalid: boolean,
-  ) => (
-    <InputGroup size="sm" className="w-full">
+  ) => {
+    const input = (
       <InputGroupInput
         type="number"
         inputMode="decimal"
         min={0}
         aria-invalid={invalid}
-        aria-label={`${ruleLabel(rule.rule, t)} ${suffix}`}
+        aria-label={`${ruleLabel(rule.rule, t)}: ${unit}`}
         value={draft[rule.rule][key]}
         onChange={(e) => set(rule.rule, key, e.target.value)}
         className="tabular-nums"
       />
-      <InputGroupAddon className="text-xs">{suffix}</InputGroupAddon>
-    </InputGroup>
-  );
+    );
+    return key === "threshold" ? (
+      <InputGroup size="sm" className="w-full">
+        {input}
+        <InputGroupAddon className="text-xs">{unit}</InputGroupAddon>
+      </InputGroup>
+    ) : (
+      <span className="flex items-center gap-2">
+        <InputGroup size="sm" className="w-20 shrink-0">
+          {input}
+        </InputGroup>
+        <span className="truncate text-sm text-muted-foreground">{unit}</span>
+      </span>
+    );
+  };
 
   return (
     <div className="surface overflow-hidden">
-      <div className="grid grid-cols-[minmax(0,1fr)_7rem_10rem] items-center gap-x-4 gap-y-0">
+      <div className="grid grid-cols-[minmax(0,1fr)_7rem_13rem] items-center gap-x-4 gap-y-0">
         <span className="text-meta px-5 pt-3 pb-2">
           {t("monitor.alerts.rules.colRule")}
         </span>
@@ -330,33 +355,32 @@ export function AlertsView({
   onOpenStore: (connectionId: string) => void;
 }) {
   const t = useT();
-  const { ack } = useAlerts(orgSlug);
-  const all = useAlerts(orgSlug, { includeAcked: true });
+  const openQuery = useAlerts(orgSlug);
+  const ackedQuery = useAckedAlerts(orgSlug);
   const rules = useAlertRules(orgSlug);
-  const inScope = scoped
-    ? all.alerts.filter((a) => stores.has(a.subjectId))
-    : all.alerts;
-  const open = inScope.filter((a) => a.ackedAt === null);
-  const acked = inScope.filter((a) => a.ackedAt !== null);
+  const inScope = (alerts: Alert[]) =>
+    scoped ? alerts.filter((a) => stores.has(a.subjectId)) : alerts;
+  const open = inScope(openQuery.alerts);
+  const acked = inScope(ackedQuery.alerts);
   const openStore = (a: Alert) =>
     stores.has(a.subjectId) ? () => onOpenStore(a.subjectId) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 px-4 pt-6 pb-10 md:px-10">
-      <Section title={t("monitor.alerts.open")}>
-        {all.loading ? (
+      <Section title={t("monitor.alerts.open")} count={open.length}>
+        {openQuery.loading ? (
           <Skeleton className="h-24" />
         ) : open.length === 0 ? (
           <Empty>{t("monitor.alerts.openEmpty")}</Empty>
         ) : (
-          <ul className="surface divide-y divide-border/70 overflow-hidden">
+          <ul className={LIST}>
             {open.map((a) => (
               <AlertRow
                 key={a.id}
                 alert={a}
                 orgSlug={orgSlug}
                 onOpenStore={openStore(a)}
-                onAck={() => ack(a.id)}
+                onAck={() => openQuery.ack(a.id)}
               />
             ))}
           </ul>
@@ -385,12 +409,12 @@ export function AlertsView({
       </Section>
 
       <Section title={t("monitor.alerts.ackedTitle")}>
-        {all.loading ? (
+        {ackedQuery.loading ? (
           <Skeleton className="h-24" />
-        ) : acked.length === 0 ? (
+        ) : acked.length === 0 && !ackedQuery.hasMore ? (
           <Empty>{t("monitor.alerts.ackedEmpty")}</Empty>
         ) : (
-          <ul className="surface divide-y divide-border/70 overflow-hidden">
+          <ul className={LIST}>
             {acked.map((a) => (
               <AlertRow
                 key={a.id}
@@ -400,6 +424,18 @@ export function AlertsView({
                 onAck={null}
               />
             ))}
+            {ackedQuery.hasMore && (
+              <li>
+                <button
+                  type="button"
+                  disabled={ackedQuery.loadingMore}
+                  onClick={ackedQuery.loadMore}
+                  className="focus-ring w-full px-5 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-60"
+                >
+                  {t("monitor.alerts.loadMore")}
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </Section>

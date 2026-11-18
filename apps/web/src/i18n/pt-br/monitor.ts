@@ -83,6 +83,7 @@ export const monitor = {
   "monitor.alerts.openEmpty": "Nenhum alerta aberto.",
   "monitor.alerts.opened": "Aberto {ago}",
   "monitor.alerts.ackedTitle": "Reconhecidos",
+  "monitor.alerts.loadMore": "Carregar mais",
   "monitor.alerts.ackedEmpty": "Nenhum alerta foi reconhecido ainda.",
   "monitor.alerts.acked": "Reconhecido {ago}",
   "monitor.alerts.ackedBy": "Reconhecido {ago} por {name}",
