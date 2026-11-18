@@ -319,6 +319,7 @@ import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
+import type { OrganizationInviteLinkStorage } from "../storage/organization-invite-links";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
@@ -412,6 +413,7 @@ export interface StudioStorage {
   orgSsoSessions: OrgSsoSessionStorage;
   organizationDomains: OrganizationDomainStorage;
   organizationJoinRequests: OrganizationJoinRequestStorage;
+  organizationInviteLinks: OrganizationInviteLinkStorage;
   kv: KVStorage;
   interests: InterestsStorage;
   organizationBilling: OrganizationBillingStorage;

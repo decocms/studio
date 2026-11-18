@@ -368,6 +368,13 @@ const reportRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/reports.tsx")),
 });
 
+// Outside the shell: the visitor may be signed out or not a member yet.
+const inviteLinkRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/invite/$token",
+  component: lazyRouteComponent(() => import("./routes/invite-link.tsx")),
+});
+
 // ============================================
 // ORGANIZATION ROUTE — SHARED APPLICATION LAYOUT
 // ============================================
@@ -1888,6 +1895,7 @@ const routeTree = rootRoute.addChildren([
   chooseEditorRoute,
   siteEditorRoute.addChildren([siteEditorPreviewRoute, siteEditorContentRoute]),
   reportRoute,
+  inviteLinkRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,
