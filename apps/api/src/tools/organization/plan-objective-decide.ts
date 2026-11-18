@@ -52,11 +52,8 @@ export const ORGANIZATION_PLAN_OBJECTIVE_DECIDE = defineTool({
     await ctx.access.check();
     const org = requireOrganization(ctx);
     const settings = await ctx.storage.organizationSettings.get(org.id);
-    if (
-      !orgFlagEnabled(settings?.flags, "plan_page_enabled") ||
-      !orgFlagEnabled(settings?.flags, "plan_goal_jev_enabled")
-    ) {
-      throw new Error("Jev store goals are not enabled for this organization");
+    if (!orgFlagEnabled(settings?.flags, "plan_page_enabled")) {
+      throw new Error("The Plan page is not enabled for this organization");
     }
 
     const snapshot = await loadStoreSnapshot(org.id, new Date());

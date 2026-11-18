@@ -148,26 +148,6 @@ export type DefaultHomeAgentsConfig = z.infer<
 /** Longest store goal a person can write: one sentence, not a document. */
 export const PLAN_OBJECTIVE_MAX_LENGTH = 280;
 
-/** Who wrote the store goal: a member, or Jev picking it from the store's data. */
-export const PlanObjectiveSourceSchema = z.enum(["member", "jev"]);
-
-/**
- * The store goal shown at the top of the Plan page and sent with every business
- * case the page asks for. Who and when are set by the server, never by the
- * caller.
- */
-export const PlanObjectiveSchema = z.object({
-  statement: z
-    .string()
-    .max(PLAN_OBJECTIVE_MAX_LENGTH)
-    .describe("The store goal in one sentence, in the person's own words."),
-  updated_by: z.string().describe("Id of the user who last wrote the goal."),
-  updated_at: z.string().datetime().describe("ISO 8601 timestamp"),
-  source: PlanObjectiveSourceSchema.optional().describe(
-    "member when a person wrote it, jev when the decision model picked it. Absent reads as member.",
-  ),
-});
-
 /**
  * The goals Jev chooses between. A decision model returns a choice, not text,
  * so the store goal it decides is one of these, worded by the web in the
@@ -186,6 +166,29 @@ export const PLAN_GOALS = [
 
 export const PlanGoalSchema = z.enum(PLAN_GOALS);
 export type PlanGoal = z.infer<typeof PlanGoalSchema>;
+
+/** Who wrote the store goal: a member, or Jev picking it from the store's data. */
+export const PlanObjectiveSourceSchema = z.enum(["member", "jev"]);
+
+/**
+ * The store goal shown at the top of the Plan page and sent with every business
+ * case the page asks for. Who and when are set by the server, never by the
+ * caller.
+ */
+export const PlanObjectiveSchema = z.object({
+  statement: z
+    .string()
+    .max(PLAN_OBJECTIVE_MAX_LENGTH)
+    .describe("The store goal in one sentence, in the person's own words."),
+  updated_by: z.string().describe("Id of the user who last wrote the goal."),
+  updated_at: z.string().datetime().describe("ISO 8601 timestamp"),
+  source: PlanObjectiveSourceSchema.optional().describe(
+    "member when a person wrote it, jev when the decision model picked it. Absent reads as member.",
+  ),
+  goal: PlanGoalSchema.optional().describe(
+    "The catalog goal Jev picked, kept while the statement is Jev's, so a later review can tell whether the goal changed.",
+  ),
+});
 
 /**
  * The store's last 28 days against the 28 before, from its data lake. Rates
@@ -419,13 +422,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "The Plan page: the store goal and a composer that turns an idea into a business case written by the agent. Off by default; with it off, Plan stays a coming-soon page.",
-    ),
-  plan_goal_jev_enabled: z
-    .boolean()
-    .optional()
-    .describe(
-      "With the store goal empty, the Plan page asks Jev, a decision model, to pick it from the store's last 28 days of data and saves it. Needs plan_page_enabled and an OpenRouter or Deco AI key. Off by default; with it off, a member writes the goal.",
+      "The Plan page: the store goal, which Jev picks from the store's data while it is empty, and a composer that turns an idea into a business case written by the agent. Off by default; with it off, Plan stays a coming-soon page.",
     ),
   blog_view_enabled: z
     .boolean()

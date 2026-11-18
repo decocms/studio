@@ -54,13 +54,39 @@ describe("ORGANIZATION_PLAN_OBJECTIVE_SET", () => {
     const { ctx, setPlanObjective } = makeCtx({ id: "org-a" });
 
     await ORGANIZATION_PLAN_OBJECTIVE_SET.handler(
-      { statement: "Win back visitors.", source: "jev", if_empty: true },
+      {
+        statement: "Win back visitors.",
+        source: "jev",
+        goal: "traffic_growth",
+        if_empty: true,
+      },
       ctx,
     );
 
     const [, written, options] = setPlanObjective.mock.calls[0] ?? [];
     expect(written?.source).toBe("jev");
+    expect(written?.goal).toBe("traffic_growth");
     expect(options).toEqual({ ifEmpty: true });
+  });
+
+  it("keeps the catalog goal only on a Jev goal", async () => {
+    const { ctx, setPlanObjective } = makeCtx({ id: "org-a" });
+
+    await ORGANIZATION_PLAN_OBJECTIVE_SET.handler(
+      { statement: "My own words.", goal: "traffic_growth" },
+      ctx,
+    );
+
+    const [, written] = setPlanObjective.mock.calls[0] ?? [];
+    expect(written?.source).toBe("member");
+    expect(written).not.toHaveProperty("goal");
+    expect(
+      ORGANIZATION_PLAN_OBJECTIVE_SET.inputSchema.safeParse({
+        statement: "x",
+        source: "jev",
+        goal: "not_a_goal",
+      }).success,
+    ).toBe(false);
   });
 
   it("clears the goal with null", async () => {

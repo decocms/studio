@@ -14,6 +14,30 @@ export const plan = {
   "plan.objective.cancel": "Cancel",
   "plan.objective.clear": "Clear goal",
   "plan.objective.saveError": "Could not save the goal. Try again.",
+  "plan.objective.deciding": "Reading the store's data to pick its goal…",
+  "plan.objective.pickedByAi":
+    "Picked by AI from the store's last 28 days. Edit it if it does not fit.",
+  "plan.objective.review": "Review with AI",
+  "plan.objective.reviewing": "Reviewing…",
+  "plan.objective.review.same":
+    "The store's data still points to the same goal.",
+  "plan.objective.review.updated": "Goal updated from the store's data.",
+  "plan.objective.review.noData":
+    "Not enough store data yet to pick a goal. The goal stays as it is.",
+  "plan.objective.review.unavailable":
+    "The AI could not review the goal right now. Try again later.",
+  "plan.objective.review.uncertain":
+    "The store's data does not point to a clear goal. The goal stays as it is.",
+  "plan.goal.mobile_conversion": "Make mobile sell as well as desktop.",
+  "plan.goal.checkout_completion":
+    "Get more shoppers who start checkout to finish the purchase.",
+  "plan.goal.cart_to_checkout": "Take more carts through to checkout.",
+  "plan.goal.product_to_cart":
+    "Turn more product page views into items in the cart.",
+  "plan.goal.traffic_growth": "Win back the visitors the store lost.",
+  "plan.goal.recover_sales": "Recover the sales that fell.",
+  "plan.goal.average_ticket": "Raise the average order value.",
+  "plan.goal.site_stability": "Stop losing sales to site errors.",
   "plan.idea.heading": "What do you want to improve in the store?",
   "plan.idea.description":
     "Say it however it comes to you, even vaguely. You go to the business case and build it with the agent: it asks what it needs in the chat and fills in the problem in numbers, who already does it, the money at stake, effort and the A/B test.",

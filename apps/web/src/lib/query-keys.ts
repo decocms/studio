@@ -294,6 +294,9 @@ export const KEYS = {
   organizationSettings: (organizationId: string) =>
     ["organization-settings", organizationId] as const,
 
+  planObjectiveAuto: (organizationId: string) =>
+    ["plan-objective-auto", organizationId] as const,
+
   infraBillingSites: (organizationId: string) =>
     ["infra-billing-sites", organizationId] as const,
 
