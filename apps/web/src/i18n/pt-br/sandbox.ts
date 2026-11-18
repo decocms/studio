@@ -872,6 +872,8 @@ export const sandbox = {
   "sandbox.pathParamPickerChip.pickValueHeading": "Escolha um valor para",
   "sandbox.pathParamPickerChip.pickValueTitle":
     "Escolha um valor para {paramLabel}",
+  "sandbox.pathParamPickerChip.searchBlogPlaceholder":
+    "Busque posts, categorias ou autores, ou digite um valor…",
   "sandbox.pathParamPickerChip.searchPlaceholder":
     "Procurar {options} ou digite um valor…",
   "sandbox.pathParamPickerChip.useRawValue":

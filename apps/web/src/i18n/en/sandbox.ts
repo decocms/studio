@@ -857,6 +857,8 @@ export const sandbox = {
   "sandbox.pathParamPickerChip.noResults": "No results.",
   "sandbox.pathParamPickerChip.pickValueHeading": "Pick a value for",
   "sandbox.pathParamPickerChip.pickValueTitle": "Pick a value for {paramLabel}",
+  "sandbox.pathParamPickerChip.searchBlogPlaceholder":
+    "Search posts, categories or authors, or enter a value…",
   "sandbox.pathParamPickerChip.searchPlaceholder":
     "Search {options} or enter a value…",
   "sandbox.pathParamPickerChip.useRawValue": 'Use "{rawTerm}" as {paramLabel}',
