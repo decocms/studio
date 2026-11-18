@@ -27,6 +27,7 @@ import {
   sortSignals,
   storeTimezone,
 } from "./board";
+import { AlertsView } from "./alerts-view";
 import { AskData } from "./ask-data";
 import {
   AudienceView,
@@ -250,6 +251,20 @@ export function MonitorPage({
             </Locked>
           )}
         </div>
+      </MonitorFrame>
+    );
+  }
+  if (view === "alerts") {
+    return (
+      <MonitorFrame tabs={tabs}>
+        <AlertsView
+          orgSlug={orgSlug}
+          stores={new Set(board.stores.map((s) => s.store.connectionId))}
+          scoped={scopeId !== null}
+          onOpenStore={(store) =>
+            onSelect({ project: selection.project, store })
+          }
+        />
       </MonitorFrame>
     );
   }

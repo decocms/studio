@@ -378,7 +378,11 @@ export interface StudioToolIO {
     output: { userIds: string[] };
   };
   ALERTS_LIST: {
-    input: { includeAcked?: boolean | undefined; limit?: number | undefined };
+    input: {
+      status?: "open" | "acked" | "all" | undefined;
+      limit?: number | undefined;
+      cursor?: string | undefined;
+    };
     output: {
       alerts: {
         id: string;
@@ -391,9 +395,12 @@ export interface StudioToolIO {
         createdAt: string;
         ackedAt: string | null;
         ackedBy: string | null;
+        ackedByName: string | null;
         ackNote: string | null;
         taskBoardItemId: string | null;
+        taskKeySeq: number | null;
       }[];
+      nextCursor: string | null;
     };
   };
   ALERT_ACK: {
@@ -414,10 +421,32 @@ export interface StudioToolIO {
         createdAt: string;
         ackedAt: string | null;
         ackedBy: string | null;
+        ackedByName: string | null;
         ackNote: string | null;
         taskBoardItemId: string | null;
+        taskKeySeq: number | null;
       };
     };
+  };
+  ALERT_RULES_LIST: {
+    input: { [x: string]: never };
+    output: {
+      rules: {
+        threshold: number;
+        minVolume: number;
+        source: string;
+        rule: "orders_drop" | "denied_spike" | "cancel_spike";
+        defaults: { threshold: number; minVolume: number };
+      }[];
+    };
+  };
+  ALERT_RULE_UPDATE: {
+    input: {
+      rule: "orders_drop" | "denied_spike" | "cancel_spike";
+      threshold: number;
+      minVolume: number;
+    };
+    output: { rule: "orders_drop" | "denied_spike" | "cancel_spike" };
   };
   TASK_BOARD_ITEM_CREATE: {
     input: {

@@ -30,7 +30,12 @@ import {
 } from "@/storage/order-monitor";
 import type { Database } from "@/storage/types";
 import { emitAlertsUpdated } from "@/tools/alerts/events";
-import { alertBody, alertLink, alertTitle } from "./order-alerts";
+import {
+  alertBody,
+  alertLink,
+  alertTitle,
+  loadThresholds,
+} from "./order-alerts";
 import { emitOrderMonitorEvaluated } from "./order-events";
 import { loadStoreDay } from "./order-lake";
 import { evaluateStore, RULES, type Rule, type Verdict } from "./order-rules";
@@ -172,7 +177,10 @@ async function evaluateOneStore(
       );
       return { connectionId };
     }
-    const verdicts = evaluateStore(day);
+    const verdicts = evaluateStore(
+      day,
+      await loadThresholds(new AlertStorage(requireDb()), organizationId),
+    );
 
     const written = await writeStates(
       requireDb(),

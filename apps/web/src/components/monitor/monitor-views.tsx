@@ -1,4 +1,4 @@
-/** The Monitor's tabs: Overview, Performance, Logs, Analytics and Heatmap. */
+/** The Monitor's tabs: Overview, Alerts, Performance, Logs, Analytics and Heatmap. */
 
 import type { ReactNode } from "react";
 import { BarChart10 } from "@untitledui/icons";
@@ -26,6 +26,7 @@ import { connectLink } from "./parts";
 
 export type MonitorView =
   | "metrics"
+  | "alerts"
   | "performance"
   | "logs"
   | "deploys"
@@ -34,6 +35,7 @@ export type MonitorView =
   | "heatmap";
 export const MONITOR_VIEWS: readonly MonitorView[] = [
   "metrics",
+  "alerts",
   "performance",
   "logs",
   "deploys",
@@ -46,6 +48,8 @@ function viewLabel(view: MonitorView, t: TFunction): string {
   switch (view) {
     case "metrics":
       return t("monitor.view.metrics");
+    case "alerts":
+      return t("monitor.view.alerts");
     case "performance":
       return t("monitor.view.performance");
     case "logs":

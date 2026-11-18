@@ -1275,6 +1275,7 @@ const monitoringSearch = z.object({
   view: z
     .enum([
       "metrics",
+      "alerts",
       "performance",
       "logs",
       "audience",

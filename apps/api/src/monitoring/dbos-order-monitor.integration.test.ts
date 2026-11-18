@@ -92,7 +92,7 @@ describe("writeStates opens an alert when a rule crosses into alert", () => {
   test("ok and warning open nothing", async () => {
     expect((await write(minute(3), "ok"))?.opened).toEqual([]);
     expect((await write(minute(8), "warning"))?.opened).toEqual([]);
-    expect(await alerts.list(ORG)).toEqual([]);
+    expect((await alerts.list(ORG)).alerts).toEqual([]);
   });
 
   test("the crossing opens one alert, and a re-run of that tick keeps it one", async () => {
@@ -101,7 +101,7 @@ describe("writeStates opens an alert when a rule crosses into alert", () => {
     const rerun = await write(minute(13), "alert");
     expect(rerun?.opened).toEqual([]);
 
-    const open = await alerts.list(ORG);
+    const open = (await alerts.list(ORG)).alerts;
     expect(open).toHaveLength(1);
     expect(open[0]).toMatchObject({
       id: first!.opened[0],
@@ -119,22 +119,24 @@ describe("writeStates opens an alert when a rule crosses into alert", () => {
 
   test("staying in alert opens nothing, acked or not", async () => {
     expect((await write(minute(18), "alert"))?.opened).toEqual([]);
-    const [open] = await alerts.list(ORG);
+    const [open] = (await alerts.list(ORG)).alerts;
     await alerts.ack(ORG, open!.id, USER);
     expect((await write(minute(23), "alert"))?.opened).toEqual([]);
-    expect(await alerts.list(ORG)).toEqual([]);
+    expect((await alerts.list(ORG)).alerts).toEqual([]);
   });
 
   test("after the ack, the next crossing opens a new alert", async () => {
     await write(minute(28), "ok");
     const again = await write(minute(33), "alert");
     expect(again?.opened).toHaveLength(1);
-    expect((await alerts.list(ORG)).map((a) => a.id)).toEqual(again!.opened);
+    expect((await alerts.list(ORG)).alerts.map((a) => a.id)).toEqual(
+      again!.opened,
+    );
   });
 
   test("an older tick that lost the race writes nothing and opens nothing", async () => {
     await write(minute(38), "ok");
     expect(await write(minute(36), "alert")).toBeNull();
-    expect(await alerts.list(ORG)).toHaveLength(1);
+    expect((await alerts.list(ORG)).alerts).toHaveLength(1);
   });
 });

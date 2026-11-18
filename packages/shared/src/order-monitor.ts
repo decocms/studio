@@ -28,6 +28,26 @@ export interface OrderMonitorVerdict {
   timezone: string;
 }
 
+/**
+ * What makes a rule alert, per org. `orders_drop`: the hour brought less than
+ * `threshold` % of expected, judged once `minVolume` orders were expected.
+ * The spikes: `threshold` times expected, and at least `minVolume` in the hour.
+ */
+export interface OrderMonitorThreshold {
+  threshold: number;
+  minVolume: number;
+}
+export type OrderMonitorThresholds = Record<
+  OrderMonitorRule,
+  OrderMonitorThreshold
+>;
+
+export const ORDER_MONITOR_DEFAULT_THRESHOLDS: OrderMonitorThresholds = {
+  orders_drop: { threshold: 15, minVolume: 20 },
+  denied_spike: { threshold: 5, minVolume: 10 },
+  cancel_spike: { threshold: 5, minVolume: 10 },
+};
+
 export interface OrderMonitorRuleState {
   rule: OrderMonitorRule;
   status: OrderMonitorStatus;

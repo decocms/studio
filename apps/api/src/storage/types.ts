@@ -327,6 +327,17 @@ export interface AlertTable {
   task_board_item_id: ColumnType<string | null, never, string | null>;
 }
 
+/** An org's thresholds for one alert rule (migration 266). */
+export interface AlertRuleSettingsTable {
+  organization_id: string;
+  source: string;
+  rule: string;
+  threshold: number;
+  min_volume: number;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_by: string | null;
+}
+
 /**
  * A repository checked out into a thread's run, beyond the agent's own.
  *
@@ -2606,6 +2617,7 @@ export interface Database {
   org_shared_plans: OrgSharedPlanTable;
   order_monitor_state: OrderMonitorStateTable;
   alerts: AlertTable;
+  alert_rule_settings: AlertRuleSettingsTable;
 
   // Automations tables
   automations: AutomationTable;

@@ -4,12 +4,40 @@
  * crosses into `alert` (`dbos-order-monitor.ts`).
  */
 
+import { ORDER_MONITOR_ALERT_SOURCE } from "@decocms/shared/alerts";
 import {
+  ORDER_MONITOR_DEFAULT_THRESHOLDS,
+  ORDER_MONITOR_RULES,
   orderMonitorChartPath,
+  type OrderMonitorThresholds,
   type OrderMonitorVerdict,
 } from "@decocms/shared/order-monitor";
+import type { AlertStorage } from "@/storage/alerts";
 import { localBucketStart } from "./order-lake";
 import { BUCKETS_PER_DAY, type Rule } from "./order-rules";
+
+/** The org's thresholds, its defaults for every rule it never set. */
+export async function loadThresholds(
+  alerts: AlertStorage,
+  organizationId: string,
+): Promise<OrderMonitorThresholds> {
+  const own = new Map(
+    (
+      await alerts.listRuleSettings(organizationId, ORDER_MONITOR_ALERT_SOURCE)
+    ).map((s) => [s.rule, s]),
+  );
+  return Object.fromEntries(
+    ORDER_MONITOR_RULES.map((rule) => {
+      const set = own.get(rule);
+      return [
+        rule,
+        set
+          ? { threshold: set.threshold, minVolume: set.minVolume }
+          : ORDER_MONITOR_DEFAULT_THRESHOLDS[rule],
+      ];
+    }),
+  ) as OrderMonitorThresholds;
+}
 
 const RULE_NOUN: Record<Rule, string> = {
   orders_drop: "Orders",
