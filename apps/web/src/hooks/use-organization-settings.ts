@@ -21,6 +21,7 @@ import {
 } from "@decocms/shared/organization/schema";
 import type {
   OrgFlags,
+  PlanObjective,
   SimpleModeTier,
   SubmoduleCredential,
 } from "@decocms/shared/organization/schema";
@@ -48,6 +49,7 @@ export interface OrganizationSettings {
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
   submodule_credentials: SubmoduleCredential[] | null;
+  plan_objective?: PlanObjective | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -278,6 +280,34 @@ export function useSetNewBlocksEditor() {
             ...prev,
             flags: { ...prev.flags, new_blocks_editor: enabled },
           },
+      );
+    },
+  });
+}
+
+/** The store goal on the Plan page, or null when nobody wrote one yet. */
+export function usePlanObjective(): PlanObjective | null {
+  const { data } = useOrganizationSettings((s) => s.plan_objective ?? null);
+  return data ?? null;
+}
+
+/**
+ * Writer for the store goal. Any member may write it, through the basic-usage
+ * ORGANIZATION_PLAN_OBJECTIVE_SET; null clears it.
+ */
+export function useSetPlanObjective() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (statement: string | null) =>
+      studio.call("ORGANIZATION_PLAN_OBJECTIVE_SET", { statement }),
+    onSuccess: ({ plan_objective }) => {
+      queryClient.setQueryData(
+        KEYS.organizationSettings(org.id),
+        (prev: OrganizationSettings | undefined) =>
+          prev && { ...prev, plan_objective },
       );
     },
   });

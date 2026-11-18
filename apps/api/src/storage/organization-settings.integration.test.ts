@@ -131,3 +131,58 @@ describe("OrganizationSettingsStorage — flags bag", () => {
     }
   });
 });
+
+describe("OrganizationSettingsStorage — plan objective", () => {
+  let database: StudioDatabase;
+  let storage: OrganizationSettingsStorage;
+  const goal = {
+    statement: "Sell more on mobile without spending more on media.",
+    updated_by: "user_1",
+    updated_at: "2026-11-18T12:00:00.000Z",
+  };
+
+  beforeAll(async () => {
+    database = await connectTestPgDatabase();
+    await resetTestPgDatabase(database);
+    await seedCommonTestPgFixtures(database);
+    storage = new OrganizationSettingsStorage(database.db);
+  });
+
+  afterAll(async () => {
+    await closeTestPgDatabase(database);
+  });
+
+  beforeEach(async () => {
+    await database.db.deleteFrom("organization_settings").execute();
+  });
+
+  it("writes the goal on a fresh row and reads it back", async () => {
+    expect(
+      (await storage.setPlanObjective("org_1", goal)).plan_objective,
+    ).toEqual(goal);
+    expect((await storage.get("org_1"))?.plan_objective).toEqual(goal);
+  });
+
+  it("replaces the goal and keeps the other settings", async () => {
+    await storage.upsert("org_1", { flags: { demo_mode: true } });
+    await storage.setPlanObjective("org_1", goal);
+    const next = { ...goal, statement: "Raise the average ticket." };
+    await storage.setPlanObjective("org_1", next);
+
+    const got = await storage.get("org_1");
+    expect(got?.plan_objective).toEqual(next);
+    expect(got?.flags).toEqual({ demo_mode: true });
+  });
+
+  it("clears the goal with null", async () => {
+    await storage.setPlanObjective("org_1", goal);
+    await storage.setPlanObjective("org_1", null);
+    expect((await storage.get("org_1"))?.plan_objective).toBeNull();
+  });
+
+  it("survives an unrelated settings update", async () => {
+    await storage.setPlanObjective("org_1", goal);
+    await storage.upsert("org_1", { flags: { demo_mode: false } });
+    expect((await storage.get("org_1"))?.plan_objective).toEqual(goal);
+  });
+});

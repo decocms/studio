@@ -6,6 +6,7 @@ import {
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
+  PlanObjectiveSchema,
   SubmoduleCredentialSchema,
 } from "@decocms/shared/organization/schema";
 
@@ -33,6 +34,7 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
       .array(SubmoduleCredentialSchema)
       .nullable()
       .optional(),
+    plan_objective: PlanObjectiveSchema.nullable().optional(),
     createdAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
   }),
