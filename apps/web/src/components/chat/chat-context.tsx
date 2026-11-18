@@ -74,6 +74,7 @@ import {
   type AiProviderModel,
 } from "../../hooks/collections/use-ai-providers";
 import { useContext as useContextHook } from "../../hooks/use-context";
+import { savedStoreGoal } from "@/components/plan/saved-store-goal";
 import {
   usePreferences,
   readToolApprovalLevel,
@@ -1181,6 +1182,11 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
         cb.queryClient.invalidateQueries({
           queryKey: KEYS.homeNextActions(cb.orgSlug),
         });
+        if (savedStoreGoal(message.parts ?? [])) {
+          void cb.queryClient.invalidateQueries({
+            queryKey: KEYS.organizationSettings(cb.orgId),
+          });
+        }
 
         const serverThreadId = (message.metadata as Metadata | undefined)
           ?.thread_id;
