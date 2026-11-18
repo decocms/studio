@@ -234,6 +234,25 @@ export function useLiveBoard(
     const hourly = (key: "today" | Comparison, h: number) =>
       days.length === 0 ? null : sum(days.map((d) => d.orders[key][h] ?? null));
     const hours = Array.from({ length: 24 }, (_, h) => h);
+    // Each store's warning and alert levels added up; none while any store doesn't judge the hour.
+    const bandOf = (
+      levels: (d: (typeof days)[number]) => {
+        warn: (number | null)[];
+        alert: (number | null)[];
+      },
+      h: number,
+    ): [number, number] | null => {
+      const pairs = days.map((d) => {
+        const { warn, alert } = levels(d);
+        return [alert[h] ?? null, warn[h] ?? null] as const;
+      });
+      return days.length > 0 &&
+        pairs.every(([a, w]) => a !== null && w !== null)
+        ? [sum(pairs.map(([a]) => a)), sum(pairs.map(([, w]) => w))]
+        : null;
+    };
+    const ordersBand = (h: number) =>
+      bandOf((d) => ({ warn: d.orders.warnAt, alert: d.orders.alertAt }), h);
     const points: MetricPoint[] = hours
       .filter((h) => h < running)
       .map((h) => ({
@@ -242,6 +261,7 @@ export function useLiveBoard(
         d1: hourly("d1", h),
         w1: hourly("w1", h),
         y1: hourly("y1", h),
+        band: ordersBand(h),
       }));
     // The hours still to come: the order monitor's expected count, which past
     // now is its projection, beside the reference days' same hours.
@@ -256,6 +276,7 @@ export function useLiveBoard(
         d1: hourly("d1", h),
         w1: hourly("w1", h),
         y1: hourly("y1", h),
+        band: ordersBand(h),
       }));
     const backfills = days.flatMap((d) => (d.backfill ? [d.backfill] : []));
     kpis.push({
@@ -298,6 +319,13 @@ export function useLiveBoard(
             d1: canceled("d1", h),
             w1: canceled("w1", h),
             y1: canceled("y1", h),
+            band: bandOf(
+              (d) => ({
+                warn: d.cancellations.canceledWarnAt,
+                alert: d.cancellations.canceledAlertAt,
+              }),
+              h,
+            ),
           }))
         : null,
     });
