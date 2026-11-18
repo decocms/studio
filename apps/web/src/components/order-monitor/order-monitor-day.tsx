@@ -205,9 +205,6 @@ function Headline({ day }: { day: OrderMonitorDay }) {
       ))}
       <div className="flex items-center gap-2">
         <OrderMonitorStatusBadge status={drop.status} />
-        {drop.ingestIncident && (
-          <Badge variant="muted">{t("orderMonitor.ingestIncident")}</Badge>
-        )}
       </div>
     </div>
   );

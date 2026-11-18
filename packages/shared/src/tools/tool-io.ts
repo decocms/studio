@@ -377,6 +377,48 @@ export interface StudioToolIO {
     input: { taskBoardItemId: string };
     output: { userIds: string[] };
   };
+  ALERTS_LIST: {
+    input: { includeAcked?: boolean | undefined; limit?: number | undefined };
+    output: {
+      alerts: {
+        id: string;
+        source: string;
+        subjectId: string;
+        rule: string;
+        title: string;
+        body: string;
+        link: string | null;
+        createdAt: string;
+        ackedAt: string | null;
+        ackedBy: string | null;
+        ackNote: string | null;
+        taskBoardItemId: string | null;
+      }[];
+    };
+  };
+  ALERT_ACK: {
+    input: {
+      id: string;
+      note?: string | undefined;
+      taskBoardItemId?: string | undefined;
+    };
+    output: {
+      alert: {
+        id: string;
+        source: string;
+        subjectId: string;
+        rule: string;
+        title: string;
+        body: string;
+        link: string | null;
+        createdAt: string;
+        ackedAt: string | null;
+        ackedBy: string | null;
+        ackNote: string | null;
+        taskBoardItemId: string | null;
+      };
+    };
+  };
   TASK_BOARD_ITEM_CREATE: {
     input: {
       title: string;

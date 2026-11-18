@@ -7,7 +7,6 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import { OrderMonitorStorage } from "./order-monitor";
-import { TaskBoardStorage } from "./task-board";
 
 const INGEST_URL = "https://ingest.example.com/mcp";
 
@@ -85,6 +84,8 @@ describe("OrderMonitorStorage", () => {
         organizationId: orgId,
         connectionId: "conn_om_store",
         createdBy: userId,
+        title: "conn_om_store",
+        orgSlug: orgId,
       },
     ]);
   });
@@ -132,53 +133,7 @@ describe("OrderMonitorStorage", () => {
     );
   });
 
-  test("links the incident card, clears it when the card goes, and keeps the ingest flag", async () => {
-    const card = await new TaskBoardStorage(database.db).create({
-      organizationId: orgId,
-      title: "Orders down",
-      by: userId,
-    });
-    await storage.setIncidentTask(
-      orgId,
-      "conn_om_store",
-      "orders_drop",
-      card.id,
-    );
-    await storage.setVerdictFlags(orgId, "conn_om_store", "orders_drop", {
-      ingestIncident: true,
-    });
-    let [drop] = (await storage.listStates(orgId, "conn_om_store")).filter(
-      (s) => s.rule === "orders_drop",
-    );
-    expect(drop?.task).toEqual({ id: card.id, keySeq: card.keySeq });
-    expect(drop?.verdict).toEqual({ observed: 0, ingestIncident: true });
-
-    // A verdict rewrite leaves the link alone.
-    await storage.upsertStates(orgId, "conn_om_store", [
-      {
-        rule: "orders_drop",
-        status: "alert",
-        since: new Date(),
-        evaluatedAt: new Date(),
-        verdict: { observed: 1 },
-      },
-    ]);
-    [drop] = (await storage.listStates(orgId)).filter(
-      (s) => s.rule === "orders_drop",
-    );
-    expect(drop?.task?.id).toBe(card.id);
-
-    await database.db
-      .deleteFrom("task_board_items")
-      .where("id", "=", card.id)
-      .execute();
-    [drop] = (await storage.listStates(orgId)).filter(
-      (s) => s.rule === "orders_drop",
-    );
-    expect(drop?.task).toBeNull();
-  });
-
-  test("finds the store's agents, their repositories and the org's admins", async () => {
+  test("finds the store's agents and their repositories", async () => {
     const now = new Date().toISOString();
     await insertConnection(
       "conn_om_vtex",
@@ -215,12 +170,6 @@ describe("OrderMonitorStorage", () => {
       await storage.listAggregatingAgents("org_elsewhere", ["conn_om_vtex"]),
     ).toEqual([]);
     expect(await storage.listAgentRepositoryIds(orgId)).toEqual([]);
-
-    await sql`
-      INSERT INTO "member" (id, "organizationId", "userId", role, "createdAt")
-      VALUES ('mem_om_1', ${orgId}, ${userId}, 'member,admin', ${now})
-    `.execute(database.db);
-    expect(await storage.listOrgAdmins(orgId)).toEqual([userId]);
   });
 
   test("drops a store's state with its connection", async () => {

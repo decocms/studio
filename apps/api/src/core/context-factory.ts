@@ -632,6 +632,7 @@ import { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { DemoBoardStorage } from "@/storage/demo-board";
 import { NotificationStorage } from "@/storage/notifications";
+import { AlertStorage } from "@/storage/alerts";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -1595,6 +1596,7 @@ export async function createStudioContextFactory(
     taskBoardAnalytics: new TaskBoardAnalyticsStorage(config.db),
     threadAnalytics: new ThreadAnalyticsStorage(config.db),
     notifications: new NotificationStorage(config.db),
+    alerts: new AlertStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     codexSubscriptions: new CodexSubscriptionStorage(config.db, vault),

@@ -20,6 +20,7 @@ import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
 import * as DemoBoardTools from "./demo-board";
 import * as NotificationTools from "./notifications";
+import * as AlertTools from "./alerts";
 import * as TagTools from "./tags";
 import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
@@ -70,6 +71,8 @@ export const CORE_TOOLS = [
   NotificationTools.NOTIFICATION_MARK_READ,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
+  AlertTools.ALERTS_LIST,
+  AlertTools.ALERT_ACK,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
   // The cross-org `org` param is applied at each tool's own definition, NOT
   // here — the Super Agent imports these tools directly (see

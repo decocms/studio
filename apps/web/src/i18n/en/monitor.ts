@@ -8,10 +8,8 @@ export const monitor = {
     "Alerts when orders drop or cancellations spike",
   "monitor.performance.external":
     "This site isn't on deco's CDN, so it has no CDN performance",
+  "monitor.signal.ack": "Ack",
   "monitor.signals.title": "Needs attention",
-  "monitor.signal.afterDeploy": "{minutes} min after deploy “{message}”",
-  "monitor.signal.below": "{metric} {pct} below expected",
-  "monitor.signal.above": "{metric} {times}× the expected",
   "monitor.signal.deploy": "{metric} {pct} after a deploy",
   "monitor.signal.experiment": "“{title}” has a winner",
   "monitor.signal.experimentDetail":

@@ -10,10 +10,8 @@ export const monitor = {
     "Alertas quando pedidos caem ou cancelamentos sobem",
   "monitor.performance.external":
     "Este site não está na CDN da deco, então não tem performance de CDN",
+  "monitor.signal.ack": "Ciente",
   "monitor.signals.title": "Precisa de atenção",
-  "monitor.signal.afterDeploy": "{minutes} min após o deploy “{message}”",
-  "monitor.signal.below": "{metric} {pct} abaixo do esperado",
-  "monitor.signal.above": "{metric} {times}× o esperado",
   "monitor.signal.deploy": "{metric} {pct} depois de um deploy",
   "monitor.signal.experiment": "“{title}” tem vencedor",
   "monitor.signal.experimentDetail":
