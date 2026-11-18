@@ -3,7 +3,7 @@
 import { HeatmapView } from "@/layouts/main-panel-tabs/analytics-heatmap-tab";
 import { CustomEventsHelp } from "@/layouts/main-panel-tabs/analytics-tab";
 import { BehaviourSection } from "./behaviour";
-import { EventsSection } from "./events";
+import { EventsSection } from "./custom-events";
 import { DecoOverview } from "./overview";
 import { RealtimeSection } from "./realtime";
 import type { SectionProps } from "./types";
