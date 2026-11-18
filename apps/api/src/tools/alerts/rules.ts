@@ -20,7 +20,7 @@ const ThresholdSchema = z.object({
 export const ALERT_RULES_LIST = defineTool({
   name: "ALERT_RULES_LIST",
   description:
-    "List the alert rules and the thresholds the organization alerts at. orders_drop: alerts when an hour brings less than `threshold` % of the expected orders, once at least `minVolume` orders were expected. cancel_spike / denied_spike: alerts at `threshold` times the expected cancellations or payment denials in an hour, and at least `minVolume` of them.",
+    "List the alert rules and the thresholds the organization alerts at. orders_drop: alerts when an hour brings less than `threshold` % of the expected orders, once at least `minVolume` orders were expected. cancel_spike / denied_spike: alerts at `threshold` times the expected cancellations, or unpaid cancellations (orders canceled before their payment was ever approved), in an hour, and at least `minVolume` of them.",
   annotations: {
     title: "List Alert Rules",
     readOnlyHint: true,

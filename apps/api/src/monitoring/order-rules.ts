@@ -42,7 +42,9 @@ export type DayAgo = (typeof DAYS_AGO)[number];
 /** Per 15-minute bucket of one local day. */
 export interface DaySeries {
   placed: number[];
+  /** Every cancellation. */
   canceled: number[];
+  /** The cancellations of orders whose payment was never approved: declined or left unpaid. */
   denied: number[];
 }
 

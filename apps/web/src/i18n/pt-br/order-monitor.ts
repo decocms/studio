@@ -18,7 +18,7 @@ export const orderMonitor = {
   "orderMonitor.vsD1SameTime": "{pct} vs D-1 neste horário",
   "orderMonitor.cancellationsTitle": "Cancelamentos",
   "orderMonitor.canceled": "Cancelados",
-  "orderMonitor.denied": "Pagamento negado",
+  "orderMonitor.denied": "Cancelamentos sem pagamento",
   "orderMonitor.approximate": "aproximado",
   "orderMonitor.approximateNote":
     "Dias tracejados são anteriores ao histórico de hooks da loja; contam cancelamentos pela última atualização do pedido, que pode vir depois.",
@@ -40,7 +40,7 @@ export const orderMonitor = {
   "orderMonitor.partialHour":
     "{hour} · primeiros {minutes} min, no ritmo de uma hora",
   "orderMonitor.rule.ordersDrop": "Pedidos",
-  "orderMonitor.rule.deniedSpike": "Pagamentos negados",
+  "orderMonitor.rule.deniedSpike": "Cancelamentos sem pagamento",
   "orderMonitor.rule.cancelSpike": "Cancelamentos",
   "orderMonitor.status.ok": "OK",
   "orderMonitor.status.warning": "Atenção",

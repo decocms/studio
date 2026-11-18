@@ -41,7 +41,7 @@ export async function loadThresholds(
 
 const RULE_NOUN: Record<Rule, string> = {
   orders_drop: "Orders",
-  denied_spike: "Payment denials",
+  denied_spike: "Unpaid cancellations",
   cancel_spike: "Cancellations",
 };
 

@@ -16,7 +16,7 @@ export const orderMonitor = {
   "orderMonitor.vsD1SameTime": "{pct} vs D-1 at this time",
   "orderMonitor.cancellationsTitle": "Cancellations",
   "orderMonitor.canceled": "Canceled",
-  "orderMonitor.denied": "Payment denied",
+  "orderMonitor.denied": "Unpaid cancellations",
   "orderMonitor.approximate": "approximate",
   "orderMonitor.approximateNote":
     "Dashed days are before the store's hook history; they count cancellations by the order's last update, which can run late.",
@@ -38,7 +38,7 @@ export const orderMonitor = {
   "orderMonitor.partialHour":
     "{hour} · first {minutes} min, shown at its hourly pace",
   "orderMonitor.rule.ordersDrop": "Orders",
-  "orderMonitor.rule.deniedSpike": "Payment denials",
+  "orderMonitor.rule.deniedSpike": "Unpaid cancellations",
   "orderMonitor.rule.cancelSpike": "Cancellations",
   "orderMonitor.status.ok": "OK",
   "orderMonitor.status.warning": "Warning",
