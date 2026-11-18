@@ -5,11 +5,68 @@ import {
   blockEntriesInTree,
   blocksDirPath,
   gitBlobSha,
+  type DecofileDocument,
+  streamDocument,
 } from "./read-decofile";
 
 function blob(path: string): TreeEntry {
   return { path, type: "blob", sha: `sha-${path}` };
 }
+
+describe("streamDocument releases the document", () => {
+  // Two chunks, so an auto-pulled stream leaves the read suspended mid-document
+  // (where the production handle sits when a body is dropped).
+  function fakeDoc(): DecofileDocument & { closes: number } {
+    const enc = new TextEncoder();
+    const doc = {
+      closes: 0,
+      size: 7,
+      previewMembers: "",
+      chunks: async function* () {
+        yield enc.encode('{"a"');
+        yield enc.encode(":1}");
+      },
+      close: async () => {
+        doc.closes++;
+      },
+    };
+    return doc;
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 10));
+
+  it("closes on abort after the stream auto-pulled into the document", async () => {
+    const doc = fakeDoc();
+    const ac = new AbortController();
+    streamDocument(doc, { signal: ac.signal }); // body dropped, never read
+    await tick();
+    expect(doc.closes).toBe(0);
+    ac.abort();
+    await tick();
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+
+  it("closes when the signal is already aborted", async () => {
+    const doc = fakeDoc();
+    streamDocument(doc, { signal: AbortSignal.abort() });
+    await tick();
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+
+  it("closes on cancel mid-read", async () => {
+    const doc = fakeDoc();
+    const reader = streamDocument(doc, {}).getReader();
+    await reader.read();
+    await reader.cancel();
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+
+  it("closes after a full read", async () => {
+    const doc = fakeDoc();
+    const text = await new Response(streamDocument(doc, {})).text();
+    expect(text).toBe('{"a":1}');
+    expect(doc.closes).toBeGreaterThan(0);
+  });
+});
 
 describe("blocksDirPath", () => {
   it("handles root and nested projects", () => {
