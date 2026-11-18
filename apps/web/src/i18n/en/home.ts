@@ -23,13 +23,6 @@ export const home = {
   "home.needsYou.reasonAnswer": "Waiting on an answer",
   "home.needsYou.reasonReview": "Needs review",
   "home.needsYou.reasonAssigned": "Assigned to you",
-  "home.comingSoon.badge": "Coming soon",
-  "home.comingSoon.planHeading": "Goals your agents work toward",
-  "home.comingSoon.planDescription":
-    "Set an outcome and how it is measured. Agents turn it into tasks and report progress against it.",
-  "home.comingSoon.planGoals": "Goals with a metric and a target",
-  "home.comingSoon.planTasks": "Tasks proposed from each goal",
-  "home.comingSoon.planProgress": "Progress you can read at a glance",
   "home.brief.changeOne": "1 change",
   "home.brief.changeMany": "{count} changes",
   "home.brief.waitingOne": "1 thing needs you.",
