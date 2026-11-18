@@ -208,7 +208,50 @@ function promptMessagesToParts(
  * Node types that occupy their own line. Tiptap keeps no newline of its own —
  * the break IS the block boundary — so the walk has to put one back.
  */
-const BLOCK_NODES = new Set(["paragraph", "heading", "codeBlock", "listItem"]);
+const BLOCK_NODES = new Set(["paragraph", "heading", "codeBlock"]);
+
+type TextMark = { type: string; attrs?: Record<string, unknown> };
+
+const MARK_DELIMITERS: Record<string, string> = {
+  bold: "**",
+  italic: "_",
+  strike: "~~",
+  code: "`",
+};
+
+/** An autolinked URL already reads as its own link; `[x](x)` is noise. */
+function linkShowsItsHref(text: string, href: string): boolean {
+  return (
+    href === text || href.replace(/^(?:[a-z]+:\/\/|mailto:)/i, "") === text
+  );
+}
+
+/**
+ * A text node as markdown, so the model sees the formatting the user sees.
+ * Whitespace stays outside the delimiters — `** bold**` is not bold.
+ */
+function textNodeToMarkdown(text: string, marks?: TextMark[]): string {
+  if (!marks?.length) return text;
+  const [, lead = "", core = "", trail = ""] =
+    /^(\s*)([\s\S]*?)(\s*)$/.exec(text) ?? [];
+  if (!core) return text;
+
+  let out = core;
+  // Code goes innermost: anything inside backticks is literal.
+  const ordered = [...marks].sort(
+    (a, b) => Number(b.type === "code") - Number(a.type === "code"),
+  );
+  for (const mark of ordered) {
+    const delimiter = MARK_DELIMITERS[mark.type];
+    if (delimiter) out = `${delimiter}${out}${delimiter}`;
+  }
+  const link = marks.find((m) => m.type === "link");
+  const href = link?.attrs?.href;
+  if (typeof href === "string" && href && !linkShowsItsHref(core, href)) {
+    out = `[${out}](${href})`;
+  }
+  return `${lead}${out}${trail}`;
+}
 
 /**
  * Helper to derive UI parts from TiptapDoc
@@ -221,6 +264,9 @@ export function derivePartsFromTiptapDoc(
 
   const parts: ChatMessage["parts"] = [];
   let inlineText = "";
+  let listDepth = 0;
+  // A list item's marker is already on the line its first paragraph fills.
+  let markerOpen = false;
 
   // Walk the tiptap document to build inline text and collect resources
   const walkNode = (
@@ -231,26 +277,48 @@ export function derivePartsFromTiptapDoc(
           attrs?: Record<string, unknown>;
           content?: unknown[];
           text?: string;
+          marks?: TextMark[];
         },
   ) => {
     if (!node) return;
+
+    const indent = "  ".repeat(listDepth);
+
+    if (node.type === "bulletList" || node.type === "orderedList") {
+      const start =
+        typeof node.attrs?.start === "number" ? node.attrs.start : 1;
+      const items =
+        "content" in node && Array.isArray(node.content) ? node.content : [];
+      items.forEach((item, index) => {
+        if (inlineText !== "") inlineText += "\n";
+        inlineText +=
+          indent + (node.type === "orderedList" ? `${start + index}. ` : "- ");
+        markerOpen = true;
+        listDepth++;
+        walkNode(item as typeof node);
+        listDepth--;
+        markerOpen = false;
+      });
+      return;
+    }
 
     // A block starts a new line. Without this every paragraph ran into the
     // previous one, so a two-paragraph message reached the model as one — and
     // a prompt saved from this editor lost the blank lines that make its
     // markdown parse (a heading glued to the line above is body text).
-    if (BLOCK_NODES.has(node.type ?? "") && inlineText !== "") {
-      inlineText += "\n";
+    if (BLOCK_NODES.has(node.type ?? "")) {
+      if (markerOpen) markerOpen = false;
+      else if (inlineText !== "") inlineText += "\n" + indent;
     }
 
     if (node.type === "hardBreak") {
-      inlineText += "\n";
+      inlineText += "\n" + indent;
     } else if (
       node.type === "text" &&
       "text" in node &&
       typeof node.text === "string"
     ) {
-      inlineText += node.text;
+      inlineText += textNodeToMarkdown(node.text, node.marks);
     } else if (node.type === "mention" && node.attrs) {
       const char = (node.attrs.char as string | undefined) ?? "/";
       const mentionName = `${char}${node.attrs.name}`;
