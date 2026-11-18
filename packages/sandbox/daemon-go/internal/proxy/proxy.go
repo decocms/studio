@@ -95,6 +95,9 @@ func (p *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	outReq.Header.Del("Transfer-Encoding")
 	outReq.Header.Del("Content-Length")
 	outReq.Header.Del("Authorization")
+	if origin, ok := DevServerOrigin(r, port); ok {
+		outReq.Header.Set("Origin", origin)
+	}
 	outReq.Host = r.Host
 
 	// Measured to headers, not to the last body byte: SSE / NDJSON / long-poll
