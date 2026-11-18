@@ -84,4 +84,35 @@ describe("withHtmlArtifactPreviews", () => {
       "finish",
     ]);
   });
+
+  test("this chat's business case is announced once per content change", async () => {
+    const write = (hash: string, path = "plans/cases/thrd_1.json") => ({
+      ...deck,
+      path,
+      contentHash: hash,
+    });
+    const types = await collect(
+      [
+        { type: "start" },
+        { type: "start-step" },
+        { type: "finish-step" },
+        { type: "start-step" },
+        { type: "finish-step" },
+        { type: "finish" },
+      ],
+      fakeCtx([
+        [write("c1"), write("c1", "plans/cases/thrd_2.json")],
+        [write("c1")],
+      ]),
+    );
+    expect(types).toEqual([
+      "start",
+      "start-step",
+      "finish-step",
+      "data-business-case-updated",
+      "start-step",
+      "finish-step",
+      "finish",
+    ]);
+  });
 });

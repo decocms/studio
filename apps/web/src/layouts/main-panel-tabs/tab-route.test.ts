@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   FIXED_SYSTEM_TABS,
+  formatCaseTabId,
   formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
@@ -72,6 +73,10 @@ describe("tabRouteLocation", () => {
     expect(tabRouteLocation(formatDeckTabId("decks/q3 launch.html"))).toEqual({
       kind: "output-deck",
       path: "decks/q3 launch.html",
+    });
+    expect(tabRouteLocation(formatCaseTabId("plans/cases/a.json"))).toEqual({
+      kind: "business-case",
+      path: "plans/cases/a.json",
     });
     expect(
       tabRouteLocation(formatLibraryFileTabId("home/docs/spec final.md")),
@@ -442,6 +447,12 @@ describe("tabIdForRoute", () => {
         params: { automationId: "auto-1" },
       }),
     ).toBe("automation:auto-1");
+    expect(
+      tabIdForRoute({
+        mainView: "business-case",
+        search: { path: "plans/cases/a.json" },
+      }),
+    ).toBe(formatCaseTabId("plans/cases/a.json"));
   });
 
   test("reconstructs a namespaced agent-view id even when it is built-in-shaped", () => {
@@ -454,6 +465,7 @@ describe("tabIdForRoute", () => {
     expect(tabIdForRoute({ mainView: "app" })).toBeUndefined();
     expect(tabIdForRoute({ mainView: "file" })).toBeUndefined();
     expect(tabIdForRoute({ mainView: "view" })).toBeUndefined();
+    expect(tabIdForRoute({ mainView: "business-case" })).toBeUndefined();
   });
 });
 
@@ -577,6 +589,7 @@ describe("navigateToTabRouteTarget covers every target", () => {
     formatAgentViewTabId("custom"),
     formatFileTabId("org-fs:outputs/t/x.pdf"),
     formatDeckTabId("decks/a.html"),
+    formatCaseTabId("plans/cases/a.json"),
     formatLibraryFileTabId("home/a.md"),
     formatCodeTabId("src/a.ts"),
   ];

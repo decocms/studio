@@ -132,7 +132,10 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
   return s.kind;
 }
 
-import { useChatNavigation } from "./hooks/use-chat-navigation";
+import {
+  useChatNavigation,
+  type NavigateToTaskOptions,
+} from "./hooks/use-chat-navigation";
 import {
   useOrgFlag,
   useSandboxOnlyChats,
@@ -162,7 +165,11 @@ import {
 import { textFromParts } from "./queue-items";
 import { withLiveRunId } from "./live-messages";
 import { useMessageQueueActions } from "./use-message-queue";
-import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
+import {
+  formatCaseTabId,
+  formatDeckTabId,
+} from "@/layouts/main-panel-tabs/tab-id";
+import { businessCaseQueryKey } from "@/components/plan/business-case/use-business-case";
 import { useEffectiveSimpleMode } from "../../hooks/use-user-model-preferences";
 import {
   findModel,
@@ -237,13 +244,18 @@ export interface ChatTaskContextValue {
   virtualMcpId: string;
   /** The thread the route names, or `null` on a route that names none. */
   taskId: string | null;
-  openTask: (taskId: string) => void;
+  /** `tabId` opens that view beside the thread. */
+  openTask: (taskId: string, opts?: { tabId?: string }) => void;
   /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
    *  coding session; `branch` overrides the carried-over current branch. */
   createTask: (opts?: { runtime?: ThreadRuntime; branch?: string }) => string;
+  /** `id` names the new thread when the message must mention it; `tabId`
+   *  opens that view beside it instead of carrying the current one. */
   createTaskWithMessage: (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
+    id?: string;
+    tabId?: string;
   }) => void;
   activeTask: Task | null;
   /** True iff the thread row has captured a `harness_id` — i.e. the first
@@ -662,15 +674,13 @@ export function ChatContextProvider({
   // Context prompt (uses effective agent)
   const contextPrompt = useContextHook(effectiveVirtualMcpId);
 
-  const navigateToTask = (
-    taskId: string,
-    opts?: { virtualMcpId?: string; autosend?: boolean; keepView?: boolean },
-  ) => {
+  const navigateToTask = (taskId: string, opts?: NavigateToTaskOptions) => {
     markTaskRead(taskId);
     rawNavigateToTask(taskId, {
       virtualMcpId: opts?.virtualMcpId,
       autosend: opts?.autosend,
       keepView: opts?.keepView,
+      tabId: opts?.tabId,
     });
   };
 
@@ -744,8 +754,10 @@ export function ChatContextProvider({
   const createTaskWithMessage = (params: {
     message: SendMessageParams;
     virtualMcpId?: string;
+    id?: string;
+    tabId?: string;
   }) => {
-    const newId = crypto.randomUUID();
+    const newId = params.id ?? crypto.randomUUID();
     const targetVmcp = params.virtualMcpId ?? virtualMcpId;
     const sameAgent = targetVmcp === virtualMcpId;
     const carryBranch = sameAgent ? carryOverBranch : null;
@@ -772,6 +784,7 @@ export function ChatContextProvider({
           virtualMcpId: params.virtualMcpId,
           autosend: true,
           keepView: targetVmcp === virtualMcpId,
+          tabId: params.tabId,
         });
       })
       .catch(() => {
@@ -779,6 +792,7 @@ export function ChatContextProvider({
           virtualMcpId: params.virtualMcpId,
           autosend: true,
           keepView: targetVmcp === virtualMcpId,
+          tabId: params.tabId,
         });
       });
   };
@@ -1045,6 +1059,8 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
   useEffect(() => {
+    // Open each case once; later writes only refresh it.
+    const openedCases = new Set<string>();
     const observer: ThreadObserver = {
       // Auto-titler emits `data-thread-title` chunks as the turn streams. Mirror
       // the new title into the manager's thread row so the tasks panel updates
@@ -1078,6 +1094,20 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
             queryKey: KEYS.orgFsRecent(cb.orgId),
           });
           cb.openPanel(formatDeckTabId(path));
+          return;
+        }
+        // Plan's business case: the canvas refetches on every write.
+        if (chunk.type === "data-business-case-updated") {
+          const data = (chunk as unknown as { data: { path?: string } }).data;
+          if (!data?.path) return;
+          const cb = cbRef.current;
+          cb.queryClient.invalidateQueries({
+            queryKey: businessCaseQueryKey(cb.orgId, data.path),
+          });
+          if (!openedCases.has(data.path)) {
+            openedCases.add(data.path);
+            cb.openPanel(formatCaseTabId(data.path));
+          }
           return;
         }
         // `load_repo` finished cloning a repo into the thread's sandbox. Patch

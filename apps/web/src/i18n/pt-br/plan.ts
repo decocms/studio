@@ -18,11 +18,11 @@ export const plan = {
   "plan.objective.saveError": "Não deu para salvar o objetivo. Tente de novo.",
   "plan.idea.heading": "O que você quer melhorar na loja?",
   "plan.idea.description":
-    "Descreva a ideia. O agente transforma isso em um business case: o problema em números, quem já faz, o dinheiro em jogo, o esforço e o teste A/B.",
+    "Fale do jeito que vier, mesmo vago. Você vai para o business case e monta junto com o agente: ele pergunta pelo chat o que precisa e preenche o problema em números, quem já faz, o dinheiro em jogo, o esforço e o teste A/B.",
   "plan.idea.label": "Sua ideia",
   "plan.idea.placeholder":
-    "Ex.: Mostrar o prazo de entrega na página de produto antes de adicionar ao carrinho.",
-  "plan.idea.submit": "Criar o plano",
+    "Ex.: Quero mexer na busca. Ou: um guia de vestibilidade na página de produto aumentaria a conversão.",
+  "plan.idea.submit": "Montar o business case",
   "plan.idea.startWith": "Comece por",
   "plan.idea.topic.shipping": "Frete",
   "plan.idea.topic.shippingPrompt": "No frete, ",
@@ -37,9 +37,61 @@ export const plan = {
   "plan.idea.topic.paidMedia": "Mídia paga",
   "plan.idea.topic.paidMediaPrompt": "Para quem chega pela mídia paga, ",
   "plan.prompt.withObjective":
-    "Monte um business case para esta ideia. Siga a skill business-case (leia /app/org/public/core/business-case/SKILL.md) e salve o documento nos arquivos da organização.\n\nObjetivo da loja: {objective}\n\nIdeia: {idea}",
+    "Vamos montar juntos um business case para este pedido. Siga a skill business-case (leia /app/org/public/core/business-case/SKILL.md). O canvas deste case é {casePath}: rode o init agora, antes de qualquer coisa, e preencha os cards conforme a conversa avança. Se o pedido não diz onde e o quê, me pergunte uma coisa por vez, com opções.\n\nObjetivo da loja: {objective}\n\nPedido: {idea}",
   "plan.prompt.suggestObjective":
     'Sugira um objetivo para a minha loja, a frase de onde todo plano parte. Não me faça perguntas antes.\n\n1. Leia o que você alcança sobre a loja: o Monitor (visitantes, pageviews, pedidos e alertas), o funil e os pedidos pelas tools desta organização, e os arquivos em /app/org/home.\n2. Proponha uma frase de até {max} caracteres, do jeito que eu diria para o meu time (ex.: "Vender tão bem no celular quanto no desktop, sem gastar mais em mídia.").\n3. Embaixo, dê 2 ou 3 motivos. Todo número leva a fonte e a janela ("33% iniciam o checkout, data lake da loja, últimos 7 dias"); número que você não leu não entra.\n4. Diga quais dados você não conseguiu acessar. Se não encontrou nada, proponha a frase mesmo assim e diga que é uma suposição.\n5. Não salve ainda. Pergunte se eu aprovo ou quero mudar. Só depois que eu aprovar, salve com ORGANIZATION_PLAN_OBJECTIVE_SET, usando a minha versão se eu tiver mudado.\n\nResponda no idioma desta mensagem.',
   "plan.prompt.withoutObjective":
-    "Monte um business case para esta ideia. Siga a skill business-case (leia /app/org/public/core/business-case/SKILL.md) e salve o documento nos arquivos da organização.\n\nIdeia: {idea}",
+    "Vamos montar juntos um business case para este pedido. Siga a skill business-case (leia /app/org/public/core/business-case/SKILL.md). O canvas deste case é {casePath}: rode o init agora, antes de qualquer coisa, e preencha os cards conforme a conversa avança. Se o pedido não diz onde e o quê, me pergunte uma coisa por vez, com opções.\n\nPedido: {idea}",
+  "plan.case.waiting": "Abrindo o business case…",
+  "plan.case.asking": "Responda no chat",
+  "plan.case.assumption": "Suposição:",
+  "plan.case.progress": "{filled} de {total} preenchidos",
+  "plan.case.openDocument": "Abrir o documento",
+  "plan.case.invalid":
+    "Não deu para ler a última atualização; mostrando a anterior.",
+  "plan.case.objective": "Objetivo da loja",
+  "plan.case.noObjective": "Ainda sem objetivo. Escreva um na página Plan.",
+  "plan.case.request": "O que você pediu",
+  "plan.case.status.framing": "Enquadrando",
+  "plan.case.status.building": "Construindo",
+  "plan.case.status.ready": "Pronto",
+  "plan.case.area.pdp": "Página de produto",
+  "plan.case.area.search": "Busca",
+  "plan.case.area.category": "Página de categoria",
+  "plan.case.area.home": "Home",
+  "plan.case.area.cart": "Carrinho",
+  "plan.case.area.checkout": "Checkout",
+  "plan.case.area.shipping": "Frete",
+  "plan.case.area.performance": "Performance",
+  "plan.case.area.paidMedia": "Mídia paga",
+  "plan.case.area.other": "Outra",
+  "plan.case.card.problem": "O problema, medido",
+  "plan.case.card.problemQuestion":
+    "Em que passo da jornada as pessoas desistem, e quantas?",
+  "plan.case.card.scope": "O que vamos mexer",
+  "plan.case.card.scopeQuestion":
+    "Onde na loja, em qual dispositivo, e o que exatamente?",
+  "plan.case.card.money": "Dinheiro em jogo",
+  "plan.case.card.moneyQuestion":
+    "Quanto vale por mês um ganho pequeno nesse passo?",
+  "plan.case.card.competitors": "Quem já faz",
+  "plan.case.card.competitorsQuestion":
+    "Quais concorrentes já fazem isso, e como?",
+  "plan.case.card.measurement": "Como vamos medir",
+  "plan.case.card.measurementQuestion":
+    "Qual métrica prova que funcionou, e qual não pode piorar?",
+  "plan.case.card.abTest": "Teste A/B e prazo",
+  "plan.case.card.abTestQuestion":
+    "Quantas pessoas e quantas semanas para saber?",
+  "plan.case.card.effort": "Esforço e entregas",
+  "plan.case.card.effortQuestion":
+    "Quantos dias de trabalho, e o que muda na loja?",
+  "plan.case.card.risks": "Riscos",
+  "plan.case.card.risksQuestion": "O que pode piorar, e o que vamos vigiar?",
+  "plan.case.card.unknowns": "O que ainda não sabemos",
+  "plan.case.card.unknownsQuestion": "O que falta, e como descobrir?",
+  "plan.cases.heading": "Seus business cases",
+  "plan.cases.description": "Abra um para ver o canvas e continuar a conversa.",
+  "plan.cases.updated": "Atualizado {when}",
+  "plan.cases.unreadable": "Não deu para ler este case",
 } satisfies Record<keyof typeof planEn, string>;

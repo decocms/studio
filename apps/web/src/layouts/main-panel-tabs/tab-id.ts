@@ -160,6 +160,29 @@ export function parseDeckTabId(
   }
 }
 
+export interface CaseTabParsed {
+  /** Home-volume-relative case path, e.g. `plans/cases/<threadId>.json`. */
+  path: string;
+}
+
+/** The Plan page's business case canvas for one chat. */
+export function formatCaseTabId(path: string): string {
+  return `case:${encodeURIComponent(path)}`;
+}
+
+export function parseCaseTabId(
+  tabId: string | undefined,
+): CaseTabParsed | null {
+  if (!tabId || !tabId.startsWith("case:")) return null;
+  const encoded = tabId.slice("case:".length);
+  if (!encoded) return null;
+  try {
+    return { path: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
 export interface FileTabParsed {
   /** Thread-output key: an org-fs ref
    *  (`org-fs:outputs/<threadId>/x.pdf`) — the same shape returned by the
@@ -285,6 +308,7 @@ export const OVERLAY_TABS = new Set([
  *   - "automation:<id>"               (ephemeral automation detail)
  *   - "file:<encoded key>"            (ephemeral thread-output file preview)
  *   - "deck:<encoded path>"           (ephemeral HTML-artifact preview/editor)
+ *   - "case:<encoded path>"           (the chat's business case canvas)
  *   - "library-file:<encoded path>"   (ephemeral org Library file preview)
  *   - "code:<encoded path>"           (open file in the Code tab's file explorer,
  *     scoped to the task's branch/sandbox — the bare "code" tab id is NOT
@@ -296,6 +320,7 @@ export function isPerThreadTab(tabId: string): boolean {
     tabId.startsWith("automation:") ||
     tabId.startsWith("file:") ||
     tabId.startsWith("deck:") ||
+    tabId.startsWith("case:") ||
     tabId.startsWith("library-file:") ||
     tabId.startsWith("code:")
   );

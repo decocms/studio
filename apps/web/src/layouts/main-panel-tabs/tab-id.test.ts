@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   FIXED_SYSTEM_TABS,
+  formatCaseTabId,
   formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
@@ -12,6 +13,7 @@ import {
   isPerThreadTab,
   normalizePanelSegment,
   parseAutomationTabId,
+  parseCaseTabId,
   parseDeckTabId,
   parseFileTabId,
   parseLibraryFileTabId,
@@ -143,6 +145,25 @@ describe("deck tab id", () => {
 
   test("deck tabs are per-thread", () => {
     expect(isPerThreadTab(formatDeckTabId("decks/a.html"))).toBe(true);
+  });
+});
+
+describe("business case tab id", () => {
+  test("round-trips case paths", () => {
+    const path = "plans/cases/0b7c-41a2.json";
+    expect(parseCaseTabId(formatCaseTabId(path))).toEqual({ path });
+  });
+
+  test("other tabs, an empty or malformed id → null", () => {
+    expect(parseCaseTabId("plan")).toBeNull();
+    expect(parseCaseTabId(formatDeckTabId("decks/a.html"))).toBeNull();
+    expect(parseCaseTabId(undefined)).toBeNull();
+    expect(parseCaseTabId("case:")).toBeNull();
+    expect(parseCaseTabId("case:%E0%A4%A")).toBeNull();
+  });
+
+  test("case tabs are per-thread", () => {
+    expect(isPerThreadTab(formatCaseTabId("plans/cases/a.json"))).toBe(true);
   });
 });
 
