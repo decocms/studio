@@ -73,7 +73,7 @@ export function PlanIdeaComposer() {
           {t("plan.idea.description")}
         </p>
       </div>
-      <form onSubmit={submit} className="flex flex-col gap-3 surface p-4">
+      <form onSubmit={submit} className="flex flex-col gap-3">
         <Textarea
           aria-label={t("plan.idea.label")}
           placeholder={t("plan.idea.placeholder")}
@@ -84,7 +84,7 @@ export function PlanIdeaComposer() {
               submit(event);
             }
           }}
-          className="min-h-28 bg-transparent text-[15px] shadow-none hover:bg-transparent"
+          className="min-h-32 text-[15px]"
         />
         <div className="flex justify-end">
           <Button type="submit" disabled={!ready}>
