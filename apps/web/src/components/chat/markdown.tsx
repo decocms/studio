@@ -8,7 +8,10 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useCopy } from "@decocms/ui/hooks/use-copy.ts";
-import { markdownComponents as sharedMarkdownComponents } from "@decocms/ui/components/markdown.tsx";
+import {
+  markdownComponents as sharedMarkdownComponents,
+  markdownLinkClassName,
+} from "@decocms/ui/components/markdown.tsx";
 import { Check, Copy01, File06 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
 import { groupImageRuns } from "./markdown-image-runs.ts";
@@ -293,7 +296,7 @@ function MarkdownAnchor({
       {...p}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-primary-dark hover:underline break-all font-medium"
+      className={markdownLinkClassName}
     >
       {label}
     </a>

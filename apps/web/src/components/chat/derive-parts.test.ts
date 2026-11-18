@@ -279,3 +279,92 @@ describe("derivePartsFromTiptapDoc — block boundaries", () => {
     ).toBe("a\nb");
   });
 });
+
+describe("derivePartsFromTiptapDoc — formatting", () => {
+  const doc = (...content: unknown[]) => ({
+    type: "doc",
+    content: [{ type: "paragraph", content }],
+  });
+  const text = (value: string, ...marks: unknown[]) => ({
+    type: "text",
+    text: value,
+    marks,
+  });
+  const link = (href: string) => ({ type: "link", attrs: { href } });
+
+  test("marks become markdown", () => {
+    expect(
+      joinText(
+        doc(
+          text("bold", { type: "bold" }),
+          text(" "),
+          text("it", { type: "italic" }),
+          text(" "),
+          text("gone", { type: "strike" }),
+          text(" "),
+          text("x()", { type: "code" }),
+        ),
+      ),
+    ).toBe("**bold** _it_ ~~gone~~ `x()`");
+  });
+
+  test("whitespace stays outside the delimiters", () => {
+    expect(
+      joinText(doc(text("a "), text(" b ", { type: "bold" }), text("c"))),
+    ).toBe("a  **b** c");
+  });
+
+  test("code is innermost, so other marks stay outside the backticks", () => {
+    expect(joinText(doc(text("x", { type: "code" }, { type: "bold" })))).toBe(
+      "**`x`**",
+    );
+  });
+
+  test("a labelled link keeps its href", () => {
+    expect(joinText(doc(text("the docs", link("https://example.com/d"))))).toBe(
+      "[the docs](https://example.com/d)",
+    );
+  });
+
+  test("an autolinked URL stays bare", () => {
+    expect(
+      joinText(
+        doc(
+          text("https://example.com", link("https://example.com")),
+          text(" and "),
+          text("example.org", link("https://example.org")),
+        ),
+      ),
+    ).toBe("https://example.com and example.org");
+  });
+
+  test("lists get markers, nesting and their start number", () => {
+    const item = (value: string, ...rest: unknown[]) => ({
+      type: "listItem",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: value }] },
+        ...rest,
+      ],
+    });
+    expect(
+      joinText({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "todo:" }] },
+          {
+            type: "bulletList",
+            content: [
+              item("one", {
+                type: "orderedList",
+                attrs: { start: 3 },
+                content: [item("three"), item("four")],
+              }),
+              item("two"),
+            ],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "done" }] },
+        ],
+      }),
+    ).toBe("todo:\n- one\n  3. three\n  4. four\n- two\ndone");
+  });
+});

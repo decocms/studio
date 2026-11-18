@@ -1,10 +1,10 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import { type UIMessage } from "ai";
 import { useRef, useState } from "react";
 import { FileNode } from "../tiptap/file/node.tsx";
 import { MentionNode } from "../tiptap/mention/node.tsx";
+import { CHAT_RICH_TEXT_CLASSES, chatStarterKit } from "../tiptap/rich-text.ts";
 import type { Metadata } from "../types.ts";
 import { MessageTextPart } from "./parts/text-part.tsx";
 import { MessageTimestamp } from "./timestamp.tsx";
@@ -19,16 +19,7 @@ export interface MessageProps<T extends Metadata> {
   onScrollToPair?: () => void;
 }
 
-const EXTENSIONS = [
-  StarterKit.configure({
-    heading: false,
-    blockquote: false,
-    codeBlock: false,
-    horizontalRule: false,
-  }),
-  MentionNode,
-  FileNode,
-];
+const EXTENSIONS = [chatStarterKit, MentionNode, FileNode];
 
 /**
  * Read-only Tiptap renderer for rich message content
@@ -54,7 +45,10 @@ function RichMessageContent({
   return (
     <EditorContent
       editor={editor}
-      className="[&_.ProseMirror]:outline-none [&_.ProseMirror]:cursor-text"
+      className={cn(
+        CHAT_RICH_TEXT_CLASSES,
+        "[&_.ProseMirror]:outline-none [&_.ProseMirror]:cursor-text",
+      )}
     />
   );
 }
