@@ -145,7 +145,6 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
-            plan_goal_jev_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -160,6 +159,16 @@ export interface StudioToolIO {
             updated_by: string;
             updated_at: string;
             source?: "member" | "jev" | undefined;
+            goal?:
+              | "mobile_conversion"
+              | "checkout_completion"
+              | "cart_to_checkout"
+              | "product_to_cart"
+              | "traffic_growth"
+              | "recover_sales"
+              | "average_ticket"
+              | "site_stability"
+              | undefined;
           }
         | null
         | undefined;
@@ -246,7 +255,6 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
-            plan_goal_jev_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | undefined;
@@ -334,7 +342,6 @@ export interface StudioToolIO {
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
             plan_page_enabled?: boolean | undefined;
-            plan_goal_jev_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -349,6 +356,16 @@ export interface StudioToolIO {
             updated_by: string;
             updated_at: string;
             source?: "member" | "jev" | undefined;
+            goal?:
+              | "mobile_conversion"
+              | "checkout_completion"
+              | "cart_to_checkout"
+              | "product_to_cart"
+              | "traffic_growth"
+              | "recover_sales"
+              | "average_ticket"
+              | "site_stability"
+              | undefined;
           }
         | null
         | undefined;
@@ -362,6 +379,16 @@ export interface StudioToolIO {
     input: {
       statement: string | null;
       source?: "member" | "jev" | undefined;
+      goal?:
+        | "mobile_conversion"
+        | "checkout_completion"
+        | "cart_to_checkout"
+        | "product_to_cart"
+        | "traffic_growth"
+        | "recover_sales"
+        | "average_ticket"
+        | "site_stability"
+        | undefined;
       if_empty?: boolean | undefined;
     };
     output: {
@@ -370,6 +397,16 @@ export interface StudioToolIO {
         updated_by: string;
         updated_at: string;
         source?: "member" | "jev" | undefined;
+        goal?:
+          | "mobile_conversion"
+          | "checkout_completion"
+          | "cart_to_checkout"
+          | "product_to_cart"
+          | "traffic_growth"
+          | "recover_sales"
+          | "average_ticket"
+          | "site_stability"
+          | undefined;
       } | null;
     };
   };

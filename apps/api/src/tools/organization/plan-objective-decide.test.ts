@@ -15,14 +15,8 @@ function makeCtx(flags: Record<string, unknown> | null) {
 }
 
 describe("ORGANIZATION_PLAN_OBJECTIVE_DECIDE", () => {
-  it("refuses unless both Plan flags are on", async () => {
-    for (const flags of [
-      null,
-      {},
-      { plan_page_enabled: true },
-      { plan_goal_jev_enabled: true },
-      { plan_page_enabled: false, plan_goal_jev_enabled: true },
-    ]) {
+  it("refuses unless the Plan page is on", async () => {
+    for (const flags of [null, {}, { plan_page_enabled: false }]) {
       const { ctx, get } = makeCtx(flags);
       await expect(
         ORGANIZATION_PLAN_OBJECTIVE_DECIDE.handler({}, ctx),

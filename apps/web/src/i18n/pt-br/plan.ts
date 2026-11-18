@@ -16,6 +16,31 @@ export const plan = {
   "plan.objective.cancel": "Cancelar",
   "plan.objective.clear": "Apagar objetivo",
   "plan.objective.saveError": "Não deu para salvar o objetivo. Tente de novo.",
+  "plan.objective.deciding": "Lendo os dados da loja para escolher o objetivo…",
+  "plan.objective.pickedByAi":
+    "Escolhido pela IA a partir dos últimos 28 dias da loja. Edite se não fizer sentido.",
+  "plan.objective.review": "Revisar com IA",
+  "plan.objective.reviewing": "Revisando…",
+  "plan.objective.review.same":
+    "Os dados da loja ainda apontam para o mesmo objetivo.",
+  "plan.objective.review.updated": "Objetivo atualizado com os dados da loja.",
+  "plan.objective.review.noData":
+    "Ainda não há dados da loja suficientes para escolher um objetivo. O objetivo continua o mesmo.",
+  "plan.objective.review.unavailable":
+    "A IA não conseguiu revisar o objetivo agora. Tente de novo mais tarde.",
+  "plan.objective.review.uncertain":
+    "Os dados da loja não apontam um objetivo claro. O objetivo continua o mesmo.",
+  "plan.goal.mobile_conversion":
+    "Fazer o celular vender tão bem quanto o computador.",
+  "plan.goal.checkout_completion":
+    "Fazer mais gente que começa o checkout terminar a compra.",
+  "plan.goal.cart_to_checkout": "Levar mais carrinhos até o checkout.",
+  "plan.goal.product_to_cart":
+    "Transformar mais visitas à página de produto em itens no carrinho.",
+  "plan.goal.traffic_growth": "Recuperar os visitantes que a loja perdeu.",
+  "plan.goal.recover_sales": "Recuperar as vendas que caíram.",
+  "plan.goal.average_ticket": "Aumentar o ticket médio dos pedidos.",
+  "plan.goal.site_stability": "Parar de perder vendas por erros no site.",
   "plan.idea.heading": "O que você quer melhorar na loja?",
   "plan.idea.description":
     "Fale do jeito que vier, mesmo vago. Você vai para o business case e monta junto com o agente: ele pergunta pelo chat o que precisa e preenche o problema em números, quem já faz, o dinheiro em jogo, o esforço e o teste A/B.",

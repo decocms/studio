@@ -182,7 +182,11 @@ describe("OrganizationSettingsStorage — plan objective", () => {
 
   it("with ifEmpty, writes a goal on an empty row", async () => {
     await storage.upsert("org_1", { flags: { demo_mode: true } });
-    const jev = { ...goal, source: "jev" as const };
+    const jev = {
+      ...goal,
+      source: "jev" as const,
+      goal: "traffic_growth" as const,
+    };
     const got = await storage.setPlanObjective("org_1", jev, { ifEmpty: true });
     expect(got.plan_objective).toEqual(jev);
     expect(got.flags).toEqual({ demo_mode: true });

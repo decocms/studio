@@ -1,22 +1,42 @@
-/**
- * The store goal at the top of Plan: one sentence a member writes, shown big,
- * edited in place, or proposed by the agent from the store's data. It travels
- * with every business case the page asks for.
- */
+/** The store goal at the top of Plan; Jev picks it while empty, a member edits it or asks Jev to review it. */
 
 import { useState, type FormEvent } from "react";
-import { Edit03, Stars02, Target04 } from "@untitledui/icons";
+import { Edit03, RefreshCw01, Stars02, Target04 } from "@untitledui/icons";
 import { toast } from "sonner";
-import { PLAN_OBJECTIVE_MAX_LENGTH } from "@decocms/shared/organization/schema";
+import {
+  PLAN_OBJECTIVE_MAX_LENGTH,
+  type PlanGoal,
+} from "@decocms/shared/organization/schema";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { useChatTask } from "@/components/chat";
 import {
+  useAutoPlanObjective,
+  useDecidePlanObjective,
   usePlanObjective,
   useSetPlanObjective,
 } from "@/hooks/use-organization-settings";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
+import { type NoGoalReason, reviewStoreGoal } from "./review-store-goal.ts";
+
+const GOAL_TEXT: Record<PlanGoal, TranslationKey> = {
+  mobile_conversion: "plan.goal.mobile_conversion",
+  checkout_completion: "plan.goal.checkout_completion",
+  cart_to_checkout: "plan.goal.cart_to_checkout",
+  product_to_cart: "plan.goal.product_to_cart",
+  traffic_growth: "plan.goal.traffic_growth",
+  recover_sales: "plan.goal.recover_sales",
+  average_ticket: "plan.goal.average_ticket",
+  site_stability: "plan.goal.site_stability",
+};
+
+const NO_GOAL_TEXT: Record<NoGoalReason, TranslationKey> = {
+  no_data: "plan.objective.review.noData",
+  unavailable: "plan.objective.review.unavailable",
+  uncertain: "plan.objective.review.uncertain",
+};
 
 function ObjectiveForm({
   initial,
@@ -31,10 +51,13 @@ function ObjectiveForm({
   const statement = draft.trim();
 
   const write = (value: string | null) =>
-    save.mutate(value, {
-      onSuccess: onDone,
-      onError: () => toast.error(t("plan.objective.saveError")),
-    });
+    save.mutate(
+      { statement: value },
+      {
+        onSuccess: onDone,
+        onError: () => toast.error(t("plan.objective.saveError")),
+      },
+    );
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -94,6 +117,36 @@ export function PlanObjective() {
   const { createTaskWithMessage } = useChatTask();
   const [editing, setEditing] = useState(false);
   const statement = objective?.statement ?? "";
+  const word = (goal: PlanGoal) => t(GOAL_TEXT[goal]);
+  const auto = useAutoPlanObjective(word);
+  const decide = useDecidePlanObjective();
+  const save = useSetPlanObjective();
+  const reviewing = decide.isPending || save.isPending;
+
+  const review = () => {
+    track("plan_objective_review_clicked");
+    decide.mutate(undefined, {
+      onError: () => toast.error(t(NO_GOAL_TEXT.unavailable)),
+      onSuccess: (result) => {
+        const outcome = reviewStoreGoal(objective, result);
+        if (outcome.kind === "none") {
+          toast(t(NO_GOAL_TEXT[outcome.reason]));
+          return;
+        }
+        if (outcome.kind === "same") {
+          toast(t("plan.objective.review.same"));
+          return;
+        }
+        save.mutate(
+          { statement: word(outcome.goal), source: "jev", goal: outcome.goal },
+          {
+            onSuccess: () => toast.success(t("plan.objective.review.updated")),
+            onError: () => toast.error(t("plan.objective.saveError")),
+          },
+        );
+      },
+    });
+  };
 
   // The agent proposes the goal in a chat and saves it only once approved.
   const suggest = () => {
@@ -125,11 +178,35 @@ export function PlanObjective() {
           <p className="max-w-[720px] text-2xl leading-snug font-medium text-balance text-foreground">
             {statement}
           </p>
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-            <Edit03 />
-            {t("plan.objective.edit")}
-          </Button>
+          {objective?.source === "jev" && (
+            <p className="text-meta">{t("plan.objective.pickedByAi")}</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              <Edit03 />
+              {t("plan.objective.edit")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={reviewing}
+              onClick={review}
+            >
+              <RefreshCw01 />
+              {reviewing
+                ? t("plan.objective.reviewing")
+                : t("plan.objective.review")}
+            </Button>
+          </div>
         </div>
+      ) : auto.isFetching ? (
+        <p className="max-w-[560px] animate-pulse text-base text-muted-foreground">
+          {t("plan.objective.deciding")}
+        </p>
       ) : (
         <div className="flex flex-col items-start gap-3">
           <p className="max-w-[560px] text-base text-pretty text-muted-foreground">
