@@ -397,7 +397,7 @@ export function InviteMemberDialog({ trigger }: InviteMemberDialogProps) {
           </form>
         </Form>
 
-        <div className="flex flex-col gap-3 border-t border-border pt-4">
+        <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4">
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium text-foreground">
               {t("common.inviteLink.dialogTitle")}
