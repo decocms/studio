@@ -3,6 +3,7 @@ export const plan = {
   "plan.objective.empty":
     "Write in one sentence what the store needs now. Every plan starts from it.",
   "plan.objective.write": "Write the goal",
+  "plan.objective.suggest": "Suggest a goal",
   "plan.objective.edit": "Edit",
   "plan.objective.label": "Store goal",
   "plan.objective.placeholder":
@@ -35,6 +36,8 @@ export const plan = {
   "plan.idea.topic.paidMediaPrompt": "For people coming from paid media, ",
   "plan.prompt.withObjective":
     "Let's build a business case for this request together. Follow the business-case skill (read /app/org/public/core/business-case/SKILL.md). The canvas for this case is {casePath}: run init now, before anything else, and fill the cards as we go. If the request does not say where and what, ask me one thing at a time, with options.\n\nStore goal: {objective}\n\nRequest: {idea}",
+  "plan.prompt.suggestObjective":
+    'Suggest a goal for my store, the one sentence every plan starts from. Do not ask me questions first.\n\n1. Read what you can reach about the store: the Monitor (visitors, pageviews, orders and alerts), the funnel and orders through this organization\'s tools, and the files in /app/org/home.\n2. Propose one sentence of up to {max} characters, the way I would say it to my team (e.g. "Sell as well on mobile as on desktop, without spending more on media.").\n3. Under it, give 2 or 3 reasons. Each number carries its source and window ("33% start checkout, store data lake, last 7 days"); a number you did not read does not go in.\n4. Say which data you could not reach. If you found nothing, still propose a sentence and say it is an assumption.\n5. Do not save it yet. Ask if I approve it or want to change it. Only after I approve, save it with ORGANIZATION_PLAN_OBJECTIVE_SET, using my version if I changed it.\n\nReply in the language of this message.',
   "plan.prompt.withoutObjective":
     "Let's build a business case for this request together. Follow the business-case skill (read /app/org/public/core/business-case/SKILL.md). The canvas for this case is {casePath}: run init now, before anything else, and fill the cards as we go. If the request does not say where and what, ask me one thing at a time, with options.\n\nRequest: {idea}",
   "plan.case.waiting": "Opening the business case…",

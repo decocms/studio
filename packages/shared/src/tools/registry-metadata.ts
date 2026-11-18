@@ -60,6 +60,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_PLAN_OBJECTIVE_SET",
+  "ORGANIZATION_PLAN_OBJECTIVE_DECIDE",
   "ORGANIZATION_HAS_SITE",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
@@ -434,6 +435,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_PLAN_OBJECTIVE_SET",
     description: "Set the store goal shown on the Plan page",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_PLAN_OBJECTIVE_DECIDE",
+    description: "Ask Jev which goal the store should work on first",
     category: "Organizations",
   },
   {
@@ -1935,6 +1941,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_BLOCKS_EDITOR_SET",
       // Any member states the store goal on the Plan page; writes only that.
       "ORGANIZATION_PLAN_OBJECTIVE_SET",
+      // Any member asks Jev for the store goal; reads only the org's own lake.
+      "ORGANIZATION_PLAN_OBJECTIVE_DECIDE",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless

@@ -1,19 +1,22 @@
 /**
  * The store goal at the top of Plan: one sentence a member writes, shown big,
- * edited in place. It travels with every business case the page asks for.
+ * edited in place, or proposed by the agent from the store's data. It travels
+ * with every business case the page asks for.
  */
 
 import { useState, type FormEvent } from "react";
-import { Edit03, Target04 } from "@untitledui/icons";
+import { Edit03, Stars02, Target04 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { PLAN_OBJECTIVE_MAX_LENGTH } from "@decocms/shared/organization/schema";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { useChatTask } from "@/components/chat";
 import {
   usePlanObjective,
   useSetPlanObjective,
 } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
+import { track } from "@/lib/posthog-client";
 
 function ObjectiveForm({
   initial,
@@ -88,8 +91,26 @@ function ObjectiveForm({
 export function PlanObjective() {
   const t = useT();
   const objective = usePlanObjective();
+  const { createTaskWithMessage } = useChatTask();
   const [editing, setEditing] = useState(false);
   const statement = objective?.statement ?? "";
+
+  // The agent proposes the goal in a chat and saves it only once approved.
+  const suggest = () => {
+    track("plan_objective_suggest_clicked");
+    createTaskWithMessage({
+      message: {
+        parts: [
+          {
+            type: "text",
+            text: t("plan.prompt.suggestObjective", {
+              max: PLAN_OBJECTIVE_MAX_LENGTH,
+            }),
+          },
+        ],
+      },
+    });
+  };
 
   return (
     <section className="flex flex-col gap-3">
@@ -114,9 +135,19 @@ export function PlanObjective() {
           <p className="max-w-[560px] text-base text-pretty text-muted-foreground">
             {t("plan.objective.empty")}
           </p>
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-            {t("plan.objective.write")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={suggest}>
+              <Stars02 />
+              {t("plan.objective.suggest")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              {t("plan.objective.write")}
+            </Button>
+          </div>
         </div>
       )}
     </section>

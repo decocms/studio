@@ -58,6 +58,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   ALERT_ACK: { readOnly: false, destructive: false },
   ALERT_RULES_LIST: { readOnly: true, destructive: false },
   ALERT_RULE_UPDATE: { readOnly: false, destructive: false },
+  ORGANIZATION_PLAN_OBJECTIVE_SET: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
@@ -89,6 +90,7 @@ import { createTaskBoardTools } from "./task-board-tools";
 import { suggestTaskTool } from "./suggest-task";
 import { isDecopilot } from "@decocms/shared/sdk";
 import { createAgentTools } from "./agent-tools";
+import { createPlanTools } from "./plan-tools";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
@@ -269,6 +271,7 @@ async function buildAllTools(
   if (isDecopilot(agentId)) {
     Object.assign(tools, createAgentTools(ctx));
   }
+  Object.assign(tools, await createPlanTools(ctx, organization.id));
   // A task card is work for a repo; an agent without one has nowhere to send it.
   if (isDecopilot(agentId) || isCodeProject) {
     tools.suggest_task = suggestTaskTool;
