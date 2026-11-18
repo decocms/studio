@@ -234,21 +234,23 @@ export function ExperimentsBlockReady({
       <Page.Content>
         <div className={cn("flex flex-col gap-4", SITE_DRAFT_VIEW_INSET)}>
           {empty ? (
-            <EmptyState
-              icon={<Beaker02 size={20} />}
-              title={t("experiments.v8.empty.title")}
-              description={t("experiments.v8.empty.desc")}
-              className="rounded-xl border border-dashed border-border py-16"
-              buttonProps={{
-                children: (
-                  <>
-                    <Plus size={16} />
-                    {t("experiments.v8.new")}
-                  </>
-                ),
-                onClick: () => view.setCreating(true),
-              }}
-            />
+            <Card size="flush">
+              <EmptyState
+                icon={<Beaker02 size={20} />}
+                title={t("experiments.v8.empty.title")}
+                description={t("experiments.v8.empty.desc")}
+                buttonProps={{
+                  variant: "outline",
+                  children: (
+                    <>
+                      <Plus size={16} />
+                      {t("experiments.v8.new")}
+                    </>
+                  ),
+                  onClick: () => view.setCreating(true),
+                }}
+              />
+            </Card>
           ) : (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-muted-foreground">{summary}</p>
