@@ -55,7 +55,7 @@ const GenerateImageToolInputSchema = GenerateImageInputSchema.extend({
 });
 
 /** The organization's newest key of `providerId`. */
-async function providerKeyId(
+export async function providerKeyId(
   ctx: StudioContext,
   organizationId: string,
   providerId: string,

@@ -348,6 +348,7 @@ const ALL_TOOL_NAMES = [
   "THREAD_ANALYTICS_ERRORS",
   "TASK_ADD_REPO",
   "generate_image",
+  "generate_text",
   "web_search",
   "deep_research",
   "suggest_task",
@@ -1749,6 +1750,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Chat",
   },
   {
+    name: "generate_text",
+    description:
+      "Generate text, or read images, with the organization's chat model",
+    category: "Chat",
+  },
+  {
     name: "web_search",
     description: "Search the web and synthesize a short cited answer",
     category: "Chat",
@@ -1956,6 +1963,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_SUBSCRIPTION_LIST",
       // Chat tools Decopilot ran for every member as built-ins.
       "generate_image",
+      // The same for apps reading or writing text on the org's chat model.
+      "generate_text",
       "web_search",
       "deep_research",
       "suggest_task",
