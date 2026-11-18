@@ -10,6 +10,10 @@
  * better; the backtest re-checks them. The spike thresholds are not calibrated yet.
  */
 
+import {
+  ORDER_MONITOR_DEFAULT_THRESHOLDS,
+  type OrderMonitorThresholds,
+} from "@decocms/shared/order-monitor";
 import type {
   OrderMonitorDay,
   OrderMonitorRule as Rule,
@@ -24,14 +28,10 @@ export type { Rule, Status };
 const WINDOW = 4; // 15-minute buckets = last 60 minutes
 export const BUCKETS_PER_DAY = 96;
 const WARN_BELOW = 0.3; // warning when the hour brings < 30% of expected
-const ALERT_BELOW = 0.15; // alert when < 15% of expected
-const MIN_EXPECTED = 20; // at night an hour with few orders is normal; don't judge
 const MIN_LEVEL_BASE = 30; // orders the reference days need before today's level is trusted
-
-// ponytail: uncalibrated. The shadow backtest on every monitored store sets these.
+// What alerts is the org's (`ORDER_MONITOR_DEFAULT_THRESHOLDS` until it sets
+// its own); the warning band is only drawn, so it stays fixed.
 const SPIKE_WARN_TIMES = 3;
-const SPIKE_ALERT_TIMES = 5;
-const MIN_SPIKE = 10; // fewer cancellations or denials than this in an hour is never a spike
 
 /** Days back from the evaluated day. D-1 and W-1..W-4 are the baseline; Y-1 is shown, never judged. */
 const BASELINE_DAYS = [1, 7, 14, 21, 28] as const;
@@ -161,9 +161,10 @@ function spike(
   expected: number,
   window: { from: number; to: number; level: number },
   judged: boolean,
+  { threshold, minVolume }: { threshold: number; minVolume: number },
 ): Verdict {
-  const warnAt = Math.max(MIN_SPIKE, SPIKE_WARN_TIMES * expected);
-  const alertAt = Math.max(MIN_SPIKE, SPIKE_ALERT_TIMES * expected);
+  const warnAt = Math.max(minVolume, SPIKE_WARN_TIMES * expected);
+  const alertAt = Math.max(minVolume, threshold * expected);
   const status: Status = !judged
     ? "low-volume"
     : observed >= alertAt
@@ -184,7 +185,10 @@ function hasEventHistory(day: StoreDay): boolean {
 }
 
 /** Every rule's verdict for one store, over the hour that ended at `day.done`. */
-export function evaluateStore(day: StoreDay): Record<Rule, Verdict> {
+export function evaluateStore(
+  day: StoreDay,
+  thresholds: OrderMonitorThresholds = ORDER_MONITOR_DEFAULT_THRESHOLDS,
+): Record<Rule, Verdict> {
   const placed = series(day, "placed");
   // Indexes into the series with the eve in front.
   const to = day.done + WINDOW;
@@ -198,10 +202,10 @@ export function evaluateStore(day: StoreDay): Record<Rule, Verdict> {
   const expected = lv * baseSum(placed.refs, from, to);
   const observed = sum(placed.today, from, to);
   const warnAt = WARN_BELOW * expected;
-  const alertAt = ALERT_BELOW * expected;
+  const alertAt = (thresholds.orders_drop.threshold / 100) * expected;
   const drop: Verdict = {
     status:
-      dst || expected < MIN_EXPECTED
+      dst || expected < thresholds.orders_drop.minVolume
         ? "low-volume"
         : observed < alertAt
           ? "alert"
@@ -217,19 +221,20 @@ export function evaluateStore(day: StoreDay): Record<Rule, Verdict> {
 
   const recent = recentLevel(placed.today, placed.refs, from, to, lv);
   const judged = !dst && hasEventHistory(day);
-  const rate = (kind: "canceled" | "denied") => {
+  const rate = (kind: "canceled" | "denied", rule: Rule) => {
     const s = series(day, kind);
     return spike(
       sum(s.today, from, to),
       recent * baseSum(s.refs, from, to),
       window,
       judged,
+      thresholds[rule],
     );
   };
   return {
     orders_drop: drop,
-    denied_spike: rate("denied"),
-    cancel_spike: rate("canceled"),
+    denied_spike: rate("denied", "denied_spike"),
+    cancel_spike: rate("canceled", "cancel_spike"),
   };
 }
 
@@ -241,11 +246,15 @@ const hourly = (a: number[], h: number) => sum(a, h * 4, h * 4 + 4);
  * baseline scaled by the verdict's level; past `done` it is the day's
  * projection. Thresholds mirror the rules', per hour instead of per window.
  */
-export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
+export function buildDayView(
+  day: StoreDay,
+  at: Date,
+  thresholds: OrderMonitorThresholds = ORDER_MONITOR_DEFAULT_THRESHOLDS,
+): OrderMonitorDay {
   const today = day.days[0];
   const placed = series(day, "placed");
   const canceled = series(day, "canceled");
-  const verdicts = evaluateStore(day);
+  const verdicts = evaluateStore(day, thresholds);
   // The level the verdict used: the hours before its window, so an outage
   // hour doesn't pull the expected line down with it.
   const lv = verdicts.orders_drop.level;
@@ -272,7 +281,7 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
 
   const expected = HOURS.map((h) => lv * baseHour(placed.refs, h));
   const judged = (e: number, share: number) =>
-    e < MIN_EXPECTED ? null : share * e;
+    e < thresholds.orders_drop.minVolume ? null : share * e;
   // Elapsed hours scale by the orders around them, as the rule does.
   const cancelLevel = HOURS.map((h) =>
     h * 4 + 4 <= day.done
@@ -283,7 +292,7 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
     HOURS.map((h) =>
       hasHistory
         ? Math.max(
-            MIN_SPIKE,
+            thresholds.cancel_spike.minVolume,
             times * cancelLevel[h]! * baseHour(canceled.refs, h),
           )
         : null,
@@ -303,7 +312,9 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
       ...hourSeries((d) => day.days[d].placed),
       expected,
       warnAt: expected.map((e) => judged(e, WARN_BELOW)),
-      alertAt: expected.map((e) => judged(e, ALERT_BELOW)),
+      alertAt: expected.map((e) =>
+        judged(e, thresholds.orders_drop.threshold / 100),
+      ),
     },
     cancellations: {
       canceled: hourSeries((d) => cancels(d, "canceled")),
@@ -314,7 +325,7 @@ export function buildDayView(day: StoreDay, at: Date): OrderMonitorDay {
         y1: preInstall(364) && !!day.approximate?.[364],
       },
       canceledWarnAt: cancelBand(SPIKE_WARN_TIMES),
-      canceledAlertAt: cancelBand(SPIKE_ALERT_TIMES),
+      canceledAlertAt: cancelBand(thresholds.cancel_spike.threshold),
     },
     headline: {
       projected:

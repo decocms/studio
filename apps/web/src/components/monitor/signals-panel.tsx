@@ -171,7 +171,7 @@ export function SignalsPanel({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const { ack } = useAlerts(orgSlug, true);
+  const { ack } = useAlerts(orgSlug);
   const shown = open ? signals : signals.slice(0, VISIBLE);
   const hidden = signals.length - shown.length;
   return (

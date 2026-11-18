@@ -99,8 +99,10 @@ describe("AlertStorage", () => {
     });
     expect(acked).toMatchObject({
       ackedBy: userId,
+      ackedByName: "Alerts",
       ackNote: "Checkout was down for 40 min",
       taskBoardItemId: task.id,
+      taskKeySeq: task.keySeq,
     });
     expect(acked?.ackedAt).not.toBeNull();
 
@@ -138,6 +140,38 @@ describe("AlertStorage", () => {
       (a) => a.id === open!.id,
     );
     expect(kept?.taskBoardItemId).toBeNull();
+    expect(kept?.taskKeySeq).toBeNull();
+  });
+
+  test("keeps one threshold setting per org, source and rule", async () => {
+    expect(await alerts.listRuleSettings(orgId, "order_monitor")).toEqual([]);
+    const set = (threshold: number) =>
+      alerts.setRuleSetting(
+        orgId,
+        {
+          source: "order_monitor",
+          rule: "orders_drop",
+          threshold,
+          minVolume: 25,
+        },
+        userId,
+      );
+    await set(30);
+    await set(40);
+    expect(await alerts.listRuleSettings(orgId, "order_monitor")).toMatchObject(
+      [
+        {
+          rule: "orders_drop",
+          threshold: 40,
+          minVolume: 25,
+          updatedBy: userId,
+        },
+      ],
+    );
+    expect(await alerts.listRuleSettings(orgId, "other_source")).toEqual([]);
+    expect(await alerts.listRuleSettings(otherOrg, "order_monitor")).toEqual(
+      [],
+    );
   });
 
   test("goes with its organization", async () => {

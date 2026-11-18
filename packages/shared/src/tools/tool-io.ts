@@ -391,8 +391,10 @@ export interface StudioToolIO {
         createdAt: string;
         ackedAt: string | null;
         ackedBy: string | null;
+        ackedByName: string | null;
         ackNote: string | null;
         taskBoardItemId: string | null;
+        taskKeySeq: number | null;
       }[];
     };
   };
@@ -414,10 +416,32 @@ export interface StudioToolIO {
         createdAt: string;
         ackedAt: string | null;
         ackedBy: string | null;
+        ackedByName: string | null;
         ackNote: string | null;
         taskBoardItemId: string | null;
+        taskKeySeq: number | null;
       };
     };
+  };
+  ALERT_RULES_LIST: {
+    input: { [x: string]: never };
+    output: {
+      rules: {
+        threshold: number;
+        minVolume: number;
+        source: string;
+        rule: "orders_drop" | "denied_spike" | "cancel_spike";
+        defaults: { threshold: number; minVolume: number };
+      }[];
+    };
+  };
+  ALERT_RULE_UPDATE: {
+    input: {
+      rule: "orders_drop" | "denied_spike" | "cancel_spike";
+      threshold: number;
+      minVolume: number;
+    };
+    output: { rule: "orders_drop" | "denied_spike" | "cancel_spike" };
   };
   TASK_BOARD_ITEM_CREATE: {
     input: {

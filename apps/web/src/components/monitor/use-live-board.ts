@@ -63,7 +63,7 @@ export function useLiveBoard(
   const storesEnabled = config.orderMonitorEnabled === true && monitoring;
   const storesQuery = useOrderMonitorStores(orgSlug, storesEnabled);
   const allStores = monitoring ? (storesQuery.data ?? []) : [];
-  const { alerts } = useAlerts(orgSlug, true);
+  const { alerts } = useAlerts(orgSlug);
   // Empty means "no store" only once the read answered; disabled keeps its old upsell meaning. See ordersSourceState.
   const storesConfirmed = !storesEnabled || storesQuery.isSuccess;
   const stores = scopeId

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { ORDER_MONITOR_DEFAULT_THRESHOLDS } from "@decocms/shared/order-monitor";
 import {
   dstBuckets,
   doneBuckets,
@@ -93,6 +94,35 @@ describe("evaluateStore", () => {
       store({ placed: withDip(flat(10), 44, 48, 0) }),
     );
     expect(outage.orders_drop.status).toBe("alert");
+  });
+
+  it("alerts at the org's own thresholds", () => {
+    const thresholds = {
+      ...ORDER_MONITOR_DEFAULT_THRESHOLDS,
+      orders_drop: { threshold: 30, minVolume: 20 },
+      denied_spike: { threshold: 30, minVolume: 10 },
+    };
+    // 10 of 40 expected: 25 %, a warning by default, an alert under 30 %.
+    const dip = store({ placed: withDip(flat(10), 44, 48, 2.5) });
+    expect(evaluateStore(dip, thresholds).orders_drop).toMatchObject({
+      status: "alert",
+      alertAt: 12,
+    });
+    // An hour expecting fewer orders than the org's minimum isn't judged.
+    expect(
+      evaluateStore(dip, {
+        ...thresholds,
+        orders_drop: { threshold: 30, minVolume: 100 },
+      }).orders_drop.status,
+    ).toBe("low-volume");
+    // 20 denials vs 0.8 expected: alerts by default, warns at 30×.
+    const wave = store({ denied: withDip(flat(0.2), 44, 48, 5) });
+    expect(evaluateStore(wave).denied_spike.status).toBe("alert");
+    expect(evaluateStore(wave, thresholds).denied_spike.status).toBe("warning");
+    // The chart's bands are the same thresholds.
+    expect(buildDayView(dip, new Date(0), thresholds).orders.alertAt[0]).toBe(
+      12,
+    );
   });
 
   it("does not judge a quiet hour", () => {
