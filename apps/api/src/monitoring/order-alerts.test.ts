@@ -33,7 +33,7 @@ describe("alert text", () => {
         verdict({ observed: 30, expected: 2 }),
       ),
     ).toBe(
-      "Payment denials at Store: 30 in an hour vs 2 expected, since 14:15",
+      "Unpaid cancellations at Store: 30 in an hour vs 2 expected, since 14:15",
     );
   });
 

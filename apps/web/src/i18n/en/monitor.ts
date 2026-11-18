@@ -2,7 +2,7 @@ export const monitor = {
   "monitor.statusOk": "OK",
   "monitor.signals.allClear": "Nothing needs attention",
   "monitor.signals.watching":
-    "Watching orders, cancellations and payment denials",
+    "Watching orders, cancellations and unpaid orders",
   "monitor.connect.more": "Connect more sources",
   "monitor.connect.ordersAlerts":
     "Alerts when orders drop or cancellations spike",
@@ -92,7 +92,7 @@ export const monitor = {
   "monitor.alerts.rules.spikeHelp":
     "Last hour at this multiple of the expected",
   "monitor.alerts.rules.unitOrders": "orders",
-  "monitor.alerts.rules.unitDenials": "denials",
+  "monitor.alerts.rules.unitDenials": "unpaid",
   "monitor.alerts.rules.unitCancellations": "cancellations",
   "monitor.alerts.rules.note": "Applies from the next check, within 5 minutes.",
   "monitor.alerts.rules.reset": "Reset to defaults",

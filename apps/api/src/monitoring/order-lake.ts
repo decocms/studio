@@ -1,6 +1,7 @@
 /**
  * One store's day in the customer lake, as the order rules read it: orders by
- * creation time, cancellations and payment denials by when they happened, per
+ * creation time, cancellations by when they happened, and of those the
+ * orders whose payment was never approved, per
  * 15-minute bucket of the store's local day, for day 0 and the days the rules
  * compare it with. The sweep reads it at its scheduled time; the Monitor UI
  * reads the same function, so the chart shows what the sweep judged.
@@ -39,11 +40,27 @@ const ORDERS_SQL = `
   WHERE connection_id = {conn:String} AND ${inRange("created_at")}
   GROUP BY days_ago, bucket`;
 
+// Orders whose payment was approved before `at`. A cancellation comes after
+// its approval by days at most, so the windows reach a little further back.
+const APPROVED_SQL = `
+  SELECT order_id FROM customer_lake.order_events
+  WHERE connection_id = {conn:String} AND source_status = 'payment-approved'
+    AND changed_at < ${AT}
+    AND (changed_at >= ${AT} - INTERVAL 45 DAY
+         OR changed_at BETWEEN ${AT} - INTERVAL 380 DAY AND ${AT} - INTERVAL 362 DAY)`;
+
+// VTEX doesn't report `payment-denied` on these accounts: a payment that doesn't
+// go through (a declined card, a PIX or boleto left unpaid) cancels the order
+// before it is ever approved, from `payment-pending` or, for an order whose
+// payment is taken on another account, from `waiting-ffmt-authorization`. So
+// `denied` counts the cancellations of orders never approved. `canceled`
+// keeps counting every cancellation: the ones after approval alone come in
+// back-office batches a 5x rule would flag every day.
 // uniqExact absorbs hook retries that wrote the same event twice.
 const EVENTS_SQL = `
   SELECT ${daysAgo("changed_at")} AS days_ago, ${bucket("changed_at")} AS bucket,
-    uniqExactIf(order_id, status = 'canceled' AND source_status != 'payment-denied') AS canceled,
-    uniqExactIf(order_id, source_status = 'payment-denied') AS denied
+    uniqExactIf(order_id, status = 'canceled') AS canceled,
+    uniqExactIf(order_id, status = 'canceled' AND order_id NOT IN (${APPROVED_SQL})) AS denied
   FROM customer_lake.order_events
   WHERE connection_id = {conn:String} AND ${inRange("changed_at")}
   GROUP BY days_ago, bucket`;

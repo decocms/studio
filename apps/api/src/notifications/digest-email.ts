@@ -39,7 +39,7 @@ const VERB: Record<NotificationType, string> = {
 
 const RULE_LABEL: Record<OrderIncidentNotice["rule"], string> = {
   orders_drop: "Orders",
-  denied_spike: "Payment denials",
+  denied_spike: "Unpaid cancellations",
   cancel_spike: "Cancellations",
 };
 

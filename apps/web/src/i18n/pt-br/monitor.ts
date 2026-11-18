@@ -4,7 +4,7 @@ export const monitor = {
   "monitor.statusOk": "OK",
   "monitor.signals.allClear": "Nada precisa de atenção",
   "monitor.signals.watching":
-    "Vigiando pedidos, cancelamentos e pagamentos negados",
+    "Vigiando pedidos, cancelamentos e pedidos não pagos",
   "monitor.connect.more": "Conecte mais fontes",
   "monitor.connect.ordersAlerts":
     "Alertas quando pedidos caem ou cancelamentos sobem",
@@ -95,7 +95,7 @@ export const monitor = {
     "Última hora abaixo desta fração dos pedidos esperados",
   "monitor.alerts.rules.spikeHelp": "Última hora neste múltiplo do esperado",
   "monitor.alerts.rules.unitOrders": "pedidos",
-  "monitor.alerts.rules.unitDenials": "negados",
+  "monitor.alerts.rules.unitDenials": "não pagos",
   "monitor.alerts.rules.unitCancellations": "cancelamentos",
   "monitor.alerts.rules.note":
     "Vale a partir da próxima verificação, em até 5 minutos.",
