@@ -186,8 +186,11 @@ export function SalesStatus({
     x,
     today: x <= now ? (x === now ? pick(today) : total(series.today, x)) : null,
     w1: hasW1 ? w1At(x) : null,
+    // From where today's line ends: the hour under way's rest lands by its end.
     projected:
-      ahead && x >= now ? pick(today) + total(ahead, Math.ceil(x)) : null,
+      ahead && x >= now
+        ? pick(today) + (x === now ? 0 : total(ahead, x))
+        : null,
     band: cloud(x),
   }));
   const bars = HOURS.map((h) => ({
@@ -283,73 +286,73 @@ export function SalesStatus({
         <span className="text-meta">{t("monitor.sales.source")}</span>
       </header>
 
-      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
-        <div className="flex min-w-0 flex-col gap-4 p-4">
-          <div className="flex flex-wrap gap-x-10 gap-y-4">
-            <div className="flex flex-col gap-1">
-              <span className="text-meta">
-                {t("monitor.sales.captured", { from: "00:00", to: until })}
-              </span>
-              <span className="tnum text-3xl font-medium text-foreground">
-                {show(pick(today))}
-              </span>
-              <span className="flex flex-wrap gap-x-3">
-                {REFS.map((r) => (
-                  <Trend
-                    key={r}
-                    change={relativeChange(
-                      pick(today),
-                      ref[r] ? pick(ref[r]) : null,
-                    )}
-                    better="up"
-                    reference={
-                      r === "w1"
-                        ? t("monitor.sales.vsLast", { weekday })
-                        : refLabel[r]
-                    }
-                  />
-                ))}
-              </span>
-            </div>
-            {projection && (
-              <div className="flex flex-col gap-1">
-                <span className="text-meta">
-                  {t("monitor.sales.projection", { to: "23:59" })}
-                </span>
-                <span className="tnum text-3xl font-medium text-success">
-                  {show(pick(projection.close))}
-                </span>
-                <span className="text-meta flex flex-wrap items-center gap-x-1.5">
-                  {t("monitor.sales.opened", {
-                    amount: show(pick(projection.initial)),
+      <div className="grid border-b border-border/50 sm:grid-cols-2">
+        <div className="flex flex-col gap-1 p-4">
+          <span className="text-meta">
+            {t("monitor.sales.captured", { from: "00:00", to: until })}
+          </span>
+          <span className="tnum text-3xl font-medium text-foreground">
+            {show(pick(today))}
+          </span>
+          <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {REFS.map((r) => (
+              <Trend
+                key={r}
+                change={relativeChange(
+                  pick(today),
+                  ref[r] ? pick(ref[r]) : null,
+                )}
+                better="up"
+                reference={
+                  r === "w1"
+                    ? t("monitor.sales.vsLast", { weekday })
+                    : refLabel[r]
+                }
+              />
+            ))}
+          </span>
+        </div>
+        {projection && (
+          <div className="flex flex-col gap-1 border-t border-border/50 p-4 sm:border-t-0 sm:border-l">
+            <span className="text-meta">
+              {t("monitor.sales.projection", { to: "23:59" })}
+            </span>
+            <span className="tnum text-3xl font-medium text-success">
+              {show(pick(projection.close))}
+            </span>
+            <span className="text-meta tnum flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              {range && (
+                <>
+                  {t("monitor.sales.between", {
+                    low: show(pick(today) + range.low[23]!),
+                    high: show(pick(today) + range.high[23]!),
                   })}
                   <span aria-hidden>·</span>
-                  <Trend
-                    change={relativeChange(
-                      pick(projection.close),
-                      pick(projection.initial),
-                    )}
-                    better="up"
-                    reference={t("monitor.sales.sinceStart")}
-                  />
-                </span>
-                {range && (
-                  <span className="text-meta tnum">
-                    {t("monitor.sales.between", {
-                      low: show(pick(today) + range.low[23]!),
-                      high: show(pick(today) + range.high[23]!),
-                    })}
-                  </span>
+                </>
+              )}
+              {t("monitor.sales.opened", {
+                amount: show(pick(projection.initial)),
+              })}
+              <Trend
+                change={relativeChange(
+                  pick(projection.close),
+                  pick(projection.initial),
                 )}
-              </div>
-            )}
+                better="up"
+                reference=""
+              />
+            </span>
           </div>
+        )}
+      </div>
 
+      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
+        <div className="flex min-w-0 flex-col gap-3 p-4">
           <div className="flex flex-col">
             <ChartContainer
               role="img"
               aria-label={t("monitor.sales.chart")}
-              className="aspect-auto h-[200px] w-full"
+              className="aspect-auto h-[220px] w-full"
               config={{
                 today: { label: t("monitor.sales.today"), color: COLOR_TODAY },
               }}
@@ -453,7 +456,7 @@ export function SalesStatus({
                     dataKey="band"
                     stroke="none"
                     fill={COLOR_TODAY}
-                    fillOpacity={0.12}
+                    fillOpacity={0.16}
                     activeDot={false}
                     isAnimationActive={false}
                   />
@@ -555,7 +558,9 @@ export function SalesStatus({
             </ChartContainer>
           </div>
           <div className="text-meta flex flex-wrap items-center gap-x-4 gap-y-1">
-            <Legend line={<span className="h-0.5 w-4 bg-chart-1" />}>
+            <Legend
+              line={<span className="h-0.5 w-4 rounded-full bg-chart-1" />}
+            >
               {t("monitor.sales.today")}
             </Legend>
             {ahead && (
@@ -569,7 +574,7 @@ export function SalesStatus({
             )}
             {range && (
               <Legend
-                line={<span className="h-2 w-4 rounded-sm bg-chart-1/15" />}
+                line={<span className="h-2.5 w-4 rounded-sm bg-chart-1/20" />}
               >
                 {t("monitor.sales.rangeLegend")}
               </Legend>
@@ -580,18 +585,13 @@ export function SalesStatus({
                   <span className="w-4 border-t-2 border-dashed border-muted-foreground/60" />
                 }
               >
-                {t("monitor.sales.w1Legend")}
+                {refLabel.w1}
               </Legend>
             )}
-            <span>
-              {currency
-                ? t("monitor.sales.barsRevenue")
-                : t("monitor.sales.barsOrders")}
-            </span>
           </div>
         </div>
 
-        <div className="min-w-0 border-t border-border/50 p-4 md:border-t-0 md:border-l">
+        <div className="flex min-w-0 flex-col gap-3 border-t border-border/50 p-4 md:border-t-0 md:border-l">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-meta border-b border-border/50">
@@ -660,7 +660,7 @@ export function SalesStatus({
             </tbody>
           </table>
           {ahead && (
-            <p className="text-meta pt-3">
+            <p className="text-meta">
               {t("monitor.sales.ahead", {
                 amount: show(
                   total(ahead, Math.min(24, hour + HOURS_AFTER + 1)),
@@ -672,35 +672,33 @@ export function SalesStatus({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 border-t border-border/50 lg:grid-cols-4">
+      <div className="grid grid-cols-2 border-t border-border/50 lg:auto-cols-fr lg:grid-flow-col lg:grid-cols-none">
         {cards.map((c, i) => (
           <div
             key={c.key}
             className={cn(
-              "flex flex-col gap-2 p-4",
+              "flex flex-col gap-1 p-4",
               i % 2 === 1 && "border-l border-border/50",
               i >= 2 && "border-t border-border/50 lg:border-t-0",
-              i === 2 && "lg:border-l",
+              i >= 1 && "lg:border-l",
             )}
           >
             <span className="text-meta">{c.label}</span>
             <span className="tnum text-xl font-medium text-foreground">
               {c.value}
             </span>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
               {REFS.map((r, j) => (
-                <div key={r} className="contents">
-                  <dt className="text-muted-foreground">{refLabel[r]}</dt>
-                  <dd>
-                    {c.refs[j] === null ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <Trend change={c.refs[j]!} better="up" reference="" />
-                    )}
-                  </dd>
-                </div>
+                <span key={r} className="inline-flex items-center gap-1">
+                  <span className="text-muted-foreground">{refLabel[r]}</span>
+                  {c.refs[j] === null ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <Trend change={c.refs[j]!} better="up" reference="" />
+                  )}
+                </span>
               ))}
-            </dl>
+            </span>
           </div>
         ))}
       </div>
