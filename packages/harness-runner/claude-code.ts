@@ -106,6 +106,9 @@ function turnBudgetInstruction(maxTurns: number): string {
  */
 const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
 
+/** A pod hosts one agent, so these only lead the model to hand the question to itself. */
+const AGENT_TEAM_TOOLS = ["ListAgents", "SendMessage", "Workflow"];
+
 const ORG_FS_INSTRUCTION =
   "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
   "in older messages or skills means `/app/org/...`.";
@@ -527,6 +530,7 @@ export function buildOptions(args: {
     disallowedTools: [
       ...new Set([
         ...DEFERRED_RESULT_TOOLS,
+        ...AGENT_TEAM_TOOLS,
         ...(input.agent.disallowedTools ?? []),
       ]),
     ],

@@ -5,7 +5,6 @@
  * - Current route parameters (connection, collection, item)
  * - The Library file the user currently has open (the `library-file` view
  *   side tab, or `?preview=`/`?skill=`/`?brand=` panel/dialog)
- * - Selected virtual MCP (agent) and its custom instructions
  *
  * This hook only returns context information; base system instructions
  * are handled server-side in models.ts (DECOPILOT_SYSTEM_PROMPT).
@@ -19,10 +18,9 @@ import { basename, orgFsMountPath } from "@/layouts/library/location";
 /**
  * Hook that generates context for the AI assistant based on current state
  *
- * @param virtualMcpId - The selected virtual MCP (agent) ID (optional)
  * @returns Context string to be sent to the backend
  */
-export function useContext(virtualMcpId?: string | null): string {
+export function useContext(): string {
   // Extract route parameters directly using useParams
   const collectionMatch = useMatch({
     from: "/shell/$org/settings/connections/$appSlug/$collectionName/$itemId",
@@ -33,12 +31,6 @@ export function useContext(virtualMcpId?: string | null): string {
   const view = useChatViewContext();
 
   const contextParts: string[] = [];
-
-  // Add virtual MCP context if selected
-  if (virtualMcpId) {
-    contextParts.push(`### Selected Agent
-- ID: ${virtualMcpId}`);
-  }
 
   // The page in front of the user, so "this" and "here" resolve to it.
   if (view) {

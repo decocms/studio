@@ -4,7 +4,6 @@
  * prompt, and the chat mode the user picked for this message.
  */
 
-import { agentsCatalog } from "@/harnesses/lib/decopilot/agents-block";
 import type { ChatMode } from "@/harnesses/lib/decopilot/mode-config";
 import { renderUserContextBlock } from "@/harnesses/lib/decopilot/user-context-block";
 import type { HarnessUserContext } from "@/harnesses/lib/types";
@@ -33,22 +32,17 @@ const PREVIEW_INSTRUCTION =
 export function sandboxRunPrompt(args: {
   mode: ChatMode;
   threadId: string;
-  agentId: string;
   userEmail: string | undefined;
   userContext: HarnessUserContext;
   /** The user is watching this chat's dev-server preview. */
   previewWatched?: boolean;
 }): string {
-  const otherAgents = (args.userContext.agents ?? []).filter(
-    (agent) => agent.id !== args.agentId && agent.status === "active",
-  );
   return [
     renderUserContextBlock({
       user: { email: args.userEmail },
       currentThreadId: args.threadId,
       userContext: args.userContext,
     }),
-    agentsCatalog(otherAgents),
     modeInstruction(args.mode),
     args.previewWatched ? PREVIEW_INSTRUCTION : null,
   ]

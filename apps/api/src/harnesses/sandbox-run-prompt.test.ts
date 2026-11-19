@@ -29,11 +29,10 @@ describe("sandboxRunPrompt", () => {
   const base = {
     mode: "default" as const,
     threadId: "thread-now",
-    agentId: "agent-self",
     userEmail: "person@example.com",
   };
 
-  test("renders interests, recent threads and sibling agents", () => {
+  test("renders interests and recent threads but no agents catalog", () => {
     const prompt = sandboxRunPrompt({
       ...base,
       userContext: {
@@ -79,9 +78,8 @@ describe("sandboxRunPrompt", () => {
     expect(prompt).toContain("Launch v2: Ship the new checkout");
     expect(prompt).toContain('"Pricing page copy"');
     expect(prompt).not.toContain('"This chat"');
-    expect(prompt).toContain("agent-sales,Sales,Answers pricing");
-    expect(prompt).not.toContain("agent-self");
-    expect(prompt).not.toContain("agent-off");
+    expect(prompt).not.toContain("available-agents");
+    expect(prompt).not.toContain("agent-sales");
   });
 
   test("appends the mode line", () => {

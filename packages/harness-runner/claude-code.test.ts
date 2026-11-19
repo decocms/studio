@@ -244,17 +244,34 @@ describe("buildOptions", () => {
     expect(
       options({ agent: { id: "a", disallowedTools: ["Write", "Edit"] } })
         .disallowedTools,
-    ).toEqual(["Monitor", "ScheduleWakeup", "Write", "Edit"]);
+    ).toEqual([
+      "Monitor",
+      "ScheduleWakeup",
+      "ListAgents",
+      "SendMessage",
+      "Workflow",
+      "Write",
+      "Edit",
+    ]);
   });
 
   test("never offers a tool whose result arrives after the turn ends", () => {
     // A run armed a Monitor, ended its turn to wait, and was recorded as
     // completed: the runner had already exited when the event would have fired.
-    expect(options().disallowedTools).toEqual(["Monitor", "ScheduleWakeup"]);
+    expect(options().disallowedTools).toEqual(
+      expect.arrayContaining(["Monitor", "ScheduleWakeup"]),
+    );
     expect(
-      options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
-        .disallowedTools,
-    ).toEqual(["Monitor", "ScheduleWakeup"]);
+      options({
+        agent: { id: "a", disallowedTools: ["Monitor"] },
+      }).disallowedTools.filter((t) => t === "Monitor"),
+    ).toEqual(["Monitor"]);
+  });
+
+  test("never offers the agent-team tools — a pod has no other agent to reach", () => {
+    expect(options().disallowedTools).toEqual(
+      expect.arrayContaining(["ListAgents", "SendMessage", "Workflow"]),
+    );
   });
 
   test("says how a bare Studio tool name is called, in whichever mode the run is", () => {

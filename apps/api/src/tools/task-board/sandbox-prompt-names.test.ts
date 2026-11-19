@@ -112,7 +112,6 @@ const prompts: Record<string, string> = {
     sandboxRunPrompt({
       mode: "default",
       threadId: "t",
-      agentId: "a",
       userEmail: undefined,
       userContext: {},
       previewWatched: true,
