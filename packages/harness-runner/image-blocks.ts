@@ -40,16 +40,26 @@ function sniffImageType(bytes: Uint8Array): ImageMediaType | null {
   return null;
 }
 
+const PATH_MARK = ": /app/org/upload/";
+const URL_MARK = " (tool URL: ";
+
 /** `- <name>: <path> (tool URL: …)` lines of the attachment annotation, in order. */
 export function attachedFilePaths(
   text: string,
 ): { name: string; path: string }[] {
   const entries: { name: string; path: string }[] = [];
-  for (const match of text.matchAll(
-    /^- (.+?): (\/app\/org\/upload\/.+?) \(tool URL: .*\)$/gm,
-  )) {
-    const [, name, path] = match;
-    if (name && path) entries.push({ name, path });
+  // Scanned with indexOf: the text is the user's, and a regex here backtracks polynomially on it.
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("- ") || !line.endsWith(")")) continue;
+    const pathMark = line.indexOf(PATH_MARK, 3);
+    if (pathMark === -1) continue;
+    const pathStart = pathMark + 2;
+    const urlMark = line.indexOf(URL_MARK, pathMark + PATH_MARK.length + 1);
+    if (urlMark === -1 || urlMark + URL_MARK.length >= line.length) continue;
+    entries.push({
+      name: line.slice(2, pathMark),
+      path: line.slice(pathStart, urlMark),
+    });
   }
   return entries;
 }

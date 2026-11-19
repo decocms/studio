@@ -80,6 +80,33 @@ describe("attachedFilePaths", () => {
     );
   });
 
+  test("reads lines that end in CRLF", () => {
+    expect(
+      attachedFilePaths(
+        "- a.png: /app/org/upload/a.png (tool URL: x)\r\n\r\nlook",
+      ),
+    ).toEqual([{ name: "a.png", path: "/app/org/upload/a.png" }]);
+  });
+
+  test("a line needs a name, a path past the folder and a closed tool URL", () => {
+    for (const line of [
+      "- : /app/org/upload/a.png (tool URL: x)",
+      "- a.png: /app/org/upload/ (tool URL: x)",
+      "- a.png: /app/org/upload/a.png (tool URL: x",
+      "- a.png: /app/org/upload/a.png",
+      "a.png: /app/org/upload/a.png (tool URL: x)",
+    ]) {
+      expect(attachedFilePaths(line)).toEqual([]);
+    }
+  });
+
+  test("a long line of repeated markers is scanned in linear time", () => {
+    const line = `- a${": /app/org/upload/a (tool URL: ".repeat(200_000)}`;
+    const startedAt = performance.now();
+    expect(attachedFilePaths(line)).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+  });
+
   test("ignores paths outside the uploads folder", () => {
     expect(
       attachedFilePaths("- x.png: /etc/passwd (tool URL: studio-storage:x)"),
