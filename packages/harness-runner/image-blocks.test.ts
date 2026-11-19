@@ -1,9 +1,22 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   attachedFilePaths,
   imageBlocksFromUserMessage,
   MAX_IMAGE_BYTES,
   MAX_IMAGES_PER_MESSAGE,
+  MAX_TOTAL_IMAGE_BYTES,
   type ReadFile,
 } from "./image-blocks";
 
@@ -42,6 +55,7 @@ function disk(
   const reads: string[] = [];
   return {
     reads,
+    realpath: (path) => path,
     size: (path) => {
       const bytes = contents[path];
       if (!bytes) throw new Error("ENOENT");
@@ -150,6 +164,7 @@ describe("imageBlocksFromUserMessage", () => {
   test("an oversized file is skipped without being read", () => {
     const files: ReadFile & { reads: string[] } = {
       reads: [],
+      realpath: (path) => path,
       size: () => MAX_IMAGE_BYTES + 1,
       read(path) {
         this.reads.push(path);
@@ -200,5 +215,90 @@ describe("imageBlocksFromUserMessage", () => {
       ),
     );
     expect(blocks).toHaveLength(MAX_IMAGES_PER_MESSAGE);
+  });
+
+  test("images that fit one by one but not together stop at the total ceiling", () => {
+    const each = Math.floor(MAX_TOTAL_IMAGE_BYTES * 0.3);
+    expect(each).toBeLessThanOrEqual(MAX_IMAGE_BYTES);
+    const large = new Uint8Array(each);
+    large.set(PNG);
+    const names = ["a.png", "b.png", "c.png", "d.png", "small.png"];
+    const files = disk({
+      ...Object.fromEntries(
+        names.slice(0, 4).map((name) => [`/app/org/upload/${name}`, large]),
+      ),
+      "/app/org/upload/small.png": PNG,
+    });
+    const blocks = imageBlocksFromUserMessage(
+      message(
+        names,
+        names.map((filename) => ({ filename, mediaType: "image/png" })),
+      ),
+      files,
+    );
+    expect(blocks).toHaveLength(3);
+    expect(files.reads).not.toContain("/app/org/upload/small.png");
+  });
+});
+
+describe("imageBlocksFromUserMessage on a real uploads directory", () => {
+  let root = "";
+  const onDisk = (path: string) =>
+    path.replace(/^\/app\/org\/upload/, join(root, "upload"));
+  const files: ReadFile = {
+    realpath: (path) => realpathSync(onDisk(path)),
+    size: (path) => statSync(onDisk(path)).size,
+    read: (path) => readFileSync(onDisk(path)),
+  };
+  const attached = (name: string, path: string) => ({
+    parts: [
+      { type: "text", text: `- ${name}: ${path} (tool URL: x)\n\nlook` },
+      { type: "file", url: "x", filename: name, mediaType: "image/png" },
+    ],
+  });
+
+  beforeAll(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "image-blocks-")));
+    mkdirSync(join(root, "upload"));
+    writeFileSync(join(root, "upload", "in.png"), PNG);
+    writeFileSync(join(root, "secret.png"), PNG);
+    symlinkSync(
+      join(root, "upload", "in.png"),
+      join(root, "upload", "alias.png"),
+    );
+    symlinkSync(join(root, "secret.png"), join(root, "upload", "escape.png"));
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("a file inside it is sent, directly or through a symlink that stays inside", () => {
+    for (const name of ["in.png", "alias.png"]) {
+      expect(
+        imageBlocksFromUserMessage(
+          attached(name, `/app/org/upload/${name}`),
+          files,
+        ),
+      ).toHaveLength(1);
+    }
+  });
+
+  test("a `..` path that leaves it is skipped", () => {
+    expect(
+      imageBlocksFromUserMessage(
+        attached("secret.png", "/app/org/upload/../secret.png"),
+        files,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a symlink pointing outside it is skipped", () => {
+    expect(
+      imageBlocksFromUserMessage(
+        attached("escape.png", "/app/org/upload/escape.png"),
+        files,
+      ),
+    ).toEqual([]);
   });
 });

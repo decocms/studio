@@ -1,8 +1,11 @@
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { sep } from "node:path";
 
 /** Raw bytes; base64 adds a third, which keeps a block under the API's 5 MB. */
 export const MAX_IMAGE_BYTES = 3_750_000;
 export const MAX_IMAGES_PER_MESSAGE = 20;
+/** Raw bytes of one message's images: 13.3 MB as base64, inside the smallest documented Messages request limit (20 MB). */
+export const MAX_TOTAL_IMAGE_BYTES = 10_000_000;
 
 export type ImageMediaType =
   | "image/jpeg"
@@ -66,14 +69,24 @@ function sameAttachment(wanted: string, stored: string): boolean {
 }
 
 export interface ReadFile {
+  realpath: (path: string) => string;
   size: (path: string) => number;
   read: (path: string) => Uint8Array;
 }
 
 const diskFiles: ReadFile = {
+  realpath: (path) => realpathSync(path),
   size: (path) => statSync(path).size,
   read: (path) => readFileSync(path),
 };
+
+const UPLOADS_DIR = "/app/org/upload";
+
+/** The file's real path, or null when `..` or a symlink takes it outside the uploads directory. */
+function realUploadPath(path: string, files: ReadFile): string | null {
+  const real = files.realpath(path);
+  return real.startsWith(files.realpath(UPLOADS_DIR) + sep) ? real : null;
+}
 
 /** Bytes come from the annotated in-pod path, not the part's presigned URL, which can expire before a queued turn sends. */
 export function imageBlocksFromUserMessage(
@@ -95,6 +108,7 @@ export function imageBlocksFromUserMessage(
     .join("\n");
   const unclaimed = attachedFilePaths(text);
   const blocks: ImageBlock[] = [];
+  let totalBytes = 0;
   for (const part of parts) {
     if (blocks.length >= MAX_IMAGES_PER_MESSAGE) break;
     if (typeof part !== "object" || part === null) continue;
@@ -122,11 +136,16 @@ export function imageBlocksFromUserMessage(
     const [entry] = unclaimed.splice(index, 1);
     if (!entry) continue;
     try {
-      if (files.size(entry.path) > MAX_IMAGE_BYTES) continue;
-      const bytes = files.read(entry.path);
+      const path = realUploadPath(entry.path, files);
+      if (!path) continue;
+      if (files.size(path) > MAX_IMAGE_BYTES) continue;
+      const bytes = files.read(path);
       if (bytes.byteLength > MAX_IMAGE_BYTES) continue;
       const mediaType = sniffImageType(bytes);
       if (!mediaType) continue;
+      // Not `continue`: a later, smaller image would arrive without the ones attached before it.
+      if (totalBytes + bytes.byteLength > MAX_TOTAL_IMAGE_BYTES) break;
+      totalBytes += bytes.byteLength;
       blocks.push({
         type: "image",
         source: {
