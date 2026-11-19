@@ -67,7 +67,11 @@ import {
   runKeyPermissions,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { signsInFromSandbox, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import {
+  getDecopilotId,
+  signsInFromSandbox,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
@@ -380,11 +384,12 @@ export class SandboxDispatchClient {
     const settingsRead = this.ctx.storage.organizationSettings.get(
       organization.id,
     );
+    const threadRead = this.ctx.storage.threads.get(threadId);
     const [candidates, authority, thread, ownAgent, settings] =
       await Promise.all([
-        this.orgMcpConnections(organization, agent, settingsRead),
+        this.orgMcpConnections(organization, agent, settingsRead, threadRead),
         this.dispatcherAuthority(organization.id, dispatcherUserId),
-        this.ctx.storage.threads.get(threadId),
+        threadRead,
         agent,
         settingsRead,
       ]);
@@ -521,40 +526,25 @@ export class SandboxDispatchClient {
     return { role, roleStatements };
   }
 
-  /**
-   * The connections this run mounts: the ones aggregated ON THE AGENT always,
-   * plus every other MCP connection in the org when it opted in
-   * (`coding_agent_org_mcps`). None without a slug, without which the
-   * per-connection URL cannot be built.
-   *
-   * The agent's own half is not flag-gated because it is not a fan-out: those
-   * connections are exactly what someone attached to this agent, and they are
-   * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
-   * virtual MCP). This harness points at the narrow `thread` surface instead,
-   * so without them a Code Agent chat lost every tool the agent was configured
-   * with — its GitHub MCP included.
-   */
-  private async orgMcpConnections(
+  /** This run's {@link runConnectionCandidates}, read from storage. */
+  private orgMcpConnections(
     organization: { id: string; slug?: string },
     agentRead: Promise<VirtualMCPEntity | null>,
     settingsRead: Promise<OrganizationSettings | null>,
+    threadRead: Promise<HomeChatThread | null>,
   ): Promise<ConnectionEntity[]> {
-    if (!organization.slug) return [];
-    const [settings, agent] = await Promise.all([settingsRead, agentRead]);
-    const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
-    const ownIds = new Set(
-      (agent?.connections ?? []).map(
-        (aggregation) => aggregation.connection_id,
-      ),
-    );
-    // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
-    const { items } = await this.ctx.storage.connections.list(organization.id);
-    return selectRunConnections({
-      organizationId: organization.id,
-      orgWide,
-      ownIds,
-      excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
-      connections: items,
+    return runConnectionCandidates({
+      organization,
+      agentId: this.virtualMcpId,
+      runClass: this.ctx.metadata?.runMetadata?.[RUN_CLASS_METADATA_KEY],
+      agentRead,
+      settingsRead,
+      threadRead,
+      // `list` excludes VIRTUAL connections (agents, not MCP servers) by default.
+      listConnections: async () =>
+        (await this.ctx.storage.connections.list(organization.id)).items,
+      linkedTaskIds: (threadId) =>
+        this.ctx.storage.taskBoard.linkedTaskIds(threadId, organization.id),
     });
   }
 
@@ -1553,6 +1543,8 @@ export function selectRunConnections<
   organizationId: string;
   /** The org opted into every connection (`coding_agent_org_mcps`). */
   orgWide: boolean;
+  /** The run is an interactive home chat (see {@link isInteractiveHomeChat}). */
+  homeChat?: boolean;
   /** Connections aggregated on the agent itself; always mounted. */
   ownIds: ReadonlySet<string>;
   /**
@@ -1570,6 +1562,7 @@ export function selectRunConnections<
       // A sandbox sign-in server is the only way a run reaches it, so it is
       // not left to the agent or the org-wide opt-in.
       (args.orgWide ||
+        args.homeChat ||
         args.ownIds.has(connection.id) ||
         signsInFromSandbox(connection.connection_url)) &&
       !args.excludedIds?.has(connection.id) &&
@@ -1578,6 +1571,125 @@ export function selectRunConnections<
       connection.status === "active" &&
       !isStudioOwnedConnection(args.organizationId, connection.id),
   );
+}
+
+/** The thread facts the home-chat decision reads. */
+type HomeChatThread = {
+  id: string;
+  trigger_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+/** An error's class and driver code: enough to tell failures apart, and free of row data. */
+function errorKind(error: unknown): string {
+  if (!(error instanceof Error)) return "non-error";
+  return "code" in error && typeof error.code === "string"
+    ? `${error.name} ${error.code}`
+    : error.name;
+}
+
+/**
+ * Whether a run is a chat a person drives on the org's default agent
+ * (`home_chat_org_connections`, on by default). Board, reviewer, Jira and
+ * trigger runs dispatch on the same agent and must not match.
+ *
+ * Ordered by cost: the flag, the agent and the run class are in hand, and the
+ * thread is a read the dispatch already makes. Only a run those leave
+ * undecided asks whether its thread is linked to a card, so a board or
+ * triggered run never pays for that query. A lookup that throws answers "no":
+ * the run keeps the connections it had without this feature.
+ */
+async function isInteractiveHomeChat(args: {
+  flags: Record<string, unknown> | null | undefined;
+  organizationId: string;
+  agentId: string;
+  runClass: string | undefined;
+  threadRead: Promise<HomeChatThread | null>;
+  linkedTaskIds: (threadId: string) => Promise<readonly string[]>;
+}): Promise<boolean> {
+  if (!orgFlagEnabled(args.flags, "home_chat_org_connections")) return false;
+  if (args.agentId !== getDecopilotId(args.organizationId)) return false;
+  if (args.runClass) return false;
+  const thread = await args.threadRead.catch(() => null);
+  if (!thread || thread.trigger_id || thread.metadata?.source) return false;
+  try {
+    return (await args.linkedTaskIds(thread.id)).length === 0;
+  } catch (error) {
+    console.warn(
+      `[${SANDBOX_HOSTED_HARNESS}] home chat board-link lookup failed (${errorKind(error)}); the run keeps only its agent's connections`,
+    );
+    return false;
+  }
+}
+
+/**
+ * The connections a run is a candidate for: the ones aggregated ON THE AGENT
+ * always, plus every other MCP connection in the org when it opted in
+ * (`coding_agent_org_mcps`) or the run is an interactive home chat (see
+ * {@link isInteractiveHomeChat}). None without a slug, without which the
+ * per-connection URL cannot be built.
+ *
+ * The agent's own half is not flag-gated because it is not a fan-out: those
+ * connections are exactly what someone attached to this agent, and they are
+ * the toolset its chats had on hosted Decopilot (whose surface IS the agent's
+ * virtual MCP). This harness points at the narrow `thread` surface instead,
+ * so without them a Code Agent chat lost every tool the agent was configured
+ * with — its GitHub MCP included.
+ *
+ * Takes its reads as arguments so the whole decision is unit-tested.
+ */
+export async function runConnectionCandidates<
+  T extends {
+    id: string;
+    status?: string | null;
+    connection_url?: string | null;
+  },
+>(args: {
+  organization: { id: string; slug?: string };
+  agentId: string;
+  /** `runMetadata.runClass`: set by the board and by triggered runs. */
+  runClass: string | undefined;
+  agentRead: Promise<{
+    connections?: readonly { connection_id: string }[] | null;
+  } | null>;
+  settingsRead: Promise<{
+    flags?: Record<string, unknown> | null;
+    coding_agent_mcp_excluded?: readonly string[] | null;
+  } | null>;
+  threadRead: Promise<HomeChatThread | null>;
+  listConnections: () => Promise<readonly T[]>;
+  /** Ids of the task-board items a thread is linked to. */
+  linkedTaskIds: (threadId: string) => Promise<readonly string[]>;
+}): Promise<T[]> {
+  // Also keeps `home_chat_org_connections` off the slug-less path, which would mount every candidate.
+  if (!args.organization.slug) return [];
+  const [settings, agent] = await Promise.all([
+    args.settingsRead,
+    args.agentRead,
+  ]);
+  const [homeChat, connections] = await Promise.all([
+    isInteractiveHomeChat({
+      flags: settings?.flags,
+      organizationId: args.organization.id,
+      agentId: args.agentId,
+      runClass: args.runClass,
+      threadRead: args.threadRead,
+      linkedTaskIds: args.linkedTaskIds,
+    }),
+    args.listConnections(),
+  ]);
+  return selectRunConnections({
+    organizationId: args.organization.id,
+    orgWide: orgFlagEnabled(settings?.flags, "coding_agent_org_mcps"),
+    homeChat,
+    ownIds: new Set(
+      (agent?.connections ?? []).map(
+        (aggregation) => aggregation.connection_id,
+      ),
+    ),
+    excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
+    connections,
+  });
 }
 
 /**

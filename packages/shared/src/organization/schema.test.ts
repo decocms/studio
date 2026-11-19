@@ -35,6 +35,18 @@ describe("orgFlagEnabled", () => {
     ).toBe(false);
   });
 
+  it("home chat org connections are on unless an org turned them off", () => {
+    expect(DEFAULT_ON_FLAGS.has("home_chat_org_connections")).toBe(true);
+    expect(orgFlagEnabled(null, "home_chat_org_connections")).toBe(true);
+    expect(orgFlagEnabled({}, "home_chat_org_connections")).toBe(true);
+    expect(
+      orgFlagEnabled(
+        { home_chat_org_connections: false },
+        "home_chat_org_connections",
+      ),
+    ).toBe(false);
+  });
+
   it("the Blog view is off until an org turns it on", () => {
     expect(DEFAULT_ON_FLAGS.has("blog_view_enabled")).toBe(false);
     expect(orgFlagEnabled({}, "blog_view_enabled")).toBe(false);

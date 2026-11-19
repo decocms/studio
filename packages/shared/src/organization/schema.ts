@@ -251,6 +251,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Give a coding-agent run (the claude-code harness in a sandbox) every MCP connection in the org as its own MCP server, on top of the narrow Studio surface it always gets. Off by default: each connection is one more server the agent connects to at session start, and all of their tools land in its context.",
     ),
+  home_chat_org_connections: z
+    .boolean()
+    .optional()
+    .describe(
+      "Let a chat a person drives on the organization home reach every active connection the sender's role allows, through Studio rather than mounted as MCP servers. On by default (see DEFAULT_ON_FLAGS); turn it off to leave a home chat with only the connections attached to the default agent. Connections in `coding_agent_mcp_excluded` stay out either way. Board, reviewer, Jira and automation runs are not affected.",
+    ),
   coding_agents_claude_code: z
     .boolean()
     .optional()
@@ -401,6 +407,7 @@ export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "cheap_reviewer_model",
   "chat_harness_sandbox_only",
   "cms_auto_commit",
+  "home_chat_org_connections",
 ]);
 
 /**
