@@ -1,6 +1,6 @@
 {
   "name": "@decocms/harness-runner",
-  "version": "0.15.2",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "description": "In-sandbox harness runner: drives Claude Code and Codex for Studio",
