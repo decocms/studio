@@ -9,8 +9,6 @@ import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
 import { useChatRequestOptions } from "@/components/chat/highlight/use-chat-request-options";
 import type { UserAskToolPart } from "@/components/chat/types";
 import { Page } from "@/components/page";
-import { formatLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { openAnswersPrompt } from "../business-case-prompt.ts";
@@ -82,7 +80,6 @@ function CaseQuestion({ part }: { part: UserAskToolPart }) {
 
 export function BusinessCaseTab({ path }: { path: string }) {
   const t = useT();
-  const { openPanel } = usePanelNavigate();
   const chat = useOptionalChatStream();
   const task = useOptionalChatTask();
   const read = useBusinessCase(path);
@@ -155,9 +152,6 @@ export function BusinessCaseTab({ path }: { path: string }) {
                   });
                   setAnswering(questions);
                 })
-              }
-              onOpenDocument={(documentPath) =>
-                openPanel(formatLibraryFileTabId(`home/${documentPath}`))
               }
             />
           </Page.Container>

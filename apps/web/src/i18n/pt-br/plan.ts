@@ -55,7 +55,6 @@ export const plan = {
   "plan.case.buildingProgress": "{filled} de {total} cards preenchidos",
   "plan.case.asking": "Responda no chat",
   "plan.case.assumption": "Suposição:",
-  "plan.case.openDocument": "Abrir o documento",
   "plan.case.invalid":
     "Não deu para ler a última atualização; mostrando a anterior.",
   "plan.case.objective": "Objetivo da loja",

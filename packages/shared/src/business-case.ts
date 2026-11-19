@@ -156,8 +156,6 @@ export const BusinessCaseSchema = z
         BUSINESS_CASE_CARD_KEYS.map((key) => [key, BusinessCaseCardSchema]),
       ) as Record<BusinessCaseCardKey, typeof BusinessCaseCardSchema>,
     ),
-    /** The markdown document for the team, home-volume relative, once written. */
-    documentPath: z.string().max(BUSINESS_CASE_LIMITS.item).optional(),
     updatedAt: z.string().datetime(),
   })
   .superRefine((value, ctx) => {

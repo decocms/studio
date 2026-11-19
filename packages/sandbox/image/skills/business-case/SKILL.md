@@ -26,10 +26,9 @@ Write in the language the person wrote in.
 | Numbers the canvas draws (`problem`, `effort`) | add `--metric "<label>\|<value>\|<unit>"` to `set`, units `percent`, `seconds`, `days`, `brl`, `count` |
 | Money at stake on the canvas | `set --card money ... --base <people/month> --delta-pp <x> --value <R$ per conversion> [--gap-pp <gap>] --base-label <what base counts> --value-label <what value is>` |
 | A/B test on the canvas | `set --card abTest ... --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
-| Close the case | `... business-case-canvas.mjs finish --path <case> --document /app/org/home/plans/<file>.md` |
+| Close the case | `... business-case-canvas.mjs finish --path <case>` |
 | Try money numbers before setting them | `bun /app/org/public/core/business-case/business-case-math.mjs money --base <people/month> --delta-pp <x> --value <R$ per conversion> --gap-pp <gap>` |
 | Try A/B numbers before setting them | `bun /app/org/public/core/business-case/business-case-math.mjs ab-test --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
-| The document for the team | `/app/org/home/plans/YYYY-MM-DD-<short-slug>.md` |
 
 `<case>` is the path the message gives you
 (`/app/org/home/plans/cases/<chat id>.json`). Without one, use the chat id.
@@ -56,7 +55,7 @@ Areas: `pdp`, `search`, `category`, `home`, `cart`, `checkout`, `shipping`,
 `performance`, `paid-media`, `other`.
 
 A card's `summary` is one or two sentences a manager reads in five seconds.
-Bullets are short. Put the detail in the document, not on the card.
+Bullets are short. Keep the detail in the chat, not on the card.
 
 The canvas opens with a verdict: "<title> could bring R$ X a month", then the
 effort in days and the A/B test in weeks. Those come only from `money`'s math
@@ -172,63 +171,7 @@ that item. When you cannot, say why and keep it. A ready case stays ready.
 
 ### 4. Close
 
-1. Write the document with the outline below and save it.
-2. `finish --document <its path>`.
-3. Reply with three lines: the money at stake, the test duration, and the
-   path to the document.
-
-## Document outline
-
-```markdown
-# <the change, as an action>
-
-| At stake per month | Effort | A/B test | Competitors doing it |
-| --- | --- | --- | --- |
-| R$ … (if it closes … pp) | … days | … weeks | … of … |
-
-## The idea
-What changes, on which page and device, and which goal it serves.
-
-## The problem, measured
-The step, its rate, the comparison, the source and the window. Or: what is
-not measured yet and how to measure it.
-
-## Why it could work
-The mechanism in one or two sentences. Evidence for, evidence against.
-What result would prove the idea wrong.
-
-## Who already does it
-One line per competitor actually checked: what they do, with the URL.
-
-## The math
-| | |
-| --- | --- |
-| Base: people at the step per month | … (source) |
-| Expected gain | +… pp (assumption) |
-| Value of each extra conversion | R$ … (how) |
-| **At stake per month** | **R$ …** |
-
-Closing the whole gap would be worth R$ … per month; that is a ceiling,
-not a promise.
-
-## Effort
-Front-end, back-end, QA. What changes in the code, if known.
-
-## Tracking
-Which existing events measure it and which need to be added.
-
-## A/B test
-Control vs. variant, primary metric, guardrails (revenue per visitor,
-conversion of the next step), minimum detectable effect, people per group,
-weeks. If it is not measurable in 8 weeks, say so and what would make it
-measurable.
-
-## Risks
-What could get worse and what to watch during the test.
-
-## What we still don't know
-The gaps, and how to close each one.
-
-## Next step
-One concrete action.
-```
+1. Once the last card is filled, run `finish`. The case is ready and the
+   person sees the whole canvas.
+2. Reply with three lines: the money at stake, the effort in days, and the
+   test duration.

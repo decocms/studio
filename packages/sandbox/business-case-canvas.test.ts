@@ -161,20 +161,13 @@ describe("business-case-canvas", () => {
     });
   });
 
-  it("finish settles a pending question and links the document", () => {
+  it("finish settles a pending question and marks the case ready", () => {
     init();
     run(["ask", "--path", path, "--card", "risks"]);
-    run([
-      "finish",
-      "--path",
-      path,
-      "--document",
-      "/app/org/home/plans/2026-11-18-busca.md",
-    ]);
+    run(["finish", "--path", path]);
     const value = saved();
     expect(value.status).toBe("ready");
     expect(value.cards.risks.state).toBe("empty");
-    expect(value.documentPath).toBe("plans/2026-11-18-busca.md");
   });
 
   it("rejects an unknown card and writes nothing", () => {

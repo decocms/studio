@@ -12,13 +12,11 @@ import { caseStory } from "./case-story.ts";
 export function BusinessCaseCanvas({
   value,
   invalid,
-  onOpenDocument,
   onAsk,
   onAnswerOpen,
 }: {
   value: BusinessCase;
   invalid?: boolean;
-  onOpenDocument?: (documentPath: string) => void;
   /** Sends an open question to this case's chat; absent without one. */
   onAsk?: (question: string) => void;
   /** Opens the flow that asks the case's open questions one at a time;
@@ -36,7 +34,6 @@ export function BusinessCaseCanvas({
         value={value}
         story={story}
         invalid={invalid}
-        onOpenDocument={onOpenDocument}
         onAnswerOpen={answerOpen}
       />
       <CaseSpine
