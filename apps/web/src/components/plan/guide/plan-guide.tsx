@@ -1,6 +1,6 @@
 /**
  * The guided intro's screens, in place of the Plan page while it runs: a
- * thinking orb with passing thoughts, one question at a time, and a last beat
+ * quiet thinking state with passing thoughts, one question at a time, and a last beat
  * before the business case opens.
  */
 
@@ -31,14 +31,12 @@ const BUILDING: TranslationKey[] = [
 ];
 const PHRASE_MS = 900;
 
-/** The orb and a thought that changes every beat. Each step starts on a
- *  different thought, so two waits in a row don't read the same. */
+/** Three quiet dots and a thought that changes every beat. Each step starts
+ *  on a different thought, so two waits in a row don't read the same. */
 function Thinking({
-  phase,
   phrases,
   offset,
 }: {
-  phase: "thinking" | "building";
   phrases: TranslationKey[];
   offset: number;
 }) {
@@ -50,14 +48,18 @@ function Thinking({
     <div
       role="status"
       aria-live="polite"
-      className="flex flex-col items-center gap-10 animate-in fade-in-0 duration-300 motion-reduce:animate-none"
+      className="flex flex-col items-center gap-5 animate-in fade-in-0 duration-300 motion-reduce:animate-none"
     >
-      <div className="plan-guide-orb" data-phase={phase} aria-hidden="true" />
+      <div className="plan-guide-dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
       <p
         key={phrase}
-        className="text-lg text-muted-foreground animate-in fade-in-0 slide-in-from-bottom-1 duration-500 motion-reduce:animate-none"
+        className="text-base animate-in fade-in-0 duration-500 motion-reduce:animate-none"
       >
-        {t(phrase)}
+        <span className="plan-guide-shimmer">{t(phrase)}</span>
       </p>
     </div>
   );
@@ -146,7 +148,6 @@ function Screen({
     case "thinking":
       return (
         <Thinking
-          phase="thinking"
           phrases={THINKING}
           offset={state.step * 3 + state.idea.length}
         />
@@ -154,7 +155,7 @@ function Screen({
     case "asking":
       return <Question key={state.step} view={view} onAnswer={onAnswer} />;
     case "building":
-      return <Thinking phase="building" phrases={BUILDING} offset={0} />;
+      return <Thinking phrases={BUILDING} offset={0} />;
   }
 }
 

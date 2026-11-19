@@ -1,64 +1,67 @@
-/* The "thinking" orb of the Plan page's guided intro. */
-.plan-guide-orb {
-  position: relative;
-  width: 88px;
-  aspect-ratio: 1;
+/* The guided intro's "thinking" state: three quiet dots and a thought with a
+   light sweeping across it. */
+.plan-guide-dots {
+  display: flex;
+  gap: 6px;
 }
-.plan-guide-orb::before,
-.plan-guide-orb::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
+.plan-guide-dots > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-muted-foreground);
+  opacity: 0.25;
+  animation: plan-guide-dot 1.2s ease-in-out infinite;
 }
-/* The body: a soft gradient blob that changes shape while it thinks. */
-.plan-guide-orb::before {
-  background: radial-gradient(
-    circle at 30% 25%,
-    var(--color-background),
-    var(--color-primary) 55%,
-    var(--color-foreground)
-  );
-  box-shadow: 0 0 48px color-mix(in srgb, var(--color-primary) 35%, transparent);
-  animation: plan-guide-morph 2.4s ease-in-out infinite alternate;
+.plan-guide-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
 }
-/* A ring that keeps turning around it. */
-.plan-guide-orb::after {
-  inset: -14px;
-  border: 1.5px solid transparent;
-  border-top-color: color-mix(in srgb, var(--color-primary) 70%, transparent);
-  border-right-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
-  animation: plan-guide-spin 1.6s linear infinite;
-}
-.plan-guide-orb[data-phase="building"]::before {
-  animation-duration: 1.2s;
-}
-.plan-guide-orb[data-phase="building"]::after {
-  animation-duration: 0.9s;
+.plan-guide-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
-@keyframes plan-guide-morph {
-  0% {
-    border-radius: 47% 53% 55% 45% / 55% 45% 55% 45%;
-    transform: scale(0.94);
-  }
-  50% {
-    border-radius: 55% 45% 42% 58% / 44% 58% 42% 56%;
-  }
+.plan-guide-shimmer {
+  color: transparent;
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-muted-foreground) 0%,
+      var(--color-muted-foreground) 40%,
+      var(--color-foreground) 50%,
+      var(--color-muted-foreground) 60%,
+      var(--color-muted-foreground) 100%
+    )
+    0 0 / 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: plan-guide-shimmer 2s linear infinite;
+}
+
+@keyframes plan-guide-dot {
+  0%,
+  80%,
   100% {
-    border-radius: 42% 58% 52% 48% / 58% 42% 52% 48%;
-    transform: scale(1.04);
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
   }
 }
-@keyframes plan-guide-spin {
+@keyframes plan-guide-shimmer {
+  from {
+    background-position: 100% 0;
+  }
   to {
-    transform: rotate(360deg);
+    background-position: 0 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .plan-guide-orb::before,
-  .plan-guide-orb::after {
+  .plan-guide-dots > span,
+  .plan-guide-shimmer {
     animation: none;
+  }
+  .plan-guide-shimmer {
+    color: var(--color-muted-foreground);
+    background: none;
   }
 }
