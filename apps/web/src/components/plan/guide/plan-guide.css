@@ -1,0 +1,123 @@
+/* The guided intro's "thinking" state: three quiet dots and a thought with a
+   light sweeping across it. */
+.plan-guide-dots {
+  display: flex;
+  gap: 6px;
+}
+.plan-guide-dots > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-muted-foreground);
+  opacity: 0.25;
+  animation: plan-guide-dot 1.2s ease-in-out infinite;
+}
+.plan-guide-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.plan-guide-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.plan-guide-shimmer {
+  color: transparent;
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-muted-foreground) 0%,
+      var(--color-muted-foreground) 40%,
+      var(--color-foreground) 50%,
+      var(--color-muted-foreground) 60%,
+      var(--color-muted-foreground) 100%
+    )
+    0 0 / 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: plan-guide-shimmer 2s linear infinite;
+}
+
+@keyframes plan-guide-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes plan-guide-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-guide-dots > span,
+  .plan-guide-shimmer {
+    animation: none;
+  }
+  .plan-guide-shimmer {
+    color: var(--color-muted-foreground);
+    background: none;
+  }
+}
+
+/* A thought or a word coming into focus. */
+.plan-guide-reveal {
+  animation: plan-guide-reveal 0.5s ease-out both;
+}
+@keyframes plan-guide-reveal {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+/* The last beat: the case's nine cards appearing and filling in. */
+.plan-guide-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 14px);
+  gap: 5px;
+}
+.plan-guide-tiles > span {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  animation: plan-guide-tile 1.2s ease-out both;
+}
+@keyframes plan-guide-tile {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+    background: transparent;
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1);
+    background: transparent;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    border-color: var(--color-foreground);
+    background: var(--color-foreground);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-guide-reveal,
+  .plan-guide-tiles > span {
+    animation: none;
+  }
+}

@@ -27,7 +27,7 @@ export const plan = {
   "plan.objective.saveError": "Could not save the goal. Try again.",
   "plan.idea.heading": "What do you want to improve in the store?",
   "plan.idea.description":
-    "Say it however it comes to you, even vaguely. You go to the business case and build it with the agent: it asks what it needs in the chat and fills in the problem in numbers, who already does it, the money at stake, effort and the A/B test.",
+    "Say it however it comes to you, even vaguely. A few quick questions fill in what only you know, then the agent builds the case: the problem in numbers, who already does it, the money at stake, effort and the A/B test.",
   "plan.idea.label": "Your idea",
   "plan.idea.placeholder":
     "E.g. I want to improve search. Or: a fit guide on the product page would raise conversion.",
@@ -101,4 +101,27 @@ export const plan = {
   "plan.cases.description": "Open one to see the canvas and keep talking.",
   "plan.cases.updated": "Updated {when}",
   "plan.cases.unreadable": "Could not read this case",
+  "plan.prompt.skipped":
+    "(skipped: assume it and write the assumption on the card)",
+  "plan.prompt.guidedAnswers":
+    "Before this chat I already answered the questions only I could answer. Do not ask them again, and do not ask me anything else unless something blocks the case: fill the cards these answers cover first, then research.\n\n{answers}",
+  "plan.prompt.guidedNothing":
+    "Before this chat I was asked whether anything only I know was missing, and nothing was. Do not ask me questions unless something blocks the case: assume, write the assumption on the card, and research.",
+  "plan.guide.thinking1": "Hmm, interesting idea…",
+  "plan.guide.thinking2": "Thinking about the next steps…",
+  "plan.guide.thinking3": "Let me see what is missing here…",
+  "plan.guide.thinking4": "This is good, let me shape it…",
+  "plan.guide.thinking5": "Putting the pieces together…",
+  "plan.guide.thinking6": "Hmm, there is something nice in this…",
+  "plan.guide.thinking7": "Sorting out the ideas…",
+  "plan.guide.thinking8": "One second, thinking…",
+  "plan.guide.building1": "Building your business case…",
+  "plan.guide.building2": "Calling the agent to research the numbers…",
+  "plan.guide.building3": "Getting the cards ready…",
+  "plan.guide.yourIdea": "Your idea",
+  "plan.guide.answerLabel": "Your answer",
+  "plan.guide.answerPlaceholder": "Write it your way…",
+  "plan.guide.continue": "Continue",
+  "plan.guide.skip": "Skip this one",
+  "plan.guide.back": "Back",
 };
