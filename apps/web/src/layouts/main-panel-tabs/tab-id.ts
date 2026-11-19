@@ -417,12 +417,21 @@ export function resolveDefaultTabId(
     : "settings";
 }
 
+/** The router's own keys carry over; a previous visit's flag must not, or
+ *  Overview opened from the app reloads as the app's full-screen frame. */
+function withoutVisitFlags<T extends object>(prev: T): T {
+  const rest = { ...prev };
+  Reflect.deleteProperty(rest, "projectOverview");
+  Reflect.deleteProperty(rest, "appTakeover");
+  return rest;
+}
+
 /**
  * The history state the project's Overview row navigates with: the one way to
  * reach the Overview of a project whose main view is something else.
  */
 export const withProjectOverviewState = <T extends object>(prev: T) => ({
-  ...prev,
+  ...withoutVisitFlags(prev),
   projectOverview: true,
 });
 
@@ -441,7 +450,7 @@ export function isProjectOverviewVisit(state: unknown): boolean {
  * the project's sidebar stays out of the way until asked for.
  */
 export const withAppTakeoverState = <T extends object>(prev: T) => ({
-  ...prev,
+  ...withoutVisitFlags(prev),
   appTakeover: true,
 });
 

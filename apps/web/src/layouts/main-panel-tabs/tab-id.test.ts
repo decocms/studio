@@ -662,11 +662,20 @@ describe("project landing history state", () => {
       true,
     );
     expect(isAppTakeoverVisit(withProjectOverviewState({}))).toBe(false);
+    // Overview opened from inside the app's frame must not inherit it.
+    expect(
+      isAppTakeoverVisit(withProjectOverviewState(withAppTakeoverState({}))),
+    ).toBe(false);
   });
 
   test("an app landing's state asks for the takeover", () => {
     expect(isAppTakeoverVisit(withAppTakeoverState({ key: "a" }))).toBe(true);
     expect(isProjectOverviewVisit(withAppTakeoverState({}))).toBe(false);
+    expect(
+      isProjectOverviewVisit(
+        withAppTakeoverState(withProjectOverviewState({})),
+      ),
+    ).toBe(false);
   });
 
   test("any other state asks for neither", () => {
