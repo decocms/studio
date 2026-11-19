@@ -259,12 +259,30 @@ describe("buildDayView", () => {
       items: 960,
     });
     expect(forecast.soFar.y1).toBeNull();
+    expect(forecast.revenue.today[11]).toBe(400);
+    expect(forecast.revenue.today[12]).toBeNull();
+    expect(forecast.revenue.w1[20]).toBe(4000);
     const p = forecast.projection!;
     expect(p.close.orders).toBe(48 * 15 + 1.5 * 48 * 10);
     expect(p.orders[11]).toBe(0);
     expect(p.orders[12]).toBe(60);
     expect(p.revenue[12]).toBe(1.5 * 4 * 1000);
     expect(p.initial).toEqual({ orders: 960, revenue: 96000 });
+    // Flat reference days agree, so the cloud closes on the projection.
+    expect(p.range.orders.low[23]).toBe(1.5 * 48 * 10);
+    expect(p.range.orders.high[11]).toBe(0);
+    expect(p.range.orders.high[12]).toBe(60);
+  });
+
+  it("spreads the projection between the quietest and busiest reference day", () => {
+    const s = store({ placed: flat(10) });
+    s.days[7] = { ...s.days[7], placed: flat(5) };
+    s.days[14] = { ...s.days[14], placed: flat(20) };
+    const p = buildDayView(s, at).forecast.projection!;
+    // Level 1; the rest of the day is 48 buckets.
+    expect(p.range.orders.low[23]).toBe(48 * 5);
+    expect(p.range.orders.high[23]).toBe(48 * 20);
+    expect(p.close.orders).toBe(48 * 10 + 48 * 10);
   });
 
   it("projects from the reference days the lake holds while history loads", () => {

@@ -95,10 +95,13 @@ const PREVIEW_NUMBERS = [
 const PREVIEW_SHAPE = [3, 2, 2, 4, 7, 9, 8, 10, 12, 11, 13, 12, 9, 10];
 
 /** Once every store's day is in, so the totals don't grow as they land. */
-function OverviewSales({ stores }: { stores: MonitorBoard["stores"] }) {
-  const days = stores.flatMap((s) => (s.day ? [s.day] : []));
-  return days.length > 0 && days.length === stores.length ? (
-    <SalesStatus days={days} />
+function OverviewSales({ board }: { board: MonitorBoard }) {
+  const days = board.stores.flatMap((s) => (s.day ? [s.day] : []));
+  return days.length > 0 && days.length === board.stores.length ? (
+    <SalesStatus
+      days={days}
+      conversion={board.kpis.find((k) => k.id === "conversion")}
+    />
   ) : null;
 }
 
@@ -139,7 +142,7 @@ function Board({
       ) : (
         today && board.stores.length > 0 && <AllClear />
       )}
-      <OverviewSales stores={board.stores} />
+      <OverviewSales board={board} />
       {numbers}
       {more}
     </div>
