@@ -5,7 +5,10 @@
  * shape.
  */
 
+import { matchBusinessCasePath } from "@decocms/shared/business-case";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import { useOptionalChatStream } from "@/components/chat/chat-context.tsx";
+import { useOptionalChatTask } from "@/components/chat/context";
 import { Page } from "@/components/page";
 import { formatLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
@@ -16,15 +19,11 @@ import { useBusinessCase } from "./use-business-case.ts";
 
 function CaseLoading({ label }: { label?: string }) {
   return (
-    <div className="flex flex-col gap-6">
-      <Skeleton className="h-8 w-2/3" />
-      <div className="grid gap-3 md:grid-cols-2">
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }, (_, i) => (
-          <Skeleton key={i} className="h-40" />
+    <div className="mx-auto flex w-full max-w-[880px] flex-col gap-10">
+      <Skeleton className="h-56 rounded-2xl" />
+      <div className="flex flex-col gap-8 pl-10">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-20" />
         ))}
       </div>
       {label && <p className="text-xs text-muted-foreground">{label}</p>}
@@ -32,10 +31,27 @@ function CaseLoading({ label }: { label?: string }) {
   );
 }
 
+/** Sends an open question to the chat this case belongs to, when that chat is
+ *  the one beside the tab. */
+function useAskInChat(path: string) {
+  const t = useT();
+  const chat = useOptionalChatStream();
+  const task = useOptionalChatTask();
+  const threadId = matchBusinessCasePath(path);
+  if (!chat || !threadId || task?.taskId !== threadId || chat.isStreaming) {
+    return undefined;
+  }
+  return (question: string) =>
+    void chat.sendMessage({
+      parts: [{ type: "text", text: t("plan.case.askPrompt", { question }) }],
+    });
+}
+
 export function BusinessCaseTab({ path }: { path: string }) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
   const read = useBusinessCase(path);
+  const onAsk = useAskInChat(path);
   const value = read.data?.value ?? readCaseSeed(sessionStorage, path);
 
   return (
@@ -46,6 +62,7 @@ export function BusinessCaseTab({ path }: { path: string }) {
             <BusinessCaseCanvas
               value={value}
               invalid={read.data?.invalid}
+              onAsk={onAsk}
               onOpenDocument={(documentPath) =>
                 openPanel(formatLibraryFileTabId(`home/${documentPath}`))
               }
