@@ -132,11 +132,22 @@ function useVtexInstall() {
           data: { configuration_state: { ...(prev ?? {}), ...keys } },
         });
       }
-      const existing = connections.find(
-        (c) =>
-          c.connection_url === ingestUrl &&
-          (boundTo(c) === undefined || boundTo(c) === vtexId),
+      // Read fresh, not from the cached list: saving keys has the server
+      // install the ingest itself, and a stale list would add a second one.
+      const { items: ingests } = await callStudioTool(
+        org.slug,
+        "COLLECTION_CONNECTIONS_LIST",
+        {
+          where: {
+            field: ["connection_url"],
+            operator: "eq",
+            value: ingestUrl,
+          },
+        },
       );
+      const existing =
+        ingests.find((c) => boundTo(c) === vtexId) ??
+        ingests.find((c) => boundTo(c) === undefined);
       const ingest =
         existing ??
         (await actions.create.mutateAsync({
