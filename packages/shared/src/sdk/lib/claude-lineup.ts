@@ -28,3 +28,13 @@ function claudeModelIds(
 
 export const CLAUDE_OPUS = claudeModelIds("opus", 5, 5);
 export const CLAUDE_SONNET = claudeModelIds("sonnet", 5, 5);
+
+const CLAUDE_FAMILY_EFFORT = { opus: "medium", sonnet: "high" } as const;
+const OTHER_MODEL_EFFORT = "medium";
+
+/** Studio's default reasoning effort for a model, in any of its id forms. */
+export function claudeDefaultEffort(modelId: string): "medium" | "high" {
+  if (modelId.includes("sonnet")) return CLAUDE_FAMILY_EFFORT.sonnet;
+  if (modelId.includes("opus")) return CLAUDE_FAMILY_EFFORT.opus;
+  return OTHER_MODEL_EFFORT;
+}

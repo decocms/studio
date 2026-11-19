@@ -32,6 +32,7 @@ import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
 import {
   CLAUDE_OPUS,
   CLAUDE_SONNET,
+  claudeDefaultEffort,
 } from "@decocms/shared/sdk/lib/claude-lineup";
 
 /**
@@ -200,26 +201,6 @@ const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
 };
 
 /**
- * Reasoning effort, by class. The harness runner passes it to the SDK and
- * falls back to `low` when a Studio that predates this variable sends none.
- *
- * `medium` for the two classes that do the work. Every run used to be pinned
- * to `low`, the SDK's minimal-thinking level, while the same CLI on a laptop
- * runs at the SDK default (`high`). The reviewer and the conflict re-run stay
- * on `low` with their cheaper model: both are cost-capped on purpose (see
- * `CLAUDE_CODE_MODEL`).
- */
-const CLAUDE_CODE_EFFORT: Record<
-  ClaudeCodeModelClass,
-  "low" | "medium" | "high"
-> = {
-  default: "medium",
-  chat: "medium",
-  reviewer: "low",
-  conflict: "low",
-};
-
-/**
  * Keeps MCP tool schemas OUT of the turn-1 prompt.
  *
  * The harness mounts an org's connections without `alwaysLoad` so their tools
@@ -304,16 +285,19 @@ export function claudeCodeEnvFromCredential(
   const budget = {
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
-    CLAUDE_CODE_EFFORT: CLAUDE_CODE_EFFORT[modelClass],
     ENABLE_TOOL_SEARCH: TOOL_SEARCH,
     FORCE_PROMPT_CACHING_5M: PROMPT_CACHE_5M,
     // Only Copilot sets it; null clears a previous Copilot run's header.
     ANTHROPIC_CUSTOM_HEADERS: null,
   };
+  const modelEnv = (model: string) => ({
+    CLAUDE_CODE_MODEL: model,
+    CLAUDE_CODE_EFFORT: claudeDefaultEffort(model),
+  });
   if (providerId === "anthropic") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: modelFor("anthropic"),
+      ...modelEnv(modelFor("anthropic")),
       ANTHROPIC_API_KEY: apiKey,
       ANTHROPIC_AUTH_TOKEN: null,
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -326,7 +310,7 @@ export function claudeCodeEnvFromCredential(
     // leftover one outranks it and the run bills the org's API credit instead.
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: modelFor("anthropic"),
+      ...modelEnv(modelFor("anthropic")),
       CLAUDE_CODE_OAUTH_TOKEN: apiKey,
       ANTHROPIC_API_KEY: null,
       ANTHROPIC_AUTH_TOKEN: null,
@@ -336,7 +320,7 @@ export function claudeCodeEnvFromCredential(
   if (providerId === "openrouter" || providerId === "deco") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: modelFor("openrouter"),
+      ...modelEnv(modelFor("openrouter")),
       // Empty, not absent: a non-empty API key takes precedence over the auth
       // token and would be sent to OpenRouter as an Anthropic key.
       ANTHROPIC_API_KEY: "",
@@ -350,7 +334,7 @@ export function claudeCodeEnvFromCredential(
       modelClass === "chat" && chosenModel ? copilotModelId(chosenModel) : null;
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: chosen ?? CLAUDE_CODE_MODEL.copilot[modelClass],
+      ...modelEnv(chosen ?? CLAUDE_CODE_MODEL.copilot[modelClass]),
       // Empty, not absent, for the same reason as OpenRouter above.
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: apiKey,

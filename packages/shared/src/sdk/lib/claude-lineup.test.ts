@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { isClaudeCodeModel } from "../../harness/claude-code-models";
-import { CLAUDE_OPUS, CLAUDE_SONNET } from "./claude-lineup";
+import {
+  CLAUDE_OPUS,
+  CLAUDE_SONNET,
+  claudeDefaultEffort,
+} from "./claude-lineup";
 
 describe("claude lineup", () => {
   it("renders one version in each route's id form", () => {
@@ -21,6 +25,18 @@ describe("claude lineup", () => {
       expect(isClaudeCodeModel("anthropic", ids.anthropic)).toBe(true);
       expect(isClaudeCodeModel("openrouter", ids.openrouter)).toBe(true);
       expect(isClaudeCodeModel("deco", ids.openrouter)).toBe(true);
+    }
+  });
+
+  it("gives Sonnet high effort and every other model medium, in each id form", () => {
+    for (const id of Object.values(CLAUDE_SONNET)) {
+      expect(claudeDefaultEffort(id)).toBe("high");
+    }
+    for (const id of Object.values(CLAUDE_OPUS)) {
+      expect(claudeDefaultEffort(id)).toBe("medium");
+    }
+    for (const id of ["claude-haiku-4-5", "anthropic/claude-fable-5", ""]) {
+      expect(claudeDefaultEffort(id)).toBe("medium");
     }
   });
 });

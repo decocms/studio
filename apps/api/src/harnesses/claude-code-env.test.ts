@@ -128,6 +128,7 @@ describe("claudeCodeEnvFromCredential", () => {
     ).toEqual({
       ...BUDGET,
       CLAUDE_CODE_MODEL: "claude-sonnet-5.5",
+      CLAUDE_CODE_EFFORT: "high",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "github_pat_1",
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -271,22 +272,113 @@ describe("claudeCodeEnvFromCredential", () => {
     }
   });
 
-  test("the classes that do the work think at medium effort, the cost-capped ones at low", () => {
-    for (const credential of [
-      { providerId: "anthropic", apiKey: "sk-a" },
-      { providerId: "openrouter", apiKey: "or-1" },
-      { providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID, apiKey: "sk-ant-oat-1" },
-      { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "copilot-token" },
-    ]) {
-      const effort = (
-        modelClass: "default" | "chat" | "reviewer" | "conflict",
-      ) =>
-        claudeCodeEnvFromCredential(credential, modelClass).CLAUDE_CODE_EFFORT;
-      expect(effort("default")).toBe("medium");
-      expect(effort("chat")).toBe("medium");
-      expect(effort("reviewer")).toBe("low");
-      expect(effort("conflict")).toBe("low");
+  test("effort follows the model the run ends up on, not its class", () => {
+    const run = (
+      providerId: string,
+      modelClass: "default" | "chat" | "reviewer" | "conflict",
+      chosen?: string,
+    ) => {
+      const env = claudeCodeEnvFromCredential(
+        { providerId, apiKey: "k" },
+        modelClass,
+        chosen,
+      );
+      return [env.CLAUDE_CODE_MODEL, env.CLAUDE_CODE_EFFORT];
+    };
+    for (const providerId of ["anthropic", CLAUDE_SUBSCRIPTION_PROVIDER_ID]) {
+      expect(run(providerId, "default")).toEqual(["claude-opus-5-5", "medium"]);
+      expect(run(providerId, "chat")).toEqual(["claude-opus-5-5", "medium"]);
+      expect(run(providerId, "reviewer")).toEqual([
+        "claude-sonnet-5-5",
+        "high",
+      ]);
+      expect(run(providerId, "conflict")).toEqual([
+        "claude-sonnet-5-5",
+        "high",
+      ]);
     }
+    for (const providerId of ["openrouter", "deco"]) {
+      expect(run(providerId, "default")[1]).toBe("medium");
+      expect(run(providerId, "chat")[1]).toBe("medium");
+      expect(run(providerId, "reviewer")).toEqual([
+        "anthropic/claude-sonnet-5.5",
+        "high",
+      ]);
+      expect(run(providerId, "conflict")[1]).toBe("high");
+    }
+  });
+
+  test("a chat's picked model sets its effort", () => {
+    const picked = (providerId: string, chosen: string) => {
+      const env = claudeCodeEnvFromCredential(
+        { providerId, apiKey: "k" },
+        "chat",
+        chosen,
+      );
+      return [env.CLAUDE_CODE_MODEL, env.CLAUDE_CODE_EFFORT];
+    };
+    expect(picked("anthropic", "claude-sonnet-5-5")).toEqual([
+      "claude-sonnet-5-5",
+      "high",
+    ]);
+    expect(picked("anthropic", "claude-sonnet-4-6")).toEqual([
+      "claude-sonnet-4-6",
+      "high",
+    ]);
+    expect(picked("anthropic", "claude-opus-4-8")).toEqual([
+      "claude-opus-4-8",
+      "medium",
+    ]);
+    expect(picked("anthropic", "claude-haiku-4-5")).toEqual([
+      "claude-haiku-4-5",
+      "medium",
+    ]);
+    expect(picked("deco", "anthropic/claude-sonnet-5.5")).toEqual([
+      "anthropic/claude-sonnet-5.5",
+      "high",
+    ]);
+    expect(picked("openrouter", "anthropic/claude-opus-5.5")).toEqual([
+      "anthropic/claude-opus-5.5",
+      "medium",
+    ]);
+    expect(picked("openrouter", "anthropic/claude-haiku-4.5")).toEqual([
+      "anthropic/claude-haiku-4.5",
+      "medium",
+    ]);
+    expect(picked("openrouter", "google/gemini-3-pro")).toEqual([
+      "anthropic/claude-opus-5.5",
+      "medium",
+    ]);
+  });
+
+  test("Copilot runs take the effort of their Copilot-form model", () => {
+    const copilot = (
+      modelClass: "default" | "chat" | "reviewer" | "conflict",
+      chosen?: string,
+    ) => {
+      const env = claudeCodeEnvFromCredential(
+        { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "t" },
+        modelClass,
+        chosen,
+      );
+      return [env.CLAUDE_CODE_MODEL, env.CLAUDE_CODE_EFFORT];
+    };
+    for (const modelClass of [
+      "default",
+      "chat",
+      "reviewer",
+      "conflict",
+    ] as const) {
+      expect(copilot(modelClass)).toEqual(["claude-sonnet-5.5", "high"]);
+    }
+    expect(copilot("chat", "claude-opus-5-5")).toEqual([
+      "claude-opus-5.5",
+      "medium",
+    ]);
+    expect(copilot("chat", "anthropic/claude-haiku-4.5")).toEqual([
+      "claude-haiku-4.5",
+      "medium",
+    ]);
   });
 
   test("the chat's chosen Claude model sets CLAUDE_CODE_MODEL", () => {

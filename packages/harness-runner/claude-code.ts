@@ -76,7 +76,7 @@ const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
 /**
- * The reasoning effort for this run. Set by Studio per model class (see
+ * The reasoning effort for this run. Set by Studio from the run's model (see
  * `claude-code-env.ts`), so changing it needs no new sandbox image. Unset or
  * unrecognized is `low`: what every run got before Studio sent one.
  */
