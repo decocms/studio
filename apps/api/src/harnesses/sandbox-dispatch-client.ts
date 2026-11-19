@@ -529,8 +529,9 @@ export class SandboxDispatchClient {
   /**
    * The connections this run mounts: the ones aggregated ON THE AGENT always,
    * plus every other MCP connection in the org when it opted in
-   * (`coding_agent_org_mcps`). None without a slug, without which the
-   * per-connection URL cannot be built.
+   * (`coding_agent_org_mcps`) or the run is an interactive home chat
+   * (`home_chat_org_connections`, on by default). None without a slug, without
+   * which the per-connection URL cannot be built.
    *
    * The agent's own half is not flag-gated because it is not a fan-out: those
    * connections are exactly what someone attached to this agent, and they are

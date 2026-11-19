@@ -255,7 +255,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Let a chat a person drives on the organization home reach every active connection the sender's role allows, through Studio rather than mounted as MCP servers. Off by default. Board, reviewer, Jira and automation runs are not affected.",
+      "Let a chat a person drives on the organization home reach every active connection the sender's role allows, through Studio rather than mounted as MCP servers. On by default (see DEFAULT_ON_FLAGS); turn it off to leave a home chat with only the connections attached to the default agent. Connections in `coding_agent_mcp_excluded` stay out either way. Board, reviewer, Jira and automation runs are not affected.",
     ),
   coding_agents_claude_code: z
     .boolean()
@@ -407,6 +407,7 @@ export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "cheap_reviewer_model",
   "chat_harness_sandbox_only",
   "cms_auto_commit",
+  "home_chat_org_connections",
 ]);
 
 /**

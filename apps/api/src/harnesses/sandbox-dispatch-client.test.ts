@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { getDecopilotId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { connectionGrantsFor } from "./org-mcp-grants";
 import { withModelMetadata } from "./with-model-metadata";
@@ -90,11 +91,17 @@ describe("home chat org connections", () => {
     { id: "conn_inactive", status: "error" },
     { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
   ];
-  const select = (flag: boolean, isHomeChat: boolean) =>
+  const unset = {};
+  const turnedOff = { home_chat_org_connections: false };
+  const select = (
+    flags: Record<string, unknown> | null | undefined,
+    isHomeChat: boolean,
+  ) =>
     selectRunConnections({
       organizationId,
       orgWide: false,
-      homeChat: flag && isHomeChat,
+      homeChat:
+        orgFlagEnabled(flags, "home_chat_org_connections") && isHomeChat,
       ownIds: new Set<string>(),
       excludedIds: new Set(["conn_excluded"]),
       connections,
@@ -121,15 +128,23 @@ describe("home chat org connections", () => {
     expect(homeChat({ thread: null })).toBe(false);
   });
 
-  test("flag on: a home chat gets every active, non-excluded, non-Studio connection", () => {
-    expect(select(true, homeChat())).toEqual(["conn_a", "conn_b"]);
+  test("flag unset: a home chat gets every active, non-excluded, non-Studio connection", () => {
+    for (const flags of [
+      unset,
+      null,
+      undefined,
+      { home_chat_org_connections: null },
+      { home_chat_org_connections: true },
+    ]) {
+      expect(select(flags, homeChat())).toEqual(["conn_a", "conn_b"]);
+    }
   });
 
-  test("flag off: a home chat gets nothing", () => {
-    expect(select(false, homeChat())).toEqual([]);
+  test("only an explicit false turns it off: a home chat then gets nothing", () => {
+    expect(select(turnedOff, homeChat())).toEqual([]);
   });
 
-  test("flag on: non-home-chat runs are unchanged", () => {
+  test("flag unset: non-home-chat runs are unchanged", () => {
     for (const run of [
       homeChat({ agentId: "vir_project" }),
       homeChat({ runClass: "new_task" }),
@@ -137,7 +152,7 @@ describe("home chat org connections", () => {
       homeChat({ thread: { trigger_id: null, metadata: { source: "jira" } } }),
       homeChat({ thread: { trigger_id: "trg_1", metadata: {} } }),
     ]) {
-      expect(select(true, run)).toEqual([]);
+      expect(select(unset, run)).toEqual([]);
     }
   });
 
@@ -146,7 +161,7 @@ describe("home chat org connections", () => {
       connectionGrantsFor({
         role: "support",
         roleStatements: [{ conn_a: ["LIST_ORDERS"] }],
-        connectionIds: select(true, homeChat()),
+        connectionIds: select(unset, homeChat()),
       }),
     ).toEqual({ conn_a: ["LIST_ORDERS"] });
   });
