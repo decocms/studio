@@ -49,6 +49,12 @@ export const ChatTierSchema = z.enum(["fast", "smart", "thinking"]);
 
 export type ChatTier = z.infer<typeof ChatTierSchema>;
 
+/**
+ * The tier an interactive chat runs when the person picked none. The chat
+ * route and the composer both read it, so they cannot disagree.
+ */
+export const DEFAULT_CHAT_TIER: ChatTier = "thinking";
+
 export const SimpleModeConfigSchema = z.object({
   tiers: z.object({
     fast: ModelSlotSchema,

@@ -2,6 +2,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { orgPinnedModel } from "@/core/plan-feature-gate";
 import {
   ChatTierSchema,
+  DEFAULT_CHAT_TIER,
   type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
 import {
@@ -242,6 +243,24 @@ export async function resolveTier(
       picked.title,
     ),
   };
+}
+
+/**
+ * The model of an interactive chat whose request named no tier: the default
+ * chat tier, or Smart for an org that has no model for it. An org that only
+ * ever configured Smart must not lose its chat to a default nobody picked. A
+ * tier the person did pick is resolved by `resolveTier` and still fails loudly.
+ */
+export async function resolveDefaultChatTier(
+  ctx: StudioContext,
+  opts?: ResolveTierOptions,
+): Promise<ResolvedTier> {
+  try {
+    return await resolveTier(ctx, DEFAULT_CHAT_TIER, opts);
+  } catch (err) {
+    if (!(err instanceof TierUnavailableError)) throw err;
+    return resolveTier(ctx, "smart", opts);
+  }
 }
 
 /**

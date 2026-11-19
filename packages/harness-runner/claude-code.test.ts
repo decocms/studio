@@ -195,6 +195,26 @@ describe("buildOptions", () => {
     expect(prompt.append).toStartWith("Be terse.");
   });
 
+  test("takes the effort Studio set, and stays on low without one", () => {
+    const prev = process.env.CLAUDE_CODE_EFFORT;
+    try {
+      delete process.env.CLAUDE_CODE_EFFORT;
+      expect(options().effort).toBe("low");
+      for (const level of ["low", "medium", "high", "xhigh", "max"]) {
+        process.env.CLAUDE_CODE_EFFORT = level;
+        expect(options().effort).toBe(level);
+      }
+      // A value the SDK would reject must not fail the run.
+      for (const bad of ["", "MEDIUM", "extreme", "3"]) {
+        process.env.CLAUDE_CODE_EFFORT = bad;
+        expect(options().effort).toBe("low");
+      }
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CODE_EFFORT;
+      else process.env.CLAUDE_CODE_EFFORT = prev;
+    }
+  });
+
   test("carries the turn cap and tells the model its budget", () => {
     const prev = process.env.CLAUDE_CODE_MAX_TURNS;
     try {

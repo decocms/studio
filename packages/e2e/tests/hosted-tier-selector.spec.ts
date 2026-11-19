@@ -65,7 +65,7 @@ test.describe("hosted tier selector", () => {
     await page.goto(`/${orgSlug}?sidepanel=true`);
     await waitForChatInput(page);
 
-    const trigger = page.getByRole("button", { name: "Smart", exact: true });
+    const trigger = page.getByRole("button", { name: "Thinking", exact: true });
     await expect(trigger).toBeVisible();
     await trigger.click();
 
@@ -97,10 +97,10 @@ test.describe("hosted tier selector", () => {
       thinkingRow.getByText("Deeper reasoning", { exact: true }),
     ).toBeVisible();
 
-    // "Smart" is the default tier (`useChatPrefs().simpleModeTier`) — its
+    // "Thinking" is the default tier (`useChatPrefs().simpleModeTier`) — its
     // row carries the extra active `Check` glyph the other two don't.
     expect(await svgCount(fastRow)).toBe(1);
-    expect(await svgCount(smartRow)).toBe(2);
-    expect(await svgCount(thinkingRow)).toBe(1);
+    expect(await svgCount(smartRow)).toBe(1);
+    expect(await svgCount(thinkingRow)).toBe(2);
   });
 });

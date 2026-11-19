@@ -48,7 +48,7 @@ describe("default model preferences", () => {
     expect(getFastModel("anthropic")).toBe("claude-haiku-4-5");
   });
 
-  it("maps simple-mode tiers to the provider's preferred models", () => {
+  it("still fills the tiers from a catalog without the current lineup", () => {
     const defaults = pickSimpleModeDefaults([key], {
       [key.id]: models,
     });
@@ -67,6 +67,70 @@ describe("default model preferences", () => {
       keyId: key.id,
       modelId: "claude-opus-4-8",
       title: "Claude Opus 4.8",
+    });
+  });
+});
+
+describe("current Claude lineup in the chat tiers", () => {
+  function keyFor(providerId: AiProviderKey["providerId"]): AiProviderKey {
+    return { ...key, id: `${providerId}-key`, providerId };
+  }
+  function tiers(
+    providerId: AiProviderKey["providerId"],
+    modelIds: string[],
+  ): { smart?: string; thinking?: string } {
+    const providerKey = keyFor(providerId);
+    const { chat } = pickSimpleModeDefaults([providerKey], {
+      [providerKey.id]: modelIds.map((id) => model(id, id)),
+    });
+    return { smart: chat.smart?.modelId, thinking: chat.thinking?.modelId };
+  }
+
+  it("puts Sonnet 5.5 on Smart and Opus 5.5 on Thinking", () => {
+    expect(
+      tiers("anthropic", [
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+      ]),
+    ).toEqual({ smart: "claude-sonnet-5-5", thinking: "claude-opus-5-5" });
+
+    for (const providerId of ["openrouter", "deco"] as const) {
+      expect(
+        tiers(providerId, [
+          "anthropic/claude-sonnet-5",
+          "anthropic/claude-opus-4.8",
+          "anthropic/claude-opus-5.5",
+          "anthropic/claude-sonnet-5.5",
+        ]),
+      ).toEqual({
+        smart: "anthropic/claude-sonnet-5.5",
+        thinking: "anthropic/claude-opus-5.5",
+      });
+    }
+  });
+
+  it("keeps Smart off Opus when the catalog has no Sonnet 5.5", () => {
+    expect(
+      tiers("anthropic", [
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+        "claude-opus-5-5",
+      ]),
+    ).toEqual({ smart: "claude-sonnet-5", thinking: "claude-opus-5-5" });
+  });
+
+  it("matches dated ids of the current lineup", () => {
+    expect(
+      tiers("anthropic", [
+        "claude-sonnet-4-6",
+        "claude-sonnet-5-5-20261001",
+        "claude-opus-5-5-20261001",
+      ]),
+    ).toEqual({
+      smart: "claude-sonnet-5-5-20261001",
+      thinking: "claude-opus-5-5-20261001",
     });
   });
 });

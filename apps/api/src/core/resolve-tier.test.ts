@@ -1,6 +1,11 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
-import { resolveTier, TierUnavailableError } from "./resolve-tier";
+import { DEFAULT_CHAT_TIER } from "@decocms/shared/organization/schema";
+import {
+  resolveDefaultChatTier,
+  resolveTier,
+  TierUnavailableError,
+} from "./resolve-tier";
 
 interface ProviderKeyFixture {
   id: string;
@@ -276,5 +281,82 @@ describe("resolveTier", () => {
     const result = await resolveTier(ctx, "smart");
     expect(result.credentialId).toBe("k_live");
     expect(result.modelId).toBe("claude-sonnet-4-6");
+  });
+});
+
+describe("resolveDefaultChatTier", () => {
+  const anthropicKey = {
+    id: "k1",
+    providerId: "anthropic",
+    createdAt: "2026-01-01",
+  };
+  const noTiers = {
+    fast: null,
+    smart: null,
+    thinking: null,
+    image: null,
+    web_research: null,
+  };
+
+  it("the default chat tier is Thinking", () => {
+    expect(DEFAULT_CHAT_TIER).toBe("thinking");
+  });
+
+  it("runs the org's Thinking slot, not its Smart slot", async () => {
+    const ctx = makeCtx({
+      tiers: {
+        ...noTiers,
+        smart: { keyId: "k1", modelId: "org-smart" },
+        thinking: { keyId: "k1", modelId: "org-thinking" },
+      },
+      providerKeys: [anthropicKey],
+    });
+    expect((await resolveDefaultChatTier(ctx)).modelId).toBe("org-thinking");
+  });
+
+  it("default-picks the current Opus when no slot is saved", async () => {
+    const ctx = makeCtx({
+      providerKeys: [anthropicKey],
+      models: {
+        k1: [
+          { modelId: "claude-sonnet-5-5", title: "Claude Sonnet 5.5" },
+          { modelId: "claude-opus-5-5", title: "Claude Opus 5.5" },
+        ],
+      },
+    });
+    expect((await resolveDefaultChatTier(ctx)).modelId).toBe("claude-opus-5-5");
+    expect((await resolveTier(ctx, "smart")).modelId).toBe("claude-sonnet-5-5");
+  });
+
+  it("falls back to Smart for an org with no Thinking model", async () => {
+    const ctx = makeCtx({
+      tiers: { ...noTiers, smart: { keyId: "k1", modelId: "local-model" } },
+      providerKeys: [
+        { id: "k1", providerId: "openai-compatible", createdAt: "2026-01-01" },
+      ],
+      models: { k1: [{ modelId: "local-model", title: "Local" }] },
+    });
+    expect((await resolveDefaultChatTier(ctx)).modelId).toBe("local-model");
+    await expect(resolveTier(ctx, "thinking")).rejects.toBeInstanceOf(
+      TierUnavailableError,
+    );
+  });
+
+  it("follows the user's Thinking override when the chat opts in", async () => {
+    const ctx = makeCtx({
+      tiers: { ...noTiers, thinking: { keyId: "k1", modelId: "org-thinking" } },
+      userTiers: { thinking: { keyId: "k1", modelId: "user-thinking" } },
+      providerKeys: [anthropicKey],
+    });
+    expect(
+      (await resolveDefaultChatTier(ctx, { applyUserPrefs: true })).modelId,
+    ).toBe("user-thinking");
+  });
+
+  it("still fails when the org has no model for either tier", async () => {
+    const ctx = makeCtx({ providerKeys: [] });
+    await expect(resolveDefaultChatTier(ctx)).rejects.toBeInstanceOf(
+      TierUnavailableError,
+    );
   });
 });
