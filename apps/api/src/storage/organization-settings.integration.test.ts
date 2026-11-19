@@ -180,30 +180,6 @@ describe("OrganizationSettingsStorage — plan objective", () => {
     expect((await storage.get("org_1"))?.plan_objective).toBeNull();
   });
 
-  it("with ifEmpty, writes a goal on an empty row", async () => {
-    await storage.upsert("org_1", { flags: { demo_mode: true } });
-    const jev = {
-      ...goal,
-      source: "jev" as const,
-      goal: "traffic_growth" as const,
-    };
-    const got = await storage.setPlanObjective("org_1", jev, { ifEmpty: true });
-    expect(got.plan_objective).toEqual(jev);
-    expect(got.flags).toEqual({ demo_mode: true });
-  });
-
-  it("with ifEmpty, keeps and returns a goal already saved", async () => {
-    await storage.setPlanObjective("org_1", goal);
-    const jev = {
-      ...goal,
-      statement: "Win back visitors.",
-      source: "jev" as const,
-    };
-    const got = await storage.setPlanObjective("org_1", jev, { ifEmpty: true });
-    expect(got.plan_objective).toEqual(goal);
-    expect((await storage.get("org_1"))?.plan_objective).toEqual(goal);
-  });
-
   it("survives an unrelated settings update", async () => {
     await storage.setPlanObjective("org_1", goal);
     await storage.upsert("org_1", { flags: { demo_mode: false } });

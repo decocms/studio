@@ -132,13 +132,11 @@ export class OrganizationSettingsStorage
 
   /**
    * Write the store goal, or clear it with null. Its own method because
-   * `upsert` skips nulls, and clearing the goal is a real edit. With `ifEmpty`,
-   * a saved goal is kept and returned unchanged.
+   * `upsert` skips nulls, and clearing the goal is a real edit.
    */
   async setPlanObjective(
     organizationId: string,
     objective: PlanObjective | null,
-    options: { ifEmpty?: boolean } = {},
   ): Promise<OrganizationSettings> {
     const now = new Date().toISOString();
     const value = objective ? JSON.stringify(objective) : null;
@@ -150,21 +148,14 @@ export class OrganizationSettingsStorage
         createdAt: now,
         updatedAt: now,
       })
-      .onConflict((oc) => {
-        const update = oc.column("organizationId").doUpdateSet({
+      .onConflict((oc) =>
+        oc.column("organizationId").doUpdateSet({
           plan_objective: value,
           updatedAt: now,
-        });
-        return options.ifEmpty
-          ? update.where("organization_settings.plan_objective", "is", null)
-          : update;
-      })
+        }),
+      )
       .returningAll()
-      .executeTakeFirst();
-    if (record) return mapRecord(record);
-
-    const current = await this.get(organizationId);
-    if (!current) throw new Error("Organization settings vanished mid-write");
-    return current;
+      .executeTakeFirstOrThrow();
+    return mapRecord(record);
   }
 }
