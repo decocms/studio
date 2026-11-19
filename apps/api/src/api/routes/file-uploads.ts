@@ -5,6 +5,7 @@
  * file bytes as the raw request body (NOT multipart) and streams them
  * through `@aws-sdk/lib-storage` `Upload` to the configured bucket using
  * the server-side decrypted credentials.
+ * `?replace=<key>` overwrites that existing object in place (see `assertReplaceable`).
  *
  * Why raw body and not multipart? Hono's `c.req.formData()` materializes
  * the entire multipart body before yielding the file, which defeats the
@@ -26,12 +27,14 @@ import {
   buildPublicUrl,
   buildS3Client,
   FileConfigForbiddenError,
+  headObjectContentType,
   resolveFileConfig,
 } from "@/file-storage/file-config-s3";
 import {
   MAX_UPLOAD_BYTES,
   UploadRejected,
   assertAllowed,
+  assertReplaceable,
   buildObjectKey,
 } from "@/file-storage/upload-policy";
 
@@ -66,9 +69,10 @@ export const createFileUploadRoutes = () => {
     }
 
     const filename = c.req.query("filename");
-    if (!filename) {
+    const replaceKey = c.req.query("replace");
+    if (!filename && !replaceKey) {
       throw new HTTPException(400, {
-        message: "Missing `filename` query parameter",
+        message: "Missing `filename` or `replace` query parameter",
       });
     }
 
@@ -141,10 +145,35 @@ export const createFileUploadRoutes = () => {
       throw err;
     }
 
-    const key = buildObjectKey({
-      prefix: fileCfg.info.prefix,
-      filename,
-    });
+    let key: string;
+    if (replaceKey) {
+      const existingContentType = await headObjectContentType({
+        ctx: fileCfg,
+        key: replaceKey,
+      });
+      if (existingContentType === undefined) {
+        throw new HTTPException(404, { message: "File to replace not found" });
+      }
+      try {
+        assertReplaceable({
+          prefix: fileCfg.info.prefix,
+          key: replaceKey,
+          existingContentType,
+          contentType,
+        });
+      } catch (err) {
+        if (err instanceof UploadRejected) {
+          throw new HTTPException(400, { message: err.message });
+        }
+        throw err;
+      }
+      key = replaceKey;
+    } else {
+      key = buildObjectKey({
+        prefix: fileCfg.info.prefix,
+        filename: filename!,
+      });
+    }
 
     const client = buildS3Client(fileCfg);
 

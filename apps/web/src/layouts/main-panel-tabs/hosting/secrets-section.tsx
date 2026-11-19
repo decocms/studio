@@ -154,7 +154,8 @@ export function SecretsSection({
           <EmptyState
             icon={<Lock01 className="size-5" />}
             title={t("mainPanelTabs.hostingTab.noSecrets")}
-            className="py-10"
+            description={t("mainPanelTabs.hostingTab.noSecretsDescription")}
+            size="inline"
             buttonComponent={addButton}
           />
         </ListCard>

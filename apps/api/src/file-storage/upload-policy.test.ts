@@ -3,6 +3,7 @@ import {
   MAX_UPLOAD_BYTES,
   UploadRejected,
   assertAllowed,
+  assertReplaceable,
   buildObjectKey,
   sanitizeFilename,
 } from "./upload-policy";
@@ -36,6 +37,65 @@ describe("assertAllowed", () => {
   test("rejects non-positive sizes", () => {
     expect(() => assertAllowed("image/png", 0)).toThrow(UploadRejected);
     expect(() => assertAllowed("image/png", -5)).toThrow(UploadRejected);
+  });
+});
+
+describe("assertReplaceable", () => {
+  const key = "site/2026/11/3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90-hero.jpg";
+
+  test("accepts the same media type under the prefix", () => {
+    expect(() =>
+      assertReplaceable({
+        prefix: "site/",
+        key,
+        existingContentType: "image/jpeg",
+        contentType: "Image/JPEG; charset=binary",
+      }),
+    ).not.toThrow();
+  });
+
+  test("accepts any key when the config has no prefix", () => {
+    expect(() =>
+      assertReplaceable({
+        prefix: null,
+        key: "2026/11/hero.jpg",
+        existingContentType: "image/jpeg",
+        contentType: "image/jpeg",
+      }),
+    ).not.toThrow();
+  });
+
+  test("rejects a key outside the prefix", () => {
+    expect(() =>
+      assertReplaceable({
+        prefix: "other/",
+        key,
+        existingContentType: "image/jpeg",
+        contentType: "image/jpeg",
+      }),
+    ).toThrow(UploadRejected);
+  });
+
+  test("rejects a different media type", () => {
+    expect(() =>
+      assertReplaceable({
+        prefix: "site/",
+        key,
+        existingContentType: "image/jpeg",
+        contentType: "image/png",
+      }),
+    ).toThrow("same type (image/jpeg)");
+  });
+
+  test("rejects when the existing object has no media type", () => {
+    expect(() =>
+      assertReplaceable({
+        prefix: "site/",
+        key,
+        existingContentType: null,
+        contentType: "image/jpeg",
+      }),
+    ).toThrow(UploadRejected);
   });
 });
 

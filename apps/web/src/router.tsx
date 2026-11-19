@@ -1275,6 +1275,7 @@ const monitoringSearch = z.object({
   view: z
     .enum([
       "metrics",
+      "alerts",
       "performance",
       "logs",
       "audience",
@@ -1327,6 +1328,23 @@ const projectPlanRoute = createRoute({
     mainView: "plan",
   },
   component: lazyRouteComponent(() => import("./routes/workspace/plan.tsx")),
+});
+/** One chat's business case, built on the Plan page; `path` is the case file
+ *  in the home volume (`plans/cases/<threadId>.json`). */
+const projectBusinessCaseRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/plan/case",
+  staticData: {
+    pageTitle: "page.businessCase",
+    defaultMain: "business-case",
+    mainView: "business-case",
+  },
+  validateSearch: z.object({ path: z.string().optional() }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-business-case.tsx"),
+  ),
 });
 const projectMonitoringRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1842,6 +1860,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentConnectSourcesRoute,
   agentLegacyProjectViewRoute,
   projectPlanRoute,
+  projectBusinessCaseRoute,
   projectMonitoringRoute,
 ]);
 

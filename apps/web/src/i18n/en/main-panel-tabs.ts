@@ -31,9 +31,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.deployments": "Deployments",
   "mainPanelTabs.hostingTab.env": "Environment variables",
   "mainPanelTabs.hostingTab.redirects": "Redirects",
-  "mainPanelTabs.hostingTab.noDeployments": "No deployments yet.",
-  "mainPanelTabs.hostingTab.noEnv": "No environment variables set.",
-  "mainPanelTabs.hostingTab.noRedirects": "No redirects configured.",
+  "mainPanelTabs.hostingTab.noDeployments": "No deployments yet",
+  "mainPanelTabs.hostingTab.noEnv": "No environment variables",
+  "mainPanelTabs.hostingTab.noEnvDescription":
+    "Add one to configure how your site builds or runs.",
+  "mainPanelTabs.hostingTab.noRedirects": "No redirects configured",
   "mainPanelTabs.hostingTab.noSiteTitle": "No site linked",
   "mainPanelTabs.hostingTab.noSiteDescription":
     "This project isn't linked to a hosted site yet.",
@@ -99,7 +101,9 @@ export const mainPanelTabs = {
   // Secrets
   "mainPanelTabs.hostingTab.secrets": "Secrets",
   "mainPanelTabs.hostingTab.secretsError": "Failed to load secrets",
-  "mainPanelTabs.hostingTab.noSecrets": "No secrets set.",
+  "mainPanelTabs.hostingTab.noSecrets": "No secrets",
+  "mainPanelTabs.hostingTab.noSecretsDescription":
+    "Keep API keys and tokens here. They are stored encrypted.",
   "mainPanelTabs.hostingTab.addSecret": "Add secret",
   "mainPanelTabs.hostingTab.addSecretTitle": "Add secret",
   "mainPanelTabs.hostingTab.secretNamePlaceholder": "NAME",
@@ -149,7 +153,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.colDate": "Date",
   "mainPanelTabs.hostingTab.production": "Production",
   "mainPanelTabs.hostingTab.deployHistory": "Deploy history",
-  "mainPanelTabs.hostingTab.noDeployHistory": "No deploy history yet.",
+  "mainPanelTabs.hostingTab.noDeployHistory": "No deploy history yet",
   "mainPanelTabs.hostingTab.deployHistoryError":
     "Failed to load deploy history",
   "mainPanelTabs.hostingTab.actionDeploy": "Deploy",
@@ -176,7 +180,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.buildLogsOpenFull": "Open full log",
   "mainPanelTabs.hostingTab.domains": "Domains",
   "mainPanelTabs.hostingTab.domainsError": "Failed to load domains",
-  "mainPanelTabs.hostingTab.noDomains": "No custom domains configured.",
+  "mainPanelTabs.hostingTab.noDomains": "No custom domains",
+  "mainPanelTabs.hostingTab.noDomainsDescription":
+    "Add a domain you own to serve your site from it.",
   "mainPanelTabs.hostingTab.addDomain": "Add domain",
   "mainPanelTabs.hostingTab.addDomainTitle": "Attach a custom domain",
   "mainPanelTabs.hostingTab.colHost": "Host",
@@ -709,4 +715,17 @@ export const mainPanelTabs = {
     "Your app at `{host}` isn't answering yet. If it isn't running, start it on your computer. Meanwhile, you can edit your content in the Content tab.",
   "mainPanelTabs.previewTab.localAppWaiting.hint":
     "The preview loads on its own as soon as your app answers.",
+  "mainPanelTabs.hostingTab.viewsLabel": "Hosting sections",
+  "mainPanelTabs.hostingTab.tabDeploys": "Deploys",
+  "mainPanelTabs.hostingTab.tabVariables": "Variables",
+  "mainPanelTabs.hostingTab.liveInProduction": "Live in production",
+  "mainPanelTabs.hostingTab.noLiveDeploy": "Nothing in production yet",
+  "mainPanelTabs.hostingTab.noLiveDeployDescription":
+    "Deploy your site to put it in production.",
+  "mainPanelTabs.hostingTab.commitTitle": "Commit {sha}",
+  "mainPanelTabs.hostingTab.buildTook": "build {duration}",
+  "mainPanelTabs.hostingTab.preview": "Preview",
+  "mainPanelTabs.hostingTab.statusReady": "Ready",
+  "mainPanelTabs.hostingTab.statusFailed": "Failed",
+  "mainPanelTabs.hostingTab.statusInProgress": "In progress",
 } as const;

@@ -66,6 +66,7 @@ import type {
 import { createSecretModelSource } from "@/harnesses/lib/types";
 import { streamDecopilot } from "@/harnesses/decopilot/stream";
 import { withHtmlArtifactPreviews } from "@/harnesses/html-artifact-watcher";
+import { withSandboxPrCapture } from "@/tools/task-board/sandbox-pr-capture";
 import { setDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
@@ -1477,13 +1478,23 @@ async function prepareRun(
     // A Claude or Copilot plan — shared with the org, or the dispatcher's
     // own — outranks the org's thinking-slot key for a sandbox-hosted run.
     // Absent, expired or undecryptable falls back to the org credential.
-    const userPlanCredential = sandboxHosted
+    const plan = sandboxHosted
       ? await resolvePlanCredential(
           ctx,
           input.organizationId,
           input.userId,
           harnessId,
         )
+      : null;
+    // The CLI reports a shared plan's auth failure as a bare 401, which reads
+    // as the dispatcher's own; record whose plan this run bills.
+    if (plan?.sharedBy) {
+      console.log(
+        `[plan] dispatch for user ${input.userId} uses ${plan.providerId} shared by user ${plan.sharedBy.userId}`,
+      );
+    }
+    const userPlanCredential = plan
+      ? { providerId: plan.providerId, apiKey: plan.apiKey }
       : null;
 
     const dispatchHarnessChunks =
@@ -1558,8 +1569,13 @@ async function prepareRun(
           yield* rawHarnessChunks;
           return;
         }
+        const chunks = withSandboxPrCapture(
+          rawHarnessChunks,
+          ctx,
+          mem.thread.id,
+        );
         // Decopilot titles inside its own loop; a sandbox harness has no such step.
-        yield* withRunTitle(withHtmlArtifactPreviews(rawHarnessChunks, ctx), {
+        yield* withRunTitle(withHtmlArtifactPreviews(chunks, ctx), {
           currentThreadTitle: mem.thread.title,
           isSubagent: input.isSubagent === true,
           userText: materializedRequestMessage.parts

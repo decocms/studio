@@ -4,6 +4,7 @@ export const page = {
   "page.view": "View",
   "page.file": "File",
   "page.document": "Document",
+  "page.businessCase": "Business case",
   "page.item": "Item",
   "page.breadcrumbs": "Breadcrumbs",
   "page.breadcrumbMenu": "Show navigation path",

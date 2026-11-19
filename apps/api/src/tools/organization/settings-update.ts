@@ -7,6 +7,7 @@ import {
   DefaultHomeAgentsConfigSchema,
   GIT_CREDENTIALS_MAX,
   OrgFlagsSchema,
+  PlanObjectiveSchema,
   SubmoduleCredentialSchema,
 } from "@decocms/shared/organization/schema";
 
@@ -76,6 +77,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .array(SubmoduleCredentialSchema)
       .nullable()
       .optional(),
+    plan_objective: PlanObjectiveSchema.nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),

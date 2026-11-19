@@ -10,6 +10,7 @@
 
 import {
   formatCodeTabId,
+  formatCaseTabId,
   formatDeckTabId,
   formatFileTabId,
   formatAgentViewTabId,
@@ -22,6 +23,7 @@ import {
   parseBlogPostTabId,
   parseAgentViewTabId,
   parseCodeTabId,
+  parseCaseTabId,
   parseDeckTabId,
   parseFileTabId,
   parseLibraryFileTabId,
@@ -55,6 +57,7 @@ export type TabRouteLocation =
   | { kind: "agent-view"; viewId: string }
   | { kind: "output-file"; key: string }
   | { kind: "output-deck"; path: string }
+  | { kind: "business-case"; path: string }
   | { kind: "library-file"; path: string }
   | { kind: "connect-sources" }
   | {
@@ -159,6 +162,11 @@ export type TabRouteTarget =
       search: { path: string };
     }
   | {
+      to: typeof PROJECT_ROUTE.businessCase;
+      params: AgentParams;
+      search: { path: string };
+    }
+  | {
       to: typeof PROJECT_ROUTE.libraryFile;
       params: AgentParams;
       search: { path: string };
@@ -236,6 +244,8 @@ export function tabIdForRoute(state: MatchedTabRouteState): string | undefined {
       return search.key ? formatFileTabId(search.key) : undefined;
     case "deck":
       return search.path ? formatDeckTabId(search.path) : undefined;
+    case "business-case":
+      return search.path ? formatCaseTabId(search.path) : undefined;
     case "library-file":
       return search.path ? formatLibraryFileTabId(search.path) : undefined;
     default:
@@ -318,6 +328,9 @@ export function tabRouteLocation(tabId: string): TabRouteLocation {
 
   const deck = parseDeckTabId(tabId);
   if (deck) return { kind: "output-deck", path: deck.path };
+
+  const businessCase = parseCaseTabId(tabId);
+  if (businessCase) return { kind: "business-case", path: businessCase.path };
 
   const libraryFile = parseLibraryFileTabId(tabId);
   if (libraryFile) return { kind: "library-file", path: libraryFile.path };
@@ -484,6 +497,12 @@ export function tabRouteTarget(input: {
     case "output-deck":
       return {
         to: PROJECT_ROUTE.outputDeck,
+        params,
+        search: { path: location.path },
+      };
+    case "business-case":
+      return {
+        to: PROJECT_ROUTE.businessCase,
         params,
         search: { path: location.path },
       };
@@ -718,6 +737,14 @@ export function navigateToTabRouteTarget(
     case PROJECT_ROUTE.outputDeck:
       navigate({
         to: PROJECT_ROUTE.outputDeck,
+        params: target.params,
+        search,
+        replace,
+      });
+      return;
+    case PROJECT_ROUTE.businessCase:
+      navigate({
+        to: PROJECT_ROUTE.businessCase,
         params: target.params,
         search,
         replace,

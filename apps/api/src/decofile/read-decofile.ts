@@ -274,6 +274,9 @@ export interface DecofileDocument {
   previewMembers: string;
   /** The document's bytes. Read once; ending the read early releases it. */
   chunks(): AsyncGenerator<Uint8Array>;
+  /** Releases what `open` acquired even when `chunks()` never ran (a client
+   * that disconnects before the first pull). Idempotent. */
+  close?(): Promise<void>;
 }
 
 export interface DecofileSnapshot {
@@ -393,10 +396,15 @@ async function openCachedDocument(
   if (previewMembers === null) return null;
   const opened = await openMerged(owner, repo, docSha);
   if (!opened) return null;
+  // The handle is opened here, but readAll's `finally` only runs once its
+  // generator starts: a stream cancelled before its first pull would leave the
+  // handle to GC, which Bun turns into an uncaught ERR_INVALID_STATE that
+  // shuts the whole API process down. `close` lets streamDocument release it.
   return {
     size: opened.size,
     previewMembers,
     chunks: () => readAll(opened.handle),
+    close: () => opened.handle.close().catch(() => {}),
   };
 }
 
@@ -420,39 +428,61 @@ async function* readAll(handle: FileHandle): AsyncGenerator<Uint8Array> {
  * `appendMembers`, the members are spliced in before the document's closing
  * brace. The document is read as the client consumes it, so the API never
  * holds more than a chunk of it.
+ *
+ * Pass the request's `signal`: a client that disconnects before the handler
+ * returns gets its body dropped without `cancel()`, which would leave the
+ * document open until GC (an uncaught ERR_INVALID_STATE that shuts Bun down).
  */
 export function streamDocument(
   doc: DecofileDocument,
-  parts: { prefix?: string; suffix?: string; appendMembers?: string },
+  parts: {
+    prefix?: string;
+    suffix?: string;
+    appendMembers?: string;
+    signal?: AbortSignal;
+  },
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const append = parts.appendMembers ?? "";
   async function* body(): AsyncGenerator<Uint8Array> {
-    if (parts.prefix) yield encoder.encode(parts.prefix);
-    // A merged document always ends in "}"; drop it to splice members in.
-    let remaining = append ? doc.size - 1 : doc.size;
-    for await (const chunk of doc.chunks()) {
-      if (remaining <= 0) break;
-      const part =
-        chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
-      remaining -= part.length;
-      yield part;
+    try {
+      if (parts.prefix) yield encoder.encode(parts.prefix);
+      // A merged document always ends in "}"; drop it to splice members in.
+      let remaining = append ? doc.size - 1 : doc.size;
+      for await (const chunk of doc.chunks()) {
+        if (remaining <= 0) break;
+        const part =
+          chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+        remaining -= part.length;
+        yield part;
+      }
+      if (remaining > 0) throw new Error("decofile: merged document truncated");
+      // "{}" (2 bytes) has no members to separate from.
+      if (append) yield encoder.encode(`${doc.size > 2 ? "," : ""}${append}}`);
+      if (parts.suffix) yield encoder.encode(parts.suffix);
+    } finally {
+      await doc.close?.();
     }
-    if (remaining > 0) throw new Error("decofile: merged document truncated");
-    // "{}" (2 bytes) has no members to separate from.
-    if (append) yield encoder.encode(`${doc.size > 2 ? "," : ""}${append}}`);
-    if (parts.suffix) yield encoder.encode(parts.suffix);
   }
   const it = body();
+  // return() on a generator that never started skips its `finally`, so close
+  // the document explicitly too (idempotent).
+  const release = async () => {
+    await it.return(undefined).catch(() => {});
+    await doc.close?.();
+  };
+  if (parts.signal?.aborted) void release();
+  else
+    parts.signal?.addEventListener("abort", () => void release(), {
+      once: true,
+    });
   return new ReadableStream({
     async pull(controller) {
       const { value, done } = await it.next();
       if (done) controller.close();
       else controller.enqueue(value);
     },
-    async cancel() {
-      await it.return(undefined);
-    },
+    cancel: release,
   });
 }
 

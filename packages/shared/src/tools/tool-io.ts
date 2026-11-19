@@ -144,12 +144,17 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
         | undefined;
       submodule_credentials?:
         | { host: string; secretId: string }[]
+        | null
+        | undefined;
+      plan_objective?:
+        | { statement: string; updated_by: string; updated_at: string }
         | null
         | undefined;
       createdAt?: string | undefined;
@@ -234,6 +239,7 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | undefined;
@@ -320,6 +326,7 @@ export interface StudioToolIO {
             multi_app_preview?: boolean | undefined;
             cms_auto_commit?: boolean | undefined;
             hide_default_blog_blocks?: boolean | undefined;
+            plan_page_enabled?: boolean | undefined;
             blog_view_enabled?: boolean | undefined;
           }
         | null
@@ -328,11 +335,50 @@ export interface StudioToolIO {
         | { host: string; secretId: string }[]
         | null
         | undefined;
+      plan_objective?:
+        | { statement: string; updated_by: string; updated_at: string }
+        | null
+        | undefined;
     };
   };
   ORGANIZATION_BLOCKS_EDITOR_SET: {
     input: { enabled: boolean };
     output: { enabled: boolean };
+  };
+  ORGANIZATION_PLAN_OBJECTIVE_SET: {
+    input: { statement: string | null };
+    output: {
+      plan_objective: {
+        statement: string;
+        updated_by: string;
+        updated_at: string;
+      } | null;
+    };
+  };
+  ORGANIZATION_PLAN_OBJECTIVE_FIND: {
+    input: { [x: string]: never };
+    output: {
+      found: {
+        statement: string;
+        quote: string;
+        source: { kind: "file" | "memory" | "connection"; label: string };
+      } | null;
+      read: string[];
+      unread: string[];
+      reason?: "not_found" | "not_clear" | "unavailable" | undefined;
+    };
+  };
+  PLAN_CASE_NEXT_QUESTION: {
+    input: {
+      idea: string;
+      answers: { question: string; answer: string }[];
+      objective?: string | null | undefined;
+    };
+    output: {
+      reaction: string | null;
+      question: { text: string; options: string[] } | null;
+      title: string | null;
+    };
   };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };
@@ -376,6 +422,94 @@ export interface StudioToolIO {
   NOTIFICATION_SUBSCRIPTION_LIST: {
     input: { taskBoardItemId: string };
     output: { userIds: string[] };
+  };
+  ALERTS_LIST: {
+    input: {
+      status?: "open" | "acked" | "all" | undefined;
+      limit?: number | undefined;
+      cursor?: string | undefined;
+    };
+    output: {
+      alerts: {
+        id: string;
+        source: string;
+        subjectId: string;
+        rule: string;
+        title: string;
+        body: string;
+        link: string | null;
+        createdAt: string;
+        ackedAt: string | null;
+        ackedBy: string | null;
+        ackedByName: string | null;
+        ackNote: string | null;
+        taskBoardItemId: string | null;
+        taskKeySeq: number | null;
+      }[];
+      nextCursor: string | null;
+    };
+  };
+  ALERT_ACK: {
+    input: {
+      id: string;
+      note?: string | undefined;
+      taskBoardItemId?: string | undefined;
+    };
+    output: {
+      alert: {
+        id: string;
+        source: string;
+        subjectId: string;
+        rule: string;
+        title: string;
+        body: string;
+        link: string | null;
+        createdAt: string;
+        ackedAt: string | null;
+        ackedBy: string | null;
+        ackedByName: string | null;
+        ackNote: string | null;
+        taskBoardItemId: string | null;
+        taskKeySeq: number | null;
+      };
+    };
+  };
+  ALERT_RULES_LIST: {
+    input: { [x: string]: never };
+    output: {
+      rules: {
+        threshold: number;
+        minVolume: number;
+        source: string;
+        rule:
+          | "orders_drop"
+          | "denied_spike"
+          | "cancel_spike"
+          | "visitors_drop"
+          | "pageviews_drop";
+        defaults: { threshold: number; minVolume: number };
+      }[];
+    };
+  };
+  ALERT_RULE_UPDATE: {
+    input: {
+      rule:
+        | "orders_drop"
+        | "denied_spike"
+        | "cancel_spike"
+        | "visitors_drop"
+        | "pageviews_drop";
+      threshold: number;
+      minVolume: number;
+    };
+    output: {
+      rule:
+        | "orders_drop"
+        | "denied_spike"
+        | "cancel_spike"
+        | "visitors_drop"
+        | "pageviews_drop";
+    };
   };
   TASK_BOARD_ITEM_CREATE: {
     input: {
@@ -1041,6 +1175,23 @@ export interface StudioToolIO {
       model: string;
       usage: { inputTokens: number; outputTokens: number };
       usedReferenceImages: number;
+    };
+  };
+  generate_text: {
+    input: {
+      prompt: string;
+      system?: string | undefined;
+      images?: { uri: string }[] | undefined;
+      tier?: "fast" | "smart" | "thinking" | undefined;
+      provider?: string | undefined;
+      model?: string | undefined;
+      maxOutputTokens?: number | undefined;
+    };
+    output: {
+      success: true;
+      text: string;
+      model: string;
+      usage: { inputTokens: number; outputTokens: number };
     };
   };
   web_search: {
@@ -2253,7 +2404,7 @@ export interface StudioToolIO {
     };
     output: {
       report: string;
-      outcome: "ok" | "failed" | "no-site" | "no-tools" | "timeout";
+      outcome: "ok" | "failed" | "timeout" | "no-site" | "no-tools";
       toolNames: string[];
       evidence: string;
       evidenceUri: string | null;
@@ -2268,9 +2419,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2310,9 +2461,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2353,9 +2504,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2441,9 +2592,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2529,9 +2680,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2589,9 +2740,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2630,9 +2781,9 @@ export interface StudioToolIO {
             outcome?:
               | "ok"
               | "failed"
+              | "timeout"
               | "no-site"
               | "no-tools"
-              | "timeout"
               | undefined;
             evidence?: string | undefined;
             evidenceUri?: string | null | undefined;
@@ -2924,7 +3075,7 @@ export interface StudioToolIO {
             bankSlipUrl: string | null;
           }[];
         } | null;
-        unavailableReason: "partial_team" | "unavailable" | null;
+        unavailableReason: "unavailable" | "partial_team" | null;
       }[];
       siteSlugsWithoutTeam: string[];
       billingUnavailable: boolean;
@@ -3307,10 +3458,10 @@ export interface StudioToolIO {
         slug?: string | null | undefined;
         status?: "error" | "active" | "inactive" | undefined;
         icon?: string | null | undefined;
-        created_at?: string | undefined;
-        updated_at?: string | undefined;
-        created_by?: string | undefined;
         updated_by?: string | undefined;
+        updated_at?: string | undefined;
+        created_at?: string | undefined;
+        created_by?: string | undefined;
         organization_id?: string | undefined;
         app_name?: string | null | undefined;
         app_id?: string | null | undefined;
@@ -3590,7 +3741,17 @@ export interface StudioToolIO {
   };
   CONNECTION_TEST: {
     input: { id: string };
-    output: { id: string; healthy: boolean; latencyMs: number };
+    output: {
+      id: string;
+      healthy: boolean;
+      latencyMs: number;
+      reason?:
+        | "timeout"
+        | "unauthorized"
+        | "blocked_url"
+        | "unreachable"
+        | undefined;
+    };
   };
   CONNECTION_TOOLS_SEARCH: {
     input: {
@@ -6408,7 +6569,7 @@ export interface StudioToolIO {
         id: string;
         thread_id: string;
         parts: Record<string, unknown>[];
-        role: "user" | "assistant" | "system";
+        role: "user" | "system" | "assistant";
         created_at: string;
         updated_at: string;
         metadata?: unknown;
@@ -6985,7 +7146,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -7085,7 +7246,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "assistant" | "system";
+            role: "user" | "system" | "assistant";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -7543,9 +7704,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       label: string;
@@ -7588,9 +7749,9 @@ export interface StudioToolIO {
         | "google"
         | "claude-code"
         | "codex"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible"
         | undefined;
@@ -7610,9 +7771,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       callbackUrl: string;
@@ -7623,9 +7784,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       code: string;
@@ -7644,9 +7805,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7662,9 +7823,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       amountCents: number;
@@ -7676,9 +7837,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7688,9 +7849,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7717,9 +7878,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
     };
@@ -7731,9 +7892,9 @@ export interface StudioToolIO {
     input: {
       providerId:
         | "google"
+        | "openrouter"
         | "deco"
         | "anthropic"
-        | "openrouter"
         | "llmapi"
         | "openai-compatible";
       planId: "free";
@@ -7766,7 +7927,7 @@ export interface StudioToolIO {
   SUBSCRIPTION_USAGE_GET: {
     input: { provider: "codex" | "claude" };
     output: {
-      status: "available" | "unavailable" | "disconnected";
+      status: "unavailable" | "available" | "disconnected";
       reason:
         | "permission"
         | "authorization"
@@ -7838,6 +7999,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };
@@ -7849,6 +8011,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };
@@ -7860,6 +8023,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };
@@ -7871,6 +8035,7 @@ export interface StudioToolIO {
       orgShare: {
         sharedBy: { id: string; name: string | null };
         sharedByMe: boolean;
+        coversMe: boolean;
       } | null;
     };
   };

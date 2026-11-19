@@ -872,6 +872,8 @@ export const sandbox = {
   "sandbox.pathParamPickerChip.pickValueHeading": "Escolha um valor para",
   "sandbox.pathParamPickerChip.pickValueTitle":
     "Escolha um valor para {paramLabel}",
+  "sandbox.pathParamPickerChip.searchBlogPlaceholder":
+    "Busque posts, categorias ou autores, ou digite um valor…",
   "sandbox.pathParamPickerChip.searchPlaceholder":
     "Procurar {options} ou digite um valor…",
   "sandbox.pathParamPickerChip.useRawValue":
@@ -1462,15 +1464,23 @@ export const sandbox = {
   "sandbox.calendarView.loadFailedHint":
     "Nada foi alterado. Tente de novo em instantes.",
   "sandbox.dateCampaigns.intro":
-    "Toda data do seu site é uma campanha: uma variante com a regra “Campanha” aparece enquanto a campanha dela está rodando. As mudanças ficam salvas no seu rascunho e vão ao ar quando você publica.",
+    "Campanhas mudam o site numa janela de datas. As mudanças vão ao ar quando você publica.",
+  "sandbox.dateCampaigns.tabsLabel": "Campanhas a mostrar",
+  "sandbox.dateCampaigns.tabCurrent": "Campanhas",
+  "sandbox.dateCampaigns.tabEnded": "Encerradas",
+  "sandbox.dateCampaigns.colCampaign": "Campanha",
+  "sandbox.dateCampaigns.today": "Hoje",
+  "sandbox.dateCampaigns.colStatus": "Status",
+  "sandbox.dateCampaigns.noneCurrent": "Nenhuma campanha no ar ou agendada.",
+  "sandbox.dateCampaigns.noneEnded": "Nenhuma campanha encerrada ainda.",
+  "sandbox.dateCampaigns.edit": "Editar",
+  "sandbox.dateCampaigns.editNamed": "Editar {name}",
   "sandbox.dateCampaigns.new": "Nova campanha",
   "sandbox.dateCampaigns.empty.title": "Nenhuma campanha ainda",
   "sandbox.dateCampaigns.empty.desc":
     "Crie uma aqui ou a partir de uma variante no editor do site: escolha a regra “Campanha” e digite um nome.",
-  "sandbox.dateCampaigns.listMode": "Lista",
-  "sandbox.dateCampaigns.timelineMode": "Linha do tempo",
-  "sandbox.dateCampaigns.status.running": "Rodando",
-  "sandbox.dateCampaigns.status.upcoming": "Em breve",
+  "sandbox.dateCampaigns.status.running": "No ar",
+  "sandbox.dateCampaigns.status.upcoming": "Agendada",
   "sandbox.dateCampaigns.status.ended": "Encerrada",
   "sandbox.dateCampaigns.status.always": "Sempre ativa",
   "sandbox.dateCampaigns.status.unreadable": "Datas ilegíveis",
@@ -1487,11 +1497,6 @@ export const sandbox = {
   "sandbox.dateCampaigns.deleted": "Campanha “{name}” excluída do seu rascunho",
   "sandbox.dateCampaigns.deletedHint":
     "Ela sai do site quando você publicar. Desfazer traz ela de volta.",
-  "sandbox.dateCampaigns.allCampaigns": "Todas as campanhas",
-  "sandbox.dateCampaigns.today": "Hoje",
-  "sandbox.dateCampaigns.previous": "Antes",
-  "sandbox.dateCampaigns.next": "Depois",
-  "sandbox.dateCampaigns.nothingInRange": "Nenhuma campanha roda nestes meses.",
   "sandbox.dateCampaigns.missing.title":
     "Seu site precisa de uma atualização para campanhas",
   "sandbox.dateCampaigns.missing.desc":

@@ -2,7 +2,7 @@
  * HTML-artifact watcher — detects live-HTML writes in the org home volume
  * (`decks/<name>.html` presentation decks, `pages/<name>.html` standalone
  * pages) during a run and emits `data-deck-updated` UI parts so the chat
- * side panel opens/refreshes the live preview.
+ * side panel opens/refreshes the live preview. Business cases: `data-business-case-updated`.
  *
  * Detection is change-feed based rather than tool-based: every sandbox
  * write to the mounted `/app/org/home/` path flows through the WebDAV serve
@@ -24,7 +24,10 @@ import {
   HOME_MOUNT_PATH,
   SANDBOX_ORG_ROOT,
 } from "@decocms/shared/organization/home-mount";
-import { matchOwnHtmlArtifact } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/html-artifact-paths";
+import {
+  matchOwnBusinessCase,
+  matchOwnHtmlArtifact,
+} from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/html-artifact-paths";
 import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 const HOME_VOLUME = "home";
@@ -43,6 +46,13 @@ export interface HtmlArtifactUpdatedData {
   kind: "deck" | "page";
   /** Absolute sandbox path the agent sees, for chat-row display. */
   mountPath: string;
+}
+
+/** The Plan page's business case for this chat changed
+ *  (`plans/cases/<chat id>.json`). */
+export interface BusinessCaseUpdatedData {
+  volume: string;
+  path: string;
 }
 
 export function createHtmlArtifactWatcher(
@@ -90,15 +100,23 @@ export function createHtmlArtifactWatcher(
       }
       if (cursor === null) return;
       const updated = new Map<string, HtmlArtifactUpdatedData>();
+      const cases = new Set<string>();
+      const isEcho = (path: string, hash: string | null | undefined) => {
+        if (!hash) return false;
+        if (emittedHash.get(path) === hash) return true;
+        emittedHash.set(path, hash);
+        return false;
+      };
       for (let pages = 0; pages < 20; pages++) {
         const page = await orgFs.changes(HOME_VOLUME, cursor, PAGE_SIZE);
         for (const entry of page.entries) {
-          const deck = matchOwnHtmlArtifact(entry, scope);
-          if (!deck) continue;
-          if (entry.contentHash) {
-            if (emittedHash.get(deck.path) === entry.contentHash) continue;
-            emittedHash.set(deck.path, entry.contentHash);
+          const casePath = matchOwnBusinessCase(entry, scope);
+          if (casePath) {
+            if (!isEcho(casePath, entry.contentHash)) cases.add(casePath);
+            continue;
           }
+          const deck = matchOwnHtmlArtifact(entry, scope);
+          if (!deck || isEcho(deck.path, entry.contentHash)) continue;
           updated.set(deck.path, {
             volume: HOME_VOLUME,
             path: deck.path,
@@ -115,6 +133,13 @@ export function createHtmlArtifactWatcher(
           type: "data-deck-updated",
           id: data.path,
           data,
+        });
+      }
+      for (const path of cases) {
+        writer.write({
+          type: "data-business-case-updated",
+          id: path,
+          data: { volume: HOME_VOLUME, path } satisfies BusinessCaseUpdatedData,
         });
       }
     } catch (err) {

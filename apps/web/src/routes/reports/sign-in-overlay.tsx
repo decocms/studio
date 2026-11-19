@@ -68,9 +68,7 @@ function getReportAuthCopy(
     sending: t("reports.authGate.sending"),
     sendCode: t("reports.authGate.sendCode"),
     verificationCodeLabel: t("reports.authGate.verificationCodeLabel"),
-    enterCodePlaceholder: t("reports.authGate.enterCodePlaceholder"),
     verifying: t("reports.authGate.verifying"),
-    verify: t("reports.authGate.verify"),
     useDifferentEmail: t("reports.authGate.useDifferentEmail"),
   };
 }

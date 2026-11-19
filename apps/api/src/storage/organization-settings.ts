@@ -1,4 +1,5 @@
 import { sql, type Kysely } from "kysely";
+import type { PlanObjective } from "@decocms/shared/organization/schema";
 import type { Database, OrganizationSettings } from "./types";
 import type { OrganizationSettingsStoragePort } from "./ports";
 
@@ -27,6 +28,7 @@ function mapRecord(record: {
   default_home_agents: unknown;
   flags: unknown;
   submodule_credentials: unknown;
+  plan_objective: unknown;
   createdAt: OrganizationSettings["createdAt"];
   updatedAt: OrganizationSettings["updatedAt"];
 }): OrganizationSettings {
@@ -50,6 +52,9 @@ function mapRecord(record: {
     submodule_credentials: parseJsonColumn<
       OrganizationSettings["submodule_credentials"]
     >(record.submodule_credentials),
+    plan_objective: parseJsonColumn<OrganizationSettings["plan_objective"]>(
+      record.plan_objective,
+    ),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -122,6 +127,35 @@ export class OrganizationSettingsStorage
       .returningAll()
       .executeTakeFirstOrThrow();
 
+    return mapRecord(record);
+  }
+
+  /**
+   * Write the store goal, or clear it with null. Its own method because
+   * `upsert` skips nulls, and clearing the goal is a real edit.
+   */
+  async setPlanObjective(
+    organizationId: string,
+    objective: PlanObjective | null,
+  ): Promise<OrganizationSettings> {
+    const now = new Date().toISOString();
+    const value = objective ? JSON.stringify(objective) : null;
+    const record = await this.db
+      .insertInto("organization_settings")
+      .values({
+        organizationId,
+        plan_objective: value,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflict((oc) =>
+        oc.column("organizationId").doUpdateSet({
+          plan_objective: value,
+          updatedAt: now,
+        }),
+      )
+      .returningAll()
+      .executeTakeFirstOrThrow();
     return mapRecord(record);
   }
 }

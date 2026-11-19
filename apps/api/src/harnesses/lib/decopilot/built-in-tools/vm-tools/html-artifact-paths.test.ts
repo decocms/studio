@@ -3,6 +3,7 @@ import {
   type HtmlArtifactChangeEntry,
   matchHtmlArtifactEntry,
   matchHtmlArtifactToolPath,
+  matchOwnBusinessCase,
   matchOwnHtmlArtifact,
 } from "./html-artifact-paths";
 
@@ -185,6 +186,56 @@ describe("matchOwnHtmlArtifact", () => {
     // A stamped deck can't be confirmed as this run's when we have no thread id.
     expect(
       matchOwnHtmlArtifact(entry({ threadId: "thread-1" }), noThread),
+    ).toBeNull();
+  });
+});
+
+describe("matchOwnBusinessCase", () => {
+  const entry = (
+    over: Partial<HtmlArtifactChangeEntry> = {},
+  ): HtmlArtifactChangeEntry => ({
+    kind: "file",
+    deletedAt: null,
+    updatedBy: "user-a",
+    threadId: null,
+    path: "plans/cases/thread-1.json",
+    ...over,
+  });
+  const scope = { threadId: "thread-1", ownerId: "user-a" };
+
+  test("emits this chat's case, stamped or written through the mount", () => {
+    expect(matchOwnBusinessCase(entry(), scope)).toBe(
+      "plans/cases/thread-1.json",
+    );
+    expect(matchOwnBusinessCase(entry({ threadId: "thread-1" }), scope)).toBe(
+      "plans/cases/thread-1.json",
+    );
+  });
+
+  test("drops the same member's case from another chat", () => {
+    expect(
+      matchOwnBusinessCase(entry({ path: "plans/cases/thread-2.json" }), scope),
+    ).toBeNull();
+  });
+
+  test("drops another member's write and deleted entries", () => {
+    expect(
+      matchOwnBusinessCase(entry({ updatedBy: "user-b" }), scope),
+    ).toBeNull();
+    expect(
+      matchOwnBusinessCase(entry({ deletedAt: "2026-11-18" }), scope),
+    ).toBeNull();
+  });
+
+  test("ignores decks, markdown plans and runs with no thread", () => {
+    expect(
+      matchOwnBusinessCase(entry({ path: "decks/launch.html" }), scope),
+    ).toBeNull();
+    expect(
+      matchOwnBusinessCase(entry({ path: "plans/2026-11-18-busca.md" }), scope),
+    ).toBeNull();
+    expect(
+      matchOwnBusinessCase(entry(), { threadId: null, ownerId: "user-a" }),
     ).toBeNull();
   });
 });

@@ -46,18 +46,18 @@ describe("SiteDraftViewHeader", () => {
  */
 describe("Experiments and Calendar keep their actions in the view", () => {
   const src = join(import.meta.dir, "../..");
+  // Both open an entry inside their list, so each has one header.
   const views = [
-    "layouts/main-panel-tabs/experiments-block-tab.tsx",
-    "components/sandbox/content/campaigns/campaigns-view.tsx",
-  ];
-  for (const file of views) {
+    ["layouts/main-panel-tabs/experiments-block-tab.tsx", 1],
+    ["components/sandbox/content/campaigns/campaigns-view.tsx", 1],
+  ] as const;
+  for (const [file, headers] of views) {
     test(`${file} puts its actions in SiteDraftViewHeader`, () => {
       const source = readFileSync(join(src, file), "utf8");
       expect(source).not.toContain("<Page.Actions");
       expect(source).not.toContain("Topbar.Right.Portal");
       expect(source).not.toMatch(/<Page\.Title[^>]*actions=/);
-      // The list and the detail of each view.
-      expect(source.match(/<SiteDraftViewHeader/g)?.length).toBe(2);
+      expect(source.match(/<SiteDraftViewHeader/g)?.length).toBe(headers);
     });
   }
 
@@ -84,7 +84,7 @@ describe("Experiments and Calendar keep their actions in the view", () => {
   }
 
   /** One side inset for both views, as main's Releases view (16 px). */
-  for (const file of views) {
+  for (const [file] of views) {
     test(`${file} insets its content as Releases does`, () => {
       const source = readFileSync(join(src, file), "utf8");
       expect(source).not.toContain("<Page.Container");

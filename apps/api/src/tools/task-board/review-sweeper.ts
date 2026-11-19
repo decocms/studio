@@ -4,7 +4,7 @@
  * It exists because the headless hand-off to the reviewers never worked, for two
  * independent reasons, and both are invisible from inside a DBOS workflow:
  *
- * 1. **The PR was never linked.** `capturePrForRun` is only reachable from the
+ * 1. **The PR was never linked.** `capturePrForRun` was only reachable from the
  *    NATIVE Decopilot loop — the `onPrOpened` MCP wrapper and the `onStepFinish`
  *    bash scan. A Super Agent task runs the `claude-code` harness *inside a
  *    sandbox*, so Claude Code opens the PR in the pod and it passes through

@@ -362,7 +362,30 @@ export const settings = {
   "settings.profile.avatarUploadError": "Falha ao atualizar a foto",
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
+  "settings.passkeys.title": "Passkeys",
+  "settings.passkeys.description":
+    "Entre com sua digital, rosto ou bloqueio de tela do dispositivo em vez de um código por e-mail.",
+  "settings.passkeys.add": "Adicionar passkey",
+  "settings.passkeys.added": "Passkey adicionada",
+  "settings.passkeys.addError": "Falha ao adicionar passkey",
+  "settings.passkeys.alreadyRegistered":
+    "Este dispositivo já tem uma passkey para sua conta",
+  "settings.passkeys.empty": "Nenhuma passkey ainda.",
+  "settings.passkeys.unsupported": "Este navegador não suporta passkeys.",
+  "settings.passkeys.unnamed": "Passkey",
+  "settings.passkeys.createdAt": "Adicionada em {date}",
+  "settings.passkeys.delete": "Remover passkey",
+  "settings.passkeys.deleted": "Passkey removida",
+  "settings.passkeys.deleteError": "Falha ao remover passkey",
+  "settings.passkeys.deleteTitle": "Remover {name}?",
+  "settings.passkeys.deleteDescription":
+    "Você não vai mais conseguir entrar com esta passkey. A credencial continua no seu dispositivo até você apagá-la lá.",
+  "settings.passkeys.cancel": "Cancelar",
   "settings.preferences.title": "Preferências",
+  "settings.plan.sectionTitle": "Planejar",
+  "settings.plan.pageTitle": "Página Planejar",
+  "settings.plan.pageDescription":
+    'Mostra o objetivo da loja e transforma ideias em business cases na página Planejar. Desligada, a página continua como "em breve".',
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "View Blog",
   "settings.blogView.description":
@@ -669,10 +692,14 @@ export const settings = {
   "settings.githubCopilot.howTo":
     "Crie um token fine-grained do GitHub com a permiss\u00e3o Copilot Requests",
   "settings.githubCopilot.sharedBy":
-    "Toda execu\u00e7\u00e3o nesta organiza\u00e7\u00e3o usa o plano GitHub Copilot compartilhado por {name}.",
+    "Voc\u00ea est\u00e1 usando o plano GitHub Copilot da organiza\u00e7\u00e3o, compartilhado por {name}.",
+  "settings.githubCopilot.ownPlanUsed":
+    "Suas execu\u00e7\u00f5es usam o seu pr\u00f3prio plano. O plano compartilhado por {name} s\u00f3 vale para quem n\u00e3o vinculou um.",
   "settings.githubCopilot.shareTitle": "Compartilhar com a org",
   "settings.githubCopilot.shareDescription":
-    "Todo chat e tarefa nesta organiza\u00e7\u00e3o roda no seu plano Copilot, antes dos planos dos membros e dos provedores de IA da organiza\u00e7\u00e3o.",
+    "O compartilhamento s\u00f3 vale para os membros desta organiza\u00e7\u00e3o que n\u00e3o vincularam o pr\u00f3prio plano GitHub Copilot.",
+  "settings.githubCopilot.shareTaken":
+    "{name} j\u00e1 compartilha um plano. Para compartilhar o seu, pe\u00e7a que {name} pare de compartilhar primeiro.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Cole seu token github_pat_\u2026",
   "settings.ownAccounts.more": "Mais ações",

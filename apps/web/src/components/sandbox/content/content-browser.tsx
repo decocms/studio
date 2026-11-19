@@ -168,6 +168,7 @@ import { useNeverPublished } from "@/components/sections-editor/use-never-publis
 import { ItemActions } from "./item-actions";
 import { ItemRow } from "./item-row";
 import {
+  BlocksErrorState,
   ContentBackendWaiting,
   isSiteNotOwned,
   SiteNotOwnedState,
@@ -559,10 +560,11 @@ function ContentBrowserReady({
   // Which editor this site gets (v8: the new one): waited on with the data,
   // so neither editor shows and then swaps to the other.
   const editorUndecided = useNewBlocksEditorState() === undefined;
-  const { data: decofile, isLoading: decofileLoading } = useDecofile(
-    fetchParams,
-    { fetchEnabled: devServerReady },
-  );
+  const {
+    data: decofile,
+    isLoading: decofileLoading,
+    refetch: refetchDecofile,
+  } = useDecofile(fetchParams, { fetchEnabled: devServerReady });
   // Hosted v8: the lists read only the index; the bodies a view shows are
   // loaded as it opens them (useEnsureDecofileBlocks). Type lists whose rows
   // show fields of the body (blog records, redirect rules, the site app)
@@ -661,7 +663,11 @@ function ContentBrowserReady({
    * built" for as long as the block stays open.
    */
   const [schemaWaitOpen, setSchemaWaitOpen] = useState(false);
-  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
+  const {
+    data: meta,
+    isLoading: metaLoading,
+    refetch: refetchMeta,
+  } = useLiveMeta(fetchParams, {
     fetchEnabled: devServerReady,
     refetchInterval: (query) => {
       const currentMeta = query.state.data;
@@ -941,7 +947,15 @@ function ContentBrowserReady({
   }
 
   if (dataMissing) {
-    return <EmptyMessage title="Could not load site data." />;
+    return (
+      <BlocksErrorState
+        source="data"
+        onRetry={() => {
+          if (!decofile) void refetchDecofile();
+          if (!meta) void refetchMeta();
+        }}
+      />
+    );
   }
 
   // No schema yet: every block, as plain fields, until it appears.

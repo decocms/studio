@@ -35,10 +35,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.deployments": "Implantações",
   "mainPanelTabs.hostingTab.env": "Variáveis de ambiente",
   "mainPanelTabs.hostingTab.redirects": "Redirecionamentos",
-  "mainPanelTabs.hostingTab.noDeployments": "Nenhuma implantação ainda.",
-  "mainPanelTabs.hostingTab.noEnv": "Nenhuma variável de ambiente definida.",
-  "mainPanelTabs.hostingTab.noRedirects":
-    "Nenhum redirecionamento configurado.",
+  "mainPanelTabs.hostingTab.noDeployments": "Nenhuma implantação ainda",
+  "mainPanelTabs.hostingTab.noEnv": "Nenhuma variável de ambiente",
+  "mainPanelTabs.hostingTab.noEnvDescription":
+    "Adicione uma para configurar como o site faz o build ou roda.",
+  "mainPanelTabs.hostingTab.noRedirects": "Nenhum redirecionamento configurado",
   "mainPanelTabs.hostingTab.noSiteTitle": "Nenhum site vinculado",
   "mainPanelTabs.hostingTab.noSiteDescription":
     "Este projeto ainda não está vinculado a um site hospedado.",
@@ -109,7 +110,9 @@ export const mainPanelTabs = {
   // Segredos
   "mainPanelTabs.hostingTab.secrets": "Segredos",
   "mainPanelTabs.hostingTab.secretsError": "Falha ao carregar os segredos",
-  "mainPanelTabs.hostingTab.noSecrets": "Nenhum segredo definido.",
+  "mainPanelTabs.hostingTab.noSecrets": "Nenhum segredo",
+  "mainPanelTabs.hostingTab.noSecretsDescription":
+    "Guarde aqui chaves de API e tokens. Eles ficam criptografados.",
   "mainPanelTabs.hostingTab.addSecret": "Adicionar segredo",
   "mainPanelTabs.hostingTab.addSecretTitle": "Adicionar segredo",
   "mainPanelTabs.hostingTab.secretNamePlaceholder": "NOME",
@@ -161,7 +164,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.production": "Produção",
   "mainPanelTabs.hostingTab.deployHistory": "Histórico de implantações",
   "mainPanelTabs.hostingTab.noDeployHistory":
-    "Nenhum histórico de implantação ainda.",
+    "Nenhum histórico de implantação ainda",
   "mainPanelTabs.hostingTab.deployHistoryError":
     "Falha ao carregar o histórico de implantações",
   "mainPanelTabs.hostingTab.actionDeploy": "Implantar",
@@ -189,8 +192,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.buildLogsOpenFull": "Abrir log completo",
   "mainPanelTabs.hostingTab.domains": "Domínios",
   "mainPanelTabs.hostingTab.domainsError": "Falha ao carregar domínios",
-  "mainPanelTabs.hostingTab.noDomains":
-    "Nenhum domínio personalizado configurado.",
+  "mainPanelTabs.hostingTab.noDomains": "Nenhum domínio próprio",
+  "mainPanelTabs.hostingTab.noDomainsDescription":
+    "Adicione um domínio seu para o site responder nele.",
   "mainPanelTabs.hostingTab.addDomain": "Adicionar domínio",
   "mainPanelTabs.hostingTab.addDomainTitle":
     "Vincular um domínio personalizado",
@@ -736,4 +740,17 @@ export const mainPanelTabs = {
     "Seu app em `{host}` ainda não está respondendo. Se ele não estiver rodando, inicie-o no seu computador. Enquanto isso, você pode editar seu conteúdo na aba Conteúdo.",
   "mainPanelTabs.previewTab.localAppWaiting.hint":
     "O preview carrega sozinho assim que seu app responder.",
+  "mainPanelTabs.hostingTab.viewsLabel": "Seções de hosting",
+  "mainPanelTabs.hostingTab.tabDeploys": "Deploys",
+  "mainPanelTabs.hostingTab.tabVariables": "Variáveis",
+  "mainPanelTabs.hostingTab.liveInProduction": "No ar em produção",
+  "mainPanelTabs.hostingTab.noLiveDeploy": "Nada em produção ainda",
+  "mainPanelTabs.hostingTab.noLiveDeployDescription":
+    "Faça o deploy do site para colocá-lo em produção.",
+  "mainPanelTabs.hostingTab.commitTitle": "Commit {sha}",
+  "mainPanelTabs.hostingTab.buildTook": "build de {duration}",
+  "mainPanelTabs.hostingTab.preview": "Preview",
+  "mainPanelTabs.hostingTab.statusReady": "Pronto",
+  "mainPanelTabs.hostingTab.statusFailed": "Falhou",
+  "mainPanelTabs.hostingTab.statusInProgress": "Em andamento",
 } satisfies Record<keyof typeof mainPanelTabsEn, string>;

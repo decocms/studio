@@ -186,7 +186,8 @@ export function DomainsSection({
           <EmptyState
             icon={<Globe01 className="size-5" />}
             title={t("mainPanelTabs.hostingTab.noDomains")}
-            className="py-10"
+            description={t("mainPanelTabs.hostingTab.noDomainsDescription")}
+            size="inline"
             buttonComponent={addButton}
           />
         </ListCard>

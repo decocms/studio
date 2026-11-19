@@ -26,13 +26,27 @@ export interface OrderMonitorVerdict {
   alertAt: number;
   level: number;
   timezone: string;
-  /** The lake saw a drop VTEX did not: our ingest stopped, not the store's sales. */
-  ingestIncident?: boolean;
-  /** The card waits on VTEX to confirm the drop; the sweep retries the open. */
-  crossCheckPending?: boolean;
-  /** When the open started waiting on VTEX; the wait is bounded from here. */
-  crossCheckSince?: string;
 }
+
+/**
+ * What makes a rule alert, per org. `orders_drop`: the hour brought less than
+ * `threshold` % of expected, judged once `minVolume` orders were expected.
+ * The spikes: `threshold` times expected, and at least `minVolume` in the hour.
+ */
+export interface OrderMonitorThreshold {
+  threshold: number;
+  minVolume: number;
+}
+export type OrderMonitorThresholds = Record<
+  OrderMonitorRule,
+  OrderMonitorThreshold
+>;
+
+export const ORDER_MONITOR_DEFAULT_THRESHOLDS: OrderMonitorThresholds = {
+  orders_drop: { threshold: 15, minVolume: 20 },
+  denied_spike: { threshold: 5, minVolume: 10 },
+  cancel_spike: { threshold: 5, minVolume: 10 },
+};
 
 export interface OrderMonitorRuleState {
   rule: OrderMonitorRule;
@@ -40,8 +54,6 @@ export interface OrderMonitorRuleState {
   since: string;
   evaluatedAt: string;
   verdict: OrderMonitorVerdict;
-  /** The open incident's card, when there is one. */
-  task: { id: string; keySeq: number } | null;
 }
 
 export interface OrderMonitorStore {
@@ -113,12 +125,14 @@ export interface OrderMonitorDay {
 export interface SiteTrafficDay {
   /** Unique visitors in each hour. */
   visitors: OrderMonitorSeries;
+  pageviews: OrderMonitorSeries;
   /** Purchases the sites reported to the collector. */
   conversions: OrderMonitorSeries;
   /** Today so far, and each reference day up to the same hour. Visitors are
    *  the day's uniques, not the hours summed. */
   headline: {
     visitors: { today: number; d1: number; w1: number; y1: number };
+    pageviews: { today: number; d1: number; w1: number; y1: number };
     conversions: { today: number; d1: number; w1: number; y1: number };
   };
 }

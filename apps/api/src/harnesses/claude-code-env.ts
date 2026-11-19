@@ -74,9 +74,10 @@ export function claudeSubscriptionChatModel(
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
 
 /** Copilot's Anthropic-compatible base. The SDK appends `/v1/messages`. */
-const GITHUB_COPILOT_BASE_URL = "https://api.githubcopilot.com";
-const COPILOT_INTEGRATION_HEADER =
-  "Copilot-Integration-Id: copilot-developer-cli";
+export const GITHUB_COPILOT_BASE_URL = "https://api.githubcopilot.com";
+/** Copilot refuses a personal access token unless the request names Copilot CLI. */
+export const COPILOT_INTEGRATION_ID = "copilot-developer-cli";
+const COPILOT_INTEGRATION_HEADER = `Copilot-Integration-Id: ${COPILOT_INTEGRATION_ID}`;
 
 /**
  * A chat's Claude model in Copilot's id form: `claude-sonnet-5-5` and

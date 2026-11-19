@@ -34,6 +34,7 @@ import {
   type ProjectNavViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { track } from "@/lib/posthog-client";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 
 interface NavDestination {
@@ -106,6 +107,7 @@ function useNavDestinations(): NavDestination[] {
   const leafPath = useLeafRoutePath();
   const scopeId = useScopeId();
   const { project } = useProjectScope();
+  const planEnabled = useOrgFlag("plan_page_enabled");
   const pendingSidebarViews = useOptimisticProjectSidebarViews(project?.id);
   const shown = selectedProjectNavViews(project?.metadata, pendingSidebarViews);
 
@@ -136,7 +138,7 @@ function useNavDestinations(): NavDestination[] {
       isActive:
         leafPath === DESTINATION_ROUTE.plan || leafPath === PROJECT_ROUTE.plan,
       trackAs: "plan",
-      soon: true,
+      soon: !planEnabled,
       link: scopeId
         ? {
             to: PROJECT_ROUTE.plan,

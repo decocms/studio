@@ -59,6 +59,9 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
   "ORGANIZATION_BLOCKS_EDITOR_SET",
+  "ORGANIZATION_PLAN_OBJECTIVE_SET",
+  "ORGANIZATION_PLAN_OBJECTIVE_FIND",
+  "PLAN_CASE_NEXT_QUESTION",
   "ORGANIZATION_HAS_SITE",
   "BLOG_SITE_GROUND",
   "BLOG_SITE_CATALOGUE",
@@ -348,6 +351,7 @@ const ALL_TOOL_NAMES = [
   "THREAD_ANALYTICS_ERRORS",
   "TASK_ADD_REPO",
   "generate_image",
+  "generate_text",
   "web_search",
   "deep_research",
   "suggest_task",
@@ -357,6 +361,10 @@ const ALL_TOOL_NAMES = [
   "NOTIFICATION_MARK_READ",
   "NOTIFICATION_SUBSCRIPTION_SET",
   "NOTIFICATION_SUBSCRIPTION_LIST",
+  "ALERTS_LIST",
+  "ALERT_ACK",
+  "ALERT_RULES_LIST",
+  "ALERT_RULE_UPDATE",
 ] as const;
 
 /**
@@ -423,6 +431,22 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_BLOCKS_EDITOR_SET",
     description: "Switch the organization's blocks editor",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_PLAN_OBJECTIVE_SET",
+    description: "Set the store goal shown on the Plan page",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_PLAN_OBJECTIVE_FIND",
+    description:
+      "Find the store goal in what the brand's people wrote and said",
+    category: "Organizations",
+  },
+  {
+    name: "PLAN_CASE_NEXT_QUESTION",
+    description: "Pick the next question of the Plan page's guided intro",
     category: "Organizations",
   },
   {
@@ -1566,6 +1590,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "ALERTS_LIST",
+    description: "List the organization's alerts",
+    category: "Monitoring",
+  },
+  {
+    name: "ALERT_ACK",
+    description: "Acknowledge an alert",
+    category: "Monitoring",
+  },
+  {
+    name: "ALERT_RULES_LIST",
+    description: "List the alert rules and their thresholds",
+    category: "Monitoring",
+  },
+  {
+    name: "ALERT_RULE_UPDATE",
+    description: "Set an alert rule's thresholds",
+    category: "Monitoring",
+  },
+
+  {
     name: "TASK_BOARD_ACTIVITY_LIST",
     description: "List a task board item's change history",
     category: "Task Board",
@@ -1749,6 +1794,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Chat",
   },
   {
+    name: "generate_text",
+    description:
+      "Generate text, or read images, with the organization's chat model",
+    category: "Chat",
+  },
+  {
     name: "web_search",
     description: "Search the web and synthesize a short cited answer",
     category: "Chat",
@@ -1895,6 +1946,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_HAS_SITE",
       // Any member picks the org's blocks editor; writes only that one flag.
       "ORGANIZATION_BLOCKS_EDITOR_SET",
+      // Any member states the store goal on the Plan page; writes only that.
+      "ORGANIZATION_PLAN_OBJECTIVE_SET",
+      // Any member asks the AI for the store goal; proposes, never saves.
+      "ORGANIZATION_PLAN_OBJECTIVE_FIND",
+      // Any member starts a business case; asks the fast tier, saves nothing.
+      "PLAN_CASE_NEXT_QUESTION",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -1954,8 +2011,15 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
       "NOTIFICATION_SUBSCRIPTION_LIST",
+      // Every member sees the org's alerts and can ack them.
+      "ALERTS_LIST",
+      "ALERT_ACK",
+      "ALERT_RULES_LIST",
+      "ALERT_RULE_UPDATE",
       // Chat tools Decopilot ran for every member as built-ins.
       "generate_image",
+      // The same for apps reading or writing text on the org's chat model.
+      "generate_text",
       "web_search",
       "deep_research",
       "suggest_task",

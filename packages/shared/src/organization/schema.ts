@@ -145,6 +145,25 @@ export type DefaultHomeAgentsConfig = z.infer<
   typeof DefaultHomeAgentsConfigSchema
 >;
 
+/** Longest store goal a person can write: one sentence, not a document. */
+export const PLAN_OBJECTIVE_MAX_LENGTH = 280;
+
+/**
+ * The store goal shown at the top of the Plan page and sent with every business
+ * case the page asks for. Who and when are set by the server, never by the
+ * caller.
+ */
+export const PlanObjectiveSchema = z.object({
+  statement: z
+    .string()
+    .max(PLAN_OBJECTIVE_MAX_LENGTH)
+    .describe("The store goal in one sentence, in the person's own words."),
+  updated_by: z.string().describe("Id of the user who last wrote the goal."),
+  updated_at: z.string().datetime().describe("ISO 8601 timestamp"),
+});
+
+export type PlanObjective = z.infer<typeof PlanObjectiveSchema>;
+
 /**
  * Org-level boolean toggles, stored in the `organization_settings.flags`
  * jsonb bag. THE single source of truth: adding a flag is one line here —
@@ -345,6 +364,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "Hide the `deco-cms/blog` app's own blocks (`blog/*`) everywhere a post is written — the inserter, the format briefs, and generated drafts — so only the site's own `site/sections/Blog/Post/*` blocks are eligible, plus, in the inserter, the sections under the blog app's `customSectionPaths`. Off by default. Blocks already present in a post keep rendering; this only governs what can be added.",
+    ),
+  plan_page_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "The Plan page: the store goal, which Jev picks from the store's data while it is empty, and a composer that turns an idea into a business case written by the agent. Off by default; with it off, Plan stays a coming-soon page.",
     ),
   blog_view_enabled: z
     .boolean()

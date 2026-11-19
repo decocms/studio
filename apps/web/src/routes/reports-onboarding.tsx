@@ -210,11 +210,7 @@ function getReportsAuthCopy(t: ReturnType<typeof useT>) {
     verificationCodeLabel: t(
       "routes.reportsOnboarding.authCopy.verificationCodeLabel",
     ),
-    enterCodePlaceholder: t(
-      "routes.reportsOnboarding.authCopy.enterCodePlaceholder",
-    ),
     verifying: t("routes.reportsOnboarding.authCopy.verifying"),
-    verify: t("routes.reportsOnboarding.authCopy.verify"),
     useDifferentEmail: t("routes.reportsOnboarding.authCopy.useDifferentEmail"),
     sendResetLink: t("routes.reportsOnboarding.authCopy.sendResetLink"),
     nameLabel: t("routes.reportsOnboarding.authCopy.nameLabel"),
@@ -237,6 +233,7 @@ function getReportsAuthCopy(t: ReturnType<typeof useT>) {
     signInWithEmailCode: t(
       "routes.reportsOnboarding.authCopy.signInWithEmailCode",
     ),
+    signInWithPasskey: t("routes.reportsOnboarding.authCopy.signInWithPasskey"),
   };
 }
 

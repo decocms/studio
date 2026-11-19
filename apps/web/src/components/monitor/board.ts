@@ -9,7 +9,6 @@
 
 import type {
   OrderMonitorChannel,
-  OrderMonitorRule,
   OrderMonitorStatus,
   OrderMonitorStore,
 } from "@decocms/shared/order-monitor";
@@ -23,6 +22,7 @@ export type KpiId =
   | "orders"
   | "conversion"
   | "audience"
+  | "pageviews"
   | "latency"
   | "errors"
   | "cancellations";
@@ -37,6 +37,8 @@ export interface MetricPoint {
   d1: number | null;
   w1: number | null;
   y1: number | null;
+  /** The order monitor's warning and alert levels for this bucket, when it judges it. */
+  band?: [number, number] | null;
 }
 
 export interface Kpi {
@@ -103,19 +105,17 @@ export interface Deploy {
 
 export type Signal =
   | {
-      kind: "orders";
+      /** An open alert: it stays until someone acks it. */
+      kind: "alert";
       id: string;
-      severity: "alert" | "warning";
+      severity: "alert";
       since: string;
       projectId: string | null;
-      storeId: string;
-      storeTitle: string;
-      rule: OrderMonitorRule;
-      observed: number;
-      expected: number;
-      /** The deploy it started after, when one landed shortly before. */
-      after: { message: string; minutes: number } | null;
-      task: { keySeq: number } | null;
+      /** The store it is about, when it is about one of the monitored stores. */
+      storeId: string | null;
+      title: string;
+      /** Where to look when it isn't one of the stores: a Studio path. */
+      link: string | null;
     }
   | {
       kind: "deploy";

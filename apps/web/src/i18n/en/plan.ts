@@ -1,0 +1,127 @@
+export const plan = {
+  "plan.objective.eyebrow": "Your store goal",
+  "plan.objective.empty":
+    "Write in one sentence where the brand is heading. Every plan starts from it.",
+  "plan.objective.edit": "Edit",
+  "plan.objective.label": "Store goal",
+  "plan.objective.placeholder":
+    "E.g. Make the app our main sales channel in 2027.",
+  "plan.objective.hint":
+    "One sentence, the way you would say it to your team. The agents take it into every plan.",
+  "plan.objective.save": "Save",
+  "plan.objective.cancel": "Cancel",
+  "plan.objective.clear": "Clear goal",
+  "plan.objective.find": "Find with AI",
+  "plan.objective.finding": "Reading the brand's files, meetings and messages…",
+  "plan.objective.found": "Found in {source}: “{quote}”",
+  "plan.objective.notFound":
+    "I could not tell the brand's goal from its files and conversations. Write it here the way your team would say it.",
+  "plan.objective.findUnavailable":
+    "The AI could not look for the goal right now. Try again later, or write it here.",
+  "plan.objective.read": "I read: {sources}.",
+  "plan.objective.readNothing":
+    "I found nothing to read about the brand's plans.",
+  "plan.objective.unread": "I could not read: {files}.",
+  "plan.objective.connectHint":
+    "Connect meetings or messages, like Grain or WhatsApp, so I can find it next time.",
+  "plan.objective.saveError": "Could not save the goal. Try again.",
+  "plan.idea.heading": "What do you want to improve in the store?",
+  "plan.idea.description":
+    "Say it however it comes to you, even vaguely. A few quick questions fill in what only you know, then the agent builds the case: the problem in numbers, who already does it, the money at stake, effort and the A/B test.",
+  "plan.idea.label": "Your idea",
+  "plan.idea.placeholder":
+    "E.g. I want to improve search. Or: a fit guide on the product page would raise conversion.",
+  "plan.idea.submit": "Build the business case",
+  "plan.idea.startWith": "Start with",
+  "plan.idea.topic.shipping": "Shipping",
+  "plan.idea.topic.shippingPrompt": "Shipping: ",
+  "plan.idea.topic.pdp": "Product page",
+  "plan.idea.topic.pdpPrompt": "On the product page, ",
+  "plan.idea.topic.checkout": "Checkout",
+  "plan.idea.topic.checkoutPrompt": "In the checkout, ",
+  "plan.idea.topic.search": "Search",
+  "plan.idea.topic.searchPrompt": "In the search, ",
+  "plan.idea.topic.performance": "Performance",
+  "plan.idea.topic.performancePrompt": "To make the store faster, ",
+  "plan.idea.topic.paidMedia": "Paid media",
+  "plan.idea.topic.paidMediaPrompt": "For people coming from paid media, ",
+  "plan.prompt.withObjective":
+    "Let's build a business case for this request together. Follow the business-case skill (read /app/org/public/core/business-case/SKILL.md). The canvas for this case is {casePath}: run init now, before anything else, and fill the cards as we go. If the request does not say where and what, ask me one thing at a time, with options.\n\nStore goal: {objective}\n\nRequest: {idea}",
+  "plan.prompt.withoutObjective":
+    "Let's build a business case for this request together. Follow the business-case skill (read /app/org/public/core/business-case/SKILL.md). The canvas for this case is {casePath}: run init now, before anything else, and fill the cards as we go. If the request does not say where and what, ask me one thing at a time, with options.\n\nRequest: {idea}",
+  "plan.case.waiting": "Opening the business case…",
+  "plan.case.asking": "Answer in the chat",
+  "plan.case.assumption": "Assumption:",
+  "plan.case.progress": "{filled} of {total} filled",
+  "plan.case.openDocument": "Open the document",
+  "plan.case.invalid":
+    "The latest update could not be read; showing the one before it.",
+  "plan.case.objective": "Store goal",
+  "plan.case.noObjective": "No goal yet. Write one on the Plan page.",
+  "plan.case.request": "What you asked",
+  "plan.case.status.framing": "Framing",
+  "plan.case.status.building": "Building",
+  "plan.case.status.ready": "Ready",
+  "plan.case.area.pdp": "Product page",
+  "plan.case.area.search": "Search",
+  "plan.case.area.category": "Category page",
+  "plan.case.area.home": "Home page",
+  "plan.case.area.cart": "Cart",
+  "plan.case.area.checkout": "Checkout",
+  "plan.case.area.shipping": "Shipping",
+  "plan.case.area.performance": "Performance",
+  "plan.case.area.paidMedia": "Paid media",
+  "plan.case.area.other": "Other",
+  "plan.case.card.problem": "The problem, measured",
+  "plan.case.card.problemQuestion":
+    "Which step of the journey loses people, and how many?",
+  "plan.case.card.scope": "What we will change",
+  "plan.case.card.scopeQuestion":
+    "Where in the store, on which device, and what exactly?",
+  "plan.case.card.money": "Money at stake",
+  "plan.case.card.moneyQuestion":
+    "How much is a small gain on that step worth per month?",
+  "plan.case.card.competitors": "Who already does it",
+  "plan.case.card.competitorsQuestion":
+    "Which competitors already do this, and how?",
+  "plan.case.card.measurement": "How we measure",
+  "plan.case.card.measurementQuestion":
+    "Which metric proves it worked, and which must not get worse?",
+  "plan.case.card.abTest": "A/B test and timeline",
+  "plan.case.card.abTestQuestion":
+    "How many people and how many weeks to know?",
+  "plan.case.card.effort": "Effort and deliveries",
+  "plan.case.card.effortQuestion":
+    "How many days of work, and what changes in the store?",
+  "plan.case.card.risks": "Risks",
+  "plan.case.card.risksQuestion": "What could get worse, and what do we watch?",
+  "plan.case.card.unknowns": "What we still don't know",
+  "plan.case.card.unknownsQuestion": "What is missing, and how do we find out?",
+  "plan.cases.heading": "Your business cases",
+  "plan.cases.description": "Open one to see the canvas and keep talking.",
+  "plan.cases.updated": "Updated {when}",
+  "plan.cases.unreadable": "Could not read this case",
+  "plan.prompt.skipped":
+    "(skipped: assume it and write the assumption on the card)",
+  "plan.prompt.guidedAnswers":
+    "Before this chat I already answered the questions only I could answer. Do not ask them again, and do not ask me anything else unless something blocks the case: fill the cards these answers cover first, then research.\n\n{answers}",
+  "plan.prompt.guidedNothing":
+    "Before this chat I was asked whether anything only I know was missing, and nothing was. Do not ask me questions unless something blocks the case: assume, write the assumption on the card, and research.",
+  "plan.guide.thinking1": "Hmm, interesting idea…",
+  "plan.guide.thinking2": "Thinking about the next steps…",
+  "plan.guide.thinking3": "Let me see what is missing here…",
+  "plan.guide.thinking4": "This is good, let me shape it…",
+  "plan.guide.thinking5": "Putting the pieces together…",
+  "plan.guide.thinking6": "Hmm, there is something nice in this…",
+  "plan.guide.thinking7": "Sorting out the ideas…",
+  "plan.guide.thinking8": "One second, thinking…",
+  "plan.guide.building1": "Building your business case…",
+  "plan.guide.building2": "Calling the agent to research the numbers…",
+  "plan.guide.building3": "Getting the cards ready…",
+  "plan.guide.yourIdea": "Your idea",
+  "plan.guide.answerLabel": "Your answer",
+  "plan.guide.answerPlaceholder": "Write it your way…",
+  "plan.guide.continue": "Continue",
+  "plan.guide.skip": "Skip this one",
+  "plan.guide.back": "Back",
+};

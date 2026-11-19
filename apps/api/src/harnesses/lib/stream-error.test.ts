@@ -41,6 +41,13 @@ describe("sanitizeStreamError", () => {
   it("falls back to JSON for opaque objects without a message", () => {
     expect(sanitizeStreamError({ foo: "bar" })).toContain("foo");
   });
+
+  it("tags a harness's 402 text and drops its key URL", () => {
+    const out = sanitizeStreamError(
+      "API Error: 402 Needs more credits. Visit https://openrouter.ai/keys/0a",
+    );
+    expect(out).toBe("[CREDITS] API Error: 402 Needs more credits.");
+  });
 });
 
 describe("mcpConnectionErrorMessage", () => {

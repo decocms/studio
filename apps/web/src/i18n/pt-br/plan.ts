@@ -1,0 +1,128 @@
+import type { plan as planEn } from "../en/plan.ts";
+
+export const plan = {
+  "plan.objective.eyebrow": "Seu objetivo na loja",
+  "plan.objective.empty":
+    "Escreva em uma frase para onde a marca está indo. Todo plano parte daí.",
+  "plan.objective.edit": "Editar",
+  "plan.objective.label": "Objetivo da loja",
+  "plan.objective.placeholder":
+    "Ex.: Fazer do app o nosso principal canal de vendas em 2027.",
+  "plan.objective.hint":
+    "Uma frase, do jeito que você diria ao time. Os agentes levam isso para todo plano.",
+  "plan.objective.save": "Salvar",
+  "plan.objective.cancel": "Cancelar",
+  "plan.objective.clear": "Apagar objetivo",
+  "plan.objective.find": "Buscar com IA",
+  "plan.objective.finding": "Lendo arquivos, reuniões e conversas da marca…",
+  "plan.objective.found": "Encontrei em {source}: “{quote}”",
+  "plan.objective.notFound":
+    "Não consegui identificar o objetivo da marca nos arquivos e conversas. Escreva aqui do jeito que o time de vocês falaria.",
+  "plan.objective.findUnavailable":
+    "A IA não conseguiu buscar o objetivo agora. Tente de novo mais tarde, ou escreva aqui.",
+  "plan.objective.read": "Li: {sources}.",
+  "plan.objective.readNothing":
+    "Não encontrei nada para ler sobre os planos da marca.",
+  "plan.objective.unread": "Não consegui ler: {files}.",
+  "plan.objective.connectHint":
+    "Conecte reuniões ou conversas, como Grain ou WhatsApp, para eu encontrar da próxima vez.",
+  "plan.objective.saveError": "Não deu para salvar o objetivo. Tente de novo.",
+  "plan.idea.heading": "O que você quer melhorar na loja?",
+  "plan.idea.description":
+    "Fale do jeito que vier, mesmo vago. Algumas perguntas rápidas completam o que só você sabe, e o agente monta o case: o problema em números, quem já faz, o dinheiro em jogo, o esforço e o teste A/B.",
+  "plan.idea.label": "Sua ideia",
+  "plan.idea.placeholder":
+    "Ex.: Quero mexer na busca. Ou: um guia de vestibilidade na página de produto aumentaria a conversão.",
+  "plan.idea.submit": "Montar o business case",
+  "plan.idea.startWith": "Comece por",
+  "plan.idea.topic.shipping": "Frete",
+  "plan.idea.topic.shippingPrompt": "No frete, ",
+  "plan.idea.topic.pdp": "Página de produto",
+  "plan.idea.topic.pdpPrompt": "Na página de produto, ",
+  "plan.idea.topic.checkout": "Checkout",
+  "plan.idea.topic.checkoutPrompt": "No checkout, ",
+  "plan.idea.topic.search": "Busca",
+  "plan.idea.topic.searchPrompt": "Na busca, ",
+  "plan.idea.topic.performance": "Performance",
+  "plan.idea.topic.performancePrompt": "Para deixar a loja mais rápida, ",
+  "plan.idea.topic.paidMedia": "Mídia paga",
+  "plan.idea.topic.paidMediaPrompt": "Para quem chega pela mídia paga, ",
+  "plan.prompt.withObjective":
+    "Vamos montar juntos um business case para este pedido. Siga a skill business-case (leia /app/org/public/core/business-case/SKILL.md). O canvas deste case é {casePath}: rode o init agora, antes de qualquer coisa, e preencha os cards conforme a conversa avança. Se o pedido não diz onde e o quê, me pergunte uma coisa por vez, com opções.\n\nObjetivo da loja: {objective}\n\nPedido: {idea}",
+  "plan.prompt.withoutObjective":
+    "Vamos montar juntos um business case para este pedido. Siga a skill business-case (leia /app/org/public/core/business-case/SKILL.md). O canvas deste case é {casePath}: rode o init agora, antes de qualquer coisa, e preencha os cards conforme a conversa avança. Se o pedido não diz onde e o quê, me pergunte uma coisa por vez, com opções.\n\nPedido: {idea}",
+  "plan.case.waiting": "Abrindo o business case…",
+  "plan.case.asking": "Responda no chat",
+  "plan.case.assumption": "Suposição:",
+  "plan.case.progress": "{filled} de {total} preenchidos",
+  "plan.case.openDocument": "Abrir o documento",
+  "plan.case.invalid":
+    "Não deu para ler a última atualização; mostrando a anterior.",
+  "plan.case.objective": "Objetivo da loja",
+  "plan.case.noObjective": "Ainda sem objetivo. Escreva um na página Plan.",
+  "plan.case.request": "O que você pediu",
+  "plan.case.status.framing": "Enquadrando",
+  "plan.case.status.building": "Construindo",
+  "plan.case.status.ready": "Pronto",
+  "plan.case.area.pdp": "Página de produto",
+  "plan.case.area.search": "Busca",
+  "plan.case.area.category": "Página de categoria",
+  "plan.case.area.home": "Home",
+  "plan.case.area.cart": "Carrinho",
+  "plan.case.area.checkout": "Checkout",
+  "plan.case.area.shipping": "Frete",
+  "plan.case.area.performance": "Performance",
+  "plan.case.area.paidMedia": "Mídia paga",
+  "plan.case.area.other": "Outra",
+  "plan.case.card.problem": "O problema, medido",
+  "plan.case.card.problemQuestion":
+    "Em que passo da jornada as pessoas desistem, e quantas?",
+  "plan.case.card.scope": "O que vamos mexer",
+  "plan.case.card.scopeQuestion":
+    "Onde na loja, em qual dispositivo, e o que exatamente?",
+  "plan.case.card.money": "Dinheiro em jogo",
+  "plan.case.card.moneyQuestion":
+    "Quanto vale por mês um ganho pequeno nesse passo?",
+  "plan.case.card.competitors": "Quem já faz",
+  "plan.case.card.competitorsQuestion":
+    "Quais concorrentes já fazem isso, e como?",
+  "plan.case.card.measurement": "Como vamos medir",
+  "plan.case.card.measurementQuestion":
+    "Qual métrica prova que funcionou, e qual não pode piorar?",
+  "plan.case.card.abTest": "Teste A/B e prazo",
+  "plan.case.card.abTestQuestion":
+    "Quantas pessoas e quantas semanas para saber?",
+  "plan.case.card.effort": "Esforço e entregas",
+  "plan.case.card.effortQuestion":
+    "Quantos dias de trabalho, e o que muda na loja?",
+  "plan.case.card.risks": "Riscos",
+  "plan.case.card.risksQuestion": "O que pode piorar, e o que vamos vigiar?",
+  "plan.case.card.unknowns": "O que ainda não sabemos",
+  "plan.case.card.unknownsQuestion": "O que falta, e como descobrir?",
+  "plan.cases.heading": "Seus business cases",
+  "plan.cases.description": "Abra um para ver o canvas e continuar a conversa.",
+  "plan.cases.updated": "Atualizado {when}",
+  "plan.cases.unreadable": "Não deu para ler este case",
+  "plan.prompt.skipped": "(pulou: assuma e escreva a suposição no card)",
+  "plan.prompt.guidedAnswers":
+    "Antes deste chat eu já respondi as perguntas que só eu sabia responder. Não pergunte de novo, nem me pergunte mais nada a não ser que algo trave o case: preencha primeiro os cards que essas respostas cobrem e depois pesquise.\n\n{answers}",
+  "plan.prompt.guidedNothing":
+    "Antes deste chat checaram se faltava algo que só eu sei, e não faltava nada. Não me faça perguntas a não ser que algo trave o case: assuma, escreva a suposição no card e pesquise.",
+  "plan.guide.thinking1": "Hum, ideia interessante…",
+  "plan.guide.thinking2": "Pensando nos próximos passos…",
+  "plan.guide.thinking3": "Deixa eu ver o que falta aqui…",
+  "plan.guide.thinking4": "Isso é bom, vou formular…",
+  "plan.guide.thinking5": "Juntando as peças…",
+  "plan.guide.thinking6": "Hum, dá pra fazer algo legal com isso…",
+  "plan.guide.thinking7": "Organizando as ideias…",
+  "plan.guide.thinking8": "Só um segundo, pensando…",
+  "plan.guide.building1": "Montando seu business case…",
+  "plan.guide.building2": "Chamando o agente para pesquisar os números…",
+  "plan.guide.building3": "Preparando os cards…",
+  "plan.guide.yourIdea": "Sua ideia",
+  "plan.guide.answerLabel": "Sua resposta",
+  "plan.guide.answerPlaceholder": "Escreva do seu jeito…",
+  "plan.guide.continue": "Continuar",
+  "plan.guide.skip": "Pular esta",
+  "plan.guide.back": "Voltar",
+} satisfies Record<keyof typeof planEn, string>;

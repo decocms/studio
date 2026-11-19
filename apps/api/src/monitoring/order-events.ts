@@ -1,7 +1,7 @@
 import { ORDER_MONITOR_EVALUATED_EVENT } from "@decocms/shared/order-monitor";
 import { sseHub } from "@/event-bus/sse-hub";
 
-/** Tell the org's Monitor views that a store's verdicts or incident changed. */
+/** Tell the org's Monitor views that a store's verdicts changed. */
 export function emitOrderMonitorEvaluated(
   organizationId: string,
   connectionId: string,

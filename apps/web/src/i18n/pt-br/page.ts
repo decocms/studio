@@ -6,6 +6,7 @@ export const page = {
   "page.view": "Visualização",
   "page.file": "Arquivo",
   "page.document": "Documento",
+  "page.businessCase": "Business case",
   "page.item": "Item",
   "page.breadcrumbs": "Navegação estrutural",
   "page.breadcrumbMenu": "Mostrar caminho de navegação",

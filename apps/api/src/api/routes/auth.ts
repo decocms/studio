@@ -13,6 +13,7 @@ import { getSettings } from "../../settings";
 import {
   auth,
   authConfig,
+  authOrganizationApi,
   GENERIC_EMAIL_DOMAINS,
   resetPasswordEnabled,
 } from "../../auth";
@@ -44,6 +45,9 @@ import {
 
 const app = new Hono();
 
+// Better Auth's email-otp default when AUTH_EMAIL_OTP_LENGTH is unset.
+const DEFAULT_EMAIL_OTP_LENGTH = 6;
+
 export type { AuthConfig } from "@decocms/shared/config";
 
 export function buildAuthConfig(): AuthConfig {
@@ -66,6 +70,10 @@ export function buildAuthConfig(): AuthConfig {
     },
     emailOtp: {
       enabled: authConfig.emailOtpConfig?.enabled ?? false,
+      length: authConfig.emailOtpConfig?.otpLength ?? DEFAULT_EMAIL_OTP_LENGTH,
+    },
+    passkey: {
+      enabled: authConfig.passkey.enabled,
     },
     resetPassword: {
       enabled: resetPasswordEnabled,
@@ -1025,7 +1033,7 @@ app.post("/ensure-organization", async (c) => {
 
     const result = await ensureUserOrganization({
       db: getDb().db,
-      authApi: auth.api,
+      authApi: authOrganizationApi,
       user: {
         id: session.user.id,
         email: session.user.email,

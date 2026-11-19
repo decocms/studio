@@ -5,6 +5,22 @@ import {
   type SchemaProperty,
 } from "../resolve-schema";
 
+interface SchemaCacheOptions {
+  maxEntries: number;
+  /** Total build time (ms) a meta's entries may add up to. */
+  maxBuildMs: number;
+  /** Entries used within this window are never evicted. */
+  idleMs: number;
+  now: () => number;
+  resolve: (resolveType: string, meta: LiveMeta) => SchemaProperty | null;
+}
+
+interface CacheEntry {
+  schema: SchemaProperty | null;
+  buildMs: number;
+  usedAt: number;
+}
+
 /**
  * Cache resolveSchema() results per (meta, resolveType) pair. Keyed on the
  * `meta` instance (WeakMap, so a stale meta's entries GC with it) rather than
@@ -13,25 +29,63 @@ import {
  * site, so a resolveType-only cache would return one site's schema for
  * another site's block the moment the user switches virtual MCPs without a
  * full page reload.
+ *
+ * Bounded by entry count and by total build time, which tracks the memory a
+ * schema holds (a block that takes ~700ms to resolve retains ~400MB). Only
+ * idle entries are evicted: evicting one the current screen still renders
+ * would rebuild it on every render.
  */
-const schemaCache = new WeakMap<LiveMeta, Map<string, SchemaProperty | null>>();
+export function createSchemaCache(options: SchemaCacheOptions) {
+  const byMeta = new WeakMap<
+    LiveMeta,
+    { entries: Map<string, CacheEntry>; buildMs: number }
+  >();
 
-export function cachedResolveSchema(
-  resolveType: string,
-  meta: LiveMeta,
-): SchemaProperty | null {
-  let byResolveType = schemaCache.get(meta);
-  if (!byResolveType) {
-    byResolveType = new Map();
-    schemaCache.set(meta, byResolveType);
-  }
-  let result = byResolveType.get(resolveType);
-  if (result === undefined) {
-    result = resolveSchema(resolveType, meta);
-    byResolveType.set(resolveType, result);
-  }
-  return result;
+  return (resolveType: string, meta: LiveMeta): SchemaProperty | null => {
+    let cache = byMeta.get(meta);
+    if (!cache) {
+      cache = { entries: new Map(), buildMs: 0 };
+      byMeta.set(meta, cache);
+    }
+    const { entries } = cache;
+    const hit = entries.get(resolveType);
+    if (hit) {
+      hit.usedAt = options.now();
+      // Re-insert so iteration order stays least-recently-used first.
+      entries.delete(resolveType);
+      entries.set(resolveType, hit);
+      return hit.schema;
+    }
+
+    const start = options.now();
+    const schema = options.resolve(resolveType, meta);
+    const usedAt = options.now();
+    const buildMs = usedAt - start;
+    entries.set(resolveType, { schema, buildMs, usedAt });
+    cache.buildMs += buildMs;
+
+    for (const [key, entry] of entries) {
+      if (
+        entries.size <= options.maxEntries &&
+        cache.buildMs <= options.maxBuildMs
+      ) {
+        break;
+      }
+      if (usedAt - entry.usedAt < options.idleMs) break;
+      entries.delete(key);
+      cache.buildMs -= entry.buildMs;
+    }
+    return schema;
+  };
 }
+
+export const cachedResolveSchema = createSchemaCache({
+  maxEntries: 64,
+  maxBuildMs: 1000,
+  idleMs: 30_000,
+  now: () => performance.now(),
+  resolve: resolveSchema,
+});
 
 const expandedCache = new WeakMap<SchemaProperty, SchemaProperty>();
 

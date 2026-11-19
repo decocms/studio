@@ -14,6 +14,9 @@ import remarkGfm from "remark-gfm";
 // Shared component overrides for ReactMarkdown
 // ---------------------------------------------------------------------------
 
+export const markdownLinkClassName =
+  "text-link underline underline-offset-2 decoration-link/40 hover:decoration-link wrap-break-word";
+
 export const markdownComponents: Components = {
   h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => (
     <h1 {...props} className="text-2xl font-bold mt-6 mb-3 first:mt-0" />
@@ -41,7 +44,7 @@ export const markdownComponents: Components = {
       {...props}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-primary-dark hover:underline break-all font-medium"
+      className={markdownLinkClassName}
     />
   ),
   ul: (props: React.HTMLAttributes<HTMLUListElement>) => (

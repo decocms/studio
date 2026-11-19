@@ -50,6 +50,8 @@ export interface SdkAssistantMessage {
      *  the only thing that measures context fill. */
     usage?: SdkUsage;
   };
+  /** Set only on the message the CLI writes for an API call that failed. */
+  error?: string;
 }
 
 interface SdkUsage {
@@ -492,6 +494,11 @@ export class UiChunkTranslator {
   }
 
   private translateAssistant(message: SdkAssistantMessage): UIMessageChunk[] {
+    // Its text is the provider's raw error, which can name the provider's key
+    // URL, and it would be saved as the model's reply. The turn's `result`
+    // reports the same failure, and Studio sanitizes that copy. Its usage is
+    // all zeros, so it must not reset the context size either.
+    if (message.error !== undefined) return this.closeOpenStreamBlocks();
     const usage = message.message.usage;
     if (usage) {
       this.contextTokens =

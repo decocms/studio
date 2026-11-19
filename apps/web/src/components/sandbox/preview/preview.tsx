@@ -140,6 +140,8 @@ import {
   PathParamPickerChip,
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
+import { blogPathOptions } from "./blog-path-options";
+import { BlogPathParamChip } from "./blog-path-param-chip";
 import { buildPreviewLabel } from "./preview-label";
 import {
   cmsEditorActivation,
@@ -692,10 +694,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Path templates: pages like `/blog/:slug` expose inputs in the page popover. `currentPath` keeps the template (so the page stays matched); the
   // iframe navigates to the template with the user's values filled in.
-  const pathParamValues =
-    (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ?? {};
-  const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
-
   // Special selectors for path params: each `:param`/`*` is classified from the
   // loaders the current page uses (product/category, app-agnostic) and bound to
   // whatever product-search / category loader the running site actually ships.
@@ -719,6 +717,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (sources.length > 0) pathParamSources[token.name] = sources;
     }
   }
+  // Blog routes have no store loader to pick from: offer the blog's own posts,
+  // categories and authors, and open on the newest post until one is picked.
+  const blogPathOptionsFor = (path: string) =>
+    decofile ? blogPathOptions(decofile, path, meta) : [];
+  const blogOptions = currentPageKey ? blogPathOptionsFor(currentPath) : [];
+  const pathParamValues =
+    (currentPageKey ? pathParamsByPage[currentPageKey] : undefined) ??
+    blogOptions[0]?.values ??
+    {};
+  const resolvedPath = fillPathTemplate(currentPath, pathParamValues);
   const pickerSandboxRef =
     virtualMcpId && branch
       ? {
@@ -1806,10 +1814,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
   };
 
-  const setPathParamValue = (name: string, value: string) => {
+  const setPathParamValue = (name: string, value: string) =>
+    setPathParamValues({ ...pathParamValues, [name]: value });
+
+  const setPathParamValues = (nextValues: Record<string, string>) => {
     if (!currentPageKey) return;
     const pageKey = currentPageKey;
-    const nextValues = { ...pathParamValues, [name]: value };
     // Guard against a stale onLoad from the previous URL resetting currentPath.
     intendedPathRef.current = fillPathTemplate(currentPath, nextValues);
     setPathParamsByPage((prev) => ({ ...prev, [pageKey]: nextValues }));
@@ -1832,7 +1842,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const navigatePreviewToPage = (page: PageEntry) => {
     // The iframe loads the template with any stored param values filled in.
     const params = pathParamsByPage[page.key] ?? {};
-    const target = fillPathTemplate(page.path, params);
+    const target = fillPathTemplate(
+      page.path,
+      pathParamsByPage[page.key] ??
+        blogPathOptionsFor(page.path)[0]?.values ??
+        {},
+    );
     // Show the loading indicator only when the iframe will actually reload —
     // re-selecting the current page leaves `iframeSrc` unchanged (no onLoad).
     if (activeGlobalSection || normPath(target) !== normPath(resolvedPath)) {
@@ -2244,6 +2259,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     if (token.type === "text")
                       return <span key={`text-${i}`}>{token.text}</span>;
                     const sources = pathParamSources[token.name];
+                    if (!sources && blogOptions.length > 0) {
+                      return (
+                        <BlogPathParamChip
+                          key={`${currentPageKey}:${token.name}`}
+                          paramName={token.name}
+                          template={currentPath}
+                          value={pathParamValues[token.name] ?? ""}
+                          options={blogOptions}
+                          onPick={setPathParamValues}
+                          onCommit={(value) =>
+                            setPathParamValue(token.name, value)
+                          }
+                        />
+                      );
+                    }
                     return sources && pickerSandboxRef ? (
                       <PathParamPickerChip
                         key={`${currentPageKey}:${token.name}`}

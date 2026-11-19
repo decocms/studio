@@ -9,9 +9,11 @@
 
 import {
   DeleteObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
+  S3ServiceException,
 } from "@aws-sdk/client-s3";
 import type {
   FileConfigCredentials,
@@ -276,6 +278,34 @@ export async function deleteObject(params: {
       Key: params.key,
     }),
   );
+}
+
+/**
+ * The stored media type of an object, `null` when it has none, or
+ * `undefined` when the key does not exist.
+ */
+export async function headObjectContentType(params: {
+  ctx: FileConfigContext;
+  key: string;
+}): Promise<string | null | undefined> {
+  const client = buildS3Client(params.ctx);
+  try {
+    const head = await client.send(
+      new HeadObjectCommand({
+        Bucket: params.ctx.info.bucket,
+        Key: params.key,
+      }),
+    );
+    return head.ContentType ?? null;
+  } catch (err) {
+    if (
+      err instanceof S3ServiceException &&
+      err.$metadata.httpStatusCode === 404
+    ) {
+      return undefined;
+    }
+    throw err;
+  }
 }
 
 export interface ListedObject {

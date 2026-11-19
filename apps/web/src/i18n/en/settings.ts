@@ -353,7 +353,30 @@ export const settings = {
   "settings.profile.avatarUploadError": "Failed to update the picture",
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
+  "settings.passkeys.title": "Passkeys",
+  "settings.passkeys.description":
+    "Sign in with your fingerprint, face or device screen lock instead of an emailed code.",
+  "settings.passkeys.add": "Add passkey",
+  "settings.passkeys.added": "Passkey added",
+  "settings.passkeys.addError": "Failed to add passkey",
+  "settings.passkeys.alreadyRegistered":
+    "This device already has a passkey for your account",
+  "settings.passkeys.empty": "No passkeys yet.",
+  "settings.passkeys.unsupported": "This browser does not support passkeys.",
+  "settings.passkeys.unnamed": "Passkey",
+  "settings.passkeys.createdAt": "Added {date}",
+  "settings.passkeys.delete": "Remove passkey",
+  "settings.passkeys.deleted": "Passkey removed",
+  "settings.passkeys.deleteError": "Failed to remove passkey",
+  "settings.passkeys.deleteTitle": "Remove {name}?",
+  "settings.passkeys.deleteDescription":
+    "You will no longer be able to sign in with this passkey. The credential stays on your device until you delete it there.",
+  "settings.passkeys.cancel": "Cancel",
   "settings.preferences.title": "Preferences",
+  "settings.plan.sectionTitle": "Plan",
+  "settings.plan.pageTitle": "Plan page",
+  "settings.plan.pageDescription":
+    "Show the store goal and turn ideas into business cases on the Plan page. Off, Plan stays a coming-soon page.",
   "settings.blog.sectionTitle": "Blog",
   "settings.blogView.title": "Blog view",
   "settings.blogView.description":
@@ -653,10 +676,14 @@ export const settings = {
   "settings.githubCopilot.howTo":
     "Create a fine-grained GitHub token with the Copilot Requests permission",
   "settings.githubCopilot.sharedBy":
-    "Every run in this organization uses {name}'s shared GitHub Copilot plan.",
+    "You're using the organization's GitHub Copilot plan, shared by {name}.",
+  "settings.githubCopilot.ownPlanUsed":
+    "Your runs use your own plan. {name}'s shared plan only covers members who haven't linked one.",
   "settings.githubCopilot.shareTitle": "Share with org",
   "settings.githubCopilot.shareDescription":
-    "Every chat and task in this organization runs on your Copilot plan, ahead of members' own plans and the organization's AI providers.",
+    "Sharing only applies to members of this organization who haven't linked their own GitHub Copilot plan.",
+  "settings.githubCopilot.shareTaken":
+    "{name} already shares a plan. To share yours, ask {name} to stop sharing first.",
   "settings.githubCopilot.title": "GitHub Copilot",
   "settings.githubCopilot.tokenPlaceholder": "Paste your github_pat_… token",
   "settings.ownAccounts.more": "More actions",

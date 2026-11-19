@@ -8,6 +8,16 @@ describe("authEnvSchema", () => {
     expect(config.emailProviders).toBeUndefined();
   });
 
+  it("enables passkeys by default and lets AUTH_PASSKEY_ENABLED turn them off", () => {
+    expect(authEnvSchema.parse({}).passkey).toEqual({ enabled: true });
+    expect(
+      authEnvSchema.parse({ AUTH_PASSKEY_ENABLED: "false" }).passkey,
+    ).toEqual({ enabled: false });
+    expect(() => authEnvSchema.parse({ AUTH_PASSKEY_ENABLED: "yes" })).toThrow(
+      /AUTH_PASSKEY_ENABLED/,
+    );
+  });
+
   it("accepts a provider reference that matches a configured provider", () => {
     const config = authEnvSchema.parse({
       AUTH_RESEND_API_KEY: "key",

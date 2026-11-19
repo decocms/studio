@@ -169,6 +169,7 @@ export function MetricCard({
   aside,
   children,
   onClick,
+  className,
 }: {
   title: string;
   value?: ReactNode;
@@ -176,6 +177,7 @@ export function MetricCard({
   aside?: ReactNode;
   children?: ReactNode;
   onClick?: () => void;
+  className?: string;
 }) {
   const Root = onClick ? "button" : "section";
   return (
@@ -185,6 +187,7 @@ export function MetricCard({
       className={cn(
         "surface @container flex h-full w-full min-w-0 flex-col gap-6 px-4 pt-4 pb-5",
         onClick && CLICKABLE,
+        className,
       )}
     >
       <div className="flex items-start justify-between gap-4">

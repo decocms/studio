@@ -3,7 +3,7 @@
 import { HeatmapView } from "@/layouts/main-panel-tabs/analytics-heatmap-tab";
 import { CustomEventsHelp } from "@/layouts/main-panel-tabs/analytics-tab";
 import { BehaviourSection } from "./behaviour";
-import { EventsSection } from "./events";
+import { EventsSection } from "./custom-events";
 import { DecoOverview } from "./overview";
 import { RealtimeSection } from "./realtime";
 import type { SectionProps } from "./types";
@@ -45,8 +45,12 @@ export function DecoSection({
           orgSlug={props.orgSlug}
           site={props.site}
           modules={props.status.config?.modules ?? ["core"]}
-          domain={
-            props.status.config?.domains?.[0] ?? props.status.host ?? null
+          domains={
+            props.status.config?.domains?.length
+              ? props.status.config.domains
+              : props.status.host
+                ? [props.status.host]
+                : []
           }
           onConfigure={props.status.external ? undefined : onConfigure}
           fill

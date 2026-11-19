@@ -37,7 +37,7 @@ const MAX_ARGUMENTS_BYTES = 256 * 1024;
  * connection the call would be refused on. A session has no map; it sees the
  * org's connections and the proxy still authorizes each call.
  */
-async function reachableConnections(
+export async function reachableConnections(
   ctx: StudioContext,
   organizationId: string,
 ): Promise<ConnectionEntity[]> {
