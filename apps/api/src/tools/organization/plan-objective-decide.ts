@@ -1,6 +1,6 @@
 /**
  * ORGANIZATION_PLAN_OBJECTIVE_DECIDE — ask Jev which goal the store should
- * work on first, from its last 28 days in the data lake.
+ * work on first, from its last 28 days in the data lake or its connections.
  *
  * Read-only: it returns the goal and the numbers behind it. The web words the
  * goal in the person's language and saves it with
@@ -17,12 +17,13 @@ import { defineTool } from "../../core/define-tool";
 import { openJev } from "../../core/evaluate-decisions";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { acceptGoalDecision, buildGoalDecision } from "./plan-goal-decision";
+import { loadConnectionSnapshot } from "./plan-goal-connections";
 import { loadStoreSnapshot } from "./plan-goal-snapshot";
 
 export const ORGANIZATION_PLAN_OBJECTIVE_DECIDE = defineTool({
   name: "ORGANIZATION_PLAN_OBJECTIVE_DECIDE",
   description:
-    "Ask Jev, a decision model, which goal the store should work on first, from its last 28 days of traffic, funnel and orders. Returns the goal and the numbers behind it, or why it could not decide. Does not save the goal.",
+    "Ask Jev, a decision model, which goal the store should work on first, from its last 28 days of traffic, funnel and orders, read from the data lake or, without it, from the store's connections (VTEX, GA4, BigQuery and others). Returns the goal and the numbers behind it, or why it could not decide. Does not save the goal.",
   annotations: {
     title: "Decide Store Goal",
     readOnlyHint: true,
@@ -43,7 +44,7 @@ export const ORGANIZATION_PLAN_OBJECTIVE_DECIDE = defineTool({
       .enum(["no_data", "unavailable", "uncertain"])
       .optional()
       .describe(
-        "Why there is no decision: no_data when the lake backs fewer than two goals, unavailable when Jev cannot be reached, uncertain when its answer is a guess.",
+        "Why there is no decision: no_data when neither the lake nor the connections back two goals, unavailable when Jev cannot be reached, uncertain when its answer is a guess.",
       ),
   }),
 
@@ -56,8 +57,14 @@ export const ORGANIZATION_PLAN_OBJECTIVE_DECIDE = defineTool({
       throw new Error("The Plan page is not enabled for this organization");
     }
 
-    const snapshot = await loadStoreSnapshot(org.id, new Date());
-    const question = snapshot ? buildGoalDecision(snapshot) : null;
+    const now = new Date();
+    const fromLake = await loadStoreSnapshot(org.id, now);
+    const lakeQuestion = fromLake ? buildGoalDecision(fromLake) : null;
+    const snapshot = lakeQuestion
+      ? fromLake
+      : await loadConnectionSnapshot(ctx, org.id, now);
+    const question =
+      lakeQuestion ?? (snapshot ? buildGoalDecision(snapshot) : null);
     if (!snapshot || !question)
       return { decision: null, reason: "no_data" as const };
 
