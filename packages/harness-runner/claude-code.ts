@@ -19,6 +19,7 @@
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { BackgroundTasks } from "./background-tasks";
+import { type ImageBlock, imageBlocksFromUserMessage } from "./image-blocks";
 import type {
   CanUseTool,
   HookCallbackMatcher,
@@ -163,10 +164,24 @@ function inputChannel(): {
   };
 }
 
-function userTurn(prompt: string): SDKUserMessage {
+/** Images the runner cannot read are left to the annotation's path line. */
+export function userTurn(
+  input: HarnessStreamInputWire,
+  readImages: (
+    userMessage: unknown,
+  ) => ImageBlock[] = imageBlocksFromUserMessage,
+): SDKUserMessage {
+  const prompt = promptForRun(input);
+  const images = readImages(input.userMessage);
   return {
     type: "user",
-    message: { role: "user", content: prompt },
+    message: {
+      role: "user",
+      content:
+        images.length === 0
+          ? prompt
+          : [{ type: "text", text: prompt }, ...images],
+    },
     parent_tool_use_id: null,
   } as SDKUserMessage;
 }
@@ -1152,7 +1167,7 @@ async function runTurn(
     live = null;
     mark("reused");
     session.gate.awaitUser = (toolCallId) => translator.awaitUser(toolCallId);
-    session.send(userTurn(promptForRun(input)));
+    session.send(userTurn(input));
     liveMessages?.attach(session.send);
     try {
       await consumeStream(session.stream, session.messages);
@@ -1176,7 +1191,12 @@ async function runTurn(
    */
   async function attemptTurn(): Promise<string | null> {
     mark("query");
-    const channel = persistent() || liveMessages ? inputChannel() : null;
+    const turn = userTurn(input);
+    // A string prompt cannot carry image blocks.
+    const channel =
+      persistent() || liveMessages || typeof turn.message.content !== "string"
+        ? inputChannel()
+        : null;
     const gate = {
       awaitUser: (toolCallId: string) => translator.awaitUser(toolCallId),
     };
@@ -1190,7 +1210,7 @@ async function runTurn(
         studioCliHome,
       }),
     });
-    channel?.send(userTurn(promptForRun(input)));
+    channel?.send(turn);
     if (channel) liveMessages?.attach(channel.send);
     const messages = stream[Symbol.asyncIterator]();
 

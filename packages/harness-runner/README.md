@@ -34,6 +34,15 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   the daemon needs new part types.
 - Emit a frame per turn, and always emit a final frame — including on a throw.
 - Remember the per-thread session id so a follow-up turn resumes.
+- Send the turn's message. Claude Code gets the text parts joined into one
+  prompt. When the message has `image/*` file parts, it also gets up to 20
+  base64 image blocks after the text, on the first turn of a session, a turn
+  sent to a kept session, and a resumed one. The bytes come from the file's
+  `/app/org/upload/` path in the attachment annotation, not the part's
+  presigned URL. Only JPEG, PNG, GIF and WebP up to 3.75 MB are sent, checked
+  by their bytes. Anything else, or a file that cannot be read, is skipped,
+  and the model still has the annotation's path line. Codex forwards image
+  parts by URL.
 - Take live messages into the running turn. Claude Code sends each one into
   the SDK's streaming input as a `priority: "next"` user message, which it reads
   between tool rounds; `--replay-user-messages` echoes it back at that point,

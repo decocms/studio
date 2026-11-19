@@ -13,6 +13,7 @@
     "claude-code.ts",
     "codex.ts",
     "codex-to-ui-chunks.ts",
+    "image-blocks.ts",
     "live-messages.ts",
     "session-id.ts",
     "studio-cli.ts",
