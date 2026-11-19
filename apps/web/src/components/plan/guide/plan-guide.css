@@ -115,9 +115,30 @@
   }
 }
 
+/* A case being built: the tiles of the cards already filled stay solid, the
+   others breathe until the agent fills them. */
+.plan-guide-tiles > span[data-tile="filled"] {
+  animation: none;
+  border-color: var(--color-foreground);
+  background: var(--color-foreground);
+}
+.plan-guide-tiles > span[data-tile="waiting"] {
+  animation: plan-guide-tile-waiting 1.6s ease-in-out infinite;
+}
+@keyframes plan-guide-tile-waiting {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .plan-guide-reveal,
-  .plan-guide-tiles > span {
+  .plan-guide-tiles > span,
+  .plan-guide-tiles > span[data-tile] {
     animation: none;
   }
 }

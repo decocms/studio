@@ -4,8 +4,7 @@
  * The agent writes it as JSON in the org `home` volume, at
  * `plans/cases/<threadId>.json`, through the business-case skill's
  * `business-case-canvas.mjs` (which mirrors these limits, checked by
- * `packages/sandbox/business-case-canvas.test.ts`). The web reads the same file
- * and renders one card per key, so the case fills in while the chat goes on.
+ * `packages/sandbox/business-case-canvas.test.ts`). The web reads the same file.
  */
 
 import { z } from "zod";
