@@ -109,6 +109,19 @@ export class TaskBoardPromptStorage {
 const defaultFor = (columnKey: string | null) =>
   DEFAULT_BOARD_PROMPTS.find((d) => d.columnKey === columnKey);
 
+/**
+ * A `<set>/<skill>` reference as the Skill tool accepts it. Mirrors the daemon
+ * (`daemon-go/internal/orgfs/links.go`): a set's skills load as plugin `orgfs`
+ * under `orgfs-<set>-<skill>`; the org's own `home` skills load by bare name.
+ */
+export function invocableSkillName(ref: string): string {
+  const slash = ref.indexOf("/");
+  if (slash === -1) return ref;
+  const set = ref.slice(0, slash);
+  const skill = ref.slice(slash + 1);
+  return set === "home" ? skill : `orgfs:orgfs-${set}-${skill}`;
+}
+
 /** Scopes' prompts in order, then one line naming their skills. */
 export function composeBoardPrompt(
   scopes: Pick<TaskBoardPrompt, "prompt" | "skills">[],
@@ -117,7 +130,7 @@ export function composeBoardPrompt(
   const skills = [...new Set(scopes.flatMap((p) => p.skills))];
   if (skills.length > 0) {
     parts.push(
-      `Skills configured for this work — load each one with the skill tool before you start: ${skills.join(", ")}`,
+      `Skills configured for this work — load each one with the skill tool before you start: ${skills.map(invocableSkillName).join(", ")}`,
     );
   }
   return parts.length > 0 ? parts.join("\n\n") : undefined;

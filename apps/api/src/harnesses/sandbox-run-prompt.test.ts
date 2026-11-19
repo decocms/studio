@@ -7,7 +7,9 @@ describe("modeInstruction", () => {
     expect(modeInstruction("gen-image")).toContain("`generate_image`");
     expect(modeInstruction("web-search")).toContain("`web_search`");
     expect(modeInstruction("deep-research")).toContain("`deep_research`");
-    expect(modeInstruction("gen-image")).toContain("`studio` MCP server");
+    expect(modeInstruction("gen-image")).toContain(
+      "Studio tool `generate_image`",
+    );
   });
 
   test("default and plan add no line", () => {

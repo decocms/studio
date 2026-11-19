@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   composeBoardPrompt,
+  invocableSkillName,
   TaskBoardPromptStorage,
 } from "./task-board-prompts";
 
@@ -16,8 +17,24 @@ describe("composeBoardPrompt", () => {
       { prompt: "", skills: ["home/pr", "home/tests"] },
     ]);
     expect(out).toBe(
-      "Use pnpm.\n\nSkills configured for this work — load each one with the skill tool before you start: home/pr, core/pdf, home/tests",
+      "Use pnpm.\n\nSkills configured for this work — load each one with the skill tool before you start: pr, orgfs:orgfs-core-pdf, tests",
     );
+  });
+});
+
+describe("invocableSkillName", () => {
+  it("names a set's skill as the orgfs plugin skill the daemon plants", () => {
+    expect(invocableSkillName("core/qa-screenshot")).toBe(
+      "orgfs:orgfs-core-qa-screenshot",
+    );
+    expect(invocableSkillName("decocms-skills/ab-testing")).toBe(
+      "orgfs:orgfs-decocms-skills-ab-testing",
+    );
+  });
+
+  it("names the org's own skills folder by the bare skill name", () => {
+    expect(invocableSkillName("home/release-notes")).toBe("release-notes");
+    expect(invocableSkillName("release-notes")).toBe("release-notes");
   });
 });
 
@@ -64,7 +81,7 @@ describe("TaskBoardPromptStorage defaults", () => {
   it("fills unset lanes with their defaults and lets a cleared lane stay clear", async () => {
     const s = storage([]);
     expect(await s.promptFor("o", "in_progress")).toContain(
-      "core/qa-screenshot",
+      "orgfs:orgfs-core-qa-screenshot",
     );
     expect(await s.promptFor("o", "in_review")).toContain("REVIEW the code");
     expect(await s.promptFor("o", null)).toBeUndefined();
