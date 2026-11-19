@@ -702,7 +702,7 @@ export function ChatContextProvider({
   const effectiveVirtualMcpId = urlVirtualMcpId;
 
   // Context prompt (uses effective agent)
-  const contextPrompt = useContextHook(effectiveVirtualMcpId);
+  const contextPrompt = useContextHook();
 
   const navigateToTask = (taskId: string, opts?: NavigateToTaskOptions) => {
     markTaskRead(taskId);
