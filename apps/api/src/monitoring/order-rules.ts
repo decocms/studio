@@ -391,6 +391,7 @@ export function buildDayView(
     },
     forecast: {
       currency: day.currency ?? null,
+      revenue: hourSeries((d) => day.days[d].revenue),
       soFar: {
         today: salesSoFar(day, 0)!,
         w1: salesSoFar(day, 7),

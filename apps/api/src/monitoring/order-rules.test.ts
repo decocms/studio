@@ -259,6 +259,9 @@ describe("buildDayView", () => {
       items: 960,
     });
     expect(forecast.soFar.y1).toBeNull();
+    expect(forecast.revenue.today[11]).toBe(400);
+    expect(forecast.revenue.today[12]).toBeNull();
+    expect(forecast.revenue.w1[20]).toBe(4000);
     const p = forecast.projection!;
     expect(p.close.orders).toBe(48 * 15 + 1.5 * 48 * 10);
     expect(p.orders[11]).toBe(0);

@@ -1,28 +1,54 @@
 /**
- * The day's sales status, the way a sales team reports it: revenue, orders,
- * average ticket and items so far, each beside the same time of day a week, 4
- * weeks and a year back; then the projection, from what the day was projected
- * at before its first order to where it is heading now, and what the next
- * hours should bring to get there. One store's day, or several added up.
+ * The day's sales, the way a sales team reads them: what's captured so far
+ * against the same time a week back, where the day is projected to close
+ * against where it opened, the day so far and ahead hour by hour, and orders,
+ * average ticket, items and conversion beside W-1, M-1 and Y-1. One store's
+ * day, or several added up.
  */
 
 import type {
   OrderMonitorDay,
   OrderMonitorForecast,
   OrderMonitorSales,
+  OrderMonitorSeries,
 } from "@decocms/shared/order-monitor";
+import {
+  Bar,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  Area,
+  Line,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { ChartContainer, ChartTooltip } from "@decocms/ui/components/chart.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { AXIS_TICK } from "@/layouts/task-board/analytics-sections";
 import { relativeChange } from "@/layouts/main-panel-tabs/monitor-v8";
+import type { Kpi } from "./board";
 import { Trend } from "./parts";
 
 const REFS = ["w1", "m1", "y1"] as const;
 type Ref = (typeof REFS)[number];
-const REF_LABEL: Record<Ref, string> = { w1: "W-1", m1: "M-1", y1: "Y-1" };
-/** Hours listed ahead, the one under way first. */
-const NEXT_HOURS = 4;
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+/** Hours the table shows each side of the one under way. */
+const HOURS_BEFORE = 3;
+const HOURS_AFTER = 3;
+/** An hour this far under W-1 draws red. */
+const BELOW_W1 = 0.9;
+const Y_AXIS_WIDTH = 44;
+const COLOR_TODAY = "var(--chart-1)";
+const COLOR_W1 = "var(--muted-foreground)";
+
+type Pair = { orders: number; revenue: number };
 
 const clock = (bucket: number) =>
   `${String(Math.floor(bucket / 4) % 24).padStart(2, "0")}:${String((bucket % 4) * 15).padStart(2, "0")}`;
+const total = (xs: readonly (number | null)[], to = xs.length) =>
+  xs.slice(0, to).reduce<number>((s, x) => s + (x ?? 0), 0);
 
 const addSales = (xs: OrderMonitorSales[]): OrderMonitorSales => ({
   orders: xs.reduce((s, x) => s + x.orders, 0),
@@ -36,45 +62,65 @@ function addRef(days: readonly OrderMonitorDay[], ref: Ref) {
   return xs.every((x) => x !== null) ? addSales(xs) : null;
 }
 
+const addSeries = (xs: OrderMonitorSeries[]) => ({
+  today: HOURS.map((h) =>
+    xs.every((x) => x.today[h] === null)
+      ? null
+      : xs.reduce((s, x) => s + (x.today[h] ?? 0), 0),
+  ),
+  w1: HOURS.map((h) => xs.reduce((s, x) => s + (x.w1[h] ?? 0), 0)),
+});
+
 function addProjection(
   ps: OrderMonitorForecast[],
 ): OrderMonitorForecast | null {
   if (ps.length === 0) return null;
   const hours = (pick: (p: OrderMonitorForecast) => number[]) =>
-    Array.from({ length: 24 }, (_, h) =>
-      ps.reduce((s, p) => s + (pick(p)[h] ?? 0), 0),
-    );
-  const total = (pick: (p: OrderMonitorForecast) => number) =>
+    HOURS.map((h) => ps.reduce((s, p) => s + (pick(p)[h] ?? 0), 0));
+  const add = (pick: (p: OrderMonitorForecast) => number) =>
     ps.reduce((s, p) => s + pick(p), 0);
   return {
     orders: hours((p) => p.orders),
     revenue: hours((p) => p.revenue),
     close: {
-      orders: total((p) => p.close.orders),
-      revenue: total((p) => p.close.revenue),
+      orders: add((p) => p.close.orders),
+      revenue: add((p) => p.close.revenue),
     },
     initial: {
-      orders: total((p) => p.initial.orders),
-      revenue: total((p) => p.initial.revenue),
+      orders: add((p) => p.initial.orders),
+      revenue: add((p) => p.initial.revenue),
     },
   };
 }
 
-export function SalesStatus({ days }: { days: readonly OrderMonitorDay[] }) {
+export function SalesStatus({
+  days,
+  conversion,
+}: {
+  days: readonly OrderMonitorDay[];
+  /** The sites' conversion, when it's in scope. */
+  conversion?: Kpi | null;
+}) {
   const t = useT();
-  // A day read from an API without the status yet.
-  if (days.length === 0 || days.some((d) => !d.forecast?.soFar)) return null;
+  // A day read from an API without the sales yet.
+  if (days.length === 0 || days.some((d) => !d.forecast?.revenue)) return null;
+  const first = days[0]!;
   const done = Math.min(...days.map((d) => d.done));
+  const live =
+    done < 96 &&
+    new Date().toLocaleDateString("en-CA", { timeZone: first.timezone }) ===
+      first.date;
   const today = addSales(days.map((d) => d.forecast.soFar.today));
   const ref = Object.fromEntries(
     REFS.map((r) => [r, addRef(days, r)]),
   ) as Record<Ref, OrderMonitorSales | null>;
   const projections = days.map((d) => d.forecast.projection);
-  const projection = projections.every((p) => p !== null)
-    ? addProjection(projections)
-    : null;
+  const projection =
+    done < 95 && projections.every((p) => p !== null)
+      ? addProjection(projections)
+      : null;
 
-  // Stores in different currencies don't add up: no revenue, no ticket.
+  // Stores in different currencies don't add up: orders stand in for revenue.
   const currencies = new Set(days.map((d) => d.forecast.currency));
   const [only] = currencies;
   const currency = currencies.size === 1 && only ? only : null;
@@ -85,225 +131,526 @@ export function SalesStatus({ days }: { days: readonly OrderMonitorDay[] }) {
       minimumFractionDigits: fraction,
       maximumFractionDigits: fraction,
     }).format(n);
+  const compact = (n: number) =>
+    new Intl.NumberFormat(undefined, {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(n);
   const count = (n: number) => Math.round(n).toLocaleString();
+  const pick = (x: Pair) => (currency ? x.revenue : x.orders);
+  const show = (n: number) => (currency ? money(n) : count(n));
+
+  const series = addSeries(
+    days.map((d) => (currency ? d.forecast.revenue : d.orders)),
+  );
+  const ahead = projection
+    ? currency
+      ? projection.revenue
+      : projection.orders
+    : null;
+  const hasW1 = ref.w1 !== null;
+  const now = done / 4;
+  const hour = Math.floor(now);
+  const until = done >= 95 ? "23:59" : clock(done);
+
+  // Cumulative, at each hour mark and at the instant the day has reached.
+  const marks = [...new Set([...HOURS, 24, now])].sort((a, b) => a - b);
+  const w1At = (x: number) =>
+    x === now && ref.w1 ? pick(ref.w1) : total(series.w1, x);
+  const curve = marks.map((x) => ({
+    x,
+    today: x <= now ? (x === now ? pick(today) : total(series.today, x)) : null,
+    w1: hasW1 ? w1At(x) : null,
+    projected:
+      ahead && x >= now ? pick(today) + total(ahead, Math.ceil(x)) : null,
+  }));
+  const bars = HOURS.map((h) => ({
+    x: h + 0.5,
+    today: series.today[h],
+    w1: hasW1 ? series.w1[h]! : null,
+  }));
+  // The hour under way, against W-1 up to the same minute.
+  const w1Partial = ref.w1 ? pick(ref.w1) - total(series.w1, hour) : null;
+  const rows = HOURS.filter(
+    (h) => h >= hour - HOURS_BEFORE && h <= hour + (ahead ? HOURS_AFTER : 0),
+  ).map((h) => {
+    const partial = h === hour && live;
+    return {
+      h,
+      partial,
+      value: h <= hour ? (series.today[h] ?? 0) : null,
+      expected: ahead ? ahead[h]! : null,
+      w1: hasW1 ? (partial ? w1Partial : series.w1[h]!) : null,
+    };
+  });
+
+  const weekday = new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${first.date}T12:00:00Z`));
+  const refLabel: Record<Ref, string> = {
+    w1: t("monitor.sales.w1"),
+    m1: t("monitor.sales.m1"),
+    y1: t("monitor.sales.y1"),
+  };
   const ticket = (s: OrderMonitorSales) =>
     s.orders > 0 ? s.revenue / s.orders : null;
-
-  const until = done >= 95 ? "23:59" : clock(done);
-  const first = Math.floor(done / 4);
-  const next = projection
-    ? Array.from({ length: NEXT_HOURS }, (_, i) => first + i)
-        .filter((h) => h < 24)
-        .map((h) => ({
-          h,
-          orders: projection.orders[h] ?? 0,
-          revenue: projection.revenue[h] ?? 0,
-        }))
-    : [];
-  const pick = (x: { orders: number; revenue: number }) =>
-    currency ? x.revenue : x.orders;
-  const show = (x: { orders: number; revenue: number }) =>
-    currency ? money(x.revenue) : count(x.orders);
-  const nextTotal = {
-    orders: next.reduce((s, x) => s + x.orders, 0),
-    revenue: next.reduce((s, x) => s + x.revenue, 0),
-  };
-  const share =
-    projection && pick(projection.close) > 0
-      ? Math.min(1, pick(today) / pick(projection.close))
-      : 0;
-
-  const rows: {
-    key: string;
-    label: string;
-    value: (s: OrderMonitorSales) => number | null;
-    show: (v: number) => string;
-  }[] = [
-    ...(currency
-      ? [
-          {
-            key: "revenue",
-            label: t("monitor.sales.revenue"),
-            value: (x: OrderMonitorSales) => x.revenue,
-            show: (v: number) => money(v),
-          },
-        ]
-      : []),
+  const perOrder = (s: OrderMonitorSales) =>
+    s.orders > 0 ? s.items / s.orders : null;
+  const conversionRefs = conversion?.references;
+  const cards = [
     {
       key: "orders",
       label: t("monitor.sales.orders"),
-      value: (x) => x.orders,
-      show: count,
+      value: count(today.orders),
+      refs: REFS.map((r) => relativeChange(today.orders, ref[r]?.orders ?? null)),
     },
-    ...(currency
-      ? [
-          {
-            key: "ticket",
-            label: t("monitor.sales.ticket"),
-            value: ticket,
-            show: (v: number) => money(v, 2),
-          },
-        ]
-      : []),
+    currency && {
+      key: "ticket",
+      label: t("monitor.sales.ticket"),
+      value: ticket(today) === null ? "—" : money(ticket(today)!),
+      refs: REFS.map((r) =>
+        relativeChange(ticket(today), ref[r] ? ticket(ref[r]) : null),
+      ),
+    },
     {
       key: "items",
       label: t("monitor.sales.items"),
-      value: (x) => x.items,
-      show: count,
+      value:
+        perOrder(today) === null
+          ? count(today.items)
+          : `${count(today.items)} · ${t("monitor.sales.perOrder", { n: perOrder(today)!.toFixed(2) })}`,
+      refs: REFS.map((r) => relativeChange(today.items, ref[r]?.items ?? null)),
     },
-    {
-      key: "perOrder",
-      label: t("monitor.sales.perOrder"),
-      value: (x) => (x.orders > 0 ? x.items / x.orders : null),
-      show: (v) => v.toFixed(2),
-    },
-  ];
+    conversion?.value != null &&
+      conversionRefs && {
+        key: "conversion",
+        label: t("monitor.sales.conversion"),
+        value: `${(conversion.value * 100).toFixed(2)}%`,
+        // The sites' traffic has no M-1.
+        refs: [
+          relativeChange(conversion.value, conversionRefs.w1),
+          null,
+          relativeChange(conversion.value, conversionRefs.y1),
+        ],
+      },
+  ].filter((c) => !!c);
 
   return (
-    <section className="surface flex flex-col gap-5 px-4 pt-4 pb-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm text-foreground/70">
-          {t("monitor.sales.title")}
-        </h3>
-        <span className="text-meta tnum">
-          {t("monitor.sales.span", { from: "00:00", to: until })}
-        </span>
-      </div>
+    <section className="surface flex flex-col">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border/50 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm">
+          <h3 className="font-medium text-foreground">
+            {live
+              ? t("monitor.sales.title")
+              : t("monitor.sales.titleOn", { date: first.date })}
+          </h3>
+          {live && (
+            <span className="text-meta tnum inline-flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-success" />
+              {t("monitor.sales.live", { time: until })}
+            </span>
+          )}
+        </div>
+        <span className="text-meta">{t("monitor.sales.source")}</span>
+      </header>
 
-      <div className="-mx-4 overflow-x-auto px-4">
-        <table className="w-full min-w-[560px] text-sm">
-          <thead>
-            <tr className="text-meta border-b border-border/50">
-              <th className="py-2 pr-4 text-left font-normal" />
-              <th className="py-2 pl-4 text-right font-normal">
-                {t("monitor.sales.today")}
-              </th>
-              {REFS.map((r) => (
-                <th key={r} className="py-2 pl-4 text-right font-normal">
-                  {REF_LABEL[r]}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const own = row.value(today);
-              return (
-                <tr
-                  key={row.key}
-                  className="border-b border-border/50 last:border-b-0"
-                >
-                  <th className="py-2.5 pr-4 text-left font-normal text-foreground/70">
-                    {row.label}
-                  </th>
-                  <td className="tnum py-2.5 pl-4 text-right text-base font-medium whitespace-nowrap text-foreground">
-                    {own === null ? "—" : row.show(own)}
-                  </td>
-                  {REFS.map((r) => {
-                    const then = ref[r] ? row.value(ref[r]) : null;
+      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
+        <div className="flex min-w-0 flex-col gap-4 p-4">
+          <div className="flex flex-wrap gap-x-10 gap-y-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-meta">
+                {t("monitor.sales.captured", { from: "00:00", to: until })}
+              </span>
+              <span className="tnum text-3xl font-medium text-foreground">
+                {show(pick(today))}
+              </span>
+              <span className="flex flex-wrap gap-x-3">
+                {REFS.map((r) => (
+                  <Trend
+                    key={r}
+                    change={relativeChange(
+                      pick(today),
+                      ref[r] ? pick(ref[r]) : null,
+                    )}
+                    better="up"
+                    reference={
+                      r === "w1"
+                        ? t("monitor.sales.vsLast", { weekday })
+                        : refLabel[r]
+                    }
+                  />
+                ))}
+              </span>
+            </div>
+            {projection && (
+              <div className="flex flex-col gap-1">
+                <span className="text-meta">
+                  {t("monitor.sales.projection", { to: "23:59" })}
+                </span>
+                <span className="tnum text-3xl font-medium text-success">
+                  {show(pick(projection.close))}
+                </span>
+                <span className="text-meta flex flex-wrap items-center gap-x-1.5">
+                  {t("monitor.sales.opened", {
+                    amount: show(pick(projection.initial)),
+                  })}
+                  <span aria-hidden>·</span>
+                  <Trend
+                    change={relativeChange(
+                      pick(projection.close),
+                      pick(projection.initial),
+                    )}
+                    better="up"
+                    reference={t("monitor.sales.sinceStart")}
+                  />
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col">
+            <ChartContainer
+              role="img"
+              aria-label={t("monitor.sales.chart")}
+              className="aspect-auto h-[200px] w-full"
+              config={{
+                today: { label: t("monitor.sales.today"), color: COLOR_TODAY },
+              }}
+            >
+              <ComposedChart
+                data={curve}
+                margin={{ left: 0, right: 0, top: 8 }}
+              >
+                <defs>
+                  <linearGradient id="sales-today" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="0%"
+                      stopColor={COLOR_TODAY}
+                      stopOpacity={0.2}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={COLOR_TODAY}
+                      stopOpacity={0}
+                    />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="4 4"
+                  stroke="var(--border)"
+                  strokeOpacity={0.5}
+                  vertical={false}
+                />
+                <XAxis dataKey="x" type="number" domain={[0, 24]} hide />
+                <YAxis
+                  orientation="right"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={AXIS_TICK}
+                  width={Y_AXIS_WIDTH}
+                  tickFormatter={compact}
+                />
+                <ChartTooltip
+                  cursor={{ stroke: "var(--border)", strokeDasharray: "4 4" }}
+                  content={({ active, payload }) => {
+                    const p = payload?.[0]?.payload as
+                      | (typeof curve)[number]
+                      | undefined;
+                    if (!active || !p) return null;
                     return (
-                      <td
-                        key={r}
-                        className="tnum py-2.5 pl-4 text-right whitespace-nowrap"
-                      >
-                        <span className="text-foreground/70">
-                          {then === null ? "—" : row.show(then)}
+                      <div className="surface tnum flex flex-col gap-0.5 px-2.5 py-1.5 text-xs shadow-sm">
+                        <span className="text-meta">
+                          {clock(Math.round(p.x * 4))}
                         </span>
-                        <span className="inline-block w-14 text-right">
+                        {p.today !== null && (
+                          <span>
+                            {t("monitor.sales.today")}: {show(p.today)}
+                          </span>
+                        )}
+                        {p.projected !== null && p.today === null && (
+                          <span>
+                            {t("monitor.sales.projected")}: {show(p.projected)}
+                          </span>
+                        )}
+                        {p.w1 !== null && (
+                          <span className="text-muted-foreground">
+                            {refLabel.w1}: {show(p.w1)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }}
+                />
+                {live && (
+                  <ReferenceLine
+                    x={now}
+                    stroke="var(--foreground)"
+                    strokeOpacity={0.25}
+                    strokeDasharray="2 3"
+                  />
+                )}
+                {hasW1 && (
+                  <Line
+                    type="monotone"
+                    dataKey="w1"
+                    stroke={COLOR_W1}
+                    strokeOpacity={0.6}
+                    strokeDasharray="6 4"
+                    strokeWidth={1.25}
+                    dot={false}
+                    activeDot={false}
+                    isAnimationActive={false}
+                  />
+                )}
+                {ahead && (
+                  <Line
+                    type="monotone"
+                    dataKey="projected"
+                    stroke={COLOR_TODAY}
+                    strokeDasharray="2 3"
+                    strokeWidth={1.5}
+                    dot={false}
+                    activeDot={false}
+                    isAnimationActive={false}
+                    connectNulls={false}
+                  />
+                )}
+                <Area
+                  type="monotone"
+                  dataKey="today"
+                  stroke={COLOR_TODAY}
+                  strokeWidth={2}
+                  fill="url(#sales-today)"
+                  dot={false}
+                  activeDot={{
+                    r: 3,
+                    stroke: "var(--background)",
+                    strokeWidth: 2,
+                  }}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              </ComposedChart>
+            </ChartContainer>
+            <ChartContainer
+              role="img"
+              aria-label={t("monitor.sales.bars")}
+              className="aspect-auto h-[84px] w-full"
+              config={{
+                today: { label: t("monitor.sales.today"), color: COLOR_TODAY },
+              }}
+            >
+              <ComposedChart
+                data={bars}
+                margin={{ left: 0, right: 0, top: 4 }}
+                barGap={1}
+              >
+                <XAxis
+                  dataKey="x"
+                  type="number"
+                  domain={[0, 24]}
+                  ticks={[0, 6, 12, 18, 24]}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={AXIS_TICK}
+                  tickMargin={6}
+                  tickFormatter={(h: number) =>
+                    `${String(h).padStart(2, "0")}h`
+                  }
+                />
+                <YAxis orientation="right" width={Y_AXIS_WIDTH} tick={false} tickLine={false} axisLine={false} />
+                {hasW1 && (
+                  <Bar
+                    dataKey="w1"
+                    fill={COLOR_W1}
+                    fillOpacity={0.25}
+                    barSize={6}
+                    radius={[2, 2, 0, 0]}
+                    isAnimationActive={false}
+                  />
+                )}
+                <Bar
+                  dataKey="today"
+                  barSize={6}
+                  radius={[2, 2, 0, 0]}
+                  isAnimationActive={false}
+                >
+                  {bars.map((b, i) => (
+                    <Cell
+                      key={b.x}
+                      fill={
+                        i < hour &&
+                        b.w1 !== null &&
+                        (b.today ?? 0) < BELOW_W1 * b.w1
+                          ? "var(--destructive)"
+                          : COLOR_TODAY
+                      }
+                      fillOpacity={i === hour && live ? 0.5 : 0.85}
+                    />
+                  ))}
+                </Bar>
+              </ComposedChart>
+            </ChartContainer>
+          </div>
+          <div className="text-meta flex flex-wrap items-center gap-x-4 gap-y-1">
+            <Legend line={<span className="h-0.5 w-4 bg-chart-1" />}>
+              {t("monitor.sales.today")}
+            </Legend>
+            {ahead && (
+              <Legend
+                line={
+                  <span className="w-4 border-t-2 border-dotted border-chart-1" />
+                }
+              >
+                {t("monitor.sales.projected")}
+              </Legend>
+            )}
+            {hasW1 && (
+              <Legend
+                line={
+                  <span className="w-4 border-t-2 border-dashed border-muted-foreground/60" />
+                }
+              >
+                {t("monitor.sales.w1Legend")}
+              </Legend>
+            )}
+            <span>
+              {currency
+                ? t("monitor.sales.barsRevenue")
+                : t("monitor.sales.barsOrders")}
+            </span>
+          </div>
+        </div>
+
+        <div className="min-w-0 border-t border-border/50 p-4 md:border-t-0 md:border-l">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-meta border-b border-border/50">
+                <th className="py-2 text-left font-normal">
+                  {t("monitor.sales.hour")}
+                </th>
+                <th className="py-2 pl-3 text-right font-normal">
+                  {t("monitor.sales.capturedShort")}
+                </th>
+                {hasW1 && (
+                  <th className="py-2 pl-3 text-right font-normal">
+                    {refLabel.w1}
+                  </th>
+                )}
+                {hasW1 && <th className="w-14 py-2" />}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const future = row.value === null;
+                const amount = future ? row.expected : row.value;
+                return (
+                  <tr
+                    key={row.h}
+                    className={cn(
+                      "border-b border-border/50 last:border-b-0",
+                      future && "text-muted-foreground",
+                    )}
+                  >
+                    <td className="tnum py-2 whitespace-nowrap">
+                      {clock(row.h * 4)}
+                      {row.partial && (
+                        <span className="text-meta">
+                          {" "}
+                          {t("monitor.sales.soFar")}
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className={cn(
+                        "tnum py-2 pl-3 text-right whitespace-nowrap",
+                        future ? "italic" : "text-foreground",
+                      )}
+                    >
+                      {amount === null ? "—" : show(amount)}
+                    </td>
+                    {hasW1 && (
+                      <td className="tnum py-2 pl-3 text-right whitespace-nowrap text-muted-foreground">
+                        {row.w1 === null ? "—" : show(row.w1)}
+                      </td>
+                    )}
+                    {hasW1 && (
+                      <td className="py-2 text-right">
+                        {!future && (
                           <Trend
-                            change={relativeChange(own, then)}
+                            change={relativeChange(row.value, row.w1)}
                             better="up"
                             reference=""
                           />
-                        </span>
+                        )}
                       </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {ahead && (
+            <p className="text-meta pt-3">
+              {t("monitor.sales.ahead", {
+                amount: show(
+                  total(ahead, Math.min(24, hour + HOURS_AFTER + 1)),
+                ),
+                until: clock(Math.min(96, (hour + HOURS_AFTER + 1) * 4)),
+              })}
+            </p>
+          )}
+        </div>
       </div>
 
-      {projection && done < 95 && (
-        <div className="grid gap-6 border-t border-border/50 pt-5 md:grid-cols-2">
-          <div className="flex min-w-0 flex-col gap-3">
-            <span className="text-sm text-foreground/70">
-              {t("monitor.sales.projection", { from: "00:00", to: "23:59" })}
+      <div className="grid grid-cols-2 border-t border-border/50 lg:grid-cols-4">
+        {cards.map((c, i) => (
+          <div
+            key={c.key}
+            className={cn(
+              "flex flex-col gap-2 p-4",
+              i % 2 === 1 && "border-l border-border/50",
+              i >= 2 && "border-t border-border/50 lg:border-t-0",
+              i === 2 && "lg:border-l",
+            )}
+          >
+            <span className="text-meta">{c.label}</span>
+            <span className="tnum text-xl font-medium text-foreground">
+              {c.value}
             </span>
-            <span className="tnum text-3xl text-foreground">
-              {show(projection.close)}
-            </span>
-            <span className="text-meta flex flex-wrap items-center gap-x-1.5">
-              <Trend
-                change={relativeChange(
-                  pick(projection.close),
-                  pick(projection.initial),
-                )}
-                better="up"
-                reference=""
-              />
-              {t("monitor.sales.initial", {
-                amount: show(projection.initial),
-              })}
-            </span>
-            <div className="flex flex-col gap-1.5 pt-1">
-              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-chart-1"
-                  style={{ width: `${share * 100}%` }}
-                />
-              </div>
-              <span className="text-meta">
-                {t("monitor.sales.inSoFar", {
-                  share: `${Math.round(share * 100)}%`,
-                  time: until,
-                })}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-3">
-            <span className="text-sm text-foreground/70">
-              {t("monitor.sales.nextHours")}
-            </span>
-            <dl className="grid grid-cols-[auto_1fr_auto] gap-x-4 text-sm">
-              {next.map((x, i) => (
-                <div
-                  key={x.h}
-                  className="col-span-3 grid grid-cols-subgrid items-baseline border-b border-border/50 py-2 last:border-b-0"
-                >
-                  <dt className="tnum text-foreground/70">
-                    {i === 0
-                      ? t("monitor.sales.untilNext", {
-                          to: clock((x.h + 1) * 4),
-                        })
-                      : `${clock(x.h * 4)}–${clock((x.h + 1) * 4)}`}
-                  </dt>
-                  <dd className="tnum text-right text-foreground">{show(x)}</dd>
-                  <dd className="tnum text-meta w-24 text-right">
-                    {currency
-                      ? t("monitor.sales.ordersCount", {
-                          count: count(x.orders),
-                        })
-                      : null}
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              {REFS.map((r, j) => (
+                <div key={r} className="contents">
+                  <dt className="text-muted-foreground">{refLabel[r]}</dt>
+                  <dd>
+                    {c.refs[j] === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <Trend change={c.refs[j]!} better="up" reference="" />
+                    )}
                   </dd>
                 </div>
               ))}
             </dl>
-            <p className="text-meta">
-              {t("monitor.sales.target", {
-                amount: show({
-                  orders: today.orders + nextTotal.orders,
-                  revenue: today.revenue + nextTotal.revenue,
-                }),
-                until: clock(((next.at(-1)?.h ?? first) + 1) * 4),
-              })}
-            </p>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
     </section>
+  );
+}
+
+function Legend({
+  line,
+  children,
+}: {
+  line: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {line}
+      {children}
+    </span>
   );
 }

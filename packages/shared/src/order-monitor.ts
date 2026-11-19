@@ -118,6 +118,8 @@ export interface OrderMonitorDay {
   forecast: {
     /** The orders' currency (ISO 4217); null when the day has no orders yet. */
     currency: string | null;
+    /** Revenue per clock hour, as `orders`. */
+    revenue: OrderMonitorSeries;
     /** Up to `done`; a reference day is null when the lake has no order of it. */
     soFar: {
       today: OrderMonitorSales;
