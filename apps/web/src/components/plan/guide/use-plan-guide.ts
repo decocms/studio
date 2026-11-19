@@ -33,7 +33,7 @@ import {
 /** Below this the "thinking" screen flashes instead of reading as thought. */
 const MIN_THINKING_MS = 1600;
 /** The last beat before the case opens. */
-const BUILDING_MS = 1800;
+const BUILDING_MS = 2200;
 
 export function usePlanGuide() {
   const t = useT();

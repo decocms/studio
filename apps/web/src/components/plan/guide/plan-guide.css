@@ -65,3 +65,59 @@
     background: none;
   }
 }
+
+/* A thought or a word coming into focus. */
+.plan-guide-reveal {
+  animation: plan-guide-reveal 0.5s ease-out both;
+}
+@keyframes plan-guide-reveal {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
+/* The last beat: the case's nine cards appearing and filling in. */
+.plan-guide-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 14px);
+  gap: 5px;
+}
+.plan-guide-tiles > span {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  animation: plan-guide-tile 1.2s ease-out both;
+}
+@keyframes plan-guide-tile {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+    background: transparent;
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1);
+    background: transparent;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    border-color: var(--color-foreground);
+    background: var(--color-foreground);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-guide-reveal,
+  .plan-guide-tiles > span {
+    animation: none;
+  }
+}
