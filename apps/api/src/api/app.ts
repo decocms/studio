@@ -31,6 +31,11 @@ import {
   setDemoBoardResetRuntime,
 } from "@/tools/demo-board/dbos-demo-board-reset";
 import {
+  kickOrderIngestBackfill,
+  registerOrderIngestBackfillWorkflow,
+  setOrderIngestBackfillRuntime,
+} from "@/monitoring/dbos-order-ingest-backfill";
+import {
   registerOrderMonitorWorkflow,
   setOrderMonitorRuntime,
 } from "@/monitoring/dbos-order-monitor";
@@ -1725,6 +1730,11 @@ export async function createApp(options: CreateAppOptions = {}) {
   // it only writes a module-level pointer, no DBOS API calls.
   // The actual dispatch (and its dispatch-run deps) lives on the thread-gate
   // runtime now — automations invoke its shared `runDispatchSteps` body.
+  // Once: the order ingest for VTEX connections that had their keys before saving installed it.
+  setOrderIngestBackfillRuntime({
+    db: database.db,
+    contextFactory: automationContextFactory,
+  });
   setAutomationRuntime({
     storage: automationsStorage,
     studioContextFactory: automationContextFactory,
@@ -1991,6 +2001,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerTaskBoardArchiveSweepWorkflow();
   registerDemoBoardResetWorkflow();
   registerOrderMonitorWorkflow();
+  registerOrderIngestBackfillWorkflow();
   registerTrafficMonitorWorkflow();
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
@@ -2569,6 +2580,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     // so parallel-booting replicas collapse via OAOO).
     kickPublicSetsBootSync().catch((err) => {
       console.error("[org-fs] public-sets boot sync kick failed:", err);
+    });
+
+    // Fixed workflow id: runs once, whichever replica boots first.
+    kickOrderIngestBackfill().catch((err) => {
+      console.error("[order-ingest] backfill kick failed:", err);
     });
   };
 
