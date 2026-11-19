@@ -1,20 +1,19 @@
-/**
- * The case tab beside the chat: the canvas of the case this chat is building.
- * Before the agent's first write it draws what the Plan page sent (the goal
- * and the request), so the person lands on a page that is already taking
- * shape.
- */
+/** The case tab beside the chat; `caseView` picks what it shows. */
 
 import { matchBusinessCasePath } from "@decocms/shared/business-case";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useOptionalChatStream } from "@/components/chat/chat-context.tsx";
-import { useOptionalChatTask } from "@/components/chat/context";
+import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
+import { useChatRequestOptions } from "@/components/chat/highlight/use-chat-request-options";
+import type { UserAskToolPart } from "@/components/chat/types";
 import { Page } from "@/components/page";
 import { formatLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
+import { BUILDING, Question, Thinking } from "../guide/guide-screens.tsx";
 import { BusinessCaseCanvas } from "./business-case-canvas.tsx";
 import { readCaseSeed } from "./case-seed.ts";
+import { caseView, userAskQuestion } from "./case-view.ts";
 import { useBusinessCase } from "./use-business-case.ts";
 
 function CaseLoading({ label }: { label?: string }) {
@@ -47,18 +46,74 @@ function useAskInChat(path: string) {
     });
 }
 
+/** The agent's pending question on the guided intro's screen; the answer
+ *  goes to the chat the way the chat's own question form sends it. */
+function CaseQuestion({ part }: { part: UserAskToolPart }) {
+  const t = useT();
+  const { submit } = useChatStream();
+  const requestOptions = useChatRequestOptions();
+  const labels = {
+    yes: t("chat.userAskQuestion.confirmYes"),
+    no: t("chat.userAskQuestion.confirmNo"),
+  };
+  const answer = (text: string) => {
+    const confirm = part.input?.type === "confirm";
+    const response = !text.trim()
+      ? t("chat.userAskQuestion.skipMessage")
+      : confirm && text === labels.yes
+        ? "yes"
+        : confirm && text === labels.no
+          ? "no"
+          : text.trim();
+    void submit(
+      { kind: "toolOutput", toolCallId: part.toolCallId, output: { response } },
+      requestOptions(),
+    );
+  };
+  return (
+    <Question
+      view={{ question: userAskQuestion(part, labels), reaction: null }}
+      onAnswer={answer}
+    />
+  );
+}
+
 export function BusinessCaseTab({ path }: { path: string }) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
+  const chat = useOptionalChatStream();
+  const task = useOptionalChatTask();
   const read = useBusinessCase(path);
   const onAsk = useAskInChat(path);
   const value = read.data?.value ?? readCaseSeed(sessionStorage, path);
 
-  return (
-    <Page>
-      <Page.Content>
-        <Page.Container width="wide" className="py-8">
-          {value ? (
+  if (!value) {
+    return (
+      <Page>
+        <Page.Content>
+          <Page.Container width="wide" className="py-8">
+            <CaseLoading
+              label={read.isPending ? undefined : t("plan.case.waiting")}
+            />
+          </Page.Container>
+        </Page.Content>
+      </Page>
+    );
+  }
+
+  const view = caseView({
+    value,
+    isCaseThread:
+      !!chat && !!task?.taskId && task.taskId === matchBusinessCasePath(path),
+    messages: chat?.messages ?? [],
+    running: !!chat?.isStreaming || task?.activeTask?.status === "in_progress",
+  });
+
+  if (view.kind === "canvas") {
+    return (
+      <Page>
+        <Page.Content>
+          <Page.Container width="wide" className="py-8">
             <BusinessCaseCanvas
               value={value}
               invalid={read.data?.invalid}
@@ -67,13 +122,36 @@ export function BusinessCaseTab({ path }: { path: string }) {
                 openPanel(formatLibraryFileTabId(`home/${documentPath}`))
               }
             />
-          ) : (
-            <CaseLoading
-              label={read.isPending ? undefined : t("plan.case.waiting")}
-            />
-          )}
-        </Page.Container>
-      </Page.Content>
+          </Page.Container>
+        </Page.Content>
+      </Page>
+    );
+  }
+
+  return (
+    <Page>
+      <div className="flex h-full min-h-0 flex-col animate-in fade-in-0 duration-300 motion-reduce:animate-none">
+        <div className="flex items-center gap-3 px-4 pt-4 md:px-8">
+          <p className="min-w-0 truncate py-1.5 text-sm text-muted-foreground">
+            <span className="text-meta mr-2">{t("page.businessCase")}</span>
+            {value.title}
+          </p>
+        </div>
+        <div className="flex min-h-0 flex-1 overflow-auto">
+          <div className="m-auto flex w-full max-w-2xl justify-center px-4 py-10 md:px-8">
+            {view.kind === "question" ? (
+              <CaseQuestion key={view.part.toolCallId} part={view.part} />
+            ) : (
+              <Thinking
+                phrases={BUILDING}
+                offset={0}
+                building
+                filled={view.filled}
+              />
+            )}
+          </div>
+        </div>
+      </div>
     </Page>
   );
 }

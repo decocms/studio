@@ -50,6 +50,7 @@ export const plan = {
   "plan.prompt.withoutObjective":
     "Let's build a business case for this request together. Follow the business-case skill (read /app/org/public/core/business-case/SKILL.md). The canvas for this case is {casePath}: run init now, before anything else, and fill the cards as we go. If the request does not say where and what, ask me one thing at a time, with options.\n\nRequest: {idea}",
   "plan.case.waiting": "Opening the business case…",
+  "plan.case.buildingProgress": "{filled} of {total} cards filled",
   "plan.case.asking": "Answer in the chat",
   "plan.case.assumption": "Assumption:",
   "plan.case.openDocument": "Open the document",
