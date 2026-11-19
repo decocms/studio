@@ -9,7 +9,6 @@
  */
 
 import { userMemoryDir } from "@decocms/shared/memory";
-import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import {
@@ -18,7 +17,8 @@ import {
   THREAD_TOOL_NAMES,
 } from "@/tools/task-board/task-run-context";
 
-type RunMemory = NonNullable<HarnessStreamInputWire["memory"]>;
+/** The dispatch input's `memory`. Declared here so the decision stays sandbox-free; the dispatch glue types it against the wire schema. */
+type RunMemory = { enabled: false } | { enabled: true; directory: string };
 
 const OFF: RunMemory = { enabled: false };
 
