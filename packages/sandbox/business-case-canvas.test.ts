@@ -7,13 +7,19 @@ import {
   BUSINESS_CASE_AREAS,
   BUSINESS_CASE_CARD_KEYS,
   BUSINESS_CASE_LIMITS,
+  BUSINESS_CASE_METRIC_UNITS,
   BusinessCaseSchema,
 } from "@decocms/shared/business-case";
 import {
   AREAS,
   CARD_KEYS,
   LIMITS,
+  METRIC_UNITS,
 } from "./image/skills/business-case/business-case-canvas.mjs";
+import {
+  abTest,
+  money,
+} from "./image/skills/business-case/business-case-math.mjs";
 
 const CLI = fileURLToPath(
   new URL(
@@ -67,6 +73,7 @@ describe("business-case-canvas", () => {
     expect(CARD_KEYS).toEqual([...BUSINESS_CASE_CARD_KEYS]);
     expect(AREAS).toEqual([...BUSINESS_CASE_AREAS]);
     expect(LIMITS).toEqual({ ...BUSINESS_CASE_LIMITS });
+    expect(METRIC_UNITS).toEqual([...BUSINESS_CASE_METRIC_UNITS]);
   });
 
   it("init writes a case the web can read, every card empty", () => {
@@ -257,5 +264,254 @@ describe("business-case-canvas", () => {
     expect(missing.code).toBe(1);
     expect(missing.stderr).toContain("run init first");
     expect(existsSync(path)).toBe(false);
+  });
+
+  it("ask keeps the question as asked, and settling drops it", () => {
+    init();
+    run([
+      "ask",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--question",
+      "Qual é a margem por pedido?",
+    ]);
+    expect(saved().cards.money).toMatchObject({
+      state: "asking",
+      question: "Qual é a margem por pedido?",
+    });
+    run(["set", "--path", path, "--card", "scope", "--summary", "PDP"]);
+    expect(saved().cards.money.question).toBeUndefined();
+    expect(saved().cards.money.state).toBe("empty");
+  });
+
+  it("set --metric stores metrics on problem and effort", () => {
+    init();
+    const { code } = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "problem",
+      "--summary",
+      "41% saem no frete",
+      "--metric",
+      "Nossa loja|41|percent",
+      "--metric",
+      "Média do setor|24.5|percent",
+    ]);
+    expect(code).toBe(0);
+    expect(saved().cards.problem.metrics).toEqual([
+      { label: "Nossa loja", value: 41, unit: "percent" },
+      { label: "Média do setor", value: 24.5, unit: "percent" },
+    ]);
+  });
+
+  it("rejects a metric on another card, a bad unit, a bad number or too many", () => {
+    init();
+    const set = (card: string, ...metrics: string[]) =>
+      run([
+        "set",
+        "--path",
+        path,
+        "--card",
+        card,
+        "--summary",
+        "x",
+        ...metrics.flatMap((m) => ["--metric", m]),
+      ]);
+    const scope = set("scope", "Loja|1|percent");
+    expect(scope.code).toBe(1);
+    expect(scope.stderr).toContain("only problem and effort carry metrics");
+    const unit = set("problem", "Loja|1|miles");
+    expect(unit.code).toBe(1);
+    expect(unit.stderr).toContain("unit must be one of");
+    const number = set("problem", "Loja|muito|percent");
+    expect(number.code).toBe(1);
+    expect(number.stderr).toContain("is not a number");
+    const many = set(
+      "problem",
+      ...Array.from(
+        { length: BUSINESS_CASE_LIMITS.metrics + 1 },
+        (_, i) => `m${i}|${i}|count`,
+      ),
+    );
+    expect(many.code).toBe(1);
+    expect(many.stderr).toContain("at most 4 metrics");
+  });
+
+  it("set on money runs the math and keeps its numbers", () => {
+    init();
+    const { code } = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--summary",
+      "R$ 38 mil por mês",
+      "--base",
+      "104000",
+      "--delta-pp",
+      "1.5",
+      "--value",
+      "73",
+      "--gap-pp",
+      "17",
+      "--base-label",
+      "carrinhos por mês",
+      "--value-label",
+      "receita por pedido a mais",
+    ]);
+    expect(code).toBe(0);
+    const expected = money({
+      base: 104000,
+      deltaPp: 1.5,
+      value: 73,
+      gapPp: 17,
+    });
+    expect(saved().cards.money.calc).toEqual({
+      kind: "money",
+      base: 104000,
+      baseLabel: "carrinhos por mês",
+      deltaPp: 1.5,
+      value: 73,
+      valueLabel: "receita por pedido a mais",
+      gapPp: 17,
+      monthlyValue: expected.monthly_value,
+      ceilingMonthly: expected.ceiling_monthly,
+    });
+  });
+
+  it("the math's notes become the money assumption when there is none", () => {
+    init();
+    run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--summary",
+      "x",
+      "--base",
+      "1000",
+      "--delta-pp",
+      "9",
+      "--value",
+      "50",
+    ]);
+    const card = saved().cards.money;
+    expect(card.calc).toMatchObject({ deltaPp: 3 });
+    expect(card.assumption).toContain("delta-pp 9 moved to 3");
+  });
+
+  it("set on abTest runs the math", () => {
+    init();
+    const { code } = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "abTest",
+      "--summary",
+      "3 semanas",
+      "--baseline",
+      "0.59",
+      "--effect-pp",
+      "1.5",
+      "--weekly",
+      "24000",
+    ]);
+    expect(code).toBe(0);
+    const expected = abTest({ baseline: 0.59, effectPp: 1.5, weekly: 24000 });
+    expect(saved().cards.abTest.calc).toEqual({
+      kind: "abTest",
+      baseline: 0.59,
+      mdePp: expected.mde_pp,
+      nPerGroup: expected.n_per_group,
+      weeks: expected.weeks,
+      measurable: expected.measurable,
+    });
+  });
+
+  it("rejects math flags on the wrong card, partial inputs and inputs the math rejects", () => {
+    init();
+    const before = readFileSync(path, "utf8");
+    const wrong = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "effort",
+      "--summary",
+      "x",
+      "--base",
+      "10",
+    ]);
+    expect(wrong.code).toBe(1);
+    expect(wrong.stderr).toContain("--base goes on the money card");
+    const partial = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--summary",
+      "x",
+      "--base",
+      "10",
+    ]);
+    expect(partial.code).toBe(1);
+    expect(partial.stderr).toContain(
+      "money needs --base, --delta-pp and --value",
+    );
+    const zero = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--summary",
+      "x",
+      "--base",
+      "0",
+      "--delta-pp",
+      "1",
+      "--value",
+      "10",
+    ]);
+    expect(zero.code).toBe(1);
+    expect(zero.stderr).toContain("base must be a number > 0");
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
+  it("setting a card again without the math drops the old numbers", () => {
+    init();
+    run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--summary",
+      "x",
+      "--base",
+      "1000",
+      "--delta-pp",
+      "1",
+      "--value",
+      "50",
+    ]);
+    run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--summary",
+      "Sem dados de tráfego",
+    ]);
+    expect(saved().cards.money.calc).toBeUndefined();
   });
 });
