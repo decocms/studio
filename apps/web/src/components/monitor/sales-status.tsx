@@ -113,8 +113,11 @@ export function SalesStatus({
   conversion?: Kpi | null;
 }) {
   const t = useT();
-  // A day read from an API without the sales yet.
-  if (days.length === 0 || days.some((d) => !d.forecast?.revenue)) return null;
+  // A day read from an API without the sales, or the projection's range, yet.
+  const stale = (d: OrderMonitorDay) =>
+    !d.forecast?.revenue ||
+    (d.forecast.projection !== null && !d.forecast.projection.range);
+  if (days.length === 0 || days.some(stale)) return null;
   const first = days[0]!;
   const done = Math.min(...days.map((d) => d.done));
   const live =
