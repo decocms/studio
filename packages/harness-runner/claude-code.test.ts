@@ -15,6 +15,7 @@ import {
   promptForRun,
   promptFromUserMessage,
   studioMcpPreflight,
+  userTurn,
 } from "./claude-code";
 import { UiChunkTranslator } from "./to-ui-chunks";
 
@@ -962,5 +963,44 @@ describe("studioCli runs", () => {
         ),
       ).toMatchObject({ behavior: "deny" });
     });
+  });
+});
+
+describe("userTurn", () => {
+  const image = {
+    type: "image" as const,
+    source: {
+      type: "base64" as const,
+      media_type: "image/png" as const,
+      data: "iVBORw0KGgo=",
+    },
+  };
+
+  test("text only stays a plain string prompt", () => {
+    expect(userTurn(input(), () => []).message.content).toBe("hi");
+  });
+
+  test("images follow the text, which keeps its path line", () => {
+    const text = "- a.png: /app/org/upload/a.png (tool URL: x)\n\nlook";
+    const turn = userTurn(
+      input({ userMessage: { parts: [{ type: "text", text }] } }),
+      () => [image, image],
+    );
+    expect(turn.message.content).toEqual([
+      { type: "text", text },
+      image,
+      image,
+    ]);
+  });
+
+  test("a resumed turn carries the images and the continuation", () => {
+    const content = userTurn(
+      input({ resume: { reason: "pod evicted" } }),
+      () => [image],
+    ).message.content;
+    expect(Array.isArray(content)).toBe(true);
+    const [text, ...rest] = content as unknown[];
+    expect((text as { text: string }).text).toContain("CONTINUING");
+    expect(rest).toEqual([image]);
   });
 });
