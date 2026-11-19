@@ -28,6 +28,7 @@ import {
   PROJECT_ROUTE,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
+import { withProjectOverviewState } from "@/layouts/main-panel-tabs/tab-id";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
 import {
   selectedProjectNavViews,
@@ -128,6 +129,7 @@ function useNavDestinations(): NavDestination[] {
         ? {
             to: PROJECT_ROUTE.root,
             params: { org: org.slug, agentId: scopeId },
+            state: withProjectOverviewState,
           }
         : { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
     },

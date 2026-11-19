@@ -37,6 +37,7 @@ import {
   blogPostSearchShape,
   blogSearchShape,
 } from "@/components/sandbox/content/blog/blog-search-params";
+import { isProjectOverviewVisit } from "@/layouts/main-panel-tabs/tab-id";
 
 const rootRoute = createRootRoute({
   /** No `<Providers>` here: the entry (`index.web.tsx`) wraps
@@ -583,9 +584,6 @@ const projectsIndexRoute = createRoute({
   },
 });
 
-/** The project the last non-preload navigation loaded. */
-let lastLoadedProjectId: string | undefined;
-
 /** Canonical identity boundary for one project. Every feature is a real child
  *  route and therefore owns both its composition and its URL. */
 const agentWorkspaceRoute = createRoute({
@@ -597,17 +595,13 @@ const agentWorkspaceRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/projects/$agentId",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
-  /** Arriving from outside the project lands its root on the configured main
-   *  view; moving to the root from inside it is an explicit visit to the
-   *  Overview. TanStack reports a project switch as `stay` because the route id
-   *  is unchanged, so the agent id is compared too. */
-  beforeLoad: ({ cause, params }) => {
-    if (cause === "preload") return { enteredProject: false };
-    const enteredProject =
-      cause === "enter" || params.agentId !== lastLoadedProjectId;
-    lastLoadedProjectId = params.agentId;
-    return { enteredProject };
-  },
+  /** Opening a project lands its root on the configured main view, from
+   *  outside the project or from inside it. Only the project's Overview row
+   *  asks for the Overview itself, through {@link withProjectOverviewState}. */
+  beforeLoad: ({ cause, location }) => ({
+    enteredProject:
+      cause !== "preload" && !isProjectOverviewVisit(location.state),
+  }),
   component: Outlet,
 });
 

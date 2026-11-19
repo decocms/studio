@@ -23,6 +23,10 @@ import {
   resolveTabClickTarget,
   isAutomationsPillActive,
   resolveAutomationsPillClickTarget,
+  isAppTakeoverVisit,
+  isProjectOverviewVisit,
+  withAppTakeoverState,
+  withProjectOverviewState,
 } from "./tab-id";
 
 describe("normalizePanelSegment", () => {
@@ -649,5 +653,35 @@ describe("code tab id", () => {
   test("an open code path is per-thread (scoped to the task's sandbox/branch), but the bare tab is not", () => {
     expect(isPerThreadTab(formatCodeTabId("src/index.ts"))).toBe(true);
     expect(isPerThreadTab("code")).toBe(false);
+  });
+});
+
+describe("project landing history state", () => {
+  test("the Overview row's state asks for the Overview", () => {
+    expect(isProjectOverviewVisit(withProjectOverviewState({ key: "a" }))).toBe(
+      true,
+    );
+    expect(isAppTakeoverVisit(withProjectOverviewState({}))).toBe(false);
+    // Overview opened from inside the app's frame must not inherit it.
+    expect(
+      isAppTakeoverVisit(withProjectOverviewState(withAppTakeoverState({}))),
+    ).toBe(false);
+  });
+
+  test("an app landing's state asks for the takeover", () => {
+    expect(isAppTakeoverVisit(withAppTakeoverState({ key: "a" }))).toBe(true);
+    expect(isProjectOverviewVisit(withAppTakeoverState({}))).toBe(false);
+    expect(
+      isProjectOverviewVisit(
+        withAppTakeoverState(withProjectOverviewState({})),
+      ),
+    ).toBe(false);
+  });
+
+  test("any other state asks for neither", () => {
+    for (const state of [undefined, null, {}, { projectOverview: "yes" }]) {
+      expect(isProjectOverviewVisit(state)).toBe(false);
+      expect(isAppTakeoverVisit(state)).toBe(false);
+    }
   });
 });
