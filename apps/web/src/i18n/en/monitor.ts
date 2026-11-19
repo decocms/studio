@@ -197,7 +197,7 @@ export const monitor = {
   "monitor.sales.today": "today",
   "monitor.sales.projected": "projection",
   "monitor.sales.hour": "Hour",
-  "monitor.sales.soFar": "(so far)",
+  "monitor.sales.soFar": "so far",
   "monitor.sales.ahead":
     "The day should bring {amount} more by {until} to stay on its projection.",
   "monitor.sales.orders": "Orders",
@@ -206,8 +206,9 @@ export const monitor = {
   "monitor.sales.perOrder": "{n}/order",
   "monitor.sales.conversion": "Conversion",
   "monitor.sales.between": "likely {low} – {high}",
-  "monitor.sales.rangeLegend":
-    "likely range",
+  "monitor.sales.rangeLegend": "likely range",
+  "monitor.sales.soFarNote": "hour under way, vs W-1 up to the same minute",
+  "monitor.sales.expectedNote": "grey: projected",
   "monitor.store.projected": "Orders projected today",
   "monitor.store.soFar": "Orders so far",
   "monitor.store.canceled": "Cancellations today",

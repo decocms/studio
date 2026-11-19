@@ -592,21 +592,25 @@ export function SalesStatus({
         </div>
 
         <div className="flex min-w-0 flex-col gap-3 border-t border-border/50 p-4 md:border-t-0 md:border-l">
-          <table className="w-full text-sm">
+          <table className="tnum w-full table-fixed text-sm [&_td]:align-middle [&_td]:whitespace-nowrap">
+            <colgroup>
+              <col />
+              <col className="w-[34%]" />
+              {hasW1 && <col className="w-[34%]" />}
+              {hasW1 && <col className="w-14" />}
+            </colgroup>
             <thead>
               <tr className="text-meta border-b border-border/50">
                 <th className="py-2 text-left font-normal">
                   {t("monitor.sales.hour")}
                 </th>
-                <th className="py-2 pl-3 text-right font-normal">
+                <th className="py-2 text-right font-normal">
                   {t("monitor.sales.capturedShort")}
                 </th>
                 {hasW1 && (
-                  <th className="py-2 pl-3 text-right font-normal">
-                    {refLabel.w1}
-                  </th>
+                  <th className="py-2 text-right font-normal">{refLabel.w1}</th>
                 )}
-                {hasW1 && <th className="w-14 py-2" />}
+                {hasW1 && <th />}
               </tr>
             </thead>
             <tbody>
@@ -616,41 +620,47 @@ export function SalesStatus({
                 return (
                   <tr
                     key={row.h}
-                    className={cn(
-                      "border-b border-border/50 last:border-b-0",
-                      future && "text-muted-foreground",
-                    )}
+                    className="border-b border-border/50 last:border-b-0"
                   >
-                    <td className="tnum py-2 whitespace-nowrap">
-                      {clock(row.h * 4)}
-                      {row.partial && (
-                        <span className="text-meta">
-                          {" "}
-                          {t("monitor.sales.soFar")}
-                        </span>
+                    <td
+                      className={cn(
+                        "py-2",
+                        future ? "text-muted-foreground" : "text-foreground",
                       )}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {clock(row.h * 4)}
+                        {row.partial && (
+                          <span
+                            className="size-1.5 rounded-full bg-success"
+                            title={t("monitor.sales.soFar")}
+                          />
+                        )}
+                      </span>
                     </td>
                     <td
                       className={cn(
-                        "tnum py-2 pl-3 text-right whitespace-nowrap",
-                        future ? "italic" : "text-foreground",
+                        "py-2 text-right",
+                        future ? "text-muted-foreground" : "text-foreground",
                       )}
                     >
                       {amount === null ? "—" : show(amount)}
                     </td>
                     {hasW1 && (
-                      <td className="tnum py-2 pl-3 text-right whitespace-nowrap text-muted-foreground">
+                      <td className="py-2 text-right text-muted-foreground">
                         {row.w1 === null ? "—" : show(row.w1)}
                       </td>
                     )}
                     {hasW1 && (
                       <td className="py-2 text-right">
                         {!future && (
-                          <Trend
-                            change={relativeChange(row.value, row.w1)}
-                            better="up"
-                            reference=""
-                          />
+                          <span className="inline-flex justify-end leading-none">
+                            <Trend
+                              change={relativeChange(row.value, row.w1)}
+                              better="up"
+                              reference=""
+                            />
+                          </span>
                         )}
                       </td>
                     )}
@@ -659,6 +669,14 @@ export function SalesStatus({
               })}
             </tbody>
           </table>
+          {live && (
+            <p className="text-meta flex flex-wrap items-center gap-x-1.5">
+              <span className="size-1.5 rounded-full bg-success" />
+              {t("monitor.sales.soFarNote")}
+              {ahead && <span aria-hidden>·</span>}
+              {ahead && t("monitor.sales.expectedNote")}
+            </p>
+          )}
           {ahead && (
             <p className="text-meta">
               {t("monitor.sales.ahead", {
