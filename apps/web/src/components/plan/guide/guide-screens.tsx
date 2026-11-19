@@ -28,8 +28,24 @@ export const BUILDING: TranslationKey[] = [
   "plan.guide.building1",
   "plan.guide.building2",
   "plan.guide.building3",
+  "plan.guide.building4",
+  "plan.guide.building5",
+  "plan.guide.building6",
+  "plan.guide.building7",
+  "plan.guide.building8",
+  "plan.guide.building9",
+  "plan.guide.building10",
+  "plan.guide.building11",
+  "plan.guide.building12",
+  "plan.guide.building13",
+  "plan.guide.building14",
+  "plan.guide.building15",
+  "plan.guide.building16",
 ];
-const PHRASE_MS = 900;
+const PHRASE_MS = 7000;
+/** A thought sits still first, then a light sweeps across it for the rest of
+ *  its beat, so a long wait still reads as work in progress. */
+const SHIMMER_MS = 5000;
 const TILES = BUSINESS_CASE_CARD_KEYS.length;
 
 /** Three quiet dots and a thought that changes every beat. Each step starts
@@ -82,7 +98,12 @@ export function Thinking({
         </div>
       )}
       <p key={phrase} className="plan-guide-reveal text-base">
-        <span className="plan-guide-shimmer">{t(phrase)}</span>
+        <span
+          className="plan-guide-shimmer"
+          style={{ animationDelay: `${PHRASE_MS - SHIMMER_MS}ms` }}
+        >
+          {t(phrase)}
+        </span>
       </p>
       {filled !== undefined && filled > 0 && (
         <p className="text-xs text-muted-foreground">

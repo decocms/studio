@@ -33,7 +33,9 @@
     0 0 / 250% 100%;
   background-clip: text;
   -webkit-background-clip: text;
-  animation: plan-guide-shimmer 2s linear infinite;
+  /* Two sweeps per shimmer window; the delay comes from the component. At rest
+     the highlight sits outside the text, so the wait before it reads as still. */
+  animation: plan-guide-shimmer 2.5s linear infinite;
 }
 
 @keyframes plan-guide-dot {
