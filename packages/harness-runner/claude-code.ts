@@ -38,6 +38,7 @@ import {
   processStudioCliHome,
   studioCliEnv,
   studioCliInstruction,
+  studioMcpInstruction,
   studioCliPluginDir,
   studioToolCall,
   writeStudioCliSession,
@@ -58,6 +59,7 @@ const ENVS = {
   // knows where it wrote them, and the value must not outlive that pod.
   PLUGIN_DIRS_ENV: "CLAUDE_CODE_PLUGIN_DIRS",
   MAX_TURNS_ENV: "CLAUDE_CODE_MAX_TURNS",
+  EFFORT_ENV: "CLAUDE_CODE_EFFORT",
 };
 
 /**
@@ -69,6 +71,19 @@ const ENVS = {
 function maxTurnsFromEnv(): number | undefined {
   const parsed = Number(process.env[ENVS.MAX_TURNS_ENV]);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
+/**
+ * The reasoning effort for this run. Set by Studio from the run's model (see
+ * `claude-code-env.ts`), so changing it needs no new sandbox image. Unset or
+ * unrecognized is `low`: what every run got before Studio sent one.
+ */
+function effortFromEnv(): EffortLevel {
+  const value = process.env[ENVS.EFFORT_ENV];
+  return EFFORT_LEVELS.find((level) => level === value) ?? "low";
 }
 
 /**
@@ -449,7 +464,11 @@ export function buildOptions(args: {
     instructions,
     skillsInstruction(),
     ORG_FS_INSTRUCTION,
-    input.studioCli ? studioCliInstruction(input.studioCli.org) : undefined,
+    input.studioCli
+      ? studioCliInstruction(input.studioCli.org)
+      : input.mcp.url
+        ? studioMcpInstruction(`mcp__${ENVS.STUDIO_MCP_SERVER_NAME}__`)
+        : undefined,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)
@@ -494,8 +513,7 @@ export function buildOptions(args: {
       : {}),
     ...(model ? { model } : {}),
     ...(maxTurns === undefined ? {} : { maxTurns }),
-    // ponytail: fixed, not configurable — raise it here if runs come back thin.
-    effort: "low",
+    effort: effortFromEnv(),
     // Token-level streaming. Without this the SDK yields only COMPLETE
     // assistant messages, so a paragraph reaches the UI as one 5KB frame after
     // the model finished writing it — the run reads as frozen while it is in

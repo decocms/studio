@@ -48,6 +48,7 @@ import { ConnectMore, Locked } from "./locked";
 import { AllClear, SignalsPanel } from "./signals-panel";
 import { StoreDay } from "./store-day";
 import { NumberCards, OverviewNumbers } from "./overview-numbers";
+import { MonitorOrgPicker } from "./monitor-org";
 import { SalesStatus } from "./sales-status";
 import { Sparkline } from "./sparkline";
 
@@ -59,6 +60,8 @@ export interface MonitorSelection {
   date?: string;
   store?: string;
   at?: string;
+  /** From an admin org: another org's slug, or `all`. */
+  customer?: string;
 }
 
 /** What the board's controls change: which day. */
@@ -67,16 +70,25 @@ interface BoardControls {
   onDate: (date: string) => void;
 }
 
-/** The day picker, in the panel's top bar where the board analytics keep theirs. */
-function Actions({ controls }: { controls: BoardControls | null }) {
-  if (!controls) return null;
+/** The day picker, in the panel's top bar where the board analytics keep theirs; an admin org's customer picker beside it. */
+function Actions({
+  controls,
+  customer,
+}: {
+  controls: BoardControls | null;
+  customer: ReactNode;
+}) {
+  if (!controls && !customer) return null;
   return (
     <Page.Actions>
-      <DayInput
-        value={controls.date}
-        max={localDay(new Date())}
-        onChange={controls.onDate}
-      />
+      {customer}
+      {controls && (
+        <DayInput
+          value={controls.date}
+          max={localDay(new Date())}
+          onChange={controls.onDate}
+        />
+      )}
     </Page.Actions>
   );
 }
@@ -406,7 +418,12 @@ export function MonitorPage({
         scopeId={scopeId}
         today={today}
         onSelect={onSelect}
-        ask={<AskData project={scopeProject?.title ?? null} />}
+        ask={
+          // Asking reads your own org's data, not the customer's.
+          selection.customer ? null : (
+            <AskData project={scopeProject?.title ?? null} />
+          )
+        }
         numbers={
           <OverviewNumbers
             project={scopeProject}
@@ -417,20 +434,22 @@ export function MonitorPage({
           />
         }
         more={
-          <ConnectMore
-            steps={(["orders", "analytics", "site", "deploys"] as const).map(
-              (source) => ({
-                source,
-                state: stateOf(source),
-                // On the Overview a store is what alerts come from.
-                meta:
-                  source === "orders"
-                    ? t("monitor.connect.ordersAlerts")
-                    : undefined,
-              }),
-            )}
-            link={connectLink(orgSlug, scopeId)}
-          />
+          !selection.customer && (
+            <ConnectMore
+              steps={(["orders", "analytics", "site", "deploys"] as const).map(
+                (source) => ({
+                  source,
+                  state: stateOf(source),
+                  // On the Overview a store is what alerts come from.
+                  meta:
+                    source === "orders"
+                      ? t("monitor.connect.ordersAlerts")
+                      : undefined,
+                }),
+              )}
+              link={connectLink(orgSlug, scopeId)}
+            />
+          )
         }
       />
     );
@@ -454,7 +473,18 @@ export function MonitorPage({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
       {tabs}
-      <Actions controls={controls} />
+      <Actions
+        controls={controls}
+        customer={
+          view === "metrics" && (
+            <MonitorOrgPicker
+              orgSlug={orgSlug}
+              value={selection.customer}
+              onChange={(customer) => onSelect({ view: "metrics", customer })}
+            />
+          )
+        }
+      />
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-4 pt-6 pb-10 md:px-10">
         {body}
       </div>

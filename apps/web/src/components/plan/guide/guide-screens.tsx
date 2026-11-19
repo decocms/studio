@@ -86,7 +86,7 @@ export function Thinking({
       </p>
       {filled !== undefined && filled > 0 && (
         <p className="text-xs text-muted-foreground">
-          {t("plan.case.progress", { filled, total: TILES })}
+          {t("plan.case.buildingProgress", { filled, total: TILES })}
         </p>
       )}
     </div>

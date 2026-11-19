@@ -18,7 +18,7 @@ export function useChatRequestOptions({
 } = {}) {
   const [preferences] = usePreferences();
   const { virtualMcpId } = useChatTask();
-  const { chatMode, simpleModeTier } = useChatPrefs();
+  const { chatMode, requestTier } = useChatPrefs();
   const currentApprovalLevel: ToolApprovalLevel =
     preferences.toolApprovalLevel ?? readToolApprovalLevel();
 
@@ -28,7 +28,7 @@ export function useChatRequestOptions({
     toolApprovalLevel: ToolApprovalLevel = currentApprovalLevel,
   ): RequestOptions => ({
     ...(voiceMode ? { voiceMode: true } : {}),
-    tier: simpleModeTier,
+    tier: requestTier,
     mode: chatMode,
     toolApprovalLevel,
     agent: virtualMcpId ? { id: virtualMcpId } : undefined,

@@ -195,6 +195,26 @@ describe("buildOptions", () => {
     expect(prompt.append).toStartWith("Be terse.");
   });
 
+  test("takes the effort Studio set, and stays on low without one", () => {
+    const prev = process.env.CLAUDE_CODE_EFFORT;
+    try {
+      delete process.env.CLAUDE_CODE_EFFORT;
+      expect(options().effort).toBe("low");
+      for (const level of ["low", "medium", "high", "xhigh", "max"]) {
+        process.env.CLAUDE_CODE_EFFORT = level;
+        expect(options().effort).toBe(level);
+      }
+      // A value the SDK would reject must not fail the run.
+      for (const bad of ["", "MEDIUM", "extreme", "3"]) {
+        process.env.CLAUDE_CODE_EFFORT = bad;
+        expect(options().effort).toBe("low");
+      }
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDE_CODE_EFFORT;
+      else process.env.CLAUDE_CODE_EFFORT = prev;
+    }
+  });
+
   test("carries the turn cap and tells the model its budget", () => {
     const prev = process.env.CLAUDE_CODE_MAX_TURNS;
     try {
@@ -235,6 +255,19 @@ describe("buildOptions", () => {
       options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
         .disallowedTools,
     ).toEqual(["Monitor", "ScheduleWakeup"]);
+  });
+
+  test("says how a bare Studio tool name is called, in whichever mode the run is", () => {
+    const mounted = options({
+      mcp: { url: "https://studio.example/mcp", headers: {}, expiresAt: 1 },
+    }).systemPrompt as { append: string };
+    expect(mounted.append).toContain("`mcp__studio__<NAME>`");
+    const cli = options({
+      mcp: { url: "https://studio.example/mcp", headers: {}, expiresAt: 1 },
+      studioCli: { org: "example-org" },
+    }).systemPrompt as { append: string };
+    expect(cli.append).toContain("decocms tools call <NAME>");
+    expect(cli.append).not.toContain("mcp__studio__");
   });
 
   test("does not tell the model to avoid background work", () => {

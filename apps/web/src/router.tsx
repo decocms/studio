@@ -1289,6 +1289,8 @@ const monitoringSearch = z.object({
   at: z.string().optional(),
   project: z.string().optional(),
   section: z.string().optional(),
+  // From an admin org: another org's numbers, or every org's (`all`).
+  customer: z.string().optional(),
   // A Blocks v8 test opened in the Experiments view, by name.
   test: z.string().optional().catch(undefined),
   // The Analytics segment (components/monitor/analytics/segment.ts).

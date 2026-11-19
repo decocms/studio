@@ -127,3 +127,106 @@ describe("parseBusinessCase", () => {
     expect(parseBusinessCase(JSON.stringify(value))).not.toBeNull();
   });
 });
+
+describe("card figures", () => {
+  const withCard = (
+    key: keyof ReturnType<typeof sample>["cards"],
+    extra: Record<string, unknown>,
+  ) => {
+    const value = sample();
+    return JSON.stringify({
+      ...value,
+      cards: {
+        ...value.cards,
+        [key]: { ...value.cards[key], state: "filled", ...extra },
+      },
+    });
+  };
+  const money = {
+    kind: "money",
+    base: 104000,
+    baseLabel: "carrinhos por mês",
+    deltaPp: 1.5,
+    value: 73,
+    valueLabel: "receita por pedido a mais",
+    gapPp: 17,
+    monthlyValue: 113880,
+    ceilingMonthly: 1290640,
+  };
+  const abTest = {
+    kind: "abTest",
+    baseline: 0.59,
+    mdePp: 1.77,
+    nPerGroup: 12000,
+    weeks: 3,
+    measurable: true,
+  };
+  const metric = { label: "Nossa loja", value: 41, unit: "percent" };
+
+  it("reads a case written before figures existed", () => {
+    expect(parseBusinessCase(JSON.stringify(sample()))).not.toBeNull();
+  });
+
+  it("reads metrics on problem and effort, and each calc on its own card", () => {
+    expect(
+      parseBusinessCase(withCard("problem", { metrics: [metric] })),
+    ).not.toBeNull();
+    expect(
+      parseBusinessCase(
+        withCard("effort", {
+          metrics: [{ label: "Front-end", value: 3, unit: "days" }],
+        }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseBusinessCase(withCard("money", { calc: money })),
+    ).not.toBeNull();
+    expect(
+      parseBusinessCase(withCard("abTest", { calc: abTest })),
+    ).not.toBeNull();
+    expect(
+      parseBusinessCase(withCard("scope", { question: "Em qual página?" })),
+    ).not.toBeNull();
+  });
+
+  it("rejects figures on the wrong card", () => {
+    expect(
+      parseBusinessCase(withCard("risks", { metrics: [metric] })),
+    ).toBeNull();
+    expect(parseBusinessCase(withCard("money", { calc: abTest }))).toBeNull();
+    expect(parseBusinessCase(withCard("effort", { calc: money }))).toBeNull();
+  });
+
+  it("rejects too many metrics, an unknown unit, a non-number and long text", () => {
+    const five = Array(BUSINESS_CASE_LIMITS.metrics + 1).fill(metric);
+    expect(
+      parseBusinessCase(withCard("problem", { metrics: five })),
+    ).toBeNull();
+    expect(
+      parseBusinessCase(
+        withCard("problem", { metrics: [{ ...metric, unit: "miles" }] }),
+      ),
+    ).toBeNull();
+    expect(
+      parseBusinessCase(
+        withCard("problem", { metrics: [{ ...metric, value: "41" }] }),
+      ),
+    ).toBeNull();
+    expect(
+      parseBusinessCase(
+        withCard("problem", {
+          metrics: [
+            { ...metric, label: "x".repeat(BUSINESS_CASE_LIMITS.label + 1) },
+          ],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseBusinessCase(
+        withCard("scope", {
+          question: "x".repeat(BUSINESS_CASE_LIMITS.question + 1),
+        }),
+      ),
+    ).toBeNull();
+  });
+});

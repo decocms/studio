@@ -2,7 +2,8 @@
 
 import { matchBusinessCasePath } from "@decocms/shared/business-case";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { useChatStream, useChatTask } from "@/components/chat/context";
+import { useOptionalChatStream } from "@/components/chat/chat-context.tsx";
+import { useChatStream, useOptionalChatTask } from "@/components/chat/context";
 import { useChatRequestOptions } from "@/components/chat/highlight/use-chat-request-options";
 import type { UserAskToolPart } from "@/components/chat/types";
 import { Page } from "@/components/page";
@@ -17,15 +18,11 @@ import { useBusinessCase } from "./use-business-case.ts";
 
 function CaseLoading({ label }: { label?: string }) {
   return (
-    <div className="flex flex-col gap-6">
-      <Skeleton className="h-8 w-2/3" />
-      <div className="grid gap-3 md:grid-cols-2">
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }, (_, i) => (
-          <Skeleton key={i} className="h-40" />
+    <div className="mx-auto flex w-full max-w-[880px] flex-col gap-10">
+      <Skeleton className="h-56 rounded-2xl" />
+      <div className="flex flex-col gap-8 pl-10">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-20" />
         ))}
       </div>
       {label && <p className="text-xs text-muted-foreground">{label}</p>}
@@ -33,13 +30,61 @@ function CaseLoading({ label }: { label?: string }) {
   );
 }
 
+/** Sends an open question to the chat this case belongs to, when that chat is
+ *  the one beside the tab. */
+function useAskInChat(path: string) {
+  const t = useT();
+  const chat = useOptionalChatStream();
+  const task = useOptionalChatTask();
+  const threadId = matchBusinessCasePath(path);
+  if (!chat || !threadId || task?.taskId !== threadId || chat.isStreaming) {
+    return undefined;
+  }
+  return (question: string) =>
+    void chat.sendMessage({
+      parts: [{ type: "text", text: t("plan.case.askPrompt", { question }) }],
+    });
+}
+
+/** The agent's pending question on the guided intro's screen; the answer
+ *  goes to the chat the way the chat's own question form sends it. */
+function CaseQuestion({ part }: { part: UserAskToolPart }) {
+  const t = useT();
+  const { submit } = useChatStream();
+  const requestOptions = useChatRequestOptions();
+  const labels = {
+    yes: t("chat.userAskQuestion.confirmYes"),
+    no: t("chat.userAskQuestion.confirmNo"),
+  };
+  const answer = (text: string) => {
+    const confirm = part.input?.type === "confirm";
+    const response = !text.trim()
+      ? t("chat.userAskQuestion.skipMessage")
+      : confirm && text === labels.yes
+        ? "yes"
+        : confirm && text === labels.no
+          ? "no"
+          : text.trim();
+    void submit(
+      { kind: "toolOutput", toolCallId: part.toolCallId, output: { response } },
+      requestOptions(),
+    );
+  };
+  return (
+    <Question
+      view={{ question: userAskQuestion(part, labels), reaction: null }}
+      onAnswer={answer}
+    />
+  );
+}
+
 export function BusinessCaseTab({ path }: { path: string }) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
-  const { taskId, activeTask } = useChatTask();
-  const { messages, isStreaming, submit } = useChatStream();
-  const requestOptions = useChatRequestOptions();
+  const chat = useOptionalChatStream();
+  const task = useOptionalChatTask();
   const read = useBusinessCase(path);
+  const onAsk = useAskInChat(path);
   const value = read.data?.value ?? readCaseSeed(sessionStorage, path);
 
   if (!value) {
@@ -58,9 +103,10 @@ export function BusinessCaseTab({ path }: { path: string }) {
 
   const view = caseView({
     value,
-    isCaseThread: taskId !== null && taskId === matchBusinessCasePath(path),
-    messages,
-    running: isStreaming || activeTask?.status === "in_progress",
+    isCaseThread:
+      !!chat && !!task?.taskId && task.taskId === matchBusinessCasePath(path),
+    messages: chat?.messages ?? [],
+    running: !!chat?.isStreaming || task?.activeTask?.status === "in_progress",
   });
 
   if (view.kind === "canvas") {
@@ -71,6 +117,7 @@ export function BusinessCaseTab({ path }: { path: string }) {
             <BusinessCaseCanvas
               value={value}
               invalid={read.data?.invalid}
+              onAsk={onAsk}
               onOpenDocument={(documentPath) =>
                 openPanel(formatLibraryFileTabId(`home/${documentPath}`))
               }
@@ -80,26 +127,6 @@ export function BusinessCaseTab({ path }: { path: string }) {
       </Page>
     );
   }
-
-  const labels = {
-    yes: t("chat.userAskQuestion.confirmYes"),
-    no: t("chat.userAskQuestion.confirmNo"),
-  };
-  /** The chat's own answer for a confirm, the skip message for an empty one. */
-  const answer = (part: UserAskToolPart, text: string) => {
-    const confirm = part.input?.type === "confirm";
-    const response = !text.trim()
-      ? t("chat.userAskQuestion.skipMessage")
-      : confirm && text === labels.yes
-        ? "yes"
-        : confirm && text === labels.no
-          ? "no"
-          : text.trim();
-    void submit(
-      { kind: "toolOutput", toolCallId: part.toolCallId, output: { response } },
-      requestOptions(),
-    );
-  };
 
   return (
     <Page>
@@ -113,14 +140,7 @@ export function BusinessCaseTab({ path }: { path: string }) {
         <div className="flex min-h-0 flex-1 overflow-auto">
           <div className="m-auto flex w-full max-w-2xl justify-center px-4 py-10 md:px-8">
             {view.kind === "question" ? (
-              <Question
-                key={view.part.toolCallId}
-                view={{
-                  question: userAskQuestion(view.part, labels),
-                  reaction: null,
-                }}
-                onAnswer={(text) => answer(view.part, text)}
-              />
+              <CaseQuestion key={view.part.toolCallId} part={view.part} />
             ) : (
               <Thinking
                 phrases={BUILDING}

@@ -29,6 +29,11 @@ import { CODEX_SUBSCRIPTION_PROVIDER_ID } from "@decocms/shared/harness/codex-mo
  */
 
 import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
+import {
+  CLAUDE_OPUS,
+  CLAUDE_SONNET,
+  claudeDefaultEffort,
+} from "@decocms/shared/sdk/lib/claude-lineup";
 
 /**
  * Pseudo-provider id for a user's own Claude subscription (linked over OAuth,
@@ -96,8 +101,7 @@ export function copilotModelId(modelId: string): string | null {
  * against Claude models, so any other slot id is not usable here.
  *
  * `default` is a task-board run's builder. `chat` is an interactive chat, which
- * honors the model the chat picked and otherwise gets the cheaper tier: a chat
- * is mostly conversation and lookups, and on Opus a short one cost ~$2.
+ * honors the model the chat picked and otherwise runs the builder's model.
  *
  * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
@@ -119,24 +123,24 @@ const CLAUDE_CODE_MODEL: Record<
   Record<ClaudeCodeModelClass, string>
 > = {
   anthropic: {
-    default: "claude-opus-5-5",
-    chat: "claude-sonnet-5-5",
-    reviewer: "claude-sonnet-5-5",
-    conflict: "claude-sonnet-5",
+    default: CLAUDE_OPUS.anthropic,
+    chat: CLAUDE_OPUS.anthropic,
+    reviewer: CLAUDE_SONNET.anthropic,
+    conflict: CLAUDE_SONNET.anthropic,
   },
   openrouter: {
-    default: "anthropic/claude-opus-5.5",
-    chat: "anthropic/claude-sonnet-5.5",
-    reviewer: "anthropic/claude-sonnet-5.5",
-    conflict: "anthropic/claude-sonnet-5",
+    default: CLAUDE_OPUS.openrouter,
+    chat: CLAUDE_OPUS.openrouter,
+    reviewer: CLAUDE_SONNET.openrouter,
+    conflict: CLAUDE_SONNET.openrouter,
   },
   // Sonnet even for the builder: Copilot plans gate Opus per account (off on a
   // fresh Pro seat), and an unavailable model fails the run with a 400.
   copilot: {
-    default: "claude-sonnet-5.5",
-    chat: "claude-sonnet-5.5",
-    reviewer: "claude-sonnet-5.5",
-    conflict: "claude-sonnet-5",
+    default: CLAUDE_SONNET.copilot,
+    chat: CLAUDE_SONNET.copilot,
+    reviewer: CLAUDE_SONNET.copilot,
+    conflict: CLAUDE_SONNET.copilot,
   },
 };
 
@@ -286,10 +290,14 @@ export function claudeCodeEnvFromCredential(
     // Only Copilot sets it; null clears a previous Copilot run's header.
     ANTHROPIC_CUSTOM_HEADERS: null,
   };
+  const modelEnv = (model: string) => ({
+    CLAUDE_CODE_MODEL: model,
+    CLAUDE_CODE_EFFORT: claudeDefaultEffort(model),
+  });
   if (providerId === "anthropic") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: modelFor("anthropic"),
+      ...modelEnv(modelFor("anthropic")),
       ANTHROPIC_API_KEY: apiKey,
       ANTHROPIC_AUTH_TOKEN: null,
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -302,7 +310,7 @@ export function claudeCodeEnvFromCredential(
     // leftover one outranks it and the run bills the org's API credit instead.
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: modelFor("anthropic"),
+      ...modelEnv(modelFor("anthropic")),
       CLAUDE_CODE_OAUTH_TOKEN: apiKey,
       ANTHROPIC_API_KEY: null,
       ANTHROPIC_AUTH_TOKEN: null,
@@ -312,7 +320,7 @@ export function claudeCodeEnvFromCredential(
   if (providerId === "openrouter" || providerId === "deco") {
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: modelFor("openrouter"),
+      ...modelEnv(modelFor("openrouter")),
       // Empty, not absent: a non-empty API key takes precedence over the auth
       // token and would be sent to OpenRouter as an Anthropic key.
       ANTHROPIC_API_KEY: "",
@@ -326,7 +334,7 @@ export function claudeCodeEnvFromCredential(
       modelClass === "chat" && chosenModel ? copilotModelId(chosenModel) : null;
     return {
       ...budget,
-      CLAUDE_CODE_MODEL: chosen ?? CLAUDE_CODE_MODEL.copilot[modelClass],
+      ...modelEnv(chosen ?? CLAUDE_CODE_MODEL.copilot[modelClass]),
       // Empty, not absent, for the same reason as OpenRouter above.
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: apiKey,

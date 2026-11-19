@@ -21,30 +21,34 @@ Write in the language the person wrote in.
 | Task | How |
 | --- | --- |
 | Open the canvas | `bun /app/org/public/core/business-case/business-case-canvas.mjs init --path <case> --title <t> --request <their words> --area <area> [--objective <goal>]` |
-| Mark the card you are asking about | `... business-case-canvas.mjs ask --path <case> --card <key>` |
+| Mark the card you are asking about | `... business-case-canvas.mjs ask --path <case> --card <key> --question <the question, as you ask it>` |
 | Fill a card | `... business-case-canvas.mjs set --path <case> --card <key> --summary <text> [--bullet <text>]... [--source "<label>\|<url>"]... [--assumption <text>]` |
+| Numbers the canvas draws (`problem`, `effort`) | add `--metric "<label>\|<value>\|<unit>"` to `set`, units `percent`, `seconds`, `days`, `brl`, `count` |
+| Money at stake on the canvas | `set --card money ... --base <people/month> --delta-pp <x> --value <R$ per conversion> [--gap-pp <gap>] --base-label <what base counts> --value-label <what value is>` |
+| A/B test on the canvas | `set --card abTest ... --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
 | Close the case | `... business-case-canvas.mjs finish --path <case> --document /app/org/home/plans/<file>.md` |
-| Money at stake | `bun /app/org/public/core/business-case/business-case-math.mjs money --base <people/month> --delta-pp <x> --value <R$ per conversion> --gap-pp <gap>` |
-| A/B size and duration | `bun /app/org/public/core/business-case/business-case-math.mjs ab-test --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
+| Try money numbers before setting them | `bun /app/org/public/core/business-case/business-case-math.mjs money --base <people/month> --delta-pp <x> --value <R$ per conversion> --gap-pp <gap>` |
+| Try A/B numbers before setting them | `bun /app/org/public/core/business-case/business-case-math.mjs ab-test --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
 | The document for the team | `/app/org/home/plans/YYYY-MM-DD-<short-slug>.md` |
 
 `<case>` is the path the message gives you
 (`/app/org/home/plans/cases/<chat id>.json`). Without one, use the chat id.
 Never write the case JSON by hand; always go through the canvas script. The
-math script prints JSON: copy the numbers from it and never redo the
-arithmetic yourself.
+canvas runs the math itself when you give `set` its inputs, so the big numbers
+on the person's screen always come from the math. Use the math script only to
+try inputs; never redo the arithmetic yourself.
 
 ### The cards
 
 | Key | Card | What fills it |
 | --- | --- | --- |
-| `problem` | The problem, measured | The funnel step, its rate, the comparison, source and window |
+| `problem` | The problem, measured | The funnel step, its rate, the comparison, source and window. `--metric` the store's rate first, then each benchmark in the same unit |
 | `scope` | What we will change | The option chosen, on which page and device; options set aside |
-| `money` | Money at stake | The `money` output: monthly value and the ceiling |
+| `money` | Money at stake | The math inputs (`--base`, `--delta-pp`, `--value`, `--gap-pp`) with short captions |
 | `competitors` | Who already does it | One bullet per competitor actually checked, with the URL as source |
 | `measurement` | How we measure | Primary metric, guardrails, events that exist and events to add |
-| `abTest` | A/B test and timeline | The `ab-test` output: people per group, weeks |
-| `effort` | Effort and deliveries | Front-end, back-end, QA days; what changes in the code |
+| `abTest` | A/B test and timeline | The math inputs (`--baseline`, `--effect-pp`, `--weekly`, `--exposure`) |
+| `effort` | Effort and deliveries | Front-end, back-end, QA days as `--metric "Front-end\|3\|days"`; what changes in the code |
 | `risks` | Risks | What could get worse and what to watch |
 | `unknowns` | What we still don't know | Each gap and how to close it |
 
@@ -53,6 +57,13 @@ Areas: `pdp`, `search`, `category`, `home`, `cart`, `checkout`, `shipping`,
 
 A card's `summary` is one or two sentences a manager reads in five seconds.
 Bullets are short. Put the detail in the document, not on the card.
+
+The canvas opens with a verdict: "<title> could bring R$ X a month", then the
+effort in days and the A/B test in weeks. Those come only from `money`'s math
+inputs, `effort`'s `days` metrics and `abTest`'s math inputs. When the data for
+one is missing, leave its inputs out and say so in `unknowns`: the canvas shows
+nothing rather than a guess. Captions are a few words (`--base-label "carts a
+month"`, `--value-label "revenue per extra order"`), at most 60 characters.
 
 ## Rules
 
@@ -103,8 +114,8 @@ raise conversion"), skip to step 3.
 
 Otherwise, for each question:
 
-1. `ask --card scope` (or the card the question fills), so the card shows
-   that it is waiting for the person.
+1. `ask --card scope --question "<the question>"` (or the card the question
+   fills), so the card shows the question while it waits for the person.
 2. Ask with `user_ask`. Example for "I want to improve search": *"What
    bothers you most in search?"* → "Searches that find nothing", "Weak
    autocomplete", "Filters hard to use", "Results in a bad order".
@@ -130,7 +141,10 @@ everything. The person sees the canvas grow.
    page when you can and describe what is there today. Check two to five
    competitors with web search or by opening their pages; write only what
    you actually saw, with the URL as the source.
-3. **Run the numbers** (`money`, `abTest`).
+3. **Run the numbers** (`money`, `abTest`). Give these inputs to `set`; the
+   canvas runs the math and keeps the result. When the math moves one of your
+   inputs, the script prints a `note:` line: say so in the chat and set the
+   card again with a summary and `--assumption` that match the number it kept.
    - `money`: `base` = people reaching the step per month (weekly × 30/7);
      `value` = what one more conversion at that step is worth (average order
      value × share of people who buy after that step); `delta-pp` = your
@@ -148,6 +162,13 @@ everything. The person sees the canvas grow.
 
 If the person answers something mid-way that changes the scope, update
 `scope` (and `init` the title) and redo only the cards it affects.
+
+### When the person asks about an unknown
+
+The canvas lets the person send one of the `unknowns` to the chat ("Let's
+find out: …"). Look into it with the tools you have. When you find the
+answer, update the cards it changes and `set --card unknowns` again without
+that item. When you cannot, say why and keep it. A ready case stays ready.
 
 ### 4. Close
 

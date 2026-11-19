@@ -50,7 +50,23 @@ export const BUSINESS_CASE_LIMITS = {
   item: 300,
   items: 8,
   url: 2048,
+  label: 60,
+  question: 300,
+  metrics: 4,
 } as const;
+
+/** How a card's metric reads: `percent` is 0–100, `brl` is reais. */
+export const BUSINESS_CASE_METRIC_UNITS = [
+  "percent",
+  "seconds",
+  "days",
+  "brl",
+  "count",
+] as const;
+
+/** The cards that may carry metrics: the problem compares the store with its
+ *  benchmarks; effort adds up its days. */
+const BUSINESS_CASE_METRIC_CARDS = ["problem", "effort"] as const;
 
 const text = z.string().max(BUSINESS_CASE_LIMITS.text);
 const item = z.string().min(1).max(BUSINESS_CASE_LIMITS.item);
@@ -62,38 +78,110 @@ export const BusinessCaseSourceSchema = z.object({
 
 export type BusinessCaseSource = z.infer<typeof BusinessCaseSourceSchema>;
 
+const finite = z.number();
+const label = z.string().min(1).max(BUSINESS_CASE_LIMITS.label);
+
+const BusinessCaseMetricSchema = z.object({
+  label,
+  value: finite,
+  unit: z.enum(BUSINESS_CASE_METRIC_UNITS),
+});
+
+export type BusinessCaseMetric = z.infer<typeof BusinessCaseMetricSchema>;
+
+/** `business-case-math.mjs money`, run by the canvas script on the inputs the
+ *  agent gave: `base` × `deltaPp` % × `value` = `monthlyValue` (revenue). */
+const BusinessCaseMoneyCalcSchema = z.object({
+  kind: z.literal("money"),
+  base: finite,
+  baseLabel: label.optional(),
+  deltaPp: finite,
+  value: finite,
+  valueLabel: label.optional(),
+  gapPp: finite.optional(),
+  monthlyValue: finite,
+  ceilingMonthly: finite.nullable(),
+});
+
+export type BusinessCaseMoneyCalc = z.infer<typeof BusinessCaseMoneyCalcSchema>;
+
+/** `business-case-math.mjs ab-test`, run by the canvas script. */
+const BusinessCaseAbTestCalcSchema = z.object({
+  kind: z.literal("abTest"),
+  baseline: finite,
+  mdePp: finite,
+  nPerGroup: finite.nullable(),
+  weeks: finite.nullable(),
+  measurable: z.boolean(),
+});
+
 export const BusinessCaseCardSchema = z.object({
   /** `asking`: the chat is asking the question this card answers. */
   state: z.enum(["empty", "asking", "filled"]),
+  /** The question as the chat asked it, while the card is asking. */
+  question: z.string().min(1).max(BUSINESS_CASE_LIMITS.question).optional(),
   summary: text.optional(),
   bullets: z.array(item).max(BUSINESS_CASE_LIMITS.items),
   sources: z.array(BusinessCaseSourceSchema).max(BUSINESS_CASE_LIMITS.items),
   /** What the agent assumed instead of asking. */
   assumption: text.optional(),
+  metrics: z
+    .array(BusinessCaseMetricSchema)
+    .max(BUSINESS_CASE_LIMITS.metrics)
+    .optional(),
+  calc: z
+    .discriminatedUnion("kind", [
+      BusinessCaseMoneyCalcSchema,
+      BusinessCaseAbTestCalcSchema,
+    ])
+    .optional(),
 });
 
 export type BusinessCaseCard = z.infer<typeof BusinessCaseCardSchema>;
 
-export const BusinessCaseSchema = z.object({
-  version: z.literal(1),
-  title: z.string().min(1).max(BUSINESS_CASE_LIMITS.title),
-  status: z.enum(["framing", "building", "ready"]),
-  threadId: z.string().max(BUSINESS_CASE_LIMITS.title).optional(),
-  /** The store goal when the case started; null when the store has none. */
-  objective: text.nullable(),
-  request: z.object({
-    text: z.string().min(1).max(BUSINESS_CASE_LIMITS.text),
-    area: z.enum(BUSINESS_CASE_AREAS),
-  }),
-  cards: z.object(
-    Object.fromEntries(
-      BUSINESS_CASE_CARD_KEYS.map((key) => [key, BusinessCaseCardSchema]),
-    ) as Record<BusinessCaseCardKey, typeof BusinessCaseCardSchema>,
-  ),
-  /** The markdown document for the team, home-volume relative, once written. */
-  documentPath: z.string().max(BUSINESS_CASE_LIMITS.item).optional(),
-  updatedAt: z.string().datetime(),
-});
+export const BusinessCaseSchema = z
+  .object({
+    version: z.literal(1),
+    title: z.string().min(1).max(BUSINESS_CASE_LIMITS.title),
+    status: z.enum(["framing", "building", "ready"]),
+    threadId: z.string().max(BUSINESS_CASE_LIMITS.title).optional(),
+    /** The store goal when the case started; null when the store has none. */
+    objective: text.nullable(),
+    request: z.object({
+      text: z.string().min(1).max(BUSINESS_CASE_LIMITS.text),
+      area: z.enum(BUSINESS_CASE_AREAS),
+    }),
+    cards: z.object(
+      Object.fromEntries(
+        BUSINESS_CASE_CARD_KEYS.map((key) => [key, BusinessCaseCardSchema]),
+      ) as Record<BusinessCaseCardKey, typeof BusinessCaseCardSchema>,
+    ),
+    /** The markdown document for the team, home-volume relative, once written. */
+    documentPath: z.string().max(BUSINESS_CASE_LIMITS.item).optional(),
+    updatedAt: z.string().datetime(),
+  })
+  .superRefine((value, ctx) => {
+    for (const key of BUSINESS_CASE_CARD_KEYS) {
+      const card = value.cards[key];
+      const metricCard = (
+        BUSINESS_CASE_METRIC_CARDS as readonly string[]
+      ).includes(key);
+      if (card.metrics && !metricCard) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["cards", key, "metrics"],
+          message: `only ${BUSINESS_CASE_METRIC_CARDS.join(" and ")} carry metrics`,
+        });
+      }
+      if (card.calc && card.calc.kind !== key) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["cards", key, "calc"],
+          message: `a ${card.calc.kind} calc belongs on the ${card.calc.kind} card`,
+        });
+      }
+    }
+  });
 
 export type BusinessCase = z.infer<typeof BusinessCaseSchema>;
 

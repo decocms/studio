@@ -8,6 +8,7 @@ import {
   studioCliEnv,
   studioCliErrorText,
   studioCliInstruction,
+  studioMcpInstruction,
   studioCliPluginDir,
   studioCliSession,
   studioToolCall,
@@ -122,6 +123,15 @@ describe("studioCliInstruction", () => {
     expect(text).toContain("`example-org`");
     expect(text).toContain("decocms-studio skill");
     expect(text).toContain("never run `decocms auth login`");
+  });
+});
+
+describe("studioMcpInstruction", () => {
+  test("maps a bare Studio tool name onto the mounted server's", () => {
+    expect(studioMcpInstruction("mcp__studio__")).toContain(
+      "`mcp__studio__<NAME>`",
+    );
+    expect(studioMcpInstruction()).toContain("`studio` MCP server");
   });
 });
 

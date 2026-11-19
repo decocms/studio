@@ -78,6 +78,7 @@ by Studio and reaching this process as its spawn environment:
 | `ANTHROPIC_API_KEY` | Anthropic direct |
 | `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` | OpenRouter's Anthropic-compatible endpoint |
 | `CLAUDE_CODE_MODEL` | Optional model pin; unset uses Claude Code's default |
+| `CLAUDE_CODE_EFFORT` | Reasoning effort Studio sets from the run's model; unset or unrecognized runs at `low` |
 | `CLAUDE_CODE_PATH` | Optional explicit path to the `claude` executable |
 | `CODEX_MODEL` | Codex model selected for the run |
 | `CODEX_PATH` | Path to the pinned Codex CLI installed in the image |

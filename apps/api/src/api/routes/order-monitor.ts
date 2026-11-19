@@ -9,8 +9,14 @@
  *   GET /stores/:connectionId/pushes?at=&virtualMcpId= → push markers per repo
  *   GET /traffic?at=&tz=&site=           → the sites' visitors (Deco Analytics), from the lake
  *
+ *   GET /admin-orgs                      → whether you may look into other orgs, and which
+ *
  * `:connectionId` must be an active ingest install of the org in the path; the
  * lake read runs as that org's own user regardless.
+ *
+ * `?org=all|<slug>` on the reads looks into every monitored org, or one other:
+ * only from an admin org (`STUDIO_ADMIN_ORG_IDS`), only for its members, the
+ * same rule as the task board's analytics.
  */
 
 import type {
@@ -22,6 +28,11 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
 import { orgHasFeature } from "@/core/plan-feature-gate";
+import {
+  auditTaskBoardAdminAction,
+  isAdminOrgId,
+  isTaskBoardAdminCtx,
+} from "@/core/task-board-admin";
 import type { StudioContext } from "@/core/studio-context";
 import { isAuthenticated, requireOrganization } from "@/core/studio-context";
 import { analyticsAccess } from "@/analytics/access";
@@ -30,7 +41,7 @@ import { isCustomerLakeConfigured } from "@/customer-lake/client";
 import { loadThresholds } from "@/monitoring/order-alerts";
 import { loadStoreDay, loadStoreTimezone } from "@/monitoring/order-lake";
 import { listPushes } from "@/monitoring/order-pushes";
-import { loadSiteTraffic } from "@/monitoring/site-traffic";
+import { addSiteTraffic, loadSiteTraffic } from "@/monitoring/site-traffic";
 import { isTimezone } from "@/monitoring/timezone";
 import { buildDayView, RULES, type Rule } from "@/monitoring/order-rules";
 import { getSettings } from "@/settings";
@@ -69,11 +80,50 @@ async function gate(c: C): Promise<Gate | Response> {
   };
 }
 
-/** The store, when it is one of this org's active ingest installs. */
-async function ownedStore(g: Gate, connectionId: string) {
+/** The orgs a read covers: the path org, or, for an admin org's members, `?org=`. */
+interface Scope {
+  orgs: { id: string; slug: string; name: string }[];
+  /** Another org's data, or every org's. */
+  crossOrg: boolean;
+}
+
+async function scopeOf(g: Gate, c: C): Promise<Scope | Response> {
+  const own = requireOrganization(g.ctx);
+  const ref = c.req.query("org");
+  if (!ref || ref === own.slug || ref === own.id) {
+    return {
+      orgs: [{ id: own.id, slug: own.slug ?? own.id, name: own.name ?? "" }],
+      crossOrg: false,
+    };
+  }
+  if (!(await isMonitorAdmin(g))) {
+    return c.json(
+      { error: "Not allowed to read another organization's monitor" },
+      403,
+    );
+  }
+  if (!g.ingestUrl) return { orgs: [], crossOrg: true };
+  const all = await g.storage.listMonitoredOrgs(g.ingestUrl);
+  return {
+    orgs: ref === "all" ? all : all.filter((o) => o.slug === ref),
+    crossOrg: true,
+  };
+}
+
+/** Both: the path org is an admin org, and the caller belongs to one. */
+async function isMonitorAdmin(g: Gate): Promise<boolean> {
+  return isAdminOrgId(g.organizationId) && (await isTaskBoardAdminCtx(g.ctx));
+}
+
+/** The org of the store, when it is an active ingest install of an org in scope. */
+async function ownedStore(
+  g: Gate,
+  scope: Scope,
+  connectionId: string,
+): Promise<string | null> {
   if (!g.ingestUrl) return null;
-  const stores = await g.storage.listOrgStores(g.organizationId, g.ingestUrl);
-  return stores.find((s) => s.connectionId === connectionId) ?? null;
+  const orgId = await g.storage.findInstallOrg(connectionId, g.ingestUrl);
+  return orgId && scope.orgs.some((o) => o.id === orgId) ? orgId : null;
 }
 
 /** The agents that aggregate the VTEX connection the install is bound to (`state.VTEX`). */
@@ -103,6 +153,18 @@ function parseAt(raw: string | undefined): Date | null {
 export const createOrderMonitorRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
+  app.get("/admin-orgs", async (c) => {
+    const g = await gate(c);
+    if (g instanceof Response) return g;
+    if (!g.ingestUrl || !(await isMonitorAdmin(g))) {
+      return c.json({ isAdmin: false, orgs: [] });
+    }
+    return c.json({
+      isAdmin: true,
+      orgs: await g.storage.listMonitoredOrgs(g.ingestUrl),
+    });
+  });
+
   app.get("/ingest", async (c) => {
     const g = await gate(c);
     if (g instanceof Response) return g;
@@ -112,48 +174,70 @@ export const createOrderMonitorRoutes = () => {
   app.get("/stores", async (c) => {
     const g = await gate(c);
     if (g instanceof Response) return g;
+    const scope = await scopeOf(g, c);
+    if (scope instanceof Response) return scope;
     if (!g.ingestUrl) return c.json({ stores: [] });
-    const [stores, states] = await Promise.all([
-      g.storage.listOrgStores(g.organizationId, g.ingestUrl),
-      g.storage.listStates(g.organizationId),
-    ]);
-    const out: OrderMonitorStore[] = await Promise.all(
-      stores.map(async (store) => {
-        const agentIds = await storeAgentIds(g, store.connectionId);
-        const rules: OrderMonitorRuleState[] = states
-          .filter((s) => s.connectionId === store.connectionId)
-          .filter((s): s is typeof s & { rule: Rule } =>
-            (RULES as readonly string[]).includes(s.rule),
-          )
-          .map((s) => ({
-            rule: s.rule,
-            status: s.status as OrderMonitorVerdict["status"],
-            since: s.since.toISOString(),
-            evaluatedAt: s.evaluatedAt.toISOString(),
-            verdict: s.verdict as unknown as OrderMonitorVerdict,
-          }));
-        return {
-          connectionId: store.connectionId,
-          title: store.title,
-          agentIds,
-          rules,
-        };
+    const ingestUrl = g.ingestUrl;
+    if (scope.crossOrg) {
+      auditTaskBoardAdminAction({
+        action: "order_monitor_read",
+        actorUserId: g.ctx.auth?.user?.id,
+        actorOrgId: g.organizationId,
+        targetOrgId: c.req.query("org"),
+      });
+    }
+    const perOrg = await Promise.all(
+      scope.orgs.map(async (org) => {
+        const [stores, states] = await Promise.all([
+          g.storage.listOrgStores(org.id, ingestUrl),
+          g.storage.listStates(org.id),
+        ]);
+        return Promise.all(
+          stores.map(async (store): Promise<OrderMonitorStore> => {
+            const rules: OrderMonitorRuleState[] = states
+              .filter((s) => s.connectionId === store.connectionId)
+              .filter((s): s is typeof s & { rule: Rule } =>
+                (RULES as readonly string[]).includes(s.rule),
+              )
+              .map((s) => ({
+                rule: s.rule,
+                status: s.status as OrderMonitorVerdict["status"],
+                since: s.since.toISOString(),
+                evaluatedAt: s.evaluatedAt.toISOString(),
+                verdict: s.verdict as unknown as OrderMonitorVerdict,
+              }));
+            return {
+              connectionId: store.connectionId,
+              // Another org's stores: named by their org, tied to none of yours.
+              title: scope.crossOrg
+                ? `${org.name} · ${store.title}`
+                : store.title,
+              agentIds: scope.crossOrg
+                ? []
+                : await storeAgentIds(g, store.connectionId),
+              rules,
+            };
+          }),
+        );
       }),
     );
-    return c.json({ stores: out });
+    return c.json({ stores: perOrg.flat() });
   });
 
   app.get("/stores/:connectionId/day", async (c) => {
     const g = await gate(c);
     if (g instanceof Response) return g;
+    const scope = await scopeOf(g, c);
+    if (scope instanceof Response) return scope;
     const connectionId = c.req.param("connectionId");
-    if (!(await ownedStore(g, connectionId))) {
+    const orgId = await ownedStore(g, scope, connectionId);
+    if (!orgId) {
       return c.json({ error: "Store not found in organization" }, 404);
     }
     const at = parseAt(c.req.query("at"));
     if (!at) return c.json({ error: "at must be an ISO timestamp" }, 400);
     try {
-      const day = await loadStoreDay(g.organizationId, connectionId, at, {
+      const day = await loadStoreDay(orgId, connectionId, at, {
         approximate: true,
         channels: true,
       });
@@ -164,10 +248,7 @@ export const createOrderMonitorRoutes = () => {
         );
       }
       // The chart's bands are the thresholds the sweep judges by.
-      const thresholds = await loadThresholds(
-        g.ctx.storage.alerts,
-        g.organizationId,
-      );
+      const thresholds = await loadThresholds(g.ctx.storage.alerts, orgId);
       return c.json(buildDayView(day, at, thresholds));
     } catch (err) {
       console.error("[order-monitor] day read failed", {
@@ -183,10 +264,26 @@ export const createOrderMonitorRoutes = () => {
     const g = await gate(c);
     if (g instanceof Response) return g;
     if (!isCustomerLakeConfigured()) return c.json({ traffic: null });
+    const scope = await scopeOf(g, c);
+    if (scope instanceof Response) return scope;
     const at = parseAt(c.req.query("at"));
     if (!at) return c.json({ error: "at must be an ISO timestamp" }, 400);
     const tz = c.req.query("tz") ?? "UTC";
     if (!isTimezone(tz)) return c.json({ error: "unknown tz" }, 400);
+    // Other orgs: every site each of them linked, added up.
+    if (scope.crossOrg) {
+      try {
+        const days = await Promise.all(
+          scope.orgs.map((o) => loadSiteTraffic(o.id, at, tz, "")),
+        );
+        return c.json({ traffic: addSiteTraffic(days) });
+      } catch (err) {
+        console.error("[order-monitor] traffic read failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return c.json({ error: "Failed to read the data lake" }, 502);
+      }
+    }
     const site = c.req.query("site")?.toLowerCase();
     let siteId = "";
     if (site) {
@@ -230,10 +327,14 @@ export const createOrderMonitorRoutes = () => {
   app.get("/stores/:connectionId/pushes", async (c) => {
     const g = await gate(c);
     if (g instanceof Response) return g;
+    const scope = await scopeOf(g, c);
+    if (scope instanceof Response) return scope;
     const connectionId = c.req.param("connectionId");
-    if (!(await ownedStore(g, connectionId))) {
+    if (!(await ownedStore(g, scope, connectionId))) {
       return c.json({ error: "Store not found in organization" }, 404);
     }
+    // Pushes are your own repositories'; another org's store has none of them.
+    if (scope.crossOrg) return c.json({ repos: [] });
     const at = parseAt(c.req.query("at"));
     if (!at) return c.json({ error: "at must be an ISO timestamp" }, 400);
     const timezone = await loadStoreTimezone(

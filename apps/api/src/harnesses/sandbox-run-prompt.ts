@@ -21,13 +21,13 @@ export function modeInstruction(mode: ChatMode): string | null {
   if (!entry) return null;
   return (
     `The user turned on ${entry.label} for this message: answer it by calling ` +
-    `the \`${entry.tool}\` tool from the \`studio\` MCP server.`
+    `the Studio tool \`${entry.tool}\`.`
   );
 }
 
 const PREVIEW_INSTRUCTION =
   "The user watches your dev server in a live preview beside this chat. After you build or " +
-  "change a page, call `preview_navigate` from the `studio` MCP server with its path so they " +
+  "change a page, call the Studio tool `preview_navigate` with its path so they " +
   "see it.";
 
 export function sandboxRunPrompt(args: {

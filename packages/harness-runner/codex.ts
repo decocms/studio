@@ -19,6 +19,7 @@ import { liveMessageChunk, type LiveMessageInbox } from "./live-messages";
 import {
   studioCliEnv,
   studioCliInstruction,
+  studioMcpInstruction,
   studioCliPluginDir,
   writeStudioCliSession,
 } from "./studio-cli";
@@ -383,7 +384,9 @@ export async function runCodex(
         developerInstructions: [
           input.agent.instructions,
           "The organization filesystem is mounted at /app/org/. Wait for commands to finish before ending your turn. Ask questions with request_user_input. The user's response arrives in the next turn.",
-          studioCliOrg ? studioCliInstruction(studioCliOrg) : undefined,
+          studioCliOrg
+            ? studioCliInstruction(studioCliOrg)
+            : studioMcpInstruction(),
         ]
           .filter(Boolean)
           .join("\n\n"),
