@@ -446,6 +446,18 @@ export interface StudioToolIO {
       reason?: "no_data" | "unavailable" | "uncertain" | undefined;
     };
   };
+  PLAN_CASE_NEXT_QUESTION: {
+    input: {
+      idea: string;
+      answers: { question: string; answer: string }[];
+      objective?: string | null | undefined;
+    };
+    output: {
+      reaction: string | null;
+      question: { text: string; options: string[] } | null;
+      title: string | null;
+    };
+  };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };
     output: { hasSite: boolean };

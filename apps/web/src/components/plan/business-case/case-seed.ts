@@ -34,11 +34,16 @@ export function seedTitle(request: string): string {
 export function writeCaseSeed(
   storage: SeedStorage,
   path: string,
-  input: { objective: string | null | undefined; request: string },
+  input: {
+    objective: string | null | undefined;
+    request: string;
+    /** A sharper title than the request's first line, when one is known. */
+    title?: string | null;
+  },
 ): void {
   const request = input.request.trim().slice(0, BUSINESS_CASE_LIMITS.text);
   const seed: CaseSeed = {
-    title: seedTitle(request),
+    title: seedTitle(input.title?.trim() || request),
     objective:
       input.objective?.trim().slice(0, BUSINESS_CASE_LIMITS.text) || null,
     request,

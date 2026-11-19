@@ -43,7 +43,7 @@ export const plan = {
   "plan.goal.site_stability": "Parar de perder vendas por erros no site.",
   "plan.idea.heading": "O que você quer melhorar na loja?",
   "plan.idea.description":
-    "Fale do jeito que vier, mesmo vago. Você vai para o business case e monta junto com o agente: ele pergunta pelo chat o que precisa e preenche o problema em números, quem já faz, o dinheiro em jogo, o esforço e o teste A/B.",
+    "Fale do jeito que vier, mesmo vago. Algumas perguntas rápidas completam o que só você sabe, e o agente monta o case: o problema em números, quem já faz, o dinheiro em jogo, o esforço e o teste A/B.",
   "plan.idea.label": "Sua ideia",
   "plan.idea.placeholder":
     "Ex.: Quero mexer na busca. Ou: um guia de vestibilidade na página de produto aumentaria a conversão.",
@@ -119,4 +119,26 @@ export const plan = {
   "plan.cases.description": "Abra um para ver o canvas e continuar a conversa.",
   "plan.cases.updated": "Atualizado {when}",
   "plan.cases.unreadable": "Não deu para ler este case",
+  "plan.prompt.skipped": "(pulou: assuma e escreva a suposição no card)",
+  "plan.prompt.guidedAnswers":
+    "Antes deste chat eu já respondi as perguntas que só eu sabia responder. Não pergunte de novo, nem me pergunte mais nada a não ser que algo trave o case: preencha primeiro os cards que essas respostas cobrem e depois pesquise.\n\n{answers}",
+  "plan.prompt.guidedNothing":
+    "Antes deste chat checaram se faltava algo que só eu sei, e não faltava nada. Não me faça perguntas a não ser que algo trave o case: assuma, escreva a suposição no card e pesquise.",
+  "plan.guide.thinking1": "Hum, ideia interessante…",
+  "plan.guide.thinking2": "Pensando nos próximos passos…",
+  "plan.guide.thinking3": "Deixa eu ver o que falta aqui…",
+  "plan.guide.thinking4": "Isso é bom, vou formular…",
+  "plan.guide.thinking5": "Juntando as peças…",
+  "plan.guide.thinking6": "Hum, dá pra fazer algo legal com isso…",
+  "plan.guide.thinking7": "Organizando as ideias…",
+  "plan.guide.thinking8": "Só um segundo, pensando…",
+  "plan.guide.building1": "Montando seu business case…",
+  "plan.guide.building2": "Chamando o agente para pesquisar os números…",
+  "plan.guide.building3": "Preparando os cards…",
+  "plan.guide.yourIdea": "Sua ideia",
+  "plan.guide.answerLabel": "Sua resposta",
+  "plan.guide.answerPlaceholder": "Escreva do seu jeito…",
+  "plan.guide.continue": "Continuar",
+  "plan.guide.skip": "Pular esta",
+  "plan.guide.back": "Voltar",
 } satisfies Record<keyof typeof planEn, string>;

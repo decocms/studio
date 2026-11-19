@@ -1,20 +1,10 @@
-/** The request opens a chat with its business case canvas beside it. */
+/** The request starts the guided intro that ends in a business case. */
 
 import { useState, type FormEvent } from "react";
 import { ArrowRight } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
-import {
-  businessCaseMountPath,
-  businessCasePath,
-} from "@decocms/shared/business-case";
-import { useChatTask } from "@/components/chat";
-import { formatCaseTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { usePlanObjective } from "@/hooks/use-organization-settings";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
-import { track } from "@/lib/posthog-client";
-import { businessCasePrompt } from "./business-case-prompt.ts";
-import { writeCaseSeed } from "./business-case/case-seed.ts";
 
 /** A topic chip and the sentence it starts. */
 const TOPICS: { label: TranslationKey; prompt: TranslationKey }[] = [
@@ -38,40 +28,21 @@ const TOPICS: { label: TranslationKey; prompt: TranslationKey }[] = [
   },
 ];
 
-export function PlanIdeaComposer() {
+export function PlanIdeaComposer({
+  initialIdea,
+  onSubmit,
+}: {
+  initialIdea: string;
+  onSubmit: (idea: string) => void;
+}) {
   const t = useT();
-  const { createTaskWithMessage } = useChatTask();
-  const objective = usePlanObjective();
-  const [idea, setIdea] = useState("");
+  const [idea, setIdea] = useState(initialIdea);
   const ready = idea.trim().length > 0;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!ready) return;
-    track("plan_idea_submitted", { has_objective: !!objective });
-    const threadId = crypto.randomUUID();
-    const casePath = businessCasePath(threadId);
-    writeCaseSeed(sessionStorage, casePath, {
-      objective: objective?.statement,
-      request: idea,
-    });
-    createTaskWithMessage({
-      id: threadId,
-      tabId: formatCaseTabId(casePath),
-      message: {
-        parts: [
-          {
-            type: "text",
-            text: businessCasePrompt(t, {
-              idea,
-              objective: objective?.statement,
-              casePath: businessCaseMountPath(casePath),
-            }),
-          },
-        ],
-      },
-    });
-    setIdea("");
+    onSubmit(idea);
   };
 
   return (

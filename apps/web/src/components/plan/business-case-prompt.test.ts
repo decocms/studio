@@ -29,4 +29,42 @@ describe("businessCasePrompt", () => {
       expect(text).toContain(casePath);
     }
   });
+
+  it("adds no guided section when the intro did not run", () => {
+    const text = businessCasePrompt(t, {
+      idea: "Idea",
+      objective: null,
+      casePath,
+    });
+    expect(text).not.toContain("Before this chat");
+    expect(text).toContain("ask me one thing at a time");
+  });
+
+  it("lists the guided answers, marking skipped ones, so the agent does not ask again", () => {
+    const text = businessCasePrompt(t, {
+      idea: "Improve search",
+      objective: null,
+      casePath,
+      answers: [
+        { question: "What bothers you most?", answer: " Empty results " },
+        { question: "Which device?", answer: "  " },
+      ],
+    });
+    expect(text).toContain("Do not ask them again");
+    expect(text).toContain("- What bothers you most?\n  Empty results");
+    expect(text).toContain(
+      "- Which device?\n  (skipped: assume it and write the assumption on the card)",
+    );
+  });
+
+  it("tells the agent nothing was missing when the intro asked nothing", () => {
+    const text = businessCasePrompt(t, {
+      idea: "A fit guide on the mobile PDP",
+      objective: null,
+      casePath,
+      answers: [],
+    });
+    expect(text).toContain("nothing was");
+    expect(text).not.toContain("Do not ask them again");
+  });
 });

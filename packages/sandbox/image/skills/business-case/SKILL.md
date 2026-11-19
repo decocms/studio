@@ -91,6 +91,13 @@ when search finds nothing"); while the request is vague, use their words
 
 ### 2. Converse — until you know where and what
 
+If the message says the person already answered questions before the chat
+(the Plan page's guided intro), do not ask them again: `set` the cards those
+answers cover (`scope` first, then `measurement`, `effort` or `risks`; a
+skipped or vague answer becomes an `--assumption`), sharpen the title with
+`init`, and go to step 3. Ask in the chat only when something still blocks
+the case.
+
 If the request already says where and what ("a fit guide on the PDP would
 raise conversion"), skip to step 3.
 

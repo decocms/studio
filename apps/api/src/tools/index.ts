@@ -68,6 +68,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_BLOCKS_EDITOR_SET,
   OrganizationTools.ORGANIZATION_PLAN_OBJECTIVE_SET,
   OrganizationTools.ORGANIZATION_PLAN_OBJECTIVE_DECIDE,
+  OrganizationTools.PLAN_CASE_NEXT_QUESTION,
   OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,

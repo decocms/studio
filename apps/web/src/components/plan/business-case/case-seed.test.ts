@@ -32,6 +32,24 @@ describe("case seed", () => {
     );
   });
 
+  it("titles the case with the guided intro's title when there is one", () => {
+    const storage = memoryStorage();
+    writeCaseSeed(storage, PATH, {
+      objective: null,
+      request: "quero mexer na busca",
+      title: " Sugerir termos quando a busca não acha nada ",
+    });
+    expect(readCaseSeed(storage, PATH)?.title).toBe(
+      "Sugerir termos quando a busca não acha nada",
+    );
+    writeCaseSeed(storage, PATH, {
+      objective: null,
+      request: "quero mexer na busca",
+      title: "  ",
+    });
+    expect(readCaseSeed(storage, PATH)?.title).toBe("quero mexer na busca");
+  });
+
   it("keeps an empty goal as null and is per path", () => {
     const storage = memoryStorage();
     writeCaseSeed(storage, PATH, { objective: "  ", request: "frete" });
