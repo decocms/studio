@@ -16,6 +16,8 @@ interface Sent {
   resumed: boolean;
   images: number;
   historyImages: number;
+  /** The flag-layer settings of the `query` call whose CLI took this request. */
+  settings: unknown;
 }
 
 /** What the fake provider answers a request with: an error text, or null to accept it. */
@@ -23,8 +25,10 @@ type Provider = (request: Sent) => { category: string; text: string } | null;
 
 // A private copy of the runner: it keeps one SDK session per process, and the other test files share the default copy.
 const RUNNER = "./claude-code?image-fallback";
-const runner = async (): Promise<typeof import("./claude-code")> =>
-  import(RUNNER);
+// The memory tests keep sessions of their own, so they get another copy.
+const MEMORY_RUNNER = "./claude-code?image-fallback-memory";
+const runner = async (copy: string): Promise<typeof import("./claude-code")> =>
+  import(copy);
 
 const transcripts = new Map<string, Entry[]>();
 const sent: Sent[] = [];
@@ -46,6 +50,7 @@ async function* turn(
   content: unknown,
   uuid: string | undefined,
   first: boolean,
+  settings: unknown,
 ) {
   const entries = transcripts.get(session) ?? [];
   transcripts.set(session, entries);
@@ -59,6 +64,7 @@ async function* turn(
     resumed,
     images: imagesIn(content),
     historyImages: entries.reduce((sum, entry) => sum + entry.images, 0),
+    settings,
   };
   sent.push(request);
   if (first) {
@@ -123,7 +129,7 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
     prompt:
       | string
       | AsyncIterable<{ uuid?: string; message: { content: unknown } }>;
-    options: { resume?: string; sessionId?: string };
+    options: { resume?: string; sessionId?: string; settings?: unknown };
   }) => {
     queries++;
     const session = options.resume ?? options.sessionId ?? crypto.randomUUID();
@@ -132,7 +138,14 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
       const failure = throws.shift();
       if (failure) throw new Error(failure);
       if (typeof prompt === "string") {
-        yield* turn(session, resumed, prompt, undefined, true);
+        yield* turn(
+          session,
+          resumed,
+          prompt,
+          undefined,
+          true,
+          options.settings,
+        );
         return;
       }
       let first = true;
@@ -143,6 +156,7 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
           message.message.content,
           message.uuid,
           first,
+          options.settings,
         );
         first = false;
       }
@@ -178,9 +192,10 @@ const image: ImageBlock = {
 const withImage = () => [image];
 const withoutImage = () => [];
 
-const input = (threadId: string) =>
+const input = (threadId: string, memory?: HarnessStreamInputWire["memory"]) =>
   ({
     threadId,
+    ...(memory ? { memory } : {}),
     userMessage: { parts: [{ type: "text", text: `${PATH_LINE}\n\nlook` }] },
     harness: {},
     workspace: { cwd: null },
@@ -204,12 +219,14 @@ interface Outcome {
 async function run(
   threadId: string,
   readImages: () => ImageBlock[],
+  memory?: HarnessStreamInputWire["memory"],
+  copy = RUNNER,
 ): Promise<Outcome> {
-  const { runClaudeCode } = await runner();
+  const { runClaudeCode } = await runner(copy);
   const chunks: { type: string; finishReason?: string; errorText?: string }[] =
     [];
   await runClaudeCode(
-    input(threadId),
+    input(threadId, memory),
     (frame) => {
       chunks.push(...(frame.chunks as typeof chunks));
     },
@@ -414,6 +431,88 @@ describe("a turn whose image blocks the provider refuses", () => {
       expect(queries).toBe(2);
       expect(sent[3]).toMatchObject({ session: fork, historyImages: 0 });
       expect(await storedSession("thrd_kept")).toBe(fork);
+    } finally {
+      delete process.env.HARNESS_RUNNER_PERSISTENT;
+    }
+  });
+});
+
+describe("the memory a resend runs with", () => {
+  const home = "/app/org/home/users/user_1";
+  const on = { enabled: true, directory: home } as const;
+  const off = { enabled: false } as const;
+  const onSettings = { autoMemoryEnabled: true, autoMemoryDirectory: home };
+  const offSettings = { autoMemoryEnabled: false };
+  const runWith = (
+    threadId: string,
+    readImages: () => ImageBlock[],
+    memory?: HarnessStreamInputWire["memory"],
+  ) => run(threadId, readImages, memory, MEMORY_RUNNER);
+  const settingsSent = () => sent.map((request) => request.settings);
+
+  test("is the refused turn's, on a fresh session and on a copy of a resumed one", async () => {
+    provider = opaque400;
+    for (const [name, memory, settings] of [
+      ["on", on, onSettings],
+      ["off", off, offSettings],
+      ["default", undefined, undefined],
+    ] as const) {
+      sent.length = 0;
+      forks.length = 0;
+      const thread = `thrd_memory_${name}`;
+      // Refused on the thread's first turn: the resend starts a fresh session.
+      await runWith(thread, withImage, memory);
+      expect(sent.map((request) => request.images)).toEqual([1, 0]);
+      expect(sent[1]?.resumed).toBe(false);
+      expect(settingsSent()).toEqual([settings, settings]);
+      // Refused on a resumed session: the resend resumes a copy cut before the turn.
+      const outcome = await runWith(thread, withImage, memory);
+      expect(outcome.finish).toBe("stop");
+      expect(forks).toHaveLength(1);
+      expect(sent[3]).toMatchObject({ resumed: true, images: 0 });
+      expect(sent[3]?.session).not.toBe(sent[2]?.session);
+      expect(settingsSent()).toEqual([settings, settings, settings, settings]);
+    }
+  });
+
+  // Last: it leaves a kept session behind in the runner module.
+  test("is kept by the session the resend leaves running, which a turn with another memory never reuses", async () => {
+    process.env.HARNESS_RUNNER_PERSISTENT = "1";
+    try {
+      provider = opaque400;
+      await runWith("thrd_memory_kept", withoutImage, on);
+      expect(queries).toBe(1);
+      // Refused on the kept session; the resend starts a CLI with the same memory.
+      await runWith("thrd_memory_kept", withImage, on);
+      expect(queries).toBe(2);
+      expect(forks).toHaveLength(1);
+      const resent = sent[2]?.session;
+      expect(settingsSent()).toEqual([onSettings, onSettings, onSettings]);
+
+      // Same memory: answered by the session the resend left running.
+      await runWith("thrd_memory_kept", withoutImage, on);
+      expect(queries).toBe(2);
+      expect(sent[3]).toMatchObject({ session: resent, settings: onSettings });
+
+      // Another memory: a new CLI on the same transcript, never the kept one.
+      await runWith("thrd_memory_kept", withoutImage, off);
+      expect(queries).toBe(3);
+      expect(sent[4]).toMatchObject({
+        session: resent,
+        resumed: true,
+        settings: offSettings,
+      });
+
+      // That one is kept in turn, and its resend is off as well.
+      await runWith("thrd_memory_kept", withImage, off);
+      expect(queries).toBe(4);
+      expect(sent.slice(5).map((request) => request.images)).toEqual([1, 0]);
+      expect(settingsSent().slice(5)).toEqual([offSettings, offSettings]);
+
+      // No field after one was set is another memory too: the harness default.
+      await runWith("thrd_memory_kept", withoutImage);
+      expect(queries).toBe(5);
+      expect(sent[7]?.settings).toBeUndefined();
     } finally {
       delete process.env.HARNESS_RUNNER_PERSISTENT;
     }
