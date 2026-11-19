@@ -8,6 +8,7 @@
  *   GET /stores/:connectionId/day?at=    → the chart's day, read from the lake
  *   GET /stores/:connectionId/pushes?at=&virtualMcpId= → push markers per repo
  *   GET /traffic?at=&tz=&site=           → the sites' visitors (Deco Analytics), from the lake
+ *   GET|PUT /report-subscription         → the local hours you get the sales report by email at
  *
  * `:connectionId` must be an active ingest install of the org in the path; the
  * lake read runs as that org's own user regardless.
@@ -23,7 +24,11 @@ import type { Context } from "hono";
 import { z } from "zod";
 import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { StudioContext } from "@/core/studio-context";
-import { isAuthenticated, requireOrganization } from "@/core/studio-context";
+import {
+  getUserId,
+  isAuthenticated,
+  requireOrganization,
+} from "@/core/studio-context";
 import { analyticsAccess } from "@/analytics/access";
 import { readAnalyticsRegistration } from "@/analytics/registration";
 import { isCustomerLakeConfigured } from "@/customer-lake/client";
@@ -37,6 +42,13 @@ import { getSettings } from "@/settings";
 import { OrderMonitorStorage } from "@/storage/order-monitor";
 
 type Variables = { studioContext: StudioContext };
+
+const ReportSubscriptionSchema = z.object({
+  hours: z
+    .array(z.number().int().min(0).max(23))
+    .max(24)
+    .refine((xs) => new Set(xs).size === xs.length),
+});
 type C = Context<{ Variables: Variables }>;
 
 interface Gate {
@@ -102,6 +114,33 @@ function parseAt(raw: string | undefined): Date | null {
 
 export const createOrderMonitorRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
+
+  app.get("/report-subscription", async (c) => {
+    const g = await gate(c);
+    if (g instanceof Response) return g;
+    const userId = getUserId(g.ctx);
+    if (!userId) return c.json({ error: "Unauthorized" }, 401);
+    return c.json({
+      hours: await g.storage.getReportHours(g.organizationId, userId),
+    });
+  });
+
+  // An empty `hours` unsubscribes.
+  app.put("/report-subscription", async (c) => {
+    const g = await gate(c);
+    if (g instanceof Response) return g;
+    const userId = getUserId(g.ctx);
+    if (!userId) return c.json({ error: "Unauthorized" }, 401);
+    const body = ReportSubscriptionSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      return c.json({ error: "hours must be distinct hours 0–23" }, 400);
+    }
+    const hours = [...body.data.hours].sort((a, b) => a - b);
+    await g.storage.setReportHours(g.organizationId, userId, hours);
+    return c.json({ hours });
+  });
 
   app.get("/ingest", async (c) => {
     const g = await gate(c);

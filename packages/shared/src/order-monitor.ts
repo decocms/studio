@@ -222,3 +222,66 @@ export function orderMonitorChartPath(
   });
   return `/${encodeURIComponent(orgSlug)}/settings/monitor?${search}`;
 }
+
+const SALES_REFS = ["w1", "m1", "y1"] as const;
+
+const addSales = (xs: readonly OrderMonitorSales[]): OrderMonitorSales => ({
+  orders: xs.reduce((s, x) => s + x.orders, 0),
+  revenue: xs.reduce((s, x) => s + x.revenue, 0),
+  items: xs.reduce((s, x) => s + x.items, 0),
+});
+
+/**
+ * Several stores' sales added up, up to the time the slowest has reached. A
+ * reference day or the projection only when every store has it, so a total
+ * never mixes in a missing day; a currency only when they all share one.
+ */
+export function addSalesDays(days: readonly OrderMonitorDay[]) {
+  const ref = (r: (typeof SALES_REFS)[number]) => {
+    const xs = days.map((d) => d.forecast.soFar[r]);
+    return xs.every((x) => x !== null) ? addSales(xs) : null;
+  };
+  const ps = days.map((d) => d.forecast.projection);
+  const hours = (pick: (p: OrderMonitorForecast) => number[]) =>
+    Array.from({ length: 24 }, (_, h) =>
+      ps.reduce((s, p) => s + (p ? (pick(p)[h] ?? 0) : 0), 0),
+    );
+  const add = (pick: (p: OrderMonitorForecast) => number) =>
+    ps.reduce((s, p) => s + (p ? pick(p) : 0), 0);
+  const currencies = new Set(days.map((d) => d.forecast.currency));
+  const [only] = currencies;
+  return {
+    done: Math.min(...days.map((d) => d.done)),
+    currency: currencies.size === 1 && only ? only : null,
+    today: addSales(days.map((d) => d.forecast.soFar.today)),
+    w1: ref("w1"),
+    m1: ref("m1"),
+    y1: ref("y1"),
+    projection:
+      ps.length > 0 && ps.every((p) => p !== null)
+        ? ({
+            orders: hours((p) => p.orders),
+            revenue: hours((p) => p.revenue),
+            close: {
+              orders: add((p) => p.close.orders),
+              revenue: add((p) => p.close.revenue),
+            },
+            initial: {
+              orders: add((p) => p.initial.orders),
+              revenue: add((p) => p.initial.revenue),
+            },
+            // The stores' lows and highs added up, as if all ran quiet or busy at once.
+            range: {
+              orders: {
+                low: hours((p) => p.range.orders.low),
+                high: hours((p) => p.range.orders.high),
+              },
+              revenue: {
+                low: hours((p) => p.range.revenue.low),
+                high: hours((p) => p.range.revenue.high),
+              },
+            },
+          } satisfies OrderMonitorForecast)
+        : null,
+  };
+}

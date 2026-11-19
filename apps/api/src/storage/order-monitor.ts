@@ -74,6 +74,71 @@ export class OrderMonitorStorage {
     return rows.map((r) => ({ connectionId: r.id, title: r.title }));
   }
 
+  /** The local hours the user gets the org's sales report at; empty = not subscribed. */
+  async getReportHours(
+    organizationId: string,
+    userId: string,
+  ): Promise<number[]> {
+    const row = await this.db
+      .selectFrom("sales_report_subscriptions")
+      .select("hours")
+      .where("organization_id", "=", organizationId)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+    return row?.hours ?? [];
+  }
+
+  async setReportHours(
+    organizationId: string,
+    userId: string,
+    hours: number[],
+  ): Promise<void> {
+    if (hours.length === 0) {
+      await this.db
+        .deleteFrom("sales_report_subscriptions")
+        .where("organization_id", "=", organizationId)
+        .where("user_id", "=", userId)
+        .execute();
+      return;
+    }
+    await this.db
+      .insertInto("sales_report_subscriptions")
+      .values({ organization_id: organizationId, user_id: userId, hours })
+      .onConflict((oc) =>
+        oc
+          .columns(["organization_id", "user_id"])
+          .doUpdateSet({ hours, updated_at: new Date() }),
+      )
+      .execute();
+  }
+
+  /** The orgs anyone gets the sales report of. */
+  async listReportOrgs(): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("sales_report_subscriptions")
+      .select("organization_id")
+      .distinct()
+      .execute();
+    return rows.map((r) => r.organization_id);
+  }
+
+  /** Who gets the org's sales report, while still a member of it. */
+  async listReportSubscribers(
+    organizationId: string,
+  ): Promise<{ email: string; hours: number[] }[]> {
+    return this.db
+      .selectFrom("sales_report_subscriptions as s")
+      .innerJoin("user as u", "u.id", "s.user_id")
+      .innerJoin("member as m", (j) =>
+        j
+          .onRef("m.userId", "=", "s.user_id")
+          .onRef("m.organizationId", "=", "s.organization_id"),
+      )
+      .select(["u.email", "s.hours"])
+      .where("s.organization_id", "=", organizationId)
+      .execute();
+  }
+
   /** Every state row of the org, or of one store when `connectionId` is set. */
   async listStates(
     organizationId: string,
