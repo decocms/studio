@@ -100,3 +100,42 @@ export async function loadSiteTraffic(
     },
   };
 }
+
+/** Several orgs' traffic added up; null when none has any. Different orgs' sites share no visitors, so their uniques add. */
+export function addSiteTraffic(
+  days: readonly (SiteTrafficDay | null)[],
+): SiteTrafficDay | null {
+  const xs = days.filter((d): d is SiteTrafficDay => d !== null);
+  if (xs.length === 0) return null;
+  type Measure = "visitors" | "pageviews" | "conversions";
+  const add = (pick: (d: SiteTrafficDay) => number) =>
+    xs.reduce((s, d) => s + pick(d), 0);
+  const hourly = (pick: (d: SiteTrafficDay) => (number | null)[]) =>
+    Array.from({ length: 24 }, (_, h) =>
+      xs.every((d) => pick(d)[h] === null) ? null : add((d) => pick(d)[h] ?? 0),
+    );
+  const full = (pick: (d: SiteTrafficDay) => number[]) =>
+    Array.from({ length: 24 }, (_, h) => add((d) => pick(d)[h] ?? 0));
+  const measure = (m: Measure) => ({
+    today: hourly((d) => d[m].today),
+    d1: full((d) => d[m].d1),
+    w1: full((d) => d[m].w1),
+    y1: full((d) => d[m].y1),
+  });
+  const head = (m: Measure) => ({
+    today: add((d) => d.headline[m].today),
+    d1: add((d) => d.headline[m].d1),
+    w1: add((d) => d.headline[m].w1),
+    y1: add((d) => d.headline[m].y1),
+  });
+  return {
+    visitors: measure("visitors"),
+    pageviews: measure("pageviews"),
+    conversions: measure("conversions"),
+    headline: {
+      visitors: head("visitors"),
+      pageviews: head("pageviews"),
+      conversions: head("conversions"),
+    },
+  };
+}

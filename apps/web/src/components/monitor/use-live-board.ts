@@ -6,6 +6,7 @@
  */
 
 import type { OrderMonitorChannel } from "@decocms/shared/order-monitor";
+import { useMonitorOrg } from "./monitor-org-context";
 import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { localInstant } from "@/components/order-monitor/order-monitor-day";
@@ -63,7 +64,11 @@ export function useLiveBoard(
   const storesEnabled = config.orderMonitorEnabled === true && monitoring;
   const storesQuery = useOrderMonitorStores(orgSlug, storesEnabled);
   const allStores = monitoring ? (storesQuery.data ?? []) : [];
-  const { alerts } = useAlerts(orgSlug);
+  // Another org's board: its stores and sites only; your alerts, projects,
+  // connections and repositories aren't its.
+  const viewing = useMonitorOrg() !== undefined;
+  const ownAlerts = useAlerts(orgSlug).alerts;
+  const alerts = viewing ? [] : ownAlerts;
   // Empty means "no store" only once the read answered; disabled keeps its old upsell meaning. See ordersSourceState.
   const storesConfirmed = !storesEnabled || storesQuery.isSuccess;
   const stores = scopeId
@@ -84,7 +89,8 @@ export function useLiveBoard(
     }),
   );
   const days = [...dayOf.values()];
-  const projects = useVirtualMCPsNonBlocking();
+  const ownProjects = useVirtualMCPsNonBlocking();
+  const projects = viewing ? [] : ownProjects;
   // Visitors in the first store's day, so the cards share one clock; the
   // browser's when there is no store.
   const timezone = stores[0]
@@ -104,9 +110,10 @@ export function useLiveBoard(
       },
       monitoring && (!scopeId || !!scopedSite),
     ).data ?? null;
-  const connections = useConnections();
+  const ownConnections = useConnections();
+  const connections = viewing ? [] : ownConnections;
   const repositories = useRepositories().data ?? [];
-  const monitored = repositories.filter((r) => r.monitorDeploys);
+  const monitored = viewing ? [] : repositories.filter((r) => r.monitorDeploys);
   const pushes = useRepositoryDeploys(monitored.map((r) => r.id)).data ?? [];
 
   const daysReady = days.length === stores.length && stores.length > 0;
