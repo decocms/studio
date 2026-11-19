@@ -34,7 +34,9 @@ const inRange = (col: string) => `${col} < ${AT}
 // FINAL: `orders` replaces on `version`, so an order that went paid → canceled
 // would otherwise count twice. Every created order counts, whatever its status now.
 const ORDERS_SQL = `
-  SELECT ${daysAgo("created_at")} AS days_ago, ${bucket("created_at")} AS bucket, count() AS placed
+  SELECT ${daysAgo("created_at")} AS days_ago, ${bucket("created_at")} AS bucket,
+    count() AS placed, sum(total) AS revenue, sum(item_count) AS items,
+    any(currency) AS currency
   FROM customer_lake.orders FINAL
   WHERE connection_id = {conn:String} AND ${inRange("created_at")}
   GROUP BY days_ago, bucket`;
@@ -179,7 +181,13 @@ function emptyDays(): Record<DayAgo, DaySeries> {
   return Object.fromEntries(
     DAYS_AGO.map((d) => [
       d,
-      { placed: zeros(), canceled: zeros(), denied: zeros() },
+      {
+        placed: zeros(),
+        revenue: zeros(),
+        items: zeros(),
+        canceled: zeros(),
+        denied: zeros(),
+      },
     ]),
   ) as Record<DayAgo, DaySeries>;
 }
@@ -272,9 +280,16 @@ export async function loadStoreDay(
     ]);
 
   const days = emptyDays();
+  let currency: string | null = null;
   for (const row of orders) {
     const c = dayCell(days, row);
-    if (c) c.day.placed[c.b] = Number(row.placed);
+    if (!c) continue;
+    c.day.placed[c.b] = Number(row.placed);
+    c.day.revenue[c.b] = Number(row.revenue);
+    c.day.items[c.b] = Number(row.items);
+    if (typeof row.currency === "string" && row.currency) {
+      currency = row.currency;
+    }
   }
   applyCancelDenied(days, events);
   let approximate: StoreDay["approximate"];
@@ -286,6 +301,7 @@ export async function loadStoreDay(
 
   return {
     timezone,
+    currency,
     done: doneBuckets(at, timezone),
     days,
     dstBuckets: dstBuckets(at, timezone),

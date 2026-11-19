@@ -114,11 +114,43 @@ export interface OrderMonitorDay {
     w1: number;
     y1: number;
   };
+  /** The day's sales status: what's in so far beside the same time of day on W-1, M-1 (4 weeks back) and Y-1, and where the day is heading. */
+  forecast: {
+    /** The orders' currency (ISO 4217); null when the day has no orders yet. */
+    currency: string | null;
+    /** Up to `done`; a reference day is null when the lake has no order of it. */
+    soFar: {
+      today: OrderMonitorSales;
+      w1: OrderMonitorSales | null;
+      m1: OrderMonitorSales | null;
+      y1: OrderMonitorSales | null;
+    };
+    /** The baseline × today's level, as `headline.projected`; null without reference days. */
+    projection: OrderMonitorForecast | null;
+  };
   verdicts: Record<OrderMonitorRule, OrderMonitorVerdict>;
   /** Hours of history the ingest still has queued; null once it's all in. Days not in yet are left out of the baseline. */
   backfill: { pending: number; total: number } | null;
   /** Busiest on D-1 first, so a channel keeps its place and color through the day. */
   channels: OrderMonitorChannel[];
+}
+
+export interface OrderMonitorSales {
+  orders: number;
+  /** In the store's currency. */
+  revenue: number;
+  items: number;
+}
+
+/** What the rest of a store's day should bring. */
+export interface OrderMonitorForecast {
+  /** Per clock hour, what is still to come of it after `done`; 0 for hours gone. */
+  orders: number[];
+  revenue: number[];
+  /** Where the day closes: so far plus the rest. */
+  close: { orders: number; revenue: number };
+  /** The projection before the day's first order: the baseline's whole day. */
+  initial: { orders: number; revenue: number };
 }
 
 /** The org's sites' traffic (Deco Analytics, read from the data lake), per clock hour of the local day. */

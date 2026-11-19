@@ -16,7 +16,9 @@ import {
 } from "@decocms/shared/order-monitor";
 import type {
   OrderMonitorDay,
+  OrderMonitorForecast,
   OrderMonitorRule as Rule,
+  OrderMonitorSales,
   OrderMonitorSeries,
   OrderMonitorStatus as Status,
   OrderMonitorVerdict,
@@ -42,12 +44,17 @@ export type DayAgo = (typeof DAYS_AGO)[number];
 /** Per 15-minute bucket of one local day. */
 export interface DaySeries {
   placed: number[];
+  /** What the placed orders total, in the store's currency, and their items. Only the sales status reads them. */
+  revenue: number[];
+  items: number[];
   canceled: number[];
   denied: number[];
 }
 
 export interface StoreDay {
   timezone: string;
+  /** The orders' currency; null when the day has none. */
+  currency?: string | null;
   /** Fully elapsed buckets of day 0 (ingest grace included). */
   done: number;
   days: Record<DayAgo, DaySeries>;
@@ -241,6 +248,53 @@ export function evaluateStore(
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const hourly = (a: number[], h: number) => sum(a, h * 4, h * 4 + 4);
 
+type Measure = "placed" | "revenue";
+
+/**
+ * The day's projection: the monitor's baseline scaled by today's level, per
+ * clock hour still to come, its close, and the baseline's own whole day, which
+ * is what the day was projected at before its first order.
+ */
+function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
+  const refs = {
+    placed: series(day, "placed").refs,
+    revenue: series(day, "revenue").refs,
+  };
+  if (refs.placed.length === 0) return null;
+  // ponytail: revenue rides the orders' level, so a day with a bigger ticket
+  // shows it only in what's already in; give revenue its own level if that misleads.
+  const ahead = (m: Measure, from: number, to: number) =>
+    lv * baseSum(refs[m], from + WINDOW, to + WINDOW);
+  const rest = (m: Measure) =>
+    HOURS.map((h) => {
+      const from = Math.max(day.done, h * 4);
+      return from < h * 4 + 4 ? ahead(m, from, h * 4 + 4) : 0;
+    });
+  const close = (m: Measure) =>
+    sum(day.days[0][m], 0, day.done) + ahead(m, day.done, BUCKETS_PER_DAY);
+  const initial = (m: Measure) =>
+    baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW);
+  return {
+    orders: rest("placed"),
+    revenue: rest("revenue"),
+    close: { orders: close("placed"), revenue: close("revenue") },
+    initial: { orders: initial("placed"), revenue: initial("revenue") },
+  };
+}
+
+/** Day `d` up to the same time of day as day 0; null when the lake has no order of it. */
+function salesSoFar(day: StoreDay, d: DayAgo): OrderMonitorSales | null {
+  const s = day.days[d];
+  if (d !== 0 && (sum(s.placed) === 0 || day.backfill?.days.includes(d))) {
+    return null;
+  }
+  return {
+    orders: sum(s.placed, 0, day.done),
+    revenue: sum(s.revenue, 0, day.done),
+    items: sum(s.items, 0, day.done),
+  };
+}
+
 /**
  * The Monitor chart's view of one store day, per clock hour. Expected is the
  * baseline scaled by the verdict's level; past `done` it is the day's
@@ -334,6 +388,16 @@ export function buildDayView(
       d1: sum(day.days[1].placed),
       w1: sum(day.days[7].placed),
       y1: sum(day.days[364].placed),
+    },
+    forecast: {
+      currency: day.currency ?? null,
+      soFar: {
+        today: salesSoFar(day, 0)!,
+        w1: salesSoFar(day, 7),
+        m1: salesSoFar(day, 28),
+        y1: salesSoFar(day, 364),
+      },
+      projection: projection(day, lv),
     },
     verdicts: {
       orders_drop: withZone(verdicts.orders_drop),

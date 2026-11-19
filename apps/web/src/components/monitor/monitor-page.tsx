@@ -48,6 +48,7 @@ import { ConnectMore, Locked } from "./locked";
 import { AllClear, SignalsPanel } from "./signals-panel";
 import { StoreDay } from "./store-day";
 import { NumberCards, OverviewNumbers } from "./overview-numbers";
+import { SalesStatus } from "./sales-status";
 import { Sparkline } from "./sparkline";
 
 export interface MonitorSelection {
@@ -93,6 +94,14 @@ const PREVIEW_NUMBERS = [
 ] as const;
 const PREVIEW_SHAPE = [3, 2, 2, 4, 7, 9, 8, 10, 12, 11, 13, 12, 9, 10];
 
+/** Once every store's day is in, so the totals don't grow as they land. */
+function OverviewSales({ stores }: { stores: MonitorBoard["stores"] }) {
+  const days = stores.flatMap((s) => (s.day ? [s.day] : []));
+  return days.length > 0 && days.length === stores.length ? (
+    <SalesStatus days={days} />
+  ) : null;
+}
+
 function Board({
   board,
   orgSlug,
@@ -130,6 +139,7 @@ function Board({
       ) : (
         today && board.stores.length > 0 && <AllClear />
       )}
+      <OverviewSales stores={board.stores} />
       {numbers}
       {more}
     </div>

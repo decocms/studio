@@ -25,6 +25,8 @@ function store(
 ): StoreDay {
   const day = (s: Partial<DaySeries>): DaySeries => ({
     placed: s.placed ?? flat(10),
+    revenue: s.revenue ?? flat(1000),
+    items: s.items ?? flat(20),
     canceled: s.canceled ?? flat(0.5),
     denied: s.denied ?? flat(0.2),
   });
@@ -239,6 +241,30 @@ describe("buildDayView", () => {
     expect(v.headline.d1).toBe(960);
     expect(v.orders.warnAt[0]).toBeCloseTo(18);
     expect(v.verdicts?.orders_drop.timezone).toBe("UTC");
+  });
+
+  it("reports the sales so far beside the same time on W-1, M-1 and Y-1, and projects the close", () => {
+    // Today: 1.5× the usual orders, R$ 100 a bucket so far; Y-1 never reached the lake.
+    const s = store({ placed: flat(15), revenue: flat(100) });
+    s.days[364] = { ...s.days[364], placed: flat(0) };
+    const { forecast } = buildDayView(s, at);
+    expect(forecast.soFar.today).toEqual({
+      orders: 720,
+      revenue: 4800,
+      items: 960,
+    });
+    expect(forecast.soFar.w1).toEqual({
+      orders: 480,
+      revenue: 48000,
+      items: 960,
+    });
+    expect(forecast.soFar.y1).toBeNull();
+    const p = forecast.projection!;
+    expect(p.close.orders).toBe(48 * 15 + 1.5 * 48 * 10);
+    expect(p.orders[11]).toBe(0);
+    expect(p.orders[12]).toBe(60);
+    expect(p.revenue[12]).toBe(1.5 * 4 * 1000);
+    expect(p.initial).toEqual({ orders: 960, revenue: 96000 });
   });
 
   it("projects from the reference days the lake holds while history loads", () => {

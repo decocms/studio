@@ -9,6 +9,7 @@
 
 import type {
   OrderMonitorChannel,
+  OrderMonitorDay,
   OrderMonitorStatus,
   OrderMonitorStore,
 } from "@decocms/shared/order-monitor";
@@ -65,6 +66,8 @@ export interface Kpi {
 
 export interface MonitoredStore {
   store: OrderMonitorStore;
+  /** The store's day on screen, once read. */
+  day?: OrderMonitorDay;
 }
 
 export type ImpactMetric = "orders" | "errors" | "latency";
