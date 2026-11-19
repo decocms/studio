@@ -25,7 +25,7 @@ export type HeroTile =
   | { key: "abTest"; state: "unmeasurable" }
   | { key: HeroKey; state: "asking" | "later" };
 
-export interface CaseAct {
+interface CaseAct {
   key: ActKey;
   dot: DotState;
   cards: BusinessCaseCardKey[];
