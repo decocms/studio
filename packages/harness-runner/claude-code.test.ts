@@ -257,6 +257,19 @@ describe("buildOptions", () => {
     ).toEqual(["Monitor", "ScheduleWakeup"]);
   });
 
+  test("says how a bare Studio tool name is called, in whichever mode the run is", () => {
+    const mounted = options({
+      mcp: { url: "https://studio.example/mcp", headers: {}, expiresAt: 1 },
+    }).systemPrompt as { append: string };
+    expect(mounted.append).toContain("`mcp__studio__<NAME>`");
+    const cli = options({
+      mcp: { url: "https://studio.example/mcp", headers: {}, expiresAt: 1 },
+      studioCli: { org: "example-org" },
+    }).systemPrompt as { append: string };
+    expect(cli.append).toContain("decocms tools call <NAME>");
+    expect(cli.append).not.toContain("mcp__studio__");
+  });
+
   test("does not tell the model to avoid background work", () => {
     const { append } = options().systemPrompt as { append: string };
     expect(append).not.toContain("This run ends when your turn ends");

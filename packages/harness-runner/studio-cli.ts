@@ -124,6 +124,15 @@ export function studioCliInstruction(org: string): string {
   );
 }
 
+/** How a prompt's bare Studio tool name is called when the `studio` MCP server is mounted instead of the CLI. */
+export function studioMcpInstruction(toolPrefix?: string): string {
+  return toolPrefix
+    ? "Studio tools come from the `studio` MCP server: a Studio tool an " +
+        `instruction names \`<NAME>\` is the tool \`${toolPrefix}<NAME>\`.`
+    : "Studio tools come from the `studio` MCP server: a Studio tool an " +
+        "instruction names `<NAME>` is that server's tool of the same name.";
+}
+
 const UNQUOTED = /[A-Za-z0-9_\-.,:=@%+/]/;
 
 /**

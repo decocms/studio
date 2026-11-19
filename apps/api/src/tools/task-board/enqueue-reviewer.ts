@@ -492,7 +492,7 @@ export function awaitingVerdictNudge(
 /** What the reviewer is told when it ended without deciding. Deliberately
  *  narrow: it is not being asked to review again, only to state the verdict its
  *  own run already reached. */
-function missingVerdictPrompt(kind: ReviewerKind): string {
+export function missingVerdictPrompt(kind: ReviewerKind): string {
   return [
     `Your ${REVIEWER_LABEL[kind]} run ended without recording a decision, so the task is stuck: nothing ships and nobody is told why. A review that reaches no verdict is not a review.`,
     "",

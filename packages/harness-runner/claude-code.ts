@@ -38,6 +38,7 @@ import {
   processStudioCliHome,
   studioCliEnv,
   studioCliInstruction,
+  studioMcpInstruction,
   studioCliPluginDir,
   studioToolCall,
   writeStudioCliSession,
@@ -463,7 +464,11 @@ export function buildOptions(args: {
     instructions,
     skillsInstruction(),
     ORG_FS_INSTRUCTION,
-    input.studioCli ? studioCliInstruction(input.studioCli.org) : undefined,
+    input.studioCli
+      ? studioCliInstruction(input.studioCli.org)
+      : input.mcp.url
+        ? studioMcpInstruction(`mcp__${ENVS.STUDIO_MCP_SERVER_NAME}__`)
+        : undefined,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)

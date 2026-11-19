@@ -161,7 +161,7 @@ export function verdictCommentBody(
 /** The follow-up turn, for the one gap a model has to close: the reviewer
  *  captured (or failed to capture) screenshots, and only it can put them on the
  *  card. */
-function followUpPrompt(): string {
+export function followUpPrompt(): string {
   return [
     `No comment of yours for the person reviewing this task (\`audience: "human"\`) carries screenshots, and none declares the change free of any visual surface. One of the two is required — a pass on a visual change nobody can SEE is not a pass, and screenshots in your internal record are not seen.`,
     "",
