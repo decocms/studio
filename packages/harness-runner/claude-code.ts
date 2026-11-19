@@ -17,6 +17,7 @@
  * are the user's own questions and plans (see `interactiveToolHook`).
  */
 
+import { isAbsolute } from "node:path";
 import {
   forkSession,
   getSessionMessages,
@@ -30,6 +31,7 @@ import type {
   Options,
   SDKMessage,
   SDKUserMessage,
+  Settings,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
@@ -142,6 +144,8 @@ interface LiveSession {
   send: (message: SDKUserMessage) => void;
   /** Re-pointed at each turn's translator. */
   gate: { awaitUser: (toolCallId: string) => void };
+  /** The memory the CLI was started with; it never changes inside one process. */
+  memory: string;
 }
 
 const persistent = () => process.env.HARNESS_RUNNER_PERSISTENT === "1";
@@ -540,6 +544,36 @@ const planModeGate =
             "Plan mode: do not make changes. Present the plan with ExitPlanMode.",
         };
 
+type MemorySettings = Pick<
+  Settings,
+  "autoMemoryEnabled" | "autoMemoryDirectory"
+>;
+
+/**
+ * Claude Code's own memory for this run, as flag-layer settings: the layer the
+ * CLI reads the directory from before the checkout's or the user's settings.
+ * `undefined` leaves the CLI default, for a Studio that sends no `memory`.
+ *
+ * On only with the absolute path the daemon wrote after it found the folder on
+ * the org mount. Anything else is off: the CLI answers a path it rejects by
+ * falling back to its folder on the sandbox's own disk, shared by every run.
+ * Exported for the unit test.
+ */
+export function memorySettings(
+  memory: HarnessStreamInputWire["memory"],
+): MemorySettings | undefined {
+  if (!memory) return undefined;
+  if (!memory.enabled || !isAbsolute(memory.directory)) {
+    return { autoMemoryEnabled: false };
+  }
+  return { autoMemoryEnabled: true, autoMemoryDirectory: memory.directory };
+}
+
+/** What a kept session's memory is compared by before another turn reuses it. */
+function memoryKey(input: HarnessStreamInputWire): string {
+  return JSON.stringify(memorySettings(input.memory) ?? null);
+}
+
 /** SDK options for one run. Exported for the unit test — it is the whole policy. */
 export function buildOptions(args: {
   input: HarnessStreamInputWire;
@@ -580,8 +614,10 @@ export function buildOptions(args: {
     ...(studioCliPlugin ? [studioCliPlugin] : []),
   ];
   const mcpServers = mcpServersFor(input);
+  const memory = memorySettings(input.memory);
   return {
     ...(cwd ? { cwd } : {}),
+    ...(memory ? { settings: memory } : {}),
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     ...(input.studioCli && studioCliHome
       ? { env: studioCliEnv(process.env, studioCliHome) }
@@ -1147,6 +1183,12 @@ async function runTurn(
       studioCliHome = await processStudioCliHome();
       await writeStudioCliSession(studioCliHome, input);
     }
+    // A kept CLI holds the memory folder it started with, so never another one's.
+    if (live && live.memory !== memoryKey(input)) {
+      const stale = live;
+      live = null;
+      await endSession(stale.stream);
+    }
     if (live && (await reuseLiveSession(live))) return;
     let forkedForSession = false;
     let restartedWithoutResume = false;
@@ -1328,6 +1370,10 @@ async function runTurn(
    */
   async function attemptTurn(): Promise<string | null> {
     mark("query");
+    const memory = memorySettings(input.memory);
+    console.error(
+      `[claude-code] memory: ${memory ? (memory.autoMemoryEnabled ? "on" : "off") : "default"}`,
+    );
     const turn = turnForAttempt();
     // A string prompt cannot carry image blocks.
     const channel =
@@ -1355,7 +1401,15 @@ async function runTurn(
       const broken = await consumeStream(stream, messages);
       if (persistent() && channel && broken === null) {
         if (sessionHasQueuedWork) await endSession(stream);
-        else live = { stream, messages, send: channel.send, gate };
+        else {
+          live = {
+            stream,
+            messages,
+            send: channel.send,
+            gate,
+            memory: memoryKey(input),
+          };
+        }
       }
       return broken;
     } catch (err) {

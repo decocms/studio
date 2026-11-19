@@ -122,6 +122,24 @@ export const harnessStreamInputSchema = z
       .object({ org: z.string().min(1) })
       .strict()
       .optional(),
+    /**
+     * Claude Code's own memory for this run. Absent = the harness default, a
+     * folder local to the sandbox, which is what a Studio that predates this
+     * field sends.
+     *
+     * Per run and never in the sandbox env: the folder belongs to one member.
+     * Studio sends `directory` relative to the org `home` volume. The daemon
+     * replaces it with the absolute path once that folder answers on the
+     * mount, or turns memory off; the runner treats any other path as off.
+     */
+    memory: z
+      .discriminatedUnion("enabled", [
+        z.object({ enabled: z.literal(false) }).strict(),
+        z
+          .object({ enabled: z.literal(true), directory: z.string().min(1) })
+          .strict(),
+      ])
+      .optional(),
     mode: z.enum([
       "default",
       "plan",

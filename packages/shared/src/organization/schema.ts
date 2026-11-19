@@ -287,6 +287,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Forward a sandbox run's metadata (such as a webhook trigger's run_metadata) to the MCP tools it calls, as hosted Decopilot runs do. Off by default.",
     ),
+  sandbox_chat_user_memory: z
+    .boolean()
+    .optional()
+    .describe(
+      "Sandbox chats keep Claude Code's memory in the member's own folder of the organization filesystem, shared by all their chats, and runs started by the task board or an automation get no memory. On by default (see DEFAULT_ON_FLAGS). Off, every sandbox run keeps the harness default: a memory folder local to its sandbox.",
+    ),
   sandbox_repo_snapshots: z
     .boolean()
     .optional()
@@ -408,6 +414,7 @@ export const DEFAULT_ON_FLAGS: ReadonlySet<keyof OrgFlags> = new Set([
   "chat_harness_sandbox_only",
   "cms_auto_commit",
   "home_chat_org_connections",
+  "sandbox_chat_user_memory",
 ]);
 
 /**

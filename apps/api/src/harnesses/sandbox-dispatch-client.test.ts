@@ -24,6 +24,7 @@ import {
   RunSupersededError,
   SandboxUnreachableError,
 } from "./sandbox-dispatch-client";
+import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { sandboxPathsAsUploads } from "@/tools/task-board/description-uploads";
 
 function bodyOf(text: string): ReadableStream<Uint8Array> {
@@ -168,6 +169,20 @@ describe("runConnectionCandidates", () => {
       expect(run.ids).toEqual([]);
       expect(run.lookups).toEqual([]);
     }
+  });
+
+  test("an automation's manual Run, which has no trigger id, is not a home chat and never asks the board", async () => {
+    const thread = {
+      id: "thrd_1",
+      trigger_id: null,
+      metadata: { runtime: "sandbox", [AUTOMATION_THREAD_KEY]: "auto_1" },
+    };
+    const run = await dispatch({
+      threadRead: Promise.resolve(thread),
+      agentRead: ownOnly,
+    });
+    expect(run.ids).toEqual(["conn_a"]);
+    expect(run.lookups).toEqual([]);
   });
 
   test("a thread that is missing or cannot be read is not a home chat", async () => {
@@ -419,6 +434,21 @@ describe("harnessSessionKey", () => {
         }),
       ),
     ).not.toBe(harnessSessionKey(turn()));
+  });
+
+  // A kept CLI process holds one memory folder for its whole life.
+  test("a different memory, or none, never reuses a kept session", () => {
+    const mine = { enabled: true, directory: "users/user_1" };
+    const keys = [
+      harnessSessionKey(turn()),
+      harnessSessionKey(turn({ memory: { enabled: false } })),
+      harnessSessionKey(turn({ memory: mine })),
+      harnessSessionKey(
+        turn({ memory: { enabled: true, directory: "users/user_2" } }),
+      ),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(harnessSessionKey(turn({ memory: { ...mine } }))).toBe(keys[2]!);
   });
 });
 
