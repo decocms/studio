@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  pickSimpleModeDefaults,
+  SMART_MODEL_PREFERENCES,
+  THINKING_MODEL_PREFERENCES,
+  type AiProviderKey,
+  type AiProviderModel,
+} from "@decocms/shared/sdk";
+import {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS,
   CLAUDE_SUBSCRIPTION_PROVIDER_ID,
   claudeCodeEnvFromCredential,
@@ -13,6 +20,7 @@ import {
 const BUDGET = {
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
   CLAUDE_CODE_MAX_TURNS: null,
+  CLAUDE_CODE_EFFORT: "medium",
   ENABLE_TOOL_SEARCH: "1",
   FORCE_PROMPT_CACHING_5M: "1",
   ANTHROPIC_CUSTOM_HEADERS: null,
@@ -221,10 +229,11 @@ describe("claudeCodeEnvFromCredential", () => {
     ).toBe("claude-sonnet-5.5");
   });
 
-  test("the class changes only the model and the turn cap — credentials are untouched", () => {
+  test("the class changes only the model, the turn cap and the effort — credentials are untouched", () => {
     const {
       CLAUDE_CODE_MODEL: _builder,
       CLAUDE_CODE_MAX_TURNS: _builderTurns,
+      CLAUDE_CODE_EFFORT: _builderEffort,
       ...builderRest
     } = claudeCodeEnvFromCredential({
       providerId: "openrouter",
@@ -233,6 +242,7 @@ describe("claudeCodeEnvFromCredential", () => {
     const {
       CLAUDE_CODE_MODEL: _reviewer,
       CLAUDE_CODE_MAX_TURNS: _reviewerTurns,
+      CLAUDE_CODE_EFFORT: _reviewerEffort,
       ...reviewerRest
     } = claudeCodeEnvFromCredential(
       { providerId: "openrouter", apiKey: "or-1" },
@@ -260,6 +270,24 @@ describe("claudeCodeEnvFromCredential", () => {
     }
   });
 
+  test("the classes that do the work think at medium effort, the cost-capped ones at low", () => {
+    for (const credential of [
+      { providerId: "anthropic", apiKey: "sk-a" },
+      { providerId: "openrouter", apiKey: "or-1" },
+      { providerId: CLAUDE_SUBSCRIPTION_PROVIDER_ID, apiKey: "sk-ant-oat-1" },
+      { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "copilot-token" },
+    ]) {
+      const effort = (
+        modelClass: "default" | "chat" | "reviewer" | "conflict",
+      ) =>
+        claudeCodeEnvFromCredential(credential, modelClass).CLAUDE_CODE_EFFORT;
+      expect(effort("default")).toBe("medium");
+      expect(effort("chat")).toBe("medium");
+      expect(effort("reviewer")).toBe("low");
+      expect(effort("conflict")).toBe("low");
+    }
+  });
+
   test("the chat's chosen Claude model sets CLAUDE_CODE_MODEL", () => {
     const model = (providerId: string, chosen: string) =>
       claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "chat", chosen)
@@ -281,14 +309,26 @@ describe("claudeCodeEnvFromCredential", () => {
       claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "chat", chosen)
         .CLAUDE_CODE_MODEL;
     expect(model("openrouter", "google/gemini-3-pro")).toBe(
-      "anthropic/claude-sonnet-5.5",
+      "anthropic/claude-opus-5.5",
     );
     expect(model("anthropic", "anthropic/claude-sonnet-5")).toBe(
-      "claude-sonnet-5-5",
+      "claude-opus-5-5",
     );
     expect(
       model(CLAUDE_SUBSCRIPTION_PROVIDER_ID, "anthropic/claude-sonnet-5"),
-    ).toBe("claude-sonnet-5-5");
+    ).toBe("claude-opus-5-5");
+  });
+
+  test("a chat with no pick runs the builder's model, except on Copilot", () => {
+    const model = (providerId: string) =>
+      claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, "chat")
+        .CLAUDE_CODE_MODEL;
+    expect(model("anthropic")).toBe("claude-opus-5-5");
+    expect(model(CLAUDE_SUBSCRIPTION_PROVIDER_ID)).toBe("claude-opus-5-5");
+    expect(model("openrouter")).toBe("anthropic/claude-opus-5.5");
+    expect(model("deco")).toBe("anthropic/claude-opus-5.5");
+    // Copilot gates Opus per account; an unavailable model fails the run.
+    expect(model(GITHUB_COPILOT_PROVIDER_ID)).toBe("claude-sonnet-5.5");
   });
 
   test("a task-board run stays on Opus whatever a chat would pick", () => {
@@ -304,7 +344,7 @@ describe("claudeCodeEnvFromCredential", () => {
   test("reviewer and conflict runs keep their class model whatever was chosen", () => {
     for (const [modelClass, expectedModel] of [
       ["reviewer", "claude-sonnet-5-5"],
-      ["conflict", "claude-sonnet-5"],
+      ["conflict", "claude-sonnet-5-5"],
     ] as const) {
       expect(
         claudeCodeEnvFromCredential(
@@ -344,14 +384,20 @@ describe("claudeCodeEnvFromCredential", () => {
       { providerId: "anthropic", apiKey: "sk-a" },
       "conflict",
     );
-    expect(env.CLAUDE_CODE_MODEL).toBe("claude-sonnet-5");
+    expect(env.CLAUDE_CODE_MODEL).toBe("claude-sonnet-5-5");
     expect(env.CLAUDE_CODE_MAX_TURNS).toBe("60");
     expect(
       claudeCodeEnvFromCredential(
         { providerId: "openrouter", apiKey: "sk-o" },
         "conflict",
       ).CLAUDE_CODE_MODEL,
-    ).toBe("anthropic/claude-sonnet-5");
+    ).toBe("anthropic/claude-sonnet-5.5");
+    expect(
+      claudeCodeEnvFromCredential(
+        { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "copilot-token" },
+        "conflict",
+      ).CLAUDE_CODE_MODEL,
+    ).toBe("claude-sonnet-5.5");
   });
 
   test("the error never contains the key", () => {
@@ -362,6 +408,70 @@ describe("claudeCodeEnvFromCredential", () => {
       message = err instanceof Error ? err.message : String(err);
     }
     expect(message).not.toContain("secret-k");
+  });
+});
+
+describe("one Claude lineup", () => {
+  const catalog = (providerId: "anthropic" | "openrouter" | "deco") =>
+    [
+      ...(SMART_MODEL_PREFERENCES[providerId] ?? []),
+      ...(THINKING_MODEL_PREFERENCES[providerId] ?? []),
+    ].map(
+      (modelId): AiProviderModel => ({
+        providerId,
+        modelId,
+        title: modelId,
+        description: null,
+        logo: null,
+        capabilities: ["text"],
+        limits: null,
+        costs: null,
+      }),
+    );
+  const smartDefault = (providerId: "anthropic" | "openrouter" | "deco") => {
+    const key: AiProviderKey = {
+      id: "key-1",
+      providerId,
+      label: providerId,
+      presetId: null,
+      createdBy: "user-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    return pickSimpleModeDefaults([key], { [key.id]: catalog(providerId) }).chat
+      .smart?.modelId;
+  };
+
+  test.each([["anthropic"], ["openrouter"], ["deco"]] as const)(
+    "on %s the Smart tier default is the model a chat and a builder run",
+    (providerId) => {
+      const smart = smartDefault(providerId);
+      expect(smart).toContain("claude-opus-");
+      for (const modelClass of ["default", "chat"] as const) {
+        expect(
+          claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, modelClass)
+            .CLAUDE_CODE_MODEL,
+        ).toBe(smart ?? "");
+      }
+    },
+  );
+
+  test("Copilot's ids are the same versions in Copilot's form", () => {
+    const copilotClass = (modelClass: "reviewer" | "conflict") =>
+      claudeCodeEnvFromCredential(
+        { providerId: GITHUB_COPILOT_PROVIDER_ID, apiKey: "t" },
+        modelClass,
+      ).CLAUDE_CODE_MODEL;
+    for (const modelClass of ["reviewer", "conflict"] as const) {
+      for (const providerId of ["anthropic", "openrouter"]) {
+        const own = claudeCodeEnvFromCredential(
+          { providerId, apiKey: "k" },
+          modelClass,
+        ).CLAUDE_CODE_MODEL;
+        expect(copilotModelId(own ?? "")).toBe(
+          copilotClass(modelClass) ?? null,
+        );
+      }
+    }
   });
 });
 

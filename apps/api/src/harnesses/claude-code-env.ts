@@ -29,6 +29,10 @@ import { CODEX_SUBSCRIPTION_PROVIDER_ID } from "@decocms/shared/harness/codex-mo
  */
 
 import { isClaudeCodeModel } from "@decocms/shared/harness/claude-code-models";
+import {
+  CLAUDE_OPUS,
+  CLAUDE_SONNET,
+} from "@decocms/shared/sdk/lib/claude-lineup";
 
 /**
  * Pseudo-provider id for a user's own Claude subscription (linked over OAuth,
@@ -96,8 +100,7 @@ export function copilotModelId(modelId: string): string | null {
  * against Claude models, so any other slot id is not usable here.
  *
  * `default` is a task-board run's builder. `chat` is an interactive chat, which
- * honors the model the chat picked and otherwise gets the cheaper tier: a chat
- * is mostly conversation and lookups, and on Opus a short one cost ~$2.
+ * honors the model the chat picked and otherwise runs the builder's model.
  *
  * `reviewer` is a cheaper tier for the Reviewer, whose job is
  * to read a diff and reach a verdict rather than write the change. Together
@@ -119,24 +122,24 @@ const CLAUDE_CODE_MODEL: Record<
   Record<ClaudeCodeModelClass, string>
 > = {
   anthropic: {
-    default: "claude-opus-5-5",
-    chat: "claude-sonnet-5-5",
-    reviewer: "claude-sonnet-5-5",
-    conflict: "claude-sonnet-5",
+    default: CLAUDE_OPUS.anthropic,
+    chat: CLAUDE_OPUS.anthropic,
+    reviewer: CLAUDE_SONNET.anthropic,
+    conflict: CLAUDE_SONNET.anthropic,
   },
   openrouter: {
-    default: "anthropic/claude-opus-5.5",
-    chat: "anthropic/claude-sonnet-5.5",
-    reviewer: "anthropic/claude-sonnet-5.5",
-    conflict: "anthropic/claude-sonnet-5",
+    default: CLAUDE_OPUS.openrouter,
+    chat: CLAUDE_OPUS.openrouter,
+    reviewer: CLAUDE_SONNET.openrouter,
+    conflict: CLAUDE_SONNET.openrouter,
   },
   // Sonnet even for the builder: Copilot plans gate Opus per account (off on a
   // fresh Pro seat), and an unavailable model fails the run with a 400.
   copilot: {
-    default: "claude-sonnet-5.5",
-    chat: "claude-sonnet-5.5",
-    reviewer: "claude-sonnet-5.5",
-    conflict: "claude-sonnet-5",
+    default: CLAUDE_SONNET.copilot,
+    chat: CLAUDE_SONNET.copilot,
+    reviewer: CLAUDE_SONNET.copilot,
+    conflict: CLAUDE_SONNET.copilot,
   },
 };
 
@@ -194,6 +197,26 @@ const CLAUDE_CODE_MAX_TURNS: Record<ClaudeCodeModelClass, number | null> = {
   chat: null,
   reviewer: 60,
   conflict: 60,
+};
+
+/**
+ * Reasoning effort, by class. The harness runner passes it to the SDK and
+ * falls back to `low` when a Studio that predates this variable sends none.
+ *
+ * `medium` for the two classes that do the work. Every run used to be pinned
+ * to `low`, the SDK's minimal-thinking level, while the same CLI on a laptop
+ * runs at the SDK default (`high`). The reviewer and the conflict re-run stay
+ * on `low` with their cheaper model: both are cost-capped on purpose (see
+ * `CLAUDE_CODE_MODEL`).
+ */
+const CLAUDE_CODE_EFFORT: Record<
+  ClaudeCodeModelClass,
+  "low" | "medium" | "high"
+> = {
+  default: "medium",
+  chat: "medium",
+  reviewer: "low",
+  conflict: "low",
 };
 
 /**
@@ -281,6 +304,7 @@ export function claudeCodeEnvFromCredential(
   const budget = {
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: `${CLAUDE_CODE_MAX_OUTPUT_TOKENS}`,
     CLAUDE_CODE_MAX_TURNS: maxTurns === null ? null : `${maxTurns}`,
+    CLAUDE_CODE_EFFORT: CLAUDE_CODE_EFFORT[modelClass],
     ENABLE_TOOL_SEARCH: TOOL_SEARCH,
     FORCE_PROMPT_CACHING_5M: PROMPT_CACHE_5M,
     // Only Copilot sets it; null clears a previous Copilot run's header.
