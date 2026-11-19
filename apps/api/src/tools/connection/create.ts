@@ -14,6 +14,7 @@ import {
 } from "../../core/studio-context";
 import { getSettings } from "../../settings";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
+import { provisionOrderIngest } from "../../monitoring/order-ingest-install";
 import { notifyMcpConfiguration } from "./on-configuration";
 import {
   deriveCredentialGrants,
@@ -220,6 +221,8 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
         ?.set("tools", connection.id, tools as Tool[])
         .catch(() => {});
     }
+
+    await provisionOrderIngest(ctx, { organization, userId, connection });
 
     posthog.capture({
       distinctId: userId,

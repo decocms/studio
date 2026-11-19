@@ -5,7 +5,6 @@
  * Also handles MCP configuration state and scopes validation.
  */
 
-import { notifyMcpConfiguration } from "./on-configuration";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -18,19 +17,16 @@ import {
 import { getSettings } from "../../settings";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
-import {
-  deriveCredentialGrants,
-  injectSelfSentinel,
-  validateConfiguration,
-} from "./credential-grants";
+import { provisionOrderIngest } from "../../monitoring/order-ingest-install";
+import { injectSelfSentinel, validateConfiguration } from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
+import { saveConnectionWithConfiguration } from "./save-configuration";
 import { assertMayMoveCredentials } from "./credential-origin-guard";
 import { toPublicConnection } from "./public-connection";
 import { assertSiteSlugUnchanged } from "../virtual/site-slug-guard";
 import { pinnedSiteSlugOnRename } from "../virtual/pin-site-slug";
 import {
   buildVirtualUrl,
-  type ConnectionEntity,
   ConnectionEntitySchema,
   type ConnectionUpdateData,
   ConnectionUpdateDataSchema,
@@ -309,158 +305,21 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     }
 
     const savedConfigurationChanged = configChanged || autoScopesChanged;
-    const credentialGrants = savedConfigurationChanged
-      ? deriveCredentialGrants(
-          finalState as Record<string, unknown>,
-          finalScopes,
-        )
-      : [];
-    const previousCredentialGrants = savedConfigurationChanged
-      ? deriveCredentialGrants(
-          (existing.configuration_state ?? {}) as Record<string, unknown>,
-          existing.configuration_scopes ?? [],
-        )
-      : [];
-    // firstRun fires the MCP's onInstall hook exactly once: true when the
-    // connection had no prior configuration_state (its first config save).
-    const priorState = existing.configuration_state as Record<
-      string,
-      unknown
-    > | null;
-    const firstRun = priorState == null || Object.keys(priorState).length === 0;
-    let vaultBootstrap:
-      | {
-          baseUrl: string;
-          org: string;
-          subjectConnectionId: string;
-          token: string;
-        }
-      | undefined;
-    let createdWorkloadTokenId: string | undefined;
-
-    const restorePreviousCredentialGrants = async () => {
-      try {
-        await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
-          organizationId: organization.id,
-          subjectConnectionId: id,
-          createdBy: userId,
-          grants: previousCredentialGrants,
-        });
-      } catch (restoreError) {
-        console.error(
-          "Failed to restore credential grants after credential vault mutation failed",
-          restoreError,
-        );
-      }
-    };
-
-    const updatePayload: Partial<ConnectionEntity> = {
+    const updatePayload = {
       ...data,
       connection_url: finalConnectionUrl,
       tools: null,
-      configuration_state: finalState,
+      configuration_state: finalState as Record<string, unknown>,
       configuration_scopes: finalScopes,
       updated_by: userId,
     };
-    const connectionForCallback = {
-      ...existing,
-      ...updatePayload,
-    } as ConnectionEntity;
-
-    if (savedConfigurationChanged) {
-      try {
-        await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
-          organizationId: organization.id,
-          subjectConnectionId: id,
-          createdBy: userId,
-          grants: credentialGrants,
-        });
-
-        if (credentialGrants.length > 0) {
-          const activeToken =
-            await ctx.storage.connectionCredentialVault.findActiveWorkloadToken(
-              {
-                organizationId: organization.id,
-                subjectConnectionId: id,
-              },
-            );
-
-          if (!activeToken) {
-            const { plaintextToken, record } =
-              await ctx.storage.connectionCredentialVault.createOrRotateWorkloadToken(
-                {
-                  organizationId: organization.id,
-                  subjectConnectionId: id,
-                },
-              );
-            createdWorkloadTokenId = record.id;
-            vaultBootstrap = {
-              baseUrl: ctx.baseUrl,
-              org: organization.slug ?? organization.id,
-              subjectConnectionId: id,
-              token: plaintextToken,
-            };
-          }
-        }
-      } catch (error) {
-        if (createdWorkloadTokenId) {
-          await ctx.storage.connectionCredentialVault.revokeWorkloadToken({
-            organizationId: organization.id,
-            subjectConnectionId: id,
-            tokenId: createdWorkloadTokenId,
-          });
-        }
-        await restorePreviousCredentialGrants();
-        throw error;
-      }
-    }
-
-    // Invoke ON_MCP_CONFIGURATION callback if configuration was updated
-    // Ignore errors but await for the response before responding
-    if (savedConfigurationChanged && finalState && finalScopes) {
-      try {
-        await notifyMcpConfiguration(ctx, connectionForCallback, {
-          state: finalState,
-          scopes: finalScopes,
-          firstRun,
-          ...(vaultBootstrap ? { vault: vaultBootstrap } : {}),
-        });
-      } catch (error) {
-        console.error("Failed to invoke ON_MCP_CONFIGURATION callback", error);
-        if (createdWorkloadTokenId) {
-          await ctx.storage.connectionCredentialVault.revokeWorkloadToken({
-            organizationId: organization.id,
-            subjectConnectionId: id,
-            tokenId: createdWorkloadTokenId,
-          });
-        }
-        // Nothing to restore when the update carried no credential grants.
-        if (credentialGrants.length > 0) {
-          await restorePreviousCredentialGrants();
-          throw error;
-        }
-      }
-    }
-
-    // Update the connection after any required vault bootstrap succeeds. This
-    // keeps mixed updates atomic from the caller's point of view when bootstrap
-    // plaintext would otherwise be lost.
-    let connection: ConnectionEntity;
-    try {
-      connection = await ctx.storage.connections.update(id, updatePayload);
-    } catch (error) {
-      if (savedConfigurationChanged) {
-        if (createdWorkloadTokenId) {
-          await ctx.storage.connectionCredentialVault.revokeWorkloadToken({
-            organizationId: organization.id,
-            subjectConnectionId: id,
-            tokenId: createdWorkloadTokenId,
-          });
-        }
-        await restorePreviousCredentialGrants();
-      }
-      throw error;
-    }
+    const connection = await saveConnectionWithConfiguration(ctx, {
+      organization,
+      userId,
+      existing,
+      update: updatePayload,
+      configurationChanged: savedConfigurationChanged,
+    });
 
     // Eagerly populate NATS KV cache with fetched tools
     if (tools) {
@@ -472,6 +331,10 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // results across ALL replicas (per-pod caches → NATS broadcast) so stale
     // (possibly now-unauthorized) responses aren't served against the new config.
     invalidateConnectionCaches(id);
+
+    if (savedConfigurationChanged) {
+      await provisionOrderIngest(ctx, { organization, userId, connection });
+    }
 
     return {
       item: toPublicConnection(connection),

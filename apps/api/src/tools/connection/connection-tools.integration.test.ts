@@ -31,6 +31,8 @@ import {
 } from "../../storage/connection-credential-vault";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
 import * as fetchToolsModule from "./fetch-tools";
+import { getSettings, setGlobalSettings } from "../../settings";
+import { orderIngestId } from "../../monitoring/order-ingest-install";
 
 // Create a mock BoundAuthClient for tests
 const createMockBoundAuth = (): BoundAuthClient =>
@@ -1392,6 +1394,181 @@ describe("Connection Tools", () => {
           subjectConnectionId: subject.id,
           targetConnectionId: target.id,
           scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        }),
+      ).resolves.toBe(false);
+    });
+  });
+
+  describe("VTEX order ingest", () => {
+    const ingestUrl = "https://order-ingest.invalid/mcp";
+    const original = getSettings();
+    beforeAll(() =>
+      setGlobalSettings({
+        ...original,
+        plansEnabled: false,
+        orderMonitorIngestUrl: ingestUrl,
+        customerLakeUrl: "https://lake.invalid",
+        customerLakeAdminPassword: "lake-admin",
+        customerLakeTenantSecret: "lake-tenant",
+      }),
+    );
+    afterAll(() => setGlobalSettings(original));
+
+    const keys = { accountName: "store", appKey: "key", appToken: "token" };
+
+    const ingestsBoundTo = async (vtexId: string) => {
+      const { items } = await ctx.storage.connections.list("org_123", {
+        where: { field: ["connection_url"], operator: "eq", value: ingestUrl },
+      });
+      return items.filter(
+        (c) =>
+          (c.configuration_state?.VTEX as { value?: string } | undefined)
+            ?.value === vtexId,
+      );
+    };
+
+    const createVtex = (id: string) =>
+      ctx.storage.connections.create({
+        id,
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "VTEX",
+        app_id: "deco/vtex",
+        app_name: "vtex",
+        connection_type: "HTTP",
+        connection_url: `https://${id}.invalid/mcp`,
+        connection_token: null,
+        tools: null,
+      });
+
+    it("installs the ingest once the VTEX connection has its keys, and only once", async () => {
+      const vtex = await createVtex("conn_vtex_auto_ingest");
+      const callTool = vi.fn().mockResolvedValue({});
+      setMockMcpClient({ callTool });
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+
+      await COLLECTION_CONNECTIONS_UPDATE.execute(
+        {
+          id: vtex.id,
+          data: { configuration_state: { accountName: "store" } },
+        },
+        ctx,
+      );
+      expect(await ingestsBoundTo(vtex.id)).toHaveLength(0);
+
+      await COLLECTION_CONNECTIONS_UPDATE.execute(
+        { id: vtex.id, data: { configuration_state: keys } },
+        ctx,
+      );
+
+      const [ingest, ...rest] = await ingestsBoundTo(vtex.id);
+      expect(rest).toHaveLength(0);
+      expect(ingest?.id).toBe(orderIngestId(vtex.id));
+      expect(ingest?.configuration_scopes).toEqual([
+        `VTEX::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`,
+      ]);
+      await expect(
+        ctx.storage.connectionCredentialVault.hasGrant({
+          organizationId: "org_123",
+          subjectConnectionId: orderIngestId(vtex.id),
+          targetConnectionId: vtex.id,
+          scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
+        }),
+      ).resolves.toBe(true);
+      const install = callTool.mock.calls
+        .map((call) => call[0])
+        .find((call) => call.arguments.state?.VTEX);
+      expect(install?.name).toBe("ON_MCP_CONFIGURATION");
+      expect(install?.arguments.firstRun).toBe(true);
+      expect(install?.arguments.vault.subjectConnectionId).toBe(
+        orderIngestId(vtex.id),
+      );
+
+      await COLLECTION_CONNECTIONS_UPDATE.execute(
+        {
+          id: vtex.id,
+          data: { configuration_state: { ...keys, appToken: "rotated" } },
+        },
+        ctx,
+      );
+      expect(await ingestsBoundTo(vtex.id)).toHaveLength(1);
+    });
+
+    it("reuses an ingest already bound to the VTEX connection when it is created with keys", async () => {
+      const vtexId = "conn_vtex_prebound_ingest";
+      await ctx.storage.connections.create({
+        id: "conn_ui_installed_ingest",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "VTEX order monitoring",
+        connection_type: "HTTP",
+        connection_url: ingestUrl,
+        connection_token: null,
+        tools: null,
+        configuration_state: { VTEX: { __type: "vtex", value: vtexId } },
+        configuration_scopes: [`VTEX::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`],
+      });
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+
+      await COLLECTION_CONNECTIONS_CREATE.execute(
+        {
+          data: {
+            id: vtexId,
+            title: "VTEX",
+            app_id: "deco/vtex",
+            app_name: "vtex",
+            connection_type: "HTTP",
+            connection_url: "https://vtex-prebound.invalid/mcp",
+            connection_token: null,
+            configuration_state: keys,
+          },
+        },
+        ctx,
+      );
+
+      const ingests = await ingestsBoundTo(vtexId);
+      expect(ingests.map((c) => c.id)).toEqual(["conn_ui_installed_ingest"]);
+    });
+
+    it("keeps the VTEX save and leaves no ingest behind when the ingest rejects the key", async () => {
+      const vtex = await createVtex("conn_vtex_rejected_key");
+      setMockMcpClient({
+        callTool: vi.fn(async (call: { arguments: { state?: object } }) =>
+          call.arguments.state && "VTEX" in call.arguments.state
+            ? {
+                isError: true,
+                content: [{ type: "text", text: "VTEX 401 Unauthorized" }],
+              }
+            : {},
+        ),
+      });
+      vi.spyOn(fetchToolsModule, "fetchToolsFromMCP").mockResolvedValue({
+        tools: null,
+        scopes: null,
+      });
+
+      const result = await COLLECTION_CONNECTIONS_UPDATE.execute(
+        { id: vtex.id, data: { configuration_state: keys } },
+        ctx,
+      );
+
+      expect(result.item.configuration_state).toMatchObject(keys);
+      expect(await ingestsBoundTo(vtex.id)).toHaveLength(0);
+      await expect(
+        ctx.storage.connections.findById(orderIngestId(vtex.id)),
+      ).resolves.toBeNull();
+      await expect(
+        ctx.storage.connectionCredentialVault.hasGrant({
+          organizationId: "org_123",
+          subjectConnectionId: orderIngestId(vtex.id),
+          targetConnectionId: vtex.id,
+          scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
         }),
       ).resolves.toBe(false);
     });
