@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_CHAT_TIER } from "@decocms/shared/organization/schema";
 import {
   pickSimpleModeDefaults,
   SMART_MODEL_PREFERENCES,
@@ -428,7 +429,7 @@ describe("one Claude lineup", () => {
         costs: null,
       }),
     );
-  const smartDefault = (providerId: "anthropic" | "openrouter" | "deco") => {
+  const tierDefaults = (providerId: "anthropic" | "openrouter" | "deco") => {
     const key: AiProviderKey = {
       id: "key-1",
       providerId,
@@ -437,21 +438,33 @@ describe("one Claude lineup", () => {
       createdBy: "user-1",
       createdAt: "2026-01-01T00:00:00.000Z",
     };
-    return pickSimpleModeDefaults([key], { [key.id]: catalog(providerId) }).chat
-      .smart?.modelId;
+    return pickSimpleModeDefaults([key], { [key.id]: catalog(providerId) })
+      .chat;
   };
+  const harnessModel = (
+    providerId: string,
+    modelClass: "default" | "chat" | "reviewer" | "conflict",
+  ) =>
+    claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, modelClass)
+      .CLAUDE_CODE_MODEL ?? null;
 
   test.each([["anthropic"], ["openrouter"], ["deco"]] as const)(
-    "on %s the Smart tier default is the model a chat and a builder run",
+    "on %s the default chat tier's model is the one a chat and a builder run",
     (providerId) => {
-      const smart = smartDefault(providerId);
-      expect(smart).toContain("claude-opus-");
-      for (const modelClass of ["default", "chat"] as const) {
-        expect(
-          claudeCodeEnvFromCredential({ providerId, apiKey: "k" }, modelClass)
-            .CLAUDE_CODE_MODEL,
-        ).toBe(smart ?? "");
-      }
+      const picked = tierDefaults(providerId)[DEFAULT_CHAT_TIER]?.modelId;
+      expect(picked).toContain("claude-opus-");
+      expect(harnessModel(providerId, "chat")).toBe(picked ?? null);
+      expect(harnessModel(providerId, "default")).toBe(picked ?? null);
+    },
+  );
+
+  test.each([["anthropic"], ["openrouter"], ["deco"]] as const)(
+    "on %s the Smart tier default is the model the cheap classes run",
+    (providerId) => {
+      const smart = tierDefaults(providerId).smart?.modelId;
+      expect(smart).toContain("claude-sonnet-");
+      expect(harnessModel(providerId, "reviewer")).toBe(smart ?? null);
+      expect(harnessModel(providerId, "conflict")).toBe(smart ?? null);
     },
   );
 

@@ -64,7 +64,11 @@ import {
   useVirtualMCPNonBlocking,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
-import { bumpUsageOptimistically } from "@/hooks/use-entitlements";
+import {
+  bumpUsageOptimistically,
+  useFeature,
+  useFeaturesSettled,
+} from "@/hooks/use-entitlements";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
 
@@ -172,6 +176,7 @@ import {
 import { businessCaseQueryKey } from "@/components/plan/business-case/use-business-case";
 import { useEffectiveSimpleMode } from "../../hooks/use-user-model-preferences";
 import {
+  chosenChatTier,
   findModel,
   pickFallbackChatModel,
   resolveActiveTier,
@@ -304,6 +309,8 @@ export interface ChatPrefsContextValue {
   resetInteraction: () => void;
   /** The currently selected tier in Simple Model Mode */
   simpleModeTier: SimpleTier;
+  /** The tier a chat request carries: unset when the person picked none. */
+  requestTier: SimpleTier | undefined;
   setSimpleModeTier: (tier: SimpleTier) => void;
 }
 
@@ -434,7 +441,11 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     LOCALSTORAGE_KEYS.chatSimpleModeTier(locator),
     null,
   );
-  const activeTier = resolveActiveTier(storedTier);
+  // Same condition as `TierTrigger`: the picker renders only then.
+  const modelChoice = useFeature("model_choice");
+  const featuresSettled = useFeaturesSettled();
+  const chosenTier = chosenChatTier(storedTier, modelChoice && featuresSettled);
+  const activeTier = resolveActiveTier(chosenTier);
 
   // AI provider keys + models
   const keys = useHostedAiProviderKeys();
@@ -450,6 +461,15 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     useAiProviderModels(effectiveKeyId ?? undefined);
 
   const { models: simpleChatModels } = useAiProviderModels(activeChatKeyId);
+  // Mirrors the server's `resolveDefaultChatTier`: Smart backs an unpicked default.
+  const defaultFallbackSlot = chosenTier ? null : simpleMode.tiers.smart;
+  const defaultFallbackKeyId = keys.some(
+    (key) => key.id === defaultFallbackSlot?.keyId,
+  )
+    ? defaultFallbackSlot?.keyId
+    : undefined;
+  const { models: defaultFallbackModels } =
+    useAiProviderModels(defaultFallbackKeyId);
   const imageKeyId = keys.some(
     (key) => key.id === simpleMode.tiers.image?.keyId,
   )
@@ -472,7 +492,16 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
 
   const selectedModel: AiProviderModel | null =
     findModel(activeChatSlot, keys, simpleChatModels, activeChatSlot?.title) ??
-    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels);
+    pickFallbackChatModel(activeTier, keys, effectiveKeyId, allKeyModels) ??
+    findModel(
+      defaultFallbackSlot,
+      keys,
+      defaultFallbackModels,
+      defaultFallbackSlot?.title,
+    ) ??
+    (chosenTier
+      ? null
+      : pickFallbackChatModel("smart", keys, effectiveKeyId, allKeyModels));
   const isModelsLoading = isModelsQueryLoading;
 
   const imageModels = allKeyModels.filter((m) =>
@@ -631,6 +660,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     tiptapDocRef,
     resetInteraction: () => {},
     simpleModeTier: activeTier,
+    requestTier: chosenTier ?? undefined,
     setSimpleModeTier: (tier: SimpleTier) => setStoredTier(tier),
   };
 
@@ -935,7 +965,7 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
     setChatMode,
     appContexts,
     setTiptapDoc,
-    simpleModeTier: activeTier,
+    requestTier,
   } = useChatPrefs();
   const internals = useContext(TaskInternalsCtx);
   if (!internals) {
@@ -1383,7 +1413,7 @@ function useActiveTaskStream(taskId: string): ChatStreamContextValue {
     const requestOptions: RequestOptions = {
       ...(voiceMode || voiceEnabled ? { voiceMode } : {}),
       ...(voiceMode && voiceTranscript ? { voiceTranscript } : {}),
-      tier: activeTier,
+      tier: requestTier,
       mode: modeToSend,
       toolApprovalLevel:
         preferences.toolApprovalLevel ?? readToolApprovalLevel(),

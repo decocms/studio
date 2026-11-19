@@ -69,7 +69,8 @@ export interface RequestOptions {
   voiceMode?: boolean;
   /** Model-only context for a spoken turn; never rendered as message text. */
   voiceTranscript?: VoiceTranscript;
-  tier: SimpleModeTier;
+  /** Omitted when the person picked none; the server applies the default. */
+  tier?: SimpleModeTier;
   mode: ChatMode;
   toolApprovalLevel: ToolApprovalLevel;
   /** Synthesized into a `role: "system"` message at POST time. */

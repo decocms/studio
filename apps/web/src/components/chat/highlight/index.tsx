@@ -185,7 +185,7 @@ export function ChatHighlight({
   } = useChatStream();
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
-  const { chatMode, setChatMode, simpleModeTier } = useChatPrefs();
+  const { chatMode, setChatMode, requestTier } = useChatPrefs();
   const canBuyCredits = useFeature("credits");
 
   // Build a fresh RequestOptions at call time so tier/mode reflect the
@@ -197,7 +197,7 @@ export function ChatHighlight({
     toolApprovalLevel: ToolApprovalLevel,
   ): RequestOptions => ({
     ...(voiceMode ? { voiceMode: true } : {}),
-    tier: simpleModeTier,
+    tier: requestTier,
     mode: chatMode,
     toolApprovalLevel,
     agent: virtualMcpId ? { id: virtualMcpId } : undefined,

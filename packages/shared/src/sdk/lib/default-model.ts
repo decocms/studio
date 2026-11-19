@@ -79,14 +79,8 @@ export function getFastModel(providerId: ProviderId): string | null {
  * in Simple Model Mode.
  */
 export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
-  anthropic: [
-    CLAUDE_OPUS.anthropic,
-    CLAUDE_SONNET.anthropic,
-    "claude-sonnet-5",
-    "claude-sonnet",
-  ],
+  anthropic: [CLAUDE_SONNET.anthropic, "claude-sonnet-5", "claude-sonnet"],
   openrouter: [
-    CLAUDE_OPUS.openrouter,
     CLAUDE_SONNET.openrouter,
     "anthropic/claude-sonnet-5",
     "anthropic/claude-sonnet",
@@ -94,7 +88,6 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
     "google/gemini-3-pro",
   ],
   deco: [
-    CLAUDE_OPUS.openrouter,
     CLAUDE_SONNET.openrouter,
     "anthropic/claude-sonnet-5",
     "anthropic/claude-sonnet",

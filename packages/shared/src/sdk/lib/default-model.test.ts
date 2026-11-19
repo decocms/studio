@@ -86,56 +86,50 @@ describe("current Claude lineup in the chat tiers", () => {
     return { smart: chat.smart?.modelId, thinking: chat.thinking?.modelId };
   }
 
-  it("puts Opus 5.5 on Smart and Thinking when the catalog lists it", () => {
+  it("puts Sonnet 5.5 on Smart and Opus 5.5 on Thinking", () => {
     expect(
       tiers("anthropic", [
         "claude-sonnet-5",
         "claude-opus-4-8",
-        "claude-sonnet-5-5",
         "claude-opus-5-5",
+        "claude-sonnet-5-5",
       ]),
-    ).toEqual({ smart: "claude-opus-5-5", thinking: "claude-opus-5-5" });
+    ).toEqual({ smart: "claude-sonnet-5-5", thinking: "claude-opus-5-5" });
 
     for (const providerId of ["openrouter", "deco"] as const) {
       expect(
         tiers(providerId, [
           "anthropic/claude-sonnet-5",
           "anthropic/claude-opus-4.8",
-          "anthropic/claude-sonnet-5.5",
           "anthropic/claude-opus-5.5",
+          "anthropic/claude-sonnet-5.5",
         ]),
       ).toEqual({
-        smart: "anthropic/claude-opus-5.5",
+        smart: "anthropic/claude-sonnet-5.5",
         thinking: "anthropic/claude-opus-5.5",
       });
     }
   });
 
-  it("puts Sonnet 5.5 on Smart when the catalog has no Opus 5.5", () => {
+  it("keeps Smart off Opus when the catalog has no Sonnet 5.5", () => {
     expect(
       tiers("anthropic", [
         "claude-sonnet-5",
         "claude-opus-4-8",
-        "claude-sonnet-5-5",
+        "claude-opus-5-5",
       ]),
-    ).toEqual({ smart: "claude-sonnet-5-5", thinking: "claude-opus-4-8" });
-    expect(
-      tiers("openrouter", [
-        "anthropic/claude-sonnet-5",
-        "anthropic/claude-opus-4.8",
-        "anthropic/claude-sonnet-5.5",
-      ]),
-    ).toEqual({
-      smart: "anthropic/claude-sonnet-5.5",
-      thinking: "anthropic/claude-opus-4.8",
-    });
+    ).toEqual({ smart: "claude-sonnet-5", thinking: "claude-opus-5-5" });
   });
 
-  it("matches a dated Opus 5.5 id ahead of an older family match", () => {
+  it("matches dated ids of the current lineup", () => {
     expect(
-      tiers("anthropic", ["claude-sonnet-4-6", "claude-opus-5-5-20261001"]),
+      tiers("anthropic", [
+        "claude-sonnet-4-6",
+        "claude-sonnet-5-5-20261001",
+        "claude-opus-5-5-20261001",
+      ]),
     ).toEqual({
-      smart: "claude-opus-5-5-20261001",
+      smart: "claude-sonnet-5-5-20261001",
       thinking: "claude-opus-5-5-20261001",
     });
   });
