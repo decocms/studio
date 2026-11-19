@@ -58,6 +58,7 @@ import {
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
 import { resolveRunMemory } from "@/harnesses/run-memory";
+import { AUTOMATION_THREAD_KEY } from "@/storage/automations";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import { daemonRunId } from "@/harnesses/live-messages";
@@ -1618,8 +1619,10 @@ function errorKind(error: unknown): string {
 
 /**
  * Whether a run is a chat a person drives on the org's default agent
- * (`home_chat_org_connections`, on by default). Board, reviewer, Jira and
- * trigger runs dispatch on the same agent and must not match.
+ * (`home_chat_org_connections`, on by default). Board, reviewer, Jira,
+ * trigger and automation runs dispatch on the same agent and must not match.
+ * An automation's manual Run has no trigger id; its thread carries
+ * `AUTOMATION_THREAD_KEY` instead.
  *
  * Ordered by cost: the flag, the agent and the run class are in hand, and the
  * thread is a read the dispatch already makes. Only a run those leave
@@ -1640,6 +1643,7 @@ async function isInteractiveHomeChat(args: {
   if (args.runClass) return false;
   const thread = await args.threadRead.catch(() => null);
   if (!thread || thread.trigger_id || thread.metadata?.source) return false;
+  if (thread.metadata?.[AUTOMATION_THREAD_KEY] != null) return false;
   try {
     return (await args.linkedTaskIds(thread.id)).length === 0;
   } catch (error) {
