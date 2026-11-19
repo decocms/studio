@@ -46,7 +46,7 @@ import {
 import { AXIS_TICK, MetricCard } from "@/layouts/task-board/analytics-sections";
 import { type MonitoredStore, sum } from "./board";
 import { MonitorStatusMark, Trend } from "./parts";
-import { SalesForecast } from "./sales-forecast";
+import { SalesStatus } from "./sales-status";
 import { Sparkline } from "./sparkline";
 
 const COLOR_TODAY = "var(--chart-1)";
@@ -385,7 +385,7 @@ function Body({
   );
   return (
     <div className="flex flex-col gap-4">
-      <SalesForecast days={[day]} />
+      <SalesStatus days={[day]} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <MetricCard
           title={t("monitor.store.projected")}

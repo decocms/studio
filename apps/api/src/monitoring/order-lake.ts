@@ -35,7 +35,8 @@ const inRange = (col: string) => `${col} < ${AT}
 // would otherwise count twice. Every created order counts, whatever its status now.
 const ORDERS_SQL = `
   SELECT ${daysAgo("created_at")} AS days_ago, ${bucket("created_at")} AS bucket,
-    count() AS placed, sum(total) AS revenue, any(currency) AS currency
+    count() AS placed, sum(total) AS revenue, sum(item_count) AS items,
+    any(currency) AS currency
   FROM customer_lake.orders FINAL
   WHERE connection_id = {conn:String} AND ${inRange("created_at")}
   GROUP BY days_ago, bucket`;
@@ -183,6 +184,7 @@ function emptyDays(): Record<DayAgo, DaySeries> {
       {
         placed: zeros(),
         revenue: zeros(),
+        items: zeros(),
         canceled: zeros(),
         denied: zeros(),
       },
@@ -284,6 +286,7 @@ export async function loadStoreDay(
     if (!c) continue;
     c.day.placed[c.b] = Number(row.placed);
     c.day.revenue[c.b] = Number(row.revenue);
+    c.day.items[c.b] = Number(row.items);
     if (typeof row.currency === "string" && row.currency) {
       currency = row.currency;
     }

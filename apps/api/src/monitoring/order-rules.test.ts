@@ -26,6 +26,7 @@ function store(
   const day = (s: Partial<DaySeries>): DaySeries => ({
     placed: s.placed ?? flat(10),
     revenue: s.revenue ?? flat(1000),
+    items: s.items ?? flat(20),
     canceled: s.canceled ?? flat(0.5),
     denied: s.denied ?? flat(0.2),
   });
@@ -242,32 +243,28 @@ describe("buildDayView", () => {
     expect(v.verdicts?.orders_drop.timezone).toBe("UTC");
   });
 
-  it("forecasts the rest of the day on the usual days and on last year", () => {
-    // Today: 1.5× the usual orders, R$ 100 a bucket so far. Last year ran at
-    // 20 orders and R$ 500 a bucket: today is 75% and 20% of it.
+  it("reports the sales so far beside the same time on W-1, M-1 and Y-1, and projects the close", () => {
+    // Today: 1.5× the usual orders, R$ 100 a bucket so far; Y-1 never reached the lake.
     const s = store({ placed: flat(15), revenue: flat(100) });
-    s.days[364] = { ...s.days[364], placed: flat(20), revenue: flat(500) };
-    const { forecast } = buildDayView(s, at);
-    expect(forecast.soFar).toEqual({ orders: 720, revenue: 4800 });
-    expect(forecast.usual?.close.orders).toBe(48 * 15 + 1.5 * 48 * 10);
-    expect(forecast.usual?.orders[11]).toBe(0);
-    expect(forecast.usual?.orders[12]).toBe(60);
-    expect(forecast.usual?.revenue[12]).toBe(1.5 * 4 * 1000);
-    expect(forecast.lastYear?.orders[12]).toBe(0.75 * 80);
-    expect(forecast.lastYear?.close).toEqual({
-      orders: 1440,
-      revenue: 9600,
-    });
-    expect(forecast.lastYear?.reference).toEqual({
-      orders: 1920,
-      revenue: 48000,
-    });
-  });
-
-  it("forecasts nothing on last year while it is too thin to scale by", () => {
-    const s = store({});
     s.days[364] = { ...s.days[364], placed: flat(0) };
-    expect(buildDayView(s, at).forecast.lastYear).toBeNull();
+    const { forecast } = buildDayView(s, at);
+    expect(forecast.soFar.today).toEqual({
+      orders: 720,
+      revenue: 4800,
+      items: 960,
+    });
+    expect(forecast.soFar.w1).toEqual({
+      orders: 480,
+      revenue: 48000,
+      items: 960,
+    });
+    expect(forecast.soFar.y1).toBeNull();
+    const p = forecast.projection!;
+    expect(p.close.orders).toBe(48 * 15 + 1.5 * 48 * 10);
+    expect(p.orders[11]).toBe(0);
+    expect(p.orders[12]).toBe(60);
+    expect(p.revenue[12]).toBe(1.5 * 4 * 1000);
+    expect(p.initial).toEqual({ orders: 960, revenue: 96000 });
   });
 
   it("projects from the reference days the lake holds while history loads", () => {

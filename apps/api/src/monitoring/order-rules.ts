@@ -18,6 +18,7 @@ import type {
   OrderMonitorDay,
   OrderMonitorForecast,
   OrderMonitorRule as Rule,
+  OrderMonitorSales,
   OrderMonitorSeries,
   OrderMonitorStatus as Status,
   OrderMonitorVerdict,
@@ -43,8 +44,9 @@ export type DayAgo = (typeof DAYS_AGO)[number];
 /** Per 15-minute bucket of one local day. */
 export interface DaySeries {
   placed: number[];
-  /** What the placed orders total, in the store's currency. Only the forecast reads it. */
+  /** What the placed orders total, in the store's currency, and their items. Only the sales status reads them. */
   revenue: number[];
+  items: number[];
   canceled: number[];
   denied: number[];
 }
@@ -247,74 +249,50 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const hourly = (a: number[], h: number) => sum(a, h * 4, h * 4 + 4);
 
 type Measure = "placed" | "revenue";
-const MEASURES = ["placed", "revenue"] as const;
 
 /**
- * One basis' forecast: what each clock hour should still bring after `done`,
- * from `ahead(measure, from, to)` over day-0 buckets, and the day's close.
+ * The day's projection: the monitor's baseline scaled by today's level, per
+ * clock hour still to come, its close, and the baseline's own whole day, which
+ * is what the day was projected at before its first order.
  */
-function forecastOf(
-  day: StoreDay,
-  ahead: (m: Measure, from: number, to: number) => number,
-  reference: (m: Measure) => number,
-): OrderMonitorForecast {
+function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
+  const refs = {
+    placed: series(day, "placed").refs,
+    revenue: series(day, "revenue").refs,
+  };
+  if (refs.placed.length === 0) return null;
+  // ponytail: revenue rides the orders' level, so a day with a bigger ticket
+  // shows it only in what's already in; give revenue its own level if that misleads.
+  const ahead = (m: Measure, from: number, to: number) =>
+    lv * baseSum(refs[m], from + WINDOW, to + WINDOW);
   const rest = (m: Measure) =>
     HOURS.map((h) => {
       const from = Math.max(day.done, h * 4);
       return from < h * 4 + 4 ? ahead(m, from, h * 4 + 4) : 0;
     });
-  const soFar = (m: Measure) => sum(day.days[0][m], 0, day.done);
-  const orders = rest("placed");
-  const revenue = rest("revenue");
+  const close = (m: Measure) =>
+    sum(day.days[0][m], 0, day.done) + ahead(m, day.done, BUCKETS_PER_DAY);
+  const initial = (m: Measure) =>
+    baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW);
   return {
-    orders,
-    revenue,
-    close: {
-      orders: soFar("placed") + ahead("placed", day.done, BUCKETS_PER_DAY),
-      revenue: soFar("revenue") + ahead("revenue", day.done, BUCKETS_PER_DAY),
-    },
-    reference: { orders: reference("placed"), revenue: reference("revenue") },
+    orders: rest("placed"),
+    revenue: rest("revenue"),
+    close: { orders: close("placed"), revenue: close("revenue") },
+    initial: { orders: initial("placed"), revenue: initial("revenue") },
   };
 }
 
-/**
- * The rest of the day on two bases. Usual: the monitor's baseline scaled by
- * today's level, as the projection. Last year: Y-1's rest scaled by how today
- * runs against Y-1 so far, each measure by its own ratio, the way a sales team
- * reads a campaign day the usual weeks don't look like.
- */
-function forecasts(
-  day: StoreDay,
-  lv: number,
-): Pick<OrderMonitorDay["forecast"], "usual" | "lastYear"> {
-  const refs = Object.fromEntries(
-    MEASURES.map((m) => [m, series(day, m).refs]),
-  ) as Record<Measure, number[][]>;
-  // ponytail: revenue rides the orders' level, so a day with a bigger ticket
-  // shows it only in what's already in; give revenue its own level if that misleads.
-  const usual =
-    refs.placed.length === 0
-      ? null
-      : forecastOf(
-          day,
-          (m, from, to) => lv * baseSum(refs[m], from + WINDOW, to + WINDOW),
-          (m) => baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW),
-        );
-  const y1 = day.days[364];
-  const ratio = (m: Measure) => {
-    const then = sum(y1[m], 0, day.done);
-    return then > 0 ? sum(day.days[0][m], 0, day.done) / then : 0;
+/** Day `d` up to the same time of day as day 0; null when the lake has no order of it. */
+function salesSoFar(day: StoreDay, d: DayAgo): OrderMonitorSales | null {
+  const s = day.days[d];
+  if (d !== 0 && (sum(s.placed) === 0 || day.backfill?.days.includes(d))) {
+    return null;
+  }
+  return {
+    orders: sum(s.placed, 0, day.done),
+    revenue: sum(s.revenue, 0, day.done),
+    items: sum(s.items, 0, day.done),
   };
-  const lastYear =
-    day.backfill?.days.includes(364) ||
-    sum(y1.placed, 0, day.done) < MIN_LEVEL_BASE
-      ? null
-      : forecastOf(
-          day,
-          (m, from, to) => ratio(m) * sum(y1[m], from, to),
-          (m) => sum(y1[m]),
-        );
-  return { usual, lastYear };
 }
 
 /**
@@ -414,10 +392,12 @@ export function buildDayView(
     forecast: {
       currency: day.currency ?? null,
       soFar: {
-        orders: sum(today.placed, 0, day.done),
-        revenue: sum(today.revenue, 0, day.done),
+        today: salesSoFar(day, 0)!,
+        w1: salesSoFar(day, 7),
+        m1: salesSoFar(day, 28),
+        y1: salesSoFar(day, 364),
       },
-      ...forecasts(day, lv),
+      projection: projection(day, lv),
     },
     verdicts: {
       orders_drop: withZone(verdicts.orders_drop),
