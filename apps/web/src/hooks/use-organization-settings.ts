@@ -21,7 +21,6 @@ import {
 } from "@decocms/shared/organization/schema";
 import type {
   OrgFlags,
-  PlanGoal,
   PlanObjective,
   SimpleModeTier,
   SubmoduleCredential,
@@ -314,53 +313,11 @@ export function useSetPlanObjective() {
   });
 }
 
-/**
- * Jev's pick for the store goal from the store's data, while none is saved.
- * Asked once per session: an answer without a goal (no data, Jev unreachable
- * or unsure) leaves the goal for a member to write instead of asking again on
- * every visit. A goal Jev picks is saved with `if_empty`, so it never replaces
- * one a member wrote meanwhile.
- */
-export function useAutoPlanObjective(word: (goal: PlanGoal) => string) {
-  const { org } = useProjectContext();
-  const studio = useStudioTools();
-  const queryClient = useQueryClient();
-  const settings = useOrganizationSettings((s) => s.plan_objective ?? null);
-
-  return useQuery({
-    queryKey: KEYS.planObjectiveAuto(org.id),
-    // A saved goal never costs a Jev call.
-    enabled: settings.isSuccess && settings.data === null,
-    staleTime: Number.POSITIVE_INFINITY,
-    gcTime: Number.POSITIVE_INFINITY,
-    retry: false,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const result = await studio.call(
-        "ORGANIZATION_PLAN_OBJECTIVE_DECIDE",
-        {},
-      );
-      if (!result.decision) return result;
-      const { goal } = result.decision;
-      const { plan_objective } = await studio.call(
-        "ORGANIZATION_PLAN_OBJECTIVE_SET",
-        { statement: word(goal), source: "jev", goal, if_empty: true },
-      );
-      queryClient.setQueryData(
-        KEYS.organizationSettings(org.id),
-        (prev: OrganizationSettings | undefined) =>
-          prev && { ...prev, plan_objective },
-      );
-      return result;
-    },
-  });
-}
-
-/** Asks Jev for the store goal again, on demand. Saves nothing by itself. */
-export function useDecidePlanObjective() {
+/** Asks the AI to find the store goal; proposes, never saves. */
+export function useFindPlanObjective() {
   const studio = useStudioTools();
   return useMutation({
-    mutationFn: () => studio.call("ORGANIZATION_PLAN_OBJECTIVE_DECIDE", {}),
+    mutationFn: () => studio.call("ORGANIZATION_PLAN_OBJECTIVE_FIND", {}),
   });
 }
 

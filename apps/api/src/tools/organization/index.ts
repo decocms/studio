@@ -14,7 +14,7 @@ export { ORGANIZATION_HAS_SITE } from "./has-site";
 export { ORGANIZATION_SETTINGS_UPDATE } from "./settings-update";
 export { ORGANIZATION_BLOCKS_EDITOR_SET } from "./blocks-editor-set";
 export { ORGANIZATION_PLAN_OBJECTIVE_SET } from "./plan-objective-set";
-export { ORGANIZATION_PLAN_OBJECTIVE_DECIDE } from "./plan-objective-decide";
+export { ORGANIZATION_PLAN_OBJECTIVE_FIND } from "./plan-objective-find";
 export { PLAN_CASE_NEXT_QUESTION } from "./plan-case-question";
 
 // Domain management

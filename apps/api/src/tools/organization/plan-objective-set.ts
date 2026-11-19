@@ -11,9 +11,7 @@
 import { z } from "zod";
 import {
   PLAN_OBJECTIVE_MAX_LENGTH,
-  PlanGoalSchema,
   PlanObjectiveSchema,
-  PlanObjectiveSourceSchema,
 } from "@decocms/shared/organization/schema";
 import { defineTool } from "../../core/define-tool";
 import {
@@ -25,7 +23,7 @@ import {
 export const ORGANIZATION_PLAN_OBJECTIVE_SET = defineTool({
   name: "ORGANIZATION_PLAN_OBJECTIVE_SET",
   description:
-    "Set the store goal shown on the Plan page, in one sentence, or clear it with null.",
+    "Set the store goal shown on the Plan page, in one sentence, or clear it with null. From a chat, save only a sentence the person approved there.",
   annotations: {
     title: "Set Store Goal",
     readOnlyHint: false,
@@ -42,18 +40,6 @@ export const ORGANIZATION_PLAN_OBJECTIVE_SET = defineTool({
       .nullable()
       .describe(
         "The store goal in one sentence, in the person's own words. null clears it.",
-      ),
-    source: PlanObjectiveSourceSchema.optional().describe(
-      "jev when the sentence words a goal from ORGANIZATION_PLAN_OBJECTIVE_DECIDE; member (the default) otherwise.",
-    ),
-    goal: PlanGoalSchema.optional().describe(
-      "With source jev, the catalog goal from ORGANIZATION_PLAN_OBJECTIVE_DECIDE that the sentence words. Ignored for a member's goal.",
-    ),
-    if_empty: z
-      .boolean()
-      .optional()
-      .describe(
-        "Write only while no goal is saved, so an automatic goal never replaces one a person just wrote.",
       ),
   }),
   outputSchema: z.object({
@@ -74,15 +60,10 @@ export const ORGANIZATION_PLAN_OBJECTIVE_SET = defineTool({
             statement: input.statement,
             updated_by: userId,
             updated_at: new Date().toISOString(),
-            source: input.source ?? "member",
-            ...(input.source === "jev" && input.goal
-              ? { goal: input.goal }
-              : {}),
           };
     const settings = await ctx.storage.organizationSettings.setPlanObjective(
       org.id,
       objective,
-      { ifEmpty: input.if_empty === true },
     );
     return { plan_objective: settings.plan_objective };
   },

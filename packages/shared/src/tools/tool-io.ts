@@ -154,22 +154,7 @@ export interface StudioToolIO {
         | null
         | undefined;
       plan_objective?:
-        | {
-            statement: string;
-            updated_by: string;
-            updated_at: string;
-            source?: "member" | "jev" | undefined;
-            goal?:
-              | "mobile_conversion"
-              | "checkout_completion"
-              | "cart_to_checkout"
-              | "product_to_cart"
-              | "traffic_growth"
-              | "recover_sales"
-              | "average_ticket"
-              | "site_stability"
-              | undefined;
-          }
+        | { statement: string; updated_by: string; updated_at: string }
         | null
         | undefined;
       createdAt?: string | undefined;
@@ -351,22 +336,7 @@ export interface StudioToolIO {
         | null
         | undefined;
       plan_objective?:
-        | {
-            statement: string;
-            updated_by: string;
-            updated_at: string;
-            source?: "member" | "jev" | undefined;
-            goal?:
-              | "mobile_conversion"
-              | "checkout_completion"
-              | "cart_to_checkout"
-              | "product_to_cart"
-              | "traffic_growth"
-              | "recover_sales"
-              | "average_ticket"
-              | "site_stability"
-              | undefined;
-          }
+        | { statement: string; updated_by: string; updated_at: string }
         | null
         | undefined;
     };
@@ -376,74 +346,26 @@ export interface StudioToolIO {
     output: { enabled: boolean };
   };
   ORGANIZATION_PLAN_OBJECTIVE_SET: {
-    input: {
-      statement: string | null;
-      source?: "member" | "jev" | undefined;
-      goal?:
-        | "mobile_conversion"
-        | "checkout_completion"
-        | "cart_to_checkout"
-        | "product_to_cart"
-        | "traffic_growth"
-        | "recover_sales"
-        | "average_ticket"
-        | "site_stability"
-        | undefined;
-      if_empty?: boolean | undefined;
-    };
+    input: { statement: string | null };
     output: {
       plan_objective: {
         statement: string;
         updated_by: string;
         updated_at: string;
-        source?: "member" | "jev" | undefined;
-        goal?:
-          | "mobile_conversion"
-          | "checkout_completion"
-          | "cart_to_checkout"
-          | "product_to_cart"
-          | "traffic_growth"
-          | "recover_sales"
-          | "average_ticket"
-          | "site_stability"
-          | undefined;
       } | null;
     };
   };
-  ORGANIZATION_PLAN_OBJECTIVE_DECIDE: {
+  ORGANIZATION_PLAN_OBJECTIVE_FIND: {
     input: { [x: string]: never };
     output: {
-      decision: {
-        goal:
-          | "mobile_conversion"
-          | "checkout_completion"
-          | "cart_to_checkout"
-          | "product_to_cart"
-          | "traffic_growth"
-          | "recover_sales"
-          | "average_ticket"
-          | "site_stability";
-        probability: number;
-        snapshot: {
-          mobile_conversion_rate: number | null;
-          desktop_conversion_rate: number | null;
-          product_to_cart_rate: number | null;
-          cart_to_checkout_rate: number | null;
-          checkout_completion_rate: number | null;
-          visitors: number | null;
-          visitors_change: number | null;
-          orders: number | null;
-          orders_change: number | null;
-          revenue_change: number | null;
-          average_ticket: number | null;
-          average_ticket_change: number | null;
-          items_per_order: number | null;
-          currency: string | null;
-          site_errors: number | null;
-          site_errors_per_1k_pageviews: number | null;
-        };
+      found: {
+        statement: string;
+        quote: string;
+        source: { kind: "file" | "memory" | "connection"; label: string };
       } | null;
-      reason?: "no_data" | "unavailable" | "uncertain" | undefined;
+      read: string[];
+      unread: string[];
+      reason?: "not_found" | "not_clear" | "unavailable" | undefined;
     };
   };
   PLAN_CASE_NEXT_QUESTION: {
@@ -8008,11 +7930,11 @@ export interface StudioToolIO {
       status: "unavailable" | "available" | "disconnected";
       reason:
         | "permission"
-        | "no_data"
         | "authorization"
         | "rate_limited"
         | "provider_error"
         | "invalid_response"
+        | "no_data"
         | null;
       checkedAt: string | null;
       retryAt: string | null;
