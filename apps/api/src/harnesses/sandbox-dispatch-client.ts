@@ -67,7 +67,11 @@ import {
   runKeyPermissions,
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import { signsInFromSandbox, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import {
+  getDecopilotId,
+  signsInFromSandbox,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
@@ -380,11 +384,12 @@ export class SandboxDispatchClient {
     const settingsRead = this.ctx.storage.organizationSettings.get(
       organization.id,
     );
+    const threadRead = this.ctx.storage.threads.get(threadId);
     const [candidates, authority, thread, ownAgent, settings] =
       await Promise.all([
-        this.orgMcpConnections(organization, agent, settingsRead),
+        this.orgMcpConnections(organization, agent, settingsRead, threadRead),
         this.dispatcherAuthority(organization.id, dispatcherUserId),
-        this.ctx.storage.threads.get(threadId),
+        threadRead,
         agent,
         settingsRead,
       ]);
@@ -538,10 +543,36 @@ export class SandboxDispatchClient {
     organization: { id: string; slug?: string },
     agentRead: Promise<VirtualMCPEntity | null>,
     settingsRead: Promise<OrganizationSettings | null>,
+    threadRead: Promise<{
+      id: string;
+      trigger_id?: string | null;
+      metadata?: Record<string, unknown> | null;
+    } | null>,
   ): Promise<ConnectionEntity[]> {
+    // Also keeps `home_chat_org_connections` off the slug-less path, which would mount every candidate.
     if (!organization.slug) return [];
     const [settings, agent] = await Promise.all([settingsRead, agentRead]);
     const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
+    const homeChatFlag =
+      orgFlagEnabled(settings?.flags, "home_chat_org_connections") &&
+      this.virtualMcpId === getDecopilotId(organization.id);
+    const thread = homeChatFlag ? await threadRead.catch(() => null) : null;
+    const homeChat =
+      homeChatFlag &&
+      isInteractiveHomeChat({
+        organizationId: organization.id,
+        agentId: this.virtualMcpId,
+        runClass: this.ctx.metadata?.runMetadata?.[RUN_CLASS_METADATA_KEY],
+        thread,
+        boardLinked: thread
+          ? (
+              await this.ctx.storage.taskBoard.linkedTaskIds(
+                thread.id,
+                organization.id,
+              )
+            ).length > 0
+          : true,
+      });
     const ownIds = new Set(
       (agent?.connections ?? []).map(
         (aggregation) => aggregation.connection_id,
@@ -552,6 +583,7 @@ export class SandboxDispatchClient {
     return selectRunConnections({
       organizationId: organization.id,
       orgWide,
+      homeChat,
       ownIds,
       excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
       connections: items,
@@ -1553,6 +1585,8 @@ export function selectRunConnections<
   organizationId: string;
   /** The org opted into every connection (`coding_agent_org_mcps`). */
   orgWide: boolean;
+  /** `home_chat_org_connections` is on and {@link isInteractiveHomeChat} holds. */
+  homeChat?: boolean;
   /** Connections aggregated on the agent itself; always mounted. */
   ownIds: ReadonlySet<string>;
   /**
@@ -1570,6 +1604,7 @@ export function selectRunConnections<
       // A sandbox sign-in server is the only way a run reaches it, so it is
       // not left to the agent or the org-wide opt-in.
       (args.orgWide ||
+        args.homeChat ||
         args.ownIds.has(connection.id) ||
         signsInFromSandbox(connection.connection_url)) &&
       !args.excludedIds?.has(connection.id) &&
@@ -1577,6 +1612,32 @@ export function selectRunConnections<
       // a failed connect at startup.
       connection.status === "active" &&
       !isStudioOwnedConnection(args.organizationId, connection.id),
+  );
+}
+
+/**
+ * A chat a person drives on the org's default agent. Board, reviewer, Jira and
+ * automation runs dispatch on the same agent and must not match.
+ */
+export function isInteractiveHomeChat(args: {
+  organizationId: string;
+  agentId: string;
+  /** `runMetadata.runClass`: set by the board and by triggered runs. */
+  runClass?: string;
+  thread: {
+    trigger_id?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } | null;
+  /** The thread is linked to a task-board item. */
+  boardLinked: boolean;
+}): boolean {
+  return (
+    args.agentId === getDecopilotId(args.organizationId) &&
+    !args.runClass &&
+    args.thread !== null &&
+    !args.thread.trigger_id &&
+    !args.thread.metadata?.source &&
+    !args.boardLinked
   );
 }
 

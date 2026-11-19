@@ -124,6 +124,7 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            home_chat_org_connections?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
@@ -219,6 +220,7 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            home_chat_org_connections?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;
@@ -306,6 +308,7 @@ export interface StudioToolIO {
             auto_resolve_conflicts?: boolean | undefined;
             cheap_reviewer_model?: boolean | undefined;
             coding_agent_org_mcps?: boolean | undefined;
+            home_chat_org_connections?: boolean | undefined;
             coding_agents_claude_code?: boolean | undefined;
             task_board_codex?: boolean | undefined;
             chat_harness_codex?: boolean | undefined;

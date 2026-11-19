@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
-import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { getDecopilotId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { connectionGrantsFor } from "./org-mcp-grants";
 import { withModelMetadata } from "./with-model-metadata";
 import {
   cancelDaemonRun,
@@ -11,6 +12,7 @@ import {
   harnessRunsInSandbox,
   harnessSessionKey,
   isRunSuperseded,
+  isInteractiveHomeChat,
   isStudioOwnedConnection,
   orgOutputFallbackInstruction,
   sandboxStateInstruction,
@@ -64,6 +66,89 @@ describe("isStudioOwnedConnection", () => {
 
   test("does not exclude a real user-configured connection", () => {
     expect(isStudioOwnedConnection(orgId, "conn_abc123")).toBe(false);
+  });
+});
+
+describe("home chat org connections", () => {
+  const organizationId = "org_1";
+  const homeAgent = getDecopilotId(organizationId);
+  const chatThread = { trigger_id: null, metadata: { runtime: "sandbox" } };
+  const homeChat = (
+    overrides: Partial<Parameters<typeof isInteractiveHomeChat>[0]> = {},
+  ) =>
+    isInteractiveHomeChat({
+      organizationId,
+      agentId: homeAgent,
+      thread: chatThread,
+      boardLinked: false,
+      ...overrides,
+    });
+  const connections = [
+    { id: "conn_a", status: "active" },
+    { id: "conn_b", status: "active" },
+    { id: "conn_excluded", status: "active" },
+    { id: "conn_inactive", status: "error" },
+    { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
+  ];
+  const select = (flag: boolean, isHomeChat: boolean) =>
+    selectRunConnections({
+      organizationId,
+      orgWide: false,
+      homeChat: flag && isHomeChat,
+      ownIds: new Set<string>(),
+      excludedIds: new Set(["conn_excluded"]),
+      connections,
+    }).map((c) => c.id);
+
+  test("a person's chat on the default agent is a home chat", () => {
+    expect(homeChat()).toBe(true);
+  });
+
+  test("a project chat is not", () => {
+    expect(homeChat({ agentId: "vir_project" })).toBe(false);
+  });
+
+  test("board, reviewer, Jira and automation runs on the default agent are not", () => {
+    expect(homeChat({ runClass: "new_task" })).toBe(false);
+    expect(homeChat({ runClass: "reviewer" })).toBe(false);
+    expect(homeChat({ boardLinked: true })).toBe(false);
+    expect(
+      homeChat({ thread: { trigger_id: null, metadata: { source: "jira" } } }),
+    ).toBe(false);
+    expect(homeChat({ thread: { trigger_id: "trg_1", metadata: {} } })).toBe(
+      false,
+    );
+    expect(homeChat({ thread: null })).toBe(false);
+  });
+
+  test("flag on: a home chat gets every active, non-excluded, non-Studio connection", () => {
+    expect(select(true, homeChat())).toEqual(["conn_a", "conn_b"]);
+  });
+
+  test("flag off: a home chat gets nothing", () => {
+    expect(select(false, homeChat())).toEqual([]);
+  });
+
+  test("flag on: non-home-chat runs are unchanged", () => {
+    for (const run of [
+      homeChat({ agentId: "vir_project" }),
+      homeChat({ runClass: "new_task" }),
+      homeChat({ runClass: "reviewer" }),
+      homeChat({ thread: { trigger_id: null, metadata: { source: "jira" } } }),
+      homeChat({ thread: { trigger_id: "trg_1", metadata: {} } }),
+    ]) {
+      expect(select(true, run)).toEqual([]);
+    }
+  });
+
+  test("a non-admin dispatcher is cut to what their role grants", () => {
+    expect(
+      connectionGrantsFor({
+        role: "support",
+        roleStatements: [{ conn_a: ["LIST_ORDERS"] }],
+        connectionIds: select(true, homeChat()),
+      }),
+    ).toEqual({ conn_a: ["LIST_ORDERS"] });
   });
 });
 
