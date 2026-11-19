@@ -384,7 +384,6 @@ export interface OrganizationSettingsStoragePort {
   setPlanObjective(
     organizationId: string,
     objective: PlanObjective | null,
-    options?: { ifEmpty?: boolean },
   ): Promise<OrganizationSettings>;
 }
 

@@ -1,8 +1,7 @@
 /**
  * Plan built-ins
  *
- * The Plan page's "Suggest a goal" opens a chat in which the agent proposes the
- * store goal and, once the person approves, writes it. A hosted agent reaches
+ * An agent writes the store goal a person approved in a chat. A hosted agent reaches
  * Studio's own tools only through built-ins (sandbox-hosted runs get the whole
  * management catalog instead), so the writer is registered here too.
  *
