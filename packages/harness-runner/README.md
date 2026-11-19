@@ -45,7 +45,14 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   is skipped, and the model still has the annotation's path line. One message
   carries at most 10 MB of image bytes: images are taken in the order attached,
   and the first one that would cross that total is left to its path line along
-  with every image after it. Codex forwards image parts by URL.
+  with every image after it. When the provider refuses that turn's first
+  request with a client error (a 4xx other than 408 and 429) that the CLI does
+  not recover from itself, the turn is resent once as text only. A refused
+  request stays in the CLI's transcript and is sent again on every later turn,
+  so the resend runs on a copy of the session cut before the turn, or on a fresh
+  session when the turn was its first, and the thread's session file moves to
+  it. One log line names the provider host and the status. Codex forwards image
+  parts by URL.
 - Take live messages into the running turn. Claude Code sends each one into
   the SDK's streaming input as a `priority: "next"` user message, which it reads
   between tool rounds; `--replay-user-messages` echoes it back at that point,
