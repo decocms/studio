@@ -13,7 +13,7 @@ import type {
 } from "@decocms/shared/business-case";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { ChevronDown, MessageChatCircle } from "@untitledui/icons";
+import { ArrowRight, ChevronDown, MessageChatCircle } from "@untitledui/icons";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { useCaseFormat } from "./case-format.ts";
 import type { ActKey, CaseStory, DotState } from "./case-story.ts";
@@ -488,36 +488,46 @@ function Risk({ card }: { card: BusinessCaseCard }) {
 function OpenQuestions({
   questions,
   onAsk,
+  onAnswerOpen,
 }: {
   questions: string[];
   onAsk?: (question: string) => void;
+  onAnswerOpen?: () => void;
 }) {
   const t = useT();
   return (
-    <ul className="flex flex-col">
-      {questions.map((question, i) => (
-        <li
-          key={i}
-          className={cn(
-            "flex items-start gap-3 py-2 text-sm text-foreground",
-            i > 0 && "border-t border-dashed",
-          )}
-        >
-          <span className="min-w-0 flex-1 text-pretty">{question}</span>
-          {onAsk && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              onClick={() => onAsk(question)}
-            >
-              <MessageChatCircle />
-              {t("plan.case.askInChat")}
-            </Button>
-          )}
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-3">
+      {onAnswerOpen && (
+        <Button size="sm" className="group w-fit" onClick={onAnswerOpen}>
+          {t("plan.case.answerOpen")}
+          <ArrowRight className="transition-transform duration-200 group-hover:translate-x-0.5" />
+        </Button>
+      )}
+      <ul className="flex flex-col">
+        {questions.map((question, i) => (
+          <li
+            key={i}
+            className={cn(
+              "flex items-start gap-3 py-2 text-sm text-foreground",
+              i > 0 && "border-t border-dashed",
+            )}
+          >
+            <span className="min-w-0 flex-1 text-pretty">{question}</span>
+            {onAsk && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => onAsk(question)}
+              >
+                <MessageChatCircle />
+                {t("plan.case.askInChat")}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -525,10 +535,12 @@ export function CaseSpine({
   value,
   story,
   onAsk,
+  onAnswerOpen,
 }: {
   value: BusinessCase;
   story: CaseStory;
   onAsk?: (question: string) => void;
+  onAnswerOpen?: () => void;
 }) {
   const t = useT();
   const { cards } = value;
@@ -608,7 +620,11 @@ export function CaseSpine({
           last
         >
           {story.openQuestions.length > 0 ? (
-            <OpenQuestions questions={story.openQuestions} onAsk={onAsk} />
+            <OpenQuestions
+              questions={story.openQuestions}
+              onAsk={onAsk}
+              onAnswerOpen={onAnswerOpen}
+            />
           ) : (
             <Step cardKey="unknowns" card={cards.unknowns} />
           )}

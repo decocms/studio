@@ -7,6 +7,17 @@ export interface GuideAnswer {
   answer: string;
 }
 
+/** One `- question` line per answer, the answer indented below it;
+ *  `skipped` stands in for an empty answer. */
+function formatAnswers(answers: GuideAnswer[], skipped: string): string {
+  return answers
+    .map(
+      ({ question, answer }) =>
+        `- ${question.trim()}\n  ${answer.trim() || skipped}`,
+    )
+    .join("\n");
+}
+
 /** The skill is named by its path so hosted and sandboxed harnesses can both read it. */
 export function businessCasePrompt(
   t: TFunction,
@@ -27,15 +38,21 @@ export function businessCasePrompt(
     ? t("plan.prompt.withObjective", { idea, objective, casePath })
     : t("plan.prompt.withoutObjective", { idea, casePath });
   if (!input.answers) return base;
-  const answers = input.answers
-    .map(
-      ({ question, answer }) =>
-        `- ${question.trim()}\n  ${answer.trim() || t("plan.prompt.skipped")}`,
-    )
-    .join("\n");
+  const answers = formatAnswers(input.answers, t("plan.prompt.skipped"));
   return `${base}\n\n${
     answers
       ? t("plan.prompt.guidedAnswers", { answers })
       : t("plan.prompt.guidedNothing")
   }`;
+}
+
+/** The answers to a case's open questions, sent to its chat in one message
+ *  so the agent updates the case in a single turn. */
+export function openAnswersPrompt(
+  t: TFunction,
+  answers: GuideAnswer[],
+): string {
+  return t("plan.case.openFlow.prompt", {
+    answers: formatAnswers(answers, t("plan.case.openFlow.skipped")),
+  });
 }
