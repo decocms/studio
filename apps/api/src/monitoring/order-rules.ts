@@ -16,6 +16,7 @@ import {
 } from "@decocms/shared/order-monitor";
 import type {
   OrderMonitorDay,
+  OrderMonitorForecast,
   OrderMonitorRule as Rule,
   OrderMonitorSeries,
   OrderMonitorStatus as Status,
@@ -42,12 +43,16 @@ export type DayAgo = (typeof DAYS_AGO)[number];
 /** Per 15-minute bucket of one local day. */
 export interface DaySeries {
   placed: number[];
+  /** What the placed orders total, in the store's currency. Only the forecast reads it. */
+  revenue: number[];
   canceled: number[];
   denied: number[];
 }
 
 export interface StoreDay {
   timezone: string;
+  /** The orders' currency; null when the day has none. */
+  currency?: string | null;
   /** Fully elapsed buckets of day 0 (ingest grace included). */
   done: number;
   days: Record<DayAgo, DaySeries>;
@@ -241,6 +246,77 @@ export function evaluateStore(
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const hourly = (a: number[], h: number) => sum(a, h * 4, h * 4 + 4);
 
+type Measure = "placed" | "revenue";
+const MEASURES = ["placed", "revenue"] as const;
+
+/**
+ * One basis' forecast: what each clock hour should still bring after `done`,
+ * from `ahead(measure, from, to)` over day-0 buckets, and the day's close.
+ */
+function forecastOf(
+  day: StoreDay,
+  ahead: (m: Measure, from: number, to: number) => number,
+  reference: (m: Measure) => number,
+): OrderMonitorForecast {
+  const rest = (m: Measure) =>
+    HOURS.map((h) => {
+      const from = Math.max(day.done, h * 4);
+      return from < h * 4 + 4 ? ahead(m, from, h * 4 + 4) : 0;
+    });
+  const soFar = (m: Measure) => sum(day.days[0][m], 0, day.done);
+  const orders = rest("placed");
+  const revenue = rest("revenue");
+  return {
+    orders,
+    revenue,
+    close: {
+      orders: soFar("placed") + ahead("placed", day.done, BUCKETS_PER_DAY),
+      revenue: soFar("revenue") + ahead("revenue", day.done, BUCKETS_PER_DAY),
+    },
+    reference: { orders: reference("placed"), revenue: reference("revenue") },
+  };
+}
+
+/**
+ * The rest of the day on two bases. Usual: the monitor's baseline scaled by
+ * today's level, as the projection. Last year: Y-1's rest scaled by how today
+ * runs against Y-1 so far, each measure by its own ratio, the way a sales team
+ * reads a campaign day the usual weeks don't look like.
+ */
+function forecasts(
+  day: StoreDay,
+  lv: number,
+): Pick<OrderMonitorDay["forecast"], "usual" | "lastYear"> {
+  const refs = Object.fromEntries(
+    MEASURES.map((m) => [m, series(day, m).refs]),
+  ) as Record<Measure, number[][]>;
+  // ponytail: revenue rides the orders' level, so a day with a bigger ticket
+  // shows it only in what's already in; give revenue its own level if that misleads.
+  const usual =
+    refs.placed.length === 0
+      ? null
+      : forecastOf(
+          day,
+          (m, from, to) => lv * baseSum(refs[m], from + WINDOW, to + WINDOW),
+          (m) => baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW),
+        );
+  const y1 = day.days[364];
+  const ratio = (m: Measure) => {
+    const then = sum(y1[m], 0, day.done);
+    return then > 0 ? sum(day.days[0][m], 0, day.done) / then : 0;
+  };
+  const lastYear =
+    day.backfill?.days.includes(364) ||
+    sum(y1.placed, 0, day.done) < MIN_LEVEL_BASE
+      ? null
+      : forecastOf(
+          day,
+          (m, from, to) => ratio(m) * sum(y1[m], from, to),
+          (m) => sum(y1[m]),
+        );
+  return { usual, lastYear };
+}
+
 /**
  * The Monitor chart's view of one store day, per clock hour. Expected is the
  * baseline scaled by the verdict's level; past `done` it is the day's
@@ -334,6 +410,14 @@ export function buildDayView(
       d1: sum(day.days[1].placed),
       w1: sum(day.days[7].placed),
       y1: sum(day.days[364].placed),
+    },
+    forecast: {
+      currency: day.currency ?? null,
+      soFar: {
+        orders: sum(today.placed, 0, day.done),
+        revenue: sum(today.revenue, 0, day.done),
+      },
+      ...forecasts(day, lv),
     },
     verdicts: {
       orders_drop: withZone(verdicts.orders_drop),

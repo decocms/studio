@@ -555,7 +555,10 @@ export function useLiveBoard(
             today: c.today.map((v, h) => (h < running ? v : null)),
           }))
         : null,
-      stores: stores.map((store) => ({ store })),
+      stores: stores.map((store) => ({
+        store,
+        day: dayOf.get(store.connectionId),
+      })),
       deploys:
         deployHistory?.filter((d) => {
           const at = Date.parse(d.at);

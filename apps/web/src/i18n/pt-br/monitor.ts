@@ -184,6 +184,23 @@ export const monitor = {
   "monitor.chart.today": "Hoje",
   "monitor.chart.deploy": "Deploy",
   "monitor.filter.project": "Projeto",
+  "monitor.forecast.title": "Previsão de vendas",
+  "monitor.forecast.basis": "Prever a partir de",
+  "monitor.forecast.basis.usual": "Dias comuns",
+  "monitor.forecast.basis.lastYear": "Ano passado",
+  "monitor.forecast.closeAt": "Hoje deve fechar em",
+  "monitor.forecast.orders": "{count} pedidos",
+  "monitor.forecast.vs.usual": "vs um dia comum",
+  "monitor.forecast.vs.lastYear": "vs este dia no ano passado",
+  "monitor.forecast.inSoFar": "{amount} até agora, {share} do dia",
+  "monitor.forecast.nextHours":
+    "Para manter o ritmo, as próximas horas devem trazer",
+  "monitor.forecast.untilNext": "agora–{to}",
+  "monitor.forecast.target": "Mais {amount} até {until}, {total} no total.",
+  "monitor.forecast.how.usual":
+    "Um dia comum (ontem e o mesmo dia da semana nas últimas 4 semanas) tem cerca de {share} das vendas até {time}; o resto é ajustado pelo ritmo de hoje frente a ele.",
+  "monitor.forecast.how.lastYear":
+    "Neste dia da semana no ano passado, {share} das vendas do dia tinham entrado até {time}; as vendas de hoje até agora são projetadas pela mesma proporção.",
   "monitor.store.projected": "Pedidos projetados hoje",
   "monitor.store.soFar": "Pedidos até agora",
   "monitor.store.canceled": "Cancelamentos hoje",

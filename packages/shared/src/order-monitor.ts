@@ -114,11 +114,32 @@ export interface OrderMonitorDay {
     w1: number;
     y1: number;
   };
+  forecast: {
+    /** The orders' currency (ISO 4217); null when the day has no orders yet. */
+    currency: string | null;
+    /** Up to `done`. */
+    soFar: { orders: number; revenue: number };
+    /** The baseline × today's level, as `headline.projected`; null without reference days. */
+    usual: OrderMonitorForecast | null;
+    /** Y-1 × how today runs against Y-1 so far; null while Y-1 is too thin to scale by. */
+    lastYear: OrderMonitorForecast | null;
+  };
   verdicts: Record<OrderMonitorRule, OrderMonitorVerdict>;
   /** Hours of history the ingest still has queued; null once it's all in. Days not in yet are left out of the baseline. */
   backfill: { pending: number; total: number } | null;
   /** Busiest on D-1 first, so a channel keeps its place and color through the day. */
   channels: OrderMonitorChannel[];
+}
+
+/** What the rest of a store's day should bring, on one basis. */
+export interface OrderMonitorForecast {
+  /** Per clock hour, what is still to come of it after `done`; 0 for hours gone. */
+  orders: number[];
+  revenue: number[];
+  /** Where the day closes: so far plus the rest. */
+  close: { orders: number; revenue: number };
+  /** The basis' own whole day. */
+  reference: { orders: number; revenue: number };
 }
 
 /** The org's sites' traffic (Deco Analytics, read from the data lake), per clock hour of the local day. */
