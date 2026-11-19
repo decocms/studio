@@ -53,7 +53,6 @@ export const plan = {
   "plan.case.buildingProgress": "{filled} of {total} cards filled",
   "plan.case.asking": "Answer in the chat",
   "plan.case.assumption": "Assumption:",
-  "plan.case.openDocument": "Open the document",
   "plan.case.invalid":
     "The latest update could not be read; showing the one before it.",
   "plan.case.objective": "Store goal",

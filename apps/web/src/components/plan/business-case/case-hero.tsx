@@ -6,9 +6,8 @@
 
 import type { BusinessCase } from "@decocms/shared/business-case";
 import { Badge } from "@decocms/ui/components/badge.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { ArrowRight, File06 } from "@untitledui/icons";
+import { ArrowRight } from "@untitledui/icons";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { useCaseFormat } from "./case-format.ts";
 import type { CaseStory, HeroKey, HeroTile } from "./case-story.ts";
@@ -189,13 +188,11 @@ export function CaseHero({
   value,
   story,
   invalid,
-  onOpenDocument,
   onAnswerOpen,
 }: {
   value: BusinessCase;
   story: CaseStory;
   invalid?: boolean;
-  onOpenDocument?: (documentPath: string) => void;
   /** Opens the flow that asks the open questions one at a time. */
   onAnswerOpen?: () => void;
 }) {
@@ -238,16 +235,6 @@ export function CaseHero({
         <span className="ml-auto flex items-center gap-2">
           {value.request.area !== "other" && (
             <Badge variant="muted">{t(AREA[value.request.area])}</Badge>
-          )}
-          {value.documentPath && onOpenDocument && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenDocument(value.documentPath ?? "")}
-            >
-              <File06 />
-              {t("plan.case.openDocument")}
-            </Button>
           )}
         </span>
       </div>

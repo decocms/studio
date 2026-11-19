@@ -13,7 +13,7 @@
  *        [--base-label <t>] [--value-label <t>]]          (money)
  *       [--baseline <0..1> --effect-pp <x> --weekly <n>
  *        [--exposure <0..1>] [--direction up|down]]       (abTest)
- *   bun business-case-canvas.mjs finish --path <file> [--document <path>]
+ *   bun business-case-canvas.mjs finish --path <file>
  *   bun business-case-canvas.mjs show --path <file>
  *
  * Prints the case as JSON on stdout. Exits non-zero, writing nothing, when an
@@ -279,7 +279,6 @@ export function validateCase(value) {
       );
     }
   }
-  tooLong(problems, "document", value?.documentPath, LIMITS.item);
   return problems;
 }
 
@@ -313,7 +312,6 @@ function frame(current, args, problems) {
     cards:
       current?.cards ??
       Object.fromEntries(CARD_KEYS.map((key) => [key, emptyCard()])),
-    ...(current?.documentPath ? { documentPath: current.documentPath } : {}),
   };
 }
 
@@ -360,18 +358,13 @@ function fillCard(command, current, args, problems, notes) {
   };
 }
 
-function finish(current, args) {
-  const document = last(args.document);
-  const documentPath = document?.startsWith(HOME_PREFIX)
-    ? document.slice(HOME_PREFIX.length)
-    : (document ?? current.documentPath);
+function finish(current) {
   return {
     ...current,
     status: "ready",
     cards: Object.fromEntries(
       CARD_KEYS.map((key) => [key, settle(current.cards[key])]),
     ),
-    ...(documentPath ? { documentPath } : {}),
   };
 }
 
@@ -404,7 +397,7 @@ export function apply(command, args, now = new Date()) {
     command === "init"
       ? frame(current, args, problems)
       : command === "finish"
-        ? finish(current, args)
+        ? finish(current)
         : fillCard(command, current, args, problems, notes);
   next.updatedAt = now.toISOString();
   if (problems.length === 0) problems.push(...validateCase(next));
@@ -439,7 +432,7 @@ function main(argv) {
         '      [--metric "<label>|<value>|<unit>"]...  (problem, effort)\n' +
         "      [--base <n> --delta-pp <x> --value <v> [--gap-pp <g>] [--base-label <t>] [--value-label <t>]]  (money)\n" +
         "      [--baseline <0..1> --effect-pp <x> --weekly <n> [--exposure <0..1>] [--direction up|down]]  (abTest)\n" +
-        "  business-case-canvas finish --path <file> [--document <path>]\n" +
+        "  business-case-canvas finish --path <file>\n" +
         "  business-case-canvas show --path <file>",
     );
     process.exit(1);
