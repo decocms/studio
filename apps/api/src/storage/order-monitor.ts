@@ -58,6 +58,36 @@ export class OrderMonitorStorage {
     }));
   }
 
+  /** The orgs with an active ingest install, by name: what an admin org can look into. */
+  async listMonitoredOrgs(
+    ingestUrl: string,
+  ): Promise<{ id: string; slug: string; name: string }[]> {
+    return this.db
+      .selectFrom("connections as c")
+      .innerJoin("organization as o", "o.id", "c.organization_id")
+      .select(["o.id", "o.slug", "o.name"])
+      .where("c.connection_url", "=", ingestUrl)
+      .where("c.status", "=", "active")
+      .distinct()
+      .orderBy("o.name")
+      .execute();
+  }
+
+  /** The org an active ingest install belongs to; null when it isn't one. */
+  async findInstallOrg(
+    connectionId: string,
+    ingestUrl: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("connections")
+      .select("organization_id")
+      .where("id", "=", connectionId)
+      .where("connection_url", "=", ingestUrl)
+      .where("status", "=", "active")
+      .executeTakeFirst();
+    return row?.organization_id ?? null;
+  }
+
   /** The org's active ingest installs, by title. */
   async listOrgStores(
     organizationId: string,

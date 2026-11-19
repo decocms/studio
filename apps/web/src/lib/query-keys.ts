@@ -857,6 +857,8 @@ export const KEYS = {
   alerts: (org: string, status: "open" | "acked") =>
     ["alerts", org, status] as const,
   alertRules: (org: string) => ["alert-rules", org] as const,
+  orderMonitorAdminOrgs: (org: string) =>
+    ["order-monitor-admin-orgs", org] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>
