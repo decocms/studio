@@ -256,7 +256,7 @@ export interface ChatTaskContextValue {
     virtualMcpId?: string;
     id?: string;
     tabId?: string;
-  }) => void;
+  }) => Promise<boolean>;
   activeTask: Task | null;
   /** True iff the thread row has captured a `harness_id` — i.e. the first
    *  message has been processed and the runtime is pinned for life. */
@@ -771,30 +771,31 @@ export function ChatContextProvider({
       ...(blog?.runtime ? { runtime: blog.runtime } : {}),
       ...(branch ? { branch } : {}),
     });
-    void threadActions
+    const open = () =>
+      navigateToTask(newId, {
+        virtualMcpId: params.virtualMcpId,
+        autosend: true,
+        keepView: targetVmcp === virtualMcpId,
+        tabId: params.tabId,
+      });
+    return threadActions
       .create({
         id: newId,
         virtual_mcp_id: targetVmcp,
         ...(branch ? { branch } : {}),
         ...(blog?.runtime ? { runtime: blog.runtime } : {}),
       })
-      .then(() => {
-        clearThreadIntent(sessionStorage, locator, newId);
-        navigateToTask(newId, {
-          virtualMcpId: params.virtualMcpId,
-          autosend: true,
-          keepView: targetVmcp === virtualMcpId,
-          tabId: params.tabId,
-        });
-      })
-      .catch(() => {
-        navigateToTask(newId, {
-          virtualMcpId: params.virtualMcpId,
-          autosend: true,
-          keepView: targetVmcp === virtualMcpId,
-          tabId: params.tabId,
-        });
-      });
+      .then(
+        () => {
+          clearThreadIntent(sessionStorage, locator, newId);
+          open();
+          return true;
+        },
+        () => {
+          open();
+          return false;
+        },
+      );
   };
 
   // ---- Build context values ----
@@ -864,7 +865,7 @@ function useThreadlessStream(): ChatStreamContextValue {
     messages: NO_MESSAGES,
     status: "ready",
     sendMessage: async (params) => {
-      createTaskWithMessage({ message: toSendMessageParams(params) });
+      void createTaskWithMessage({ message: toSendMessageParams(params) });
     },
     editQueuedMessage: async () => false,
     stop: () => {},

@@ -5,6 +5,7 @@
  *
  * Driven from event handlers, not effects: each step's call starts where the
  * person acts, and a step they leave is aborted and its reply dropped.
+ * Each step is saved until the case chat exists, and comes back as `saved`.
  */
 
 import { useRef, useState } from "react";
@@ -18,10 +19,18 @@ import { useChatTask } from "@/components/chat";
 import { formatCaseTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePlanObjective } from "@/hooks/use-organization-settings";
 import { useStudioTools } from "@/lib/studio-tools";
+import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { businessCasePrompt } from "../business-case-prompt.ts";
 import { writeCaseSeed } from "../business-case/case-seed.ts";
+import {
+  clearGuideDraft,
+  guideFromDraft,
+  readGuideDraft,
+  writeGuideDraft,
+  type GuideDraft,
+} from "./guide-draft.ts";
 import {
   guideAnswers,
   guideReducer,
@@ -40,13 +49,24 @@ export function usePlanGuide() {
   const studio = useStudioTools();
   const { createTaskWithMessage } = useChatTask();
   const objective = usePlanObjective()?.statement ?? null;
+  const { org } = useProjectContext();
   const [state, setState] = useState<GuideState | null>(null);
+  /** An intro saved by an earlier visit that never got its case chat. Read
+   *  once on mount: an intro running now is not an interrupted one. */
+  const [saved, setSaved] = useState<GuideDraft | null>(() =>
+    readGuideDraft(localStorage, org.id),
+  );
   const current = useRef<AbortController | null>(null);
   /** Whether the guide's screen is still on the page: leaving the Plan page
    *  mid-intro must not open a case later. */
   const shown = useRef(false);
 
-  const openCase = (final: GuideState) => {
+  const show = (next: GuideState) => {
+    setState(next);
+    writeGuideDraft(localStorage, org.id, next);
+  };
+
+  const openCase = async (final: GuideState) => {
     const answers = guideAnswers(final);
     track("plan_guide_done", {
       has_objective: !!objective,
@@ -61,7 +81,7 @@ export function usePlanGuide() {
       request: final.idea,
       title: final.title,
     });
-    createTaskWithMessage({
+    const created = await createTaskWithMessage({
       id: threadId,
       tabId: formatCaseTabId(casePath),
       message: {
@@ -78,6 +98,7 @@ export function usePlanGuide() {
         ],
       },
     });
+    if (created) clearGuideDraft(localStorage, org.id);
   };
 
   /** Show `next` (a thinking step) and ask the model what comes after it. */
@@ -86,7 +107,7 @@ export function usePlanGuide() {
     const controller = new AbortController();
     current.current = controller;
     const { signal } = controller;
-    setState(next);
+    show(next);
 
     let action: GuideAction;
     try {
@@ -107,7 +128,7 @@ export function usePlanGuide() {
     }
     if (signal.aborted) return;
     const after = guideReducer(next, action);
-    setState(after);
+    show(after);
     if (after.view.phase !== "building") return;
 
     try {
@@ -116,12 +137,37 @@ export function usePlanGuide() {
       return;
     }
     current.current = null;
+    // Left the page meanwhile: the saved draft brings it back next visit.
+    if (!shown.current) return;
     setState(null);
-    if (shown.current) openCase(after);
+    void openCase(after);
   };
 
   return {
     state,
+    /** An earlier intro that never opened its case. */
+    saved,
+    /** Picks the saved intro up: opens its case if it was over, otherwise
+     *  asks the next question. */
+    resume: () => {
+      const draft = readGuideDraft(localStorage, org.id);
+      setSaved(null);
+      if (!draft) return;
+      const resumed = guideFromDraft(draft);
+      track("plan_guide_resumed", {
+        questions: resumed.answers.length,
+        done: resumed.view.phase === "building",
+      });
+      if (resumed.view.phase === "building") {
+        void openCase(resumed);
+        return;
+      }
+      void think(resumed);
+    },
+    discard: () => {
+      clearGuideDraft(localStorage, org.id);
+      setSaved(null);
+    },
     /** Ref for the guide's root element. */
     screenRef: (node: HTMLElement | null) => {
       shown.current = node !== null;
@@ -129,6 +175,7 @@ export function usePlanGuide() {
     start: (idea: string) => {
       if (!idea.trim()) return;
       track("plan_idea_submitted", { has_objective: !!objective });
+      setSaved(null);
       void think(startGuide(idea));
     },
     /** An empty answer skips the question. */
@@ -146,9 +193,11 @@ export function usePlanGuide() {
       });
       void think(next);
     },
+    /** Back to the composer, which takes the idea; nothing to resume. */
     cancel: () => {
       current.current?.abort();
       current.current = null;
+      clearGuideDraft(localStorage, org.id);
       setState(null);
     },
   };
