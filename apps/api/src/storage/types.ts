@@ -342,6 +342,14 @@ export interface AlertRuleSettingsTable {
   updated_by: string | null;
 }
 
+/** Who gets the org's sales report by email, at which local hours (migration 268). */
+export interface SalesReportSubscriptionsTable {
+  organization_id: string;
+  user_id: string;
+  hours: number[];
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 /**
  * A repository checked out into a thread's run, beyond the agent's own.
  *
@@ -2622,6 +2630,7 @@ export interface Database {
   order_monitor_state: OrderMonitorStateTable;
   alerts: AlertTable;
   alert_rule_settings: AlertRuleSettingsTable;
+  sales_report_subscriptions: SalesReportSubscriptionsTable;
 
   // Automations tables
   automations: AutomationTable;

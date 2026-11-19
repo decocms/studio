@@ -857,6 +857,9 @@ export const KEYS = {
   alerts: (org: string, status: "open" | "acked") =>
     ["alerts", org, status] as const,
   alertRules: (org: string) => ["alert-rules", org] as const,
+  /** Not under "order-monitor": the monitor's SSE refetches all of those. */
+  salesReportSubscription: (org: string) =>
+    ["sales-report-subscription", org] as const,
   orderMonitorStores: (org: string) =>
     ["order-monitor", org, "stores"] as const,
   orderMonitorDay: (org: string, connectionId: string, at: string) =>

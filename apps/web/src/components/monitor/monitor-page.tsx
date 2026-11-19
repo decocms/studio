@@ -48,6 +48,7 @@ import { ConnectMore, Locked } from "./locked";
 import { AllClear, SignalsPanel } from "./signals-panel";
 import { StoreDay } from "./store-day";
 import { NumberCards, OverviewNumbers } from "./overview-numbers";
+import { ReportSubscription } from "./report-subscription";
 import { SalesStatus } from "./sales-status";
 import { Sparkline } from "./sparkline";
 
@@ -95,12 +96,19 @@ const PREVIEW_NUMBERS = [
 const PREVIEW_SHAPE = [3, 2, 2, 4, 7, 9, 8, 10, 12, 11, 13, 12, 9, 10];
 
 /** Once every store's day is in, so the totals don't grow as they land. */
-function OverviewSales({ board }: { board: MonitorBoard }) {
+function OverviewSales({
+  board,
+  orgSlug,
+}: {
+  board: MonitorBoard;
+  orgSlug: string;
+}) {
   const days = board.stores.flatMap((s) => (s.day ? [s.day] : []));
   return days.length > 0 && days.length === board.stores.length ? (
     <SalesStatus
       days={days}
       conversion={board.kpis.find((k) => k.id === "conversion")}
+      actions={<ReportSubscription orgSlug={orgSlug} />}
     />
   ) : null;
 }
@@ -142,7 +150,7 @@ function Board({
       ) : (
         today && board.stores.length > 0 && <AllClear />
       )}
-      <OverviewSales board={board} />
+      <OverviewSales board={board} orgSlug={orgSlug} />
       {numbers}
       {more}
     </div>

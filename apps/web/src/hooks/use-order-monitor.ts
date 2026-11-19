@@ -6,6 +6,7 @@
 
 import {
   type QueryClient,
+  useMutation,
   useQueries,
   useQuery,
   useQueryClient,
@@ -245,4 +246,31 @@ export function useSiteTraffic(
     refetchInterval: opts.at ? false : FALLBACK_REFETCH_MS,
     retry: false,
   });
+}
+
+/** The local hours the user gets the org's sales report by email at; [] = not subscribed. */
+export function useSalesReportSubscription(orgSlug: string) {
+  const url = `/api/${encodeURIComponent(orgSlug)}/order-monitor/report-subscription`;
+  const queryClient = useQueryClient();
+  const queryKey = KEYS.salesReportSubscription(orgSlug);
+  const query = useQuery({
+    queryKey,
+    queryFn: ({ signal }) =>
+      fetchJson<{ hours: number[] }>(url, signal).then((b) => b.hours),
+    enabled: !!orgSlug,
+    retry: false,
+  });
+  const setHours = useMutation({
+    mutationFn: async (hours: number[]) => {
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hours }),
+      });
+      if (!res.ok) throw new Error(`request failed (${res.status})`);
+      return ((await res.json()) as { hours: number[] }).hours;
+    },
+    onSuccess: (hours) => queryClient.setQueryData(queryKey, hours),
+  });
+  return { hours: query.data, setHours };
 }

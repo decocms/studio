@@ -6,11 +6,11 @@
  * day, or several added up.
  */
 
-import type {
-  OrderMonitorDay,
-  OrderMonitorForecast,
-  OrderMonitorSales,
-  OrderMonitorSeries,
+import {
+  addSalesDays,
+  type OrderMonitorDay,
+  type OrderMonitorSales,
+  type OrderMonitorSeries,
 } from "@decocms/shared/order-monitor";
 import {
   Bar,
@@ -23,6 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { ReactNode } from "react";
 import { ChartContainer, ChartTooltip } from "@decocms/ui/components/chart.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -50,18 +51,6 @@ const clock = (bucket: number) =>
 const total = (xs: readonly (number | null)[], to = xs.length) =>
   xs.slice(0, to).reduce<number>((s, x) => s + (x ?? 0), 0);
 
-const addSales = (xs: OrderMonitorSales[]): OrderMonitorSales => ({
-  orders: xs.reduce((s, x) => s + x.orders, 0),
-  revenue: xs.reduce((s, x) => s + x.revenue, 0),
-  items: xs.reduce((s, x) => s + x.items, 0),
-});
-
-/** A reference day across stores: unknown when any store lacks it, so a total never mixes in a missing day. */
-function addRef(days: readonly OrderMonitorDay[], ref: Ref) {
-  const xs = days.map((d) => d.forecast.soFar[ref]);
-  return xs.every((x) => x !== null) ? addSales(xs) : null;
-}
-
 const addSeries = (xs: OrderMonitorSeries[]) => ({
   today: HOURS.map((h) =>
     xs.every((x) => x.today[h] === null)
@@ -71,46 +60,15 @@ const addSeries = (xs: OrderMonitorSeries[]) => ({
   w1: HOURS.map((h) => xs.reduce((s, x) => s + (x.w1[h] ?? 0), 0)),
 });
 
-function addProjection(
-  ps: OrderMonitorForecast[],
-): OrderMonitorForecast | null {
-  if (ps.length === 0) return null;
-  const hours = (pick: (p: OrderMonitorForecast) => number[]) =>
-    HOURS.map((h) => ps.reduce((s, p) => s + (pick(p)[h] ?? 0), 0));
-  const add = (pick: (p: OrderMonitorForecast) => number) =>
-    ps.reduce((s, p) => s + pick(p), 0);
-  return {
-    orders: hours((p) => p.orders),
-    revenue: hours((p) => p.revenue),
-    close: {
-      orders: add((p) => p.close.orders),
-      revenue: add((p) => p.close.revenue),
-    },
-    initial: {
-      orders: add((p) => p.initial.orders),
-      revenue: add((p) => p.initial.revenue),
-    },
-    // ponytail: stores' lows and highs added up, as if they all ran quiet or busy at once.
-    range: {
-      orders: {
-        low: hours((p) => p.range.orders.low),
-        high: hours((p) => p.range.orders.high),
-      },
-      revenue: {
-        low: hours((p) => p.range.revenue.low),
-        high: hours((p) => p.range.revenue.high),
-      },
-    },
-  };
-}
-
 export function SalesStatus({
   days,
   conversion,
+  actions,
 }: {
   days: readonly OrderMonitorDay[];
   /** The sites' conversion, when it's in scope. */
   conversion?: Kpi | null;
+  actions?: ReactNode;
 }) {
   const t = useT();
   // A day read from an API without the sales, or the projection's range, yet.
@@ -119,25 +77,14 @@ export function SalesStatus({
     (d.forecast.projection !== null && !d.forecast.projection.range);
   if (days.length === 0 || days.some(stale)) return null;
   const first = days[0]!;
-  const done = Math.min(...days.map((d) => d.done));
+  const sum = addSalesDays(days);
+  const { done, currency, today } = sum;
   const live =
     done < 96 &&
     new Date().toLocaleDateString("en-CA", { timeZone: first.timezone }) ===
       first.date;
-  const today = addSales(days.map((d) => d.forecast.soFar.today));
-  const ref = Object.fromEntries(
-    REFS.map((r) => [r, addRef(days, r)]),
-  ) as Record<Ref, OrderMonitorSales | null>;
-  const projections = days.map((d) => d.forecast.projection);
-  const projection =
-    done < 95 && projections.every((p) => p !== null)
-      ? addProjection(projections)
-      : null;
-
-  // Stores in different currencies don't add up: orders stand in for revenue.
-  const currencies = new Set(days.map((d) => d.forecast.currency));
-  const [only] = currencies;
-  const currency = currencies.size === 1 && only ? only : null;
+  const ref: Record<Ref, OrderMonitorSales | null> = sum;
+  const projection = done < 95 ? sum.projection : null;
   const money = (n: number, fraction = 0) =>
     new Intl.NumberFormat(undefined, {
       style: "currency",
@@ -283,7 +230,10 @@ export function SalesStatus({
             </span>
           )}
         </div>
-        <span className="text-meta">{t("monitor.sales.source")}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-meta">{t("monitor.sales.source")}</span>
+          {actions}
+        </div>
       </header>
 
       <div className="grid border-b border-border/50 sm:grid-cols-2">
@@ -724,13 +674,7 @@ export function SalesStatus({
   );
 }
 
-function Legend({
-  line,
-  children,
-}: {
-  line: React.ReactNode;
-  children: React.ReactNode;
-}) {
+function Legend({ line, children }: { line: ReactNode; children: ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       {line}

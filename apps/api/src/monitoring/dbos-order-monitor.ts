@@ -69,7 +69,7 @@ function requireDb(): Kysely<Database> {
 
 const storage = () => new OrderMonitorStorage(requireDb());
 
-async function loadMonitoredStores(): Promise<MonitoredStore[]> {
+export async function loadMonitoredStores(): Promise<MonitoredStore[]> {
   const ingestUrl = getSettings().orderMonitorIngestUrl;
   if (!ingestUrl || !isCustomerLakeConfigured()) return [];
   const installs = await storage().listIngestInstalls(ingestUrl);
