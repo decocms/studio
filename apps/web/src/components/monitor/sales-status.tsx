@@ -6,7 +6,6 @@
  * hours should bring to get there. One store's day, or several added up.
  */
 
-import type { ReactNode } from "react";
 import type {
   OrderMonitorDay,
   OrderMonitorForecast,
@@ -61,41 +60,6 @@ function addProjection(
   };
 }
 
-function Measure({
-  title,
-  value,
-  sub,
-  refs,
-}: {
-  title: string;
-  value: string;
-  sub?: string;
-  refs: { ref: Ref; value: string | null; change: number | null }[];
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm text-foreground/70">{title}</span>
-        <span className="tnum truncate text-3xl text-foreground">{value}</span>
-        {sub && <span className="text-meta">{sub}</span>}
-      </div>
-      <dl className="flex flex-col gap-1">
-        {refs.map((r) => (
-          <div key={r.ref} className="flex items-baseline gap-2 text-sm">
-            <dt className="text-meta w-8 shrink-0">{REF_LABEL[r.ref]}</dt>
-            <dd className="tnum min-w-0 flex-1 truncate text-foreground/80">
-              {r.value ?? "—"}
-            </dd>
-            <dd className="shrink-0">
-              <Trend change={r.change} better="up" reference="" />
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
 export function SalesStatus({ days }: { days: readonly OrderMonitorDay[] }) {
   const t = useT();
   // A day read from an API without the status yet.
@@ -124,20 +88,6 @@ export function SalesStatus({ days }: { days: readonly OrderMonitorDay[] }) {
   const count = (n: number) => Math.round(n).toLocaleString();
   const ticket = (s: OrderMonitorSales) =>
     s.orders > 0 ? s.revenue / s.orders : null;
-  const perOrder = (s: OrderMonitorSales) =>
-    s.orders > 0 ? (s.items / s.orders).toFixed(2) : "—";
-  const refsOf = (
-    pick: (s: OrderMonitorSales) => number | null,
-    show: (s: OrderMonitorSales) => string,
-  ) =>
-    REFS.map((r) => {
-      const s = ref[r];
-      return {
-        ref: r,
-        value: s ? show(s) : null,
-        change: s ? relativeChange(pick(today), pick(s)) : null,
-      };
-    });
 
   const until = done >= 95 ? "23:59" : clock(done);
   const first = Math.floor(done / 4);
@@ -154,7 +104,6 @@ export function SalesStatus({ days }: { days: readonly OrderMonitorDay[] }) {
     currency ? x.revenue : x.orders;
   const show = (x: { orders: number; revenue: number }) =>
     currency ? money(x.revenue) : count(x.orders);
-  const top = Math.max(1, ...next.map(pick));
   const nextTotal = {
     orders: next.reduce((s, x) => s + x.orders, 0),
     revenue: next.reduce((s, x) => s + x.revenue, 0),
@@ -164,101 +113,143 @@ export function SalesStatus({ days }: { days: readonly OrderMonitorDay[] }) {
       ? Math.min(1, pick(today) / pick(projection.close))
       : 0;
 
-  const measures: ReactNode[] = [];
-  if (currency) {
-    measures.push(
-      <Measure
-        key="revenue"
-        title={t("monitor.sales.revenue")}
-        value={money(today.revenue, 2)}
-        refs={refsOf(
-          (s) => s.revenue,
-          (s) => money(s.revenue),
-        )}
-      />,
-    );
-  }
-  measures.push(
-    <Measure
-      key="orders"
-      title={t("monitor.sales.orders")}
-      value={count(today.orders)}
-      refs={refsOf(
-        (s) => s.orders,
-        (s) => count(s.orders),
-      )}
-    />,
-  );
-  if (currency) {
-    const own = ticket(today);
-    measures.push(
-      <Measure
-        key="ticket"
-        title={t("monitor.sales.ticket")}
-        value={own === null ? "—" : money(own, 2)}
-        refs={refsOf(ticket, (s) => {
-          const v = ticket(s);
-          return v === null ? "—" : money(v, 2);
-        })}
-      />,
-    );
-  }
-  measures.push(
-    <Measure
-      key="items"
-      title={t("monitor.sales.items")}
-      value={count(today.items)}
-      sub={t("monitor.sales.perOrder", { n: perOrder(today) })}
-      refs={refsOf(
-        (s) => s.items,
-        (s) =>
-          `${count(s.items)} · ${t("monitor.sales.perOrder", { n: perOrder(s) })}`,
-      )}
-    />,
-  );
+  const rows: {
+    key: string;
+    label: string;
+    value: (s: OrderMonitorSales) => number | null;
+    show: (v: number) => string;
+  }[] = [
+    ...(currency
+      ? [
+          {
+            key: "revenue",
+            label: t("monitor.sales.revenue"),
+            value: (x: OrderMonitorSales) => x.revenue,
+            show: (v: number) => money(v),
+          },
+        ]
+      : []),
+    {
+      key: "orders",
+      label: t("monitor.sales.orders"),
+      value: (x) => x.orders,
+      show: count,
+    },
+    ...(currency
+      ? [
+          {
+            key: "ticket",
+            label: t("monitor.sales.ticket"),
+            value: ticket,
+            show: (v: number) => money(v, 2),
+          },
+        ]
+      : []),
+    {
+      key: "items",
+      label: t("monitor.sales.items"),
+      value: (x) => x.items,
+      show: count,
+    },
+    {
+      key: "perOrder",
+      label: t("monitor.sales.perOrder"),
+      value: (x) => (x.orders > 0 ? x.items / x.orders : null),
+      show: (v) => v.toFixed(2),
+    },
+  ];
 
   return (
-    <section className="surface flex flex-col gap-6 px-4 pt-4 pb-5">
+    <section className="surface flex flex-col gap-5 px-4 pt-4 pb-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm text-foreground/70">
           {t("monitor.sales.title")}
         </h3>
-        <span className="text-meta">
+        <span className="text-meta tnum">
           {t("monitor.sales.span", { from: "00:00", to: until })}
         </span>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">{measures}</div>
+      <div className="-mx-4 overflow-x-auto px-4">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="text-meta border-b border-border/50">
+              <th className="py-2 pr-4 text-left font-normal" />
+              <th className="py-2 pl-4 text-right font-normal">
+                {t("monitor.sales.today")}
+              </th>
+              {REFS.map((r) => (
+                <th key={r} className="py-2 pl-4 text-right font-normal">
+                  {REF_LABEL[r]}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const own = row.value(today);
+              return (
+                <tr
+                  key={row.key}
+                  className="border-b border-border/50 last:border-b-0"
+                >
+                  <th className="py-2.5 pr-4 text-left font-normal text-foreground/70">
+                    {row.label}
+                  </th>
+                  <td className="tnum py-2.5 pl-4 text-right text-base font-medium whitespace-nowrap text-foreground">
+                    {own === null ? "—" : row.show(own)}
+                  </td>
+                  {REFS.map((r) => {
+                    const then = ref[r] ? row.value(ref[r]) : null;
+                    return (
+                      <td
+                        key={r}
+                        className="tnum py-2.5 pl-4 text-right whitespace-nowrap"
+                      >
+                        <span className="text-foreground/70">
+                          {then === null ? "—" : row.show(then)}
+                        </span>
+                        <span className="inline-block w-14 text-right">
+                          <Trend
+                            change={relativeChange(own, then)}
+                            better="up"
+                            reference=""
+                          />
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {projection && done < 95 && (
-        <div className="grid gap-6 border-t border-border/50 pt-5 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <div className="grid gap-6 border-t border-border/50 pt-5 md:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-3">
             <span className="text-sm text-foreground/70">
               {t("monitor.sales.projection", { from: "00:00", to: "23:59" })}
             </span>
-            <div className="flex flex-col gap-1">
-              <span className="text-meta">{t("monitor.sales.updated")}</span>
-              <span className="tnum text-3xl text-foreground">
-                {show(projection.close)}
-              </span>
-              <span className="text-meta flex flex-wrap items-center gap-x-2">
-                <span>
-                  {t("monitor.sales.initial", {
-                    amount: show(projection.initial),
-                  })}
-                </span>
-                <Trend
-                  change={relativeChange(
-                    pick(projection.close),
-                    pick(projection.initial),
-                  )}
-                  better="up"
-                  reference=""
-                />
-              </span>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
+            <span className="tnum text-3xl text-foreground">
+              {show(projection.close)}
+            </span>
+            <span className="text-meta flex flex-wrap items-center gap-x-1.5">
+              <Trend
+                change={relativeChange(
+                  pick(projection.close),
+                  pick(projection.initial),
+                )}
+                better="up"
+                reference=""
+              />
+              {t("monitor.sales.initial", {
+                amount: show(projection.initial),
+              })}
+            </span>
+            <div className="flex flex-col gap-1.5 pt-1">
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-chart-1"
                   style={{ width: `${share * 100}%` }}
@@ -267,50 +258,46 @@ export function SalesStatus({ days }: { days: readonly OrderMonitorDay[] }) {
               <span className="text-meta">
                 {t("monitor.sales.inSoFar", {
                   share: `${Math.round(share * 100)}%`,
+                  time: until,
                 })}
               </span>
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex min-w-0 flex-col gap-3">
             <span className="text-sm text-foreground/70">
               {t("monitor.sales.nextHours")}
             </span>
-            <ul className="flex flex-col">
+            <dl className="grid grid-cols-[auto_1fr_auto] gap-x-4 text-sm">
               {next.map((x, i) => (
-                <li
+                <div
                   key={x.h}
-                  className="flex h-9 items-center gap-3 border-b border-border/50 text-sm last:border-b-0"
+                  className="col-span-3 grid grid-cols-subgrid items-baseline border-b border-border/50 py-2 last:border-b-0"
                 >
-                  <span className="tnum w-24 shrink-0 text-foreground/70">
+                  <dt className="tnum text-foreground/70">
                     {i === 0
                       ? t("monitor.sales.untilNext", {
                           to: clock((x.h + 1) * 4),
                         })
                       : `${clock(x.h * 4)}–${clock((x.h + 1) * 4)}`}
-                  </span>
-                  <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-                    <span
-                      className="block h-full rounded-full bg-chart-2"
-                      style={{ width: `${(pick(x) / top) * 100}%` }}
-                    />
-                  </span>
-                  <span className="tnum w-28 shrink-0 text-right text-foreground">
-                    {show(x)}
-                  </span>
-                  {currency && (
-                    <span className="tnum text-meta hidden w-24 shrink-0 text-right sm:inline">
-                      {t("monitor.sales.ordersCount", {
-                        count: count(x.orders),
-                      })}
-                    </span>
-                  )}
-                </li>
+                  </dt>
+                  <dd className="tnum text-right text-foreground">{show(x)}</dd>
+                  <dd className="tnum text-meta w-24 text-right">
+                    {currency
+                      ? t("monitor.sales.ordersCount", {
+                          count: count(x.orders),
+                        })
+                      : null}
+                  </dd>
+                </div>
               ))}
-            </ul>
-            <p className="text-sm text-foreground">
+            </dl>
+            <p className="text-meta">
               {t("monitor.sales.target", {
-                amount: show(nextTotal),
+                amount: show({
+                  orders: today.orders + nextTotal.orders,
+                  revenue: today.revenue + nextTotal.revenue,
+                }),
                 until: clock(((next.at(-1)?.h ?? first) + 1) * 4),
               })}
             </p>
