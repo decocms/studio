@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { Page } from "@/components/page";
 import { PlanGuide } from "./guide/plan-guide.tsx";
+import { PlanGuideResume } from "./guide/plan-guide-resume.tsx";
 import { usePlanGuide } from "./guide/use-plan-guide.ts";
 import { PlanCasesList } from "./plan-cases-list.tsx";
 import { PlanIdeaComposer } from "./plan-idea-composer.tsx";
@@ -35,6 +36,13 @@ export function PlanPage() {
       <Page.Content>
         <Page.Container width="standard" className="flex flex-col gap-12">
           <PlanObjective />
+          {guide.saved && (
+            <PlanGuideResume
+              draft={guide.saved}
+              onResume={guide.resume}
+              onDiscard={guide.discard}
+            />
+          )}
           <PlanIdeaComposer initialIdea={draft} onSubmit={guide.start} />
           <PlanCasesList />
         </Page.Container>

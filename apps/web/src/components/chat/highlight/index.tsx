@@ -285,7 +285,7 @@ export function ChatHighlight({
     setPreferences({ ...preferences, toolApprovalLevel: "auto" });
 
     // Send plan to a new thread via sendToChat
-    createTaskWithMessage({
+    void createTaskWithMessage({
       virtualMcpId,
       message: {
         parts: [

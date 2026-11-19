@@ -80,7 +80,7 @@ const LOCAL_TASK: ChatTaskContextValue = {
   taskId: null,
   openTask: () => {},
   createTask: () => "",
-  createTaskWithMessage: () => {},
+  createTaskWithMessage: async () => false,
   activeTask: null,
   isThreadLocked: false,
   lockedHarness: null,
