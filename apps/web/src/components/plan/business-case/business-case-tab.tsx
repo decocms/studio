@@ -1,5 +1,7 @@
 /** The case tab beside the chat; `caseView` picks what it shows. */
 
+import { useState } from "react";
+import { toast } from "sonner";
 import { matchBusinessCasePath } from "@decocms/shared/business-case";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useOptionalChatStream } from "@/components/chat/chat-context.tsx";
@@ -10,10 +12,13 @@ import { Page } from "@/components/page";
 import { formatLibraryFileTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t.ts";
+import { track } from "@/lib/posthog-client";
+import { openAnswersPrompt } from "../business-case-prompt.ts";
 import { BUILDING, Question, Thinking } from "../guide/guide-screens.tsx";
 import { BusinessCaseCanvas } from "./business-case-canvas.tsx";
 import { readCaseSeed } from "./case-seed.ts";
 import { caseView, userAskQuestion } from "./case-view.ts";
+import { OpenQuestionsFlow } from "./open-questions-flow.tsx";
 import { useBusinessCase } from "./use-business-case.ts";
 
 function CaseLoading({ label }: { label?: string }) {
@@ -30,20 +35,17 @@ function CaseLoading({ label }: { label?: string }) {
   );
 }
 
-/** Sends an open question to the chat this case belongs to, when that chat is
- *  the one beside the tab. */
-function useAskInChat(path: string) {
-  const t = useT();
+/** Sends a message to the chat this case belongs to, when that chat is the
+ *  one beside the tab and free to take it. */
+function useCaseChat(path: string) {
   const chat = useOptionalChatStream();
   const task = useOptionalChatTask();
   const threadId = matchBusinessCasePath(path);
   if (!chat || !threadId || task?.taskId !== threadId || chat.isStreaming) {
     return undefined;
   }
-  return (question: string) =>
-    void chat.sendMessage({
-      parts: [{ type: "text", text: t("plan.case.askPrompt", { question }) }],
-    });
+  return (text: string) =>
+    void chat.sendMessage({ parts: [{ type: "text", text }] });
 }
 
 /** The agent's pending question on the guided intro's screen; the answer
@@ -84,7 +86,9 @@ export function BusinessCaseTab({ path }: { path: string }) {
   const chat = useOptionalChatStream();
   const task = useOptionalChatTask();
   const read = useBusinessCase(path);
-  const onAsk = useAskInChat(path);
+  const send = useCaseChat(path);
+  /** The open questions being answered, as they were when the flow opened. */
+  const [answering, setAnswering] = useState<string[] | null>(null);
   const value = read.data?.value ?? readCaseSeed(sessionStorage, path);
 
   if (!value) {
@@ -109,6 +113,28 @@ export function BusinessCaseTab({ path }: { path: string }) {
     running: !!chat?.isStreaming || task?.activeTask?.status === "in_progress",
   });
 
+  // Ahead of the view: the agent may reopen the case before the last beat ends.
+  if (answering) {
+    return (
+      <Page>
+        <OpenQuestionsFlow
+          title={value.title}
+          questions={answering}
+          onDone={(answers) => {
+            track("plan_case_open_questions_answered", {
+              questions: answers.length,
+              skipped: answers.filter((a) => !a.answer.trim()).length,
+            });
+            // The chat may have got busy while the person was answering.
+            if (send) send(openAnswersPrompt(t, answers));
+            else toast.error(t("plan.case.openFlow.busy"));
+          }}
+          onClose={() => setAnswering(null)}
+        />
+      </Page>
+    );
+  }
+
   if (view.kind === "canvas") {
     return (
       <Page>
@@ -117,7 +143,19 @@ export function BusinessCaseTab({ path }: { path: string }) {
             <BusinessCaseCanvas
               value={value}
               invalid={read.data?.invalid}
-              onAsk={onAsk}
+              onAsk={
+                send &&
+                ((question) => send(t("plan.case.askPrompt", { question })))
+              }
+              onAnswerOpen={
+                send &&
+                ((questions) => {
+                  track("plan_case_open_questions_opened", {
+                    questions: questions.length,
+                  });
+                  setAnswering(questions);
+                })
+              }
               onOpenDocument={(documentPath) =>
                 openPanel(formatLibraryFileTabId(`home/${documentPath}`))
               }

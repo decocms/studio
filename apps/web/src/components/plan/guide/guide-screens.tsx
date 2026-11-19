@@ -110,6 +110,38 @@ function Words({ text, delay }: { text: string; delay: number }) {
 const WORD_MS = 45;
 const REACTION_MS = 350;
 
+/** A dot per answered question and a wider one for the current. Given a
+ *  `total`, the questions still ahead show as faint dots too. */
+export function ProgressDots({
+  done,
+  current,
+  total = 0,
+}: {
+  done: number;
+  current: boolean;
+  total?: number;
+}) {
+  const count = Math.max(total, done + (current ? 1 : 0));
+  if (count === 0) return null;
+  return (
+    <div className="ml-auto flex items-center gap-1.5" aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => (
+        <span
+          key={i}
+          className={cn(
+            "h-1.5 rounded-full transition-all duration-500 animate-in zoom-in-0 fade-in-0 motion-reduce:animate-none",
+            current && i === done
+              ? "w-5 bg-foreground"
+              : i < done
+                ? "w-1.5 bg-muted-foreground/40"
+                : "w-1.5 bg-muted-foreground/15",
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
 export interface ScreenQuestion {
   text: string;
   options: string[];
@@ -120,9 +152,11 @@ export interface ScreenQuestion {
 export function Question({
   view,
   onAnswer,
+  skipLabel,
 }: {
   view: { question: ScreenQuestion; reaction: string | null };
   onAnswer: (answer: string) => void;
+  skipLabel?: string;
 }) {
   const t = useT();
   const [answer, setAnswer] = useState("");
@@ -215,7 +249,7 @@ export function Question({
         />
         <div className="flex items-center justify-between gap-3">
           <Button type="button" variant="ghost" onClick={() => leave("")}>
-            {t("plan.guide.skip")}
+            {skipLabel ?? t("plan.guide.skip")}
           </Button>
           <Button
             type="submit"

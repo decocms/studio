@@ -6,33 +6,16 @@
 
 import { ArrowLeft } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { BUILDING, Question, THINKING, Thinking } from "./guide-screens.tsx";
+import {
+  BUILDING,
+  ProgressDots,
+  Question,
+  THINKING,
+  Thinking,
+} from "./guide-screens.tsx";
 import type { GuideState } from "./guide-state.ts";
 import type { PlanGuide as PlanGuideControls } from "./use-plan-guide.ts";
-
-/** One dot per answered question, and a wider one for the current. */
-function Progress({ state }: { state: GuideState }) {
-  const asking = state.view.phase === "asking";
-  const count = state.answers.length + (asking ? 1 : 0);
-  if (count === 0) return null;
-  return (
-    <div className="ml-auto flex items-center gap-1.5" aria-hidden="true">
-      {Array.from({ length: count }, (_, i) => (
-        <span
-          key={i}
-          className={cn(
-            "h-1.5 rounded-full transition-all duration-500 animate-in zoom-in-0 fade-in-0 motion-reduce:animate-none",
-            asking && i === count - 1
-              ? "w-5 bg-foreground"
-              : "w-1.5 bg-muted-foreground/40",
-          )}
-        />
-      ))}
-    </div>
-  );
-}
 
 function Screen({
   state,
@@ -77,7 +60,10 @@ export function PlanGuide({
           <span className="text-meta mr-2">{t("plan.guide.yourIdea")}</span>
           {guide.state.idea}
         </p>
-        <Progress state={guide.state} />
+        <ProgressDots
+          done={guide.state.answers.length}
+          current={guide.state.view.phase === "asking"}
+        />
       </div>
       <div className="flex min-h-0 flex-1 overflow-auto">
         <div className="m-auto flex w-full max-w-2xl justify-center px-4 py-10 md:px-8">

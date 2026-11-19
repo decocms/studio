@@ -14,14 +14,22 @@ export function BusinessCaseCanvas({
   invalid,
   onOpenDocument,
   onAsk,
+  onAnswerOpen,
 }: {
   value: BusinessCase;
   invalid?: boolean;
   onOpenDocument?: (documentPath: string) => void;
   /** Sends an open question to this case's chat; absent without one. */
   onAsk?: (question: string) => void;
+  /** Opens the flow that asks the case's open questions one at a time;
+   *  absent without the case's chat. */
+  onAnswerOpen?: (questions: string[]) => void;
 }) {
   const story = caseStory(value);
+  const answerOpen =
+    onAnswerOpen && story.openQuestions.length > 0
+      ? () => onAnswerOpen(story.openQuestions)
+      : undefined;
   return (
     <div className="@container mx-auto flex w-full max-w-[880px] flex-col gap-10">
       <CaseHero
@@ -29,8 +37,14 @@ export function BusinessCaseCanvas({
         story={story}
         invalid={invalid}
         onOpenDocument={onOpenDocument}
+        onAnswerOpen={answerOpen}
       />
-      <CaseSpine value={value} story={story} onAsk={onAsk} />
+      <CaseSpine
+        value={value}
+        story={story}
+        onAsk={onAsk}
+        onAnswerOpen={answerOpen}
+      />
     </div>
   );
 }

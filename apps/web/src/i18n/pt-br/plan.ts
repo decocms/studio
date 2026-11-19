@@ -97,6 +97,16 @@ export const plan = {
   "plan.case.ab.variant": "com a mudança · 50%",
   "plan.case.askInChat": "Perguntar no chat",
   "plan.case.askPrompt": "Vamos descobrir: {question}",
+  "plan.case.answerOpen": "Responder as dúvidas",
+  "plan.case.openFlow.back": "Voltar ao caso",
+  "plan.case.openFlow.counter": "Dúvida {n} de {total}",
+  "plan.case.openFlow.skip": "Não sei, descubra para mim",
+  "plan.case.openFlow.skipped":
+    "(não sei: pesquise, ou assuma e escreva a suposição no card)",
+  "plan.case.openFlow.prompt":
+    "Aqui estão minhas respostas às dúvidas em aberto do caso. Atualize o canvas do caso com elas: refaça os cards que elas mudam (o problema, o dinheiro, o teste A/B) e tire das incógnitas as dúvidas que respondi. Pesquise as que deixei para você.\n\n{answers}",
+  "plan.case.openFlow.busy":
+    "O chat está ocupado. Suas respostas não foram enviadas; tente de novo quando ele terminar.",
   "plan.case.status.framing": "Enquadrando",
   "plan.case.status.building": "Construindo",
   "plan.case.status.ready": "Pronto",
