@@ -73,6 +73,14 @@ and `codex`, driven by `codex app-server`. Other identifiers get an
   `decocms tools call <NAME> --org <slug> [-d '<json>']` command renders as
   the `<NAME>` tool part. Codex read-only runs keep the research-only `studio`
   MCP, because their sandbox blocks network for shell commands.
+- Point Claude Code's own memory at the folder the input names. `memory` is
+  set per run and passed as SDK `settings` (the flag layer, which the CLI reads
+  before the checkout's or the user's settings): `autoMemoryEnabled: false`
+  when it is off, or `autoMemoryDirectory` with the absolute path the daemon
+  resolved on the org mount. Any other path is treated as off, because the CLI
+  falls back to its folder on the sandbox's disk for a path it rejects. An
+  input without the field keeps the CLI default. A kept session is ended
+  instead of reused when the next turn's memory differs.
 - Continue an interrupted turn rather than redoing it. `input.resume` means a
   previous attempt was cut short by infrastructure and its conversation is gone;
   the work itself is in the checkout and in git (a replaced pod clones the branch

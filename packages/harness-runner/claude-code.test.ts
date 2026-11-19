@@ -12,6 +12,7 @@ import {
   planModeStudioCliHook,
   isTransientProviderRejection,
   mcpServersFor,
+  memorySettings,
   promptForRun,
   promptFromUserMessage,
   studioMcpPreflight,
@@ -164,6 +165,52 @@ describe("brokenStudioMcp", () => {
     expect(brokenStudioMcp([{ name: "studio", status: "failed" }], "")).toBe(
       null,
     );
+  });
+});
+
+describe("memorySettings", () => {
+  const home = "/app/org/home/users/user_1";
+
+  test("no field leaves the CLI default untouched", () => {
+    expect(memorySettings(undefined)).toBeUndefined();
+    expect(options()).not.toHaveProperty("settings");
+  });
+
+  test("off turns Claude Code's memory off", () => {
+    expect(memorySettings({ enabled: false })).toEqual({
+      autoMemoryEnabled: false,
+    });
+    expect(options({ memory: { enabled: false } }).settings).toEqual({
+      autoMemoryEnabled: false,
+    });
+  });
+
+  test("on points Claude Code at the folder the daemon resolved", () => {
+    const expected = { autoMemoryEnabled: true, autoMemoryDirectory: home };
+    expect(memorySettings({ enabled: true, directory: home })).toEqual(
+      expected,
+    );
+    expect(
+      options({ memory: { enabled: true, directory: home } }).settings,
+    ).toEqual(expected);
+  });
+
+  // The CLI falls back to its sandbox-local folder for a path it rejects.
+  test("a path the daemon did not resolve is off, never the local folder", () => {
+    for (const directory of ["users/user_1", "~/memory", "./memory", ""]) {
+      expect(memorySettings({ enabled: true, directory })).toEqual({
+        autoMemoryEnabled: false,
+      });
+    }
+  });
+
+  test("two members' runs never share settings", () => {
+    const one = memorySettings({ enabled: true, directory: home });
+    const other = memorySettings({
+      enabled: true,
+      directory: "/app/org/home/users/user_2",
+    });
+    expect(other).not.toEqual(one);
   });
 });
 

@@ -47,6 +47,16 @@ describe("orgFlagEnabled", () => {
     ).toBe(false);
   });
 
+  it("per-person sandbox chat memory is on unless an org turned it off", () => {
+    expect(orgFlagEnabled({}, "sandbox_chat_user_memory")).toBe(true);
+    expect(
+      orgFlagEnabled(
+        { sandbox_chat_user_memory: false },
+        "sandbox_chat_user_memory",
+      ),
+    ).toBe(false);
+  });
+
   it("the Blog view is off until an org turns it on", () => {
     expect(DEFAULT_ON_FLAGS.has("blog_view_enabled")).toBe(false);
     expect(orgFlagEnabled({}, "blog_view_enabled")).toBe(false);

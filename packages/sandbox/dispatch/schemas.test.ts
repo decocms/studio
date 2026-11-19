@@ -295,6 +295,17 @@ describe("harnessStreamInputSchema (v3)", () => {
     expect(harnessStreamInputSchema.safeParse(minimalV3).success).toBe(true);
   });
 
+  it("carries memory as off, or on with a directory, and nothing else", () => {
+    const parse = (memory: unknown) =>
+      harnessStreamInputSchema.safeParse({ ...minimalV3, memory }).success;
+    expect(parse({ enabled: false })).toBe(true);
+    expect(parse({ enabled: true, directory: "users/user_1" })).toBe(true);
+    expect(parse({ enabled: true })).toBe(false);
+    expect(parse({ enabled: true, directory: "" })).toBe(false);
+    expect(parse({ enabled: false, directory: "users/user_1" })).toBe(false);
+    expect(parse({ directory: "users/user_1" })).toBe(false);
+  });
+
   it("rejects unknown harness modes", () => {
     const result = harnessStreamInputSchema.safeParse({
       ...minimalV3,

@@ -57,6 +57,7 @@ import {
 } from "@/harnesses/claude-code-env";
 import { orgFsSandboxPath } from "@/file-storage/mount/provisioning";
 import { mergeRunEnv, resolveOrgRunEnv } from "@/harnesses/org-run-env";
+import { resolveRunMemory } from "@/harnesses/run-memory";
 import { RUN_CLASS_METADATA_KEY } from "@/dispatch-queue/run-priority";
 import { withModelMetadata } from "@/harnesses/with-model-metadata";
 import { daemonRunId } from "@/harnesses/live-messages";
@@ -78,7 +79,7 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { hasAdminRole, rolesOf } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
-import type { OrganizationSettings, Permission } from "@/storage/types";
+import type { OrganizationSettings, Permission, Thread } from "@/storage/types";
 import {
   connectionGrantsFor,
   selfToolGrantsFor,
@@ -380,11 +381,9 @@ export class SandboxDispatchClient {
     threadId: string,
     dispatcherUserId: string,
     agent: Promise<VirtualMCPEntity | null>,
+    threadRead: Promise<Thread | null>,
+    settingsRead: Promise<OrganizationSettings | null>,
   ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps" | "studioCli">> {
-    const settingsRead = this.ctx.storage.organizationSettings.get(
-      organization.id,
-    );
-    const threadRead = this.ctx.storage.threads.get(threadId);
     const [candidates, authority, thread, ownAgent, settings] =
       await Promise.all([
         this.orgMcpConnections(organization, agent, settingsRead, threadRead),
@@ -462,6 +461,26 @@ export class SandboxDispatchClient {
       }`,
     );
     return { mcp, orgMcps, ...cli };
+  }
+
+  /**
+   * Whose Claude Code memory this run uses, if any (see `resolveRunMemory`).
+   * Only Claude Code has one; Codex gets no field.
+   */
+  private async memoryForRun(
+    userId: string,
+    threadRead: Promise<Thread | null>,
+    settingsRead: Promise<OrganizationSettings | null>,
+  ): Promise<Pick<HarnessStreamInputWire, "memory">> {
+    if (this.harnessId === "codex") return {};
+    const [thread, settings] = await Promise.all([threadRead, settingsRead]);
+    const memory = resolveRunMemory({
+      enabled: orgFlagEnabled(settings?.flags, "sandbox_chat_user_memory"),
+      orgFsMounted: !getSettings().orgFsMountsDisabled,
+      userId,
+      thread,
+    });
+    return memory ? { memory } : {};
   }
 
   /**
@@ -603,6 +622,11 @@ export class SandboxDispatchClient {
     const agent = this.ctx.storage.virtualMcps
       .findById(this.virtualMcpId)
       .catch(() => null);
+    // Read once: the thread and the org's flags shape both the MCP surface and the memory.
+    const threadRead = this.ctx.storage.threads.get(input.threadId);
+    const settingsRead = this.ctx.storage.organizationSettings.get(
+      organization.id,
+    );
     const wireInput = {
       ...input,
       // Hosted Decopilot's in-process client ignores `mcp` and gets the
@@ -629,7 +653,10 @@ export class SandboxDispatchClient {
         input.threadId,
         input.user.id,
         agent,
+        threadRead,
+        settingsRead,
       )),
+      ...(await this.memoryForRun(input.user.id, threadRead, settingsRead)),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
       workspace: await this.resolveWorkspace(input.threadId, agent),
@@ -1403,7 +1430,8 @@ export function errorForTerminal(code: string, message: string): Error {
  * (the per-run MCP bearer, the title). A different key gets a new process.
  */
 export function harnessSessionKey(
-  input: HarnessStreamInput & Partial<Pick<HarnessStreamInputWire, "orgMcps">>,
+  input: HarnessStreamInput &
+    Partial<Pick<HarnessStreamInputWire, "orgMcps" | "memory">>,
 ): string {
   const {
     signal: _signal,

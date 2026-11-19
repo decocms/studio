@@ -420,6 +420,21 @@ describe("harnessSessionKey", () => {
       ),
     ).not.toBe(harnessSessionKey(turn()));
   });
+
+  // A kept CLI process holds one memory folder for its whole life.
+  test("a different memory, or none, never reuses a kept session", () => {
+    const mine = { enabled: true, directory: "users/user_1" };
+    const keys = [
+      harnessSessionKey(turn()),
+      harnessSessionKey(turn({ memory: { enabled: false } })),
+      harnessSessionKey(turn({ memory: mine })),
+      harnessSessionKey(
+        turn({ memory: { enabled: true, directory: "users/user_2" } }),
+      ),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(harnessSessionKey(turn({ memory: { ...mine } }))).toBe(keys[2]!);
+  });
 });
 
 describe("harnessRunsInSandbox", () => {
