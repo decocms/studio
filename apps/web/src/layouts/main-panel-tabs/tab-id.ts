@@ -418,6 +418,43 @@ export function resolveDefaultTabId(
 }
 
 /**
+ * The history state the project's Overview row navigates with: the one way to
+ * reach the Overview of a project whose main view is something else.
+ */
+export const withProjectOverviewState = <T extends object>(prev: T) => ({
+  ...prev,
+  projectOverview: true,
+});
+
+export function isProjectOverviewVisit(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "projectOverview" in state &&
+    state.projectOverview === true
+  );
+}
+
+/**
+ * The history state a project's landing navigates with when its main view is
+ * an MCP app: the project is that app, so the app takes the whole frame and
+ * the project's sidebar stays out of the way until asked for.
+ */
+export const withAppTakeoverState = <T extends object>(prev: T) => ({
+  ...prev,
+  appTakeover: true,
+});
+
+export function isAppTakeoverVisit(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "appTakeover" in state &&
+    state.appTakeover === true
+  );
+}
+
+/**
  * Where entering a project lands: the view its settings name as the main
  * view, or `null` to stay on the Overview. Unlike {@link resolveDefaultTabId},
  * an unset or retired `chat` default means the Overview, not Settings.
