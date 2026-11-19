@@ -16,6 +16,8 @@ test("a ready case opens with its verdict and the math behind it", async ({
   await expect(component.getByText("Teste A/B", { exact: true })).toBeVisible();
   await expect(component.getByText("9 dias")).toBeVisible();
   await expect(component.getByText("carrinhos por mês")).toBeVisible();
+  await expect(component.getByText("Tempo até o frete aparecer")).toBeVisible();
+  await expect(component.getByText("4,1 s")).toBeVisible();
   await expect(component.getByText("Perguntar no chat")).toHaveCount(2);
   await component.getByText("Ver detalhes").first().click();
   await expect(

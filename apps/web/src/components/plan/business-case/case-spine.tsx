@@ -9,6 +9,7 @@ import type {
   BusinessCase,
   BusinessCaseCard,
   BusinessCaseCardKey,
+  BusinessCaseMetric,
 } from "@decocms/shared/business-case";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -274,33 +275,37 @@ function Comparison({ card }: { card: BusinessCaseCard }) {
   const [first, ...rest] = card.metrics ?? [];
   if (!first) return null;
   const bars = [first, ...rest.filter((m) => m.unit === first.unit)];
+  const others = rest.filter((m) => m.unit !== first.unit);
   const max =
     first.unit === "percent" ? 100 : Math.max(...bars.map((m) => m.value));
   return (
-    <div className="mt-3 flex max-w-md flex-col gap-2">
-      {bars.map((metric, i) => (
-        <div
-          key={i}
-          className="grid grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-3 text-xs text-muted-foreground"
-        >
-          <span className="truncate">{metric.label}</span>
-          <div className="h-2 overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full rounded-full transition-[width] duration-700",
-                i === 0 ? "bg-foreground" : "bg-muted-foreground/40",
-              )}
-              style={{
-                width: `${max > 0 ? Math.max(2, Math.min(100, (metric.value / max) * 100)) : 0}%`,
-              }}
-            />
+    <>
+      <div className="mt-3 flex max-w-md flex-col gap-2">
+        {bars.map((metric, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-3 text-xs text-muted-foreground"
+          >
+            <span className="truncate">{metric.label}</span>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-700",
+                  i === 0 ? "bg-foreground" : "bg-muted-foreground/40",
+                )}
+                style={{
+                  width: `${max > 0 ? Math.max(2, Math.min(100, (metric.value / max) * 100)) : 0}%`,
+                }}
+              />
+            </div>
+            <span className="font-semibold text-foreground tabular-nums">
+              {format.metric(metric)}
+            </span>
           </div>
-          <span className="font-semibold text-foreground tabular-nums">
-            {format.metric(metric)}
-          </span>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      <MetricChips metrics={others} />
+    </>
   );
 }
 
@@ -405,12 +410,12 @@ function MoneyChain({ card }: { card: BusinessCaseCard }) {
   );
 }
 
-function EffortParts({ card }: { card: BusinessCaseCard }) {
+function MetricChips({ metrics }: { metrics: BusinessCaseMetric[] }) {
   const format = useCaseFormat();
-  if (!card.metrics?.length) return null;
+  if (!metrics.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {card.metrics.map((metric, i) => (
+      {metrics.map((metric, i) => (
         <span
           key={i}
           className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
@@ -578,7 +583,7 @@ export function CaseSpine({
           <MoneyChain card={cards.money} />
         </Step>
         <Step cardKey="effort" card={cards.effort} divider>
-          <EffortParts card={cards.effort} />
+          <MetricChips metrics={cards.effort.metrics ?? []} />
         </Step>
         <Risk card={cards.risks} />
       </Act>

@@ -254,6 +254,15 @@ export function validateCase(value) {
         `a ${card.calc.kind} calc belongs on the ${card.calc.kind} card`,
       );
     }
+    const numbers = [
+      ...Object.entries(card.calc ?? {}),
+      ...(card.metrics ?? []).map((m) => [`metric ${m.label}`, m.value]),
+    ];
+    for (const [name, number] of numbers) {
+      if (typeof number === "number" && !Number.isFinite(number)) {
+        problems.push(`${key} ${name} is not a finite number`);
+      }
+    }
     tooLong(problems, `${key} assumption`, card.assumption, LIMITS.text);
     if (card.bullets.length > LIMITS.items) {
       problems.push(
@@ -309,7 +318,7 @@ function frame(current, args, problems) {
 }
 
 /** The case after `ask` or `set` on one card. Only one card asks at a time. */
-function fillCard(command, current, args, problems) {
+function fillCard(command, current, args, problems, notes) {
   const key = last(args.card);
   if (!CARD_KEYS.includes(key)) {
     problems.push(`--card must be one of: ${CARD_KEYS.join(", ")}`);
@@ -332,9 +341,8 @@ function fillCard(command, current, args, problems) {
       parseMetric(String(m), problems),
     );
     const math = runMath(key, args, problems);
-    const assumption =
-      last(args.assumption) ??
-      (math?.notes.length ? math.notes.join("; ") : undefined);
+    notes.push(...(math?.notes ?? []));
+    const assumption = last(args.assumption);
     cards[key] = {
       state: "filled",
       summary,
@@ -390,16 +398,18 @@ export function apply(command, args, now = new Date()) {
   if (command === "show") return { ok: true, value: current, write: false };
 
   const problems = [];
+  /** What the math changed in the agent's inputs, for the agent to read. */
+  const notes = [];
   const next =
     command === "init"
       ? frame(current, args, problems)
       : command === "finish"
         ? finish(current, args)
-        : fillCard(command, current, args, problems);
+        : fillCard(command, current, args, problems, notes);
   next.updatedAt = now.toISOString();
   if (problems.length === 0) problems.push(...validateCase(next));
   if (problems.length > 0) return { ok: false, problems };
-  return { ok: true, value: next, write: true, path };
+  return { ok: true, value: next, write: true, path, notes };
 }
 
 /** `--flag value` pairs; a flag given twice becomes a list. */
@@ -437,6 +447,9 @@ function main(argv) {
   if (result.write) {
     mkdirSync(dirname(result.path), { recursive: true });
     writeFileSync(result.path, `${JSON.stringify(result.value, null, 2)}\n`);
+  }
+  for (const note of result.notes ?? []) {
+    console.error(`business-case-canvas: note: ${note}`);
   }
   console.log(JSON.stringify(result.value, null, 2));
 }

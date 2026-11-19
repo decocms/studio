@@ -142,8 +142,9 @@ everything. The person sees the canvas grow.
    competitors with web search or by opening their pages; write only what
    you actually saw, with the URL as the source.
 3. **Run the numbers** (`money`, `abTest`). Give these inputs to `set`; the
-   canvas runs the math and keeps the result. Quote its `notes` when it moves
-   your number (they also land on the card as the assumption).
+   canvas runs the math and keeps the result. When the math moves one of your
+   inputs, the script prints a `note:` line: say so in the chat and set the
+   card again with a summary and `--assumption` that match the number it kept.
    - `money`: `base` = people reaching the step per month (weekly × 30/7);
      `value` = what one more conversion at that step is worth (average order
      value × share of people who buy after that step); `delta-pp` = your

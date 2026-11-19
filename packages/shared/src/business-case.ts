@@ -65,12 +65,9 @@ export const BUSINESS_CASE_METRIC_UNITS = [
   "count",
 ] as const;
 
-export type BusinessCaseMetricUnit =
-  (typeof BUSINESS_CASE_METRIC_UNITS)[number];
-
 /** The cards that may carry metrics: the problem compares the store with its
  *  benchmarks; effort adds up its days. */
-export const BUSINESS_CASE_METRIC_CARDS = ["problem", "effort"] as const;
+const BUSINESS_CASE_METRIC_CARDS = ["problem", "effort"] as const;
 
 const text = z.string().max(BUSINESS_CASE_LIMITS.text);
 const item = z.string().min(1).max(BUSINESS_CASE_LIMITS.item);
@@ -85,7 +82,7 @@ export type BusinessCaseSource = z.infer<typeof BusinessCaseSourceSchema>;
 const finite = z.number();
 const label = z.string().min(1).max(BUSINESS_CASE_LIMITS.label);
 
-export const BusinessCaseMetricSchema = z.object({
+const BusinessCaseMetricSchema = z.object({
   label,
   value: finite,
   unit: z.enum(BUSINESS_CASE_METRIC_UNITS),
@@ -95,7 +92,7 @@ export type BusinessCaseMetric = z.infer<typeof BusinessCaseMetricSchema>;
 
 /** `business-case-math.mjs money`, run by the canvas script on the inputs the
  *  agent gave: `base` × `deltaPp` % × `value` = `monthlyValue` (revenue). */
-export const BusinessCaseMoneyCalcSchema = z.object({
+const BusinessCaseMoneyCalcSchema = z.object({
   kind: z.literal("money"),
   base: finite,
   baseLabel: label.optional(),
@@ -110,7 +107,7 @@ export const BusinessCaseMoneyCalcSchema = z.object({
 export type BusinessCaseMoneyCalc = z.infer<typeof BusinessCaseMoneyCalcSchema>;
 
 /** `business-case-math.mjs ab-test`, run by the canvas script. */
-export const BusinessCaseAbTestCalcSchema = z.object({
+const BusinessCaseAbTestCalcSchema = z.object({
   kind: z.literal("abTest"),
   baseline: finite,
   mdePp: finite,
@@ -118,10 +115,6 @@ export const BusinessCaseAbTestCalcSchema = z.object({
   weeks: finite.nullable(),
   measurable: z.boolean(),
 });
-
-export type BusinessCaseAbTestCalc = z.infer<
-  typeof BusinessCaseAbTestCalcSchema
->;
 
 export const BusinessCaseCardSchema = z.object({
   /** `asking`: the chat is asking the question this card answers. */

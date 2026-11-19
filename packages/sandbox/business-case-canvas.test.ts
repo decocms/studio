@@ -384,9 +384,9 @@ describe("business-case-canvas", () => {
     });
   });
 
-  it("the math's notes become the money assumption when there is none", () => {
+  it("tells the agent when the math moves its number, without writing it on the card", () => {
     init();
-    run([
+    const res = run([
       "set",
       "--path",
       path,
@@ -401,9 +401,34 @@ describe("business-case-canvas", () => {
       "--value",
       "50",
     ]);
+    expect(res.code).toBe(0);
+    expect(res.stderr).toContain("delta-pp 9 moved to 3");
     const card = saved().cards.money;
     expect(card.calc).toMatchObject({ deltaPp: 3 });
-    expect(card.assumption).toContain("delta-pp 9 moved to 3");
+    expect(card.assumption).toBeUndefined();
+  });
+
+  it("rejects math that does not come out as finite numbers", () => {
+    init();
+    const before = readFileSync(path, "utf8");
+    const { code, stderr } = run([
+      "set",
+      "--path",
+      path,
+      "--card",
+      "money",
+      "--summary",
+      "x",
+      "--base",
+      "1e200",
+      "--delta-pp",
+      "1",
+      "--value",
+      "1e200",
+    ]);
+    expect(code).toBe(1);
+    expect(stderr).toContain("is not a finite number");
+    expect(readFileSync(path, "utf8")).toBe(before);
   });
 
   it("set on abTest runs the math", () => {

@@ -33,6 +33,7 @@ const problem = filled({
   metrics: [
     { label: "Nossa loja", value: 41, unit: "percent" },
     { label: "Média do setor", value: 24, unit: "percent" },
+    { label: "Tempo até o frete aparecer", value: 4.1, unit: "seconds" },
   ],
 });
 
