@@ -1370,6 +1370,10 @@ async function runTurn(
    */
   async function attemptTurn(): Promise<string | null> {
     mark("query");
+    const memory = memorySettings(input.memory);
+    console.error(
+      `[claude-code] memory: ${memory ? (memory.autoMemoryEnabled ? "on" : "off") : "default"}`,
+    );
     const turn = turnForAttempt();
     // A string prompt cannot carry image blocks.
     const channel =
