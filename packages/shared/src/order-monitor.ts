@@ -153,6 +153,12 @@ export interface OrderMonitorForecast {
   close: { orders: number; revenue: number };
   /** The projection before the day's first order: the baseline's whole day. */
   initial: { orders: number; revenue: number };
+  /**
+   * How far the rest could go: at each clock hour's end, the least and most
+   * any reference day brought from `done` up to then, at today's level.
+   * Cumulative, unlike `orders`; 0 for hours gone.
+   */
+  range: Record<"orders" | "revenue", { low: number[]; high: number[] }>;
 }
 
 /** The org's sites' traffic (Deco Analytics, read from the data lake), per clock hour of the local day. */

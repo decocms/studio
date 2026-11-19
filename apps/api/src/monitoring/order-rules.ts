@@ -274,11 +274,27 @@ function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
     sum(day.days[0][m], 0, day.done) + ahead(m, day.done, BUCKETS_PER_DAY);
   const initial = (m: Measure) =>
     baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW);
+  // The cloud around it: what each reference day brought from now on, at
+  // today's level, summed up to the end of each hour; the lowest and highest.
+  const range = (m: Measure) => {
+    const byRef = refs[m].map((r) =>
+      HOURS.map(
+        (h) =>
+          lv *
+          sum(r, day.done + WINDOW, Math.max(day.done, h * 4 + 4) + WINDOW),
+      ),
+    );
+    return {
+      low: HOURS.map((h) => Math.min(...byRef.map((x) => x[h]!))),
+      high: HOURS.map((h) => Math.max(...byRef.map((x) => x[h]!))),
+    };
+  };
   return {
     orders: rest("placed"),
     revenue: rest("revenue"),
     close: { orders: close("placed"), revenue: close("revenue") },
     initial: { orders: initial("placed"), revenue: initial("revenue") },
+    range: { orders: range("placed"), revenue: range("revenue") },
   };
 }
 

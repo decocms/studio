@@ -90,6 +90,17 @@ function addProjection(
       orders: add((p) => p.initial.orders),
       revenue: add((p) => p.initial.revenue),
     },
+    // ponytail: stores' lows and highs added up, as if they all ran quiet or busy at once.
+    range: {
+      orders: {
+        low: hours((p) => p.range.orders.low),
+        high: hours((p) => p.range.orders.high),
+      },
+      revenue: {
+        low: hours((p) => p.range.revenue.low),
+        high: hours((p) => p.range.revenue.high),
+      },
+    },
   };
 }
 
@@ -148,6 +159,9 @@ export function SalesStatus({
       ? projection.revenue
       : projection.orders
     : null;
+  const range = projection
+    ? projection.range[currency ? "revenue" : "orders"]
+    : null;
   const hasW1 = ref.w1 !== null;
   const now = done / 4;
   const hour = Math.floor(now);
@@ -157,12 +171,21 @@ export function SalesStatus({
   const marks = [...new Set([...HOURS, 24, now])].sort((a, b) => a - b);
   const w1At = (x: number) =>
     x === now && ref.w1 ? pick(ref.w1) : total(series.w1, x);
+  // The cloud of where the day could be by `x`, from now on.
+  const cloud = (x: number): [number, number] | null => {
+    if (!range || x < now) return null;
+    const at = Math.ceil(x) - 1;
+    return x === now || at < 0
+      ? [pick(today), pick(today)]
+      : [pick(today) + range.low[at]!, pick(today) + range.high[at]!];
+  };
   const curve = marks.map((x) => ({
     x,
     today: x <= now ? (x === now ? pick(today) : total(series.today, x)) : null,
     w1: hasW1 ? w1At(x) : null,
     projected:
       ahead && x >= now ? pick(today) + total(ahead, Math.ceil(x)) : null,
+    band: cloud(x),
   }));
   const bars = HOURS.map((h) => ({
     x: h + 0.5,
@@ -203,7 +226,9 @@ export function SalesStatus({
       key: "orders",
       label: t("monitor.sales.orders"),
       value: count(today.orders),
-      refs: REFS.map((r) => relativeChange(today.orders, ref[r]?.orders ?? null)),
+      refs: REFS.map((r) =>
+        relativeChange(today.orders, ref[r]?.orders ?? null),
+      ),
     },
     currency && {
       key: "ticket",
@@ -305,6 +330,14 @@ export function SalesStatus({
                     reference={t("monitor.sales.sinceStart")}
                   />
                 </span>
+                {range && (
+                  <span className="text-meta tnum">
+                    {t("monitor.sales.between", {
+                      low: show(pick(today) + range.low[23]!),
+                      high: show(pick(today) + range.high[23]!),
+                    })}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -373,6 +406,14 @@ export function SalesStatus({
                             {t("monitor.sales.projected")}: {show(p.projected)}
                           </span>
                         )}
+                        {p.band && p.today === null && (
+                          <span className="text-muted-foreground">
+                            {t("monitor.sales.between", {
+                              low: show(p.band[0]),
+                              high: show(p.band[1]),
+                            })}
+                          </span>
+                        )}
                         {p.w1 !== null && (
                           <span className="text-muted-foreground">
                             {refLabel.w1}: {show(p.w1)}
@@ -399,6 +440,17 @@ export function SalesStatus({
                     strokeDasharray="6 4"
                     strokeWidth={1.25}
                     dot={false}
+                    activeDot={false}
+                    isAnimationActive={false}
+                  />
+                )}
+                {range && (
+                  <Area
+                    type="monotone"
+                    dataKey="band"
+                    stroke="none"
+                    fill={COLOR_TODAY}
+                    fillOpacity={0.12}
                     activeDot={false}
                     isAnimationActive={false}
                   />
@@ -459,7 +511,13 @@ export function SalesStatus({
                     `${String(h).padStart(2, "0")}h`
                   }
                 />
-                <YAxis orientation="right" width={Y_AXIS_WIDTH} tick={false} tickLine={false} axisLine={false} />
+                <YAxis
+                  orientation="right"
+                  width={Y_AXIS_WIDTH}
+                  tick={false}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 {hasW1 && (
                   <Bar
                     dataKey="w1"
@@ -504,6 +562,13 @@ export function SalesStatus({
                 }
               >
                 {t("monitor.sales.projected")}
+              </Legend>
+            )}
+            {range && (
+              <Legend
+                line={<span className="h-2 w-4 rounded-sm bg-chart-1/15" />}
+              >
+                {t("monitor.sales.rangeLegend")}
               </Legend>
             )}
             {hasW1 && (

@@ -206,12 +206,16 @@ export const monitor = {
   "monitor.sales.barsOrders": "barras: pedidos por hora, hoje vs Sem-1",
   "monitor.sales.hour": "Hora",
   "monitor.sales.soFar": "(parcial)",
-  "monitor.sales.ahead": "O dia deve trazer mais {amount} até {until} para seguir a projeção.",
+  "monitor.sales.ahead":
+    "O dia deve trazer mais {amount} até {until} para seguir a projeção.",
   "monitor.sales.orders": "Pedidos",
   "monitor.sales.ticket": "Ticket médio",
   "monitor.sales.items": "Itens",
   "monitor.sales.perOrder": "{n}/pedido",
   "monitor.sales.conversion": "Conversão",
+  "monitor.sales.between": "entre {low} e {high}",
+  "monitor.sales.rangeLegend":
+    "onde o dia pode fechar (do dia de referência mais fraco ao mais forte)",
   "monitor.store.projected": "Pedidos projetados hoje",
   "monitor.store.soFar": "Pedidos até agora",
   "monitor.store.canceled": "Cancelamentos hoje",
