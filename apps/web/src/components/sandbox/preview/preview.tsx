@@ -29,6 +29,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { PreviewProgressBar } from "./preview-progress-bar";
 import { watchServeContentReload } from "./serve-content-reload";
+import { guardFrameFocus } from "./preview-focus-guard";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -525,6 +526,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const beginNavigation = () => {
     setNavigating(true);
+    // The page about to load may take focus from the field being edited.
+    if (previewIframeRef.current) guardFrameFocus(previewIframeRef.current);
     if (navTimerRef.current) clearTimeout(navTimerRef.current);
     // Safety net: clear the indicator even if onLoad never fires (network
     // failure, cross-origin redirect) so it can't get stuck on forever.
@@ -1646,6 +1649,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   /** The swap is in the page: what a reload's load would have ended. */
   const swapEnded = useEffectEvent(() => {
     endNavigation();
+    if (previewIframeRef.current) guardFrameFocus(previewIframeRef.current);
     // The page shows the swapped URL as a load of it would.
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read by the content reload effect
     if (swap) loadedSrcRef.current = swap.shown;
@@ -2671,7 +2675,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}
                           onError={iframeRecovery.handleError}
-                          onLoad={() => {
+                          onLoad={(event) => {
+                            // The site's scripts run now and may take focus.
+                            guardFrameFocus(event.currentTarget);
                             // A held Fast Preview pointer may go in now.
                             setFrameNavigation(frameNavigationLoaded);
                             // A Blocks v8 page may now swap a new URL of itself in.
