@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { harnessRunResultSchema } from "@decocms/sandbox/dispatch/schemas";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { getDecopilotId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { connectionGrantsFor } from "./org-mcp-grants";
 import { withModelMetadata } from "./with-model-metadata";
@@ -13,9 +12,9 @@ import {
   harnessRunsInSandbox,
   harnessSessionKey,
   isRunSuperseded,
-  isInteractiveHomeChat,
   isStudioOwnedConnection,
   orgOutputFallbackInstruction,
+  runConnectionCandidates,
   sandboxStateInstruction,
   selectRunConnections,
   runStudioSurface,
@@ -70,98 +69,165 @@ describe("isStudioOwnedConnection", () => {
   });
 });
 
-describe("home chat org connections", () => {
-  const organizationId = "org_1";
-  const homeAgent = getDecopilotId(organizationId);
-  const chatThread = { trigger_id: null, metadata: { runtime: "sandbox" } };
-  const homeChat = (
-    overrides: Partial<Parameters<typeof isInteractiveHomeChat>[0]> = {},
-  ) =>
-    isInteractiveHomeChat({
-      organizationId,
-      agentId: homeAgent,
-      thread: chatThread,
-      boardLinked: false,
-      ...overrides,
-    });
+describe("runConnectionCandidates", () => {
+  const organization = { id: "org_1", slug: "example-org" };
+  const homeAgent = getDecopilotId(organization.id);
+  const chatThread = {
+    id: "thrd_1",
+    trigger_id: null,
+    metadata: { runtime: "sandbox" },
+  };
   const connections = [
     { id: "conn_a", status: "active" },
     { id: "conn_b", status: "active" },
     { id: "conn_excluded", status: "active" },
     { id: "conn_inactive", status: "error" },
-    { id: WellKnownOrgMCPId.SELF(organizationId), status: "active" },
+    { id: WellKnownOrgMCPId.SELF(organization.id), status: "active" },
   ];
-  const unset = {};
-  const turnedOff = { home_chat_org_connections: false };
-  const select = (
-    flags: Record<string, unknown> | null | undefined,
-    isHomeChat: boolean,
-  ) =>
-    selectRunConnections({
-      organizationId,
-      orgWide: false,
-      homeChat:
-        orgFlagEnabled(flags, "home_chat_org_connections") && isHomeChat,
-      ownIds: new Set<string>(),
-      excludedIds: new Set(["conn_excluded"]),
-      connections,
-    }).map((c) => c.id);
-
-  test("a person's chat on the default agent is a home chat", () => {
-    expect(homeChat()).toBe(true);
+  type Args = Parameters<typeof runConnectionCandidates>[0];
+  /** One dispatch on the default agent; `linked` is what the board-link lookup answers, or throws. */
+  const dispatch = async (
+    overrides: Partial<Args> & { flags?: Record<string, unknown> | null } = {},
+    linked: string[] | Error = [],
+  ) => {
+    const { flags = {}, ...args } = overrides;
+    const lookups: string[] = [];
+    let lists = 0;
+    const candidates = await runConnectionCandidates({
+      organization,
+      agentId: homeAgent,
+      runClass: undefined,
+      agentRead: Promise.resolve({ connections: [] }),
+      settingsRead: Promise.resolve({
+        flags,
+        coding_agent_mcp_excluded: ["conn_excluded"],
+      }),
+      threadRead: Promise.resolve(chatThread),
+      listConnections: async () => {
+        lists++;
+        return connections;
+      },
+      linkedTaskIds: async (threadId) => {
+        lookups.push(threadId);
+        if (linked instanceof Error) throw linked;
+        return linked;
+      },
+      ...args,
+    });
+    return { ids: candidates.map((c) => c.id), lookups, lists };
+  };
+  const everyOrgConnection = ["conn_a", "conn_b"];
+  const ownOnly = Promise.resolve({
+    connections: [{ connection_id: "conn_a" }],
   });
 
-  test("a project chat is not", () => {
-    expect(homeChat({ agentId: "vir_project" })).toBe(false);
-  });
-
-  test("board, reviewer, Jira and automation runs on the default agent are not", () => {
-    expect(homeChat({ runClass: "new_task" })).toBe(false);
-    expect(homeChat({ runClass: "reviewer" })).toBe(false);
-    expect(homeChat({ boardLinked: true })).toBe(false);
-    expect(
-      homeChat({ thread: { trigger_id: null, metadata: { source: "jira" } } }),
-    ).toBe(false);
-    expect(homeChat({ thread: { trigger_id: "trg_1", metadata: {} } })).toBe(
-      false,
-    );
-    expect(homeChat({ thread: null })).toBe(false);
-  });
-
-  test("flag unset: a home chat gets every active, non-excluded, non-Studio connection", () => {
+  test("flag unset: a home chat gets every active, non-excluded, non-Studio connection", async () => {
     for (const flags of [
-      unset,
+      {},
       null,
-      undefined,
       { home_chat_org_connections: null },
       { home_chat_org_connections: true },
     ]) {
-      expect(select(flags, homeChat())).toEqual(["conn_a", "conn_b"]);
+      expect(await dispatch({ flags })).toEqual({
+        ids: everyOrgConnection,
+        lookups: ["thrd_1"],
+        lists: 1,
+      });
+    }
+    expect(
+      (await dispatch({ settingsRead: Promise.resolve(null) })).ids,
+    ).toEqual(["conn_a", "conn_b", "conn_excluded"]);
+  });
+
+  test("only an explicit false turns it off, without asking the board", async () => {
+    const off = await dispatch({ flags: { home_chat_org_connections: false } });
+    expect(off.ids).toEqual([]);
+    expect(off.lookups).toEqual([]);
+  });
+
+  test("a project chat gets only its agent's connections and never asks the board", async () => {
+    const run = await dispatch({ agentId: "vir_project", agentRead: ownOnly });
+    expect(run.ids).toEqual(["conn_a"]);
+    expect(run.lookups).toEqual([]);
+  });
+
+  test("board and reviewer runs never ask the board, even on a linked thread", async () => {
+    for (const runClass of ["new_task", "reviewer", "retry"]) {
+      const run = await dispatch({ runClass, agentRead: ownOnly }, ["tbi_1"]);
+      expect(run.ids).toEqual(["conn_a"]);
+      expect(run.lookups).toEqual([]);
     }
   });
 
-  test("only an explicit false turns it off: a home chat then gets nothing", () => {
-    expect(select(turnedOff, homeChat())).toEqual([]);
-  });
-
-  test("flag unset: non-home-chat runs are unchanged", () => {
-    for (const run of [
-      homeChat({ agentId: "vir_project" }),
-      homeChat({ runClass: "new_task" }),
-      homeChat({ runClass: "reviewer" }),
-      homeChat({ thread: { trigger_id: null, metadata: { source: "jira" } } }),
-      homeChat({ thread: { trigger_id: "trg_1", metadata: {} } }),
+  test("Jira and trigger threads never ask the board", async () => {
+    for (const thread of [
+      { id: "thrd_1", trigger_id: null, metadata: { source: "jira" } },
+      { id: "thrd_1", trigger_id: "trg_1", metadata: {} },
     ]) {
-      expect(select(unset, run)).toEqual([]);
+      const run = await dispatch({ threadRead: Promise.resolve(thread) });
+      expect(run.ids).toEqual([]);
+      expect(run.lookups).toEqual([]);
     }
   });
 
-  test("a non-admin dispatcher is cut to what their role grants", () => {
+  test("a thread that is missing or cannot be read is not a home chat", async () => {
+    for (const read of [
+      () => Promise.resolve(null),
+      () => Promise.reject(new Error("read failed")),
+    ]) {
+      const run = await dispatch({ threadRead: read() });
+      expect(run.ids).toEqual([]);
+      expect(run.lookups).toEqual([]);
+    }
+  });
+
+  test("a chat on the default agent whose thread is linked to a card is not a home chat", async () => {
+    const run = await dispatch({}, ["tbi_1"]);
+    expect(run.ids).toEqual([]);
+    expect(run.lookups).toEqual(["thrd_1"]);
+  });
+
+  test("a board-link lookup that throws leaves the run its agent's connections and logs one line", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const run = await dispatch(
+        { agentRead: ownOnly },
+        new Error("lookup failed for thrd_1 in org_1"),
+      );
+      expect(run.ids).toEqual(["conn_a"]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const line = String(warn.mock.calls[0]?.[0]);
+      expect(line).toContain("home chat board-link lookup failed");
+      expect(line).not.toContain("thrd_1");
+      expect(line).not.toContain("org_1");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("the org-wide opt-in still gives a board run every connection", async () => {
+    const run = await dispatch({
+      runClass: "new_task",
+      flags: { coding_agent_org_mcps: true, home_chat_org_connections: false },
+    });
+    expect(run.ids).toEqual(everyOrgConnection);
+    expect(run.lookups).toEqual([]);
+  });
+
+  test("an org without a slug gets no candidates and reads nothing", async () => {
+    expect(await dispatch({ organization: { id: "org_1" } })).toEqual({
+      ids: [],
+      lookups: [],
+      lists: 0,
+    });
+  });
+
+  test("a non-admin dispatcher is cut to what their role grants", async () => {
     expect(
       connectionGrantsFor({
         role: "support",
         roleStatements: [{ conn_a: ["LIST_ORDERS"] }],
-        connectionIds: select(unset, homeChat()),
+        connectionIds: (await dispatch()).ids,
       }),
     ).toEqual({ conn_a: ["LIST_ORDERS"] });
   });
