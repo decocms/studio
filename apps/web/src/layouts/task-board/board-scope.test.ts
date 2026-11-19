@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { scopedBoardItems } from "./board-scope";
+import { buildProjectIndex, NO_PROJECT_FILTER } from "@/lib/project-index";
+import {
+  scopedBoardItems,
+  scopedFilterTarget,
+  scopeFilterValue,
+} from "./board-scope";
+import { EMPTY_FILTERS } from "./task-filters-core";
 
 function project(id: string, repo?: string): VirtualMCPEntity {
   return {
@@ -142,6 +148,59 @@ describe("scopedBoardItems", () => {
       expect(
         scopedBoardItems({ items: ITEMS, ...scope, isLoading: true }).isLoading,
       ).toBe(true);
+    }
+  });
+});
+
+describe("the Project filter on a project's board", () => {
+  const ALPHA2 = project("vir_a2", "acme/alpha");
+  const solo = buildProjectIndex([project("vir_b", "acme/bravo"), BARE]);
+  const shared = buildProjectIndex([ALPHA, ALPHA2, BARE]);
+  const withSearch = { ...EMPTY_FILTERS, search: "bug" };
+
+  test("shows the project as its own picker option", () => {
+    expect(scopeFilterValue("vir_b", solo)).toBe("acme/bravo");
+    expect(scopeFilterValue("vir_bare", solo)).toBe("vir_bare");
+    expect(scopeFilterValue("vir_a2", shared)).toBe("vir_a2");
+  });
+
+  test("an unresolved scope still shows its id", () => {
+    expect(scopeFilterValue("vir_gone", solo)).toBe("vir_gone");
+  });
+
+  test("clearing it widens to the org's board and keeps the rest", () => {
+    expect(
+      scopedFilterTarget({ ...withSearch, project: null }, "vir_b", solo),
+    ).toEqual({ kind: "org", filters: { ...withSearch, project: null } });
+  });
+
+  test("keeping it stays, without a ?repo= on the project's board", () => {
+    for (const value of ["acme/bravo", "vir_b"]) {
+      expect(
+        scopedFilterTarget({ ...withSearch, project: value }, "vir_b", solo),
+      ).toEqual({
+        kind: "project",
+        projectId: "vir_b",
+        filters: { ...withSearch, project: null },
+      });
+    }
+  });
+
+  test("another project moves to that project's board", () => {
+    expect(
+      scopedFilterTarget({ ...withSearch, project: "vir_bare" }, "vir_b", solo),
+    ).toEqual({
+      kind: "project",
+      projectId: "vir_bare",
+      filters: { ...withSearch, project: null },
+    });
+  });
+
+  test("a bucket of several projects, or none, filters the org's board", () => {
+    for (const value of ["acme/alpha", NO_PROJECT_FILTER]) {
+      expect(
+        scopedFilterTarget({ ...withSearch, project: value }, "vir_a", shared),
+      ).toEqual({ kind: "org", filters: { ...withSearch, project: value } });
     }
   });
 });

@@ -228,7 +228,11 @@ import { feedEventKind, groupFeedByDay, type FeedEventKind } from "./feed";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { projectRepo } from "@/lib/repository-binding";
-import { scopedBoardItems } from "./board-scope";
+import {
+  scopedBoardItems,
+  scopedFilterTarget,
+  scopeFilterValue,
+} from "./board-scope";
 import {
   entryForFilter,
   entryForTask,
@@ -1084,6 +1088,7 @@ function TaskBoardBody() {
   const {
     filters: urlFilters,
     setFilters,
+    setFiltersOn,
     layout,
     setLayout,
     groupBy,
@@ -1174,9 +1179,31 @@ function TaskBoardBody() {
   const clearSelection = () => setSelection(new Set());
   // A filter change can hide selected cards the same way the list-view toggle does.
   const handleFiltersChange = (next: TaskFilters) => {
-    setFilters(next);
     clearSelection();
+    if (!scopeId) {
+      setFilters(next);
+      return;
+    }
+    const target = scopedFilterTarget(next, scopeId, projectIndex);
+    if (target.kind === "project" && target.projectId === scopeId) {
+      setFilters(target.filters);
+      return;
+    }
+    setFiltersOn(
+      target.filters,
+      target.kind === "org"
+        ? { kind: "org", org: org.slug }
+        : { kind: "project", org: org.slug, projectId: target.projectId },
+    );
   };
+  /** What the filter controls show: on a project's board, the project is a
+   *  chip like any other, and clearing it widens to the org's board. */
+  const shownFilters = scopeId
+    ? { ...filters, project: scopeFilterValue(scopeId, projectIndex) }
+    : filters;
+  /** Counted against the org's cards there, so another project's choice
+   *  reads its own count rather than this board's zero. */
+  const filterCountItems = scopeId ? orgItems : items;
   // Create only: an existing card is addressed by its path, not by state.
   const [dialogOpen, setDialogOpen] = useState(false);
   // Status a newly-created task should start in (set by a lane's "+"); null for
@@ -1568,13 +1595,12 @@ function TaskBoardBody() {
                         clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
                       />
                       <TaskFilterButton
-                        filters={filters}
-                        items={items}
+                        filters={shownFilters}
+                        items={filterCountItems}
                         members={members}
                         tags={orgTags}
                         sprints={sprints}
                         index={projectIndex}
-                        scoped={scopeId !== null}
                         onChange={handleFiltersChange}
                         onManageSprints={() => setManagingSprints(true)}
                       />
@@ -1638,8 +1664,8 @@ function TaskBoardBody() {
         <TaskBoardAdminBanner />
       </div>
       <AppliedFiltersBar
-        filters={filters}
-        items={items}
+        filters={shownFilters}
+        items={filterCountItems}
         members={members}
         tags={orgTags}
         sprints={sprints}
@@ -1661,7 +1687,12 @@ function TaskBoardBody() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleFiltersChange(EMPTY_FILTERS)}
+              onClick={() =>
+                handleFiltersChange({
+                  ...EMPTY_FILTERS,
+                  project: shownFilters.project,
+                })
+              }
             >
               {t("taskBoard.taskBoard.clearFilters")}
             </Button>

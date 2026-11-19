@@ -8,6 +8,10 @@
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
+  DESTINATION_ROUTE,
+  PROJECT_ROUTE,
+} from "@/hooks/use-destination-route";
+import {
   UNASSIGNED_FILTER,
   type DueFilter,
   type TaskFilters,
@@ -216,6 +220,10 @@ export function visibleSelection(
   return new Set([...selection].filter((id) => visible.has(id)));
 }
 
+export type BoardLocation =
+  | { kind: "org"; org: string }
+  | { kind: "project"; org: string; projectId: string };
+
 /**
  * `useState`-shaped replacement for the board's view state. `saveAssignee`
  * remembers an assignee change for the next visit; the URL is still written
@@ -240,6 +248,11 @@ export function useBoardSearch(
       // Typing in the search box would otherwise push a history entry per key.
       replace: true,
     });
+  const searchWith =
+    (filters: TaskFilters) => (prev: Record<string, unknown>) => ({
+      ...prev,
+      ...boardSearchParams({ ...view, filters }, defaults),
+    });
 
   return {
     ...view,
@@ -247,6 +260,29 @@ export function useBoardSearch(
       if (filters.assignee !== view.filters.assignee)
         saveAssignee(filters.assignee);
       write({ filters });
+    },
+    /** Moves to another board — the org's, or a project's — carrying the
+     *  view along; a history entry, since the page changes. */
+    setFiltersOn: (filters: TaskFilters, board: BoardLocation) => {
+      if (filters.assignee !== view.filters.assignee)
+        saveAssignee(filters.assignee);
+      if (board.kind === "org") {
+        navigate({
+          to: DESTINATION_ROUTE.tasks,
+          params: { org: board.org, taskKey: undefined },
+          search: searchWith(filters),
+        });
+        return;
+      }
+      navigate({
+        to: PROJECT_ROUTE.tasks,
+        params: {
+          org: board.org,
+          agentId: board.projectId,
+          taskKey: undefined,
+        },
+        search: searchWith(filters),
+      });
     },
     setLayout: (layout: Layout) => write({ layout }),
     /** Picking the sub-group's criterion as the group swaps the two. */
