@@ -3,61 +3,61 @@ import {
   buildSiteMetaRequest,
   isJsonContentType,
   isTrustedSiteOrigin,
-  resolveSiteMetaTarget,
+  resolveSiteMetaTargets,
   SITE_ADMIN_TOKEN_HEADER,
   siteMetaResponseHeaders,
 } from "./site-meta-request";
 
-describe("resolveSiteMetaTarget", () => {
-  it("reads the platform host of a site the org owns", () => {
+describe("resolveSiteMetaTargets", () => {
+  it("tries the platform host of an owned site, then the preview URL untrusted", () => {
     expect(
-      resolveSiteMetaTarget(
+      resolveSiteMetaTargets(
         {
           siteSlug: "acme",
           previewServerUrl: "https://attacker.example",
         },
         true,
       ),
-    ).toEqual({ siteUrl: "https://acme.deco.site/", trusted: true });
+    ).toEqual([
+      { siteUrl: "https://acme.deco.site/", trusted: true },
+      { siteUrl: "https://attacker.example/", trusted: false },
+    ]);
   });
 
   it("cannot be steered off the platform domain through the slug", () => {
-    const target = resolveSiteMetaTarget({ siteSlug: "evil.example/#" }, true);
+    const [target] = resolveSiteMetaTargets(
+      { siteSlug: "evil.example/#" },
+      true,
+    );
     expect(target?.trusted).toBe(true);
     expect(new URL(target!.siteUrl).hostname.endsWith(".deco.site")).toBe(true);
   });
 
   it("never trusts a slug another org owns, even on the platform domain", () => {
     expect(
-      resolveSiteMetaTarget(
+      resolveSiteMetaTargets(
         { siteSlug: "victim", previewServerUrl: "https://victim.deco.site" },
         false,
       ),
-    ).toEqual({ siteUrl: "https://victim.deco.site/", trusted: false });
-    expect(resolveSiteMetaTarget({ siteSlug: "victim" }, false)).toBeNull();
+    ).toEqual([{ siteUrl: "https://victim.deco.site/", trusted: false }]);
+    expect(resolveSiteMetaTargets({ siteSlug: "victim" }, false)).toEqual([]);
   });
 
-  it("falls back to the editor's preview URL without trust", () => {
+  it("reads only the editor's preview URL without an owned slug", () => {
     expect(
-      resolveSiteMetaTarget(
-        { previewServerUrl: "https://store.example.com" },
-        false,
-      ),
-    ).toEqual({ siteUrl: "https://store.example.com/", trusted: false });
-    expect(
-      resolveSiteMetaTarget(
+      resolveSiteMetaTargets(
         { siteSlug: "", productionUrl: "https://store.example.com" },
         true,
       ),
-    ).toEqual({ siteUrl: "https://store.example.com/", trusted: false });
+    ).toEqual([{ siteUrl: "https://store.example.com/", trusted: false }]);
   });
 
-  it("is null without a slug or a preview URL", () => {
-    expect(resolveSiteMetaTarget(null, false)).toBeNull();
-    expect(resolveSiteMetaTarget({ siteSlug: 42 }, true)).toBeNull();
+  it("is empty without a slug or a preview URL", () => {
+    expect(resolveSiteMetaTargets(null, false)).toEqual([]);
+    expect(resolveSiteMetaTargets({ siteSlug: 42 }, true)).toEqual([]);
     expect(
-      resolveSiteMetaTarget({ previewServerUrl: "ftp://x" }, false),
-    ).toBeNull();
+      resolveSiteMetaTargets({ previewServerUrl: "ftp://x" }, false),
+    ).toEqual([]);
   });
 });
 

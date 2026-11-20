@@ -90,7 +90,7 @@ import {
   buildSiteMetaRequest,
   isJsonContentType,
   projectSiteSlug,
-  resolveSiteMetaTarget,
+  resolveSiteMetaTargets,
   siteMetaResponseHeaders,
 } from "../../lib/site-meta-request";
 import { guardAgainstPrivateUrl } from "../../mcp-clients/url-security";
@@ -1678,60 +1678,66 @@ export const createSandboxRoutes = () => {
           requireOrganization(c.var.studioContext).id,
         )
       : false;
-    const target = resolveSiteMetaTarget(metadata, orgOwnsSite);
-    if (!target) {
+    const targets = resolveSiteMetaTargets(metadata, orgOwnsSite);
+    if (targets.length === 0) {
       return c.json(
         { error: "Project has no preview server configured" },
         404,
         SANDBOX_PROXY_CACHE_HEADERS,
       );
     }
-    const request = buildSiteMetaRequest({
-      target,
-      ifNoneMatch: c.req.header("if-none-match"),
-      adminToken: process.env.DECO_SITE_ADMIN_TOKEN,
-    });
-    const blocked = await guardAgainstPrivateUrl(request.url);
-    if (blocked) {
-      return c.json({ error: blocked }, 403, SANDBOX_PROXY_CACHE_HEADERS);
-    }
 
-    let upstream: Response;
-    try {
-      upstream = await fetch(request.url, {
-        headers: request.headers,
-        redirect: "manual",
-        signal: AbortSignal.any([
-          c.req.raw.signal,
-          AbortSignal.timeout(30_000),
-        ]),
+    let lastStatus = 404;
+    for (const target of targets) {
+      const request = buildSiteMetaRequest({
+        target,
+        ifNoneMatch: c.req.header("if-none-match"),
+        adminToken: process.env.DECO_SITE_ADMIN_TOKEN,
       });
-    } catch {
-      return c.json(
-        { error: "Site unreachable" },
-        502,
-        SANDBOX_PROXY_CACHE_HEADERS,
-      );
-    }
+      const blocked = await guardAgainstPrivateUrl(request.url);
+      if (blocked) {
+        return c.json({ error: blocked }, 403, SANDBOX_PROXY_CACHE_HEADERS);
+      }
 
-    const headers = siteMetaResponseHeaders(upstream.headers);
-    if (upstream.status === 304) {
-      await upstream.body?.cancel();
-      return new Response(null, { status: 304, headers });
-    }
-    if (
-      !upstream.ok ||
-      !isJsonContentType(upstream.headers.get("content-type"))
-    ) {
-      await upstream.body?.cancel();
+      let upstream: Response;
+      try {
+        upstream = await fetch(request.url, {
+          headers: request.headers,
+          redirect: "manual",
+          signal: AbortSignal.any([
+            c.req.raw.signal,
+            AbortSignal.timeout(30_000),
+          ]),
+        });
+      } catch {
+        // A host that times out is not retried elsewhere, so the wait stays bounded.
+        return c.json(
+          { error: "Site unreachable" },
+          502,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        );
+      }
+
+      const headers = siteMetaResponseHeaders(upstream.headers);
+      if (upstream.status === 304) {
+        await upstream.body?.cancel();
+        return new Response(null, { status: 304, headers });
+      }
+      if (
+        upstream.ok &&
+        isJsonContentType(upstream.headers.get("content-type"))
+      ) {
+        return new Response(upstream.body, { status: 200, headers });
+      }
       // Redirects are not followed: they would leave the project's origin.
-      return c.json(
-        { error: `Site answered ${upstream.status} without a schema` },
-        upstream.status === 404 ? 404 : 502,
-        SANDBOX_PROXY_CACHE_HEADERS,
-      );
+      await upstream.body?.cancel();
+      lastStatus = upstream.status;
     }
-    return new Response(upstream.body, { status: 200, headers });
+    return c.json(
+      { error: `Site answered ${lastStatus} without a schema` },
+      lastStatus === 404 ? 404 : 502,
+      SANDBOX_PROXY_CACHE_HEADERS,
+    );
   });
 
   return app;
