@@ -7,6 +7,7 @@ import {
   CREDENTIAL_CONFIGURATION_READ_SCOPE,
 } from "@/storage/connection-credential-vault";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
+import { presentStaticConnectionToken } from "./static-connection-token";
 
 type Variables = {
   studioContext: StudioContext;
@@ -228,11 +229,13 @@ export const createCredentialVaultRoutes = () => {
             }
             // refresh_failed/expired ⇒ null, same as the single route's 424.
           } else if (target.connection_token) {
-            // Static-token MCPs (e.g. Shopify): bearer on the connection.
+            const presented = presentStaticConnectionToken(
+              target.connection_token,
+            );
             accessToken = {
               type: "static_token",
-              tokenType: "Bearer",
-              accessToken: target.connection_token,
+              tokenType: presented.tokenType,
+              accessToken: presented.accessToken,
               expiresAt: null,
               scope: null,
             };
@@ -286,12 +289,13 @@ export const createCredentialVaultRoutes = () => {
     if (result.state === "missing") {
       // Static-token MCPs (e.g. Shopify): the bearer lives on connection_token.
       if (target.connection_token) {
+        const presented = presentStaticConnectionToken(target.connection_token);
         c.header("Cache-Control", "no-store");
         c.header("Pragma", "no-cache");
         return c.json({
           type: "static_token",
-          tokenType: "Bearer",
-          accessToken: target.connection_token,
+          tokenType: presented.tokenType,
+          accessToken: presented.accessToken,
           expiresAt: null,
           scope: null,
         });
