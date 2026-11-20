@@ -90,9 +90,49 @@ export interface CreateFromTemplateParams {
   private: boolean;
 }
 
+/** Repository access levels, weakest first. */
+export const COLLABORATOR_PERMISSIONS = [
+  "read",
+  "triage",
+  "write",
+  "maintain",
+  "admin",
+] as const;
+
+export type CollaboratorPermission = (typeof COLLABORATOR_PERMISSIONS)[number];
+
+export interface RepoCollaborator {
+  login: string;
+  avatarUrl: string | null;
+  /** Null when the provider reports a custom role Studio does not model. */
+  permission: CollaboratorPermission | null;
+}
+
+export interface RepoCollaborators {
+  collaborators: RepoCollaborator[];
+  /** Invitations the invitee has not accepted yet. */
+  invitations: RepoCollaborator[];
+}
+
 export interface GitProviderClient {
   readonly kind: GitProviderKind;
   readonly host: string;
+
+  /** People given access to `repo` directly, and those still invited. */
+  listCollaborators?(repo: RepoRef): Promise<RepoCollaborators>;
+
+  /**
+   * Give `login` access to `repo`. "invited" when the person has to accept an
+   * invitation first; "updated" when they already had access and it changed.
+   */
+  addCollaborator?(
+    repo: RepoRef,
+    login: string,
+    permission: CollaboratorPermission,
+  ): Promise<"invited" | "updated">;
+
+  /** Withdraw `login`'s pending invitation and direct access to `repo`. */
+  removeCollaborator?(repo: RepoRef, login: string): Promise<void>;
 
   /**
    * Generate a new repository from a template. Only providers with template

@@ -605,6 +605,9 @@ export const KEYS = {
     (accountId
       ? ["repositories", orgId, accountId]
       : ["repositories", orgId]) as readonly [string, string, string?],
+  /** Who has access to a repository on its provider; read from the provider each time. */
+  repositoryCollaborators: (orgId: string, repositoryId: string) =>
+    ["repository-collaborators", orgId, repositoryId] as const,
   /** Keyed by the monitored repositories, so flagging one reads again. */
   repositoryDeploys: (orgId: string, repositoryIds: readonly string[]) =>
     ["repository-deploys", orgId, ...repositoryIds] as const,

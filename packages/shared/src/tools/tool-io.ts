@@ -9472,6 +9472,39 @@ export interface StudioToolIO {
       nextCursor: string | null;
     };
   };
+  REPOSITORY_COLLABORATORS_LIST: {
+    input: { repositoryId: string };
+    output: {
+      collaborators: {
+        login: string;
+        avatarUrl: string | null;
+        permission: "read" | "admin" | "triage" | "write" | "maintain" | null;
+      }[];
+      invitations: {
+        login: string;
+        avatarUrl: string | null;
+        permission: "read" | "admin" | "triage" | "write" | "maintain" | null;
+      }[];
+    };
+  };
+  REPOSITORY_COLLABORATOR_ADD: {
+    input: {
+      repositoryId: string;
+      username: string;
+      permission?:
+        | "read"
+        | "admin"
+        | "triage"
+        | "write"
+        | "maintain"
+        | undefined;
+    };
+    output: { status: "updated" | "invited" };
+  };
+  REPOSITORY_COLLABORATOR_REMOVE: {
+    input: { repositoryId: string; username: string };
+    output: { removed: true };
+  };
   CHANGE_REQUEST_STATE: {
     input: {
       branch: string;
