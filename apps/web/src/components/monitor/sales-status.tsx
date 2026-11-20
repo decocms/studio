@@ -1056,22 +1056,26 @@ export function SalesStatus({
               i >= 1 && "lg:border-l",
             )}
           >
-            <span className="text-meta">{c.label}</span>
-            <span className="tnum text-xl font-medium text-foreground">
-              {c.value}
-            </span>
-            <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-              {REFS.map((r, j) => (
-                <span key={r} className="inline-flex items-center gap-1">
-                  <span className="text-muted-foreground">{refLabel[r]}</span>
-                  {c.refs[j] === null ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    <Trend change={c.refs[j]!} better="up" reference="" />
-                  )}
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+              <div className="flex flex-col gap-1">
+                <span className="text-meta">{c.label}</span>
+                <span className="tnum text-xl font-medium text-foreground">
+                  {c.value}
                 </span>
-              ))}
-            </span>
+              </div>
+              <ul className="flex flex-col gap-0.5 pt-0.5 text-xs">
+                {REFS.map((r, j) => (
+                  <li key={r} className="inline-flex items-center gap-1">
+                    <span className="text-muted-foreground">{refLabel[r]}</span>
+                    {c.refs[j] === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <Trend change={c.refs[j]!} better="up" reference="" />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         ))}
       </div>

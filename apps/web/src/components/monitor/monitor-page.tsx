@@ -476,6 +476,7 @@ export function MonitorPage({
             kpis={board.kpis}
             deploys={board.deploys}
             dayStart={board.dayStart}
+            sales={board.stores.length > 0 && board.stores.every((s) => s.day)}
           />
         }
         more={
