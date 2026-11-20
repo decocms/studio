@@ -142,6 +142,7 @@ import {
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
+import { createProxyTokenJwksRoutes } from "./routes/proxy-token-jwks";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import { createEditorResolveRoutes } from "./routes/editor-resolve";
 import {
@@ -1611,6 +1612,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // third-party OAuth providers may have this URL registered as a
   // redirect_uri base, so we don't migrate or log deprecation here.
   app.route("/", createWellKnownAuthServerRoutes());
+
+  // Public key set for verifying proxy tokens (x-mesh-token / x-studio-token).
+  app.route("/", createProxyTokenJwksRoutes());
 
   // OAuth endpoint proxy — legacy mount with deprecation log. The new
   // canonical mount lives under `/api/:org/oauth-proxy/...` (registered via
