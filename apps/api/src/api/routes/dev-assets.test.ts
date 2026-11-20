@@ -71,6 +71,9 @@ describe("getContentSecurityHeaders", () => {
   test("sandboxes an uploaded HTML file so it can't run with studio's origin", () => {
     const headers = getContentSecurityHeaders("text/html");
     expect(headers["Content-Security-Policy"]).toContain("sandbox");
+    expect(headers["Content-Security-Policy"]).not.toContain(
+      "allow-same-origin",
+    );
     expect(headers["X-Content-Type-Options"]).toBe("nosniff");
   });
 

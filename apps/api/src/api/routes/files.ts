@@ -21,6 +21,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { generatePresignedGetUrl } from "./decopilot/file-materializer";
 import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
 import { isBrowserNavigation } from "../utils/browser-navigation";
+import { USER_HTML_CSP } from "../utils/fs-bytes";
 
 type Variables = { studioContext: StudioContext };
 
@@ -53,11 +54,7 @@ function applyContentPolicy(headers: Headers, contentType: string): void {
     contentType.startsWith("text/html") ||
     contentType.startsWith("image/svg")
   ) {
-    // TEMP(demo 2026-07-08, REVERT): allow-same-origin — see org-fs.ts.
-    headers.set(
-      "Content-Security-Policy",
-      "sandbox allow-scripts allow-modals allow-same-origin",
-    );
+    headers.set("Content-Security-Policy", USER_HTML_CSP);
   }
 }
 
