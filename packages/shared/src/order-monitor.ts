@@ -175,7 +175,8 @@ export interface SiteTrafficDay {
     visitors: { today: number; d1: number; w1: number; y1: number };
     pageviews: { today: number; d1: number; w1: number; y1: number };
     conversions: { today: number; d1: number; w1: number; y1: number };
-  };
+  } /** Today's purchases and their revenue per clock hour, by the device the sites saw them on. */;
+  devices: { id: string; conversions: number[]; revenue: number[] }[];
 }
 
 export interface OrderMonitorPush {

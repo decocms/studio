@@ -7,6 +7,7 @@
  */
 
 import type {
+  SiteTrafficDay,
   OrderMonitorDay,
   OrderMonitorForecast,
   OrderMonitorSales,
@@ -161,10 +162,13 @@ export function SalesStatus({
   titles,
   conversion,
   picker,
+  devices,
 }: {
   days: readonly OrderMonitorDay[];
   /** Each day's store, for the bars stacked by store; parallel to `days`. */
   titles?: readonly string[];
+  /** Today's purchases by device (Deco Analytics): the bars split by it instead. */
+  devices?: SiteTrafficDay["devices"] | null;
   /** The sites' conversion, when it's in scope. */
   conversion?: Kpi | null;
   /** A store filter, in the header. */
@@ -261,55 +265,94 @@ export function SalesStatus({
     outer: cloud(band?.outer, x),
   }));
 
-  // Several stores: today's bars stacked by store, the biggest so far first.
-  const stacked = days.length > 1 && titles?.length === days.length;
-  const ranked = stacked
-    ? days
-        .map((d, i) => ({
-          d,
-          title: titles[i]!,
-          so: pick(d.forecast.soFar.today),
-        }))
-        .sort((a, b) => b.so - a.so)
-    : [];
-  const stacks = [
-    ...ranked.slice(0, STACKED_STORES).map((s, i) => ({
+  type Stack = {
+    key: string;
+    label: string;
+    color: string;
+    today: (number | null)[];
+    ahead: number[];
+  };
+  const aheadOf = (d: OrderMonitorDay) => {
+    const p = d.forecast.projection;
+    return p ? (currency ? p.revenue : p.orders) : HOURS.map(() => 0);
+  };
+  const addUp = (xs: OrderMonitorDay[]) => ({
+    today: HOURS.map((h) =>
+      series.today[h] === null
+        ? null
+        : xs.reduce((n, d) => n + (storeSeries(d).today[h] ?? 0), 0),
+    ),
+    ahead: HOURS.map((h) => xs.reduce((n, d) => n + aheadOf(d)[h]!, 0)),
+  });
+  let stacks: Stack[] = [];
+  // A site's devices: each hour's sales split by the share of purchases the
+  // sites saw on each device that hour; the hours ahead by today's share.
+  const measured = (devices ?? []).filter((d) =>
+    (currency ? d.revenue : d.conversions).some((v) => v > 0),
+  );
+  if (measured.length > 1) {
+    const weight = (d: (typeof measured)[number], h: number) =>
+      currency ? d.revenue[h]! : d.conversions[h]!;
+    const all = measured.reduce(
+      (n, d) => n + HOURS.reduce((m, h) => m + weight(d, h), 0),
+      0,
+    );
+    stacks = [...measured]
+      .sort(
+        (a, b) =>
+          HOURS.reduce((m, h) => m + weight(b, h), 0) -
+          HOURS.reduce((m, h) => m + weight(a, h), 0),
+      )
+      .slice(0, STACK_COLORS.length)
+      .map((d, i) => {
+        const share = HOURS.reduce((m, h) => m + weight(d, h), 0) / all;
+        return {
+          key: `d${i}`,
+          label: d.id.charAt(0).toUpperCase() + d.id.slice(1),
+          color: STACK_COLORS[i]!,
+          today: HOURS.map((h) => {
+            const v = series.today[h] ?? null;
+            if (v === null) return null;
+            const hourAll = measured.reduce((n, x) => n + weight(x, h), 0);
+            return v * (hourAll > 0 ? weight(d, h) / hourAll : share);
+          }),
+          ahead: HOURS.map((h) => (ahead ? ahead[h]! * share : 0)),
+        };
+      });
+  } else if (days.length > 1 && titles?.length === days.length) {
+    // Several stores, the biggest so far first.
+    const ranked = days
+      .map((d, i) => ({
+        d,
+        title: titles[i]!,
+        so: pick(d.forecast.soFar.today),
+      }))
+      .sort((a, b) => b.so - a.so);
+    stacks = ranked.slice(0, STACKED_STORES).map((s, i) => ({
       key: `s${i}`,
       label: s.title,
       color: STACK_COLORS[i]!,
-      days: [s.d],
-    })),
-    ...(ranked.length > STACKED_STORES
-      ? [
-          {
-            key: "others",
-            label: t("monitor.sales.others"),
-            color: COLOR_OTHERS,
-            days: ranked.slice(STACKED_STORES).map((s) => s.d),
-          },
-        ]
-      : []),
-  ];
+      ...addUp([s.d]),
+    }));
+    if (ranked.length > STACKED_STORES) {
+      stacks.push({
+        key: "others",
+        label: t("monitor.sales.others"),
+        color: COLOR_OTHERS,
+        ...addUp(ranked.slice(STACKED_STORES).map((s) => s.d)),
+      });
+    }
+  }
+  const stacked = stacks.length > 0;
   const bars = HOURS.map((h) => ({
     x: h + 0.5,
     today: series.today[h],
     w1: hasW1 ? series.w1[h]! : null,
     ...Object.fromEntries(
       stacks.flatMap((s) => [
-        [
-          s.key,
-          series.today[h] === null
-            ? null
-            : s.days.reduce((n, d) => n + (storeSeries(d).today[h] ?? 0), 0),
-        ],
-        // What the rest of the hour should bring, each store at its projection.
-        [
-          `${s.key}Ahead`,
-          s.days.reduce((n, d) => {
-            const p = d.forecast.projection;
-            return n + (p ? (currency ? p.revenue : p.orders)[h]! : 0);
-          }, 0) || null,
-        ],
+        [s.key, s.today[h]],
+        // What the rest of the hour should bring, at the projection.
+        [`${s.key}Ahead`, s.ahead[h] || null],
       ]),
     ),
   }));

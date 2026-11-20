@@ -562,6 +562,7 @@ export function useLiveBoard(
             today: c.today.map((v, h) => (h < running ? v : null)),
           }))
         : null,
+      devices: traffic?.devices ?? null,
       stores: stores.map((store) => ({
         store,
         day: dayOf.get(store.connectionId),

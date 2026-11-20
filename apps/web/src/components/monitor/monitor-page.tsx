@@ -152,6 +152,8 @@ function OverviewSales({
         store === null ? board.kpis.find((k) => k.id === "conversion") : null
       }
       picker={picker}
+      // The sites' devices are the brand's, not one of its stores'.
+      devices={canPickStore && store === null ? board.devices : null}
     />
   );
 }
