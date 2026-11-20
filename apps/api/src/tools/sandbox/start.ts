@@ -281,6 +281,58 @@ async function rotateGitCredentialOnReuse(
 }
 
 /**
+ * A handle can move between providers (a fallback, then a later ensure back on
+ * the original), and its preview URL moves with it. Reuse skips the write
+ * `provider.ensure` makes, so without this the record keeps pointing at the
+ * provider the sandbox left. Best-effort: the stored record is still returned.
+ */
+async function refreshRecordedPreviewUrl(
+  ctx: StudioContext,
+  runner: SandboxProvider,
+  existing: SandboxRecord,
+  key: {
+    virtualMcpId: string;
+    branch: string;
+    userId: string;
+    sandboxUserId: string;
+    threadId: string | null;
+  },
+): Promise<SandboxRecord> {
+  const previewUrl = await runner
+    .getPreviewUrl(existing.sandboxHandle)
+    .catch(() => null);
+  if (!previewUrl || previewUrl === existing.previewUrl) return existing;
+  const entry = { ...existing, previewUrl };
+  try {
+    if (key.threadId) {
+      await setThreadSandboxMapEntry(
+        ctx,
+        key.threadId,
+        key.sandboxUserId,
+        key.branch,
+        entry,
+      );
+    } else {
+      await setSandboxMapEntry(
+        ctx.storage.virtualMcps,
+        key.virtualMcpId,
+        key.userId,
+        key.sandboxUserId,
+        key.branch,
+        entry,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[ensureSandbox] failed to record the moved preview URL",
+      err instanceof Error ? err.message : String(err),
+    );
+    return existing;
+  }
+  return entry;
+}
+
+/**
  * Lazy provisioner for the always-on sandbox tools path. Mirrors SANDBOX_START's
  * flow but: (a) tolerates a missing GitHub repo (boots a blank sandbox),
  * and (b) takes a fast path when the existing sandboxMap entry already
@@ -357,7 +409,15 @@ export async function ensureSandbox(
         recordThreadId,
         metadata,
       );
-      if (accepted) return existing;
+      if (accepted) {
+        return refreshRecordedPreviewUrl(ctx, runner, existing, {
+          virtualMcpId: input.virtualMcpId,
+          branch: input.branch,
+          userId,
+          sandboxUserId,
+          threadId: agentEntry ? null : (recordThreadId ?? null),
+        });
+      }
       revalidate = true;
     } else if (agentEntry) {
       await removeSandboxMapEntry(
