@@ -268,10 +268,13 @@ describe("buildDayView", () => {
     expect(p.orders[12]).toBe(60);
     expect(p.revenue[12]).toBe(1.5 * 4 * 1000);
     expect(p.initial).toEqual({ orders: 960, revenue: 96000 });
-    // Flat reference days agree, so the cloud closes on the projection.
-    expect(p.range.orders.low[23]).toBe(1.5 * 48 * 10);
-    expect(p.range.orders.high[11]).toBe(0);
-    expect(p.range.orders.high[12]).toBe(60);
+    // Flat reference days agree, so every path lands on the projection.
+    expect(p.paths.map((x) => x.daysAgo)).toEqual([1, 7, 14, 21, 28]);
+    for (const x of p.paths) {
+      expect(x.orders[23]).toBe(1.5 * 48 * 10);
+      expect(x.orders[11]).toBe(0);
+      expect(x.orders[12]).toBe(60);
+    }
   });
 
   it("spreads the projection between the quietest and busiest reference day", () => {
@@ -280,9 +283,23 @@ describe("buildDayView", () => {
     s.days[14] = { ...s.days[14], placed: flat(20) };
     const p = buildDayView(s, at).forecast.projection!;
     // Level 1; the rest of the day is 48 buckets.
-    expect(p.range.orders.low[23]).toBe(48 * 5);
-    expect(p.range.orders.high[23]).toBe(48 * 20);
+    const close = (d: number) =>
+      p.paths.find((x) => x.daysAgo === d)!.orders[23];
+    expect(close(7)).toBe(48 * 5);
+    expect(close(14)).toBe(48 * 20);
     expect(p.close.orders).toBe(48 * 10 + 48 * 10);
+  });
+
+  it("leaves a reference day the lake holds only part of out of the baseline and M-1", () => {
+    // M-1 sits at the backfill's edge: a few orders of a whole day.
+    const s = store({});
+    s.days[28] = { ...s.days[28], placed: withDip(flat(0), 90, 96, 1) };
+    const v = buildDayView(s, at);
+    expect(v.forecast.soFar.m1).toBeNull();
+    expect(v.forecast.projection!.paths.map((x) => x.daysAgo)).toEqual([
+      1, 7, 14, 21,
+    ]);
+    expect(v.orders.expected[20]).toBe(40);
   });
 
   it("projects from the reference days the lake holds while history loads", () => {

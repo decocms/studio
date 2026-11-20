@@ -1,8 +1,9 @@
 /** The Monitor, org or project: ask about the data, what needs attention, the numbers that matter. */
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Activity, GitBranch01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import {
   Popover,
@@ -106,15 +107,53 @@ const PREVIEW_NUMBERS = [
 ] as const;
 const PREVIEW_SHAPE = [3, 2, 2, 4, 7, 9, 8, 10, 12, 11, 13, 12, 9, 10];
 
-/** Once every store's day is in, so the totals don't grow as they land. */
-function OverviewSales({ board }: { board: MonitorBoard }) {
-  const days = board.stores.flatMap((s) => (s.day ? [s.day] : []));
-  return days.length > 0 && days.length === board.stores.length ? (
-    <SalesStatus
-      days={days}
-      conversion={board.kpis.find((k) => k.id === "conversion")}
+/**
+ * Once every store's day is in, so the totals don't grow as they land. A
+ * brand with several stores can narrow it to one; across all customers the
+ * bars split by store instead.
+ */
+function OverviewSales({
+  board,
+  canPickStore,
+}: {
+  board: MonitorBoard;
+  canPickStore: boolean;
+}) {
+  const t = useT();
+  const [store, setStore] = useState<string | null>(null);
+  const loaded = board.stores.flatMap((s) => (s.day ? [s] : []));
+  if (loaded.length === 0 || loaded.length !== board.stores.length) return null;
+  const shown = loaded.filter(
+    (s) => store === null || s.store.connectionId === store,
+  );
+  const stores = shown.length > 0 ? shown : loaded;
+  const picker = canPickStore && loaded.length > 1 && (
+    <Combobox
+      options={[
+        { value: "", label: t("monitor.sales.allStores") },
+        ...loaded.map((s) => ({
+          value: s.store.connectionId,
+          label: s.store.title,
+        })),
+      ]}
+      value={store ?? ""}
+      onChange={(next) => setStore(next || null)}
+      width="w-[200px]"
+      placeholder={t("monitor.sales.allStores")}
+      searchPlaceholder={t("monitor.sales.storeSearch")}
+      emptyMessage={t("monitor.customer.empty")}
     />
-  ) : null;
+  );
+  return (
+    <SalesStatus
+      days={stores.map((s) => s.day!)}
+      titles={stores.map((s) => s.store.title)}
+      conversion={
+        store === null ? board.kpis.find((k) => k.id === "conversion") : null
+      }
+      picker={picker}
+    />
+  );
 }
 
 function Board({
@@ -154,7 +193,10 @@ function Board({
       ) : (
         today && board.stores.length > 0 && <AllClear />
       )}
-      <OverviewSales board={board} />
+      <OverviewSales
+        board={board}
+        canPickStore={selection.customer !== "all"}
+      />
       {numbers}
       {more}
     </div>
@@ -219,7 +261,8 @@ export function MonitorPage({
           })
         }
       />
-      {!routeScope && projects.length > 1 && (
+      {/* A customer's view isn't this org's projects; its stores filter the sales. */}
+      {!routeScope && !selection.customer && projects.length > 1 && (
         <ProjectFilter
           projects={projects}
           value={scopeId}
