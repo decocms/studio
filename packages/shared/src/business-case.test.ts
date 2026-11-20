@@ -229,4 +229,44 @@ describe("card figures", () => {
       ),
     ).toBeNull();
   });
+
+  it("reads the parts of the store on approach only", () => {
+    expect(
+      parseBusinessCase(withCard("approach", { layers: ["catalog", "data"] })),
+    ).not.toBeNull();
+    expect(
+      parseBusinessCase(withCard("scope", { layers: ["code"] })),
+    ).toBeNull();
+    expect(
+      parseBusinessCase(withCard("approach", { layers: ["spreadsheet"] })),
+    ).toBeNull();
+    expect(
+      parseBusinessCase(
+        withCard("approach", {
+          layers: ["code", "component", "catalog", "content", "data"],
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("cases written before a card existed", () => {
+  it("reads a case without the approach, with the approach empty", () => {
+    const { approach: _approach, ...cards } = sample().cards;
+    const parsed = parseBusinessCase(
+      JSON.stringify({ ...sample(), status: "ready", cards }),
+    );
+    expect(parsed?.cards.approach).toEqual({
+      state: "empty",
+      bullets: [],
+      sources: [],
+    });
+  });
+
+  it("still rejects a case missing a card that always existed", () => {
+    const { problem: _problem, ...cards } = sample().cards;
+    expect(
+      parseBusinessCase(JSON.stringify({ ...sample(), cards })),
+    ).toBeNull();
+  });
 });

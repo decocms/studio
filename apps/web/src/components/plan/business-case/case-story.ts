@@ -1,6 +1,6 @@
 /**
  * The business case as the canvas tells it: a verdict on top (the money, the
- * effort and the A/B test, only from numbers the case's math wrote) and four
+ * effort and the A/B test, only from numbers the case's math wrote) and five
  * acts below, each lit by the state of its cards.
  */
 
@@ -11,7 +11,7 @@ import type {
   BusinessCaseMoneyCalc,
 } from "@decocms/shared/business-case";
 
-export type ActKey = "why" | "what" | "worth" | "prove";
+export type ActKey = "why" | "what" | "how" | "worth" | "prove";
 export type DotState = "done" | "asking" | "open";
 export type HeroKey = "money" | "effort" | "abTest";
 
@@ -43,6 +43,7 @@ export interface CaseStory {
 const ACTS: { key: ActKey; cards: BusinessCaseCardKey[] }[] = [
   { key: "why", cards: ["problem"] },
   { key: "what", cards: ["scope", "competitors"] },
+  { key: "how", cards: ["approach"] },
   { key: "worth", cards: ["money", "effort", "risks"] },
   { key: "prove", cards: ["measurement", "abTest"] },
 ];

@@ -33,6 +33,7 @@ export const BUILDING: TranslationKey[] = [
   "plan.guide.building6",
   "plan.guide.building7",
   "plan.guide.building8",
+  "plan.guide.building17",
   "plan.guide.building9",
   "plan.guide.building10",
   "plan.guide.building11",

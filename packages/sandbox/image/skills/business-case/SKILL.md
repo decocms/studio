@@ -1,6 +1,6 @@
 ---
 name: business-case
-description: Turn an idea for a change to an online store (a button, a page section, shipping, checkout, search) into a business case the person can take to their team — the measured problem, who already does it, the money at stake, effort, tracking and the A/B test. Builds it together with the person, one question at a time, on a live canvas. Use when someone describes a store improvement, however vague ("I want to improve search"), and wants a plan, a business case or material to convince their team.
+description: Turn an idea for a change to an online store (a button, a page section, shipping, checkout, search) into a business case the person can take to their team — the measured problem, who already does it, where in the store it gets solved, the money at stake, effort, tracking and the A/B test. Builds it together with the person, one question at a time, on a live canvas. Use when someone describes a store improvement, however vague ("I want to improve search"), and wants a plan, a business case or material to convince their team.
 ---
 
 # business-case — from an idea to a case the team can approve
@@ -8,7 +8,8 @@ description: Turn an idea for a change to an online store (a button, a page sect
 Someone had an idea for their store ("show the delivery date on the product
 page", "I want to improve search"). Before anyone builds it, they need to
 convince their team: is the problem real, how big is it, who already does
-this, how much work is it, and how will we know it worked.
+this, where in the store it gets solved, how much work is it, and how will we
+know it worked.
 
 You build that case **with** them. Studio shows the case as a canvas of cards
 next to the chat, and every command below updates it live. The person watches
@@ -23,6 +24,7 @@ Write in the language the person wrote in.
 | Open the canvas | `bun /app/org/public/core/business-case/business-case-canvas.mjs init --path <case> --title <t> --request <their words> --area <area> [--objective <goal>]` |
 | Mark the card you are asking about | `... business-case-canvas.mjs ask --path <case> --card <key> --question <the question, as you ask it>` |
 | Fill a card | `... business-case-canvas.mjs set --path <case> --card <key> --summary <text> [--bullet <text>]... [--source "<label>\|<url>"]... [--assumption <text>]` |
+| Where the change lives (`approach`) | add `--layer <layer>` to `set`, once per part of the store, at most 4 |
 | Numbers the canvas draws (`problem`, `effort`) | add `--metric "<label>\|<value>\|<unit>"` to `set`, units `percent`, `seconds`, `days`, `brl`, `count` |
 | Money at stake on the canvas | `set --card money ... --base <people/month> --delta-pp <x> --value <R$ per conversion> [--gap-pp <gap>] --base-label <what base counts> --value-label <what value is>` |
 | A/B test on the canvas | `set --card abTest ... --baseline <rate 0..1> --effect-pp <x> --weekly <people/week> [--exposure <0..1>]` |
@@ -45,14 +47,22 @@ try inputs; never redo the arithmetic yourself.
 | `scope` | What we will change | The option chosen, on which page and device; options set aside |
 | `money` | Money at stake | The math inputs (`--base`, `--delta-pp`, `--value`, `--gap-pp`) with short captions |
 | `competitors` | Who already does it | One bullet per competitor actually checked, with the URL as source |
+| `approach` | How we will do it | The direction in one or two plain sentences: which part of the store the change lives in, and why there. `--layer` for each part. Bullets: what each part has to do, in broad terms. Sources: what you checked that points there |
 | `measurement` | How we measure | Primary metric, guardrails, events that exist and events to add |
 | `abTest` | A/B test and timeline | The math inputs (`--baseline`, `--effect-pp`, `--weekly`, `--exposure`) |
-| `effort` | Effort and deliveries | Front-end, back-end, QA days as `--metric "Front-end\|3\|days"`; what changes in the code |
+| `effort` | Effort and deliveries | Front-end, back-end, QA days as `--metric "Front-end\|3\|days"`, sized from the parts `approach` names |
 | `risks` | Risks | What could get worse and what to watch |
 | `unknowns` | What we still don't know | Each gap and how to close it |
 
 Areas: `pdp`, `search`, `category`, `home`, `cart`, `checkout`, `shipping`,
 `performance`, `paid-media`, `other`.
+
+Layers, the parts of the store a change can touch: `code` (the store's code:
+pages and sections that exist), `component` (a new component), `catalog`
+(product and catalog data in the commerce platform), `content` (CMS content),
+`platform` (commerce platform settings: search, promotions, checkout), `data`
+(the data warehouse or analytics), `integration` (a third-party app or API),
+`other`.
 
 A card's `summary` is one or two sentences a manager reads in five seconds.
 Bullets are short. Keep the detail in the chat, not on the card.
@@ -89,6 +99,10 @@ month"`, `--value-label "revenue per extra order"`), at most 60 characters.
    prose what the tool can ask, and never ask two things in one question.
 7. If the person stated a store goal, check the idea against it and say
    whether it moves that goal.
+8. **The how is a direction, not a spec.** `approach` names the part of the
+   store where the problem gets solved ("the catalog", "the warehouse data",
+   "a new component on the PDP"), never files, fields or queries. Working out
+   exactly what to change is the job of the task that executes the case.
 
 ## Workflow
 
@@ -103,7 +117,7 @@ when search finds nothing"); while the request is vague, use their words
 
 If the message says the person already answered questions before the chat
 (the Plan page's guided intro), do not ask them again: `set` the cards those
-answers cover (`scope` first, then `measurement`, `effort` or `risks`; a
+answers cover (`scope` first, then `approach`, `measurement`, `effort` or `risks`; a
 skipped or vague answer becomes an `--assumption`), sharpen the title with
 `init`, and go to step 3. Ask in the chat only when something still blocks
 the case.
@@ -140,7 +154,22 @@ everything. The person sees the canvas grow.
    page when you can and describe what is there today. Check two to five
    competitors with web search or by opening their pages; write only what
    you actually saw, with the URL as the source.
-3. **Run the numbers** (`money`, `abTest`). Give these inputs to `set`; the
+3. **Find where to act** (`approach`). The case is only as good as this
+   call: a team that starts in the wrong place loses the days in `effort`.
+   Check where the problem actually lives with the tools this organization
+   has, instead of assuming it is code. For example:
+   - the platform's search finds the product when the term is corrected →
+     `platform` (search settings), or `code` if the page just doesn't show
+     the correction;
+   - the product exists but its data is missing or wrong → `catalog`;
+   - the page has nowhere to show it → `component`;
+   - the number the page shows comes from a table or a report → `data`.
+
+   Write the direction as the summary, a `--layer` per part, and what you
+   checked as sources. When what you checked does not settle it, name the
+   candidate places in the summary, add an `--assumption` for the one you
+   lean to, and put the open question in `unknowns`.
+4. **Run the numbers** (`money`, `abTest`). Give these inputs to `set`; the
    canvas runs the math and keeps the result. When the math moves one of your
    inputs, the script prints a `note:` line: say so in the chat and set the
    card again with a summary and `--assumption` that match the number it kept.
@@ -152,11 +181,11 @@ everything. The person sees the canvas grow.
      gain; `weekly` = people reaching the step per week; `exposure` = the share
      of them who would actually see the change (1 if everyone). If it is not
      measurable in 8 weeks, say so and what would make it measurable.
-4. **Effort, measurement, risks** (`effort`, `measurement`, `risks`).
-   Front-end, back-end and QA days, and which sections or components change if
-   you can read the store's code. Primary metric and guardrails (revenue per
-   visitor, conversion of the next step). What could get worse.
-5. **What is still unknown** (`unknowns`): every gap left, with how to close
+5. **Effort, measurement, risks** (`effort`, `measurement`, `risks`).
+   Front-end, back-end and QA days for the parts `approach` names. Primary
+   metric and guardrails (revenue per visitor, conversion of the next step).
+   What could get worse.
+6. **What is still unknown** (`unknowns`): every gap left, with how to close
    it.
 
 If the person answers something mid-way that changes the scope, update

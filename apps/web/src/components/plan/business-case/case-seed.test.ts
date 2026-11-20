@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { BUSINESS_CASE_LIMITS } from "@decocms/shared/business-case";
+import {
+  BUSINESS_CASE_CARD_KEYS,
+  BUSINESS_CASE_LIMITS,
+} from "@decocms/shared/business-case";
 import { readCaseSeed, seedTitle, writeCaseSeed } from "./case-seed.ts";
 
 function memoryStorage() {
@@ -28,7 +31,7 @@ describe("case seed", () => {
     );
     expect(value?.status).toBe("framing");
     expect(Object.values(value?.cards ?? {}).map((c) => c.state)).toEqual(
-      Array(9).fill("empty"),
+      Array(BUSINESS_CASE_CARD_KEYS.length).fill("empty"),
     );
   });
 
