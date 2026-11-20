@@ -34,18 +34,27 @@ export function projectSiteSlug(
  * slug, and `previewServerUrl` is free text any editor can point anywhere:
  * those are read without the token.
  */
-export function resolveSiteMetaTarget(
+export function resolveSiteMetaTargets(
   metadata: Record<string, unknown> | null,
   orgOwnsSite: boolean,
-): SiteMetaTarget | null {
+): SiteMetaTarget[] {
+  const targets: SiteMetaTarget[] = [];
   const platformUrl = orgOwnsSite
     ? defaultPreviewServerUrl(projectSiteSlug(metadata))
     : null;
   if (platformUrl && isTrustedSiteOrigin(platformUrl)) {
-    return { siteUrl: platformUrl, trusted: true };
+    targets.push({ siteUrl: platformUrl, trusted: true });
   }
+  // A site deployed off the platform serves nothing on its `.deco.site` host.
   const editorUrl = resolvePreviewServerUrl(metadata);
-  return editorUrl ? { siteUrl: editorUrl, trusted: false } : null;
+  if (editorUrl && !targets.some((t) => sameOrigin(t.siteUrl, editorUrl))) {
+    targets.push({ siteUrl: editorUrl, trusted: false });
+  }
+  return targets;
+}
+
+function sameOrigin(a: string, b: string): boolean {
+  return new URL(a).origin === new URL(b).origin;
 }
 
 export function isTrustedSiteOrigin(siteUrl: string): boolean {
