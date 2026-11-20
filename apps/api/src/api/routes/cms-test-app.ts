@@ -40,14 +40,20 @@ export function cmsTestApp(
     siteProjects?: Record<string, string>;
     /** Whether p1's "Blocks v8 site" switch is on (default: on). */
     blocksV8?: boolean;
+    /** Organizations that are archived. */
+    archived?: string[];
+    /** The base64 PKCS8 site token signing key (default: none configured). */
+    siteTokenSigningKey?: string;
   } = {},
 ) {
   const delivery = memoryDeliveryStore();
   const table = memoryDraftTable();
   const patches: Array<{ set: Record<string, unknown>; unset: string[] }> = [];
+  const kv = memoryKv();
   const project = {
     id: "p1",
     organization_id: ORG,
+    created_by: "usr_owner",
     metadata: {
       previewServerUrl: "https://Preview.Acme.com/x",
       ...(options.blocksV8 === false ? {} : { blocksV8: true }),
@@ -74,7 +80,7 @@ export function cmsTestApp(
       },
       access: { getRole: () => role },
       storage: {
-        kv: memoryKv(),
+        kv,
         virtualMcps: {
           findById: async (id: string) => (id === project.id ? project : null),
           patchMetadata: async (p: {
@@ -126,6 +132,9 @@ export function cmsTestApp(
       },
       isBlocked: async (_c, organizationId) =>
         (options.blocked ?? []).includes(organizationId),
+      isArchived: async (_c, organizationId) =>
+        (options.archived ?? []).includes(organizationId),
+      siteTokenSigningKey: () => options.siteTokenSigningKey,
     }),
   );
   const call = async (
@@ -133,14 +142,19 @@ export function cmsTestApp(
     path: string,
     body?: unknown,
     raw?: string,
+    bearer?: string,
   ) => {
+    const headers: Record<string, string> = {
+      ...(body !== undefined || raw !== undefined
+        ? { "content-type": "application/json" }
+        : {}),
+      ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
+    };
     const res = await app.request(`/cms/${path}`, {
       method,
+      headers,
       ...(body !== undefined || raw !== undefined
-        ? {
-            headers: { "content-type": "application/json" },
-            body: raw ?? JSON.stringify(body),
-          }
+        ? { body: raw ?? JSON.stringify(body) }
         : {}),
     });
     const text = await res.text();
@@ -167,6 +181,7 @@ export function cmsTestApp(
   return {
     app,
     delivery,
+    kv,
     table,
     patches,
     project,
