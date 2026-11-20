@@ -46,6 +46,7 @@ const ALL_FILLED: Partial<Record<BusinessCaseCardKey, BusinessCaseCard>> = {
   scope: filled(),
   money: filled({ calc: MONEY }),
   competitors: filled(),
+  approach: filled({ layers: ["platform", "code"] }),
   measurement: filled(),
   abTest: filled({ calc: AB_TEST }),
   effort: filled({
@@ -76,12 +77,14 @@ describe("caseStory", () => {
     expect(story.acts.map((act) => [act.key, act.dot])).toEqual([
       ["why", "done"],
       ["what", "done"],
+      ["how", "done"],
       ["worth", "done"],
       ["prove", "done"],
     ]);
     expect(story.acts.map((act) => act.cards)).toEqual([
       ["problem"],
       ["scope", "competitors"],
+      ["approach"],
       ["money", "effort", "risks"],
       ["measurement", "abTest"],
     ]);
@@ -121,6 +124,7 @@ describe("caseStory", () => {
     ]);
     expect(story.acts.map((act) => act.dot)).toEqual([
       "done",
+      "open",
       "open",
       "asking",
       "open",

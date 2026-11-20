@@ -58,6 +58,16 @@ const READY: BusinessCase = {
     problem,
     scope,
     competitors,
+    approach: filled({
+      summary:
+        "Um componente novo de CEP na PDP, usando o cálculo de frete que a plataforma já faz",
+      bullets: [
+        "A plataforma já calcula frete e prazo por CEP",
+        "A PDP de hoje não tem onde mostrar isso",
+      ],
+      sources: [{ label: "Simulação de frete na plataforma" }],
+      layers: ["component", "platform"],
+    }),
     money: filled({
       summary: "Cerca de R$ 114 mil por mês se o abandono cair 1,5 ponto",
       assumption: "Metade do efeito visto nos concorrentes",
