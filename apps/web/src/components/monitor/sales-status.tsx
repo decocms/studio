@@ -295,11 +295,21 @@ export function SalesStatus({
     today: series.today[h],
     w1: hasW1 ? series.w1[h]! : null,
     ...Object.fromEntries(
-      stacks.map((s) => [
-        s.key,
-        series.today[h] === null
-          ? null
-          : s.days.reduce((n, d) => n + (storeSeries(d).today[h] ?? 0), 0),
+      stacks.flatMap((s) => [
+        [
+          s.key,
+          series.today[h] === null
+            ? null
+            : s.days.reduce((n, d) => n + (storeSeries(d).today[h] ?? 0), 0),
+        ],
+        // What the rest of the hour should bring, each store at its projection.
+        [
+          `${s.key}Ahead`,
+          s.days.reduce((n, d) => {
+            const p = d.forecast.projection;
+            return n + (p ? (currency ? p.revenue : p.orders)[h]! : 0);
+          }, 0) || null,
+        ],
       ]),
     ),
   }));
@@ -456,175 +466,26 @@ export function SalesStatus({
 
       <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
         <div className="flex min-w-0 flex-col gap-3 p-4">
-          <div className="flex flex-col">
+          {stacked ? (
             <ChartContainer
               role="img"
-              aria-label={t("monitor.sales.chart")}
-              className="aspect-auto h-[220px] w-full"
-              config={{
-                today: { label: t("monitor.sales.today"), color: COLOR_TODAY },
-              }}
-            >
-              <ComposedChart
-                data={curve}
-                margin={{ left: 0, right: 0, top: 8 }}
-              >
-                <defs>
-                  <linearGradient id="sales-today" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="0%"
-                      stopColor={COLOR_TODAY}
-                      stopOpacity={0.2}
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor={COLOR_TODAY}
-                      stopOpacity={0}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="4 4"
-                  stroke="var(--border)"
-                  strokeOpacity={0.5}
-                  vertical={false}
-                />
-                <XAxis dataKey="x" type="number" domain={[0, 24]} hide />
-                <YAxis
-                  orientation="right"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={AXIS_TICK}
-                  width={Y_AXIS_WIDTH}
-                  tickFormatter={compact}
-                />
-                <ChartTooltip
-                  cursor={{ stroke: "var(--foreground)", strokeOpacity: 0.4 }}
-                  content={({ active, payload }) => {
-                    const p = payload?.[0]?.payload as
-                      | (typeof curve)[number]
-                      | undefined;
-                    if (!active || !p) return null;
-                    return (
-                      <div className="surface tnum flex flex-col gap-0.5 px-2.5 py-1.5 text-xs shadow-sm">
-                        <span className="text-meta">
-                          {clock(Math.round(p.x * 4))}
-                        </span>
-                        {p.today !== null && (
-                          <span>
-                            {t("monitor.sales.today")}: {show(p.today)}
-                          </span>
-                        )}
-                        {p.outer && p.today === null && (
-                          <span className="text-success">
-                            {t("monitor.sales.best")}: {show(p.outer[1])}
-                          </span>
-                        )}
-                        {p.projected !== null && p.today === null && (
-                          <span>
-                            {t("monitor.sales.projected")}: {show(p.projected)}
-                          </span>
-                        )}
-                        {p.outer && p.today === null && (
-                          <span className="text-destructive">
-                            {t("monitor.sales.worst")}: {show(p.outer[0])}
-                          </span>
-                        )}
-                        {p.w1 !== null && (
-                          <span className="text-muted-foreground">
-                            {refLabel.w1}: {show(p.w1)}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  }}
-                />
-                {live && (
-                  <ReferenceLine
-                    x={now}
-                    stroke="var(--foreground)"
-                    strokeOpacity={0.25}
-                    strokeDasharray="2 3"
-                  />
-                )}
-                {hasW1 && (
-                  <Line
-                    type="monotone"
-                    dataKey="w1"
-                    stroke={COLOR_W1}
-                    strokeOpacity={0.6}
-                    strokeDasharray="6 4"
-                    strokeWidth={1.25}
-                    dot={false}
-                    activeDot={false}
-                    isAnimationActive={false}
-                  />
-                )}
-                {band && (
-                  <Area
-                    type="monotone"
-                    dataKey="outer"
-                    stroke="none"
-                    fill={COLOR_TODAY}
-                    fillOpacity={0.1}
-                    activeDot={false}
-                    isAnimationActive={false}
-                  />
-                )}
-                {band && (
-                  <Area
-                    type="monotone"
-                    dataKey="inner"
-                    stroke="none"
-                    fill={COLOR_TODAY}
-                    fillOpacity={0.18}
-                    activeDot={false}
-                    isAnimationActive={false}
-                  />
-                )}
-                {ahead && (
-                  <Line
-                    type="monotone"
-                    dataKey="projected"
-                    stroke={COLOR_TODAY}
-                    strokeDasharray="2 3"
-                    strokeWidth={1.5}
-                    dot={false}
-                    activeDot={false}
-                    isAnimationActive={false}
-                    connectNulls={false}
-                  />
-                )}
-                <Area
-                  type="monotone"
-                  dataKey="today"
-                  stroke={COLOR_TODAY}
-                  strokeWidth={2}
-                  fill="url(#sales-today)"
-                  dot={false}
-                  activeDot={{
-                    r: 3,
-                    stroke: "var(--background)",
-                    strokeWidth: 2,
-                  }}
-                  connectNulls={false}
-                  isAnimationActive={false}
-                />
-              </ComposedChart>
-            </ChartContainer>
-            <ChartContainer
-              role="img"
-              aria-label={t("monitor.sales.bars")}
-              className="aspect-auto h-[84px] w-full"
+              aria-label={t("monitor.sales.stackedChart")}
+              className="aspect-auto h-[280px] w-full"
               config={{
                 today: { label: t("monitor.sales.today"), color: COLOR_TODAY },
               }}
             >
               <ComposedChart
                 data={bars}
-                margin={{ left: 0, right: 0, top: 4 }}
-                barGap={1}
+                margin={{ left: 0, right: 0, top: 8 }}
+                barGap={0}
               >
+                <CartesianGrid
+                  strokeDasharray="4 4"
+                  stroke="var(--border)"
+                  strokeOpacity={0.5}
+                  vertical={false}
+                />
                 <XAxis
                   dataKey="x"
                   type="number"
@@ -640,65 +501,305 @@ export function SalesStatus({
                 />
                 <YAxis
                   orientation="right"
-                  width={Y_AXIS_WIDTH}
-                  tick={false}
-                  tickLine={false}
                   axisLine={false}
+                  tickLine={false}
+                  tick={AXIS_TICK}
+                  width={Y_AXIS_WIDTH}
+                  tickFormatter={compact}
                 />
-                {hasW1 && (
+                <ChartTooltip
+                  cursor={{ fill: "var(--muted)", fillOpacity: 0.4 }}
+                  content={({ active, payload }) => {
+                    const b = payload?.[0]?.payload as
+                      | Record<string, number | null>
+                      | undefined;
+                    if (!active || !b) return null;
+                    return (
+                      <div className="surface tnum flex flex-col gap-0.5 px-2.5 py-1.5 text-xs shadow-sm">
+                        <span className="text-meta">
+                          {clock(Math.floor(b.x!) * 4)}
+                        </span>
+                        {stacks.map((st) => (
+                          <span
+                            key={st.key}
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <span
+                              className="size-2 rounded-sm"
+                              style={{ background: st.color }}
+                            />
+                            {st.label}:{" "}
+                            {show(
+                              (b[st.key] ?? 0) + (b[`${st.key}Ahead`] ?? 0),
+                            )}
+                          </span>
+                        ))}
+                        {b.w1 !== null && (
+                          <span className="text-muted-foreground">
+                            {refLabel.w1}: {show(b.w1!)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }}
+                />
+                {stacks.map((st) => (
                   <Bar
+                    key={st.key}
+                    dataKey={st.key}
+                    stackId="day"
+                    fill={st.color}
+                    fillOpacity={0.9}
+                    barSize={14}
+                    isAnimationActive={false}
+                  />
+                ))}
+                {stacks.map((st) => (
+                  <Bar
+                    key={`${st.key}Ahead`}
+                    dataKey={`${st.key}Ahead`}
+                    stackId="day"
+                    fill={st.color}
+                    fillOpacity={0.3}
+                    barSize={14}
+                    isAnimationActive={false}
+                  />
+                ))}
+                {hasW1 && (
+                  <Line
+                    type="step"
                     dataKey="w1"
-                    fill={COLOR_W1}
-                    fillOpacity={0.25}
-                    barSize={6}
-                    radius={[2, 2, 0, 0]}
+                    stroke={COLOR_W1}
+                    strokeDasharray="6 4"
+                    strokeWidth={1.25}
+                    dot={false}
+                    activeDot={false}
                     isAnimationActive={false}
                   />
                 )}
-                {stacked && (
+                {live && (
+                  <ReferenceLine
+                    x={now}
+                    stroke="var(--foreground)"
+                    strokeOpacity={0.25}
+                    strokeDasharray="2 3"
+                  />
+                )}
+              </ComposedChart>
+            </ChartContainer>
+          ) : (
+            <div className="flex flex-col">
+              <ChartContainer
+                role="img"
+                aria-label={t("monitor.sales.chart")}
+                className="aspect-auto h-[220px] w-full"
+                config={{
+                  today: {
+                    label: t("monitor.sales.today"),
+                    color: COLOR_TODAY,
+                  },
+                }}
+              >
+                <ComposedChart
+                  data={curve}
+                  margin={{ left: 0, right: 0, top: 8 }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="sales-today"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor={COLOR_TODAY}
+                        stopOpacity={0.2}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor={COLOR_TODAY}
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="4 4"
+                    stroke="var(--border)"
+                    strokeOpacity={0.5}
+                    vertical={false}
+                  />
+                  <XAxis dataKey="x" type="number" domain={[0, 24]} hide />
+                  <YAxis
+                    orientation="right"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={AXIS_TICK}
+                    width={Y_AXIS_WIDTH}
+                    tickFormatter={compact}
+                  />
                   <ChartTooltip
-                    cursor={{ fill: "var(--muted)", fillOpacity: 0.4 }}
+                    cursor={{ stroke: "var(--foreground)", strokeOpacity: 0.4 }}
                     content={({ active, payload }) => {
-                      const b = payload?.[0]?.payload as
-                        | Record<string, number | null>
+                      const p = payload?.[0]?.payload as
+                        | (typeof curve)[number]
                         | undefined;
-                      if (!active || !b || b.today === null) return null;
+                      if (!active || !p) return null;
                       return (
                         <div className="surface tnum flex flex-col gap-0.5 px-2.5 py-1.5 text-xs shadow-sm">
                           <span className="text-meta">
-                            {clock(Math.floor(b.x!) * 4)}
+                            {clock(Math.round(p.x * 4))}
                           </span>
-                          {stacks.map((st) => (
-                            <span
-                              key={st.key}
-                              className="inline-flex items-center gap-1.5"
-                            >
-                              <span
-                                className="size-2 rounded-sm"
-                                style={{ background: st.color }}
-                              />
-                              {st.label}: {show(b[st.key] ?? 0)}
+                          {p.today !== null && (
+                            <span>
+                              {t("monitor.sales.today")}: {show(p.today)}
                             </span>
-                          ))}
+                          )}
+                          {p.outer && p.today === null && (
+                            <span className="text-success">
+                              {t("monitor.sales.best")}: {show(p.outer[1])}
+                            </span>
+                          )}
+                          {p.projected !== null && p.today === null && (
+                            <span>
+                              {t("monitor.sales.projected")}:{" "}
+                              {show(p.projected)}
+                            </span>
+                          )}
+                          {p.outer && p.today === null && (
+                            <span className="text-destructive">
+                              {t("monitor.sales.worst")}: {show(p.outer[0])}
+                            </span>
+                          )}
+                          {p.w1 !== null && (
+                            <span className="text-muted-foreground">
+                              {refLabel.w1}: {show(p.w1)}
+                            </span>
+                          )}
                         </div>
                       );
                     }}
                   />
-                )}
-                {stacked ? (
-                  stacks.map((st, i) => (
-                    <Bar
-                      key={st.key}
-                      dataKey={st.key}
-                      stackId="today"
-                      fill={st.color}
-                      fillOpacity={0.85}
-                      barSize={6}
-                      radius={i === stacks.length - 1 ? [2, 2, 0, 0] : 0}
+                  {live && (
+                    <ReferenceLine
+                      x={now}
+                      stroke="var(--foreground)"
+                      strokeOpacity={0.25}
+                      strokeDasharray="2 3"
+                    />
+                  )}
+                  {hasW1 && (
+                    <Line
+                      type="monotone"
+                      dataKey="w1"
+                      stroke={COLOR_W1}
+                      strokeOpacity={0.6}
+                      strokeDasharray="6 4"
+                      strokeWidth={1.25}
+                      dot={false}
+                      activeDot={false}
                       isAnimationActive={false}
                     />
-                  ))
-                ) : (
+                  )}
+                  {band && (
+                    <Area
+                      type="monotone"
+                      dataKey="outer"
+                      stroke="none"
+                      fill={COLOR_TODAY}
+                      fillOpacity={0.1}
+                      activeDot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+                  {band && (
+                    <Area
+                      type="monotone"
+                      dataKey="inner"
+                      stroke="none"
+                      fill={COLOR_TODAY}
+                      fillOpacity={0.18}
+                      activeDot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
+                  {ahead && (
+                    <Line
+                      type="monotone"
+                      dataKey="projected"
+                      stroke={COLOR_TODAY}
+                      strokeDasharray="2 3"
+                      strokeWidth={1.5}
+                      dot={false}
+                      activeDot={false}
+                      isAnimationActive={false}
+                      connectNulls={false}
+                    />
+                  )}
+                  <Area
+                    type="monotone"
+                    dataKey="today"
+                    stroke={COLOR_TODAY}
+                    strokeWidth={2}
+                    fill="url(#sales-today)"
+                    dot={false}
+                    activeDot={{
+                      r: 3,
+                      stroke: "var(--background)",
+                      strokeWidth: 2,
+                    }}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+              <ChartContainer
+                role="img"
+                aria-label={t("monitor.sales.bars")}
+                className="aspect-auto h-[84px] w-full"
+                config={{
+                  today: {
+                    label: t("monitor.sales.today"),
+                    color: COLOR_TODAY,
+                  },
+                }}
+              >
+                <ComposedChart
+                  data={bars}
+                  margin={{ left: 0, right: 0, top: 4 }}
+                  barGap={1}
+                >
+                  <XAxis
+                    dataKey="x"
+                    type="number"
+                    domain={[0, 24]}
+                    ticks={[0, 6, 12, 18, 24]}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={AXIS_TICK}
+                    tickMargin={6}
+                    tickFormatter={(h: number) =>
+                      `${String(h).padStart(2, "0")}h`
+                    }
+                  />
+                  <YAxis
+                    orientation="right"
+                    width={Y_AXIS_WIDTH}
+                    tick={false}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  {hasW1 && (
+                    <Bar
+                      dataKey="w1"
+                      fill={COLOR_W1}
+                      fillOpacity={0.25}
+                      barSize={6}
+                      radius={[2, 2, 0, 0]}
+                      isAnimationActive={false}
+                    />
+                  )}
                   <Bar
                     dataKey="today"
                     barSize={6}
@@ -719,51 +820,72 @@ export function SalesStatus({
                       />
                     ))}
                   </Bar>
-                )}
-              </ComposedChart>
-            </ChartContainer>
-          </div>
-          <div className="text-meta flex flex-wrap items-center gap-x-4 gap-y-1">
-            <Legend
-              line={<span className="h-0.5 w-4 rounded-full bg-chart-1" />}
-            >
-              {t("monitor.sales.today")}
-            </Legend>
-            {ahead && (
+                </ComposedChart>
+              </ChartContainer>
+            </div>
+          )}
+          {!stacked && (
+            <div className="text-meta flex flex-wrap items-center gap-x-4 gap-y-1">
               <Legend
-                line={
-                  <span className="w-4 border-t-2 border-dotted border-chart-1" />
-                }
+                line={<span className="h-0.5 w-4 rounded-full bg-chart-1" />}
+              >
+                {t("monitor.sales.today")}
+              </Legend>
+              {ahead && (
+                <Legend
+                  line={
+                    <span className="w-4 border-t-2 border-dotted border-chart-1" />
+                  }
+                >
+                  {t("monitor.sales.projected")}
+                </Legend>
+              )}
+              {band && (
+                <Legend
+                  line={<span className="h-2.5 w-4 rounded-sm bg-chart-1/30" />}
+                >
+                  {t("monitor.sales.inner")}
+                </Legend>
+              )}
+              {band && (
+                <Legend
+                  line={<span className="h-2.5 w-4 rounded-sm bg-chart-1/10" />}
+                >
+                  {t("monitor.sales.outer")}
+                </Legend>
+              )}
+              {hasW1 && (
+                <Legend
+                  line={
+                    <span className="w-4 border-t-2 border-dashed border-muted-foreground/60" />
+                  }
+                >
+                  {refLabel.w1}
+                </Legend>
+              )}
+            </div>
+          )}
+          {stacked && (
+            <div className="text-meta flex flex-wrap items-center gap-x-4 gap-y-1">
+              <Legend
+                line={<span className="size-2.5 rounded-sm bg-foreground/70" />}
+              >
+                {t("monitor.sales.capturedShort")}
+              </Legend>
+              <Legend
+                line={<span className="size-2.5 rounded-sm bg-foreground/25" />}
               >
                 {t("monitor.sales.projected")}
               </Legend>
-            )}
-            {band && (
-              <Legend
-                line={<span className="h-2.5 w-4 rounded-sm bg-chart-1/30" />}
-              >
-                {t("monitor.sales.inner")}
-              </Legend>
-            )}
-            {band && (
-              <Legend
-                line={<span className="h-2.5 w-4 rounded-sm bg-chart-1/10" />}
-              >
-                {t("monitor.sales.outer")}
-              </Legend>
-            )}
-            {hasW1 && (
-              <Legend
-                line={
-                  <span className="w-4 border-t-2 border-dashed border-muted-foreground/60" />
-                }
-              >
-                {refLabel.w1}
-              </Legend>
-            )}
-          </div>
-          {stacked && (
-            <div className="text-meta flex flex-wrap items-center gap-x-4 gap-y-1">
+              {hasW1 && (
+                <Legend
+                  line={
+                    <span className="w-4 border-t-2 border-dashed border-muted-foreground/60" />
+                  }
+                >
+                  {refLabel.w1}
+                </Legend>
+              )}
               {stacks.map((st) => (
                 <Legend
                   key={st.key}

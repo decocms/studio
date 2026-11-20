@@ -193,6 +193,8 @@ export const monitor = {
   "monitor.sales.projection": "Projection for {to}",
   "monitor.sales.opened": "opened at {amount}",
   "monitor.sales.chart": "Sales so far, today against W-1, and the projection",
+  "monitor.sales.stackedChart":
+    "Sales per hour by store: captured, then projected, against W-1",
   "monitor.sales.bars": "Sales per hour, today against W-1",
   "monitor.sales.today": "today",
   "monitor.sales.projected": "projection",
