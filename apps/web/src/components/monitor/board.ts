@@ -12,6 +12,7 @@ import type {
   OrderMonitorDay,
   OrderMonitorStatus,
   OrderMonitorStore,
+  SiteTrafficDay,
 } from "@decocms/shared/order-monitor";
 
 export type MonitorStatus = OrderMonitorStatus;
@@ -221,6 +222,8 @@ export interface MonitorBoard {
   kpis: Kpi[];
   /** Orders by sales channel, per hour, across the stores in scope. */
   channels: OrderMonitorChannel[] | null;
+  /** Today's purchases by device, from the sites' analytics. */
+  devices: SiteTrafficDay["devices"] | null;
   stores: MonitoredStore[];
   deploys: Deploy[] | null;
   /** Every deploy and rollout of the last two weeks, oldest first. */

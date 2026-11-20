@@ -154,11 +154,12 @@ export interface OrderMonitorForecast {
   /** The projection before the day's first order: the baseline's whole day. */
   initial: { orders: number; revenue: number };
   /**
-   * How far the rest could go: at each clock hour's end, the least and most
-   * any reference day brought from `done` up to then, at today's level.
-   * Cumulative, unlike `orders`; 0 for hours gone.
+   * How far the rest could go: what each reference day (`daysAgo`) brought
+   * from `done` up to each clock hour's end, at today's level. Cumulative,
+   * unlike `orders`; 0 for hours gone. The UI draws its quantiles as bands,
+   * after adding stores up day by day.
    */
-  range: Record<"orders" | "revenue", { low: number[]; high: number[] }>;
+  paths: { daysAgo: number; orders: number[]; revenue: number[] }[];
 }
 
 /** The org's sites' traffic (Deco Analytics, read from the data lake), per clock hour of the local day. */
@@ -174,7 +175,8 @@ export interface SiteTrafficDay {
     visitors: { today: number; d1: number; w1: number; y1: number };
     pageviews: { today: number; d1: number; w1: number; y1: number };
     conversions: { today: number; d1: number; w1: number; y1: number };
-  };
+  } /** Today's purchases and their revenue per clock hour, by the device the sites saw them on. */;
+  devices: { id: string; conversions: number[]; revenue: number[] }[];
 }
 
 export interface OrderMonitorPush {

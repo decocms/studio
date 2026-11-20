@@ -3,10 +3,15 @@ import type { SiteTrafficDay } from "@decocms/shared/order-monitor";
 
 let hourly: Record<string, unknown>[] = [];
 let headline: Record<string, unknown>[] = [];
+let devices: Record<string, unknown>[] = [];
 
 mock.module("../customer-lake/client", () => ({
   queryCustomerLake: async (_org: string, sql: string) =>
-    sql.includes("AS h,") ? hourly : headline,
+    sql.includes("device")
+      ? devices
+      : sql.includes("AS h,")
+        ? hourly
+        : headline,
 }));
 
 const { addSiteTraffic, loadSiteTraffic } = await import("./site-traffic");
@@ -44,6 +49,21 @@ it("leaves today's hours after now empty and takes the headline from the day's u
   expect(day?.headline.conversions).toEqual({ today: 1, d1: 0, w1: 0, y1: 0 });
 });
 
+it("splits today's purchases and revenue by device", async () => {
+  hourly = [{ days_ago: "0", h: "10", visitors: "5", conversions: "3" }];
+  headline = [];
+  devices = [
+    { h: "10", device: "mobile", conversions: "2", revenue: "300" },
+    { h: "10", device: "desktop", conversions: "1", revenue: "200" },
+  ];
+  const day = await loadSiteTraffic("org", AT, "America/Sao_Paulo", "");
+  const mobile = day?.devices.find((d) => d.id === "mobile");
+  expect(mobile?.conversions[10]).toBe(2);
+  expect(mobile?.revenue[10]).toBe(300);
+  expect(day?.devices.map((d) => d.id).sort()).toEqual(["desktop", "mobile"]);
+  devices = [];
+});
+
 const flat = (n: number) => new Array<number>(24).fill(n);
 const upTo = (n: number, hour: number) =>
   flat(n).map((v, h) => (h <= hour ? v : null));
@@ -61,6 +81,7 @@ function day(n: number, hour: number): SiteTrafficDay {
     pageviews: series,
     conversions: series,
     headline: { visitors: head, pageviews: head, conversions: head },
+    devices: [{ id: "mobile", conversions: flat(n), revenue: flat(10 * n) }],
   };
 }
 
@@ -78,6 +99,13 @@ describe("addSiteTraffic", () => {
       w1: 45,
       y1: 60,
     });
+  });
+
+  it("adds devices up by name", () => {
+    const sum = addSiteTraffic([day(10, 11), day(5, 13)])!;
+    expect(sum.devices).toEqual([
+      { id: "mobile", conversions: flat(15), revenue: flat(150) },
+    ]);
   });
 
   it("has nothing when no org has traffic", () => {

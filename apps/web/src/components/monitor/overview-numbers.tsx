@@ -212,7 +212,10 @@ export function OverviewNumbers({
   kpis: board,
   deploys,
   dayStart,
+  sales = false,
 }: {
+  /** The sales card is above: it already shows orders and conversion. */
+  sales?: boolean;
   /** The site the Overview is on; none across the org. */
   project: SiteProject | undefined;
   today: boolean;
@@ -372,12 +375,13 @@ export function OverviewNumbers({
 
   // Only numbers with a figure, a change and a shape are drawn here.
   const candidates: (OverviewNumber | false)[] = [
-    boardCard(
-      "orders",
-      t("monitor.overview.orders"),
-      t("monitor.overview.ordersHelpStore"),
-      fmtInt,
-    ),
+    !sales &&
+      boardCard(
+        "orders",
+        t("monitor.overview.orders"),
+        t("monitor.overview.ordersHelpStore"),
+        fmtInt,
+      ),
     trafficCard(
       "visitors",
       t("monitor.overview.visitors"),
@@ -399,13 +403,14 @@ export function OverviewNumbers({
       fmtInt,
       { better: "down" },
     ),
-    boardCard(
-      "conversion",
-      t("monitor.overview.conversion"),
-      t("monitor.overview.conversionHelp"),
-      (v) => `${(v * 100).toFixed(2)}%`,
-      { rate: true },
-    ),
+    !sales &&
+      boardCard(
+        "conversion",
+        t("monitor.overview.conversion"),
+        t("monitor.overview.conversionHelp"),
+        (v) => `${(v * 100).toFixed(2)}%`,
+        { rate: true },
+      ),
     boardCard(
       "errors",
       t("monitor.overview.errors"),

@@ -104,15 +104,27 @@ const withEve = (
   ...day.days[d][kind],
 ];
 
+/** A reference day under this share of the others' median is one the lake holds only part of. */
+const PARTIAL_DAY = 0.2;
+
 /**
  * The reference days the lake holds: not still backfilling, and with orders.
  * A day without a single order is one the ingest never saw, and as a zero it
- * would drag the median down to nothing.
+ * would drag the median down to nothing. A day the backfill's edge cut short
+ * is as wrong, and as M-1 it reads as +700%.
  */
-const referenceDays = (day: StoreDay) =>
-  BASELINE_DAYS.filter(
+const referenceDays = (day: StoreDay) => {
+  const seen = BASELINE_DAYS.filter(
     (d) => !day.backfill?.days.includes(d) && sum(day.days[d].placed) > 0,
   );
+  const totals = new Map(seen.map((d) => [d, sum(day.days[d].placed)]));
+  return seen.filter(
+    (d) =>
+      totals.get(d)! >=
+      PARTIAL_DAY *
+        median(seen.filter((o) => o !== d).map((o) => totals.get(o)!)),
+  );
+};
 
 function series(day: StoreDay, kind: Kind) {
   return {
@@ -275,33 +287,35 @@ function projection(day: StoreDay, lv: number): OrderMonitorForecast | null {
   const initial = (m: Measure) =>
     baseSum(refs[m], WINDOW, BUCKETS_PER_DAY + WINDOW);
   // The cloud around it: what each reference day brought from now on, at
-  // today's level, summed up to the end of each hour; the lowest and highest.
-  const range = (m: Measure) => {
-    const byRef = refs[m].map((r) =>
-      HOURS.map(
-        (h) =>
-          lv *
-          sum(r, day.done + WINDOW, Math.max(day.done, h * 4 + 4) + WINDOW),
-      ),
+  // today's level, summed up to the end of each hour.
+  const path = (r: number[]) =>
+    HOURS.map(
+      (h) =>
+        lv * sum(r, day.done + WINDOW, Math.max(day.done, h * 4 + 4) + WINDOW),
     );
-    return {
-      low: HOURS.map((h) => Math.min(...byRef.map((x) => x[h]!))),
-      high: HOURS.map((h) => Math.max(...byRef.map((x) => x[h]!))),
-    };
-  };
   return {
     orders: rest("placed"),
     revenue: rest("revenue"),
     close: { orders: close("placed"), revenue: close("revenue") },
     initial: { orders: initial("placed"), revenue: initial("revenue") },
-    range: { orders: range("placed"), revenue: range("revenue") },
+    paths: referenceDays(day).map((daysAgo, i) => ({
+      daysAgo,
+      orders: path(refs.placed[i]!),
+      revenue: path(refs.revenue[i]!),
+    })),
   };
 }
 
 /** Day `d` up to the same time of day as day 0; null when the lake has no order of it. */
 function salesSoFar(day: StoreDay, d: DayAgo): OrderMonitorSales | null {
   const s = day.days[d];
-  if (d !== 0 && (sum(s.placed) === 0 || day.backfill?.days.includes(d))) {
+  const partial =
+    (BASELINE_DAYS as readonly number[]).includes(d) &&
+    !referenceDays(day).includes(d as (typeof BASELINE_DAYS)[number]);
+  if (
+    d !== 0 &&
+    (sum(s.placed) === 0 || day.backfill?.days.includes(d) || partial)
+  ) {
     return null;
   }
   return {

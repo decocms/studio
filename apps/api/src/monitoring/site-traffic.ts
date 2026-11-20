@@ -36,6 +36,14 @@ const HEADLINE_SQL = `
   WHERE ${WHERE} AND toHour(hour, {tz:String}) <= toHour(${AT}, {tz:String})
   GROUP BY days_ago`;
 
+// Today only, for the sales chart's split by device.
+const DEVICES_SQL = `
+  SELECT toHour(hour, {tz:String}) AS h, device,
+    sum(conversions) AS conversions, sum(revenue) AS revenue
+  FROM customer_lake.site_traffic_hourly FINAL
+  WHERE ${WHERE} AND ${daysAgo} = 0
+  GROUP BY h, device`;
+
 /** The local day of `at` in `timezone`; null when no site has synced a row in its window. */
 export async function loadSiteTraffic(
   organizationId: string,
@@ -48,9 +56,16 @@ export async function loadSiteTraffic(
     tz: timezone,
     site: siteId,
   };
-  const [hourly, headline] = await Promise.all([
+  const [hourly, headline, byDevice] = await Promise.all([
     queryCustomerLake(organizationId, HOURLY_SQL, params),
     queryCustomerLake(organizationId, HEADLINE_SQL, params),
+    // The split is extra: without it the chart keeps its one series.
+    queryCustomerLake(organizationId, DEVICES_SQL, params).catch((err) => {
+      console.warn("[site-traffic] devices read failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }),
   ]);
   if (hourly.length === 0) return null;
 
@@ -89,6 +104,24 @@ export async function loadSiteTraffic(
     };
   };
 
+  const devices = new Map<
+    string,
+    { conversions: number[]; revenue: number[] }
+  >();
+  for (const row of byDevice) {
+    const id = String(row.device || "unknown");
+    let d = devices.get(id);
+    if (!d) {
+      d = {
+        conversions: new Array(24).fill(0),
+        revenue: new Array(24).fill(0),
+      };
+      devices.set(id, d);
+    }
+    d.conversions[Number(row.h)] = Number(row.conversions);
+    d.revenue[Number(row.h)] = Number(row.revenue);
+  }
+
   return {
     visitors: day("visitors"),
     pageviews: day("pageviews"),
@@ -98,6 +131,7 @@ export async function loadSiteTraffic(
       pageviews: total("pageviews"),
       conversions: total("conversions"),
     },
+    devices: [...devices].map(([id, d]) => ({ id, ...d })),
   };
 }
 
@@ -128,6 +162,20 @@ export function addSiteTraffic(
     w1: add((d) => d.headline[m].w1),
     y1: add((d) => d.headline[m].y1),
   });
+  const devices = new Map<
+    string,
+    { conversions: number[]; revenue: number[] }
+  >();
+  for (const x of xs.flatMap((d) => d.devices ?? [])) {
+    const d = devices.get(x.id) ?? {
+      conversions: new Array(24).fill(0),
+      revenue: new Array(24).fill(0),
+    };
+    devices.set(x.id, {
+      conversions: d.conversions.map((v, h) => v + (x.conversions[h] ?? 0)),
+      revenue: d.revenue.map((v, h) => v + (x.revenue[h] ?? 0)),
+    });
+  }
   return {
     visitors: measure("visitors"),
     pageviews: measure("pageviews"),
@@ -137,5 +185,6 @@ export function addSiteTraffic(
       pageviews: head("pageviews"),
       conversions: head("conversions"),
     },
+    devices: [...devices].map(([id, d]) => ({ id, ...d })),
   };
 }
