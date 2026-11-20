@@ -37,6 +37,38 @@ function meta(): LiveMeta {
 }
 
 describe("resolveSectionTitleTemplate", () => {
+  test("falls back to @titleBy on the section's props", () => {
+    const rt = "site/sections/Feature.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          [btoa(rt)]: { allOf: [{ $ref: "#/definitions/FeatureProps" }] },
+          FeatureProps: {
+            titleBy: "name",
+            type: "object",
+            properties: { name: { type: "string" } },
+          },
+        },
+      },
+    };
+    expect(resolveSectionTitleTemplate(rt, m)).toBe("{{{name}}}");
+  });
+
+  test("an @title template wins over @titleBy", () => {
+    const rt = "site/sections/Both.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          [btoa(rt)]: { allOf: [{ $ref: "#/definitions/BothProps" }] },
+          BothProps: { title: "Both {{x}}", titleBy: "name" },
+        },
+      },
+    };
+    expect(resolveSectionTitleTemplate(rt, m)).toBe("Both {{x}}");
+  });
+
   test("reads @title template from btoa(resolveType) Props schema via allOf", () => {
     expect(resolveSectionTitleTemplate(DEPARTMENT_SHOP_RT, meta())).toBe(
       TITLE_TPL,
@@ -105,6 +137,23 @@ describe("resolveSectionTitleTemplate", () => {
 });
 
 describe("getSectionDisplayTitle", () => {
+  test("names a section by its @titleBy prop, and falls back when it's empty", () => {
+    const rt = "site/sections/Feature.tsx";
+    const m: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          [btoa(rt)]: { allOf: [{ $ref: "#/definitions/FeatureProps" }] },
+          FeatureProps: { titleBy: "name", type: "object" },
+        },
+      },
+    };
+    expect(
+      getSectionDisplayTitle({ __resolveType: rt, name: "Featured story" }, m),
+    ).toBe("Featured story");
+    expect(getSectionDisplayTitle({ __resolveType: rt }, m)).toBeUndefined();
+  });
+
   test("returns undefined without meta", () => {
     const raw = { __resolveType: DEPARTMENT_SHOP_RT, kicker: "Nike" };
     expect(getSectionDisplayTitle(raw, null)).toBeUndefined();
