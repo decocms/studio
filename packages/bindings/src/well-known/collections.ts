@@ -78,7 +78,9 @@ export const WhereExpressionSchema: z.ZodType<WhereExpression> = z.lazy(() =>
  * the two never drift apart.
  */
 export function likePatternToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Collapse `%` runs (`%%` ≡ `%` in LIKE) to avoid adjacent `.*` ReDoS.
+  const collapsed = pattern.replace(/%+/g, "%");
+  const escaped = collapsed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const translated = escaped.replace(/%/g, ".*").replace(/_/g, ".");
   return new RegExp(`^${translated}$`, "i");
 }
