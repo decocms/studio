@@ -30,10 +30,10 @@ export const thread = {
   "thread.branchPicker.localTab": "Local",
   "thread.branchPicker.localLabel": "Local",
   "thread.branchPicker.localHint":
-    "Point preview and the CMS at your own dev server. Paste a public tunnel URL (e.g. ngrok, cloudflared) reachable from this browser.",
+    "Point preview and the CMS at your own dev server. Paste its address, e.g. http://localhost:8000. A public tunnel URL (ngrok, cloudflared) works too.",
   "thread.branchPicker.localhost.label": "Localhost",
   "thread.branchPicker.localhost.connected": "Connected",
-  "thread.branchPicker.localUrlLabel": "Local tunnel URL",
+  "thread.branchPicker.localUrlLabel": "Local URL",
   "thread.branchPicker.localUrlPlaceholder": "http://localhost:8000",
   "thread.branchPicker.localTurnOff": "Turn off",
   "thread.branchPicker.moreActions": "More actions",
