@@ -45,3 +45,7 @@ export const GITHUB_READS_QUEUE = "task-board-github-reads";
  *  wait spends its time in a durable sleep, and a cap would let a busy board
  *  hold every slot asleep. */
 export const BOARD_TRANSITIONS_QUEUE = "board-transitions";
+/** Fires held until the run working their card ends
+ *  (`automations/await-live-run.ts`). No concurrency cap, for the same reason
+ *  as the settle waits: they spend their time asleep. */
+export const LIVE_RUN_WAITS_QUEUE = "live-run-waits";

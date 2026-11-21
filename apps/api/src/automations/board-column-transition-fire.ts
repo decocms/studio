@@ -19,6 +19,7 @@ import {
   SETTLE_MS,
   transitionMatches,
 } from "./board-column-transition";
+import { itemHasLiveRun } from "./await-live-run";
 import type { FireAutomationContext } from "./dbos-workflow";
 
 type BoardColumnTrigger = AutomationTrigger & { automation: Automation };
@@ -36,6 +37,12 @@ export interface BoardTransitionDeps {
   fire: (
     ctx: FireAutomationContext,
     opts: { idempotencyKey: string },
+  ) => Promise<void>;
+  /** Hand it over once no run works the card
+   *  (`durableAwaitLiveRunThenFire`). */
+  fireAfterLiveRun: (
+    ctx: FireAutomationContext,
+    opts: { itemId: string; idempotencyKey: string },
   ) => Promise<void>;
 }
 
@@ -107,21 +114,31 @@ async function fireSettledMoves(
         ) {
           continue;
         }
-        await deps.fire(
-          {
-            automationId: trigger.automation_id,
-            organizationId: move.organizationId,
-            triggerId: trigger.id,
-            target: {
-              kind: "card",
-              itemId: move.itemId,
-              columnKey: move.to,
-              eventKey: move.activityId,
-              movedBy: move.actorId,
-            },
+        const fire: FireAutomationContext = {
+          automationId: trigger.automation_id,
+          organizationId: move.organizationId,
+          triggerId: trigger.id,
+          target: {
+            kind: "card",
+            itemId: move.itemId,
+            columnKey: move.to,
+            eventKey: move.activityId,
+            movedBy: move.actorId,
           },
-          { idempotencyKey: `board:${trigger.id}:${move.activityId}` },
-        );
+        };
+        const idempotencyKey = `board:${trigger.id}:${move.activityId}`;
+        // Often the run moved the card itself as its last step; fired now, the
+        // card would be skipped as busy.
+        if (
+          await itemHasLiveRun(deps.taskBoard, move.itemId, move.organizationId)
+        ) {
+          await deps.fireAfterLiveRun(fire, {
+            itemId: move.itemId,
+            idempotencyKey,
+          });
+        } else {
+          await deps.fire(fire, { idempotencyKey });
+        }
         fired++;
       }
     } catch (err) {
