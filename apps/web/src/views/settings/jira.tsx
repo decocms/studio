@@ -152,6 +152,9 @@ function ConnectFormFields() {
           placeholder={t("settings.jira.tokenPlaceholder")}
           autoComplete="off"
         />
+        <p className="text-xs text-muted-foreground">
+          {t("settings.jira.tokenHint")}
+        </p>
       </div>
       <Button
         size="sm"
