@@ -1087,8 +1087,14 @@ function CommerceDiscoveryReady({
               isSubmitting || !reportApp.virtualMcpId || !hasConnectedSource
             }
           >
-            {isSubmitting ? "Abrindo relatório..." : "Ver relatório completo"}
-            {!isSubmitting ? <ArrowRight size={18} /> : null}
+            {isSubmitting
+              ? "Abrindo relatório..."
+              : !hasConnectedSource
+                ? "Conecte ao menos uma ferramenta para continuar"
+                : "Ver relatório completo"}
+            {!isSubmitting && hasConnectedSource ? (
+              <ArrowRight size={18} />
+            ) : null}
           </Button>
         </div>
       </div>
