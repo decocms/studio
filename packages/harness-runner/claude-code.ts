@@ -17,7 +17,8 @@
  * are the user's own questions and plans (see `interactiveToolHook`).
  */
 
-import { isAbsolute } from "node:path";
+import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import {
   forkSession,
   getSessionMessages,
@@ -115,6 +116,41 @@ const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
 
 /** A pod hosts one agent, so these only lead the model to hand the question to itself. */
 const AGENT_TEAM_TOOLS = ["ListAgents", "SendMessage", "Workflow"];
+
+/** Built-ins backed by something a pod lacks: a session that outlives the turn, a claude.ai login, a second checkout. */
+const POD_UNBACKED_TOOLS = [
+  // A schedule fires between turns, when no run is reading the session.
+  "CronCreate",
+  "CronDelete",
+  "CronList",
+  // Syncs claude.ai design projects, through a claude.ai login.
+  "DesignSync",
+  // Notifies the user's terminal or their phone over Remote Control.
+  "PushNotification",
+  // Manages claude.ai routines, through a claude.ai login.
+  "RemoteTrigger",
+  // The daemon checkpoints and previews only the checkout it cloned.
+  "EnterWorktree",
+  "ExitWorktree",
+  // The agent type that edits a terminal status line.
+  "Agent(statusline-setup)",
+];
+
+/** Bundled skills that only drive something a pod lacks, hidden by name so every other skill stays discovered. */
+const POD_UNBACKED_SKILLS = [
+  // Its tools are the scheduling ones disallowed above.
+  "loop",
+  // Its tool is RemoteTrigger.
+  "schedule",
+  // Its tool is Workflow.
+  "workflow-authoring",
+  // There is no terminal to bind keys in.
+  "keybindings-help",
+  // Studio configures the run's Claude Code; nobody keeps a settings.json for it.
+  "update-config",
+  // Nothing prompts under bypassPermissions.
+  "fewer-permission-prompts",
+];
 
 const ORG_FS_INSTRUCTION =
   "The organization filesystem is mounted at `/app/org/`; an `org/...` path " +
@@ -544,6 +580,25 @@ const planModeGate =
             "Plan mode: do not make changes. Present the plan with ExitPlanMode.",
         };
 
+/**
+ * Hides each pod-unbacked skill from the listing and the Skill tool. The
+ * override is keyed by name alone, so a name the org or the checkout defines is
+ * left on: theirs is the skill that name resolves to. Exported for the unit test.
+ */
+export function skillOverrides(
+  cwd: string | undefined,
+): NonNullable<Settings["skillOverrides"]> {
+  const dirs = [
+    join(claudeConfigDir(), "skills"),
+    ...(cwd ? [join(cwd, ".claude", "skills")] : []),
+  ];
+  return Object.fromEntries(
+    POD_UNBACKED_SKILLS.filter(
+      (name) => !dirs.some((dir) => existsSync(join(dir, name))),
+    ).map((name) => [name, "off" as const]),
+  );
+}
+
 type MemorySettings = Pick<
   Settings,
   "autoMemoryEnabled" | "autoMemoryDirectory"
@@ -617,7 +672,7 @@ export function buildOptions(args: {
   const memory = memorySettings(input.memory);
   return {
     ...(cwd ? { cwd } : {}),
-    ...(memory ? { settings: memory } : {}),
+    settings: { skillOverrides: skillOverrides(cwd), ...memory },
     ...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
     ...(input.studioCli && studioCliHome
       ? { env: studioCliEnv(process.env, studioCliHome) }
@@ -664,6 +719,7 @@ export function buildOptions(args: {
       ...new Set([
         ...DEFERRED_RESULT_TOOLS,
         ...AGENT_TEAM_TOOLS,
+        ...POD_UNBACKED_TOOLS,
         ...(input.agent.disallowedTools ?? []),
       ]),
     ],

@@ -16,7 +16,7 @@ interface Sent {
   resumed: boolean;
   images: number;
   historyImages: number;
-  /** The flag-layer settings of the `query` call whose CLI took this request. */
+  /** The memory settings of the `query` call whose CLI took this request. */
   settings: unknown;
 }
 
@@ -37,6 +37,14 @@ let queries = 0;
 let provider: Provider = () => null;
 /** Errors the next `query` calls throw before producing anything, in order. */
 let throws: string[] = [];
+
+/** The memory part of a `query` call's flag-layer settings; undefined when it sets none. */
+const memoryOf = (settings: Record<string, unknown> = {}) => {
+  const memory = Object.fromEntries(
+    Object.entries(settings).filter(([key]) => key !== "skillOverrides"),
+  );
+  return Object.keys(memory).length ? memory : undefined;
+};
 
 const imagesIn = (content: unknown): number =>
   Array.isArray(content)
@@ -129,7 +137,11 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
     prompt:
       | string
       | AsyncIterable<{ uuid?: string; message: { content: unknown } }>;
-    options: { resume?: string; sessionId?: string; settings?: unknown };
+    options: {
+      resume?: string;
+      sessionId?: string;
+      settings?: Record<string, unknown>;
+    };
   }) => {
     queries++;
     const session = options.resume ?? options.sessionId ?? crypto.randomUUID();
@@ -144,7 +156,7 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
           prompt,
           undefined,
           true,
-          options.settings,
+          memoryOf(options.settings),
         );
         return;
       }
@@ -156,7 +168,7 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
           message.message.content,
           message.uuid,
           first,
-          options.settings,
+          memoryOf(options.settings),
         );
         first = false;
       }
