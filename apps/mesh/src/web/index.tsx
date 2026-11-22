@@ -1,4 +1,26 @@
 import { createRoot } from "react-dom/client";
+// Figma capture — read hash before TanStack Router clears it (temporary)
+{
+  const _p = new URLSearchParams(window.location.hash.slice(1));
+  const _cid = _p.get("figmacapture");
+  const _ep = _p.get("figmaendpoint");
+  const _delay = parseInt(_p.get("figmadelay") ?? "1000", 10);
+  if (_cid && _ep) {
+    const _s = document.createElement("script");
+    _s.src = "https://mcp.figma.com/mcp/html-to-design/capture.js";
+    _s.onload = () => {
+      setTimeout(() => {
+        // @ts-ignore
+        window.figma?.captureForDesign({
+          captureId: _cid,
+          endpoint: decodeURIComponent(_ep),
+          selector: "body",
+        });
+      }, _delay);
+    };
+    document.head.appendChild(_s);
+  }
+}
 import { StrictMode, Suspense } from "react";
 import { Providers } from "@/web/providers/providers";
 import {
