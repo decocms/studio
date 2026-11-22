@@ -62,7 +62,7 @@ export function CollectionTable<T = Record<string, unknown>>({
 
   function getHeaderClass(idx: number, total: number) {
     let base =
-      "px-4 py-2 text-left font-mono font-normal text-muted-foreground text-[11px] h-9 uppercase tracking-wider";
+      "px-5 py-2 text-left font-mono font-normal text-muted-foreground text-[11px] h-9 uppercase tracking-wider";
     if (idx === total - 1) base += " w-8";
     return base;
   }

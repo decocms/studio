@@ -183,7 +183,7 @@ function MonitoringLogsTableContent({
           <Table className="w-full border-collapse">
             <TableHeader className="border-b-0 z-20">
               <TableRow className="h-9 hover:bg-transparent border-b border-border">
-                <TableHead className="w-5" />
+                <TableHead className="w-12 md:w-16 px-2 md:px-4" />
                 <TableHead className="pr-2 md:pr-4 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                   {t("orgs.audit.toolConnection")}
                 </TableHead>
