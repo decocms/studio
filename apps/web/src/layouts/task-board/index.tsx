@@ -712,6 +712,39 @@ function Lanes({
   const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
+  // Native `dragover` fires far more often than the screen repaints, and each
+  // one otherwise re-rendered the whole board — collapse a drag gesture's
+  // events down to at most one state commit per frame, reading whichever
+  // position was most recent when the frame lands.
+  const pendingDropRef = useRef<{
+    status: TaskBoardItemStatus;
+    beforeId: string | null;
+  } | null>(null);
+  const dropRafRef = useRef<number | null>(null);
+  const scheduleDropTarget = (
+    status: TaskBoardItemStatus,
+    beforeId: string | null,
+  ) => {
+    pendingDropRef.current = { status, beforeId };
+    if (dropRafRef.current !== null) return;
+    dropRafRef.current = requestAnimationFrame(() => {
+      dropRafRef.current = null;
+      const pending = pendingDropRef.current;
+      if (!pending) return;
+      setOverLane(pending.status);
+      setDropBeforeId(pending.beforeId);
+    });
+  };
+  const clearDropTarget = () => {
+    pendingDropRef.current = null;
+    if (dropRafRef.current !== null) {
+      cancelAnimationFrame(dropRafRef.current);
+      dropRafRef.current = null;
+    }
+    setOverLane(null);
+    setDropBeforeId(null);
+  };
+
   // Re-run FLIP whenever a card's lane or ordering changes.
   const signature = items.map((t) => `${t.id}:${t.status}`).join(",");
   useFlipLanes(boardRef, signature);
@@ -737,29 +770,29 @@ function Lanes({
               key={status}
               onDragOver={(e) => {
                 e.preventDefault();
-                setOverLane(status);
                 // Only reached when not over a card (cards stop propagation),
                 // i.e. the empty area below the last card — drop at the end.
-                setDropBeforeId(null);
+                scheduleDropTarget(status, null);
               }}
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                  setOverLane(null);
-                  setDropBeforeId(null);
+                  clearDropTarget();
                 }
               }}
               onDrop={(e) => {
                 e.preventDefault();
                 const id = e.dataTransfer.getData("text/plain");
                 if (id) {
-                  onMove(
-                    id,
-                    status,
-                    insertSortOrder(laneItems, dropBeforeId, id),
-                  );
+                  // The rAF-throttled state can be a frame behind the pointer
+                  // — prefer whatever position is freshest for this lane.
+                  const pending = pendingDropRef.current;
+                  const beforeId =
+                    pending?.status === status
+                      ? pending.beforeId
+                      : dropBeforeId;
+                  onMove(id, status, insertSortOrder(laneItems, beforeId, id));
                 }
-                setOverLane(null);
-                setDropBeforeId(null);
+                clearDropTarget();
               }}
               className={cn(
                 "flex w-[300px] shrink-0 flex-col rounded-xl p-1 transition-colors",
@@ -822,14 +855,16 @@ function Lanes({
                       onDragOverCard={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setOverLane(status);
                         const rect = e.currentTarget.getBoundingClientRect();
                         const before = e.clientY - rect.top < rect.height / 2;
                         if (before) {
-                          setDropBeforeId(item.id);
+                          scheduleDropTarget(status, item.id);
                         } else {
                           const index = laneItems.indexOf(item);
-                          setDropBeforeId(laneItems[index + 1]?.id ?? null);
+                          scheduleDropTarget(
+                            status,
+                            laneItems[index + 1]?.id ?? null,
+                          );
                         }
                       }}
                     />
