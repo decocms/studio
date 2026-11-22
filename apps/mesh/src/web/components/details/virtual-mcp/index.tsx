@@ -533,6 +533,8 @@ function VirtualMcpDetailViewWithData({
 
   const handleSwitchInstance = (oldId: string, newId: string) => {
     const current = form.getValues("connections");
+    // Don't swap if newId already exists (would create a duplicate)
+    if (current.some((c) => c.connection_id === newId)) return;
     form.setValue(
       "connections",
       current.map((c) =>

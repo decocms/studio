@@ -326,6 +326,26 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         throw new HTTPException(400, { message: "No models available" });
       }
 
+      // Check model permissions (same enforcement as the stream endpoint)
+      const allowedModels = await fetchModelPermissions(
+        ctx.db,
+        organization.id,
+        ctx.auth?.user?.role,
+      );
+
+      if (
+        allowedModels !== undefined &&
+        !checkModelPermission(
+          allowedModels,
+          credentialId,
+          fastModelInfo.modelId,
+        )
+      ) {
+        throw new HTTPException(403, {
+          message: "Model not allowed for your role",
+        });
+      }
+
       const model = createLanguageModel(provider, {
         id: fastModelInfo.modelId,
         title: fastModelInfo.title,

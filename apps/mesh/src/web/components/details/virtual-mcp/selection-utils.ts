@@ -73,5 +73,5 @@ export function getSelectionSummary(connection: VirtualMCPConnection): string {
     parts.push(`${connection.selected_prompts.length} prompts`);
   }
 
-  return parts.length > 0 ? parts.join(", ") : "All";
+  return parts.length > 0 ? parts.join(", ") : "None";
 }
