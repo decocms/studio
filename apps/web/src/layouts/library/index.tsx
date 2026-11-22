@@ -529,6 +529,18 @@ export function LibraryPage({
   const syncs = useOrgRepoSyncs();
   const publicSets = useOrgFsPublicSets();
   const place = libraryPlaceOf(location);
+  const syncPlaces = (syncs.data ?? []).map((sync) => ({
+    key: sync.volume,
+    label: sync.volume,
+    path: sync.volume,
+  }));
+  const skillsLabel = t("library.library.placeSkills");
+  /** A repo sync named like the shared skills would show the same tab twice. */
+  const showSharedSkills =
+    (publicSets.data?.length ?? 0) > 0 &&
+    !syncPlaces.some(
+      (p) => p.label.toLowerCase() === skillsLabel.toLowerCase(),
+    );
   const places =
     root === HOME_MOUNT_PATH
       ? [
@@ -548,20 +560,10 @@ export function LibraryPage({
             label: t("library.library.placeOutputs"),
             path: "outputs",
           },
-          ...((publicSets.data?.length ?? 0) > 0
-            ? [
-                {
-                  key: "public",
-                  label: t("library.library.placeSkills"),
-                  path: "public",
-                },
-              ]
+          ...(showSharedSkills
+            ? [{ key: "public", label: skillsLabel, path: "public" }]
             : []),
-          ...(syncs.data ?? []).map((sync) => ({
-            key: sync.volume,
-            label: sync.volume,
-            path: sync.volume,
-          })),
+          ...syncPlaces,
         ]
       : [];
 

@@ -159,6 +159,11 @@ describe("namedFolderOf", () => {
       "",
     );
   });
+
+  it("skips thread-id folders", () => {
+    expect(namedFolderOf("thrd_-7Y7z5aB_c/a.png")).toBe("");
+    expect(namedFolderOf("chat/thrd_00b01744577e/a.png")).toBe("chat");
+  });
 });
 
 describe("libraryPlaceOf", () => {

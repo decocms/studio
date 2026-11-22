@@ -149,7 +149,7 @@ export function libraryTrail(browsePath: string, root: string): LibraryCrumb[] {
 }
 
 const GENERATED_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|thrd_[\w-]+)$/i;
 
 /** A folder named by an id the product generated, such as a chat's. */
 export function isGeneratedId(segment: string): boolean {
