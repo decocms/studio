@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
 import { ConflictError } from "../../core/conflict-error";
+import { InvalidInputError } from "../../core/invalid-input-error";
 import { GatewayRefusalError } from "../../ai-providers/adapters/deco-ai-gateway";
 import { OrgBlockedError } from "../../core/org-notice-gate";
 import { GitProviderError } from "../../git-providers/types";
@@ -135,6 +136,9 @@ export const createToolsRestRoutes = () => {
       }
       if (error instanceof ConflictError) {
         return c.json({ error: error.message }, 409);
+      }
+      if (error instanceof InvalidInputError) {
+        return c.json({ error: error.message }, 400);
       }
       if (error instanceof OrgBlockedError) {
         return c.json({ error: error.message, code: error.code }, 403);
