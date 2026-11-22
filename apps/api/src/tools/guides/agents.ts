@@ -14,7 +14,7 @@ Read docs://agents.md for naming and instruction guidelines. Read docs://platfor
 Recommended tool order:
 1. Use COLLECTION_CONNECTIONS_LIST to inspect what capabilities already exist.
 2. If the user names a specific connection, use COLLECTION_CONNECTIONS_GET to verify details.
-3. If requirements are ambiguous, use user_ask before creating anything.
+3. If requirements are ambiguous, ask the user before creating anything.
 4. Use COLLECTION_VIRTUAL_MCP_CREATE with a focused title, description, connectionIds, instructions, and kickstart prompts.
 5. Use COLLECTION_VIRTUAL_MCP_GET to verify the saved configuration.
 
@@ -41,7 +41,7 @@ Read docs://agents.md for naming and instruction guidelines. Read docs://platfor
 Recommended tool order:
 1. Use COLLECTION_VIRTUAL_MCP_LIST or COLLECTION_VIRTUAL_MCP_GET to identify the target agent.
 2. Use COLLECTION_CONNECTIONS_LIST or COLLECTION_CONNECTIONS_GET if the update changes connected capabilities.
-3. If the requested change is unclear or materially changes behavior, use user_ask.
+3. If the requested change is unclear or materially changes behavior, ask the user.
 4. Use COLLECTION_VIRTUAL_MCP_UPDATE with the smallest necessary change set.
 5. Use COLLECTION_VIRTUAL_MCP_GET to confirm the final state.
 

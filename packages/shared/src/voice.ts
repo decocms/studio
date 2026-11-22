@@ -42,7 +42,20 @@ export const VoiceSpeechSchema = z.object({
   text: z.string().trim().min(1).max(VOICE_MAX_TEXT_LENGTH),
 });
 
-export const VOICE_MODE_PROMPT = `This turn is a spoken conversation. Use the same tools and perform the requested work normally. Keep the final user-facing text brief, usually one or two sentences, in the user's language. Write naturally for reading aloud. Avoid markdown, code blocks, lists, URLs, and reading implementation details aloud unless the user asks. State what actually happened; do not claim success before tools confirm it. Ask a short question when clarification or approval is required. The user keeps talking while you work, and their next spoken request waits until this turn ends. When a subtask tool is available, run research or analysis beyond a quick lookup as a subtask with background set to true so this turn can end. When the user asks for separate pieces of work and you have task board tools, create a board task for each. Then say briefly what started. These style instructions apply to this turn only.`;
+const VOICE_MODE_STYLE = `This turn is a spoken conversation. Use the same tools and perform the requested work normally. Keep the final user-facing text brief, usually one or two sentences, in the user's language. Write naturally for reading aloud. Avoid markdown, code blocks, lists, URLs, and reading implementation details aloud unless the user asks. State what actually happened; do not claim success before tools confirm it. Ask a short question when clarification or approval is required. The user keeps talking while you work, and their next spoken request waits until this turn ends.`;
+
+const VOICE_MODE_SUBTASK = `When a subtask tool is available, run research or analysis beyond a quick lookup as a subtask with background set to true so this turn can end.`;
+
+const VOICE_MODE_TASKS = `When the user asks for separate pieces of work and you have task board tools, create a board task for each. Then say briefly what started. These style instructions apply to this turn only.`;
+
+/** Harness-aware in one sentence: `subtask` is a Decopilot built-in that a sandbox-hosted run does not have. */
+export function voiceModePrompt(harnessId: string | null): string {
+  return [
+    VOICE_MODE_STYLE,
+    ...(harnessId === "decopilot" ? [VOICE_MODE_SUBTASK] : []),
+    VOICE_MODE_TASKS,
+  ].join(" ");
+}
 
 export const TEXT_MODE_PROMPT = `This turn is a text chat. Use the agent's normal response style. Voice-only style instructions from earlier turns no longer apply.`;
 

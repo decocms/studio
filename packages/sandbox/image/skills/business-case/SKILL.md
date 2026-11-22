@@ -83,8 +83,8 @@ month"`, `--value-label "revenue per extra order"`), at most 60 characters.
 5. **Ask when the request does not say where and what.** "I want to improve
    search" does not say what in search; ask. Everything else you can assume:
    assume it, and write the assumption on the card (`--assumption`).
-6. **One question at a time, with options.** Use the question tool
-   (`user_ask`, type `choice`) with 3 to 5 concrete options, the recommended
+6. **One question at a time, with options.** Use your question tool,
+   as a choice with 3 to 5 concrete options, the recommended
    one first. Build the options from what you know about this store (its
    pages, its data, its sector), not from a generic list. Never ask in plain
    prose what the tool can ask, and never ask two things in one question.
@@ -116,7 +116,7 @@ Otherwise, for each question:
 
 1. `ask --card scope --question "<the question>"` (or the card the question
    fills), so the card shows the question while it waits for the person.
-2. Ask with `user_ask`. Example for "I want to improve search": *"What
+2. Ask with your question tool. Example for "I want to improve search": *"What
    bothers you most in search?"* → "Searches that find nothing", "Weak
    autocomplete", "Filters hard to use", "Results in a bad order".
 3. With the answer, `set` the card and, when the scope is clearer, run

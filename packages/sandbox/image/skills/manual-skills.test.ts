@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseSkillMd } from "@decocms/shared/harness/skill-md";
+import { SANDBOX_STALE_NAMES } from "@decocms/shared/harness/sandbox-stale-names";
 
 /**
  * These folders sync into the `core` public set, which mounts read-only into
@@ -33,6 +34,23 @@ function meta(dir: string) {
 }
 
 describe("core public skills", () => {
+  it("no skill names a tool a sandbox run lacks", () => {
+    const dirs = readdirSync(SKILLS_DIR, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith("_"))
+      .map((e) => e.name);
+    expect(dirs.length).toBeGreaterThan(0);
+    for (const dir of dirs) {
+      const text = readFileSync(join(SKILLS_DIR, dir, "SKILL.md"), "utf8");
+      for (const stale of SANDBOX_STALE_NAMES) {
+        expect({ dir, stale, found: text.includes(stale) }).toEqual({
+          dir,
+          stale,
+          found: false,
+        });
+      }
+    }
+  });
+
   it.each(MANUAL_ONLY)("%s is not model-invocable", (dir) => {
     expect(meta(dir).disableModelInvocation).toBe(true);
   });

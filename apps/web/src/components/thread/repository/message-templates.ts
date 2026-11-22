@@ -21,11 +21,11 @@ export interface TemplateContext {
 
 /**
  * Suffix appended to every template. Reminds the agent that the user
- * triggered this by clicking a UI button, so `user_ask` is not needed unless
- * a real blocker shows up.
+ * triggered this by clicking a UI button, so a question is not needed unless
+ * a real blocker shows up. Names no question tool: each harness has its own.
  */
 const BUTTON_CONFIRMED =
-  "The user clicked this action deliberately — execute directly. Do not call user_ask unless you hit an actual problem outside the scope of this intent (missing auth, unresolvable conflict, a check with multiple plausible fixes).";
+  "The user clicked this action deliberately — execute directly. Do not stop to ask the user unless you hit an actual problem outside the scope of this intent (missing auth, unresolvable conflict, a check with multiple plausible fixes).";
 
 export function commitAndPush(ctx: Pick<TemplateContext, "branch">): string {
   return `Commit every pending change in the working tree with a concise conventional-commit message summarizing the diff, then push to \`origin/${ctx.branch}\`. If local commits are ahead of the remote, push those in the same invocation. ${BUTTON_CONFIRMED}`;

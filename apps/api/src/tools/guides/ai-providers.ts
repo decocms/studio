@@ -13,7 +13,7 @@ Read docs://ai-providers.md for provider types, authentication options, and cred
 
 Recommended tool order:
 1. Use AI_PROVIDERS_LIST to inspect available providers.
-2. If the user has not chosen a provider or auth method, use user_ask.
+2. If the user has not chosen a provider or auth method, ask the user.
 3. For providers that support auto-provisioning (supportsProvision=true), use AI_PROVIDER_PROVISION_KEY.
 4. For API-key providers, use AI_PROVIDER_KEY_CREATE.
 5. For OAuth providers, use AI_PROVIDER_OAUTH_URL and complete the exchange flow with AI_PROVIDER_OAUTH_EXCHANGE.
