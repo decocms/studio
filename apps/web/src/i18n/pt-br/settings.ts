@@ -1234,7 +1234,10 @@ export const settings = {
   "settings.secrets.sectionOrganization": "Organiza\u00e7\u00e3o",
   "settings.secrets.sectionPrivate": "Privado para mim",
   "settings.secrets.valueLabel": "Valor",
+  "settings.simpleModeSection.defaultBadge": "Padr\u00e3o",
   "settings.simpleModeSection.defaultModels": "Modelos padr\u00e3o",
+  "settings.simpleModeSection.description":
+    "Os modelos marcados como Padr\u00e3o s\u00e3o os recomendados e mudam quando a recomenda\u00e7\u00e3o muda. Escolha um modelo para mant\u00ea-lo.",
   "settings.simpleModeSection.failedToSave": "Falha ao salvar: {error}",
   "settings.simpleModeSection.notAvailableWithCurrentProvider":
     "N\u00e3o dispon\u00edvel com o provedor atual",
@@ -1247,6 +1250,7 @@ export const settings = {
   "settings.simpleModeSection.tierSmart": "Inteligente",
   "settings.simpleModeSection.tierThinking": "Reflexivo",
   "settings.simpleModeSection.tierWebSearch": "Busca na web",
+  "settings.simpleModeSection.useDefault": "Usar padr\u00e3o",
   "settings.aiProviders.groupChat": "Chat e tarefas",
   "settings.aiProviders.groupMedia": "Só imagens e busca na web",
   "settings.aiProviders.customOpenAiCompatible":

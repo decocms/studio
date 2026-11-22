@@ -294,22 +294,13 @@ function tierIconFor(tier: ChatTier): ReactNode {
   return <Stars01 size={16} />;
 }
 
-/**
- * The model name to show under each cloud tier: this user's override, else the
- * org slot, else the client-side mirror of the server's default pick — an org
- * that never saved `simple_mode` has null slots and `resolveTier` auto-picks
- * from the connected provider's catalog, so a name is still what a run uses.
- * Undefined only while the catalog is loading (caller falls back to the blurb).
- */
-function useTierModelNames(
-  autoDefaults: ReturnType<typeof useAutoSimpleModeDefaults>,
-): Record<ChatTier, string | undefined> {
+/** Model name under each cloud tier; undefined while the catalog loads (the caller shows the blurb). */
+function useTierModelNames(): Record<ChatTier, string | undefined> {
   const effective = useEffectiveSimpleMode();
 
   const nameFor = (tier: ChatTier) => {
     const slot = effective.tiers[tier];
-    if (slot) return slot.title ?? slot.modelId;
-    return autoDefaults.chat[tier]?.title;
+    return slot ? (slot.title ?? slot.modelId) : undefined;
   };
   return {
     fast: nameFor("fast"),
@@ -331,7 +322,7 @@ export function TierTrigger() {
   const autoDefaults = useAutoSimpleModeDefaults(keys);
   // Per-tier model name (user override → org slot → auto-pick) shown as each
   // cloud row's subtitle.
-  const tierModelNames = useTierModelNames(autoDefaults);
+  const tierModelNames = useTierModelNames();
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
