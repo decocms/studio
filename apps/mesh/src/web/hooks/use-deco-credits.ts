@@ -5,6 +5,7 @@
  * chat error banners, and settings page into a single source of truth.
  */
 
+import { createContext, useContext } from "react";
 import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -14,7 +15,34 @@ import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
 import { useAiProviderKeys } from "./collections/use-ai-providers";
 
-export function useDecoCredits() {
+export interface DecoCreditsData {
+  hasDecoKey: boolean;
+  decoKeyId: string | null;
+  balanceCents: number | null;
+  balanceDollars: number | null;
+  hasCredits: boolean;
+  isZeroBalance: boolean;
+  isInitialFreeCredit: boolean;
+  hasOnlyDecoProvider: boolean;
+  isLoading: boolean;
+  isFetching: boolean;
+  refetch: () => void;
+  /** When true, UI should skip localStorage/chat-empty guards (demo toolbar). */
+  isDemoOverride?: boolean;
+}
+
+/** When set, useDecoCredits() returns this override instead of real data. */
+export const DecoCreditsOverrideContext = createContext<DecoCreditsData | null>(
+  null,
+);
+
+export function useDecoCredits(): DecoCreditsData {
+  const override = useContext(DecoCreditsOverrideContext);
+  const real = useDecoCreditsReal();
+  return override ?? real;
+}
+
+function useDecoCreditsReal() {
   const { org } = useProjectContext();
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,

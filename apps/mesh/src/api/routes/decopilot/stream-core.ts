@@ -1047,7 +1047,8 @@ function sanitizeStreamError(error: unknown): string {
       msg.includes("insufficient balance") ||
       msg.includes("billing") ||
       msg.includes("quota exceeded") ||
-      msg.includes("payment required")
+      msg.includes("payment required") ||
+      msg.includes("key limit")
     ) {
       // Prefix with [CREDITS] so the frontend can detect credit errors
       // without fragile string matching on provider-specific messages.

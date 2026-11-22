@@ -18,6 +18,7 @@ import { Chat } from "./index";
 import { useChatStream, useChatPrefs } from "./context";
 import { ChatContextPanel } from "./context-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
+import { CreditsDemoToolbar } from "./credits-demo-toolbar";
 
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
@@ -104,7 +105,8 @@ function HomeEmptyState({
   const userName = session?.user?.name?.split(" ")[0] || "there";
 
   // Only show the eyebrow for the initial free $2 credit (onboarding)
-  const showEyebrow = hasDecoKey && isInitialFreeCredit && balanceDollars != null;
+  const showEyebrow =
+    hasDecoKey && isInitialFreeCredit && balanceDollars != null;
   const showNoCreditsEyebrow = hasDecoKey && isZeroBalance;
 
   if (isMobile) {
@@ -251,8 +253,7 @@ function ChatPanelContent({ variant }: { variant?: "home" | "default" }) {
     deco.isZeroBalance &&
     deco.hasOnlyDecoProvider &&
     !deco.isLoading &&
-    isChatEmpty &&
-    !wasCreditsEmptyDismissed(org.id);
+    (deco.isDemoOverride || (isChatEmpty && !wasCreditsEmptyDismissed(org.id)));
 
   return (
     <Chat className="relative overflow-hidden animate-in fade-in-0 duration-200">
@@ -314,10 +315,12 @@ function ChatPanelContent({ variant }: { variant?: "home" | "default" }) {
 
 export function ChatPanel({ variant }: { variant?: "home" | "default" }) {
   return (
-    <ErrorBoundary fallback={<Chat.Skeleton />}>
-      <Suspense fallback={<Chat.Skeleton />}>
-        <ChatPanelContent variant={variant} />
-      </Suspense>
-    </ErrorBoundary>
+    <CreditsDemoToolbar>
+      <ErrorBoundary fallback={<Chat.Skeleton />}>
+        <Suspense fallback={<Chat.Skeleton />}>
+          <ChatPanelContent variant={variant} />
+        </Suspense>
+      </ErrorBoundary>
+    </CreditsDemoToolbar>
   );
 }
