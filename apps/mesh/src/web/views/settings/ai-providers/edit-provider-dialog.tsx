@@ -94,36 +94,18 @@ function EditForm({
 
   const { mutate: save, isPending } = useMutation({
     mutationFn: async (data: EditFormData) => {
-      let apiKeyValue: string | undefined;
-
-      if (data.apiKey) {
-        if (isOpenAICompatible) {
-          apiKeyValue = JSON.stringify({
-            baseUrl: data.baseUrl || currentBaseUrl || "",
-            apiKey: data.apiKey,
-          });
-        } else {
-          apiKeyValue = data.apiKey;
-        }
-      } else if (
+      const baseUrlChanged =
         isOpenAICompatible &&
-        data.baseUrl &&
-        data.baseUrl !== currentBaseUrl
-      ) {
-        // Base URL changed but no new API key — re-encode with existing masked key not possible.
-        // We encode the new baseUrl with empty apiKey so the connection still works.
-        apiKeyValue = JSON.stringify({
-          baseUrl: data.baseUrl,
-          apiKey: "",
-        });
-      }
+        data.baseUrl !== undefined &&
+        data.baseUrl !== (currentBaseUrl ?? "");
 
       await client.callTool({
         name: "AI_PROVIDER_KEY_UPDATE",
         arguments: {
           keyId: providerKey.id,
           label: data.label,
-          ...(apiKeyValue !== undefined ? { apiKey: apiKeyValue } : {}),
+          ...(data.apiKey ? { apiKey: data.apiKey } : {}),
+          ...(baseUrlChanged ? { baseUrl: data.baseUrl } : {}),
         },
       });
     },

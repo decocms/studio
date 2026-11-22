@@ -258,11 +258,47 @@ export class AIProviderKeyStorage {
   async updateKey(
     keyId: string,
     organizationId: string,
-    updates: { label?: string; apiKey?: string },
+    updates: { label?: string; apiKey?: string; baseUrl?: string },
   ): Promise<ProviderKeyInfo> {
-    if (updates.apiKey !== undefined) {
-      const encryptedApiKey = await this.vault.encrypt(updates.apiKey);
-      const keyHash = hashApiKey(updates.apiKey);
+    const hasApiKey = updates.apiKey !== undefined;
+    const hasBaseUrl = updates.baseUrl !== undefined;
+
+    if (hasApiKey || hasBaseUrl) {
+      const { keyInfo, apiKey: existingApiKey } = await this.resolve(
+        keyId,
+        organizationId,
+      );
+      const isOpenAICompatible = keyInfo.providerId === "openai-compatible";
+
+      let plaintext: string;
+      if (isOpenAICompatible) {
+        let existing: { baseUrl?: string; apiKey?: string } = {};
+        try {
+          existing = JSON.parse(existingApiKey) as {
+            baseUrl?: string;
+            apiKey?: string;
+          };
+        } catch {
+          existing = {};
+        }
+        const merged = {
+          baseUrl: hasBaseUrl ? updates.baseUrl : (existing.baseUrl ?? ""),
+          apiKey: hasApiKey ? updates.apiKey : (existing.apiKey ?? ""),
+        };
+        plaintext = JSON.stringify(merged);
+      } else {
+        // baseUrl is meaningless for non-openai-compatible providers; ignore it.
+        if (!hasApiKey) {
+          if (updates.label !== undefined) {
+            return this.updateLabel(keyId, organizationId, updates.label);
+          }
+          return keyInfo;
+        }
+        plaintext = updates.apiKey!;
+      }
+
+      const encryptedApiKey = await this.vault.encrypt(plaintext);
+      const keyHash = hashApiKey(plaintext);
       const row = await this.db
         .updateTable("ai_provider_keys")
         .set({

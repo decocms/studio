@@ -6,11 +6,12 @@ import { providerKeyOutputSchema } from "./key-create";
 export const AI_PROVIDER_KEY_UPDATE = defineTool({
   name: "AI_PROVIDER_KEY_UPDATE",
   description:
-    "Update the label and/or API key of a stored AI provider key. Pass apiKey to rotate the stored credential.",
+    "Update the label, API key, and/or base URL of a stored AI provider key. Pass apiKey to rotate the stored credential. baseUrl applies to openai-compatible providers and is merged with the existing key when apiKey is omitted.",
   inputSchema: z.object({
     keyId: z.string(),
     label: z.string().min(1).max(100).optional(),
     apiKey: z.string().min(1).optional(),
+    baseUrl: z.string().optional(),
   }),
   outputSchema: providerKeyOutputSchema,
   handler: async (input, ctx) => {
@@ -21,7 +22,7 @@ export const AI_PROVIDER_KEY_UPDATE = defineTool({
     const key = await ctx.storage.aiProviderKeys.updateKey(
       input.keyId,
       org.id,
-      { label: input.label, apiKey: input.apiKey },
+      { label: input.label, apiKey: input.apiKey, baseUrl: input.baseUrl },
     );
 
     return {
