@@ -1695,9 +1695,8 @@ async function isInteractiveHomeChat(args: {
  * so without them a Code Agent chat lost every tool the agent was configured
  * with — its GitHub MCP included.
  *
- * Also answers whether the run is that home chat, which its identity
- * paragraph states. Takes its reads as arguments so the whole decision is
- * unit-tested.
+ * Takes its reads as arguments so the whole decision is unit-tested.
+ * Also answers whether the run is that home chat: its identity paragraph says so.
  */
 export async function runConnectionCandidates<
   T extends {

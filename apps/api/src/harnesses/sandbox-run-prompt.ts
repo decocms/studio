@@ -1,8 +1,8 @@
 /**
  * What a sandbox-hosted run's system-prompt append carries beyond the agent's
- * own instructions: who the model is in a chat, the per-user context Decopilot
- * renders into its system prompt, and the chat mode the user picked for this
- * message.
+ * own instructions: the per-user context Decopilot renders into its system
+ * prompt, and the chat mode the user picked for this message.
+ * A chat also gets who its model is (`runIdentityParagraph`).
  */
 
 import { getDecopilotId } from "@decocms/shared/sdk";
